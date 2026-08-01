@@ -7,13 +7,12 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.self_improvement.proof_reuse_benchmark import (
     ProofReuseBenchmarkReceipt,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tree_gate import (
-    ROOT_GOAL_ID,
     ROOT_EVIDENCE_REQUIREMENTS,
+    ROOT_GOAL_ID,
     ProofTestReuseCompletionEvidence,
     ProofTestReuseCurrentTreeGate,
     ProofTestReuseCurrentTreeGateDecision,
@@ -60,6 +59,60 @@ def _bound_record(**values):
     return result
 
 
+def _managed_merge_provenance(task_id):
+    return {
+        "kind": "managed_merge",
+        "merge_receipt_cid": f"merge:{task_id}",
+        "merged_commit_id": f"commit:{task_id}",
+        "merge_succeeded": True,
+    }
+
+
+def _planning_seal_provenance(gate):
+    return {
+        "kind": "operator_planning_seal",
+        "planning_seal_cid": "planning-seal:reviewed",
+        "operator_approval_cid": "operator-approval:planning",
+        "sealed_objective_revision": gate.objective_revision,
+        "planning_seal_accepted": True,
+    }
+
+
+def _reviewed_integration_provenance(gate):
+    return {
+        "kind": "operator_reviewed_integration",
+        "integration_receipt_cid": "integration:reviewed",
+        "integrated_commit_id": "commit:integrated",
+        "integration_target_commit_id": gate.commit_id,
+        "operator_review_cid": "operator-review:integration",
+        "integration_verified": True,
+    }
+
+
+def _retrospective_provenance(gate):
+    return {
+        "kind": "retrospective_integration_verification",
+        "integrated_commit_id": "commit:historically-integrated",
+        "ancestry_target_commit_id": gate.commit_id,
+        "ancestry_receipt_cid": "ancestry:verified",
+        "ancestry_verified": True,
+        "current_tree_rerun_receipt_cid": "rerun:current-tree",
+        "current_tree_rerun_repository_id": gate.repository_id,
+        "current_tree_rerun_tree_id": gate.tree_id,
+        "current_tree_rerun_commit_id": gate.commit_id,
+        "current_tree_rerun_gitlink_state_cid": gate.gitlink_state_cid,
+        "current_tree_rerun_repository_forest_cid": gate.repository_forest_cid,
+        "current_tree_rerun_policy_cid": gate.policy_cid,
+        "current_tree_rerun_capability_cid": gate.capability_cid,
+        "current_tree_rerun_verifying_key_cid": gate.verifying_key_cid,
+        "current_tree_rerun_circuit_cid": gate.circuit_cid,
+        "current_tree_rerun_passed": True,
+        "policy_approval_cid": "policy-approval:retrospective",
+        "approved_policy_cid": gate.policy_cid,
+        "policy_approved": True,
+    }
+
+
 @pytest.fixture()
 def gate():
     policy = ProofReuseRolloutPolicy(
@@ -103,7 +156,7 @@ def valid_packet(gate, monkeypatch):
             task_id=task_id,
             status="complete",
             task_cid=f"task-cid:{task_id}",
-            merge_receipt_cid=f"merge:{task_id}",
+            task_provenance=_managed_merge_provenance(task_id),
             validation_receipt_cid=f"validation:{task_id}",
             validation_disposition="executed",
             evidence_cid=f"evidence:{task_id}",
@@ -162,7 +215,7 @@ def valid_packet(gate, monkeypatch):
         key_health_ok=True,
         revocation_health_ok=True,
         controlled_issuer=True,
-        current_tree_gate_passed=True,
+        current_tree_gate_passed=None,
         all_repositories_passed=True,
     )
     decision = ProofReuseRolloutDecision(
@@ -202,6 +255,15 @@ def _evaluate(gate, packet):
     return gate.evaluate(**packet)
 
 
+def _replace_rollout_promotion(packet, promotion, **decision_changes):
+    packet["rollout_evidence"]["promotion_evidence"] = promotion
+    packet["rollout_evidence"]["decision"] = replace(
+        packet["rollout_evidence"]["decision"],
+        evidence_id=promotion.evidence_id,
+        **decision_changes,
+    )
+
+
 def test_success_emits_only_root_completion_evidence(gate, valid_packet):
     decision = _evaluate(gate, valid_packet)
 
@@ -221,6 +283,134 @@ def test_success_emits_only_root_completion_evidence(gate, valid_packet):
         decision.completion_evidence.as_completion_evidence().provenance_cid
         == decision.completion_evidence.evidence_id
     )
+
+
+@pytest.mark.parametrize(
+    "provenance_factory",
+    [
+        lambda gate: _managed_merge_provenance("PTR-001"),
+        _planning_seal_provenance,
+        _reviewed_integration_provenance,
+        _retrospective_provenance,
+    ],
+)
+def test_closed_task_provenance_union_accepts_each_reviewed_success_path(
+    gate, valid_packet, provenance_factory
+):
+    packet = deepcopy(valid_packet)
+    packet["task_evidence"][0]["task_provenance"] = provenance_factory(gate)
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is True
+    assert decision.reason_codes == ()
+
+
+@pytest.mark.parametrize(
+    ("provenance", "reason_fragment"),
+    [
+        (None, "missing_task_provenance"),
+        (
+            {
+                "kind": "quarantine",
+                "quarantine_receipt_cid": "quarantine:not-success",
+            },
+            "unsupported_task_provenance",
+        ),
+        (
+            {
+                **_managed_merge_provenance("PTR-001"),
+                "merge_succeeded": False,
+            },
+            "unsuccessful_task_provenance",
+        ),
+        (
+            {
+                **_managed_merge_provenance("PTR-001"),
+                "unreviewed_extension": "must-fail-closed",
+            },
+            "malformed_task_provenance",
+        ),
+    ],
+)
+def test_task_provenance_union_rejects_missing_unknown_or_unsuccessful_members(
+    gate, valid_packet, provenance, reason_fragment
+):
+    packet = deepcopy(valid_packet)
+    packet["task_evidence"][0]["task_provenance"] = provenance
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is False
+    assert decision.completion_evidence is None
+    assert any(reason_fragment in reason for reason in decision.reason_codes)
+
+
+def test_quarantine_cannot_be_disguised_as_completed_managed_merge(
+    gate, valid_packet
+):
+    packet = deepcopy(valid_packet)
+    packet["task_evidence"][0]["queue_status"] = "quarantined"
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is False
+    assert decision.completion_evidence is None
+    assert any(
+        "quarantined_task" in reason for reason in decision.reason_codes
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "reason_fragment"),
+    [
+        (
+            lambda provenance: provenance.update(ancestry_verified=False),
+            "unsuccessful_task_provenance",
+        ),
+        (
+            lambda provenance: provenance.update(
+                current_tree_rerun_passed=False
+            ),
+            "unsuccessful_task_provenance",
+        ),
+        (
+            lambda provenance: provenance.update(policy_approved=False),
+            "unsuccessful_task_provenance",
+        ),
+        (
+            lambda provenance: provenance.update(
+                ancestry_target_commit_id="commit:not-current"
+            ),
+            "retrospective_ancestry_target_mismatch",
+        ),
+        (
+            lambda provenance: provenance.update(
+                current_tree_rerun_tree_id="tree:not-current"
+            ),
+            "retrospective_current_tree_rerun_binding_mismatch",
+        ),
+        (
+            lambda provenance: provenance.update(
+                approved_policy_cid="policy:not-approved"
+            ),
+            "retrospective_policy_approval_mismatch",
+        ),
+    ],
+)
+def test_retrospective_integration_requires_ancestry_rerun_and_policy_evidence(
+    gate, valid_packet, mutation, reason_fragment
+):
+    packet = deepcopy(valid_packet)
+    provenance = _retrospective_provenance(gate)
+    mutation(provenance)
+    packet["task_evidence"][0]["task_provenance"] = provenance
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is False
+    assert decision.completion_evidence is None
+    assert any(reason_fragment in reason for reason in decision.reason_codes)
 
 
 @pytest.mark.parametrize(
@@ -338,6 +528,78 @@ def test_rollout_decision_is_evidence_not_simulated_authority(
     assert not decision.passed
     assert "rollout_non_authoritative" in decision.reason_codes
     assert decision.completion_evidence is None
+
+
+def test_explicit_false_current_tree_flag_is_valid_pre_default_readiness(
+    gate, valid_packet
+):
+    packet = deepcopy(valid_packet)
+    promotion = replace(
+        packet["rollout_evidence"]["promotion_evidence"],
+        current_tree_gate_passed=False,
+    )
+    _replace_rollout_promotion(packet, promotion)
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is True
+
+
+def test_rollout_cannot_preclaim_the_gate_result(gate, valid_packet):
+    packet = deepcopy(valid_packet)
+    promotion = replace(
+        packet["rollout_evidence"]["promotion_evidence"],
+        current_tree_gate_passed=True,
+    )
+    _replace_rollout_promotion(packet, promotion)
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is False
+    assert decision.completion_evidence is None
+    assert "rollout_current_tree_gate_preclaimed" in decision.reason_codes
+
+
+def test_rollout_readiness_must_be_fresh_by_its_own_timestamp(
+    gate, valid_packet
+):
+    packet = deepcopy(valid_packet)
+    promotion = replace(
+        packet["rollout_evidence"]["promotion_evidence"],
+        observed_at=datetime.fromtimestamp(
+            NOW_SECONDS - gate.rollout_policy.max_evidence_age_seconds - 1,
+            tz=UTC,
+        ),
+    )
+    _replace_rollout_promotion(packet, promotion)
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is False
+    assert decision.completion_evidence is None
+    assert "rollout_readiness_stale" in decision.reason_codes
+
+
+def test_eligible_default_decision_is_not_pre_default_readiness(
+    gate, valid_packet
+):
+    packet = deepcopy(valid_packet)
+    promotion = replace(
+        packet["rollout_evidence"]["promotion_evidence"],
+        target_stage=ProofReuseRolloutStage.ELIGIBLE_DEFAULT,
+    )
+    _replace_rollout_promotion(
+        packet,
+        promotion,
+        requested_stage=ProofReuseRolloutStage.ELIGIBLE_DEFAULT,
+        effective_stage=ProofReuseRolloutStage.ELIGIBLE_DEFAULT,
+    )
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is False
+    assert decision.completion_evidence is None
+    assert "rollout_readiness_not_pre_default" in decision.reason_codes
 
 
 def test_failed_decision_cannot_be_forged_with_completion_evidence(

@@ -19,12 +19,14 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Any, ClassVar, Final
 
 from ...testing.proof_reuse.rollout import (
     ProofReusePromotionEvidence,
     ProofReuseRolloutDecision,
     ProofReuseRolloutPolicy,
+    ProofReuseRolloutStage,
 )
 from ..objectives.goal_completion import CompletionEvidence
 from ..self_improvement.proof_reuse_benchmark import (
@@ -123,8 +125,83 @@ REQUIRED_ANALYZERS: Final = frozenset(
 
 _CLOSED_TASK_STATES = frozenset({"complete", "completed", "verified_complete"})
 _CLOSED_GOAL_STATES = frozenset({"verified_complete"})
+_QUARANTINE_STATES = frozenset({"quarantine", "quarantined"})
 _AUTHORITATIVE = "authoritative"
 _MAX_REASONS = 256
+
+
+class TaskCompletionProvenanceKind(Enum):
+    """Closed discriminator for the reviewed ways a task can be complete."""
+
+    MANAGED_MERGE = "managed_merge"
+    OPERATOR_PLANNING_SEAL = "operator_planning_seal"
+    OPERATOR_REVIEWED_INTEGRATION = "operator_reviewed_integration"
+    RETROSPECTIVE_INTEGRATION_VERIFICATION = (
+        "retrospective_integration_verification"
+    )
+
+
+# Each member is a closed record.  Keeping the union closed is important:
+# adding a new completion path requires an explicit gate review instead of
+# silently treating a new queue disposition (especially quarantine) as proof
+# of success.
+_TASK_PROVENANCE_FIELDS: Final[
+    Mapping[TaskCompletionProvenanceKind, tuple[frozenset[str], frozenset[str]]]
+] = {
+    TaskCompletionProvenanceKind.MANAGED_MERGE: (
+        frozenset({"merge_receipt_cid", "merged_commit_id"}),
+        frozenset({"merge_succeeded"}),
+    ),
+    TaskCompletionProvenanceKind.OPERATOR_PLANNING_SEAL: (
+        frozenset(
+            {
+                "planning_seal_cid",
+                "operator_approval_cid",
+                "sealed_objective_revision",
+            }
+        ),
+        frozenset({"planning_seal_accepted"}),
+    ),
+    TaskCompletionProvenanceKind.OPERATOR_REVIEWED_INTEGRATION: (
+        frozenset(
+            {
+                "integration_receipt_cid",
+                "integrated_commit_id",
+                "integration_target_commit_id",
+                "operator_review_cid",
+            }
+        ),
+        frozenset({"integration_verified"}),
+    ),
+    TaskCompletionProvenanceKind.RETROSPECTIVE_INTEGRATION_VERIFICATION: (
+        frozenset(
+            {
+                "integrated_commit_id",
+                "ancestry_target_commit_id",
+                "ancestry_receipt_cid",
+                "current_tree_rerun_receipt_cid",
+                "current_tree_rerun_repository_id",
+                "current_tree_rerun_tree_id",
+                "current_tree_rerun_commit_id",
+                "current_tree_rerun_gitlink_state_cid",
+                "current_tree_rerun_repository_forest_cid",
+                "current_tree_rerun_policy_cid",
+                "current_tree_rerun_capability_cid",
+                "current_tree_rerun_verifying_key_cid",
+                "current_tree_rerun_circuit_cid",
+                "policy_approval_cid",
+                "approved_policy_cid",
+            }
+        ),
+        frozenset(
+            {
+                "ancestry_verified",
+                "current_tree_rerun_passed",
+                "policy_approved",
+            }
+        ),
+    ),
+}
 
 
 class ProofTestReuseCurrentTreeGateError(ValueError):
@@ -499,6 +576,170 @@ class ProofTestReuseCurrentTreeGate:
         )
         return supplied or _content_id(dict(record))
 
+    def _task_provenance_reasons(
+        self,
+        record: Mapping[str, Any],
+        task_id: str,
+    ) -> list[str]:
+        """Validate one member of the closed task-completion provenance union."""
+
+        reasons: list[str] = []
+        quarantine_fields = (
+            "status",
+            "state",
+            "queue_status",
+            "merge_status",
+            "validation_disposition",
+            "disposition",
+            "outcome",
+        )
+        if record.get("quarantined") is True or any(
+            _text(record.get(name)).lower() in _QUARANTINE_STATES
+            for name in quarantine_fields
+        ):
+            reasons.append(_reason("quarantined_task", task_id))
+
+        raw = record.get("task_provenance")
+        if not isinstance(raw, Mapping):
+            reasons.append(_reason("missing_task_provenance", task_id))
+            return reasons
+        provenance = dict(raw)
+        kind_text = _text(provenance.get("kind")).lower()
+        try:
+            kind = TaskCompletionProvenanceKind(kind_text)
+        except ValueError:
+            reasons.append(_reason("unsupported_task_provenance", task_id))
+            return reasons
+
+        text_fields, true_fields = _TASK_PROVENANCE_FIELDS[kind]
+        expected_fields = {"kind"} | set(text_fields) | set(true_fields)
+        if set(provenance) != expected_fields:
+            reasons.append(_reason("malformed_task_provenance", task_id))
+            return reasons
+        if any(
+            not isinstance(provenance.get(name), str)
+            or not provenance[name]
+            or provenance[name] != provenance[name].strip()
+            or "\x00" in provenance[name]
+            for name in text_fields
+        ):
+            reasons.append(_reason("malformed_task_provenance", task_id))
+        if any(provenance.get(name) is not True for name in true_fields):
+            reasons.append(_reason("unsuccessful_task_provenance", task_id))
+
+        if kind is TaskCompletionProvenanceKind.OPERATOR_PLANNING_SEAL:
+            if (
+                _text(provenance.get("sealed_objective_revision"))
+                != self.objective_revision
+            ):
+                reasons.append(
+                    _reason("planning_seal_revision_mismatch", task_id)
+                )
+        elif kind is TaskCompletionProvenanceKind.OPERATOR_REVIEWED_INTEGRATION:
+            if (
+                _text(provenance.get("integration_target_commit_id"))
+                != self.commit_id
+            ):
+                reasons.append(
+                    _reason("reviewed_integration_target_mismatch", task_id)
+                )
+        elif (
+            kind
+            is TaskCompletionProvenanceKind.RETROSPECTIVE_INTEGRATION_VERIFICATION
+        ):
+            if (
+                _text(provenance.get("ancestry_target_commit_id"))
+                != self.commit_id
+            ):
+                reasons.append(
+                    _reason("retrospective_ancestry_target_mismatch", task_id)
+                )
+            rerun_bindings = {
+                "current_tree_rerun_repository_id": self.repository_id,
+                "current_tree_rerun_tree_id": self.tree_id,
+                "current_tree_rerun_commit_id": self.commit_id,
+                "current_tree_rerun_gitlink_state_cid": self.gitlink_state_cid,
+                "current_tree_rerun_repository_forest_cid": (
+                    self.repository_forest_cid
+                ),
+                "current_tree_rerun_policy_cid": self.policy_cid,
+                "current_tree_rerun_capability_cid": self.capability_cid,
+                "current_tree_rerun_verifying_key_cid": self.verifying_key_cid,
+                "current_tree_rerun_circuit_cid": self.circuit_cid,
+            }
+            if any(
+                _text(provenance.get(name)) != expected
+                for name, expected in rerun_bindings.items()
+            ):
+                reasons.append(
+                    _reason(
+                        "retrospective_current_tree_rerun_binding_mismatch",
+                        task_id,
+                    )
+                )
+            if (
+                _text(provenance.get("approved_policy_cid"))
+                != self.policy_cid
+            ):
+                reasons.append(
+                    _reason("retrospective_policy_approval_mismatch", task_id)
+                )
+        return reasons
+
+    def _rollout_readiness_reasons(
+        self,
+        *,
+        decision: ProofReuseRolloutDecision,
+        promotion: ProofReusePromotionEvidence,
+        now_ms: int,
+    ) -> list[str]:
+        """Validate fresh readiness without consuming this gate's own result."""
+
+        reasons: list[str] = []
+        observed_at_ms = _timestamp_ms(promotion.observed_at)
+        max_age_ms = self.rollout_policy.max_evidence_age_seconds * 1000
+        max_future_skew_ms = (
+            self.rollout_policy.max_future_skew_seconds * 1000
+        )
+        if (
+            observed_at_ms is None
+            or observed_at_ms < now_ms - max_age_ms
+            or observed_at_ms > now_ms + max_future_skew_ms
+        ):
+            reasons.append("rollout_readiness_stale")
+
+        if (
+            promotion.repository_id != self.repository_id
+            or promotion.tree_id != self.tree_id
+            or promotion.policy_id != self.rollout_policy.policy_id
+            or promotion.policy_revision
+            != self.rollout_policy.policy_revision
+        ):
+            reasons.append("rollout_readiness_binding_mismatch")
+
+        if (
+            decision.current_stage is not promotion.current_stage
+            or decision.requested_stage is not promotion.target_stage
+            or decision.effective_stage is not promotion.target_stage
+        ):
+            reasons.append("rollout_readiness_stage_mismatch")
+        if (
+            promotion.target_stage.rank
+            >= ProofReuseRolloutStage.ELIGIBLE_DEFAULT.rank
+            or decision.requested_stage.rank
+            >= ProofReuseRolloutStage.ELIGIBLE_DEFAULT.rank
+            or decision.effective_stage.rank
+            >= ProofReuseRolloutStage.ELIGIBLE_DEFAULT.rank
+        ):
+            reasons.append("rollout_readiness_not_pre_default")
+
+        # The result under evaluation cannot be supplied as one of its own
+        # premises.  ``None`` is an unset precondition and ``False`` is an
+        # explicit statement that the final gate has not run yet.
+        if promotion.current_tree_gate_passed is True:
+            reasons.append("rollout_current_tree_gate_preclaimed")
+        return reasons
+
     def _validate_population(
         self,
         records: Iterable[Any],
@@ -588,8 +829,7 @@ class ProofTestReuseCurrentTreeGate:
             record = task_records[task_id]
             if not _text(record.get("task_cid")):
                 reasons.append(_reason("missing_task_cid", task_id))
-            if not _text(record.get("merge_receipt_cid")):
-                reasons.append(_reason("missing_merge_receipt", task_id))
+            reasons.extend(self._task_provenance_reasons(record, task_id))
             disposition = _text(
                 _value(record, "validation_disposition", "disposition", "outcome")
             ).lower()
@@ -723,10 +963,17 @@ class ProofTestReuseCurrentTreeGate:
             if (
                 promotion.key_health_ok is not True
                 or promotion.revocation_health_ok is not True
-                or promotion.current_tree_gate_passed is not True
                 or promotion.all_repositories_passed is not True
             ):
                 reasons.append("rollout_health_incomplete")
+            if isinstance(decision, ProofReuseRolloutDecision):
+                reasons.extend(
+                    self._rollout_readiness_reasons(
+                        decision=decision,
+                        promotion=promotion,
+                        now_ms=now_ms,
+                    )
+                )
 
         reasons = list(dict.fromkeys(reasons))[:_MAX_REASONS]
         if reasons:
@@ -794,4 +1041,5 @@ __all__ = [
     "ProofTestReuseCurrentTreeGate",
     "ProofTestReuseCurrentTreeGateDecision",
     "ProofTestReuseCurrentTreeGateError",
+    "TaskCompletionProvenanceKind",
 ]
