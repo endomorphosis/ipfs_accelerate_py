@@ -9,6 +9,7 @@ import os
 import sys
 import logging
 from pathlib import Path
+import importlib.metadata
 import importlib.util
 import pytest
 
@@ -49,6 +50,55 @@ def _force_real_ipfs_accelerate_package() -> None:
 
 
 _force_real_ipfs_accelerate_package()
+
+# ``test/pytest.ini`` makes this directory pytest's effective root, so the
+# repository-root conftest is not discovered for native ``test/...`` node
+# selections.  Mirror the optional proof-reuse loader here so direct nodes get
+# the same plugin without a hard-wired test registry.
+_PROOF_REUSE_PLUGIN = "ipfs_accelerate_py.testing.proof_reuse.plugin"
+
+
+def _optional_proof_reuse_plugin() -> tuple[str, ...]:
+    try:
+        importlib.import_module(_PROOF_REUSE_PLUGIN)
+    except ModuleNotFoundError as exc:
+        missing = exc.name or ""
+        if missing and (
+            missing == _PROOF_REUSE_PLUGIN
+            or _PROOF_REUSE_PLUGIN.startswith(f"{missing}.")
+        ):
+            return ()
+        raise
+    return (_PROOF_REUSE_PLUGIN,)
+
+
+def _proof_reuse_entry_point_available() -> bool:
+    """Return whether pytest autoload can discover the shared plugin."""
+
+    try:
+        entry_points = importlib.metadata.entry_points()
+        candidates = (
+            entry_points.select(group="pytest11")
+            if hasattr(entry_points, "select")
+            else entry_points.get("pytest11", ())
+        )
+        return any(
+            entry_point.name == "ipfs-proof-reuse"
+            and entry_point.value == _PROOF_REUSE_PLUGIN
+            for entry_point in candidates
+        )
+    except Exception:
+        return False
+
+
+pytest_plugins = (
+    _optional_proof_reuse_plugin()
+    if (
+        os.environ.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD")
+        or not _proof_reuse_entry_point_available()
+    )
+    else ()
+)
 
 # Import fixtures
 from test.common.fixtures import *

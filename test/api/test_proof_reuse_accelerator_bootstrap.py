@@ -213,6 +213,46 @@ def test_packaging_metadata_has_no_test_path_registry() -> None:
         assert "proof_reuse_test_paths" not in text
 
 
+@pytest.mark.parametrize("autoload", [False, True])
+def test_native_direct_node_uses_effective_test_root_loader(
+    tmp_path: Path,
+    autoload: bool,
+) -> None:
+    """The real nested pytest root must expose proof-reuse CLI options."""
+
+    environment = _environment(
+        tmp_path,
+        mode="shadow",
+        autoload=autoload,
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--trace-config",
+            "--collect-only",
+            "--proof-reuse-mode=shadow",
+            (
+                "test/api/test_proof_reuse_rollout.py::"
+                "test_defaults_remain_off_and_default_policy_cannot_grant_read"
+            ),
+            "-q",
+        ],
+        cwd=ACCELERATE_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode == 0, output
+    assert PLUGIN_MODULE in output
+    assert "1 test collected" in output
+
+
 # ---------------------------------------------------------------------------
 # Cold import / side-effect free bootstrap
 # ---------------------------------------------------------------------------
@@ -549,7 +589,20 @@ def test_missing_store_and_multiformats_execute_normally(tmp_path: Path) -> None
     project = tmp_path / "project"
     project.mkdir()
     _copy_bootstrap(project)
-    _write(project / "test_normal.py", "def test_normal():\n    assert True\n")
+    _write(
+        project / "test_normal.py",
+        """
+        import sitecustomize
+        import sys
+
+        def test_normal():
+            assert sitecustomize.OPTIONAL_PROVIDER_IMPORTS == []
+            assert "ipfs_accelerate_py.p2p_tasks.service" not in sys.modules
+            assert "ipfs_accelerate_py.p2p_tasks.client" not in sys.modules
+            assert "ipfs_accelerate_py.p2p_tasks.worker" not in sys.modules
+            assert "ipfs_accelerate_py.github_cli.cache" not in sys.modules
+        """,
+    )
     blockers = tmp_path / "blockers"
     _write(
         blockers / "sitecustomize.py",
@@ -558,6 +611,7 @@ def test_missing_store_and_multiformats_execute_normally(tmp_path: Path) -> None
         import sys
 
         BLOCKED = ("ipfs_kit_py.proof_certificate_store", "multiformats")
+        OPTIONAL_PROVIDER_IMPORTS = []
 
         class BlockOptionalProviders(importlib.abc.MetaPathFinder):
             def find_spec(self, fullname, path=None, target=None):
@@ -565,6 +619,7 @@ def test_missing_store_and_multiformats_execute_normally(tmp_path: Path) -> None
                     fullname == name or fullname.startswith(name + ".")
                     for name in BLOCKED
                 ):
+                    OPTIONAL_PROVIDER_IMPORTS.append(fullname)
                     raise AssertionError("optional provider imported: " + fullname)
                 return None
 

@@ -1,4 +1,5 @@
 import importlib
+import importlib.metadata
 import os
 import sys
 import warnings
@@ -37,12 +38,34 @@ def _optional_proof_reuse_plugin() -> tuple[str, ...]:
     return (_PROOF_REUSE_PLUGIN,)
 
 
+def _proof_reuse_entry_point_available() -> bool:
+    """Return whether pytest autoload can discover the shared plugin."""
+
+    try:
+        entry_points = importlib.metadata.entry_points()
+        candidates = (
+            entry_points.select(group="pytest11")
+            if hasattr(entry_points, "select")
+            else entry_points.get("pytest11", ())
+        )
+        return any(
+            entry_point.name == "ipfs-proof-reuse"
+            and entry_point.value == _PROOF_REUSE_PLUGIN
+            for entry_point in candidates
+        )
+    except Exception:
+        return False
+
+
 # Avoid registering the same module under both its entry-point name and module
 # name when autoload is enabled.  With autoload disabled, pytest processes this
 # tuple early enough for the plugin's CLI and ini options to remain available.
 pytest_plugins = (
     _optional_proof_reuse_plugin()
-    if os.environ.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD")
+    if (
+        os.environ.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD")
+        or not _proof_reuse_entry_point_available()
+    )
     else ()
 )
 

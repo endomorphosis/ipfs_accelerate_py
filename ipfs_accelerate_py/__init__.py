@@ -71,10 +71,30 @@ else:
     original_ipfs_accelerate_py = None
 
 if not SKIP_CORE:
-    try:
-        from .ipfs_multiformats import ipfs_multiformats_py
-    except Exception:
-        ipfs_multiformats_py = None
+    _ipfs_multiformats_lock = threading.Lock()
+
+    class _LazyIPFSMultiformats:
+        """Load the legacy CID helper only when it is instantiated."""
+
+        def __new__(cls, *args, **kwargs):
+            with _ipfs_multiformats_lock:
+                current = globals().get("ipfs_multiformats_py")
+                if current is cls:
+                    module = importlib.import_module(
+                        f"{__name__}.ipfs_multiformats"
+                    )
+                    current = module.ipfs_multiformats_py
+                    globals()["ipfs_multiformats_py"] = current
+                    export_map = globals().get("export")
+                    if isinstance(export_map, dict):
+                        dict.__setitem__(
+                            export_map,
+                            "ipfs_multiformats_py",
+                            current,
+                        )
+            return current(*args, **kwargs)
+
+    ipfs_multiformats_py = _LazyIPFSMultiformats
 
     # ``worker`` is resolved by the module-level ``__getattr__`` below.  Keep
     # package discovery light: importing the legacy worker package eagerly

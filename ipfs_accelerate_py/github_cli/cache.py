@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import socket
+import sys
 import time
 import hashlib
 import base64
@@ -58,16 +59,49 @@ except ImportError:
     hashes = None
     default_backend = None
 
-# Try to import multiformats for content-addressed caching
-# Note: multiformats provides its own multihash submodule, separate from pymultihash
-try:
-    from multiformats import CID
-    from multiformats import multihash as multiformats_multihash
-    HAVE_MULTIFORMATS = True
-except ImportError:
-    HAVE_MULTIFORMATS = False
-    CID = None
-    multiformats_multihash = None
+# Resolve multiformats only when content addressing is actually requested.
+#
+# Importing ``ipfs_accelerate_py.testing.proof_reuse.plugin`` first imports the
+# package root, which reaches this module through optional GitHub/voice
+# integrations.  A module-level multiformats probe therefore made the otherwise
+# cold pytest bootstrap depend on an unrelated optional cache dependency.
+# Keep that bootstrap side-effect free while preserving the SHA-256 fallback
+# when multiformats is genuinely unavailable.
+_loaded_multiformats = sys.modules.get("multiformats")
+CID = getattr(_loaded_multiformats, "CID", None)
+multiformats_multihash = getattr(_loaded_multiformats, "multihash", None)
+HAVE_MULTIFORMATS = CID is not None and multiformats_multihash is not None
+_MULTIFORMATS_IMPORT_ATTEMPTED = HAVE_MULTIFORMATS
+_MULTIFORMATS_IMPORT_LOCK = Lock()
+
+
+def _ensure_multiformats() -> bool:
+    """Load the optional content-addressing provider at first real use."""
+
+    global CID
+    global HAVE_MULTIFORMATS
+    global multiformats_multihash
+    global _MULTIFORMATS_IMPORT_ATTEMPTED
+
+    if _MULTIFORMATS_IMPORT_ATTEMPTED:
+        return HAVE_MULTIFORMATS
+
+    with _MULTIFORMATS_IMPORT_LOCK:
+        if _MULTIFORMATS_IMPORT_ATTEMPTED:
+            return HAVE_MULTIFORMATS
+        try:
+            from multiformats import CID as cid_type
+            from multiformats import multihash as multihash_module
+        except ImportError:
+            HAVE_MULTIFORMATS = False
+        else:
+            CID = cid_type
+            multiformats_multihash = multihash_module
+            HAVE_MULTIFORMATS = True
+        finally:
+            _MULTIFORMATS_IMPORT_ATTEMPTED = True
+
+    return HAVE_MULTIFORMATS
 
 # Legacy raw cache P2P is disabled. Distributed cache sharing is handled by
 # ipfs_accelerate_py.p2p_tasks through the MCP++ TaskQueue cache tools.
@@ -459,7 +493,7 @@ class GitHubAPICache:
         # Sort fields for deterministic hashing
         sorted_fields = json.dumps(validation_fields, sort_keys=True)
 
-        if HAVE_MULTIFORMATS:
+        if _ensure_multiformats():
             # Use multiformats for content-addressed hashing
             content_bytes = sorted_fields.encode('utf-8')
             hasher = hashlib.sha256()
@@ -1142,7 +1176,7 @@ class GitHubAPICache:
                 "raw_p2p_cache_requested": bool(getattr(self, "raw_p2p_cache_requested", False)),
                 "p2p_transport": "mcpplusplus-taskqueue-cache" if getattr(self, "enable_task_p2p_cache", False) else "local-only",
                 "task_p2p_cache_enabled": bool(getattr(self, "enable_task_p2p_cache", False)),
-                "content_addressing_available": HAVE_MULTIFORMATS,
+                "content_addressing_available": _ensure_multiformats(),
                 "cache_dir": str(self.cache_dir) if self.enable_persistence else "",
             }
 
