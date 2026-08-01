@@ -142,6 +142,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_r
 from ipfs_accelerate_py.agent_supervisor import git_gc as git_gc_module
 from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
 from ipfs_accelerate_py.agent_supervisor.merge.git_gc import GitGarbageCollector
+from ipfs_accelerate_py.agent_supervisor.merge.merge_checkpoint import MergeCheckpoint
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as implementation_daemon_module
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -4799,7 +4800,7 @@ def test_preflight_bound_submodule_merge_never_falls_back_from_ff_only(
     (
         preflight,
         approved_targets,
-        _root_candidate,
+        root_candidate,
         _child_candidate,
     ) = _create_preflight_bound_child_candidate(
         repo,
@@ -4853,6 +4854,7 @@ def test_preflight_bound_submodule_merge_never_falls_back_from_ff_only(
         baseline_ref=str(preflight["root_target_commit"]),
         changed_submodule_paths={"libs/child"},
         approved_submodule_integration_targets=approved_targets,
+        root_candidate_ref=root_candidate,
     )
 
     assert len(results) == 1
@@ -4873,6 +4875,296 @@ def test_preflight_bound_submodule_merge_never_falls_back_from_ff_only(
         ]
     ]
     assert _git(submodule, "rev-parse", "main") == approved_child_target
+
+
+def test_preflight_bound_submodule_merge_updates_occupied_target_ref_ff_only(
+    tmp_path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    branch_name = "implementation/auto-121-occupied-child-main"
+    (
+        preflight,
+        approved_targets,
+        _root_candidate,
+        child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+    approved_child_target = _git(submodule, "rev-parse", "main")
+    _git(
+        submodule,
+        "checkout",
+        "-b",
+        "reconciliation-source",
+        approved_child_target,
+    )
+    occupied_worktree = tmp_path / "occupied-child-main"
+    _git(
+        submodule,
+        "worktree",
+        "add",
+        str(occupied_worktree),
+        "main",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_invoke_llm_merge_resolver_for_failed_merge",
+        lambda *_args, **_kwargs: pytest.fail(
+            "occupied approved child target invoked LLM repair"
+        ),
+    )
+
+    results = daemon._merge_submodule_branches_to_main(
+        branch_name,
+        task=task,
+        attempt=1,
+        baseline_ref=str(preflight["root_target_commit"]),
+        changed_submodule_paths={"libs/child"},
+        approved_submodule_integration_targets=approved_targets,
+    )
+
+    assert len(results) == 1
+    result = results[0]
+    assert result["merged"] is True
+    assert result["reason"] == "approved_ff_only_ref_updated"
+    assert result["commit"] == child_candidate
+    assert result["approved_ref_update"]["command"] == [
+        "git",
+        "update-ref",
+        "refs/heads/main",
+        child_candidate,
+        approved_child_target,
+    ]
+    assert result["approved_ref_update"]["occupied_worktree_paths"] == [
+        str(occupied_worktree)
+    ]
+    assert _git(submodule, "rev-parse", "main") == child_candidate
+    assert _git(occupied_worktree, "rev-parse", "HEAD") == child_candidate
+    assert result["approved_ref_update"][
+        "occupied_worktrees_require_refresh"
+    ] is True
+    assert _git(occupied_worktree, "status", "--porcelain") != ""
+    assert len(
+        _git(
+            submodule,
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            child_candidate,
+        ).split()
+    ) == 2
+
+
+def test_preflight_bound_submodule_merge_accepts_exact_candidate_already_integrated(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    branch_name = "implementation/auto-121-exact-already-integrated"
+    (
+        preflight,
+        approved_targets,
+        _root_candidate,
+        child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+    approved_target = _git(submodule, "rev-parse", "main")
+    _git(
+        submodule,
+        "update-ref",
+        "refs/heads/main",
+        child_candidate,
+        approved_target,
+    )
+
+    results = daemon._merge_submodule_branches_to_main(
+        branch_name,
+        task=task,
+        attempt=1,
+        baseline_ref=str(preflight["root_target_commit"]),
+        changed_submodule_paths={"libs/child"},
+        approved_submodule_integration_targets=approved_targets,
+    )
+
+    assert len(results) == 1
+    assert results[0]["merged"] is True
+    assert results[0]["reason"] == "already_merged"
+    assert results[0]["commit"] == child_candidate
+
+
+def test_preflight_bound_submodule_merge_accepts_cleaned_candidate_branch(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    branch_name = "implementation/auto-121-cleaned-child-branch"
+    (
+        preflight,
+        approved_targets,
+        _root_candidate,
+        child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+    approved_target = _git(submodule, "rev-parse", "main")
+    child_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(
+        submodule,
+        "update-ref",
+        "refs/heads/main",
+        child_candidate,
+        approved_target,
+    )
+    _git(submodule, "branch", "-D", child_branch)
+
+    results = daemon._merge_submodule_branches_to_main(
+        branch_name,
+        task=task,
+        attempt=1,
+        baseline_ref=str(preflight["root_target_commit"]),
+        changed_submodule_paths={"libs/child"},
+        approved_submodule_integration_targets=approved_targets,
+    )
+
+    assert len(results) == 1
+    result = results[0]
+    assert result["merged"] is True
+    assert result["reason"] == "already_merged"
+    assert result["commit"] == child_candidate
+    assert result["integration_binding_check"][
+        "candidate_branch_target"
+    ] == ""
+    assert result["integration_binding_check"][
+        "candidate_branch_cleaned_after_exact_integration"
+    ] is True
+
+
+def test_preflight_bound_submodule_merge_rejects_candidate_descendant(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    branch_name = "implementation/auto-121-nonexact-descendant"
+    (
+        preflight,
+        approved_targets,
+        _root_candidate,
+        child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+    _git(submodule, "merge", "--no-ff", "--no-edit", child_candidate)
+    descendant = _git(submodule, "rev-parse", "main")
+    assert descendant != child_candidate
+
+    results = daemon._merge_submodule_branches_to_main(
+        branch_name,
+        task=task,
+        attempt=1,
+        baseline_ref=str(preflight["root_target_commit"]),
+        changed_submodule_paths={"libs/child"},
+        approved_submodule_integration_targets=approved_targets,
+    )
+
+    assert len(results) == 1
+    assert results[0]["merged"] is False
+    assert results[0]["reason"] == (
+        "submodule_integration_target_changed_since_validation"
+    )
+    assert results[0]["integration_binding_check"][
+        "actual_integration_target"
+    ] == descendant
+
+
+def test_preflight_bound_submodule_merge_revalidates_stale_checkpoint(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    branch_name = "implementation/auto-121-stale-checkpoint"
+    (
+        preflight,
+        approved_targets,
+        _root_candidate,
+        child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+    checkpoint = MergeCheckpoint.create(
+        checkpoint_dir=tmp_path / "checkpoints",
+        branch_name=branch_name,
+        task_id=task.task_id,
+        attempt=1,
+    )
+    checkpoint.record_submodule(
+        "libs/child",
+        {
+            "path": "libs/child",
+            "merged": True,
+            "commit": child_candidate,
+        },
+    )
+    _git(submodule, "merge", "--no-ff", "--no-edit", child_candidate)
+    descendant = _git(submodule, "rev-parse", "main")
+
+    results = daemon._merge_submodule_branches_to_main_in_repo(
+        repo_path=repo,
+        branch_name=branch_name,
+        parent_relative="",
+        task=task,
+        attempt=1,
+        baseline_ref=str(preflight["root_target_commit"]),
+        changed_submodule_paths={"libs/child"},
+        approved_submodule_integration_targets=approved_targets,
+        checkpoint=checkpoint,
+    )
+
+    assert len(results) == 1
+    result = results[0]
+    assert result["merged"] is False
+    assert result["reason"] == "submodule_merge_checkpoint_binding_stale"
+    assert result["integration_binding_check"][
+        "actual_integration_target"
+    ] == descendant
+    assert "libs/child" not in checkpoint.merged_submodules
+    assert "libs/child" in checkpoint.failed_submodules
 
 
 def test_preflight_bound_submodule_merge_rechecks_exact_post_merge_commit(
@@ -6591,12 +6883,15 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
         return {"merged": True, "returncode": 0}
 
     monkeypatch.setattr(daemon, "_merge_branch_to_main", merge_branch)
+    request_identity = daemon._identity_for_task(daemon._load_tasks()[0])
     request = SimpleNamespace(
         branch_name=branch_name,
         commit_sha=candidate,
         task_id="REF-040",
         priority="P0",
         attempt=2,
+        canonical_task_id=request_identity.canonical_task_cid,
+        canonical_task_key=request_identity.canonical_task_key,
         metadata={
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": daemon.merge_target_repository_id,
@@ -6605,6 +6900,7 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
                 "passed": True,
                 "returncode": 0,
                 "selection": {"scope": "pre_merge"},
+                "proposal_gate": {"changed_paths": ["README.md"]},
             },
             "task": {
                 "task_id": "REF-040",
@@ -6616,6 +6912,20 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
             }
         },
     )
+
+    unbound_request = SimpleNamespace(
+        **{
+            **vars(request),
+            "canonical_task_id": "",
+            "canonical_task_key": "",
+        }
+    )
+    unbound_result = daemon._merge_train_callback(unbound_request)
+    assert unbound_result["merged"] is False
+    assert unbound_result["reason"] == (
+        "merge_request_task_identity_mismatch"
+    )
+    assert observed == {}
 
     result = daemon._merge_train_callback(request)
 
@@ -6640,6 +6950,371 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
     assert mismatch["ready"] is False
     assert mismatch["reason"] == "merge_branch_candidate_mismatch"
     assert mismatch["branch_commit"] == later
+
+
+def test_merge_rejects_candidate_branch_movement_under_lock(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/ref-046-race"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "candidate.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "candidate.txt")
+    _git(repo, "commit", "-m", "candidate")
+    immutable_candidate = _git(repo, "rev-parse", "HEAD")
+    (repo / "moved.txt").write_text("moved\n", encoding="utf-8")
+    _git(repo, "add", "moved.txt")
+    _git(repo, "commit", "-m", "move branch after validation")
+    moved_candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+
+    result = daemon._merge_branch_to_main(
+        branch_name,
+        PortalTask(
+            task_id="REF-046",
+            title="Reject branch race",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+        immutable_candidate_commit=immutable_candidate,
+    )
+
+    assert result["merged"] is False
+    assert result["reason"] == (
+        "merge_branch_candidate_mismatch_under_lock"
+    )
+    assert result["expected_candidate_commit"] == immutable_candidate
+    assert result["actual_branch_commit"] == moved_candidate
+    assert _git(repo, "rev-parse", "main") != moved_candidate
+
+
+@pytest.mark.parametrize(
+    (
+        "provider_role",
+        "model_invocation_observed",
+        "expected_authoritative",
+    ),
+    [
+        ("deterministic-only", False, True),
+        ("grok-implementation", True, False),
+    ],
+)
+def test_merge_callback_runs_exact_post_merge_validation_before_acceptance(
+    tmp_path,
+    provider_role,
+    model_invocation_observed,
+    expected_authoritative,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""## REF-043 Validate the merged tree
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Provider role: {provider_role}
+- Outputs: verified.txt
+- Validation: test -f verified.txt
+- Acceptance: Validate the exact merged output before completion.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed task")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-043-post-merge"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "verified.txt").write_text(
+        "validated after merge\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "verified.txt")
+    _git(repo, "commit", "-m", "REF-043: add verified output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=[],
+    )
+    request_identity = daemon._identity_for_task(daemon._load_tasks()[0])
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="REF-043",
+        priority="P0",
+        attempt=1,
+        canonical_task_id=request_identity.canonical_task_cid,
+        canonical_task_key=request_identity.canonical_task_key,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "model_invocation_observed": model_invocation_observed,
+            "validation_proof": {
+                "passed": True,
+                "returncode": 0,
+                "selection": {"scope": "pre_merge"},
+                "proposal_gate": {"changed_paths": ["verified.txt"]},
+            },
+            "task": {
+                "task_id": "REF-043",
+                "title": "Validate the merged tree",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+                "validation": ["test -f verified.txt"],
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    merge_commit = str(result["merge_commit"])
+    validation = result["post_merge_validation"]
+    assert validation["schema"] == (
+        implementation_daemon_module.POST_MERGE_VALIDATION_EVIDENCE_SCHEMA
+    )
+    assert validation["validation_scope"] == "post_merge"
+    assert validation["target_commit"] == merge_commit
+    assert validation["validated_commit"] == merge_commit
+    assert validation["passed"] is True
+    receipt_material = dict(validation)
+    receipt_id = receipt_material.pop("validation_receipt_id")
+    assert receipt_id == implementation_daemon_module.content_identity(
+        receipt_material
+    )
+    assert result["completion_authoritative"] is expected_authoritative
+    updated = todo_path.read_text(encoding="utf-8")
+    if expected_authoritative:
+        assert "- Status: completed" in updated
+    else:
+        assert "- Status: todo" in updated
+        assert "provider_review" in result["acceptance_result"]["pending_gates"]
+        pending_events = [
+            event
+            for event in daemon._iter_events()
+            if event.get("type") == "merge_acceptance_pending"
+        ]
+        assert len(pending_events) == 1
+        pending = pending_events[0]
+        assert pending["implementation_commit"] == candidate
+        assert pending["merge_commit"] == merge_commit
+        assert pending["attempt"] == 1
+        assert pending["validation_commands"] == [
+            "test -f verified.txt"
+        ]
+        assert daemon._failed_merge_candidates()[-1][
+            "implementation_commit"
+        ] == candidate
+
+        todo_path.write_text(
+            updated.replace(
+                "- Validation: test -f verified.txt",
+                "- Validation: true",
+            ),
+            encoding="utf-8",
+        )
+        _git(repo, "add", "todo.md")
+        _git(repo, "commit", "-m", "mutate live validation plan")
+        reconciliation = daemon._reconcile_failed_merges()
+        assert reconciliation[-1]["resolved"] is False
+        assert reconciliation[-1]["reason"] == (
+            "reconciliation_validation_plan_mismatch"
+        )
+
+
+def test_post_merge_validation_fails_closed_on_submodule_init_failure(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    merge_commit = _git(repo, "rev-parse", "HEAD")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_initialize_worktree_submodules",
+        lambda *_args, **_kwargs: [
+            {
+                "valid": False,
+                "path": "libs/child",
+                "reason": "submodule_update_failed",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *_args, **_kwargs: pytest.fail(
+            "validation ran after submodule initialization failed"
+        ),
+    )
+
+    evidence = daemon._run_post_merge_validation_evidence(
+        task=PortalTask(
+            task_id="REF-044",
+            title="Fail closed on submodule init",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+            validation=("true",),
+        ),
+        attempt=1,
+        merge_commit=merge_commit,
+    )
+
+    assert evidence["passed"] is False
+    assert evidence["reason"] == (
+        "post_merge_submodule_initialization_failed"
+    )
+    assert evidence["submodule_init_failures"][0]["path"] == "libs/child"
+    receipt_material = dict(evidence)
+    receipt_id = receipt_material.pop("validation_receipt_id")
+    assert receipt_id == implementation_daemon_module.content_identity(
+        receipt_material
+    )
+
+
+def test_post_merge_validation_rejects_validation_workspace_mutation(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    merge_commit = _git(repo, "rev-parse", "HEAD")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+
+    evidence = daemon._run_post_merge_validation_evidence(
+        task=PortalTask(
+            task_id="REF-045",
+            title="Reject mutating validation",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+            validation=("printf mutation > validation-artifact.txt",),
+        ),
+        attempt=1,
+        merge_commit=merge_commit,
+    )
+
+    assert evidence["passed"] is False
+    assert evidence["reason"] == (
+        "post_merge_validation_worktree_mutated"
+    )
+    assert evidence["workspace_clean"] is False
+    assert evidence["workspace_status_porcelain"]
+    assert evidence["validation_dirty_paths"] == [
+        "validation-artifact.txt"
+    ]
+
+    real_run = implementation_daemon_module.subprocess.run
+
+    def fail_authority_status(command, *args, **kwargs):
+        if (
+            [str(item) for item in command]
+            == [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+            ]
+            and Path(kwargs.get("cwd") or ".").name == "checkout"
+        ):
+            return subprocess.CompletedProcess(
+                command,
+                128,
+                "",
+                "corrupt index",
+            )
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fail_authority_status,
+    )
+    status_failure = daemon._run_post_merge_validation_evidence(
+        task=PortalTask(
+            task_id="REF-045",
+            title="Reject failed status",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+            validation=("true",),
+        ),
+        attempt=2,
+        merge_commit=merge_commit,
+    )
+    assert status_failure["passed"] is False
+    assert status_failure["reason"] == (
+        "post_merge_validation_worktree_status_failed"
+    )
+    assert status_failure["validation_status_returncode"] == 128
 
 
 def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path, monkeypatch):
@@ -6688,12 +7363,15 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
         }
 
     monkeypatch.setattr(daemon, "_merge_branch_to_main", resolver_integrates_branch)
+    request_identity = daemon._identity_for_task(daemon._load_tasks()[0])
     request = SimpleNamespace(
         branch_name=branch_name,
         commit_sha=candidate,
         task_id="REF-041",
         priority="P0",
         attempt=1,
+        canonical_task_id=request_identity.canonical_task_cid,
+        canonical_task_key=request_identity.canonical_task_key,
         metadata={
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": daemon.merge_target_repository_id,
@@ -6702,6 +7380,7 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
                 "passed": True,
                 "returncode": 0,
                 "selection": {"scope": "pre_merge"},
+                "proposal_gate": {"changed_paths": ["resolved.txt"]},
             },
             "task": {
                 "task_id": "REF-041",
@@ -6775,12 +7454,15 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
         }
 
     monkeypatch.setattr(daemon, "_merge_branch_to_main", resolver_integrates_only_root)
+    request_identity = daemon._identity_for_task(daemon._load_tasks()[0])
     request = SimpleNamespace(
         branch_name=branch_name,
         commit_sha=candidate,
         task_id="REF-042",
         priority="P0",
         attempt=1,
+        canonical_task_id=request_identity.canonical_task_cid,
+        canonical_task_key=request_identity.canonical_task_key,
         metadata={
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": daemon.merge_target_repository_id,
@@ -6790,6 +7472,7 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
                 "passed": True,
                 "returncode": 0,
                 "selection": {"scope": "pre_merge"},
+                "proposal_gate": {"changed_paths": ["resolved.txt"]},
             },
             "task": {
                 "task_id": "REF-042",
@@ -7753,10 +8436,14 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     assert "libs/child" in checkpoint["failed_submodules"]
 
     (submodule / "feature.txt").unlink()
+    task_identity = daemon._identity_for_task(task)
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._record_event(
         "implementation_finished",
         {
             "task_id": task.task_id,
+            "canonical_task_key": task_identity.canonical_task_key,
+            "canonical_task_cid": task_identity.canonical_task_cid,
             "attempt": 1,
             "branch": "implementation/auto-116",
             "implementation_commit": implementation_commit,
@@ -7765,8 +8452,9 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     )
     reconciliation = daemon._reconcile_failed_merges()
 
-    assert reconciliation[-1]["resolved"] is True
-    assert reconciliation[-1]["reason"] == "implementation_commit_already_merged"
+    assert reconciliation[-1]["resolved"] is False
+    assert reconciliation[-1]["merge_integrated"] is True
+    assert reconciliation[-1]["reason"] == "authoritative_acceptance_pending"
     assert reconciliation[-1]["submodule_merge_results"][0]["merged"] is True
     assert _git(submodule, "merge-base", "--is-ancestor", submodule_commit, "main") == ""
     assert not checkpoint_path.exists()
@@ -12661,7 +13349,7 @@ def test_implementation_daemon_records_worktree_setup_exception(tmp_path):
     assert events[-1]["type"] == "daemon_pass"
 
 
-def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):
+def test_implementation_daemon_reconciliation_requires_live_task_identity(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     daemon = TodoImplementationDaemon(
@@ -12691,22 +13379,13 @@ def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):
 
     result = daemon._reconcile_failed_merges()
 
-    assert result == [
-        {
-            "task_id": "ACCEL-002",
-            "attempt": 3,
-            "branch": "implementation/accel-002",
-            "implementation_commit": "abc123",
-            "merge_ref": "implementation/accel-002",
-            "merge_ref_source": "branch",
-            "resolved": False,
-            "reason": "merge_reconcile_exception",
-            "exception_type": "RuntimeError",
-            "error": "merge workspace unavailable",
-        }
-    ]
+    assert len(result) == 1
+    assert result[0]["task_id"] == "ACCEL-002"
+    assert result[0]["resolved"] is False
+    assert result[0]["reason"] == "reconciliation_task_identity_unavailable"
+    assert result[0]["match_count"] == 0
     events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert events[-1]["type"] == "merge_reconcile_exception"
+    assert events[-1]["type"] == "merge_reconciliation_deferred"
 
 
 def test_implementation_daemon_defers_merge_reconciliation_when_main_checkout_dirty(tmp_path):
@@ -12739,7 +13418,7 @@ def test_implementation_daemon_defers_merge_reconciliation_when_main_checkout_di
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
-    daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="": merge_attempts.append(branch)  # type: ignore[method-assign]
+    daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="", **_kwargs: merge_attempts.append(branch)  # type: ignore[method-assign]
 
     result = daemon._reconcile_failed_merges()
 
@@ -13041,7 +13720,7 @@ def test_implementation_daemon_abandons_stale_failed_merge_candidates(tmp_path):
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
-    daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="": merge_attempts.append(branch)  # type: ignore[method-assign]
+    daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="", **_kwargs: merge_attempts.append(branch)  # type: ignore[method-assign]
 
     result = daemon._reconcile_failed_merges()
 
@@ -13065,8 +13744,19 @@ def test_implementation_daemon_reconciles_missing_branch_from_commit_ref(tmp_pat
         events_path=repo / "state" / "events.jsonl",
         repo_root=repo,
     )
+    task = PortalTask(
+        task_id="ACCEL-005",
+        title="Recover missing branch merge",
+        status="todo",
+        completion="manual",
+        priority="P2",
+        track="ops",
+    )
+    identity = daemon._identity_for_task(task)
     event = {
         "task_id": "ACCEL-005",
+        "canonical_task_key": identity.canonical_task_key,
+        "canonical_task_cid": identity.canonical_task_cid,
         "attempt": 1,
         "branch": "implementation/accel-005",
         "implementation_commit": "abc123",
@@ -13075,11 +13765,12 @@ def test_implementation_daemon_reconciles_missing_branch_from_commit_ref(tmp_pat
     merged_refs: list[str] = []
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: ref == "abc123"  # type: ignore[method-assign]
 
-    def fake_merge(ref, task, attempt, baseline_ref=""):
+    def fake_merge(ref, task, attempt, baseline_ref="", **_kwargs):
         merged_refs.append(ref)
         return {"merged": True, "merge_commit": "merge456"}
 
@@ -13089,6 +13780,9 @@ def test_implementation_daemon_reconciles_missing_branch_from_commit_ref(tmp_pat
         "branch": branch,
         "worktree_path": str(worktree_path or ""),
     }
+    daemon._apply_reconciled_merge_acceptance = (  # type: ignore[method-assign]
+        lambda **_kwargs: {"authoritatively_completed": True}
+    )
 
     result = daemon._reconcile_failed_merges()
 
@@ -13111,8 +13805,19 @@ def test_implementation_daemon_reconciled_merge_requires_cleanup_success(tmp_pat
         events_path=repo / "state" / "events.jsonl",
         repo_root=repo,
     )
+    task = PortalTask(
+        task_id="ACCEL-006",
+        title="Retry merge cleanup",
+        status="todo",
+        completion="manual",
+        priority="P2",
+        track="ops",
+    )
+    identity = daemon._identity_for_task(task)
     event = {
         "task_id": "ACCEL-006",
+        "canonical_task_key": identity.canonical_task_key,
+        "canonical_task_cid": identity.canonical_task_cid,
         "attempt": 1,
         "branch": "implementation/accel-006",
         "implementation_commit": "abc123",
@@ -13121,10 +13826,11 @@ def test_implementation_daemon_reconciled_merge_requires_cleanup_success(tmp_pat
     }
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: ref == "implementation/accel-006"  # type: ignore[method-assign]
-    daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="": {  # type: ignore[method-assign]
+    daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="", **_kwargs: {  # type: ignore[method-assign]
         "merged": True,
         "merge_commit": "merge456",
     }
@@ -13388,9 +14094,30 @@ def test_implementation_daemon_limits_merge_reconciliation_per_pass(tmp_path):
         repo_root=repo,
         merge_reconciliation_max_merges=2,
     )
+    tasks = [
+        PortalTask(
+            task_id=f"ACCEL-{index:03d}",
+            title="Recover failed merge",
+            status="todo",
+            completion="manual",
+            priority="P2",
+            track="ops",
+        )
+        for index in range(1, 5)
+    ]
+    identities = {
+        task.task_id: daemon._identity_for_task(task)
+        for task in tasks
+    }
     events = [
         {
             "task_id": f"ACCEL-{index:03d}",
+            "canonical_task_key": identities[
+                f"ACCEL-{index:03d}"
+            ].canonical_task_key,
+            "canonical_task_cid": identities[
+                f"ACCEL-{index:03d}"
+            ].canonical_task_cid,
             "attempt": 1,
             "branch": f"implementation/accel-{index:03d}",
             "implementation_commit": f"commit{index}",
@@ -13401,11 +14128,12 @@ def test_implementation_daemon_limits_merge_reconciliation_per_pass(tmp_path):
     merged_branches: list[str] = []
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: events  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: tasks  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: True  # type: ignore[method-assign]
 
-    def fake_merge(branch, task, attempt, baseline_ref=""):
+    def fake_merge(branch, task, attempt, baseline_ref="", **_kwargs):
         merged_branches.append(branch)
         return {"merged": False, "reason": "test_conflict"}
 
@@ -13450,7 +14178,7 @@ def test_implementation_daemon_zero_merge_reconciliation_disables_failed_merge_r
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: True  # type: ignore[method-assign]
 
-    def fake_merge(branch, task, attempt, baseline_ref=""):
+    def fake_merge(branch, task, attempt, baseline_ref="", **_kwargs):
         merge_attempts.append(branch)
         return {"merged": False, "reason": "should_not_run"}
 
@@ -13574,9 +14302,20 @@ def test_implementation_daemon_retries_cleanup_failures_for_already_merged_branc
         events_path=repo / "state" / "events.jsonl",
         repo_root=repo,
     )
+    task = PortalTask(
+        task_id="ACCEL-004",
+        title="Retry already merged cleanup",
+        status="todo",
+        completion="manual",
+        priority="P2",
+        track="ops",
+    )
+    identity = daemon._identity_for_task(task)
     event = {
         "type": "implementation_finished",
         "task_id": "ACCEL-004",
+        "canonical_task_key": identity.canonical_task_key,
+        "canonical_task_cid": identity.canonical_task_cid,
         "attempt": 1,
         "branch": "implementation/accel-004",
         "implementation_commit": "abc123",
@@ -13591,6 +14330,7 @@ def test_implementation_daemon_retries_cleanup_failures_for_already_merged_branc
     }
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: True  # type: ignore[method-assign]
     daemon._cleanup_merged_worktree = lambda worktree_path, branch: {  # type: ignore[method-assign]
@@ -17468,6 +18208,330 @@ def test_implementation_daemon_commits_dirty_already_completed_todo_status(tmp_p
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "todo_status_reconciled"
     assert events[-1]["commit_result"]["committed"] is True
+
+
+def test_authoritative_completion_rolls_back_when_board_commit_fails(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    original = (
+        "## ACCEL-001 Durable completion\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+    )
+    todo_path.write_text(original, encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    task = daemon._load_tasks()[0]
+    receipt, _gate = real_git_authority(repo, task.task_id)
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update",
+        lambda *_args, **_kwargs: {
+            "committed": False,
+            "reason": "git_commit_failed",
+        },
+    )
+
+    result = daemon.mark_authoritatively_completed_if_admitted(
+        task,
+        receipt,
+    )
+
+    assert result["authoritatively_completed"] is False
+    assert result["todo_update_result"]["completion_durable"] is False
+    assert result["todo_update_result"]["reason"] == (
+        "todo_completion_commit_not_durable"
+    )
+    assert todo_path.read_text(encoding="utf-8") == original
+
+
+def test_preheld_owned_merge_lock_commits_completion_without_reacquiring(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## ACCEL-001 Locked completion\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    receipt, gate = real_git_authority(repo, "ACCEL-001")
+    lock_path = daemon._repo_merge_lock_path()
+    lock_fd, _reason, _existing = daemon._try_acquire_lock(
+        lock_path,
+        lock_kind="merge",
+        owner_active=daemon._merge_lock_owner_is_active,
+    )
+    assert lock_fd is not None
+    daemon._write_lock_metadata(
+        lock_fd,
+        {"kind": "merge", "pid": os.getpid()},
+    )
+    token = daemon._activate_owned_merge_lock()
+    monkeypatch.setattr(
+        daemon,
+        "_try_acquire_lock",
+        lambda *_args, **_kwargs: pytest.fail(
+            "owned completion transaction reacquired merge lock"
+        ),
+    )
+    try:
+        result = daemon._mark_tasks_completed_in_todo_unchecked(
+            ["ACCEL-001"],
+            primary_task_id="ACCEL-001",
+            completion_reason="test",
+            authoritative_receipt=receipt,
+            authoritative_gate=gate,
+            merge_lock_token=token,
+        )
+    finally:
+        daemon._deactivate_owned_merge_lock(token)
+        lock_path.unlink(missing_ok=True)
+
+    assert result["updated"] is True
+    assert result["completion_durable"] is True
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+
+
+def test_failed_completion_postcondition_restores_ref_preimage(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    original = (
+        "## ACCEL-001 Ref transaction\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+    )
+    todo_path.write_text(original, encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
+    preimage = _git(repo, "rev-parse", "main")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    task = daemon._load_tasks()[0]
+    receipt, _gate = real_git_authority(repo, task.task_id)
+    monkeypatch.setattr(
+        daemon,
+        "_generated_file_commit_is_durable",
+        lambda *_args, **_kwargs: False,
+    )
+
+    result = daemon.mark_authoritatively_completed_if_admitted(
+        task,
+        receipt,
+    )
+
+    failed_commit = result["todo_update_result"]["commit_result"]["commit"]
+    assert result["authoritatively_completed"] is False
+    assert result["todo_update_result"]["rollback_result"]["restored"] is True
+    assert _git(repo, "rev-parse", "main") == preimage
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", failed_commit, "main"],
+        cwd=repo,
+        check=False,
+    ).returncode != 0
+    assert todo_path.read_text(encoding="utf-8") == original
+    assert _git(repo, "status", "--porcelain", "--", "todo.md") == ""
+
+
+def test_reconciled_acceptance_rejects_target_advance_during_provider_review(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## ACCEL-001 Review fence\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Provider role: grok-implementation\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
+    merge_commit = _git(repo, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+
+    def advance_target(**_kwargs):
+        (repo / "advanced.txt").write_text("advanced\n", encoding="utf-8")
+        _git(repo, "add", "advanced.txt")
+        _git(repo, "commit", "-m", "advance target during review")
+        return {}
+
+    monkeypatch.setattr(
+        daemon,
+        "_provider_review_gate_evidence",
+        advance_target,
+    )
+    result = daemon._apply_reconciled_merge_acceptance(
+        task=task,
+        attempt=1,
+        implementation_commit=merge_commit,
+        merge_commit=merge_commit,
+        model_invocation_observed=True,
+    )
+
+    assert result["authoritatively_completed"] is False
+    assert result["acceptance_result"]["reason"] == (
+        "post_merge_target_advanced"
+    )
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_nested_authoritative_board_fails_before_mutation_or_ref_movement(
+    tmp_path,
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    _git(root, "init")
+    _git(root, "checkout", "-b", "main")
+    (root / "README.md").write_text("root\n", encoding="utf-8")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-m", "seed root")
+    child = root / "nested"
+    child.mkdir()
+    _git(child, "init")
+    _git(child, "checkout", "-b", "main")
+    todo_path = child / "todo.md"
+    original = (
+        "## ACCEL-001 Nested completion\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+    )
+    todo_path.write_text(original, encoding="utf-8")
+    _git(child, "add", "todo.md")
+    _git(child, "commit", "-m", "seed nested todo")
+    root_head = _git(root, "rev-parse", "HEAD")
+    child_head = _git(child, "rev-parse", "HEAD")
+    state_dir = root / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=root,
+        task_header_prefix="## ACCEL-",
+    )
+    receipt, gate = real_git_authority(root, "ACCEL-001")
+    result = daemon._mark_tasks_completed_in_todo_unchecked(
+        ["ACCEL-001"],
+        primary_task_id="ACCEL-001",
+        completion_reason="test",
+        authoritative_receipt=receipt,
+        authoritative_gate=gate,
+    )
+
+    assert result["updated"] is False
+    assert result["reason"] == "nested_completion_transaction_unsupported"
+    assert todo_path.read_text(encoding="utf-8") == original
+    assert _git(root, "rev-parse", "HEAD") == root_head
+    assert _git(child, "rev-parse", "HEAD") == child_head
+
+
+@pytest.mark.parametrize("checkout_mode", ["detached", "alias"])
+def test_authoritative_completion_requires_exact_target_checkout(
+    tmp_path,
+    checkout_mode,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    original = (
+        "## ACCEL-001 Checkout binding\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+    )
+    todo_path.write_text(original, encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
+    preimage = _git(repo, "rev-parse", "main")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        merge_target_branch="main",
+    )
+    receipt, gate = real_git_authority(repo, "ACCEL-001")
+    if checkout_mode == "detached":
+        _git(repo, "checkout", "--detach", preimage)
+    else:
+        _git(repo, "checkout", "-b", "alias", preimage)
+
+    result = daemon._mark_tasks_completed_in_todo_unchecked(
+        ["ACCEL-001"],
+        primary_task_id="ACCEL-001",
+        completion_reason="test",
+        authoritative_receipt=receipt,
+        authoritative_gate=gate,
+    )
+
+    assert result["updated"] is False
+    assert result["reason"] == "completion_target_not_checked_out"
+    assert _git(repo, "rev-parse", "main") == preimage
+    assert _git(repo, "rev-parse", "HEAD") == preimage
+    assert todo_path.read_text(encoding="utf-8") == original
 
 
 def test_implementation_daemon_updates_checkbox_with_completed_status(tmp_path):
@@ -22019,6 +23083,7 @@ def test_implementation_daemon_skips_dirty_submodule_resolver_when_branch_alread
             "default_branch": "main",
             "merged": True,
             "reason": "already_merged",
+            "commit": _git(submodule, "rev-parse", "main"),
         }
     ]
     assert not capture_path.exists()

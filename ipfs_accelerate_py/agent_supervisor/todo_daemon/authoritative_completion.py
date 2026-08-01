@@ -709,6 +709,7 @@ class AuthoritativeCompletionMixin:
         *,
         authoritative_receipt: ImplementationReceipt | Mapping[str, Any] | None = None,
         authoritative_gate: AuthoritativeCompletionGate | Mapping[str, Any] | None = None,
+        merge_lock_token: object | None = None,
     ) -> dict[str, Any]:
         return self._mark_tasks_completed_in_todo(
             [task.task_id],
@@ -716,6 +717,7 @@ class AuthoritativeCompletionMixin:
             completion_reason="authoritative_acceptance",
             authoritative_receipt=authoritative_receipt,
             authoritative_gate=authoritative_gate,
+            merge_lock_token=merge_lock_token,
         )
 
     def _mark_tasks_completed_in_todo(
@@ -727,6 +729,7 @@ class AuthoritativeCompletionMixin:
         bundle_work_order: dict[str, Any] | None = None,
         authoritative_receipt: ImplementationReceipt | Mapping[str, Any] | None = None,
         authoritative_gate: AuthoritativeCompletionGate | Mapping[str, Any] | None = None,
+        merge_lock_token: object | None = None,
     ) -> dict[str, Any]:
         target_ids = tuple(
             dict.fromkeys(
@@ -767,6 +770,7 @@ class AuthoritativeCompletionMixin:
                 bundle_work_order=bundle_work_order,
                 authoritative_receipt=authoritative_receipt,
                 authoritative_gate=authoritative_gate,
+                merge_lock_token=merge_lock_token,
             ),
         )
 
@@ -1120,6 +1124,7 @@ class AuthoritativeCompletionMixin:
         receipt: ImplementationReceipt | Mapping[str, Any],
         *,
         promote: bool = True,
+        merge_lock_token: object | None = None,
     ) -> dict[str, Any]:
         try:
             base = (
@@ -1164,12 +1169,11 @@ class AuthoritativeCompletionMixin:
             task,
             authoritative_receipt=promoted,
             authoritative_gate=gate,
+            merge_lock_token=merge_lock_token,
         )
         completed = bool(
-            todo_update.get("updated")
-            or task.task_id in set(
-                todo_update.get("already_completed_task_ids") or ()
-            )
+            todo_update.get("completion_durable")
+            or todo_update.get("already_completed_exact")
         )
         payload = {
             "updated": bool(todo_update.get("updated")),
@@ -1287,6 +1291,7 @@ class AuthoritativeCompletionMixin:
         validation_result: Mapping[str, Any] | None = None,
         gate_evidence: Mapping[str, Any] | None = None,
         model_invocation_observed: bool = False,
+        merge_lock_token: object | None = None,
     ) -> dict[str, Any]:
         receipt = self.build_task_implementation_receipt(
             task,
@@ -1309,5 +1314,6 @@ class AuthoritativeCompletionMixin:
                 task,
                 promoted,
                 promote=False,
+                merge_lock_token=merge_lock_token,
             )
         return self.record_merged_pending_acceptance(task, receipt, gate)
