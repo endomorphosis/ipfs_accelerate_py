@@ -9,8 +9,8 @@
   "observed_at": "2026-08-01T03:20:49Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "22519e49205ba539ae3decd603169d06b2e033fa",
-    "parent_tree": "71e82c6af6485e224fccbf802286ced17a44a80f",
+    "parent_commit": "c99316212ab8dd57301a8427ef2c00d2786b6e0f",
+    "parent_tree": "4dd13819b376500fe525c5617bc650953c11c652",
     "datasets_gitlink": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
     "datasets_embedded_head": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
     "datasets_origin_main": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
@@ -205,8 +205,8 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "22519e49205ba539ae3decd603169d06b2e033fa",
-        "tree": "71e82c6af6485e224fccbf802286ced17a44a80f",
+        "commit": "c99316212ab8dd57301a8427ef2c00d2786b6e0f",
+        "tree": "4dd13819b376500fe525c5617bc650953c11c652",
         "origin_main": "0ae5f590e858cfe2618b9a24aa4479e9e8ca619e",
         "clean": false,
         "matches_origin_main": false
@@ -1191,7 +1191,7 @@
     "toolchain_certificate": {
       "path": "docs/architecture/formal_verification_toolchain_certificate.json",
       "present": true,
-      "content_identity": "sha256:cf3c020b4089c66ac498acc4fd2cc217e8497994ac87e209108b46b33fbdf359"
+      "content_identity": "sha256:4e358dd2f2364c35f0f53460a42152b14d7f0dbc2217a4d7bd991d9a880d0419"
     },
     "toolchain_lock": {
       "path": "config/formal_verification_toolchains.lock.json",
@@ -1256,7 +1256,7 @@
     "receipt_builder": {
       "path": "tools/logic/build_formal_verification_tactician_receipt.py",
       "present": true,
-      "content_identity": "sha256:1270593526306c62a1a9cbdaa880569a2d2641f02ff5c17a1aa0fef93160a17b"
+      "content_identity": "sha256:c100c077381755dc7dd7a9e50a7d31d0f47056b7279d3efbda48fa1fcfadaf4c"
     },
     "completion_test": {
       "path": "test/api/test_formal_verification_tactician_readiness_completion.py",
@@ -1266,12 +1266,12 @@
     "role_aware_certifier": {
       "path": "tools/logic/certify_formal_verification_toolchains.py",
       "present": true,
-      "content_identity": "sha256:1db3842fa9324ded0f371333dcaf23211edd841c2325280c31f08dd6b02abf2c"
+      "content_identity": "sha256:d108e8b4063d13142bc705f61851d288a693e219f9cced86d8d0fdcd49ee1903"
     },
     "role_aware_completion_test": {
       "path": "test/integration/test_formal_verification_role_aware_completion.py",
       "present": true,
-      "content_identity": "sha256:be629f73a8f121b5c436fad8f8ba9a362064d9aa8b92aad3dcfcbcc206d5ba51"
+      "content_identity": "sha256:ffaf8402a3a5b5d6d3ed628fb30d899d4e8731b89162bbddee88b8a50ad9c2e2"
     },
     "completion_receipt": {
       "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
@@ -3789,5 +3789,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:08000f92ebb9571a370654a96882828a63e554522c28e233c07be0c4aa6e477c"
+  "receipt_identity": "sha256:f3c830cbf34193ae3104d5f1deee07d3be09ea69d09f50ab7c0fadf354798517"
 }

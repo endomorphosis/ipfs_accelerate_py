@@ -523,6 +523,236 @@ def _project_semantic_lane_result(
     return projected
 
 
+def _compact_semantic_tool_projection(
+    tool_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind a per-tool projection without duplicating its canonical receipt."""
+
+    identity = (
+        tool_result.get("identity")
+        if isinstance(tool_result.get("identity"), Mapping)
+        else {}
+    )
+    artifacts = [
+        dict(item)
+        for item in (identity.get("artifacts") or [])
+        if isinstance(item, Mapping)
+    ]
+    artifact_validation = (
+        tool_result.get("artifact_validation")
+        if isinstance(tool_result.get("artifact_validation"), Mapping)
+        else {}
+    )
+    checks = [
+        item
+        for item in (tool_result.get("checks") or [])
+        if isinstance(item, Mapping)
+    ]
+    check_status_counts = {
+        status: sum(1 for check in checks if check.get("status") == status)
+        for status in ("passed", "failed", "skipped", "unavailable")
+    }
+    check_kinds_present = sorted(
+        {
+            str(check.get("kind"))
+            for check in checks
+            if str(check.get("kind") or "")
+        }
+    )
+    return {
+        "certified": bool(tool_result.get("certified")),
+        "block_reasons": list(tool_result.get("block_reasons") or []),
+        "check_kinds_present": check_kinds_present,
+        "checks_retained_without_kind_collapse": bool(
+            tool_result.get("checks_retained_without_kind_collapse")
+        ),
+        "checks_passed": check_status_counts["passed"],
+        "checks_total": len(checks),
+        "check_set_digest_sha256": str(
+            tool_result.get("check_set_digest_sha256")
+            or content_digest(checks)
+        ),
+        "check_status_counts": check_status_counts,
+        "identity": {
+            "executable_path": identity.get("executable_path"),
+            "version_string": identity.get("version_string"),
+            "identity_probed": bool(identity.get("identity_probed")),
+            "artifacts": artifacts,
+            "artifacts_digest_sha256": content_digest(artifacts),
+        },
+        "artifact_validation": {
+            "valid": artifact_validation.get("valid") is True,
+            "failures": list(artifact_validation.get("failures") or []),
+            "has_production_binding": bool(
+                artifact_validation.get("has_production_binding")
+            ),
+            "validated_digest_sha256": content_digest(
+                artifact_validation.get("validated") or []
+            ),
+            "production_bindings_digest_sha256": content_digest(
+                artifact_validation.get("production_bindings") or []
+            ),
+        },
+        "handler_key": tool_result.get("handler_key"),
+    }
+
+
+def _compact_semantic_lane_projection(
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Retain one full lane receipt and digest-only derived tool projections."""
+
+    compact = {
+        key: value
+        for key, value in result.items()
+        if key not in {"per_tool"}
+    }
+    per_tool = result.get("per_tool")
+    compact["per_tool"] = {
+        str(tool_id): _compact_semantic_tool_projection(tool_result)
+        for tool_id, tool_result in (
+            per_tool.items() if isinstance(per_tool, Mapping) else ()
+        )
+        if isinstance(tool_result, Mapping)
+    }
+    compact["projection_policy"] = {
+        "canonical_full_receipt_retained_once": isinstance(
+            result.get("receipt"), Mapping
+        ),
+        "per_tool_checks_bound_by_digest": True,
+        "per_tool_artifact_validation_bound_by_digest": True,
+    }
+    return compact
+
+
+def _compact_specialized_receipt_aggregation(
+    aggregation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project specialized fan-in as identities and content digests only."""
+
+    handlers = aggregation.get("specialized_by_handler")
+    handler_projection: dict[str, Any] = {}
+    if isinstance(handlers, Mapping):
+        for handler_key, raw in sorted(handlers.items()):
+            if not isinstance(raw, Mapping):
+                continue
+            projected_handler = {
+                "handler_key": raw.get("handler_key") or handler_key,
+                "tool_id": raw.get("tool_id"),
+                "property_lane_id": raw.get("property_lane_id"),
+                "semantic_lane_id": raw.get("semantic_lane_id"),
+                "certifier_family": raw.get("certifier_family"),
+                "certified": bool(raw.get("certified")),
+                "authority_ceiling": raw.get("authority_ceiling"),
+                "receipt_digest_sha256": raw.get("raw_receipt_digest")
+                or raw.get("receipt_digest_sha256"),
+                "check_set_digest_sha256": raw.get("check_set_digest_sha256")
+                or content_digest(raw.get("checks") or []),
+                "identity_digest_sha256": content_digest(
+                    raw.get("executable") or {}
+                ),
+                "artifacts_digest_sha256": content_digest(
+                    raw.get("artifacts") or []
+                ),
+                "bindings_digest_sha256": content_digest(
+                    raw.get("bindings") or []
+                ),
+                "cases_digest_sha256": content_digest(raw.get("cases") or []),
+                "dependencies_digest_sha256": content_digest(
+                    raw.get("dependencies") or []
+                ),
+                "sources_digest_sha256": content_digest(raw.get("sources") or []),
+                "source_tool_evidence_digest_sha256": raw.get(
+                    "tool_evidence_digest_sha256"
+                ),
+            }
+            projected_handler["tool_evidence_digest_sha256"] = content_digest(
+                projected_handler
+            )
+            handler_projection[str(handler_key)] = projected_handler
+
+    composites = aggregation.get("composite_lanes")
+    composite_projection: dict[str, Any] = {}
+    if isinstance(composites, Mapping):
+        for lane_id, raw in sorted(composites.items()):
+            if not isinstance(raw, Mapping):
+                continue
+            composite_projection[str(lane_id)] = {
+                "property_lane_id": raw.get("property_lane_id") or lane_id,
+                "tool_ids": list(raw.get("tool_ids") or []),
+                "handler_keys": list(raw.get("handler_keys") or []),
+                "digest_sha256": content_digest(raw),
+            }
+
+    projected = {
+        "schema_version": aggregation.get("schema_version"),
+        "interface": aggregation.get("interface"),
+        "goal_id": aggregation.get("goal_id"),
+        "task_id": aggregation.get("task_id"),
+        "enabled": aggregation.get("enabled"),
+        "lossless": aggregation.get("lossless"),
+        "certifier_families_required": list(
+            aggregation.get("certifier_families_required") or []
+        ),
+        "certifier_families_represented": list(
+            aggregation.get("certifier_families_represented") or []
+        ),
+        "missing_certifier_families": list(
+            aggregation.get("missing_certifier_families") or []
+        ),
+        "all_required_certifiers_represented": bool(
+            aggregation.get("all_required_certifiers_represented")
+        ),
+        "kernel_retained_tool_ids": list(
+            aggregation.get("kernel_retained_tool_ids") or []
+        ),
+        "protocol_retained_tool_ids": list(
+            aggregation.get("protocol_retained_tool_ids") or []
+        ),
+        "composite_lanes": composite_projection,
+        "specialized_by_handler": handler_projection,
+        "source_aggregation_digest_sha256": aggregation.get(
+            "aggregation_digest_sha256"
+        ),
+        "projection_policy": {
+            "canonical_full_receipts_live_in_semantic_lane_results": True,
+            "derived_specialized_rows_are_digest_only": True,
+            "source_and_projection_digests_are_distinct": True,
+        },
+    }
+    projected["aggregation_digest_sha256"] = content_digest(projected)
+    return projected
+
+
+def _compact_elevation_projection(
+    elevation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Keep an elevation decision while binding, not copying, its checks."""
+
+    checks = elevation.get("checks")
+    checks = list(checks) if isinstance(checks, list) else []
+    return {
+        key: value
+        for key, value in elevation.items()
+        if key != "checks"
+    } | {
+        "checks_digest_sha256": elevation.get("checks_digest_sha256")
+        or content_digest(checks),
+        "checks_count": len(checks),
+    }
+
+
+def _compact_tool_certificate(tool: ToolCertification) -> dict[str, Any]:
+    """Keep operational tool fields and shallow checks; bind full evidence."""
+
+    payload = tool.to_dict()
+    full_checks = [check.to_dict() for check in tool.checks]
+    payload["checks"] = [check.to_public_dict() for check in tool.checks]
+    payload["checks_digest_sha256"] = content_digest(full_checks)
+    payload["checks_projection"] = "shallow_rows_full_evidence_digest"
+    return payload
+
+
 def file_digest(path: str | Path | None) -> str | None:
     """Return a canonical SHA-256 identity for a regular file."""
 
@@ -750,7 +980,6 @@ class CheckResult:
         if self.evidence:
             # Bind residual evidence by digest only; full tool/lane surfaces
             # retain complete check bodies where required.
-            payload["evidence_digest_sha256"] = content_digest(self.evidence)
             residual_keys = sorted(
                 key
                 for key in self.evidence.keys()
@@ -766,8 +995,11 @@ class CheckResult:
                     "tool_id",
                 }
             )
-            if residual_keys:
-                payload["evidence_residual_keys"] = residual_keys
+            payload["evidence"] = {
+                "compacted": True,
+                "digest_sha256": content_digest(self.evidence),
+                "residual_keys": residual_keys,
+            }
         return payload
 
 
@@ -3999,13 +4231,17 @@ def build_certificate(
     offline_policy_satisfied = all(
         bool(offline_policy.get(key)) for key in required_offline_policy_keys
     ) and all(bool(item.get("satisfied")) for item in offline_observations)
-    public_semantic_results = [
+    full_public_semantic_results = [
         _project_semantic_lane_result(result, repo_root=root)
         for result in semantic_results
     ]
-    specialized_aggregation = (
+    public_semantic_results = [
+        _compact_semantic_lane_projection(result)
+        for result in full_public_semantic_results
+    ]
+    full_specialized_aggregation = (
         aggregate_specialized_receipts(
-            public_semantic_results,
+            full_public_semantic_results,
             authority_roles=authority_roles,
             property_lanes=PROPERTY_LANES,
         )
@@ -4018,6 +4254,13 @@ def build_certificate(
             "enabled": False,
             "reason": "role_aware_elevation_disabled",
         }
+    )
+    specialized_aggregation = (
+        _compact_specialized_receipt_aggregation(
+            full_specialized_aggregation
+        )
+        if role_aware
+        else full_specialized_aggregation
     )
     certificate: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -4137,7 +4380,10 @@ def build_certificate(
             },
         },
         "property_lanes": [lane.to_dict() for lane in lanes],
-        "tools": [tool_certs[tid].to_dict() for tid in sorted(tool_certs)],
+        "tools": [
+            _compact_tool_certificate(tool_certs[tid])
+            for tid in sorted(tool_certs)
+        ],
         "disagreement_quarantines": [item.to_dict() for item in disagreements],
         "promotion": {
             "production_certified_tool_ids": production_certified_ids,
@@ -4160,7 +4406,11 @@ def build_certificate(
             "goal_id": ROLE_AWARE_GOAL_ID,
             "task_id": ROLE_AWARE_TASK_ID,
             "interface": ROLE_AWARE_INTERFACE,
-            "elevations": elevations,
+            "elevations": [
+                _compact_elevation_projection(item)
+                for item in elevations
+                if isinstance(item, Mapping)
+            ],
             "demotions": demotions,
             "elevated_tool_ids": sorted(
                 {

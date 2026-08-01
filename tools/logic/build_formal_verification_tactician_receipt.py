@@ -2258,22 +2258,22 @@ def build_role_aware_deployment_receipt(
     for result in semantic_results:
         lane_id = str(result.get("lane_id") or "unknown")
         lane_status = str(result.get("status") or "")
-        # Unavailable / blocked / error / skipped lanes never carry a full
-        # portable receipt. They must disclose block reasons and must not be
-        # treated as omitted evidence; only ``ran`` lanes require full digest
-        # binding. ``usable_elevation_allowed`` on the lane entry is a policy
-        # constant from the certifier spec (whether successful runs of this
-        # family may elevate), not a claim that *this* non-ran outcome elevated.
+        # A supported semantic lane that did not run has no canonical receipt
+        # to bind. It therefore blocks this acceptance gate even when it
+        # correctly discloses why it did not run. Platform exceptions are
+        # reported separately and likewise never count as completed evidence.
         if lane_status != "ran":
+            semantic_receipts_full_and_bound = False
+            semantic_binding_failures.append(
+                f"{lane_id}:semantic_lane_not_run"
+            )
             if not _safe_list(result.get("block_reasons")):
-                semantic_receipts_full_and_bound = False
                 semantic_binding_failures.append(
                     f"{lane_id}:block_reasons_missing_for_non_ran_lane"
                 )
             if _safe_list(result.get("elevated_tool_ids")) or _safe_list(
                 result.get("semantically_usable_tool_ids")
             ):
-                semantic_receipts_full_and_bound = False
                 semantic_binding_failures.append(
                     f"{lane_id}:non_ran_lane_cannot_claim_elevation"
                 )
@@ -2324,11 +2324,25 @@ def build_role_aware_deployment_receipt(
                     f"{lane_id}:{field_name}_mismatch"
                 )
         for tool_id, per_tool in _safe_dict(result.get("per_tool")).items():
-            projected_checks = _safe_list(_safe_dict(per_tool).get("checks"))
-            projected_digest = certifier.content_digest(projected_checks)
-            if projected_digest != _safe_dict(per_tool).get(
-                "check_set_digest_sha256"
-            ):
+            per_tool = _safe_dict(per_tool)
+            projected_checks = per_tool.get("checks")
+            recorded_digest = str(
+                per_tool.get("check_set_digest_sha256") or ""
+            )
+            if isinstance(projected_checks, list):
+                projected_digest = certifier.content_digest(projected_checks)
+                check_binding_valid = projected_digest == recorded_digest
+            else:
+                check_binding_valid = bool(
+                    SHA256_RE.fullmatch(
+                        recorded_digest.removeprefix("sha256:")
+                    )
+                    and _safe_dict(result.get("projection_policy")).get(
+                        "per_tool_checks_bound_by_digest"
+                    )
+                    is True
+                )
+            if not check_binding_valid:
                 semantic_receipts_full_and_bound = False
                 semantic_binding_failures.append(
                     f"{lane_id}:{tool_id}:check_set_digest_mismatch"
