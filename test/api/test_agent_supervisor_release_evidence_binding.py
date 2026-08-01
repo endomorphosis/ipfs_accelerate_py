@@ -11,6 +11,8 @@ Covers:
   binds identity/trees/events/receipts, never mutates live state, and never
   treats metrics-module presence as completion
 * leased-lane durable completion fencing shares the member-receipt schema
+* FVT-078 objective validation repair: exact-text discovery of
+  ``objective validation repair`` without granting completion authority
 """
 
 from __future__ import annotations
@@ -23,11 +25,19 @@ from ipfs_accelerate_py.agent_supervisor.merge import leased_lane
 from ipfs_accelerate_py.agent_supervisor.release_evidence import (
     EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED,
     MEMBER_COMPLETION_RECEIPT_SCHEMA,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
+    RELEASE_EVIDENCE_BINDING_TEST,
     RELEASE_EVIDENCE_GOAL_ID,
     RELEASE_EVIDENCE_INTERFACE,
     RELEASE_EVIDENCE_SCHEMA,
+    all_covered_evidence_terms,
     content_digest,
     export_release_evidence,
+    objective_validation_repair_claim,
+    objective_validation_repair_evidence_terms,
+    release_evidence_domain_terms,
     sha256_bytes,
     verify_release_evidence,
 )
@@ -671,6 +681,82 @@ def test_leased_lane_shares_member_completion_receipt_schema() -> None:
         )
         is None
     )
+
+
+def test_objective_validation_repair_evidence_term_discoverable() -> None:
+    """FVT-G212 / FVT-078 objective validation repair: exact-text discovery key.
+
+    Anchors the synthetic phrase ``objective validation repair`` so objective
+    scans re-find the validation gate.  Domain evidence
+    (``AgentSupervisorReleaseEvidence@1``, binding tests, member receipts)
+    stays separate from the repair term.  The repair term never enters export
+    content_id identity, completion authority, or proof authority.  Parent
+    domain goal remains FVT-G212; the repair obligation is owned by FVT-078.
+    """
+
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+    assert OBJECTIVE_GOAL_ID == "FVT-G212"
+    assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "FVT-078"
+    assert RELEASE_EVIDENCE_GOAL_ID == "FVT-G212"
+    assert RELEASE_EVIDENCE_BINDING_TEST == (
+        "test/api/test_agent_supervisor_release_evidence_binding.py"
+    )
+    assert objective_validation_repair_evidence_terms() == (
+        "objective validation repair",
+    )
+    domain = release_evidence_domain_terms()
+    assert RELEASE_EVIDENCE_INTERFACE in domain
+    assert RELEASE_EVIDENCE_SCHEMA in domain
+    assert RELEASE_EVIDENCE_BINDING_TEST in domain
+    assert MEMBER_COMPLETION_RECEIPT_SCHEMA in domain
+    assert "objective validation repair" not in domain
+    assert all_covered_evidence_terms() == domain + (
+        "objective validation repair",
+    )
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in all_covered_evidence_terms()
+
+    # Leased-lane predicted path re-exports the same discovery key.
+    assert (
+        leased_lane.OBJECTIVE_VALIDATION_REPAIR_EVIDENCE
+        == "objective validation repair"
+    )
+    assert leased_lane.OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "FVT-078"
+
+    claim = objective_validation_repair_claim()
+    assert claim["evidence"] == "objective validation repair"
+    assert claim["requirement_id"] == "objective validation repair"
+    assert claim["goal_id"] == "FVT-G212"
+    assert claim["task_id"] == "FVT-078"
+    assert claim["interface"] == RELEASE_EVIDENCE_INTERFACE
+    assert claim["completion_authoritative"] is False
+    assert claim["proof_authoritative"] is False
+    assert "objective validation repair" not in claim["domain_evidence_terms"]
+    assert claim["repair_evidence_terms"] == ["objective validation repair"]
+    assert "expected_output" in claim["validation"]
+    assert "release_evidence" in claim["validation"]
+
+    # Domain export identity must not absorb the synthetic repair term.
+    export = export_release_evidence(
+        task_id="FVT-053",
+        task_state={
+            "implementation_in_progress": False,
+            "task_identities": {
+                "FVT-053": {
+                    "canonical_task_cid": "cid-1",
+                    "canonical_task_key": "key-1",
+                }
+            },
+        },
+        events=[],
+        metrics_module_present=True,
+    )
+    encoded = json.dumps(export, sort_keys=True)
+    assert export["interface"] == RELEASE_EVIDENCE_INTERFACE
+    assert export["goal_id"] == RELEASE_EVIDENCE_GOAL_ID
+    assert export["completion_authoritative"] is False
+    assert export["proof_authoritative"] is False
+    assert "objective validation repair" not in encoded
+    assert export["snapshot"]["authority"]["metrics_module_is_completion"] is False
 
 
 def test_expected_output_preflight_compares_filesystem_proposal_and_stage(

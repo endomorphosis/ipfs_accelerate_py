@@ -9,6 +9,14 @@ fenced by a newer lease.
 ``run_leased_lane`` retains the original integer-returning API and command-line
 interface.  ``run_leased_lane_result`` exposes the same lifecycle as a small,
 immutable result for in-process schedulers and tests.
+
+FVT-G212 / FVT-078 objective validation repair: leased-lane durable completion
+fencing shares the member-completion receipt schema with
+``AgentSupervisorReleaseEvidence@1``.  The synthetic discovery term
+``objective validation repair`` is re-exported from
+:mod:`ipfs_accelerate_py.agent_supervisor.release_evidence` so scans re-find
+the validation gate on this predicted path without granting completion or
+proof authority.
 """
 
 from __future__ import annotations
@@ -25,10 +33,25 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from ..release_evidence import (
     MEMBER_COMPLETION_RECEIPT_SCHEMA as _MEMBER_COMPLETION_RECEIPT_SCHEMA,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE as _OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_TASK_ID as _OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
+    objective_validation_repair_evidence_terms as _objective_validation_repair_evidence_terms,
+)
+
+# Exact-text discovery key for FVT-078 objective validation repair (re-export).
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = (
+    _OBJECTIVE_VALIDATION_REPAIR_EVIDENCE
+)
+OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = (
+    _OBJECTIVE_VALIDATION_REPAIR_TASK_ID
+)
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert _objective_validation_repair_evidence_terms() == (
+    "objective validation repair",
 )
 from ..runtime.event_log import event_log_sources, read_jsonl_events
 from .lease_coordination import LeaseCoordinator, LeaseError, LeaseGrant
@@ -1470,6 +1493,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "FENCED_EXIT_CODE",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "START_FAILED_EXIT_CODE",
     "LeasedLaneResult",
     "build_parser",
