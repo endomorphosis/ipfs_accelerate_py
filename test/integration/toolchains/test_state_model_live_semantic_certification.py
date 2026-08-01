@@ -104,6 +104,36 @@ def _load_module(path: Path, name: str):
     return module
 
 
+def _write_executable(path: Path, body: str = "exit 0") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"#!/bin/sh\nset -eu\n{body}\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def _write_managed_manifest(
+    root: Path,
+    *,
+    tool_id: str,
+    version: str,
+    artifact_sha256: str,
+    java_executable: Path,
+) -> None:
+    path = root / "manifests" / f"{tool_id}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "tool_id": tool_id,
+                "version": version,
+                "artifact_sha256": artifact_sha256,
+                "java_executable": str(java_executable),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 @pytest.fixture(scope="module")
 def state_model_cert():
     return _load_module(
@@ -170,6 +200,163 @@ def test_live_module_constants(state_model_cert) -> None:
     assert state_model_cert.DEFAULT_LIVE_CERTIFICATE_RELATIVE.as_posix().endswith(
         "formal_verification_state_model_live_certificate.json"
     )
+
+
+def test_managed_execution_env_selects_jointly_bound_jdk(
+    state_model_cert, tmp_path: Path
+) -> None:
+    root = tmp_path / "theorem-provers"
+    managed_bin = root / "bin"
+    _write_executable(managed_bin / "tlc")
+    _write_executable(managed_bin / "apalache-mc")
+    java = _write_executable(root / "jdk-21" / "bin" / "java")
+    _write_managed_manifest(
+        root,
+        tool_id="tlc",
+        version=LOCKED_TLC_VERSION,
+        artifact_sha256=LOCKED_TLC_SHA256,
+        java_executable=java,
+    )
+    _write_managed_manifest(
+        root,
+        tool_id="apalache",
+        version=LOCKED_APALACHE_VERSION,
+        artifact_sha256=state_model_cert.LOCKED_APALACHE_SHA256,
+        java_executable=java,
+    )
+
+    env = state_model_cert.managed_execution_env(
+        {
+            "PATH": "/system/bin",
+            "JAVA_HOME": "/system/java-8",
+            state_model_cert.MANAGED_PROVER_ROOT_ENV: str(root),
+            "JAVA_TOOL_OPTIONS": "-Dhostile=true",
+            "_JAVA_OPTIONS": "-Xbootclasspath/a:/hostile",
+            "JDK_JAVA_OPTIONS": "--add-modules=bad.module",
+        }
+    )
+
+    assert env[state_model_cert.installer.JAVA_EXECUTABLE_ENV] == str(
+        java.resolve()
+    )
+    assert env["JAVA_HOME"] == str(java.resolve().parent.parent)
+    path_parts = env["PATH"].split(os.pathsep)
+    assert path_parts[:2] == [
+        str(managed_bin.resolve()),
+        str(java.resolve().parent),
+    ]
+    assert path_parts[-1] == "/system/bin"
+    for variable in state_model_cert.JAVA_OPTION_ENV_VARS:
+        assert variable not in env
+    assert env["FORMAL_VERIFICATION_CERTIFY_OFFLINE"] == "1"
+    assert env["FORMAL_VERIFICATION_FORBID_NETWORK"] == "1"
+
+
+def test_managed_execution_env_rejects_disagreeing_jdk_bindings(
+    state_model_cert, tmp_path: Path
+) -> None:
+    root = tmp_path / "theorem-provers"
+    tlc_java = _write_executable(root / "tlc-jdk" / "bin" / "java")
+    apalache_java = _write_executable(
+        root / "apalache-jdk" / "bin" / "java"
+    )
+    _write_managed_manifest(
+        root,
+        tool_id="tlc",
+        version=LOCKED_TLC_VERSION,
+        artifact_sha256=LOCKED_TLC_SHA256,
+        java_executable=tlc_java,
+    )
+    _write_managed_manifest(
+        root,
+        tool_id="apalache",
+        version=LOCKED_APALACHE_VERSION,
+        artifact_sha256=state_model_cert.LOCKED_APALACHE_SHA256,
+        java_executable=apalache_java,
+    )
+
+    env = state_model_cert.managed_execution_env(
+        {
+            "PATH": "/system/bin",
+            "JAVA_HOME": "/system/java-8",
+            state_model_cert.MANAGED_PROVER_ROOT_ENV: str(root),
+        }
+    )
+
+    assert state_model_cert.installer.JAVA_EXECUTABLE_ENV not in env
+    assert env["JAVA_HOME"] == "/system/java-8"
+
+
+def test_executable_resolution_uses_supplied_path(
+    state_model_cert, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    managed_bin = tmp_path / "managed-bin"
+    tlc = _write_executable(managed_bin / "tlc")
+    monkeypatch.setenv("PATH", str(managed_bin))
+
+    assert state_model_cert.resolve_executable(
+        ["tlc"], env={"PATH": str(managed_bin)}
+    ) == str(tlc.resolve())
+    assert (
+        state_model_cert.resolve_executable(
+            ["tlc"], env={"PATH": "/definitely/not/a/tool/path"}
+        )
+        is None
+    )
+
+
+def test_certificate_generation_uses_bound_managed_environment(
+    state_model_cert, tmp_path: Path
+) -> None:
+    root = tmp_path / "theorem-provers"
+    (root / "bin").mkdir(parents=True)
+    java = _write_executable(
+        root / "jdk-21" / "bin" / "java",
+        (
+            'if [ -n "${JAVA_TOOL_OPTIONS+x}" ] || '
+            '[ -n "${_JAVA_OPTIONS+x}" ] || '
+            '[ -n "${JDK_JAVA_OPTIONS+x}" ]; then\n'
+            "  exit 91\n"
+            "fi\n"
+            'echo \'openjdk version "21.0.9"\' >&2'
+        ),
+    )
+    _write_managed_manifest(
+        root,
+        tool_id="tlc",
+        version=LOCKED_TLC_VERSION,
+        artifact_sha256=LOCKED_TLC_SHA256,
+        java_executable=java,
+    )
+    _write_managed_manifest(
+        root,
+        tool_id="apalache",
+        version=LOCKED_APALACHE_VERSION,
+        artifact_sha256=state_model_cert.LOCKED_APALACHE_SHA256,
+        java_executable=java,
+    )
+
+    receipt = state_model_cert.build_live_semantic_receipt(
+        repo_root=REPO_ROOT,
+        env={
+            "PATH": "/system/bin",
+            "JAVA_HOME": "/system/java-8",
+            state_model_cert.MANAGED_PROVER_ROOT_ENV: str(root),
+            "JAVA_TOOL_OPTIONS": "-Dhostile=true",
+            "_JAVA_OPTIONS": "-Xmx1m",
+            "JDK_JAVA_OPTIONS": "--add-modules=bad.module",
+        },
+        tlc_executable="/nonexistent/tlc",
+        apalache_executable="/nonexistent/apalache-mc",
+    )
+
+    assert receipt["java_usable"] is True
+    assert receipt["java_executable"] == str(java.resolve())
+    assert receipt["java_version_string"].startswith(
+        'openjdk version "21.0.9"'
+    )
+    assert receipt["production_certified"] is False
+    assert receipt["live_execution"] is False
 
 
 def test_live_corpus_schema_and_required_cases(state_model_cert) -> None:
@@ -507,11 +694,12 @@ def test_live_certificate_matches_toolchain_pins() -> None:
 def test_execute_state_model_check_real_holds(
     state_model_cert, offline_env
 ) -> None:
-    tlc = state_model_cert.resolve_executable(["tlc"])
+    managed_env = state_model_cert.managed_execution_env(offline_env)
+    tlc = state_model_cert.resolve_executable(["tlc"], env=managed_env)
     if tlc is None:
         pytest.skip("tlc not on PATH")
     probe = state_model_cert.probe_tlc_live_identity(
-        env=offline_env, executable=tlc
+        env=managed_env, executable=tlc
     )
     if not probe.get("usable"):
         pytest.skip(f"tlc live identity unusable: {probe.get('probe_error')}")
@@ -521,7 +709,7 @@ def test_execute_state_model_check_real_holds(
         model_source=state_model_cert._LIVE_MODULE_HOLDS,
         config_source=state_model_cert._LIVE_TLC_CONFIG,
         timeout_seconds=30.0,
-        env=offline_env,
+        env=managed_env,
     )
     assert result["timed_out"] is False
     status, reasons, _ = state_model_cert.classify_model_check_output(
