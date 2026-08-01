@@ -10,6 +10,7 @@ receipt carries write, proof, or completion authority.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -23,6 +24,9 @@ from typing import Any
 
 from ..proof.formal_verification_contracts import content_identity
 from ..runtime import event_log as _event_log_runtime
+from ..validation.scope_adjudication import (
+    verified_scope_adjudication_receipt,
+)
 from .authoritative_completion import (
     POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
     bound_gate_evidence,
@@ -38,9 +42,10 @@ from .llm_defaults import DEFAULT_CODEX_MODEL
 
 POST_MERGE_INDEPENDENT_REVIEW_EVENT = "post_merge_independent_review_admitted"
 POST_MERGE_INDEPENDENT_REVIEW_DENIED_EVENT = "post_merge_independent_review_denied"
+POST_MERGE_INDEPENDENT_REVIEW_FAILED_EVENT = "post_merge_independent_review_failed"
 POST_MERGE_INDEPENDENT_REVIEW_REQUEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "post-merge-independent-review-request@1"
+    "post-merge-independent-review-request@2"
 )
 POST_MERGE_INDEPENDENT_REVIEW_RESPONSE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -48,7 +53,7 @@ POST_MERGE_INDEPENDENT_REVIEW_RESPONSE_SCHEMA = (
 )
 POST_MERGE_INDEPENDENT_REVIEW_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "post-merge-independent-review-receipt@1"
+    "post-merge-independent-review-receipt@2"
 )
 POST_MERGE_REVIEWER_EXECUTION_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -708,7 +713,7 @@ def _verify_implementer_event_membership(
     provenance: VerifiedImplementerProvenance,
     *,
     repo_root: Path,
-) -> None:
+) -> Mapping[str, Any]:
     """Require provenance membership in the daemon-owned strict v2 ledger."""
 
     events = _strict_event_ledger(events_path)
@@ -750,6 +755,216 @@ def _verify_implementer_event_membership(
             "implementer_event_provenance_mismatch",
             "ledger events do not match supplied implementer provenance",
         )
+    return finished_match
+
+
+def verified_implementation_finished_event_from_ledger(
+    events_path: Path,
+    provenance: VerifiedImplementerProvenance,
+    *,
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Return the exact hash-chain member bound by verified provenance."""
+
+    return dict(
+        _verify_implementer_event_membership(
+            events_path,
+            provenance,
+            repo_root=Path(repo_root).resolve(),
+        )
+    )
+
+
+def verified_implementation_finished_event_from_strict_ledger(
+    events_path: Path,
+    *,
+    task_id: str,
+    implementation_attempt: int,
+    branch: str,
+    implementation_commit: str,
+    baseline_ref: str,
+    canonical_task_key: str,
+    canonical_task_cid: str,
+) -> dict[str, Any]:
+    """Select one exact finish event from a manifest-verified hash chain."""
+
+    if (
+        not str(task_id or "")
+        or isinstance(implementation_attempt, bool)
+        or int(implementation_attempt) < 1
+        or not str(branch or "")
+        or not _FULL_OBJECT_ID.fullmatch(
+            str(implementation_commit or "")
+        )
+        or not str(baseline_ref or "")
+        or not str(canonical_task_key or "")
+        or not str(canonical_task_cid or "")
+    ):
+        raise PostMergeReviewError(
+            "implementation_finish_query_invalid",
+            "strict finish-event lookup requires every immutable binding",
+        )
+    matches = [
+        event
+        for event in _strict_event_ledger(events_path)
+        if (
+            event.get("type") == "implementation_finished"
+            and event.get("task_id") == task_id
+            and not isinstance(event.get("attempt"), bool)
+            and int(event.get("attempt") or 0)
+            == int(implementation_attempt)
+            and event.get("branch") == branch
+            and event.get("implementation_commit")
+            == implementation_commit
+            and event.get("baseline_ref") == baseline_ref
+            and event.get("returncode") == 0
+            and event.get("canonical_task_key") == canonical_task_key
+            and (
+                event.get("canonical_task_cid")
+                or event.get("canonical_task_id")
+            )
+            == canonical_task_cid
+        )
+    ]
+    if len(matches) != 1:
+        raise PostMergeReviewError(
+            "implementation_finish_event_unavailable",
+            "strict event ledger does not contain one exact finish event",
+        )
+    return dict(matches[0])
+
+
+def task_proposal_scope_paths(task: Any) -> tuple[str, ...]:
+    """Reconstruct the proposal issuer's original mutable path envelope."""
+
+    projection = _task_projection(task)
+    raw_paths = list(projection["outputs"])
+    metadata = getattr(task, "metadata", {})
+    if isinstance(metadata, Mapping):
+        for name in ("predicted files", "allowed paths"):
+            raw_paths.extend(
+                item.strip()
+                for item in str(metadata.get(name) or "").split(",")
+                if item.strip()
+                and item.strip().casefold() not in {"none", "n/a"}
+            )
+    normalized: set[str] = set()
+    for raw_path in raw_paths:
+        path = str(raw_path).strip().replace("\\", "/")
+        while path.startswith("./"):
+            path = path[2:]
+        if (
+            not path
+            or path.startswith("/")
+            or "\0" in path
+            or ".." in PurePosixPath(path).parts
+        ):
+            continue
+        normalized.add(path)
+    return tuple(sorted(normalized))
+
+
+def _scope_authorization_from_implementation_event(
+    finished_event: Mapping[str, Any],
+    *,
+    repo_root: Path,
+    task: Any,
+    baseline_commit: str,
+    implementation_commit: str,
+    expected_changed_paths: Sequence[str] | None,
+) -> tuple[tuple[str, ...], str]:
+    """Recover scope authority from a full or exactly reconstructed receipt."""
+
+    validation_result = finished_event.get("validation_result")
+    if not isinstance(validation_result, Mapping):
+        return (), ""
+    scope = validation_result.get("scope_adjudication")
+    if scope is None:
+        return (), ""
+    proposal = validation_result.get("proposal_gate")
+    if not isinstance(scope, Mapping) or not isinstance(proposal, Mapping):
+        raise PostMergeReviewError(
+            "scope_adjudication_event_invalid",
+            "implementation finish event has malformed scope evidence",
+        )
+    raw_changed_paths = proposal.get("changed_paths")
+    changed_paths = (
+        tuple(str(path) for path in raw_changed_paths)
+        if isinstance(raw_changed_paths, list)
+        else ()
+    )
+    actual_changed_paths = exact_implementation_changed_paths(
+        repo_root=repo_root,
+        baseline_commit=baseline_commit,
+        implementation_commit=implementation_commit,
+    )
+    expected = (
+        tuple(sorted(_normalize_path(path) for path in expected_changed_paths))
+        if expected_changed_paths is not None
+        else ()
+    )
+    task_projection = _task_projection(task)
+    event_baseline = str(finished_event.get("baseline_ref") or "")
+    canonical_task_key = str(
+        finished_event.get("canonical_task_key") or ""
+    )
+    canonical_task_cid = str(
+        finished_event.get("canonical_task_cid")
+        or finished_event.get("canonical_task_id")
+        or ""
+    )
+    if (
+        validation_result.get("passed") is not True
+        or proposal.get("accepted") is not True
+        or event_baseline != baseline_commit
+        or str(proposal.get("repository_tree_id") or "")
+        != baseline_commit
+        or canonical_task_key
+        != task_projection["canonical_task_key"]
+        or canonical_task_cid
+        != task_projection["canonical_task_cid"]
+        or changed_paths != expected
+        or changed_paths != actual_changed_paths
+    ):
+        raise PostMergeReviewError(
+            "scope_adjudication_event_invalid",
+            "implementation finish event scope evidence is not exact and "
+            "task/proposal/baseline/diff bound",
+        )
+    try:
+        receipt = verified_scope_adjudication_receipt(
+            scope,
+            task_id=task_projection["task_id"],
+            proposal_id=str(proposal.get("proposal_id") or ""),
+            authorized_policy_id=str(proposal.get("policy_id") or ""),
+            repository_id=_scope_receipt_repository_id(repo_root),
+            repository_tree_id=str(
+                proposal.get("repository_tree_id") or ""
+            ),
+            baseline_id=baseline_commit,
+            original_scope_paths=task_proposal_scope_paths(task),
+            candidate_paths=actual_changed_paths,
+            allow_legacy_compact=True,
+        )
+    except (TypeError, ValueError) as exc:
+        raise PostMergeReviewError(
+            "scope_adjudication_receipt_invalid",
+            "implementation finish event scope receipt failed exact "
+            "content-addressed verification",
+        ) from exc
+    authorized_paths = receipt.authorized_paths
+    material = {
+        "task_binding_id": post_merge_task_binding_id(task),
+        "proposal_id": receipt.proposal_id,
+        "authorized_policy_id": receipt.authorized_policy_id,
+        "receipt_id": receipt.receipt_id,
+        "repository_tree_id": receipt.repository_tree_id,
+        "changed_paths": list(changed_paths),
+        "authorized_paths": list(authorized_paths),
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    return authorized_paths, content_identity(material)
 
 
 def _git(
@@ -765,6 +980,30 @@ def _git(
         capture_output=True,
         check=False,
     )
+
+
+def _scope_receipt_repository_id(repo_root: Path) -> str:
+    """Recompute the repository identity used when the receipt was issued."""
+
+    result = _git(repo_root, ["rev-parse", "--git-common-dir"])
+    common_dir = str(result.stdout or "").strip()
+    if result.returncode != 0 or not common_dir:
+        raise PostMergeReviewError(
+            "scope_adjudication_repository_unavailable",
+            "cannot recompute the scope receipt repository identity",
+        )
+    common_path = Path(common_dir)
+    if not common_path.is_absolute():
+        common_path = repo_root / common_path
+    try:
+        identity_source = str(common_path.resolve(strict=True))
+    except (OSError, RuntimeError) as exc:
+        raise PostMergeReviewError(
+            "scope_adjudication_repository_unavailable",
+            "cannot resolve the scope receipt repository identity",
+        ) from exc
+    digest = hashlib.sha256(identity_source.encode("utf-8")).hexdigest()
+    return f"repository:sha256:{digest}"
 
 
 def _exact_commit(repo_root: Path, value: str, *, field_name: str) -> str:
@@ -887,13 +1126,18 @@ def _path_authorized_by_task(path: str, outputs: Sequence[str]) -> bool:
         output = str(raw or "").strip()
         if not output:
             continue
+        if any(character in output for character in "*?["):
+            if fnmatch.fnmatchcase(path, output.replace("\\", "/")):
+                return True
+            continue
         if output.endswith("/"):
             prefix = output.rstrip("/")
             if path.startswith(f"{prefix}/"):
                 return True
             continue
         try:
-            if path == _normalize_path(output):
+            normalized = _normalize_path(output)
+            if path == normalized or path.startswith(f"{normalized}/"):
                 return True
         except PostMergeReviewError:
             continue
@@ -1195,6 +1439,41 @@ def _expand_repository_diff(
     }
 
 
+def exact_implementation_changed_paths(
+    *,
+    repo_root: Path,
+    baseline_commit: str,
+    implementation_commit: str,
+) -> tuple[str, ...]:
+    """Return the exact leaf paths changed by one implementation candidate."""
+
+    root = Path(repo_root).resolve()
+    baseline = _exact_commit(
+        root,
+        baseline_commit,
+        field_name="baseline_commit",
+    )
+    implementation = _exact_commit(
+        root,
+        implementation_commit,
+        field_name="implementation_commit",
+    )
+    expanded = _expand_repository_diff(
+        checkout_root=root,
+        repository_root=root,
+        base_commit=baseline,
+        implementation_commit=implementation,
+        landed_commit=implementation,
+    )
+    return tuple(
+        path
+        for _status, path in sorted(
+            expanded["leaf_statuses"],
+            key=lambda item: item[1],
+        )
+    )
+
+
 def _collect_repository_binding(
     *,
     repo_root: Path,
@@ -1204,6 +1483,8 @@ def _collect_repository_binding(
     merge_commit: str,
     repository_tree_id: str,
     expected_changed_paths: Sequence[str] | None,
+    scope_authorized_paths: Sequence[str] = (),
+    scope_adjudication_id: str = "",
 ) -> dict[str, Any]:
     implementation = _exact_commit(
         repo_root,
@@ -1279,10 +1560,45 @@ def _collect_repository_binding(
             )
 
     task_projection = _task_projection(task)
+    if isinstance(scope_authorized_paths, (str, bytes, bytearray)):
+        raise PostMergeReviewError(
+            "scope_authorized_paths_invalid",
+            "scope-authorized changed paths must be a sequence",
+        )
+    normalized_scope_authorized_paths = tuple(
+        _normalize_path(item) for item in scope_authorized_paths
+    )
+    if (
+        normalized_scope_authorized_paths
+        != tuple(sorted(set(normalized_scope_authorized_paths)))
+        or not set(normalized_scope_authorized_paths).issubset(actual_paths)
+    ):
+        raise PostMergeReviewError(
+            "scope_authorized_paths_invalid",
+            "scope-authorized changed paths must be canonical, unique, sorted, "
+            "and present in the exact implementation diff",
+        )
+    normalized_scope_adjudication_id = str(
+        scope_adjudication_id or ""
+    ).strip()
+    if bool(normalized_scope_authorized_paths) != bool(
+        normalized_scope_adjudication_id
+    ):
+        raise PostMergeReviewError(
+            "scope_adjudication_binding_missing",
+            "scope-authorized paths require one verified adjudication identity",
+        )
+    scope_authorized_path_set = set(normalized_scope_authorized_paths)
     unauthorized = [
         path
         for path in actual_paths
-        if not _path_authorized_by_task(path, task_projection["outputs"])
+        if (
+            not _path_authorized_by_task(
+                path,
+                task_proposal_scope_paths(task),
+            )
+            and path not in scope_authorized_path_set
+        )
     ]
     if unauthorized:
         raise PostMergeReviewError(
@@ -1314,17 +1630,30 @@ def _collect_repository_binding(
         "merge_tree": merge_tree,
         "repository_tree_id": actual_repository_tree_id,
         "changed_paths": list(actual_paths),
+        "scope_authorized_paths": list(normalized_scope_authorized_paths),
+        "scope_adjudication_id": normalized_scope_adjudication_id,
         "content_bindings": content_bindings,
         "gitlink_bindings": gitlink_bindings,
         "patch_sha256": hashlib.sha256(patch_bytes).hexdigest(),
         "patch_bytes": len(patch_bytes),
     }
+    scope_authorization_material = {
+        "task_binding_id": post_merge_task_binding_id(task),
+        "base_commit": base_commit,
+        "implementation_commit": implementation,
+        "changed_paths": list(actual_paths),
+        "scope_authorized_paths": list(normalized_scope_authorized_paths),
+        "scope_adjudication_id": normalized_scope_adjudication_id,
+    }
     return {
         **diff_material,
         "diff_binding_id": content_identity(diff_material),
+        "scope_authorization_id": content_identity(
+            scope_authorization_material
+        ),
         "patch_text": patch_text,
         "task_projection": task_projection,
-        "task_binding_id": post_merge_task_binding_id(task),
+        "task_binding_id": scope_authorization_material["task_binding_id"],
     }
 
 
@@ -1476,6 +1805,9 @@ def _review_request(
         "repository_tree_id": str(binding["repository_tree_id"]),
         "base_commit": str(binding["base_commit"]),
         "changed_paths": list(binding["changed_paths"]),
+        "scope_authorized_paths": list(binding["scope_authorized_paths"]),
+        "scope_adjudication_id": str(binding["scope_adjudication_id"]),
+        "scope_authorization_id": str(binding["scope_authorization_id"]),
         "content_bindings": list(binding["content_bindings"]),
         "gitlink_bindings": list(binding["gitlink_bindings"]),
         "patch_sha256": str(binding["patch_sha256"]),
@@ -1822,6 +2154,8 @@ def verify_post_merge_review_receipt(
     merge_commit: str,
     repository_tree_id: str,
     expected_changed_paths: Sequence[str] | None = None,
+    scope_authorized_paths: Sequence[str] = (),
+    scope_adjudication_id: str = "",
     implementer_provenance: VerifiedImplementerProvenance | None = None,
 ) -> ReceiptVerification:
     """Recompute every provider-review binding from Git and typed evidence."""
@@ -1855,11 +2189,33 @@ def verify_post_merge_review_receipt(
             implementation_commit=implementation_commit,
             provider_id=implementer,
         )
-        _verify_implementer_event_membership(
+        finished_event = _verify_implementer_event_membership(
             implementation_events_path,
             implementer_provenance,  # type: ignore[arg-type]
             repo_root=Path(repo_root).resolve(),
         )
+        (
+            event_scope_authorized_paths,
+            event_scope_adjudication_id,
+        ) = _scope_authorization_from_implementation_event(
+            finished_event,
+            repo_root=Path(repo_root).resolve(),
+            task=task,
+            baseline_commit=baseline_commit,
+            implementation_commit=implementation_commit,
+            expected_changed_paths=expected_changed_paths,
+        )
+        if (
+            tuple(scope_authorized_paths)
+            != event_scope_authorized_paths
+            or str(scope_adjudication_id or "")
+            != event_scope_adjudication_id
+        ):
+            raise PostMergeReviewError(
+                "scope_adjudication_binding_mismatch",
+                "caller scope authorization does not match the exact "
+                "implementation finish event",
+            )
         reviewer_provider = str(
             material.get("reviewer_provider") or ""
         ).strip().casefold()
@@ -1902,6 +2258,8 @@ def verify_post_merge_review_receipt(
             merge_commit=merge_commit,
             repository_tree_id=repository_tree_id,
             expected_changed_paths=expected_changed_paths,
+            scope_authorized_paths=scope_authorized_paths,
+            scope_adjudication_id=scope_adjudication_id,
         )
         validation_receipt_id = _verify_validation_evidence(
             validation_result,
@@ -1913,6 +2271,12 @@ def verify_post_merge_review_receipt(
         if (
             material.get("task_binding_id") != binding["task_binding_id"]
             or material.get("changed_paths") != list(binding["changed_paths"])
+            or material.get("scope_authorized_paths")
+            != list(binding["scope_authorized_paths"])
+            or material.get("scope_adjudication_id")
+            != binding["scope_adjudication_id"]
+            or material.get("scope_authorization_id")
+            != binding["scope_authorization_id"]
             or material.get("content_binding_id")
             != content_identity(binding["content_bindings"])
             or material.get("gitlink_binding_id")
@@ -2071,6 +2435,8 @@ def perform_post_merge_independent_review(
     repository_tree_id: str,
     validation_result: Mapping[str, Any],
     expected_changed_paths: Sequence[str] | None,
+    scope_authorized_paths: Sequence[str] = (),
+    scope_adjudication_id: str = "",
     implementer_provider: str,
     implementer_provenance: VerifiedImplementerProvenance,
     reviewer: ReviewerCallable | None = None,
@@ -2081,11 +2447,33 @@ def perform_post_merge_independent_review(
         root = Path(repo_root).resolve()
         production_review_route = reviewer is None
         implementer = _normalize_implementer_provider(implementer_provider)
-        _verify_implementer_event_membership(
+        finished_event = _verify_implementer_event_membership(
             implementation_events_path,
             implementer_provenance,
             repo_root=root,
         )
+        (
+            event_scope_authorized_paths,
+            event_scope_adjudication_id,
+        ) = _scope_authorization_from_implementation_event(
+            finished_event,
+            repo_root=root,
+            task=task,
+            baseline_commit=baseline_commit,
+            implementation_commit=implementation_commit,
+            expected_changed_paths=expected_changed_paths,
+        )
+        if (
+            tuple(scope_authorized_paths)
+            != event_scope_authorized_paths
+            or str(scope_adjudication_id or "")
+            != event_scope_adjudication_id
+        ):
+            raise PostMergeReviewError(
+                "scope_adjudication_binding_mismatch",
+                "caller scope authorization does not match the exact "
+                "implementation finish event",
+            )
         binding = _collect_repository_binding(
             repo_root=root,
             task=task,
@@ -2094,6 +2482,8 @@ def perform_post_merge_independent_review(
             merge_commit=merge_commit,
             repository_tree_id=repository_tree_id,
             expected_changed_paths=expected_changed_paths,
+            scope_authorized_paths=scope_authorized_paths,
+            scope_adjudication_id=scope_adjudication_id,
         )
         task_projection = dict(binding["task_projection"])
         validation_receipt_id = _verify_validation_evidence(
@@ -2190,6 +2580,11 @@ def perform_post_merge_independent_review(
             "merge_commit": binding["merge_commit"],
             "repository_tree_id": binding["repository_tree_id"],
             "changed_paths": list(binding["changed_paths"]),
+            "scope_authorized_paths": list(
+                binding["scope_authorized_paths"]
+            ),
+            "scope_adjudication_id": binding["scope_adjudication_id"],
+            "scope_authorization_id": binding["scope_authorization_id"],
             "content_binding_id": content_identity(binding["content_bindings"]),
             "gitlink_binding_id": content_identity(
                 binding["gitlink_bindings"]
@@ -2242,6 +2637,8 @@ def perform_post_merge_independent_review(
             merge_commit=merge_commit,
             repository_tree_id=repository_tree_id,
             expected_changed_paths=expected_changed_paths,
+            scope_authorized_paths=scope_authorized_paths,
+            scope_adjudication_id=scope_adjudication_id,
             implementer_provenance=implementer_provenance,
         )
         if not verification.valid:
@@ -2482,6 +2879,7 @@ __all__ = [
     "IMPLEMENTER_LOG_BINDING_SCOPE",
     "POST_MERGE_INDEPENDENT_REVIEW_DENIED_EVENT",
     "POST_MERGE_INDEPENDENT_REVIEW_EVENT",
+    "POST_MERGE_INDEPENDENT_REVIEW_FAILED_EVENT",
     "POST_MERGE_INDEPENDENT_REVIEW_RECEIPT_SCHEMA",
     "POST_MERGE_INDEPENDENT_REVIEW_REQUEST_SCHEMA",
     "POST_MERGE_INDEPENDENT_REVIEW_RESPONSE_SCHEMA",

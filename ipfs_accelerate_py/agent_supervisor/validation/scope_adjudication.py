@@ -923,7 +923,7 @@ def adjudicate_scope_expansion(
             for target in explicit_validation_paths
             if _path_matches(path, target) or _path_matches(target, path)
         )
-        if targeted_by and is_python:
+        if targeted_by and is_python and is_test:
             decisions.append(
                 ScopePathDecision(
                     path=path,
@@ -1046,6 +1046,123 @@ def compact_scope_adjudication(
     return payload
 
 
+def verified_scope_adjudication_receipt(
+    payload: Mapping[str, Any],
+    *,
+    task_id: str,
+    proposal_id: str,
+    authorized_policy_id: str,
+    repository_id: str,
+    repository_tree_id: str,
+    baseline_id: str,
+    original_scope_paths: Sequence[str],
+    candidate_paths: Sequence[str],
+    allow_legacy_compact: bool = False,
+) -> ScopeAdjudicationReceipt:
+    """Rebuild and verify one exact, accepted scope authority receipt.
+
+    New validation records persist ``ScopeAdjudicationReceipt.to_record()``.
+    The legacy compact form can be admitted only when every omitted field is
+    deterministically supplied by independently verified task, repository,
+    baseline, and proposal bindings.  In both cases the historical
+    ``receipt_id`` is recomputed by :meth:`ScopeAdjudicationReceipt.from_dict`;
+    a merely self-consistent projection is never sufficient.
+    """
+
+    if not isinstance(payload, Mapping):
+        raise ValueError("scope adjudication receipt must be a mapping")
+    expected_original = _normalized_paths(original_scope_paths)
+    expected_candidates = _normalized_paths(candidate_paths)
+    if not expected_original:
+        raise ValueError("scope adjudication original task scope is required")
+    if (
+        len(expected_candidates) != len(tuple(candidate_paths))
+        or not expected_candidates
+    ):
+        raise ValueError(
+            "scope adjudication candidate paths must be exact and canonical"
+        )
+
+    raw = dict(payload)
+    if raw.get("schema") == SCOPE_ADJUDICATION_SCHEMA:
+        if "receipt_id" not in raw:
+            raise ValueError(
+                "scope adjudication full receipt is not content addressed"
+            )
+        receipt = ScopeAdjudicationReceipt.from_dict(raw)
+        if set(raw) != set(receipt.to_record()):
+            raise ValueError(
+                "scope adjudication full receipt projection is incomplete"
+            )
+    else:
+        if not allow_legacy_compact:
+            raise ValueError(
+                "legacy compact scope adjudication is not admitted"
+            )
+        required_compact_fields = {
+            "receipt_id",
+            "accepted",
+            "proposal_id",
+            "initial_policy_id",
+            "repository_tree_id",
+            "authorized_policy_id",
+            "justified_paths",
+            "authorized_paths",
+            "denied_paths",
+            "decisions",
+            "policy_version",
+            "proof_authoritative",
+            "completion_authoritative",
+        }
+        if set(raw) != required_compact_fields:
+            raise ValueError(
+                "legacy compact scope adjudication fields are not exact"
+            )
+        reconstructed = {
+            "schema": SCOPE_ADJUDICATION_SCHEMA,
+            "task_id": str(task_id or ""),
+            "repository_id": str(repository_id or ""),
+            "baseline_id": str(baseline_id or ""),
+            "original_scope_paths": list(expected_original),
+            "candidate_paths": list(expected_candidates),
+            "initial_finding_codes": ["path_outside_scope"],
+            **raw,
+        }
+        receipt = ScopeAdjudicationReceipt.from_dict(reconstructed)
+
+    expected_expansion = tuple(
+        path
+        for path in expected_candidates
+        if not any(
+            _path_matches(path, declared)
+            for declared in expected_original
+        )
+    )
+    if (
+        receipt.task_id != str(task_id or "").strip()
+        or receipt.proposal_id != str(proposal_id or "").strip()
+        or receipt.authorized_policy_id
+        != str(authorized_policy_id or "").strip()
+        or receipt.repository_id != str(repository_id or "").strip()
+        or receipt.repository_tree_id
+        != str(repository_tree_id or "").strip()
+        or receipt.baseline_id != str(baseline_id or "").strip()
+        or receipt.original_scope_paths != expected_original
+        or receipt.candidate_paths != expected_candidates
+        or receipt.initial_finding_codes != ("path_outside_scope",)
+        or receipt.accepted is not True
+        or receipt.denied_paths
+        or not expected_expansion
+        or receipt.authorized_paths != expected_expansion
+        or receipt.requested_paths != expected_expansion
+    ):
+        raise ValueError(
+            "scope adjudication receipt does not match its exact authority "
+            "bindings"
+        )
+    return receipt
+
+
 __all__ = [
     "DEFAULT_MAX_IMPORT_CLOSURE_DEPTH",
     "DEFAULT_MAX_IMPORT_CLOSURE_FILES",
@@ -1058,4 +1175,5 @@ __all__ = [
     "ScopePathDecision",
     "adjudicate_scope_expansion",
     "compact_scope_adjudication",
+    "verified_scope_adjudication_receipt",
 ]

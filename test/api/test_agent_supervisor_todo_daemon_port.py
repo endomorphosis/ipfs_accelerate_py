@@ -49,7 +49,17 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     write_todo_vector_index,
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import fibonacci_priority, run_goal_validation
-from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import split_validation_commands
+from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
+    infer_validation_impact_paths,
+    split_validation_commands,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.scope_adjudication import (
+    ScopeAdjudicationReceipt,
+    ScopeExpansionReason,
+    ScopeExpansionVerdict,
+    ScopePathDecision,
+    compact_scope_adjudication,
+)
 from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     dependency_guardrail_records,
     reconciliation_guardrail_plan,
@@ -7064,7 +7074,8 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
         "## REF-040 Recover merge handoff\n\n"
         "- Status: todo\n"
         "- Completion: manual\n"
-        "- Provider role: deterministic-only\n",
+        "- Provider role: deterministic-only\n"
+        "- Outputs: README.md\n",
         encoding="utf-8",
     )
     daemon = TodoImplementationDaemon(
@@ -7566,6 +7577,9 @@ def test_cross_lane_model_merge_callback_uses_source_evidence_and_pends_review(
     )
     recovery_calls: list[dict[str, object]] = []
     review_calls: list[dict[str, object]] = []
+    private_failure_detail = (
+        "injected reviewer transport failure api_key=never-persist-me"
+    )
 
     def recover_provenance(**kwargs):
         recovery_calls.append(dict(kwargs))
@@ -7583,7 +7597,7 @@ def test_cross_lane_model_merge_callback_uses_source_evidence_and_pends_review(
         return PostMergeReviewOutcome(
             admitted=False,
             reason_code="reviewer_execution_receipt_missing",
-            detail="injected reviewer transport failure",
+            detail=private_failure_detail,
             retryable=True,
             acceptance_pending=True,
         )
@@ -7666,8 +7680,36 @@ def test_cross_lane_model_merge_callback_uses_source_evidence_and_pends_review(
     assert review["implementation_commit"] == candidate
     assert review["merge_commit"] == result["merge_commit"]
     assert review["expected_changed_paths"] == ["verified.txt"]
+    assert review["scope_authorized_paths"] == []
+    assert review["scope_adjudication_id"] == ""
     assert review["implementer_provider"] == "grok_cli"
     assert review["implementer_provenance"] is provenance
+    failed_reviews = [
+        event
+        for event in daemon._iter_events()
+        if event.get("type")
+        == "post_merge_independent_review_failed"
+    ]
+    assert len(failed_reviews) == 1
+    assert failed_reviews[0]["task_id"] == task.task_id
+    assert (
+        failed_reviews[0]["reason_code"]
+        == "reviewer_execution_receipt_missing"
+    )
+    assert failed_reviews[0]["retryable"] is True
+    assert failed_reviews[0]["completion_authoritative"] is False
+    assert "detail" not in failed_reviews[0]
+    encoded_failure_detail = private_failure_detail.encode("utf-8")
+    assert failed_reviews[0]["detail_sha256"] == hashlib.sha256(
+        encoded_failure_detail
+    ).hexdigest()
+    assert failed_reviews[0]["detail_length_bytes"] == len(
+        encoded_failure_detail
+    )
+    assert private_failure_detail not in json.dumps(
+        failed_reviews[0],
+        sort_keys=True,
+    )
 
     pending_events = [
         event
@@ -7692,12 +7734,336 @@ def test_cross_lane_model_merge_callback_uses_source_evidence_and_pends_review(
     assert pending["merge_commit"] == result["merge_commit"]
     assert pending["validation_commands"] == ["test -f verified.txt"]
     assert pending["expected_changed_paths"] == ["verified.txt"]
+    assert pending["scope_authorized_paths"] == []
+    assert pending["scope_adjudication_id"] == ""
     assert pending["expected_changed_paths_id"] == (
         implementation_daemon_module.content_identity(
             {"changed_paths": ["verified.txt"]}
         )
     )
     assert daemon._failed_merge_candidates() == [pending]
+
+
+def test_completed_queue_request_rehydrates_exact_scope_adjudication(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """## REF-050 Recover scope authorization
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Outputs: declared.txt
+- Validation: python -m pytest tests/test_contract.py -q
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed task")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    identity = daemon._identity_for_task(task)
+    branch = "implementation/ref-050-attempt-3"
+    expected_paths = ["declared.txt", "tests/test_contract.py"]
+    (repo / "declared.txt").write_text(
+        "declared implementation\n",
+        encoding="utf-8",
+    )
+    (repo / "tests").mkdir()
+    (repo / "tests/test_contract.py").write_text(
+        "def test_contract():\n    assert True\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "declared.txt", "tests/test_contract.py")
+    _git(repo, "commit", "-m", "REF-050 implementation")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    proposal_id = "proposal:ref-050"
+    policy_id = "policy:ref-050-expanded"
+    scope_receipt = ScopeAdjudicationReceipt(
+        task_id=task.task_id,
+        proposal_id=proposal_id,
+        initial_policy_id="policy:ref-050-initial",
+        repository_id=daemon._proposal_repository_id(repo),
+        repository_tree_id=baseline,
+        baseline_id=baseline,
+        original_scope_paths=tuple(task.outputs),
+        candidate_paths=tuple(expected_paths),
+        initial_finding_codes=("path_outside_scope",),
+        decisions=(
+            ScopePathDecision(
+                path="tests/test_contract.py",
+                verdict=ScopeExpansionVerdict.JUSTIFIED,
+                reason_codes=(
+                    ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,
+                ),
+            ),
+        ),
+    ).bind_authorized_policy(policy_id)
+    legacy_scope = compact_scope_adjudication(scope_receipt)
+    proposal_gate = {
+        "accepted": True,
+        "proposal_id": proposal_id,
+        "policy_id": policy_id,
+        "receipt_id": "proposal-receipt:ref-050",
+        "repository_tree_id": baseline,
+        "changed_paths": expected_paths,
+    }
+    validation_proof = {
+        "passed": True,
+        "selection": {"scope": "pre_merge"},
+        "proposal_gate": proposal_gate,
+        "scope_adjudication": legacy_scope,
+    }
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "attempt": 3,
+            "branch": branch,
+            "baseline_ref": baseline,
+            "implementation_commit": implementation_commit,
+            "returncode": 0,
+            "validation_result": {
+                "passed": True,
+                "proposal_gate": proposal_gate,
+                "scope_adjudication": legacy_scope,
+            },
+        },
+    )
+    assert daemon.merge_queue is not None
+    request = daemon.merge_queue.enqueue(
+        branch_name=branch,
+        task_id=task.task_id,
+        priority="P0",
+        attempt=1,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "implementation_attempt": 3,
+            "repo_root": str(repo),
+            "state_path": str(daemon.state_path),
+            "events_path": str(daemon.events_path),
+            "validation_proof": validation_proof,
+        },
+        commit_sha=implementation_commit,
+        canonical_task_id=identity.canonical_task_cid,
+        canonical_task_key=identity.canonical_task_key,
+        target_repository_id=daemon.merge_target_repository_id,
+        target_branch=daemon.resolved_merge_target_branch,
+    )
+    claimed = daemon.merge_queue.dequeue("scope-recovery-test")
+    assert claimed is not None
+    daemon.merge_queue.complete(claimed)
+
+    paths, adjudication_id, error = (
+        daemon._recover_completed_request_scope_adjudication(
+            request_id=request.request_id,
+            task=task,
+            queue_attempt=1,
+            implementation_attempt=3,
+            branch=branch,
+            implementation_commit=implementation_commit,
+            baseline_ref=baseline,
+            expected_changed_paths=expected_paths,
+        )
+    )
+    assert error == ""
+    assert paths == ["tests/test_contract.py"]
+    assert adjudication_id
+    finished_event, event_error = (
+        daemon._scope_implementation_finished_event(
+            task=task,
+            implementation_attempt=3,
+            branch=branch,
+            implementation_commit=implementation_commit,
+            baseline_ref=baseline,
+            implementation_events_path=daemon.events_path,
+            provenance=None,
+        )
+    )
+    assert event_error == ""
+    assert finished_event is not None
+    forged_validation_proof = json.loads(json.dumps(validation_proof))
+    forged_validation_proof["scope_adjudication"]["decisions"][0][
+        "reason_codes"
+    ] = [ScopeExpansionReason.CANDIDATE_IMPORTS_DECLARED_PATH.value]
+    _paths, _adjudication_id, error = (
+        daemon._verified_scope_adjudication_projection(
+            forged_validation_proof,
+            task=task,
+            baseline_ref=baseline,
+            implementation_commit=implementation_commit,
+            expected_changed_paths=expected_paths,
+            finished_event=finished_event,
+        )
+    )
+    assert error == "scope_adjudication_queue_event_mismatch"
+
+    replay_path = state_dir / "unmanifested-replay.jsonl"
+    replay_path.write_text(
+        json.dumps(finished_event, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    replayed_event, replay_error = (
+        daemon._scope_implementation_finished_event(
+            task=task,
+            implementation_attempt=3,
+            branch=branch,
+            implementation_commit=implementation_commit,
+            baseline_ref=baseline,
+            implementation_events_path=replay_path,
+            provenance=None,
+        )
+    )
+    assert replayed_event is None
+    assert replay_error == "scope_adjudication_event_missing"
+
+    _paths, _adjudication_id, error = (
+        daemon._recover_completed_request_scope_adjudication(
+            request_id=request.request_id,
+            task=task,
+            queue_attempt=1,
+            implementation_attempt=3,
+            branch="implementation/forged",
+            implementation_commit=implementation_commit,
+            baseline_ref=baseline,
+            expected_changed_paths=expected_paths,
+        )
+    )
+    assert error == "scope_adjudication_request_binding_mismatch"
+
+
+def test_reconciliation_rejects_forged_pending_scope_projection(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """## REF-051 Reject forged pending scope
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Provider role: grok-implementation
+- Outputs: declared.txt
+- Validation: python -m pytest tests/test_scope.py -q
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed task")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "declared.txt").write_text("declared\n", encoding="utf-8")
+    (repo / "tests").mkdir()
+    (repo / "tests/test_scope.py").write_text(
+        "def test_scope():\n    assert True\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "declared.txt", "tests/test_scope.py")
+    _git(repo, "commit", "-m", "scope-expanded candidate")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    identity = daemon._identity_for_task(task)
+    expected_paths = ["declared.txt", "tests/test_scope.py"]
+    validation_commands = list(task.validation)
+    daemon._record_event(
+        "merge_acceptance_pending",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "attempt": 3,
+            "queue_attempt": 1,
+            "implementation_attempt": 3,
+            "implementation_provider": "grok_cli",
+            "implementation_state_path": str(daemon.state_path),
+            "implementation_events_path": str(daemon.events_path),
+            "branch": "implementation/ref-051-attempt-3",
+            "merge_request_id": "request:ref-051",
+            "baseline_ref": baseline,
+            "implementation_commit": implementation_commit,
+            "merge_commit": implementation_commit,
+            "merge_integrated": True,
+            "authoritatively_completed": False,
+            "model_invocation_observed": True,
+            "validation_commands": validation_commands,
+            "queued_validation_plan_id": (
+                implementation_daemon_module.content_identity(
+                    {"commands": validation_commands}
+                )
+            ),
+            "expected_changed_paths": expected_paths,
+            "expected_changed_paths_id": (
+                implementation_daemon_module.content_identity(
+                    {"changed_paths": expected_paths}
+                )
+            ),
+            "scope_authorized_paths": ["tests/test_scope.py"],
+            "scope_adjudication_id": "forged-pending-adjudication",
+        },
+    )
+    recovery_calls: list[dict[str, object]] = []
+
+    def recover_scope(**kwargs):
+        recovery_calls.append(dict(kwargs))
+        return (
+            ["tests/test_scope.py"],
+            "strict-ledger-adjudication",
+            "",
+        )
+
+    monkeypatch.setattr(
+        daemon,
+        "_recover_completed_request_scope_adjudication",
+        recover_scope,
+    )
+
+    results = daemon._reconcile_failed_merges()
+
+    assert len(recovery_calls) == 1
+    assert len(results) == 1
+    assert results[0]["resolved"] is False
+    assert results[0]["reason"] == (
+        "reconciliation_scope_adjudication_recovery_failed"
+    )
+    assert results[0]["binding_error"] == (
+        "scope_adjudication_pending_projection_mismatch"
+    )
 
 
 def test_restart_retains_exact_acceptance_pending_binding_after_review_failure(
@@ -8464,6 +8830,7 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
         "## REF-041 Accept resolver merge\n\n"
         "- Status: todo\n"
         "- Completion: manual\n"
+        "- Outputs: resolved.txt\n"
         "- Provider role: deterministic-only\n",
         encoding="utf-8",
     )
@@ -8559,6 +8926,7 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
         "## REF-042 Verify nested merge\n\n"
         "- Status: todo\n"
         "- Completion: manual\n"
+        "- Outputs: resolved.txt\n"
         "- Provider role: deterministic-only\n",
         encoding="utf-8",
     )
@@ -18956,8 +19324,8 @@ def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
         track="ops",
         outputs=["src/runtime.py", "data/discovery"],
         validation=[
-            "python -m pytest ../outside.py /tmp/outside.py "
-            "tests/test_runtime.py "
+            "python -m pytest ../outside.py /tmp/outside.py -q",
+            "python -m pytest tests/test_runtime.py "
             "tests/test_policy.py -q"
         ],
         acceptance=(
@@ -18967,7 +19335,10 @@ def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
         canonical_task_cid="task:accel-002",
     )
 
-    assert retry_budget_repair_validation_paths(task) == (
+    assert retry_budget_repair_validation_paths(
+        task,
+        repo_root=repo,
+    ) == (
         "tests/test_runtime.py",
         "tests/test_policy.py",
     )
@@ -19013,7 +19384,8 @@ def test_missing_explicit_validation_test_is_an_implied_output(tmp_path):
         outputs=["src/projection.py", "test/test_projection.py"],
         validation=[
             "python -m pytest test/test_existing.py "
-            "test/test_missing_compatibility.py /tmp/test_escape.py -q"
+            "test/test_missing_compatibility.py -q",
+            "python -m pytest /tmp/test_escape.py -q",
         ],
     )
     daemon = TodoImplementationDaemon(
@@ -19048,6 +19420,107 @@ def test_missing_explicit_validation_test_is_an_implied_output(tmp_path):
         "implied task output" in rule
         for rule in result.capsule.authority["generic_prompt_policy"]
     )
+
+
+def test_implied_validation_output_resolves_safe_leading_cd(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    declared = (
+        "external/ipfs_datasets/tests/unit/logic/ui_ux_ir/"
+        "test_mcp_idl_identity_contract.py"
+    )
+    task = PortalTask(
+        task_id="UIR-002",
+        title="Freeze the MCP-IDL identity interoperability profile",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="identity",
+        outputs=[declared],
+        validation=[
+            "cd external/ipfs_datasets && "
+            "PYTHONPATH=../ipfs_accelerate python -m pytest "
+            "tests/unit/logic/ui_ux_ir/"
+            "test_mcp_idl_identity_contract.py -q"
+        ],
+    )
+
+    assert infer_validation_impact_paths(task.validation[0]) == (declared,)
+    assert implied_validation_test_output_paths(
+        task,
+        repo_root=repo,
+    ) == ()
+
+    assert implied_validation_test_output_paths(
+        replace(task, outputs=[]),
+        repo_root=repo,
+    ) == (declared,)
+
+
+@pytest.mark.parametrize(
+    "validation",
+    (
+        "cd /tmp && python -m pytest tests/test_escape.py",
+        "cd ../outside && python -m pytest tests/test_escape.py",
+        "cd external/ipfs_datasets; python -m pytest tests/test_escape.py",
+    ),
+)
+def test_implied_validation_output_rejects_unsafe_leading_cd(
+    tmp_path,
+    validation,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    task = PortalTask(
+        task_id="ACCEL-004",
+        title="Do not escape validation scope",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="quality",
+        outputs=["src/safe.py"],
+        validation=[validation],
+    )
+
+    assert implied_validation_test_output_paths(
+        task,
+        repo_root=repo,
+    ) == ()
+
+
+def test_inferred_validation_edit_scope_rejects_symlink_parent_escape(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside"
+    (outside / "tests").mkdir(parents=True)
+    (repo / "link").symlink_to(outside, target_is_directory=True)
+    task = PortalTask(
+        task_id="ACCEL-005",
+        title="Resolve validation retry-budget failure for ACCEL-004",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="quality",
+        outputs=["src/safe.py"],
+        validation=[
+            "python -m pytest link/tests/test_escape.py -q"
+        ],
+        acceptance="Repair only repository-contained validation targets.",
+    )
+
+    assert infer_validation_impact_paths(task.validation[0]) == (
+        "link/tests/test_escape.py",
+    )
+    assert implied_validation_test_output_paths(
+        task,
+        repo_root=repo,
+    ) == ()
+    assert retry_budget_repair_validation_paths(
+        task,
+        repo_root=repo,
+    ) == ()
 
 
 def test_implementation_daemon_prefers_ready_task_from_last_vector_cluster(tmp_path):

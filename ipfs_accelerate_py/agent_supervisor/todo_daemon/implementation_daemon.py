@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import fnmatch
 import hashlib
 import json
 import logging
@@ -161,11 +162,16 @@ from .task_execution_policy import (
     TypedLocalOperation,
 )
 from .post_merge_review import (
+    POST_MERGE_INDEPENDENT_REVIEW_FAILED_EVENT,
     PostMergeReviewError,
     VerifiedImplementerProvenance,
+    exact_implementation_changed_paths,
     mint_gate_from_live_outcome,
     perform_post_merge_independent_review,
     post_merge_task_binding_id,
+    task_proposal_scope_paths,
+    verified_implementation_finished_event_from_ledger,
+    verified_implementation_finished_event_from_strict_ledger,
     verified_implementer_provenance_from_ledger,
 )
 from .authoritative_completion import *  # noqa: F403
@@ -1776,18 +1782,75 @@ def unsafe_validation_path_aliases(command: str) -> set[str]:
     return aliases
 
 
-def retry_budget_repair_validation_paths(task: Any) -> tuple[str, ...]:
+def repository_relative_validation_impact_paths(
+    command: str,
+    *,
+    repo_root: Path,
+) -> tuple[str, ...]:
+    """Resolve inferred validation targets from their effective repository cwd.
+
+    The shared validation inferencer owns safe leading-``cd`` resolution.
+    Normalize its result once more at this authorization boundary and retain
+    the stable de-duplication behavior expected by retry evidence.
+    """
+
+    raw_command = str(command or "")
+    paths: list[str] = []
+    for raw_path in infer_validation_impact_paths(raw_command):
+        normalized = repository_contained_validation_path(
+            raw_path,
+            repo_root=repo_root,
+        )
+        if normalized and normalized not in paths:
+            paths.append(normalized)
+    return tuple(paths)
+
+
+def repository_contained_validation_path(
+    value: Any,
+    *,
+    repo_root: Path,
+) -> str:
+    """Admit a validation path only below a non-symlink repository chain."""
+
+    normalized = normalize_retry_validation_path(value)
+    if not normalized:
+        return ""
+    try:
+        root = Path(repo_root).resolve(strict=True)
+    except (OSError, RuntimeError):
+        return ""
+    candidate = root.joinpath(*PurePosixPath(normalized).parts)
+    cursor = root
+    for part in PurePosixPath(normalized).parts:
+        cursor = cursor / part
+        try:
+            if cursor.is_symlink():
+                return ""
+        except OSError:
+            return ""
+    try:
+        candidate.resolve(strict=False).relative_to(root)
+    except (OSError, RuntimeError, ValueError):
+        return ""
+    return normalized
+
+
+def retry_budget_repair_validation_paths(
+    task: Any,
+    *,
+    repo_root: Path,
+) -> tuple[str, ...]:
     """Return bounded repository-relative validation targets for a repair."""
 
     if not is_retry_budget_repair_task(task):
         return ()
     paths: list[str] = []
     for command in getattr(task, "validation", ()) or ():
-        unsafe_aliases = unsafe_validation_path_aliases(str(command))
-        for path in infer_validation_impact_paths(str(command)):
-            normalized = normalize_retry_validation_path(path)
-            if not normalized or normalized in unsafe_aliases:
-                continue
+        for normalized in repository_relative_validation_impact_paths(
+            str(command),
+            repo_root=repo_root,
+        ):
             if normalized not in paths:
                 paths.append(normalized)
     return tuple(paths)
@@ -1812,15 +1875,14 @@ def implied_validation_test_output_paths(
         normalize_retry_validation_path(path)
         for path in getattr(task, "outputs", ()) or ()
     }
-    protected_aliases: set[str] = set()
     paths: list[str] = []
     for command in getattr(task, "validation", ()) or ():
-        protected_aliases.update(unsafe_validation_path_aliases(str(command)))
-        for raw_path in infer_validation_impact_paths(str(command)):
-            normalized = normalize_retry_validation_path(raw_path)
+        for normalized in repository_relative_validation_impact_paths(
+            str(command),
+            repo_root=repo_root,
+        ):
             if (
                 not normalized
-                or normalized in protected_aliases
                 or normalized in declared_outputs
                 or (repo_root / normalized).exists()
             ):
@@ -9944,7 +10006,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _scope_adjudication_merge_binding_error(
         validation_proof: Mapping[str, Any],
     ) -> str:
-        """Validate the compact scope-to-proposal authority chain."""
+        """Reject malformed scope projections before full receipt checking."""
 
         scope = validation_proof.get("scope_adjudication")
         if scope is None:
@@ -9978,12 +10040,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return "scope_adjudication_policy_mismatch"
         if (
             not str(scope.get("receipt_id") or "")
+            or not str(scope.get("initial_policy_id") or "")
+            or not str(scope.get("policy_version") or "")
             or str(scope.get("repository_tree_id") or "")
             != str(proposal.get("repository_tree_id") or "")
         ):
             return "scope_adjudication_receipt_mismatch"
         raw_authorized = scope.get("authorized_paths")
         raw_denied = scope.get("denied_paths")
+        raw_decisions = scope.get("decisions")
         raw_changed = proposal.get("changed_paths")
         if (
             not isinstance(raw_authorized, Sequence)
@@ -9992,6 +10057,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             or not isinstance(raw_denied, Sequence)
             or isinstance(raw_denied, (str, bytes, bytearray))
             or bool(raw_denied)
+            or not isinstance(raw_decisions, Sequence)
+            or isinstance(raw_decisions, (str, bytes, bytearray))
+            or not raw_decisions
             or not isinstance(raw_changed, Sequence)
             or isinstance(raw_changed, (str, bytes, bytearray))
         ):
@@ -10012,6 +10080,281 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ):
             return "scope_adjudication_paths_mismatch"
         return ""
+
+    @staticmethod
+    def _task_output_authorizes_path(
+        task: PortalTask,
+        path: str,
+    ) -> bool:
+        for raw_output in task_proposal_scope_paths(task):
+            pattern = str(raw_output or "").strip().replace("\\", "/")
+            while pattern.startswith("./"):
+                pattern = pattern[2:]
+            if not pattern:
+                continue
+            if any(character in pattern for character in "*?["):
+                if fnmatch.fnmatchcase(path, pattern):
+                    return True
+            elif pattern.endswith("/"):
+                if path.startswith(pattern):
+                    return True
+            elif path == pattern or path.startswith(
+                pattern.rstrip("/") + "/"
+            ):
+                return True
+        return False
+
+    def _verified_scope_adjudication_projection(
+        self,
+        validation_proof: Mapping[str, Any],
+        *,
+        task: PortalTask,
+        baseline_ref: str,
+        implementation_commit: str,
+        expected_changed_paths: Sequence[str],
+        finished_event: Mapping[str, Any] | None = None,
+    ) -> tuple[list[str], str, str]:
+        """Project only a ledger-anchored, content-addressed scope receipt."""
+
+        binding_error = self._scope_adjudication_merge_binding_error(
+            validation_proof
+        )
+        if binding_error:
+            return [], "", binding_error
+        scope = validation_proof.get("scope_adjudication")
+        if scope is None:
+            if any(
+                not self._task_output_authorizes_path(task, str(path))
+                for path in expected_changed_paths
+            ):
+                return [], "", "scope_adjudication_receipt_missing"
+            return [], "", ""
+        proposal = validation_proof.get("proposal_gate")
+        if not isinstance(scope, Mapping) or not isinstance(
+            proposal, Mapping
+        ):
+            return [], "", "scope_adjudication_malformed"
+        if not isinstance(finished_event, Mapping):
+            return [], "", "scope_adjudication_event_missing"
+        event_validation = finished_event.get("validation_result")
+        if not isinstance(event_validation, Mapping):
+            return [], "", "scope_adjudication_event_missing"
+        event_scope = event_validation.get("scope_adjudication")
+        event_proposal = event_validation.get("proposal_gate")
+        if (
+            not isinstance(event_scope, Mapping)
+            or not isinstance(event_proposal, Mapping)
+            or dict(scope) != dict(event_scope)
+            or dict(proposal) != dict(event_proposal)
+        ):
+            return [], "", "scope_adjudication_queue_event_mismatch"
+        raw_changed_paths = proposal.get("changed_paths")
+        changed_paths = (
+            [str(path) for path in raw_changed_paths]
+            if isinstance(raw_changed_paths, list)
+            else []
+        )
+        expected = [str(path) for path in expected_changed_paths]
+        try:
+            actual_changed_paths = list(
+                exact_implementation_changed_paths(
+                    repo_root=self.repo_root,
+                    baseline_commit=baseline_ref,
+                    implementation_commit=implementation_commit,
+                )
+            )
+        except PostMergeReviewError:
+            return [], "", "scope_adjudication_candidate_diff_unavailable"
+        identity = self._identity_for_task(task)
+        if (
+            changed_paths != expected
+            or changed_paths != actual_changed_paths
+            or event_validation.get("passed") is not True
+            or event_proposal.get("accepted") is not True
+            or str(finished_event.get("task_id") or "") != task.task_id
+            or int(finished_event.get("attempt") or 0) < 1
+            or str(finished_event.get("baseline_ref") or "")
+            != baseline_ref
+            or str(finished_event.get("implementation_commit") or "")
+            != implementation_commit
+            or str(finished_event.get("canonical_task_key") or "")
+            != identity.canonical_task_key
+            or str(
+                finished_event.get("canonical_task_cid")
+                or finished_event.get("canonical_task_id")
+                or ""
+            )
+            != identity.canonical_task_cid
+            or str(proposal.get("repository_tree_id") or "")
+            != baseline_ref
+        ):
+            return [], "", "scope_adjudication_changed_paths_mismatch"
+        try:
+            from ..validation.scope_adjudication import (
+                verified_scope_adjudication_receipt,
+            )
+
+            receipt = verified_scope_adjudication_receipt(
+                event_scope,
+                task_id=task.task_id,
+                proposal_id=str(proposal.get("proposal_id") or ""),
+                authorized_policy_id=str(
+                    proposal.get("policy_id") or ""
+                ),
+                repository_id=self._proposal_repository_id(self.repo_root),
+                repository_tree_id=baseline_ref,
+                baseline_id=baseline_ref,
+                original_scope_paths=task_proposal_scope_paths(task),
+                candidate_paths=actual_changed_paths,
+                allow_legacy_compact=True,
+            )
+        except (TypeError, ValueError):
+            return [], "", "scope_adjudication_receipt_invalid"
+        authorized_paths = list(receipt.authorized_paths)
+        material = {
+            "task_binding_id": post_merge_task_binding_id(task),
+            "proposal_id": receipt.proposal_id,
+            "authorized_policy_id": receipt.authorized_policy_id,
+            "receipt_id": receipt.receipt_id,
+            "repository_tree_id": receipt.repository_tree_id,
+            "changed_paths": expected,
+            "authorized_paths": authorized_paths,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+        return authorized_paths, content_identity(material), ""
+
+    def _recover_completed_request_scope_adjudication(
+        self,
+        *,
+        request_id: str,
+        task: PortalTask,
+        queue_attempt: int,
+        implementation_attempt: int,
+        branch: str,
+        implementation_commit: str,
+        baseline_ref: str,
+        expected_changed_paths: Sequence[str],
+    ) -> tuple[list[str], str, str]:
+        """Recover a legacy acceptance checkpoint's exact queue-bound scope."""
+
+        if not request_id or self.merge_queue is None:
+            return [], "", "scope_adjudication_request_unavailable"
+        try:
+            request = self.merge_queue.get(request_id)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return [], "", "scope_adjudication_request_unavailable"
+        if request is None or request.status != "completed":
+            return [], "", "scope_adjudication_request_not_completed"
+        identity = self._identity_for_task(task)
+        metadata = (
+            request.metadata
+            if isinstance(request.metadata, Mapping)
+            else {}
+        )
+        if (
+            request.request_id != request_id
+            or request.task_id != task.task_id
+            or request.canonical_task_id != identity.canonical_task_cid
+            or request.canonical_task_key != identity.canonical_task_key
+            or int(request.attempt) != int(queue_attempt)
+            or request.branch_name != branch
+            or request.commit_sha != implementation_commit
+            or request.target_repository_id
+            != self.merge_target_repository_id
+            or request.target_branch != self.resolved_merge_target_branch
+            or str(metadata.get("baseline_ref") or "") != baseline_ref
+            or int(metadata.get("implementation_attempt") or 0)
+            != int(implementation_attempt)
+        ):
+            return [], "", "scope_adjudication_request_binding_mismatch"
+        validation_proof = metadata.get("validation_proof")
+        if not isinstance(validation_proof, Mapping):
+            return [], "", "scope_adjudication_validation_proof_missing"
+        evidence_context = self._resolve_implementation_evidence_context(
+            source_repo_root=metadata.get("repo_root", self.repo_root),
+            source_state_path=metadata.get("state_path", self.state_path),
+            source_events_path=metadata.get(
+                "events_path",
+                self.events_path,
+            ),
+            require_explicit=False,
+        )
+        if evidence_context is None:
+            return [], "", "scope_adjudication_event_missing"
+        implementation_state_path, implementation_events_path = (
+            evidence_context
+        )
+        provenance = self._recover_verified_implementation_provenance(
+            task=task,
+            branch_name=branch,
+            implementation_commit=implementation_commit,
+            implementation_attempt=implementation_attempt,
+            implementation_state_path=implementation_state_path,
+            implementation_events_path=implementation_events_path,
+        )
+        finished_event, event_error = (
+            self._scope_implementation_finished_event(
+                task=task,
+                implementation_attempt=implementation_attempt,
+                branch=branch,
+                implementation_commit=implementation_commit,
+                baseline_ref=baseline_ref,
+                implementation_events_path=implementation_events_path,
+                provenance=provenance,
+            )
+        )
+        if event_error:
+            return [], "", event_error
+        return self._verified_scope_adjudication_projection(
+            validation_proof,
+            task=task,
+            baseline_ref=baseline_ref,
+            implementation_commit=implementation_commit,
+            expected_changed_paths=expected_changed_paths,
+            finished_event=finished_event,
+        )
+
+    def _scope_implementation_finished_event(
+        self,
+        *,
+        task: PortalTask,
+        implementation_attempt: int,
+        branch: str,
+        implementation_commit: str,
+        baseline_ref: str,
+        implementation_events_path: Path,
+        provenance: VerifiedImplementerProvenance | None,
+    ) -> tuple[dict[str, Any] | None, str]:
+        """Resolve the unique ledger finish event that issued scope evidence."""
+
+        if provenance is not None:
+            try:
+                event = verified_implementation_finished_event_from_ledger(
+                    implementation_events_path,
+                    provenance,
+                    repo_root=self.repo_root,
+                )
+            except (OSError, PostMergeReviewError, TypeError, ValueError):
+                return None, "scope_adjudication_event_missing"
+            return event, ""
+        identity = self._identity_for_task(task)
+        try:
+            event = (
+                verified_implementation_finished_event_from_strict_ledger(
+                    implementation_events_path,
+                    task_id=task.task_id,
+                    implementation_attempt=implementation_attempt,
+                    branch=branch,
+                    implementation_commit=implementation_commit,
+                    baseline_ref=baseline_ref,
+                    canonical_task_key=identity.canonical_task_key,
+                    canonical_task_cid=identity.canonical_task_cid,
+                )
+            )
+        except (OSError, PostMergeReviewError, TypeError, ValueError):
+            return None, "scope_adjudication_event_missing"
+        return event, ""
 
     def _run_post_merge_validation_evidence(
         self,
@@ -10276,6 +10619,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         queue_attempt: int | None = None,
         baseline_commit: str = "",
         expected_changed_paths: Sequence[str] = (),
+        scope_authorized_paths: Sequence[str] = (),
+        scope_adjudication_id: str = "",
         implementer_provider: str = "",
         validation_result: Mapping[str, Any] | None = None,
         implementer_provenance: VerifiedImplementerProvenance | None = None,
@@ -10322,10 +10667,45 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             repository_tree_id=repository_tree_id,
             validation_result=validation_result,
             expected_changed_paths=list(expected_changed_paths),
+            scope_authorized_paths=list(scope_authorized_paths),
+            scope_adjudication_id=scope_adjudication_id,
             implementer_provider=provider,
             implementer_provenance=provenance,
         )
         if not outcome.event:
+            diagnostic_detail = str(outcome.detail or "")
+            diagnostic_detail_bytes = diagnostic_detail.encode(
+                "utf-8",
+                errors="surrogatepass",
+            )
+            self._record_event(
+                POST_MERGE_INDEPENDENT_REVIEW_FAILED_EVENT,
+                {
+                    "task_id": task.task_id,
+                    "attempt": int(queue_attempt or attempt),
+                    "implementation_attempt": int(attempt),
+                    "implementation_commit": implementation_commit,
+                    "merge_commit": merge_commit,
+                    "repository_tree_id": repository_tree_id,
+                    "reason_code": str(
+                        outcome.reason_code
+                        or "independent_review_failed"
+                    ),
+                    "detail_sha256": hashlib.sha256(
+                        diagnostic_detail_bytes
+                    ).hexdigest(),
+                    "detail_length_bytes": len(
+                        diagnostic_detail_bytes
+                    ),
+                    "retryable": bool(outcome.retryable),
+                    "acceptance_pending": bool(
+                        outcome.acceptance_pending
+                    ),
+                    "provider_result_admitted": False,
+                    "proof_authoritative": False,
+                    "completion_authoritative": False,
+                },
+            )
             return {}
         event_payload = dict(outcome.event)
         event_type = str(event_payload.pop("type", "") or "")
@@ -10450,6 +10830,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         queue_attempt: int | None = None,
         baseline_commit: str = "",
         expected_changed_paths: Sequence[str] = (),
+        scope_authorized_paths: Sequence[str] = (),
+        scope_adjudication_id: str = "",
         implementer_provider: str = "",
     ) -> dict[str, Any]:
         """Apply ordinary fail-closed acceptance after a reconciled merge."""
@@ -10493,6 +10875,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             queue_attempt=queue_attempt,
             baseline_commit=baseline_commit,
             expected_changed_paths=expected_changed_paths,
+            scope_authorized_paths=scope_authorized_paths,
+            scope_adjudication_id=scope_adjudication_id,
             implementer_provider=implementer_provider,
             validation_result=post_merge_validation,
         )
@@ -10908,6 +11292,57 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         expected_changed_paths_id = content_identity(
             {"changed_paths": expected_changed_paths}
         )
+        baseline_ref = str(metadata.get("baseline_ref") or "")
+        finished_event: Mapping[str, Any] | None = None
+        scope_event_required = bool(
+            validation_proof.get("scope_adjudication") is not None
+            or any(
+                not self._task_output_authorizes_path(task, path)
+                for path in expected_changed_paths
+            )
+        )
+        if scope_event_required:
+            finished_event, scope_event_error = (
+                self._scope_implementation_finished_event(
+                    task=task,
+                    implementation_attempt=implementation_attempt,
+                    branch=branch_name,
+                    implementation_commit=implementation_commit,
+                    baseline_ref=baseline_ref,
+                    implementation_events_path=implementation_events_path,
+                    provenance=verified_implementer_provenance,
+                )
+            )
+            if scope_event_error:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "scope_adjudication_binding_invalid",
+                    "binding_error": scope_event_error,
+                    "branch": branch_name,
+                }
+        (
+            scope_authorized_paths,
+            scope_adjudication_id,
+            scope_projection_error,
+        ) = self._verified_scope_adjudication_projection(
+            validation_proof,
+            task=task,
+            baseline_ref=baseline_ref,
+            implementation_commit=implementation_commit,
+            expected_changed_paths=expected_changed_paths,
+            finished_event=finished_event,
+        )
+        if scope_projection_error:
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "scope_adjudication_binding_invalid",
+                "binding_error": scope_projection_error,
+                "branch": branch_name,
+            }
         raw_changed_submodule_paths = metadata.get("changed_submodule_paths")
         changed_submodule_paths = (
             {
@@ -10918,7 +11353,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if isinstance(raw_changed_submodule_paths, list)
             else None
         )
-        baseline_ref = str(metadata.get("baseline_ref") or "")
         (
             approved_submodule_integration_targets,
             submodule_integration_binding_error,
@@ -11187,6 +11621,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "expected_changed_paths_id": (
                                 expected_changed_paths_id
                             ),
+                            "scope_authorized_paths": (
+                                scope_authorized_paths
+                            ),
+                            "scope_adjudication_id": (
+                                scope_adjudication_id
+                            ),
                             "changed_submodule_paths": sorted(
                                 changed_submodule_paths or ()
                             ),
@@ -11216,6 +11656,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         queue_attempt=queue_attempt,
                         baseline_commit=baseline_ref,
                         expected_changed_paths=expected_changed_paths,
+                        scope_authorized_paths=scope_authorized_paths,
+                        scope_adjudication_id=scope_adjudication_id,
                         implementer_provider=implementation_provider,
                         validation_result=post_merge_validation,
                         implementer_provenance=(
@@ -11321,6 +11763,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "expected_changed_paths": expected_changed_paths,
                             "expected_changed_paths_id": (
                                 expected_changed_paths_id
+                            ),
+                            "scope_authorized_paths": (
+                                scope_authorized_paths
+                            ),
+                            "scope_adjudication_id": (
+                                scope_adjudication_id
                             ),
                             "changed_submodule_paths": sorted(
                                 changed_submodule_paths or ()
@@ -15954,23 +16402,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _proposal_scope_paths(task: PortalTask) -> tuple[str, ...]:
         """Return exact repository paths owned by a task's output declaration."""
 
-        raw_paths: list[str] = list(task.outputs)
-        for metadata_name in ("predicted files", "allowed paths"):
-            raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
-        normalized: set[str] = set()
-        for raw_path in raw_paths:
-            path = str(raw_path).strip().replace("\\", "/")
-            while path.startswith("./"):
-                path = path[2:]
-            if (
-                not path
-                or path.startswith("/")
-                or "\0" in path
-                or ".." in Path(path).parts
-            ):
-                continue
-            normalized.add(path)
-        return tuple(sorted(normalized))
+        return task_proposal_scope_paths(task)
 
     def _stage_declared_ignored_outputs(
         self,
@@ -19154,12 +19586,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 else None
             )
             if scope_adjudication is not None:
-                from ..validation.scope_adjudication import (
-                    compact_scope_adjudication,
-                )
-
                 result["scope_adjudication"] = (
-                    compact_scope_adjudication(scope_adjudication)
+                    scope_adjudication.to_record()
                 )
 
         scheduler_options = proof_options.get("proof_scheduler_options")
@@ -19251,12 +19679,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if timed_out or command_returncode != 0:
                     if command and command not in failed_commands:
                         failed_commands.append(command)
-                    unsafe_aliases = unsafe_validation_path_aliases(command)
-                    for path in infer_validation_impact_paths(command):
-                        normalized = normalize_retry_validation_path(path)
+                    for normalized in (
+                        repository_relative_validation_impact_paths(
+                            command,
+                            repo_root=workspace_path,
+                        )
+                    ):
                         if (
                             normalized
-                            and normalized not in unsafe_aliases
                             and normalized not in validation_impact_paths
                         ):
                             validation_impact_paths.append(normalized)
@@ -25348,6 +25778,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ).strip()
             expected_changed_paths: list[str] = []
             expected_changed_paths_id = ""
+            scope_authorized_paths: list[str] = []
+            scope_adjudication_id = ""
             if (
                 event_cid != board_identity.canonical_task_cid
                 or event_key != board_identity.canonical_task_key
@@ -25476,6 +25908,156 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "resolved": False,
                         "reason": (
                             "reconciliation_changed_paths_binding_invalid"
+                        ),
+                    }
+                    self._record_event(
+                        "merge_reconciliation_deferred",
+                        result,
+                    )
+                    results.append(result)
+                    continue
+                raw_scope_authorized_paths = event.get(
+                    "scope_authorized_paths"
+                )
+                event_scope_adjudication_id = str(
+                    event.get("scope_adjudication_id") or ""
+                )
+                projected_scope_paths = (
+                    [str(path) for path in raw_scope_authorized_paths]
+                    if isinstance(raw_scope_authorized_paths, list)
+                    else []
+                )
+                if projected_scope_paths or event_scope_adjudication_id:
+                    if (
+                        not projected_scope_paths
+                        or not event_scope_adjudication_id
+                        or projected_scope_paths
+                        != sorted(set(projected_scope_paths))
+                        or any(
+                            not self._repo_relative_path_safe(path)
+                            for path in projected_scope_paths
+                        )
+                        or not set(projected_scope_paths).issubset(
+                            expected_changed_paths
+                        )
+                    ):
+                        result = {
+                            "task_id": task_id,
+                            "attempt": attempt,
+                            "queue_attempt": queue_attempt,
+                            "implementation_attempt": (
+                                implementation_attempt
+                            ),
+                            "branch": branch,
+                            "implementation_commit": (
+                                implementation_commit
+                            ),
+                            "resolved": False,
+                            "reason": (
+                                "reconciliation_scope_adjudication_invalid"
+                            ),
+                        }
+                        self._record_event(
+                            "merge_reconciliation_deferred",
+                            result,
+                        )
+                        results.append(result)
+                        continue
+                merge_request_id = str(
+                    event.get("merge_request_id") or ""
+                )
+                if merge_request_id:
+                    (
+                        recovered_scope_paths,
+                        recovered_scope_adjudication_id,
+                        scope_recovery_error,
+                    ) = (
+                        self._recover_completed_request_scope_adjudication(
+                            request_id=merge_request_id,
+                            task=task,
+                            queue_attempt=queue_attempt,
+                            implementation_attempt=(
+                                implementation_attempt
+                            ),
+                            branch=branch,
+                            implementation_commit=(
+                                implementation_commit
+                            ),
+                            baseline_ref=str(
+                                event.get("baseline_ref") or ""
+                            ),
+                            expected_changed_paths=(
+                                expected_changed_paths
+                            ),
+                        )
+                    )
+                    if (
+                        not scope_recovery_error
+                        and (
+                            projected_scope_paths
+                            or event_scope_adjudication_id
+                        )
+                        and (
+                            recovered_scope_paths
+                            != projected_scope_paths
+                            or recovered_scope_adjudication_id
+                            != event_scope_adjudication_id
+                        )
+                    ):
+                        scope_recovery_error = (
+                            "scope_adjudication_pending_projection_mismatch"
+                        )
+                    if scope_recovery_error:
+                        result = {
+                            "task_id": task_id,
+                            "attempt": attempt,
+                            "queue_attempt": queue_attempt,
+                            "implementation_attempt": (
+                                implementation_attempt
+                            ),
+                            "branch": branch,
+                            "implementation_commit": (
+                                implementation_commit
+                            ),
+                            "resolved": False,
+                            "reason": (
+                                "reconciliation_scope_adjudication_"
+                                "recovery_failed"
+                            ),
+                            "binding_error": scope_recovery_error,
+                        }
+                        self._record_event(
+                            "merge_reconciliation_deferred",
+                            result,
+                        )
+                        results.append(result)
+                        continue
+                    scope_authorized_paths = recovered_scope_paths
+                    scope_adjudication_id = (
+                        recovered_scope_adjudication_id
+                    )
+                elif (
+                    projected_scope_paths
+                    or event_scope_adjudication_id
+                    or any(
+                        not self._task_output_authorizes_path(task, path)
+                        for path in expected_changed_paths
+                    )
+                ):
+                    result = {
+                        "task_id": task_id,
+                        "attempt": attempt,
+                        "queue_attempt": queue_attempt,
+                        "implementation_attempt": implementation_attempt,
+                        "branch": branch,
+                        "implementation_commit": implementation_commit,
+                        "resolved": False,
+                        "reason": (
+                            "reconciliation_scope_adjudication_"
+                            "recovery_failed"
+                        ),
+                        "binding_error": (
+                            "scope_adjudication_request_unavailable"
                         ),
                     }
                     self._record_event(
@@ -25669,6 +26251,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ),
                 "expected_changed_paths": expected_changed_paths,
                 "expected_changed_paths_id": expected_changed_paths_id,
+                "scope_authorized_paths": scope_authorized_paths,
+                "scope_adjudication_id": scope_adjudication_id,
                 "changed_submodule_paths": sorted(
                     changed_submodule_paths or ()
                 ),
@@ -25768,6 +26352,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         queue_attempt=queue_attempt,
                         baseline_commit=baseline_ref,
                         expected_changed_paths=expected_changed_paths,
+                        scope_authorized_paths=scope_authorized_paths,
+                        scope_adjudication_id=scope_adjudication_id,
                         implementer_provider=str(
                             event.get("implementation_provider") or ""
                         ),
@@ -25951,6 +26537,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     queue_attempt=queue_attempt,
                     baseline_commit=baseline_ref,
                     expected_changed_paths=expected_changed_paths,
+                    scope_authorized_paths=scope_authorized_paths,
+                    scope_adjudication_id=scope_adjudication_id,
                     implementer_provider=str(
                         event.get("implementation_provider") or ""
                     ),
@@ -26448,6 +27036,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "queued_validation_plan_id",
             "expected_changed_paths",
             "expected_changed_paths_id",
+            "scope_authorized_paths",
+            "scope_adjudication_id",
             "changed_submodule_paths",
             "task_owned_submodule_integration_binding",
         )
@@ -29314,7 +29904,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         retry_repair_source_id, retry_repair_failure_kind = (
             retry_budget_repair_source(task)
         )
-        retry_validation_paths = retry_budget_repair_validation_paths(task)
+        retry_validation_paths = retry_budget_repair_validation_paths(
+            task,
+            repo_root=self.repo_root,
+        )
         implied_validation_paths = implied_validation_test_output_paths(
             task,
             repo_root=self.repo_root,

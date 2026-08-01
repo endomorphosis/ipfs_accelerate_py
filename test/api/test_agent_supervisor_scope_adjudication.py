@@ -160,6 +160,32 @@ def test_explicit_validation_target_justifies_guarded_integration_test() -> None
     )
 
 
+def test_explicit_pytest_argument_cannot_authorize_production_python() -> None:
+    receipt = _adjudicate(
+        (
+            _entry(
+                "pkg/compiler.py",
+                "MODE = 'old'\n",
+                "MODE = 'new'\n",
+            ),
+            _entry(
+                "pkg/unrelated.py",
+                "SETTING = False\n",
+                "SETTING = True\n",
+            ),
+        ),
+        validation_commands=(
+            "python -m pytest pkg/unrelated.py",
+        ),
+    )
+
+    assert receipt.accepted is False
+    assert receipt.denied_paths == ("pkg/unrelated.py",)
+    assert receipt.decisions[0].reason_codes == (
+        ScopeExpansionReason.NO_DEPENDENCY_EVIDENCE,
+    )
+
+
 def test_changed_golden_fixture_cannot_claim_validation_target() -> None:
     receipt = _adjudicate(
         (
@@ -456,6 +482,24 @@ def test_daemon_revalidates_justified_expansion_and_exposes_receipt(
     assert validation_result["scope_adjudication"]["authorized_paths"] == [
         "test/test_compiler.py"
     ]
+    persisted_scope = validation_result["scope_adjudication"]
+    assert persisted_scope["schema"].endswith(
+        "scope-adjudication-receipt@1"
+    )
+    assert persisted_scope["task_id"] == task.task_id
+    assert persisted_scope["original_scope_paths"] == ["pkg/compiler.py"]
+    assert persisted_scope["candidate_paths"] == [
+        "pkg/compiler.py",
+        "test/test_compiler.py",
+    ]
+    assert persisted_scope["initial_finding_codes"] == [
+        "path_outside_scope"
+    ]
+    assert persisted_scope["decisions"][0]["reason_codes"] == [
+        "explicit_validation_target"
+    ]
+    restored_scope = ScopeAdjudicationReceipt.from_dict(persisted_scope)
+    assert restored_scope.receipt_id == persisted_scope["receipt_id"]
     events = [
         json.loads(line)
         for line in (repo / "events.jsonl").read_text(
@@ -601,26 +645,31 @@ def test_daemon_examines_secret_finding_scope_without_overriding_policy(
 
 
 def test_merge_binding_rejects_detached_or_forged_scope_receipt() -> None:
+    receipt = _adjudicate(
+        (
+            _entry(
+                "pkg/compiler.py",
+                "def compile_text():\n    return None\n",
+                "from .contracts import Contract\n"
+                "def compile_text():\n    return Contract()\n",
+            ),
+            _entry(
+                "pkg/contracts.py",
+                "class Contract:\n    pass\n",
+                "class Contract:\n    kind = 'legal-ir'\n",
+            ),
+        )
+    ).bind_authorized_policy("policy:expanded")
     valid = {
         "passed": True,
         "selection": {"scope": "pre_merge"},
         "proposal_gate": {
-            "proposal_id": "proposal:one",
+            "proposal_id": "proposal:test",
             "policy_id": "policy:expanded",
-            "repository_tree_id": "tree:baseline",
+            "repository_tree_id": "tree:test",
             "changed_paths": ["pkg/compiler.py", "pkg/contracts.py"],
         },
-        "scope_adjudication": {
-            "accepted": True,
-            "receipt_id": "receipt:one",
-            "proposal_id": "proposal:one",
-            "authorized_policy_id": "policy:expanded",
-            "repository_tree_id": "tree:baseline",
-            "authorized_paths": ["pkg/contracts.py"],
-            "denied_paths": [],
-            "proof_authoritative": False,
-            "completion_authoritative": False,
-        },
+        "scope_adjudication": receipt.to_record(),
     }
     check = (
         PortalImplementationDaemon

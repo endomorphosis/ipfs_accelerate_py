@@ -21,6 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     ValidationStage,
     build_validation_commands,
+    infer_validation_impact_paths,
     select_validation_commands,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
@@ -699,6 +700,135 @@ def test_impact_selection_is_explainable_and_dependency_changes_are_conservative
 
     ci_change = select_validation_commands(commands, [".github/workflows/test.yml"])
     assert all(item.selected for item in ci_change.items)
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    (
+        (
+            "pytest tests/test_contract.py::test_identity -q",
+            ("tests/test_contract.py",),
+        ),
+        (
+            "python3 -m unittest tests/test_contract.py",
+            ("tests/test_contract.py",),
+        ),
+        (
+            "PYTHONPATH=src pytest tests/test_contract.py -q",
+            ("tests/test_contract.py",),
+        ),
+        (
+            "cd external/ipfs_datasets && python -m pytest "
+            "tests/unit/test_contract.py -q",
+            (
+                "external/ipfs_datasets/tests/unit/test_contract.py",
+            ),
+        ),
+        (
+            "cd external/ipfs_datasets && "
+            "PYTHONPATH=../ipfs_accelerate "
+            "python -m pytest tests/unit/test_contract.py -q",
+            (
+                "external/ipfs_datasets/tests/unit/test_contract.py",
+            ),
+        ),
+        (
+            "cd 'external modules' && PYTHONPATH='src modules' "
+            "pytest 'tests/test contract.py' -q",
+            ("external modules/tests/test contract.py",),
+        ),
+    ),
+)
+def test_validation_impact_inference_accepts_one_static_runner(
+    command: str,
+    expected: tuple[str, ...],
+) -> None:
+    assert infer_validation_impact_paths(command) == expected
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "cargo test test/test_cli.py",
+        "go test test/test_cli.py",
+        "jest test/test_cli.py",
+        "vitest test/test_cli.py",
+        "mocha test/test_cli.py",
+    ),
+)
+def test_validation_impact_inference_does_not_grant_pattern_runner_authority(
+    command: str,
+) -> None:
+    spec = build_validation_commands([command])[0]
+
+    assert infer_validation_impact_paths(command) == ()
+    assert spec.impact_paths == ()
+    assert spec.stage is ValidationStage.BROAD
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "cd external/ipfs_datasets && pytest tests/test_safe.py "
+        "&& cd nested && pytest tests/test_nested.py",
+        "ENV=production cd external/ipfs_datasets "
+        "&& pytest tests/test_contract.py",
+        "cd external/ipfs_datasets && "
+        "PYTHONPATH=$TARGET python -m pytest tests/test_contract.py",
+        "pytest tests/test_safe.py $TARGET",
+        "pytest $(printf tests/test_contract.py)",
+        "pytest tests/test_{contract,other}.py",
+        "pytest tests/test_contract.py[case]",
+        "pytest tests/test_!contract.py",
+        "pytest tests/test_contract.py # trusted-looking comment",
+        "pytest /tmp/test_escape.py",
+        "pytest ../outside/test_escape.py",
+        "cd /tmp && pytest tests/test_escape.py",
+        "cd ../outside && pytest tests/test_escape.py",
+        "cd external/* && pytest tests/test_escape.py",
+        "cd ~/repo && pytest tests/test_escape.py",
+        "cd {external,third_party} && pytest tests/test_escape.py",
+        "cd external/[ab] && pytest tests/test_escape.py",
+        "cd external/? && pytest tests/test_escape.py",
+        "cd external/!repo && pytest tests/test_escape.py",
+        "cd external/#repo && pytest tests/test_escape.py",
+        "cd -Pfoo && pytest tests/test_escape.py",
+        "cd TARGET=external && pytest tests/test_escape.py",
+        "cd $TARGET && pytest tests/test_escape.py",
+        "cd $(printf external) && pytest tests/test_escape.py",
+        "cd 'external\\ipfs_datasets' && pytest tests/test_escape.py",
+        "cd ' child' && pytest tests/test_escape.py",
+        "cd 'child ' && pytest tests/test_escape.py",
+        "pytest 'tests\\test_contract.py'",
+        "pytest ' tests/foo.py'",
+        "pytest 'tests/foo.py '",
+        "PYTHONPATH=' src' pytest tests/test_contract.py",
+        "PYTHONPATH='src ' pytest tests/test_contract.py",
+        "PYTHONPATH='src: lib' pytest tests/test_contract.py",
+        "python -m unittest tests.test_contract.ContractTest.test_identity",
+        "pytest tests/test_contract.py ENV=production",
+        "CI=1 pytest tests/test_contract.py",
+        "PYTEST_ADDOPTS=--ignore=tests/test_contract.py "
+        "pytest tests/test_contract.py",
+        "pytest --collect-only tests/test_contract.py",
+        "pytest --co tests/test_contract.py",
+        "pytest --ignore=tests/test_contract.py tests/test_contract.py",
+        "pytest --deselect=tests/test_contract.py tests/test_contract.py",
+        "pytest -k identity tests/test_contract.py",
+        "pytest -m integration tests/test_contract.py",
+        "pytest --setup-only tests/test_contract.py",
+        "pytest -c pytest.ini tests/test_contract.py",
+        "pytest -p no:terminal tests/test_contract.py",
+        "pytest --rootdir=tests tests/test_contract.py",
+        "pytest tests/test_contract.py > review.log",
+        "pytest tests/test_contract.py | tee review.log",
+        "pytest tests/test_contract.py; pytest tests/test_other.py",
+    ),
+)
+def test_validation_impact_inference_rejects_dynamic_or_composite_shell(
+    command: str,
+) -> None:
+    assert infer_validation_impact_paths(command) == ()
 
 
 def test_pre_merge_escalation_runs_unrelated_targeted_validation(tmp_path: Path) -> None:

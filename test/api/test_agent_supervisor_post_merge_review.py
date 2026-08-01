@@ -26,6 +26,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
     LLM_CHILD_ENVELOPE_VERSION,
     LlmChildResultEnvelope,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.scope_adjudication import (
+    ScopeAdjudicationReceipt,
+    ScopeExpansionReason,
+    ScopeExpansionVerdict,
+    ScopePathDecision,
+)
 
 
 def _git(repo: Path, *arguments: str) -> str:
@@ -381,6 +387,9 @@ def _perform(
     case: SimpleNamespace,
     *,
     reviewer=None,
+    expected_changed_paths: list[str] | None = None,
+    scope_authorized_paths: list[str] | None = None,
+    scope_adjudication_id: str = "",
 ) -> review.PostMergeReviewOutcome:
     return review.perform_post_merge_independent_review(
         repo_root=case.root,
@@ -388,13 +397,21 @@ def _perform(
         implementation_events_path=case.events_path,
         task=case.task,
         attempt=4,
-        implementation_attempt=3,
+        implementation_attempt=int(
+            getattr(case, "implementation_attempt", 3)
+        ),
         baseline_commit=case.baseline,
         implementation_commit=case.implementation,
         merge_commit=case.merge_commit,
         repository_tree_id=case.repository_tree_id,
         validation_result=case.validation,
-        expected_changed_paths=case.task.outputs,
+        expected_changed_paths=(
+            case.task.outputs
+            if expected_changed_paths is None
+            else expected_changed_paths
+        ),
+        scope_authorized_paths=scope_authorized_paths or (),
+        scope_adjudication_id=scope_adjudication_id,
         implementer_provider="grok_cli",
         implementer_provenance=case.provenance,
         reviewer=reviewer,
@@ -425,6 +442,358 @@ def test_recursive_submodule_binding_uses_explicit_pre_seed_baseline(
     assert binding["task_binding_id"] != review.post_merge_task_binding_id(
         replace(nested_case.task, acceptance="Drifted acceptance criteria.")
     )
+
+
+def test_metadata_declared_proposal_scope_is_consistent_in_post_merge_review(
+    nested_case: SimpleNamespace,
+) -> None:
+    predicted_path = "tests/predicted_contract.py"
+    (nested_case.root / "tests").mkdir(exist_ok=True)
+    (nested_case.root / predicted_path).write_text(
+        "def test_predicted_contract():\n    assert True\n",
+        encoding="utf-8",
+    )
+    implementation = _commit(
+        nested_case.root,
+        "add metadata-predicted validation artifact",
+    )
+    metadata = dict(nested_case.task.metadata)
+    metadata["predicted files"] = predicted_path
+    task = replace(nested_case.task, metadata=metadata)
+    expected_paths = sorted([*task.outputs, predicted_path])
+
+    assert review.task_proposal_scope_paths(task) == tuple(
+        sorted([*task.outputs, predicted_path])
+    )
+    binding = review._collect_repository_binding(
+        repo_root=nested_case.root,
+        task=task,
+        baseline_commit=nested_case.baseline,
+        implementation_commit=implementation,
+        merge_commit=implementation,
+        repository_tree_id=_tree(
+            nested_case.root,
+            implementation,
+        ),
+        expected_changed_paths=expected_paths,
+    )
+    assert list(binding["changed_paths"]) == expected_paths
+    assert binding["scope_authorized_paths"] == []
+
+
+def test_scope_adjudication_paths_are_exactly_request_and_receipt_bound(
+    nested_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    companion = "tests/test_contract.py"
+    (nested_case.root / "tests").mkdir(exist_ok=True)
+    (nested_case.root / companion).write_text(
+        "def test_companion_entry():\n    assert True\n",
+        encoding="utf-8",
+    )
+    implementation = _commit(
+        nested_case.root,
+        "add scope-adjudicated companion test",
+    )
+    expected_paths = sorted([*nested_case.task.outputs, companion])
+    proposal_id = "proposal:scope-bound"
+    initial_policy_id = "policy:scope-initial"
+    policy_id = "policy:scope-expanded"
+    proposal_tree_id = nested_case.baseline
+    scope_receipt = ScopeAdjudicationReceipt(
+        task_id=nested_case.task.task_id,
+        proposal_id=proposal_id,
+        initial_policy_id=initial_policy_id,
+        repository_id=review._scope_receipt_repository_id(
+            nested_case.root
+        ),
+        repository_tree_id=proposal_tree_id,
+        baseline_id=nested_case.baseline,
+        original_scope_paths=tuple(nested_case.task.outputs),
+        candidate_paths=tuple(expected_paths),
+        initial_finding_codes=("path_outside_scope",),
+        decisions=(
+            ScopePathDecision(
+                path=companion,
+                verdict=ScopeExpansionVerdict.JUSTIFIED,
+                reason_codes=(
+                    ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,
+                ),
+            ),
+        ),
+    ).bind_authorized_policy(policy_id)
+    scope_receipt_id = scope_receipt.receipt_id
+    branch = "implementation/rev-001-attempt-4"
+    log_path = Path("state/implementation_logs/rev-001-attempt-4.log")
+    (nested_case.root / log_path).write_text(
+        "grok companion implementation log\n",
+        encoding="utf-8",
+    )
+    append_jsonl_event(
+        nested_case.events_path,
+        "implementation_started",
+        {
+            "task_id": "REV-001",
+            "attempt": 4,
+            "execution_mode": "model-assisted",
+            "branch": branch,
+            "log_path": str(log_path),
+            "command": [
+                "/usr/bin/python3",
+                "/opt/ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py",
+                "--grok-bin",
+                "/usr/bin/grok",
+                "--model",
+                "grok-4.5",
+            ],
+        },
+    )
+    append_jsonl_event(
+        nested_case.events_path,
+        "implementation_finished",
+        {
+            "task_id": "REV-001",
+            "attempt": 4,
+            "branch": branch,
+            "log_path": str(log_path),
+            "implementation_commit": implementation,
+            "baseline_ref": nested_case.baseline,
+            "canonical_task_key": (
+                nested_case.task.canonical_task_key
+            ),
+            "canonical_task_cid": (
+                nested_case.task.canonical_task_cid
+            ),
+            "returncode": 0,
+            "validation_result": {
+                "passed": True,
+                "proposal_gate": {
+                    "accepted": True,
+                    "proposal_id": proposal_id,
+                    "policy_id": policy_id,
+                    "receipt_id": "proposal-receipt:scope-bound",
+                    "repository_tree_id": proposal_tree_id,
+                    "changed_paths": expected_paths,
+                },
+                "scope_adjudication": scope_receipt.to_record(),
+            },
+        },
+    )
+    provenance = review.verified_implementer_provenance_from_ledger(
+        nested_case.events_path,
+        repo_root=nested_case.root,
+        expected_task_id="REV-001",
+        expected_implementation_attempt=4,
+        expected_implementation_commit=implementation,
+    )
+    tree = _tree(nested_case.root, implementation)
+    case = SimpleNamespace(
+        **{
+            **vars(nested_case),
+            "implementation": implementation,
+            "implementation_attempt": 4,
+            "merge_commit": implementation,
+            "repository_tree_id": tree,
+            "validation": _validation(
+                nested_case.task,
+                implementation,
+                tree,
+            ),
+            "provenance": provenance,
+        }
+    )
+    adjudication_id = content_identity(
+        {
+            "task_binding_id": review.post_merge_task_binding_id(
+                nested_case.task
+            ),
+            "proposal_id": proposal_id,
+            "authorized_policy_id": policy_id,
+            "receipt_id": scope_receipt_id,
+            "repository_tree_id": proposal_tree_id,
+            "changed_paths": expected_paths,
+            "authorized_paths": [companion],
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+    )
+
+    rejected = _perform(
+        case,
+        reviewer=_reviewer("approve"),
+        expected_changed_paths=expected_paths,
+    )
+    assert rejected.reason_code == "scope_adjudication_binding_mismatch"
+    assert rejected.event == {}
+
+    monkeypatch.setattr(
+        review,
+        "call_llm_router_with_receipt",
+        _fake_codex_child("approve"),
+    )
+    forged_live = _perform(
+        case,
+        expected_changed_paths=expected_paths,
+        scope_authorized_paths=[companion],
+        scope_adjudication_id=content_identity({"forged": True}),
+    )
+    assert forged_live.admitted is False
+    assert (
+        forged_live.reason_code
+        == "scope_adjudication_binding_mismatch"
+    )
+    assert forged_live.event == {}
+    assert (
+        review.mint_gate_from_live_outcome(
+            forged_live,
+            {},
+            events_path=case.events_path,
+        )
+        == {}
+    )
+
+    outcome = _perform(
+        case,
+        reviewer=_reviewer("approve"),
+        expected_changed_paths=expected_paths,
+        scope_authorized_paths=[companion],
+        scope_adjudication_id=adjudication_id,
+    )
+    assert outcome.receipt["scope_authorized_paths"] == [companion]
+    assert outcome.receipt["scope_adjudication_id"] == adjudication_id
+    request = outcome.receipt["review_request"]
+    assert request["scope_authorized_paths"] == [companion]
+    assert request["scope_adjudication_id"] == adjudication_id
+    assert request["scope_authorization_id"] == (
+        outcome.receipt["scope_authorization_id"]
+    )
+
+    verification = review.verify_post_merge_review_receipt(
+        outcome.receipt,
+        repo_root=case.root,
+        implementation_events_path=case.events_path,
+        task=case.task,
+        validation_result=case.validation,
+        attempt=4,
+        implementation_attempt=4,
+        baseline_commit=case.baseline,
+        implementation_commit=case.implementation,
+        merge_commit=case.merge_commit,
+        repository_tree_id=case.repository_tree_id,
+        expected_changed_paths=expected_paths,
+        scope_authorized_paths=[companion],
+        scope_adjudication_id=adjudication_id,
+        implementer_provenance=case.provenance,
+    )
+    assert verification.valid is True
+
+    missing_authority = review.verify_post_merge_review_receipt(
+        outcome.receipt,
+        repo_root=case.root,
+        implementation_events_path=case.events_path,
+        task=case.task,
+        validation_result=case.validation,
+        attempt=4,
+        implementation_attempt=4,
+        baseline_commit=case.baseline,
+        implementation_commit=case.implementation,
+        merge_commit=case.merge_commit,
+        repository_tree_id=case.repository_tree_id,
+        expected_changed_paths=expected_paths,
+        implementer_provenance=case.provenance,
+    )
+    assert missing_authority.valid is False
+    assert (
+        missing_authority.reason_code
+        == "scope_adjudication_binding_mismatch"
+    )
+
+    forged_log_path = Path(
+        "state/implementation_logs/rev-001-attempt-5.log"
+    )
+    (nested_case.root / forged_log_path).write_text(
+        "grok forged scope receipt test log\n",
+        encoding="utf-8",
+    )
+    forged_scope = deepcopy(scope_receipt.to_record())
+    forged_scope["decisions"][0]["reason_codes"] = [
+        ScopeExpansionReason.CANDIDATE_IMPORTS_DECLARED_PATH.value
+    ]
+    append_jsonl_event(
+        nested_case.events_path,
+        "implementation_started",
+        {
+            "task_id": "REV-001",
+            "attempt": 5,
+            "execution_mode": "model-assisted",
+            "branch": "implementation/rev-001-attempt-5",
+            "log_path": str(forged_log_path),
+            "command": [
+                "/usr/bin/python3",
+                "/opt/ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py",
+                "--grok-bin",
+                "/usr/bin/grok",
+                "--model",
+                "grok-4.5",
+            ],
+        },
+    )
+    append_jsonl_event(
+        nested_case.events_path,
+        "implementation_finished",
+        {
+            "task_id": "REV-001",
+            "attempt": 5,
+            "branch": "implementation/rev-001-attempt-5",
+            "log_path": str(forged_log_path),
+            "implementation_commit": implementation,
+            "baseline_ref": nested_case.baseline,
+            "canonical_task_key": nested_case.task.canonical_task_key,
+            "canonical_task_cid": nested_case.task.canonical_task_cid,
+            "returncode": 0,
+            "validation_result": {
+                "passed": True,
+                "proposal_gate": {
+                    "accepted": True,
+                    "proposal_id": proposal_id,
+                    "policy_id": policy_id,
+                    "receipt_id": "proposal-receipt:scope-bound",
+                    "repository_tree_id": proposal_tree_id,
+                    "changed_paths": expected_paths,
+                },
+                "scope_adjudication": forged_scope,
+            },
+        },
+    )
+    forged_provenance = (
+        review.verified_implementer_provenance_from_ledger(
+            nested_case.events_path,
+            repo_root=nested_case.root,
+            expected_task_id="REV-001",
+            expected_implementation_attempt=5,
+            expected_implementation_commit=implementation,
+        )
+    )
+    forged_case = SimpleNamespace(
+        **{
+            **vars(case),
+            "implementation_attempt": 5,
+            "provenance": forged_provenance,
+        }
+    )
+    forged_receipt = _perform(
+        forged_case,
+        reviewer=_reviewer("approve"),
+        expected_changed_paths=expected_paths,
+        scope_authorized_paths=[companion],
+        scope_adjudication_id=adjudication_id,
+    )
+    assert forged_receipt.admitted is False
+    assert (
+        forged_receipt.reason_code
+        == "scope_adjudication_receipt_invalid"
+    )
+    assert forged_receipt.event == {}
 
 
 def test_ledger_native_provenance_is_unique_and_log_bound(

@@ -369,6 +369,30 @@ _TEST_RUNNER_RE = re.compile(
     r"(?:^|\s)(?:python(?:3)?\s+-m\s+)?(?:pytest|unittest|jest|vitest|mocha|cargo\s+test|go\s+test)(?:\s|$)"
 )
 _ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_STATIC_ENV_ASSIGNMENT_RE = re.compile(
+    r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>.*)$",
+    re.DOTALL,
+)
+_DIRECT_TEST_RUNNERS = frozenset(
+    {"pytest", "unittest", "jest", "vitest", "mocha"}
+)
+_PYTHON_TEST_RUNNERS = frozenset({"pytest", "unittest"})
+_LITERAL_PATH_TEST_RUNNERS = frozenset({"pytest", "unittest"})
+_HARMLESS_TEST_RUNNER_OPTIONS = {
+    "pytest": frozenset({"-q", "-s", "-v", "-vv", "--quiet", "--verbose"}),
+    "unittest": frozenset({"-q", "-v", "--quiet", "--verbose"}),
+    "jest": frozenset({"--runInBand", "--silent", "--verbose"}),
+    "vitest": frozenset({"--silent"}),
+    "mocha": frozenset({"--quiet"}),
+    "cargo": frozenset(
+        {"-q", "-v", "--locked", "--offline", "--quiet", "--release", "--verbose"}
+    ),
+    "go": frozenset({"-v"}),
+}
+_SHELL_PUNCTUATION = frozenset(";&|<>()")
+_ALLOWED_STATIC_ENV_KEYS = frozenset({"PYTHONPATH"})
+_MAX_STATIC_ENV_ASSIGNMENTS = 16
+_MAX_STATIC_ENV_ASSIGNMENT_BYTES = 4096
 _GLOBAL_IMPACT_NAMES = frozenset(
     {
         ".gitmodules",
@@ -459,7 +483,14 @@ def split_validation_commands(value: str) -> list[str]:
 
 def _shell_tokens(command: str) -> list[str]:
     try:
-        return shlex.split(command, posix=True)
+        lexer = shlex.shlex(
+            command,
+            posix=True,
+            punctuation_chars="".join(sorted(_SHELL_PUNCTUATION)),
+        )
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        return list(lexer)
     except ValueError:
         return []
 
@@ -469,6 +500,155 @@ def _normalize_path(value: str) -> str:
     while normalized.startswith("./"):
         normalized = normalized[2:]
     return normalized.lstrip("/")
+
+
+def _safe_repository_relative_path(value: str) -> str:
+    """Return one normalized path only when it cannot escape the repository."""
+
+    raw_value = str(value or "")
+    if raw_value != raw_value.strip():
+        return ""
+    normalized = raw_value.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    path = PurePosixPath(normalized)
+    if (
+        not normalized
+        or normalized.startswith("~")
+        or normalized.startswith("-")
+        or path.is_absolute()
+        or path.as_posix() in {".", ".."}
+        or ".." in path.parts
+        or (path.parts and path.parts[0].endswith(":"))
+        or _ENV_ASSIGNMENT_RE.match(normalized)
+        or any(char in normalized for char in "$`*?{}[]!#;&|<>()")
+    ):
+        return ""
+    return path.as_posix()
+
+
+def _path_resolves_within_repository(value: str, *, cwd: str = "") -> bool:
+    """Return whether a literal relative path stays within the repository."""
+
+    raw_value = str(value or "")
+    if raw_value != raw_value.strip():
+        return False
+    normalized = raw_value.replace("\\", "/")
+    if (
+        not normalized
+        or normalized.startswith(("/", "~"))
+        or PurePosixPath(normalized).is_absolute()
+        or re.match(r"^[A-Za-z]:", normalized)
+    ):
+        return False
+    parts: list[str] = []
+    for part in (*PurePosixPath(cwd).parts, *PurePosixPath(normalized).parts):
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if not parts:
+                return False
+            parts.pop()
+            continue
+        parts.append(part)
+    return True
+
+
+def _static_environment_assignment(token: str, *, cwd: str) -> bool:
+    """Validate one bounded literal environment assignment before a runner."""
+
+    match = _STATIC_ENV_ASSIGNMENT_RE.fullmatch(token)
+    if not match or len(token.encode("utf-8")) > _MAX_STATIC_ENV_ASSIGNMENT_BYTES:
+        return False
+    name = match.group("name")
+    value = match.group("value")
+    if name not in _ALLOWED_STATIC_ENV_KEYS or value.startswith("-"):
+        return False
+    if any(char in value for char in "\x00\r\n$`;&|<>()"):
+        return False
+    if value.startswith("~") or any(char in value for char in "*?["):
+        return False
+
+    # Path-valued literals may use ``..`` only when the effective command cwd
+    # proves that the resolved value remains inside the repository.  This
+    # admits the common ``cd child && PYTHONPATH=../sibling`` form while
+    # rejecting absolute or repository-escaping values.
+    path_like = "/" in value or "\\" in value or value.startswith(".")
+    if name.endswith("PATH"):
+        components = value.split(":")
+        return bool(components) and all(
+            component
+            and _path_resolves_within_repository(component, cwd=cwd)
+            for component in components
+        )
+    if path_like:
+        if ":" in value:
+            return False
+        return _path_resolves_within_repository(value, cwd=cwd)
+    return True
+
+
+def _test_runner_and_argument_start(
+    tokens: Sequence[str],
+    start: int,
+) -> tuple[str, int]:
+    """Return the runner and first argument index, or an empty sentinel."""
+
+    if start >= len(tokens):
+        return "", -1
+    executable = tokens[start]
+    if executable in _DIRECT_TEST_RUNNERS:
+        return executable, start + 1
+    if (
+        executable in {"python", "python3"}
+        and start + 2 < len(tokens)
+        and tokens[start + 1] == "-m"
+        and tokens[start + 2] in _PYTHON_TEST_RUNNERS
+    ):
+        return tokens[start + 2], start + 3
+    if (
+        executable in {"cargo", "go"}
+        and start + 1 < len(tokens)
+        and tokens[start + 1] == "test"
+    ):
+        return executable, start + 2
+    return "", -1
+
+
+def _static_runner_options_supported(
+    runner: str,
+    arguments: Sequence[str],
+) -> bool:
+    """Accept only options proven not to alter test selection or execution."""
+
+    allowed = _HARMLESS_TEST_RUNNER_OPTIONS.get(runner, frozenset())
+    return all(
+        not token.startswith("-") or token in allowed
+        for token in arguments
+    )
+
+
+def _unsafe_static_runner_argument(token: str) -> bool:
+    """Return whether one argument contains dynamic or unsafe path syntax."""
+
+    if (
+        not token
+        or token == "cd"
+        or _ENV_ASSIGNMENT_RE.match(token)
+        or any(char in token for char in "\x00\r\n$`")
+        or any(char in token for char in "*?{}[]!#;&|<>()")
+    ):
+        return True
+    candidate = token.split("=", 1)[1] if token.startswith("-") and "=" in token else token
+    candidate = candidate.split("::", 1)[0]
+    normalized = candidate.replace("\\", "/")
+    path = PurePosixPath(normalized)
+    return bool(
+        normalized.startswith(("/", "~"))
+        or path.is_absolute()
+        or ".." in path.parts
+        or re.match(r"^[A-Za-z]:", normalized)
+    )
 
 
 def _looks_like_impact_path(token: str) -> bool:
@@ -482,6 +662,16 @@ def _looks_like_impact_path(token: str) -> bool:
     )
 
 
+def _looks_like_literal_python_test_target(runner: str, token: str) -> bool:
+    """Return whether a Python runner treats the argument as a literal path."""
+
+    if runner == "unittest":
+        # ``unittest`` also accepts dotted module/class/test names.  Only its
+        # explicit Python-file form is safe to treat as filesystem authority.
+        return "::" not in token and token.lower().endswith(".py")
+    return _looks_like_impact_path(token)
+
+
 def infer_validation_impact_paths(command: str) -> tuple[str, ...]:
     """Extract explicit test/file targets from a shell command.
 
@@ -489,23 +679,75 @@ def infer_validation_impact_paths(command: str) -> tuple[str, ...]:
     be omitted by impact selection.
     """
 
-    if not _TEST_RUNNER_RE.search(command):
+    command = normalize_validation_command_text(command)
+    if (
+        not command
+        or any(char in command for char in "\x00\r\n$`\\")
+        or not _TEST_RUNNER_RE.search(command)
+    ):
         return ()
     tokens = _shell_tokens(command)
+    if not tokens:
+        return ()
+
+    command_cwd = ""
+    cursor = 0
+    if tokens[0] == "cd":
+        if len(tokens) < 4 or tokens[2] != "&&":
+            return ()
+        command_cwd = _safe_repository_relative_path(tokens[1])
+        if not command_cwd:
+            return ()
+        cursor = 3
+    elif "cd" in tokens:
+        return ()
+
+    # The optional leading ``cd`` owns the command's sole control operator.
+    # Any other shell punctuation means the complete form is not statically
+    # understood and therefore cannot confer inferred path authority.
+    if any(
+        token
+        and set(token).issubset(_SHELL_PUNCTUATION)
+        for token in tokens[cursor:]
+    ):
+        return ()
+
+    env_count = 0
+    while cursor < len(tokens) and _ENV_ASSIGNMENT_RE.match(tokens[cursor]):
+        env_count += 1
+        if (
+            env_count > _MAX_STATIC_ENV_ASSIGNMENTS
+            or not _static_environment_assignment(
+                tokens[cursor],
+                cwd=command_cwd,
+            )
+        ):
+            return ()
+        cursor += 1
+
+    runner, argument_start = _test_runner_and_argument_start(tokens, cursor)
+    if argument_start < 0 or runner not in _LITERAL_PATH_TEST_RUNNERS:
+        return ()
+    runner_arguments = tokens[argument_start:]
+    if (
+        not _static_runner_options_supported(runner, runner_arguments)
+        or any(
+            _unsafe_static_runner_argument(token)
+            for token in runner_arguments
+        )
+    ):
+        return ()
+
     impacts: list[str] = []
-    after_runner = False
-    for token in tokens:
-        if _ENV_ASSIGNMENT_RE.match(token) and not after_runner:
-            continue
-        if token in {"pytest", "unittest", "jest", "vitest", "mocha", "test"}:
-            after_runner = True
-            continue
-        if token == "-m" and not after_runner:
-            continue
-        if not after_runner:
-            continue
-        if _looks_like_impact_path(token):
-            value = _normalize_path(token.split("::", 1)[0])
+    for token in runner_arguments:
+        if _looks_like_literal_python_test_target(runner, token):
+            value = _safe_repository_relative_path(
+                token.split("::", 1)[0]
+            )
+            if value and command_cwd:
+                value = _safe_repository_relative_path(
+                    (PurePosixPath(command_cwd) / value).as_posix()
+                )
             if value and value not in impacts:
                 impacts.append(value)
     return tuple(impacts)
