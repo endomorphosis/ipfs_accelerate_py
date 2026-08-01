@@ -272,7 +272,7 @@ or write authority.
 
 ## KITA-008 Add VFS versions, snapshots, isolation, locking, and cancellation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
