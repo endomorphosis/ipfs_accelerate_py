@@ -9,24 +9,43 @@ import re
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 
-try:
-    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-except ImportError:
-    try:
-        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-    except ImportError:
-        try:
-            from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-        except ImportError:
-            HAVE_STORAGE_WRAPPER = False
 
-if HAVE_STORAGE_WRAPPER:
+def _resolve_storage(resources: Any) -> Any:
+    """Resolve optional storage only for an installer instance.
+
+    Importing the dependency installer is a capability-discovery operation and
+    must not initialize IPFS storage.  Callers can inject either an existing
+    ``storage``/``storage_wrapper`` object or a ``get_storage_wrapper`` factory.
+    """
+
+    if isinstance(resources, dict):
+        injected = resources.get("storage")
+        if injected is None:
+            injected = resources.get("storage_wrapper")
+        if injected is not None and not callable(injected):
+            return injected
+        factory = resources.get("get_storage_wrapper")
+        if factory is None and callable(injected):
+            factory = injected
+    else:
+        factory = None
+
+    if factory is None:
+        try:
+            from ..common.storage_wrapper import (
+                HAVE_STORAGE_WRAPPER,
+                get_storage_wrapper,
+            )
+        except ImportError:
+            return None
+        if not HAVE_STORAGE_WRAPPER:
+            return None
+        factory = get_storage_wrapper
+
     try:
-        _storage = get_storage_wrapper(auto_detect_ci=True)
+        return factory(auto_detect_ci=True)
     except Exception:
-        _storage = None
-else:
-    _storage = None
+        return None
 
 class install_depends_py():
     def __init__(self, resources, metadata):
@@ -38,7 +57,7 @@ class install_depends_py():
         self.install_results = {}
 
         # Optional distributed storage integration
-        self.storage = _storage
+        self.storage = _resolve_storage(resources)
 
         # Optional test harness callback (only if the caller provides it).
         # Importing `test.test_ipfs_accelerate` at init-time is expensive and brittle,

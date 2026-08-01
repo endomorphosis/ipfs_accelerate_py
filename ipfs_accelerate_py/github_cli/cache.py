@@ -24,26 +24,45 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
 from threading import Lock
 
-try:
-    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-except ImportError:
-    try:
-        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-    except ImportError:
+
+# Compatibility injection point.  The production storage implementation is
+# imported only when a GitHubAPICache instance is explicitly constructed.
+storage_wrapper = None
+HAVE_STORAGE_WRAPPER = False
+_STORAGE_WRAPPER_IMPORT_ATTEMPTED = False
+_STORAGE_WRAPPER_IMPORT_LOCK = Lock()
+
+
+def _resolve_storage_wrapper():
+    global HAVE_STORAGE_WRAPPER
+    global _STORAGE_WRAPPER_IMPORT_ATTEMPTED
+    global storage_wrapper
+
+    if callable(storage_wrapper):
+        HAVE_STORAGE_WRAPPER = True
+        return storage_wrapper
+    if _STORAGE_WRAPPER_IMPORT_ATTEMPTED:
+        return None
+    with _STORAGE_WRAPPER_IMPORT_LOCK:
+        if callable(storage_wrapper):
+            HAVE_STORAGE_WRAPPER = True
+            return storage_wrapper
+        if _STORAGE_WRAPPER_IMPORT_ATTEMPTED:
+            return None
         try:
-            from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+            from ..common.storage_wrapper import (
+                HAVE_STORAGE_WRAPPER as available,
+                get_storage_wrapper,
+            )
         except ImportError:
-            HAVE_STORAGE_WRAPPER = False
-
-storage_wrapper = get_storage_wrapper if HAVE_STORAGE_WRAPPER else None
-
-if HAVE_STORAGE_WRAPPER:
-    try:
-        _storage = get_storage_wrapper(auto_detect_ci=True)
-    except Exception:
-        _storage = None
-else:
-    _storage = None
+            available = False
+            get_storage_wrapper = None
+        _STORAGE_WRAPPER_IMPORT_ATTEMPTED = True
+        HAVE_STORAGE_WRAPPER = bool(available and get_storage_wrapper)
+        storage_wrapper = (
+            get_storage_wrapper if HAVE_STORAGE_WRAPPER else None
+        )
+        return storage_wrapper
 
 # Try to import cryptography for message encryption
 try:
@@ -215,9 +234,10 @@ class GitHubAPICache:
             enable_universal_connectivity: Whether to enable universal connectivity patterns
         """
         # Initialize storage wrapper
-        if storage_wrapper:
+        storage_factory = _resolve_storage_wrapper()
+        if storage_factory:
             try:
-                self.storage = storage_wrapper()
+                self.storage = storage_factory()
             except:
                 self.storage = None
         else:

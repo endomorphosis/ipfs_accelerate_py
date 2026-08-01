@@ -12,6 +12,7 @@ import importlib
 import os
 import sys
 import threading
+import time
 from types import ModuleType
 from typing import Any
 
@@ -22,8 +23,11 @@ _UNRESOLVED = object()
 _GROUP_LOCK = threading.RLock()
 _GROUP_LOADING: set[str] = set()
 _GROUP_RESOLVED: set[str] = set()
+_GROUP_FAILED_AT: dict[str, float] = {}
+_GROUP_FAILED_MODULE_STATE: dict[str, tuple[tuple[str, bool], ...]] = {}
 _PUBLIC_VALUES: dict[str, Any] = {}
 _PUBLIC_RESOLVED: set[str] = set()
+_FAILED_GROUP_RETRY_SECONDS = 0.25
 
 
 # Each entry names the implementation module and attribute.  ``None`` means
@@ -350,6 +354,12 @@ _NAME_TO_GROUP.update(
     }
 )
 
+_GROUP_TRANSITION_MODULES: dict[str, tuple[str, ...]] = {
+    "multiformats": ("multiformats",),
+    "core": ("ipfs_kit_py", "ipfs_model_manager_py", "ipfs_transformers_py"),
+    "ipfs_kit": ("ipfs_kit_py",),
+}
+
 
 def _unavailable_ipfs_accelerate_py(*args: Any, **kwargs: Any) -> Any:
     raise NotImplementedError(
@@ -372,6 +382,27 @@ def _publish_public_value(name: str, value: Any) -> None:
         dict.__setitem__(export_map, name, value)
 
 
+def _group_module_state(group: str) -> tuple[tuple[str, bool], ...]:
+    names = {
+        f"{__name__}{module_name}"
+        for module_name, _ in _GROUP_MEMBERS[group].values()
+    }
+    names.update(_GROUP_TRANSITION_MODULES.get(group, ()))
+    return tuple(
+        (name, name in sys.modules)
+        for name in sorted(names)
+    )
+
+
+def _failed_group_retry_ready(group: str) -> bool:
+    previous_state = _GROUP_FAILED_MODULE_STATE.get(group, ())
+    if _group_module_state(group) != previous_state:
+        # An authorized installer/importer changed process capabilities.
+        return True
+    failed_at = _GROUP_FAILED_AT.get(group, 0.0)
+    return time.monotonic() - failed_at >= _FAILED_GROUP_RETRY_SECONDS
+
+
 def _resolve_group(group: str) -> None:
     """Resolve and cache one optional public group exactly once."""
 
@@ -380,6 +411,8 @@ def _resolve_group(group: str) -> None:
             return
         if group in _GROUP_LOADING:
             # A provider importing its own package root must not recurse.
+            return
+        if group in _GROUP_FAILED_AT and not _failed_group_retry_ready(group):
             return
         _GROUP_LOADING.add(group)
         members = _GROUP_MEMBERS[group]
@@ -413,18 +446,69 @@ def _resolve_group(group: str) -> None:
                 _publish_public_value(name, value)
             for name in _GROUP_AVAILABILITY.get(group, ()):
                 _publish_public_value(name, available)
-            _GROUP_RESOLVED.add(group)
+            if available or not enabled:
+                _GROUP_RESOLVED.add(group)
+                _GROUP_FAILED_AT.pop(group, None)
+                _GROUP_FAILED_MODULE_STATE.pop(group, None)
+            else:
+                _GROUP_FAILED_AT[group] = time.monotonic()
+                _GROUP_FAILED_MODULE_STATE[group] = _group_module_state(group)
             _GROUP_LOADING.discard(group)
 
 
 def _resolve_public(name: str) -> Any:
-    if name in _PUBLIC_RESOLVED:
-        return _PUBLIC_VALUES[name]
     group = _NAME_TO_GROUP.get(name)
     if group is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    if group in _GROUP_FAILED_AT and _failed_group_retry_ready(group):
+        _resolve_group(group)
+    if name in _PUBLIC_RESOLVED:
+        return _PUBLIC_VALUES[name]
     _resolve_group(group)
     return _PUBLIC_VALUES.get(name)
+
+
+def refresh_optional_exports(*names: str) -> dict[str, Any]:
+    """Retry failed optional imports after a controlled capability change.
+
+    This is deliberately outside ``__all__`` and the historical ``export``
+    manifest.  Lazy installers may call it after changing import availability;
+    ordinary callers get bounded automatic retries on explicit access.
+    """
+
+    requested = tuple(names)
+    groups = {
+        _NAME_TO_GROUP[name]
+        for name in requested
+        if name in _NAME_TO_GROUP
+    }
+    if not requested:
+        groups = set(_GROUP_FAILED_AT)
+    with _GROUP_LOCK:
+        for group in groups:
+            if SKIP_CORE and group in _CORE_GROUPS:
+                continue
+            _GROUP_RESOLVED.discard(group)
+            _GROUP_FAILED_AT.pop(group, None)
+            _GROUP_FAILED_MODULE_STATE.pop(group, None)
+            for public_name in (
+                *tuple(_GROUP_MEMBERS[group]),
+                *_GROUP_AVAILABILITY.get(group, ()),
+            ):
+                _PUBLIC_VALUES.pop(public_name, None)
+                _PUBLIC_RESOLVED.discard(public_name)
+                globals().pop(public_name, None)
+                export_map = globals().get("export")
+                if (
+                    isinstance(export_map, dict)
+                    and dict.__contains__(export_map, public_name)
+                ):
+                    dict.__setitem__(export_map, public_name, None)
+    return {
+        name: _resolve_public(name)
+        for name in requested
+        if name in _NAME_TO_GROUP
+    }
 
 
 _global_instance: Any = None
@@ -908,6 +992,9 @@ class _IPFSAccelerateModule(ModuleType):
         if name == "worker":
             namespace = ModuleType.__getattribute__(self, "__dict__")
             return namespace["_load_legacy_worker"]()
+        namespace = ModuleType.__getattribute__(self, "__dict__")
+        if name in namespace.get("_NAME_TO_GROUP", ()):
+            return namespace["_resolve_public"](name)
         return ModuleType.__getattribute__(self, name)
 
     def __setattr__(self, name: str, value: Any) -> None:
