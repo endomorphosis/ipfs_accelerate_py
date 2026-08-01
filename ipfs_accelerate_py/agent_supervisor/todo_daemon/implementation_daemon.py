@@ -8362,7 +8362,15 @@ class PortalImplementationDaemon:
             ),
             "child_process": (),
             "lease": tuple(lease_paths),
-            "validation": (Path(self.validation_cache_dir),),
+            # The shared validation cache is an optimization, not an
+            # authoritative scheduling input. SQLite journal creation and
+            # single-flight bookkeeping mutate this directory even for cache
+            # reads; watching it makes an idle pass wake itself and every peer
+            # lane, followed by a full repository reconciliation. Real work is
+            # already signalled by task-board, merge-queue, child-process, and
+            # policy events, with the bounded safety reconciliation covering a
+            # missed notification.
+            "validation": (),
             "provider_capacity": (),
             "policy": tuple(policy_paths),
             "observation_window": (),

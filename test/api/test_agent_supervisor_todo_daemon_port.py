@@ -13208,6 +13208,30 @@ def test_resource_claim_deferral_passes_do_not_grow_state_or_events(
     assert holder._release_implementation_resource_claims(holder_claims)
 
 
+def test_validation_cache_bookkeeping_does_not_wake_idle_daemon(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    cache_dir = repo / "shared-validation-cache"
+    cache_dir.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        validation_cache_dir=cache_dir,
+    )
+
+    before, _ = daemon._runtime_source_head()
+    (cache_dir / "single-flight.sqlite3-journal").write_bytes(b"bookkeeping")
+    after, sources = daemon._runtime_source_head()
+
+    assert sources["validation"] == []
+    assert after == before
+
+
 def test_implementation_resource_claims_preserve_disjoint_submodule_parallelism(
     tmp_path,
     monkeypatch,
