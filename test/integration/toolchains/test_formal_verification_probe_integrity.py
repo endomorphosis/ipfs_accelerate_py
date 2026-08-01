@@ -281,7 +281,7 @@ def test_certifier_java_probe_rejects_unquoted_banner_and_strips_hostile_env(
     monkeypatch.setattr(
         certifier,
         "resolve_executable",
-        lambda _candidates: str(java),
+        lambda _candidates, **_kwargs: str(java),
     )
 
     result = certifier.probe_tool_identity(
@@ -349,6 +349,41 @@ def test_bare_names_resolve_only_through_path(
     ) == str(local.resolve())
 
 
+def test_certifier_bare_name_resolution_uses_supplied_offline_path(
+    certifier,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ambient = _write_executable(
+        tmp_path / "ambient" / "identity-probe",
+        'echo "ambient unreviewed tool"',
+    )
+    offline = _write_executable(
+        tmp_path / "offline" / "identity-probe",
+        'echo "offline reviewed tool"',
+    )
+    monkeypatch.setenv("PATH", str(ambient.parent))
+
+    resolved = certifier.resolve_executable(
+        ["identity-probe"],
+        env=certifier.offline_env({"PATH": str(offline.parent)}),
+    )
+    absent = certifier.resolve_executable(
+        ["identity-probe"],
+        env=certifier.offline_env({"PATH": str(tmp_path / "empty")}),
+    )
+    monkeypatch.chdir(ambient.parent)
+    no_path = certifier.resolve_executable(
+        ["identity-probe"],
+        env=certifier.offline_env({}),
+    )
+
+    assert resolved == str(offline.resolve())
+    assert resolved != str(ambient.resolve())
+    assert absent is None
+    assert no_path is None
+
+
 def test_dry_run_executes_nothing(
     state_model,
     monkeypatch: pytest.MonkeyPatch,
@@ -403,7 +438,7 @@ def test_nonzero_error_banner_cannot_prove_usability(
     monkeypatch.setattr(
         certifier,
         "resolve_executable",
-        lambda _candidates: "/bin/false",
+        lambda _candidates, **_kwargs: "/bin/false",
     )
     monkeypatch.setattr(
         certifier,
@@ -490,7 +525,7 @@ def test_tlc_certifier_probe_binds_digest_tag_and_revision(
     monkeypatch.setattr(
         certifier,
         "resolve_executable",
-        lambda _candidates: "/managed/bin/tlc",
+        lambda _candidates, **_kwargs: "/managed/bin/tlc",
     )
     monkeypatch.setattr(
         certifier,
@@ -536,6 +571,75 @@ def test_tlc_certifier_probe_binds_digest_tag_and_revision(
     assert bad["probe_error"] == "tlc_help_or_managed_digest_identity_failed"
 
 
+@pytest.mark.parametrize(
+    "managed_identity",
+    (
+        {
+            "usable": True,
+            "artifact_sha256": LOCKED_TLC_SHA256,
+        },
+        {
+            "usable": True,
+            "artifact_sha256": LOCKED_TLC_SHA256,
+            "release_tag": LOCKED_TLC_RELEASE_TAG,
+        },
+        {
+            "usable": True,
+            "artifact_sha256": LOCKED_TLC_SHA256,
+            "revision": LOCKED_TLC_REVISION,
+        },
+        {
+            "usable": True,
+            "artifact_sha256": LOCKED_TLC_SHA256,
+            "release_tag": "v0.0.0",
+            "revision": LOCKED_TLC_REVISION,
+        },
+    ),
+    ids=(
+        "lock-only-fallback",
+        "revision-missing",
+        "release-tag-missing",
+        "release-tag-mismatch",
+    ),
+)
+def test_tlc_certifier_rejects_incomplete_or_mismatched_managed_revision_identity(
+    managed_identity: dict[str, Any],
+    certifier,
+    monkeypatch: pytest.MonkeyPatch,
+    lock_document: dict[str, Any],
+) -> None:
+    entry = _tools_by_id(lock_document)["tlc"]
+    monkeypatch.setattr(
+        certifier,
+        "resolve_executable",
+        lambda _candidates, **_kwargs: "/managed/bin/tlc",
+    )
+    monkeypatch.setattr(
+        certifier,
+        "bounded_run",
+        lambda argv, **_kwargs: certifier.subprocess.CompletedProcess(
+            argv,
+            1,
+            stdout=TLC_HELP_OUTPUT,
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_managed_state_model_identity",
+        lambda *_args, **_kwargs: managed_identity,
+    )
+
+    result = certifier.probe_tool_identity(
+        entry,
+        env=certifier.offline_env({"PATH": "/managed/bin"}),
+    )
+
+    assert result["identity_probed"] is False
+    assert result["installed"] is False
+    assert result["probe_error"] == "tlc_help_or_managed_digest_identity_failed"
+
+
 def test_tlc_banner_only_without_help_markers_is_not_identity(
     certifier,
     monkeypatch: pytest.MonkeyPatch,
@@ -545,7 +649,7 @@ def test_tlc_banner_only_without_help_markers_is_not_identity(
     monkeypatch.setattr(
         certifier,
         "resolve_executable",
-        lambda _candidates: "/managed/bin/tlc",
+        lambda _candidates, **_kwargs: "/managed/bin/tlc",
     )
     monkeypatch.setattr(
         certifier,

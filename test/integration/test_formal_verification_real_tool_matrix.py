@@ -269,7 +269,7 @@ def test_lean_probe_selects_already_installed_locked_toolchain(
     monkeypatch.setattr(
         certifier,
         "resolve_executable",
-        lambda _candidates: "/fixture/lean",
+        lambda _candidates, **_kwargs: "/fixture/lean",
     )
     monkeypatch.setattr(
         certifier,
@@ -328,7 +328,7 @@ def test_tlc_lock_and_probe_use_real_help_semantics_and_managed_digest(
     monkeypatch.setattr(
         certifier,
         "resolve_executable",
-        lambda _candidates: "/managed/bin/tlc",
+        lambda _candidates, **_kwargs: "/managed/bin/tlc",
     )
 
     def bounded_run(argv, **_kwargs):
@@ -353,6 +353,8 @@ def test_tlc_lock_and_probe_use_real_help_semantics_and_managed_digest(
         lambda *_args, **_kwargs: {
             "usable": True,
             "artifact_sha256": expected_digest,
+            "release_tag": probe["release_tag"],
+            "revision": probe["revision"],
             "artifact_digest_verified": True,
             "payload_digest_verified": True,
             "launchers_structurally_valid": True,
@@ -392,7 +394,7 @@ def test_tlc_probe_rejects_banner_only_or_unmanaged_launcher(
     monkeypatch.setattr(
         certifier,
         "resolve_executable",
-        lambda _candidates: "/managed/bin/tlc",
+        lambda _candidates, **_kwargs: "/managed/bin/tlc",
     )
     monkeypatch.setattr(
         certifier,
@@ -467,7 +469,7 @@ def test_apalache_probe_requires_complete_managed_digest_identity(
     monkeypatch.setattr(
         certifier,
         "resolve_executable",
-        lambda _candidates: "/managed/bin/apalache-mc",
+        lambda _candidates, **_kwargs: "/managed/bin/apalache-mc",
     )
     monkeypatch.setattr(
         certifier,

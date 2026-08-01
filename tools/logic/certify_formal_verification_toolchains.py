@@ -933,7 +933,24 @@ def tool_platform_support(
 # ---------------------------------------------------------------------------
 
 
-def resolve_executable(candidates: Sequence[str]) -> str | None:
+def resolve_executable(
+    candidates: Sequence[str],
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Resolve candidates against the caller's environment.
+
+    Certification passes an explicit offline environment.  Its ``PATH`` is
+    therefore the complete bare-name search authority; falling back to the
+    certifier process's ambient ``PATH`` could select an unreviewed host tool.
+    Callers that omit ``env`` retain the conventional ambient-PATH behavior.
+    """
+
+    search_path = (
+        os.environ.get("PATH", "")
+        if env is None
+        else str(env.get("PATH") or "")
+    )
     for name in candidates:
         if not name:
             continue
@@ -945,7 +962,9 @@ def resolve_executable(candidates: Sequence[str]) -> str | None:
             if path.is_file() and os.access(path, os.X_OK):
                 return str(path.resolve())
             continue
-        found = shutil.which(name)
+        if not search_path:
+            continue
+        found = shutil.which(name, path=search_path)
         if found:
             return found
     return None
@@ -1063,7 +1082,7 @@ def probe_tool_identity(
             result["version_string"] = version
             return result
 
-    executable = resolve_executable(candidates or [tool_id])
+    executable = resolve_executable(candidates or [tool_id], env=env)
     if executable is None:
         result["probe_error"] = "executable_not_on_path"
         return result
@@ -1134,22 +1153,17 @@ def probe_tool_identity(
             and str(probe.get("artifact_sha256") or "").lower()
             == managed_digest
         )
-        # Real managed identities always publish release_tag + revision. When a
-        # fixture omits those keys, lock-declared binding still appears in the
-        # version string without weakening digest-bound usability.
-        if "revision" in (managed_identity or {}) or "release_tag" in (
-            managed_identity or {}
-        ):
-            revision_bound = bool(
-                managed_revision
-                and expected_revision
-                and managed_revision == expected_revision
-                and managed_release_tag
-                and expected_release_tag
-                and managed_release_tag == expected_release_tag
-            )
-        else:
-            revision_bound = bool(expected_revision and expected_release_tag)
+        # Lock metadata states what is expected; it cannot substitute for
+        # observations from the managed installation.  Both identity fields
+        # must be present on the managed payload and match the lock exactly.
+        revision_bound = bool(
+            managed_revision
+            and expected_revision
+            and managed_revision == expected_revision
+            and managed_release_tag
+            and expected_release_tag
+            and managed_release_tag == expected_release_tag
+        )
         if (
             completed.returncode not in accepted_returncodes
             or not semantic_help
@@ -1162,13 +1176,9 @@ def probe_tool_identity(
                 "tlc_help_or_managed_digest_identity_failed"
             )
             return result
-        bound_tag = managed_release_tag or expected_release_tag or (
-            f"v{_pin_version(entry)}"
-        )
-        bound_revision = managed_revision or expected_revision
         result["version_string"] = (
             f"TLC managed release {_pin_version(entry)} "
-            f"({bound_tag}@{bound_revision}); "
+            f"({managed_release_tag}@{managed_revision}); "
             f"artifact sha256:{managed_identity['artifact_sha256']}"
         )
         result["identity_probed"] = True
