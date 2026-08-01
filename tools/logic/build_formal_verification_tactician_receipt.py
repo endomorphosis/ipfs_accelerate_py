@@ -2257,6 +2257,32 @@ def build_role_aware_deployment_receipt(
     semantic_binding_failures: list[str] = []
     for result in semantic_results:
         lane_id = str(result.get("lane_id") or "unknown")
+        lane_status = str(result.get("status") or "")
+        # Unavailable / blocked / error / skipped lanes never carry a full
+        # portable receipt. They must disclose block reasons and must not be
+        # treated as omitted evidence; only ``ran`` lanes require full digest
+        # binding. ``usable_elevation_allowed`` on the lane entry is a policy
+        # constant from the certifier spec (whether successful runs of this
+        # family may elevate), not a claim that *this* non-ran outcome elevated.
+        if lane_status != "ran":
+            if not _safe_list(result.get("block_reasons")):
+                semantic_receipts_full_and_bound = False
+                semantic_binding_failures.append(
+                    f"{lane_id}:block_reasons_missing_for_non_ran_lane"
+                )
+            if _safe_list(result.get("elevated_tool_ids")) or _safe_list(
+                result.get("semantically_usable_tool_ids")
+            ):
+                semantic_receipts_full_and_bound = False
+                semantic_binding_failures.append(
+                    f"{lane_id}:non_ran_lane_cannot_claim_elevation"
+                )
+            continue
+        # Durable checked-in certificates bind ran lanes by digest only
+        # (no bulk receipt body). Live ``build_certificate`` retains full
+        # receipts for tests and elevation logic.
+        if result.get("receipt") is None and result.get("digest_sha256"):
+            continue
         raw_receipt = result.get("receipt")
         if not isinstance(raw_receipt, Mapping):
             semantic_receipts_full_and_bound = False
@@ -2364,10 +2390,29 @@ def build_role_aware_deployment_receipt(
             prefixed=True,
         )
     )
+    # Checked-in certificates may be durable projections that bind the full
+    # live certificate by ``source_certificate_digest_sha256``. Compare either
+    # exact digests or the deterministic durable projection of the live form.
+    live_certificate_for_match: Mapping[str, Any] = certificate
+    durable_meta = _safe_dict(
+        (checked_certificate or {}).get("durable_projection")
+    )
+    if durable_meta.get("enabled") is True and hasattr(
+        certifier, "project_durable_certificate"
+    ):
+        live_certificate_for_match = certifier.project_durable_certificate(
+            certificate
+        )
     checked_certificate_matches = bool(
         checked_certificate_valid
-        and checked_certificate.get("certificate_digest_sha256")
-        == certificate.get("certificate_digest_sha256")
+        and (
+            checked_certificate.get("certificate_digest_sha256")
+            == certificate.get("certificate_digest_sha256")
+            or checked_certificate.get("certificate_digest_sha256")
+            == live_certificate_for_match.get("certificate_digest_sha256")
+            or durable_meta.get("source_certificate_digest_sha256")
+            == certificate.get("certificate_digest_sha256")
+        )
     )
     checked_completion_matches = bool(
         checked_completion_valid
@@ -2589,8 +2634,9 @@ def build_role_aware_deployment_receipt(
         "binding_mode": "two_phase_source_then_attestation_publication",
         "status": status,
         "description": (
-            "Fail-closed role-aware deployment attestation. It retains complete "
-            "semantic receipts and exact identities, distinguishes unsupported "
+            "Fail-closed role-aware deployment attestation. Full semantic "
+            "receipts and check sets live in the bound toolchain certificate; "
+            "this receipt digest-binds that matrix, distinguishes unsupported "
             "platforms from missing supported capabilities, and cannot claim "
             "readiness without authoritative supervisor validation/merge evidence."
         ),
@@ -2609,8 +2655,30 @@ def build_role_aware_deployment_receipt(
             "task_id": certificate.get("task_id"),
             "binding_mode": certificate.get("binding_mode"),
             "certificate_digest_sha256": certificate.get("certificate_digest_sha256"),
-            "role_aware": role_aware,
-            "promotion": promotion,
+            "role_aware": {
+                "enabled": bool(role_aware.get("enabled")),
+                "goal_id": role_aware.get("goal_id"),
+                "task_id": role_aware.get("task_id"),
+                "interface": role_aware.get("interface"),
+                "elevated_tool_ids": elevated,
+                "required_baseline_elevations": list(
+                    role_aware.get("required_baseline_elevations")
+                    or list(REQUIRED_SEMANTIC_ELEVATIONS)
+                ),
+                "elevation_count": len(_safe_list(role_aware.get("elevations"))),
+                "demotion_count": len(_safe_list(role_aware.get("demotions"))),
+            },
+            "promotion": {
+                "production_certified_tool_ids": list(
+                    promotion.get("production_certified_tool_ids") or []
+                ),
+                "merely_usable_tool_ids": list(
+                    promotion.get("merely_usable_tool_ids") or []
+                ),
+                "unavailable_tool_ids": list(
+                    promotion.get("unavailable_tool_ids") or []
+                ),
+            },
             "property_lanes": certificate.get("property_lanes"),
             "disagreement_quarantines": quarantines,
             "authority_roles": {
@@ -2623,9 +2691,31 @@ def build_role_aware_deployment_receipt(
                     "policy_digest_sha256",
                 )
             },
-            "semantic_lane_results": certificate.get("semantic_lane_results") or [],
-            "managed_deployment_readiness": managed,
-            "tools": [tools[tool_id] for tool_id in sorted(tools)],
+            # Bulk lane receipts and tool check dumps stay in the certificate;
+            # this surface digest-binds them for the deployment attestation.
+            "semantic_lane_results": [
+                _compact_semantic_lane(result) for result in semantic_results
+            ],
+            "specialized_receipt_aggregation": _compact_specialized_aggregation(
+                _safe_dict(certificate.get("specialized_receipt_aggregation"))
+            ),
+            "managed_deployment_readiness": _compact_managed_readiness(managed),
+            "tools": [
+                _compact_tool_binding(
+                    tools[tool_id],
+                    checks_digest=content_digest(
+                        _safe_list(tools[tool_id].get("checks"))
+                    ),
+                    artifact_digests=[
+                        str(item.get("sha256") or "")
+                        for item in _safe_list(
+                            tools[tool_id].get("artifact_identities")
+                        )
+                        if isinstance(item, Mapping) and item.get("sha256")
+                    ],
+                )
+                for tool_id in sorted(tools)
+            ],
         },
         "supervisor_evidence": supervisor,
         "completion": {
@@ -2661,7 +2751,30 @@ def build_role_aware_deployment_receipt(
             "production_certified_tool_ids": list(
                 promotion.get("production_certified_tool_ids") or []
             ),
-            "details": role_aware.get("elevations") or [],
+            # Compact elevation details: identity + outcome + check digest only.
+            "details": [
+                {
+                    "tool_id": item.get("tool_id"),
+                    "lane_id": item.get("lane_id"),
+                    "elevated": bool(item.get("elevated")),
+                    "reason": item.get("reason"),
+                    "evidence_class": item.get("evidence_class"),
+                    "semantic_receipt_digest_sha256": item.get(
+                        "semantic_receipt_digest_sha256"
+                    ),
+                    "checks_digest_sha256": (
+                        item.get("checks_digest_sha256")
+                        if item.get("checks_digest_sha256") is not None
+                        else (
+                            content_digest(_safe_list(item.get("checks")))
+                            if item.get("checks") is not None
+                            else None
+                        )
+                    ),
+                }
+                for item in _safe_list(role_aware.get("elevations"))
+                if isinstance(item, Mapping)
+            ],
         },
         "platform_exceptions": platform_exceptions,
         "artifacts": artifacts,
@@ -2707,8 +2820,9 @@ def build_role_aware_deployment_receipt(
         "notes": [
             "RoleAwareFormalVerificationRelease@1 reissues deployment certification "
             "after FVT-G101–G190 installation and semantic certification.",
-            "All semantic check records are retained; no first-only projection "
-            "can hide an omitted or failing case.",
+            "Semantic check records are bound by digest on the public receipt; "
+            "the live certificate retains full check sets so no first-only "
+            "projection can hide an omitted or failing case.",
             "Platform exceptions come only from lock-declared host support. "
             "Missing supported installations remain blockers.",
             "Supervisor binding requires durable member_completion_receipt@1, "
@@ -3870,9 +3984,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         # deployment attestation. Release-candidate mode reads live evidence
         # without mutating the checked-in certificate artifact.
         if want_role_aware:
+            # Always emit the durable projection for the checked-in certificate
+            # so role-aware reissue stays inside single-file admission budgets.
             certifier.write_certificate(
                 role_certificate,
                 root / TOOLCHAIN_CERT_RELATIVE,
+                durable=True,
             )
             # Rebuild completion after the role-aware certificate is durable so
             # its artifact binding cannot silently refer to the predecessor cert.

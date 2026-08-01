@@ -736,6 +736,40 @@ class CheckResult:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    def to_public_dict(self) -> dict[str, Any]:
+        """Public projection without nested evidence that re-emits the row."""
+
+        payload: dict[str, Any] = {
+            "check_id": self.check_id,
+            "kind": self.kind,
+            "status": self.status,
+            "expected": self.expected,
+            "observed": self.observed,
+            "detail": self.detail,
+        }
+        if self.evidence:
+            # Bind residual evidence by digest only; full tool/lane surfaces
+            # retain complete check bodies where required.
+            payload["evidence_digest_sha256"] = content_digest(self.evidence)
+            residual_keys = sorted(
+                key
+                for key in self.evidence.keys()
+                if key
+                not in {
+                    "check_id",
+                    "kind",
+                    "status",
+                    "expected",
+                    "observed",
+                    "detail",
+                    "reason_codes",
+                    "tool_id",
+                }
+            )
+            if residual_keys:
+                payload["evidence_residual_keys"] = residual_keys
+        return payload
+
 
 @dataclass
 class ToolCertification:
@@ -2572,17 +2606,9 @@ def aggregate_specialized_receipts(
     )
     represented_families = sorted(families_present)
 
-    digest_components = {
-        "composite_lanes": {
-            key: composite_lanes[key] for key in sorted(composite_lanes)
-        },
-        "specialized_by_handler": {
-            key: specialized_by_handler[key]
-            for key in sorted(specialized_by_handler)
-        },
-        "certifier_families_represented": represented_families,
-        "missing_certifier_families": missing_families,
-    }
+    # Digest material is the lossless composite + handler projection. Do not
+    # also re-embed it under ``digest_components`` (that doubled the durable
+    # certificate for no additional binding power).
     aggregation: dict[str, Any] = {
         "schema_version": SPECIALIZED_AGGREGATION_SCHEMA,
         "interface": SPECIALIZED_AGGREGATION_INTERFACE,
@@ -2616,7 +2642,6 @@ def aggregate_specialized_receipts(
         "protocol_retained_tool_ids": list(
             (composite_lanes.get("protocol") or {}).get("tool_ids") or []
         ),
-        "digest_components": digest_components,
         "aggregation_digest_sha256": "",
     }
     aggregation["aggregation_digest_sha256"] = content_digest(
@@ -3392,7 +3417,10 @@ def apply_semantic_elevations(
                         "interface": str(spec["interface"]),
                         "evidence_class": cert.evidence_class,
                         "semantic_receipt_digest_sha256": receipt_digest,
-                        "checks": [check.to_dict() for check in projected],
+                        "checks": [check.to_public_dict() for check in projected],
+                        "checks_digest_sha256": content_digest(
+                            [check.to_dict() for check in projected]
+                        ),
                     }
                 )
                 continue
@@ -3458,7 +3486,12 @@ def apply_semantic_elevations(
                             "reason": "semantic_identity_not_exactly_bound",
                             "interface": str(spec["interface"]),
                             "evidence_class": str(spec["evidence_class"]),
-                            "checks": [check.to_dict() for check in projected],
+                            "checks": [
+                                check.to_public_dict() for check in projected
+                            ],
+                            "checks_digest_sha256": content_digest(
+                                [check.to_dict() for check in projected]
+                            ),
                         }
                     )
                     continue
@@ -3491,7 +3524,10 @@ def apply_semantic_elevations(
                     "interface": str(spec["interface"]),
                     "evidence_class": cert.evidence_class,
                     "semantic_receipt_digest_sha256": receipt_digest,
-                    "checks": [check.to_dict() for check in projected],
+                    "checks": [check.to_public_dict() for check in projected],
+                    "checks_digest_sha256": content_digest(
+                        [check.to_dict() for check in projected]
+                    ),
                 }
             )
     return elevations
@@ -4185,12 +4221,216 @@ def build_certificate(
     return certificate
 
 
+# Single-file admission budget for checked-in public artifacts (strict-proposal).
+# Stay under 1_000_000 with margin so indentation / future keys cannot tip over.
+DURABLE_CERTIFICATE_MAX_BYTES: int = 900_000
+
+
+def _compact_semantic_lane_for_durable(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Bind a semantic lane by digests without bulk receipt/check dumps."""
+
+    integrity = result.get("receipt_integrity")
+    integrity_map = integrity if isinstance(integrity, Mapping) else {}
+    per_tool = result.get("per_tool")
+    per_tool_map = per_tool if isinstance(per_tool, Mapping) else {}
+    return {
+        "lane_id": result.get("lane_id"),
+        "status": result.get("status"),
+        "digest_sha256": result.get("digest_sha256"),
+        "block_reasons": list(result.get("block_reasons") or []),
+        "receipt_integrity_valid": integrity_map.get("valid"),
+        "check_set_digests": {
+            str(tool_id): (
+                tool_result.get("check_set_digest_sha256")
+                if isinstance(tool_result, Mapping)
+                else None
+            )
+            for tool_id, tool_result in per_tool_map.items()
+        },
+        "public_projection": result.get("public_projection"),
+        "offline_observation": result.get("offline_observation"),
+        "usable_elevation_allowed": result.get("usable_elevation_allowed"),
+        "elevated_tool_ids": list(result.get("elevated_tool_ids") or []),
+        "semantically_usable_tool_ids": list(
+            result.get("semantically_usable_tool_ids") or []
+        ),
+    }
+
+
+def _compact_specialized_for_durable(
+    specialized: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind specialized aggregation by digest, not full composite bodies."""
+
+    return {
+        "schema_version": specialized.get("schema_version"),
+        "interface": specialized.get("interface"),
+        "goal_id": specialized.get("goal_id"),
+        "task_id": specialized.get("task_id"),
+        "program": specialized.get("program"),
+        "enabled": specialized.get("enabled", True),
+        "reason": specialized.get("reason"),
+        "aggregation_digest_sha256": specialized.get("aggregation_digest_sha256")
+        or specialized.get("digest_sha256"),
+        "all_required_certifiers_represented": specialized.get(
+            "all_required_certifiers_represented"
+        ),
+        "missing_certifier_families": list(
+            specialized.get("missing_certifier_families") or []
+        ),
+        "certifier_families_required": list(
+            specialized.get("certifier_families_required") or []
+        ),
+        "certifier_families_represented": list(
+            specialized.get("certifier_families_represented") or []
+        ),
+        "kernel_retained_tool_ids": list(
+            specialized.get("kernel_retained_tool_ids") or []
+        ),
+        "protocol_retained_tool_ids": list(
+            specialized.get("protocol_retained_tool_ids") or []
+        ),
+        "policy": specialized.get("policy"),
+    }
+
+
+def _compact_elevation_for_durable(item: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep elevation identity + outcome; bind check bodies by digest."""
+
+    checks = item.get("checks")
+    checks_list = checks if isinstance(checks, list) else None
+    checks_digest = item.get("checks_digest_sha256")
+    if checks_digest is None and checks_list is not None:
+        checks_digest = content_digest(checks_list)
+    return {
+        "tool_id": item.get("tool_id"),
+        "lane_id": item.get("lane_id"),
+        "elevated": bool(item.get("elevated")),
+        "reason": item.get("reason"),
+        "interface": item.get("interface"),
+        "evidence_class": item.get("evidence_class"),
+        "semantic_receipt_digest_sha256": item.get(
+            "semantic_receipt_digest_sha256"
+        ),
+        "checks_digest_sha256": checks_digest,
+        "check_count": len(checks_list) if checks_list is not None else 0,
+        "check_kinds": sorted(
+            {
+                str(check.get("kind") or "")
+                for check in (checks_list or [])
+                if isinstance(check, Mapping) and check.get("kind")
+            }
+        ),
+    }
+
+
+def project_durable_certificate(
+    certificate: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return a digest-bound durable projection under single-file budgets.
+
+    ``build_certificate()`` retains the lossless in-memory form (full semantic
+    receipts, check sets, specialized composites) for tests and elevation
+    logic. The checked-in public artifact binds those bulk surfaces by digest
+    so reissue patches remain inside proposal admission limits.
+    """
+
+    existing = certificate.get("durable_projection")
+    if isinstance(existing, Mapping) and existing.get("enabled") is True:
+        # Already a durable projection — rebind identity for self-consistency.
+        projected = {
+            key: value
+            for key, value in certificate.items()
+            if key != "certificate_digest_sha256"
+        }
+        projected["certificate_digest_sha256"] = content_digest(projected)
+        return projected
+
+    source_digest = str(certificate.get("certificate_digest_sha256") or "")
+    projected: dict[str, Any] = {
+        key: value
+        for key, value in certificate.items()
+        if key
+        not in {
+            "certificate_digest_sha256",
+            "semantic_lane_results",
+            "specialized_receipt_aggregation",
+            "role_aware",
+            "durable_projection",
+        }
+    }
+
+    projected["semantic_lane_results"] = [
+        _compact_semantic_lane_for_durable(result)
+        for result in (certificate.get("semantic_lane_results") or [])
+        if isinstance(result, Mapping)
+    ]
+
+    specialized = certificate.get("specialized_receipt_aggregation")
+    if isinstance(specialized, Mapping):
+        projected["specialized_receipt_aggregation"] = (
+            _compact_specialized_for_durable(specialized)
+        )
+    else:
+        projected["specialized_receipt_aggregation"] = specialized
+
+    role_aware = certificate.get("role_aware")
+    if isinstance(role_aware, Mapping):
+        compact_role = {
+            key: value
+            for key, value in role_aware.items()
+            if key != "elevations"
+        }
+        compact_role["elevations"] = [
+            _compact_elevation_for_durable(item)
+            for item in (role_aware.get("elevations") or [])
+            if isinstance(item, Mapping)
+        ]
+        projected["role_aware"] = compact_role
+    else:
+        projected["role_aware"] = role_aware
+
+    projected["durable_projection"] = {
+        "enabled": True,
+        "bulk_surfaces_digest_bound": True,
+        "source_certificate_digest_sha256": source_digest or None,
+        "semantic_lane_results_mode": "digest_bound",
+        "specialized_aggregation_mode": "digest_bound",
+        "elevation_checks_mode": "digest_bound",
+        "max_bytes_budget": DURABLE_CERTIFICATE_MAX_BYTES,
+    }
+    projected["certificate_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in projected.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    return projected
+
+
 def write_certificate(
     certificate: Mapping[str, Any],
     destination: Path,
+    *,
+    durable: bool | None = None,
 ) -> Path:
+    """Write a certificate JSON artifact, compacting when over admission budget.
+
+    When ``durable`` is True, always write the digest-bound projection. When
+    None (default), auto-compact if the indented serialization would exceed
+    :data:`DURABLE_CERTIFICATE_MAX_BYTES`.
+    """
+
     destination.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(certificate, indent=2, sort_keys=False) + "\n"
+    payload: Mapping[str, Any] = certificate
+    if durable is True:
+        payload = project_durable_certificate(certificate)
+    elif durable is None:
+        probe = json.dumps(certificate, indent=2, sort_keys=False) + "\n"
+        if len(probe.encode("utf-8")) > DURABLE_CERTIFICATE_MAX_BYTES:
+            payload = project_durable_certificate(certificate)
+    text = json.dumps(payload, indent=2, sort_keys=False) + "\n"
     # Atomic replace.
     fd, tmp_name = tempfile.mkstemp(
         prefix=destination.name + ".",
