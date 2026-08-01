@@ -18865,19 +18865,36 @@ class PortalImplementationDaemon:
         ).strip()
         self._implementation_seed_failure_guidance[key] = guidance
         guide_path = ""
-        try:
-            guide_file = (
-                self.implementation_log_dir
-                / "seed_recovery_guidance"
-                / (
-                    f"{self._prior_attempt_seed_recovery_slug(task)}"
-                    f"-attempt-{int(attempt)}-seed-recovery.md"
-                )
+        guidance_storage = "supervisor_event"
+        guidance_file_skipped_reason = ""
+        guide_file = (
+            self.implementation_log_dir
+            / "seed_recovery_guidance"
+            / (
+                f"{self._prior_attempt_seed_recovery_slug(task)}"
+                f"-attempt-{int(attempt)}-seed-recovery.md"
             )
-            write_text_atomic(guide_file, guidance + "\n", encoding="utf-8")
-            guide_path = str(guide_file.resolve(strict=False))
-        except OSError:
-            guide_path = ""
+        )
+        try:
+            resolved_guide = guide_file.resolve(strict=False)
+            resolved_worktree = worktree_path.resolve(strict=False)
+            if (
+                resolved_guide == resolved_worktree
+                or resolved_guide.is_relative_to(resolved_worktree)
+            ):
+                guidance_file_skipped_reason = (
+                    "implementation_log_dir_within_candidate"
+                )
+            else:
+                write_text_atomic(
+                    resolved_guide,
+                    guidance + "\n",
+                    encoding="utf-8",
+                )
+                guide_path = str(resolved_guide)
+                guidance_storage = "supervisor_state_file_and_event"
+        except (OSError, RuntimeError):
+            guidance_file_skipped_reason = "guidance_file_write_failed"
         self._record_event(
             "implementation_prior_attempt_seed_failed",
             {
@@ -18887,7 +18904,10 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "guidance": guidance,
                 "guidance_path": guide_path,
-                "guidance_storage": "supervisor_state",
+                "guidance_storage": guidance_storage,
+                "guidance_file_skipped_reason": (
+                    guidance_file_skipped_reason
+                ),
                 "seed_plan": dict(seed_plan),
                 "seed_apply": dict(seed_apply),
             },

@@ -1421,3 +1421,53 @@ def test_record_prior_attempt_seed_failure_writes_guidance_outside_candidate(
     assert guide.is_file()
     assert "compactly" in guide.read_text(encoding="utf-8")
     assert _git(worktree, "status", "--short") == ""
+
+
+def test_record_prior_attempt_seed_failure_never_writes_inside_candidate(
+    tmp_path: Path,
+) -> None:
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    _git(worktree, "init")
+    _git(worktree, "config", "user.name", "Test User")
+    _git(worktree, "config", "user.email", "test@example.invalid")
+    (worktree / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(worktree, "add", "base.txt")
+    _git(worktree, "commit", "-m", "base")
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        implementation_log_dir=worktree / "candidate-logs",
+    )
+    task = PortalTask(
+        task_id="PTR-042",
+        title="t",
+        status="pending",
+        completion="manual",
+        priority="P0",
+        track="gate",
+        outputs=["tests/fixtures/logic/admissibility"],
+        canonical_task_cid="cid-ptr-042",
+    )
+
+    daemon._record_prior_attempt_seed_failure(
+        task=task,
+        attempt=2,
+        seed_plan={"prior_commit": "abc123"},
+        seed_apply={"applied": False, "reason": "prior_seed_apply_failed"},
+        worktree_path=worktree,
+        branch_name="implementation/ptr-042-attempt-2",
+    )
+
+    assert not (worktree / "candidate-logs").exists()
+    assert _git(worktree, "status", "--short") == ""
+    event = daemon._iter_events()[-1]
+    assert event["guidance_storage"] == "supervisor_event"
+    assert event["guidance_path"] == ""
+    assert (
+        event["guidance_file_skipped_reason"]
+        == "implementation_log_dir_within_candidate"
+    )
