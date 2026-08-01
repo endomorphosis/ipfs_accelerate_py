@@ -18829,6 +18829,13 @@ class PortalImplementationDaemon:
             ),
         }
 
+    @staticmethod
+    def _prior_attempt_seed_recovery_slug(task: PortalTask) -> str:
+        return (
+            re.sub(r"[^a-z0-9._-]+", "-", task.task_id.lower()).strip("-")
+            or "task"
+        )
+
     def _record_prior_attempt_seed_failure(
         self,
         *,
@@ -18858,23 +18865,19 @@ class PortalImplementationDaemon:
         ).strip()
         self._implementation_seed_failure_guidance[key] = guidance
         guide_path = ""
-        if worktree_path.exists():
-            try:
-                guide_dir = (
-                    worktree_path / "docs" / "agent-supervisor" / "rescue"
+        try:
+            guide_file = (
+                self.implementation_log_dir
+                / "seed_recovery_guidance"
+                / (
+                    f"{self._prior_attempt_seed_recovery_slug(task)}"
+                    f"-attempt-{int(attempt)}-seed-recovery.md"
                 )
-                guide_dir.mkdir(parents=True, exist_ok=True)
-                safe_task = re.sub(
-                    r"[^a-z0-9._-]+", "-", task.task_id.lower()
-                ).strip("-") or "task"
-                guide_file = (
-                    guide_dir
-                    / f"{safe_task}-attempt-{int(attempt)}-seed-recovery.md"
-                )
-                guide_file.write_text(guidance + "\n", encoding="utf-8")
-                guide_path = str(guide_file.relative_to(worktree_path))
-            except OSError:
-                guide_path = ""
+            )
+            write_text_atomic(guide_file, guidance + "\n", encoding="utf-8")
+            guide_path = str(guide_file.resolve(strict=False))
+        except OSError:
+            guide_path = ""
         self._record_event(
             "implementation_prior_attempt_seed_failed",
             {
@@ -18884,6 +18887,7 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "guidance": guidance,
                 "guidance_path": guide_path,
+                "guidance_storage": "supervisor_state",
                 "seed_plan": dict(seed_plan),
                 "seed_apply": dict(seed_apply),
             },

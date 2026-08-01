@@ -1363,12 +1363,18 @@ def test_consume_merge_rejects_queue_target_mismatch(
         raise AssertionError("mismatched merge queue target must fail closed")
 
 
-def test_record_prior_attempt_seed_failure_writes_guidance(
+def test_record_prior_attempt_seed_failure_writes_guidance_outside_candidate(
     tmp_path: Path,
 ) -> None:
     daemon = _daemon(tmp_path)
     worktree = tmp_path / "wt"
     worktree.mkdir()
+    _git(worktree, "init")
+    _git(worktree, "config", "user.name", "Test User")
+    _git(worktree, "config", "user.email", "test@example.invalid")
+    (worktree / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(worktree, "add", "base.txt")
+    _git(worktree, "commit", "-m", "base")
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         PortalTask,
     )
@@ -1399,12 +1405,19 @@ def test_record_prior_attempt_seed_failure_writes_guidance(
     key = daemon._canonical_ref(task)
     assert key in daemon._implementation_seed_failure_guidance
     assert "abc123" in daemon._implementation_seed_failure_guidance[key]
-    guide = (
+    legacy_guide = (
         worktree
         / "docs"
         / "agent-supervisor"
         / "rescue"
         / "lig-016-attempt-2-seed-recovery.md"
     )
+    guide = (
+        daemon.implementation_log_dir
+        / "seed_recovery_guidance"
+        / "lig-016-attempt-2-seed-recovery.md"
+    )
+    assert not legacy_guide.exists()
     assert guide.is_file()
     assert "compactly" in guide.read_text(encoding="utf-8")
+    assert _git(worktree, "status", "--short") == ""
