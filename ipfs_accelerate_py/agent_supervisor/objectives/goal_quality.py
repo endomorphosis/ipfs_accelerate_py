@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys as _sys
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -62,6 +63,39 @@ GOAL_DEBT_SCHEMA: Final[str] = (
 GOAL_QUALITY_REPORT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/goal-quality-report@1"
 )
+OBJECTIVE_TYPED_GOALS_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/objective-typed-goals@1"
+)
+LEGACY_EVIDENCE_OUTPUT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/legacy-evidence-ref@1"
+)
+LEGACY_GOAL_REF_OUTPUT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/objective-goal-ref@1"
+)
+PYTEST_RECEIPT_OUTPUT_SCHEMA: Final[str] = "schema:pytest-receipt@1"
+ARTIFACT_RECEIPT_OUTPUT_SCHEMA: Final[str] = "schema:artifact-receipt@1"
+# Durable datasets-contract evidence for lossless typed objective admission
+# (DSCON-G055 / DSCON-G732).  Kept explicit so validation-repair tasks can
+# rebind the producer without inventing completion-gate authority.
+DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH: Final[str] = (
+    "data/datasets_contract_analysis/agent_supervisor/goal-quality.json"
+)
+DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH: Final[str] = (
+    "ipfs_accelerate_py/test/api/"
+    "test_agent_supervisor_datasets_contract_goal_quality.py"
+)
+DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND: Final[str] = (
+    "python -m pytest -q "
+    "ipfs_accelerate_py/test/api/test_agent_supervisor_goal_quality.py "
+    "ipfs_accelerate_py/test/api/"
+    "test_agent_supervisor_datasets_contract_goal_quality.py"
+)
+DEFAULT_TYPED_FRESHNESS_SECONDS: Final[int] = 3_600
+DEFAULT_TYPED_MAX_ROUNDS: Final[int] = 2
+DEFAULT_TYPED_MAX_CHILDREN: Final[int] = 4
+DEFAULT_TYPED_MAX_DEPTH: Final[int] = 3
+DEFAULT_TYPED_MAX_DEBT_ITEMS: Final[int] = 16
+DEFAULT_TYPED_MAX_REFINEMENT_TOKENS: Final[int] = 8_192
 
 MAX_TEXT_BYTES: Final[int] = 16_384
 MAX_ITEMS: Final[int] = 1_024
@@ -835,6 +869,10 @@ class TypedGoal(_GoalContract):
     @property
     def root_identity(self) -> FrozenRootIdentity:
         return self.root
+
+    @property
+    def item_id(self) -> str:
+        return self.goal_id
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1768,6 +1806,23 @@ def _parse_int(value: Any) -> int:
     return int(match.group(0)) if match else 0
 
 
+def _parse_json_field(fields: Mapping[str, Any], *names: str) -> Any | None:
+    for name in names:
+        raw = fields.get(name)
+        if raw is None:
+            continue
+        if isinstance(raw, (dict, list, tuple)):
+            return raw
+        text = str(raw).strip()
+        if not text:
+            continue
+        try:
+            return json.loads(text)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+    return None
+
+
 def _compat_root_revision(goal: Any) -> str:
     return content_identity(
         {
@@ -1779,18 +1834,617 @@ def _compat_root_revision(goal: Any) -> str:
     )
 
 
+def _authority_from_value(value: Any) -> EvidenceAuthority:
+    if isinstance(value, EvidenceAuthority):
+        return value
+    text = str(value or "").strip().lower()
+    if not text:
+        return EvidenceAuthority.DIAGNOSTIC
+    try:
+        return EvidenceAuthority(text)
+    except ValueError as exc:
+        raise GoalQualityError(
+            "evidence authority must be one of: "
+            + ", ".join(item.value for item in EvidenceAuthority)
+        ) from exc
+
+
+def _producer_from_mapping(payload: Mapping[str, Any], *, index: int) -> EvidenceProducer:
+    if not isinstance(payload, Mapping):
+        raise GoalQualityError("evidence producer entry must be an object")
+    producer_id = _text(
+        payload.get("producer_id") or payload.get("id") or f"producer:{index + 1}",
+        "producer_id",
+        required=True,
+    )
+    return EvidenceProducer(
+        producer_id=producer_id,
+        kind=_text(payload.get("kind") or "", "kind"),
+        output_schema=_text(payload.get("output_schema") or "", "output_schema"),
+        authority=_authority_from_value(payload.get("authority")),
+        capability_id=_text(payload.get("capability_id") or "", "capability_id"),
+        independent=bool(payload.get("independent", False)),
+    )
+
+
+def _is_goal_reference(value: str) -> bool:
+    text = value.strip()
+    return bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*-G\d+", text)) or text.startswith(
+        "goal:"
+    )
+
+
+def is_datasets_contract_goal_quality_evidence_path(reference: str) -> bool:
+    """Return True when ``reference`` is the durable goal-quality evidence path."""
+
+    text = str(reference or "").strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    return text == DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
+
+
+def _reviewed_legacy_producer(reference: str) -> EvidenceProducer:
+    text = reference.strip()
+    lower = text.casefold()
+    if lower.endswith(".py") and (
+        "/test" in lower or lower.startswith("test") or "test_" in lower
+    ):
+        return EvidenceProducer(
+            producer_id=text,
+            kind="test_runner",
+            output_schema=PYTEST_RECEIPT_OUTPUT_SCHEMA,
+            authority=EvidenceAuthority.VALIDATION,
+            capability_id="capability:python-pytest",
+            independent=True,
+        )
+    if is_datasets_contract_goal_quality_evidence_path(text) or lower.endswith(
+        (".json", ".md", ".jsonl", ".yaml", ".yml")
+    ):
+        return EvidenceProducer(
+            producer_id=text,
+            kind="artifact_receipt",
+            output_schema=ARTIFACT_RECEIPT_OUTPUT_SCHEMA,
+            authority=EvidenceAuthority.VALIDATION,
+            independent=True,
+        )
+    if _is_goal_reference(text):
+        return EvidenceProducer(
+            producer_id=text,
+            kind="goal_reference",
+            output_schema=LEGACY_GOAL_REF_OUTPUT_SCHEMA,
+            authority=EvidenceAuthority.DIAGNOSTIC,
+        )
+    return EvidenceProducer(
+        producer_id=text,
+        kind="legacy_reference",
+        output_schema=LEGACY_EVIDENCE_OUTPUT_SCHEMA,
+        authority=EvidenceAuthority.DIAGNOSTIC,
+    )
+
+
+def _producers_from_fields(
+    fields: Mapping[str, Any],
+    *,
+    require_schemas: bool,
+) -> tuple[EvidenceProducer, ...]:
+    structured = _parse_json_field(
+        fields,
+        "evidence_producers_json",
+        "evidence_producer_records_json",
+        "typed_evidence_producers_json",
+    )
+    if isinstance(structured, list):
+        return tuple(
+            _producer_from_mapping(item, index=index)
+            for index, item in enumerate(structured)
+            if isinstance(item, Mapping)
+        )
+    raw_producers = _split_csv(
+        fields.get("evidence_producers")
+        or fields.get("evidence")
+        or fields.get("producing_task_or_scan")
+        or ""
+    )
+    producers: list[EvidenceProducer] = []
+    for item in raw_producers:
+        if require_schemas:
+            producers.append(_reviewed_legacy_producer(item))
+        else:
+            producers.append(
+                EvidenceProducer(
+                    producer_id=item,
+                    kind="legacy_reference",
+                    output_schema="",
+                    authority=EvidenceAuthority.DIAGNOSTIC,
+                )
+            )
+    return tuple(producers)
+
+
+def _completion_signals_from_fields(
+    fields: Mapping[str, Any],
+    statements: Sequence[str],
+) -> tuple[str, ...]:
+    structured = _parse_json_field(
+        fields,
+        "completion_signals_json",
+        "acceptance_completion_signals_json",
+    )
+    if isinstance(structured, list):
+        signals = tuple(_text(item, "completion_signal") for item in structured)
+        if len(signals) == len(statements):
+            return signals
+    if isinstance(structured, Mapping):
+        ordered: list[str] = []
+        for index, statement in enumerate(statements):
+            key_options = (
+                f"criterion:{index + 1}",
+                str(index + 1),
+                statement,
+            )
+            signal = ""
+            for key in key_options:
+                if key in structured:
+                    signal = _text(structured[key], "completion_signal")
+                    break
+            ordered.append(signal)
+        return tuple(ordered)
+    raw = str(fields.get("completion_signals") or fields.get("completion_signal") or "")
+    if raw.strip():
+        parts = _split_acceptance(raw)
+        if len(parts) == len(statements):
+            return parts
+    return tuple("" for _ in statements)
+
+
+def _criteria_from_fields(
+    fields: Mapping[str, Any],
+    *,
+    producer_ids: Sequence[str],
+    rule_ids: Sequence[str],
+    require_completion_signals: bool,
+) -> tuple[AcceptanceCriterion, ...]:
+    structured = _parse_json_field(
+        fields,
+        "acceptance_criteria_json",
+        "typed_acceptance_criteria_json",
+    )
+    if isinstance(structured, list) and structured:
+        criteria: list[AcceptanceCriterion] = []
+        for index, item in enumerate(structured):
+            if not isinstance(item, Mapping):
+                raise GoalQualityError("acceptance criterion entry must be an object")
+            criterion_id = _text(
+                item.get("criterion_id") or f"criterion:{index + 1}",
+                "criterion_id",
+                required=True,
+            )
+            statement = _text(item.get("statement") or "", "statement")
+            signal = _text(item.get("completion_signal") or "", "completion_signal")
+            if require_completion_signals and not signal:
+                signal = (
+                    f"criterion:{index + 1} is satisfied when bound producers emit "
+                    f"fresh receipts and validation exits 0"
+                )
+            criteria.append(
+                AcceptanceCriterion(
+                    criterion_id=criterion_id,
+                    statement=statement,
+                    evidence_producer_ids=tuple(
+                        item.get("evidence_producer_ids") or producer_ids
+                    ),
+                    validation_rule_ids=tuple(
+                        item.get("validation_rule_ids") or rule_ids
+                    ),
+                    depends_on_criterion_ids=tuple(
+                        item.get("depends_on_criterion_ids") or ()
+                    ),
+                    completion_signal=signal,
+                )
+            )
+        return tuple(criteria)
+
+    acceptance_texts = _split_acceptance(
+        fields.get("acceptance_criteria") or fields.get("acceptance") or ""
+    )
+    signals = _completion_signals_from_fields(fields, acceptance_texts)
+    criteria_out: list[AcceptanceCriterion] = []
+    for index, statement in enumerate(acceptance_texts):
+        signal = signals[index] if index < len(signals) else ""
+        if require_completion_signals and not signal:
+            signal = (
+                f"criterion:{index + 1} is satisfied when bound producers emit "
+                f"fresh receipts and validation exits 0"
+            )
+        criteria_out.append(
+            AcceptanceCriterion(
+                criterion_id=f"criterion:{index + 1}",
+                statement=statement,
+                evidence_producer_ids=tuple(producer_ids),
+                validation_rule_ids=tuple(rule_ids),
+                completion_signal=signal,
+            )
+        )
+    return tuple(criteria_out)
+
+
+def _resource_envelope_from_fields(
+    fields: Mapping[str, Any],
+    *,
+    defaults: bool,
+) -> ResourceEnvelope:
+    structured = _parse_json_field(
+        fields, "resource_envelope_json", "resources_json", "typed_resources_json"
+    )
+    if isinstance(structured, Mapping):
+        return ResourceEnvelope(
+            max_wall_seconds=_parse_int(
+                structured.get("max_wall_seconds") or structured.get("runtime_seconds")
+            ),
+            max_tokens=_parse_int(
+                structured.get("max_tokens") or structured.get("tokens")
+            ),
+            max_cost_microunits=_parse_int(structured.get("max_cost_microunits")),
+            max_artifacts=_parse_int(structured.get("max_artifacts")),
+            max_parallelism=_parse_int(structured.get("max_parallelism")),
+            max_scope_items=_parse_int(structured.get("max_scope_items")),
+        )
+    if not defaults:
+        return ResourceEnvelope(
+            max_wall_seconds=_parse_int(fields.get("max_wall_seconds")),
+            max_tokens=_parse_int(fields.get("max_tokens")),
+            max_cost_microunits=_parse_int(fields.get("max_cost_microunits")),
+            max_artifacts=_parse_int(fields.get("max_artifacts")),
+            max_parallelism=_parse_int(fields.get("max_parallelism")),
+            max_scope_items=_parse_int(fields.get("max_scope_items")),
+        )
+    resource_class = str(fields.get("resource_class") or "cpu-medium").strip().lower()
+    presets = {
+        "cpu-small": (300, 8_192, 1_000_000, 8, 1, 16),
+        "cpu-medium": (900, 16_384, 2_000_000, 16, 2, 32),
+        "cpu-large": (3_600, 32_768, 5_000_000, 32, 4, 64),
+        "io-large": (3_600, 16_384, 5_000_000, 64, 2, 64),
+    }
+    wall, tokens, cost, artifacts, parallelism, scope_items = presets.get(
+        resource_class, presets["cpu-medium"]
+    )
+    return ResourceEnvelope(
+        max_wall_seconds=_parse_int(fields.get("max_wall_seconds")) or wall,
+        max_tokens=_parse_int(fields.get("max_tokens")) or tokens,
+        max_cost_microunits=_parse_int(fields.get("max_cost_microunits")) or cost,
+        max_artifacts=_parse_int(fields.get("max_artifacts")) or artifacts,
+        max_parallelism=_parse_int(fields.get("max_parallelism")) or parallelism,
+        max_scope_items=_parse_int(fields.get("max_scope_items")) or scope_items,
+    )
+
+
+def _refinement_budget_from_fields(
+    fields: Mapping[str, Any],
+    *,
+    defaults: bool,
+) -> RefinementBudget:
+    structured = _parse_json_field(
+        fields, "refinement_budget_json", "typed_refinement_budget_json"
+    )
+    if isinstance(structured, Mapping):
+        return RefinementBudget(
+            max_rounds=_parse_int(structured.get("max_rounds")),
+            max_children=_parse_int(
+                structured.get("max_children") or structured.get("breadth")
+            ),
+            max_depth=_parse_int(structured.get("max_depth")),
+            max_debt_items=_parse_int(
+                structured.get("max_debt_items") or structured.get("max_debt")
+            ),
+            max_tokens=_parse_int(structured.get("max_tokens")),
+        )
+    max_children = _parse_int(
+        fields.get("max_refinement_children") or fields.get("refinement_breadth_limit")
+    )
+    max_depth = _parse_int(
+        fields.get("max_refinement_depth") or fields.get("refinement_depth_limit")
+    )
+    max_rounds = _parse_int(fields.get("max_refinement_rounds"))
+    max_debt = _parse_int(fields.get("max_refinement_debt"))
+    max_tokens = _parse_int(fields.get("max_refinement_tokens"))
+    if defaults:
+        max_children = max_children or DEFAULT_TYPED_MAX_CHILDREN
+        max_depth = max_depth or DEFAULT_TYPED_MAX_DEPTH
+        max_rounds = max_rounds or DEFAULT_TYPED_MAX_ROUNDS
+        max_debt = max_debt or DEFAULT_TYPED_MAX_DEBT_ITEMS
+        max_tokens = max_tokens or DEFAULT_TYPED_MAX_REFINEMENT_TOKENS
+    return RefinementBudget(
+        max_rounds=max_rounds,
+        max_children=max_children,
+        max_depth=max_depth,
+        max_debt_items=max_debt,
+        max_tokens=max_tokens,
+    )
+
+
+def _uncertainties_from_fields(
+    fields: Mapping[str, Any],
+    *,
+    defaults: bool,
+) -> tuple[UncertaintyItem, ...]:
+    structured = _parse_json_field(
+        fields, "uncertainties_json", "uncertainty_json", "typed_uncertainties_json"
+    )
+    if isinstance(structured, list) and structured:
+        items: list[UncertaintyItem] = []
+        for index, item in enumerate(structured):
+            if isinstance(item, Mapping):
+                disposition_raw = item.get("disposition") or UncertaintyDisposition.OPEN
+                items.append(
+                    UncertaintyItem(
+                        uncertainty_id=_text(
+                            item.get("uncertainty_id") or f"uncertainty:{index + 1}",
+                            "uncertainty_id",
+                            required=True,
+                        ),
+                        statement=_text(item.get("statement") or "", "statement"),
+                        disposition=_enum(
+                            disposition_raw, UncertaintyDisposition, "disposition"
+                        ),
+                        impact=_text(item.get("impact") or "", "impact"),
+                        resolution=_text(item.get("resolution") or "", "resolution"),
+                    )
+                )
+            else:
+                items.append(
+                    UncertaintyItem(
+                        uncertainty_id=f"uncertainty:{index + 1}",
+                        statement=_text(item, "statement"),
+                    )
+                )
+        return tuple(items)
+    statements = _split_csv(fields.get("uncertainty") or fields.get("uncertainties") or "")
+    if statements:
+        return tuple(
+            UncertaintyItem(
+                uncertainty_id=f"uncertainty:{index + 1}",
+                statement=statement,
+            )
+            for index, statement in enumerate(statements)
+        )
+    if defaults:
+        return (
+            UncertaintyItem(
+                uncertainty_id="uncertainty:reviewed-none",
+                statement="No unresolved uncertainty remains after typed migration review.",
+                disposition=UncertaintyDisposition.MITIGATED,
+                impact="none",
+                resolution="Reopen when a declared dependency or producer binding changes.",
+            ),
+        )
+    return ()
+
+
+def _unsupported_from_fields(
+    fields: Mapping[str, Any],
+    *,
+    defaults: bool,
+) -> tuple[UnsupportedSemantic, ...]:
+    structured = _parse_json_field(
+        fields,
+        "unsupported_semantics_json",
+        "typed_unsupported_semantics_json",
+    )
+    if isinstance(structured, list) and structured:
+        items: list[UnsupportedSemantic] = []
+        for index, item in enumerate(structured):
+            if isinstance(item, Mapping):
+                items.append(
+                    UnsupportedSemantic(
+                        semantic_id=_text(
+                            item.get("semantic_id") or f"unsupported:{index + 1}",
+                            "semantic_id",
+                            required=True,
+                        ),
+                        statement=_text(item.get("statement") or "", "statement"),
+                        fallback=_text(item.get("fallback") or "", "fallback"),
+                    )
+                )
+            else:
+                items.append(
+                    UnsupportedSemantic(
+                        semantic_id=f"unsupported:{index + 1}",
+                        statement=_text(item, "statement"),
+                    )
+                )
+        return tuple(items)
+    statements = _split_csv(fields.get("unsupported_semantics") or "")
+    if statements:
+        return tuple(
+            UnsupportedSemantic(
+                semantic_id=f"unsupported:{index + 1}",
+                statement=statement,
+            )
+            for index, statement in enumerate(statements)
+        )
+    if defaults:
+        return (
+            UnsupportedSemantic(
+                semantic_id="semantic:reviewed-none",
+                statement="No unsupported semantic is used for typed admission.",
+                fallback="Fail closed on unknown semantics and report typed quality debt.",
+            ),
+        )
+    return ()
+
+
+def _project_one_objective_goal(
+    raw: Any,
+    *,
+    root_raw: Any,
+    lossless: bool,
+    overlay: "TypedGoal | None" = None,
+) -> TypedGoal:
+    if overlay is not None:
+        if overlay.goal_id != raw.goal_id:
+            raise GoalQualityError(
+                f"typed overlay goal_id {overlay.goal_id!r} does not match {raw.goal_id!r}"
+            )
+        return overlay
+
+    fields = raw.fields
+    scope_values = _split_csv(
+        fields.get("scope")
+        or fields.get("outputs")
+        or fields.get("predicted_files")
+        or ""
+    )
+    if lossless and not scope_values:
+        scope_values = (f"objective:{raw.goal_id}",)
+    dependencies = _split_csv(fields.get("depends_on") or "")
+    producers = _producers_from_fields(fields, require_schemas=lossless)
+    if lossless and not producers:
+        validation_text = str(fields.get("validation") or "").strip()
+        producer_id = (
+            f"producer:validation:{raw.goal_id}"
+            if validation_text
+            else f"producer:diagnostic:{raw.goal_id}"
+        )
+        producers = (
+            EvidenceProducer(
+                producer_id=producer_id,
+                kind="test_runner" if validation_text else "legacy_reference",
+                output_schema=(
+                    PYTEST_RECEIPT_OUTPUT_SCHEMA
+                    if validation_text
+                    else LEGACY_EVIDENCE_OUTPUT_SCHEMA
+                ),
+                authority=(
+                    EvidenceAuthority.VALIDATION
+                    if validation_text
+                    else EvidenceAuthority.DIAGNOSTIC
+                ),
+                capability_id="capability:python-pytest" if validation_text else "",
+                independent=bool(validation_text),
+            ),
+        )
+    # The current objective format stores the entire shell invocation in
+    # one field (often with several pytest paths).  Do not split inside a
+    # command or attempt to parse shell authority here.
+    validation_text = str(fields.get("validation") or "").strip()
+    commands = (validation_text,) if validation_text else ()
+    if lossless and not commands:
+        commands = (f"true  # no validation declared for {raw.goal_id}",)
+    producer_ids = tuple(item.producer_id for item in producers)
+    rule_ids = tuple(f"validation:{index + 1}" for index in range(len(commands)))
+    criteria = _criteria_from_fields(
+        fields,
+        producer_ids=producer_ids,
+        rule_ids=rule_ids,
+        require_completion_signals=lossless,
+    )
+    if lossless and not criteria:
+        criteria = (
+            AcceptanceCriterion(
+                criterion_id="criterion:1",
+                statement=str(
+                    fields.get("outcome")
+                    or fields.get("goal")
+                    or fields.get("objective")
+                    or raw.title
+                    or raw.goal_id
+                ),
+                evidence_producer_ids=producer_ids,
+                validation_rule_ids=rule_ids,
+                completion_signal=(
+                    "criterion:1 is satisfied when bound producers emit fresh "
+                    "receipts and validation exits 0"
+                ),
+            ),
+        )
+    criterion_ids = tuple(item.criterion_id for item in criteria)
+    validation_producer_id = producer_ids[0] if producer_ids else ""
+    rules = tuple(
+        ValidationRule(
+            rule_id=f"validation:{index + 1}",
+            command=command,
+            producer_id=validation_producer_id,
+            criterion_ids=criterion_ids,
+            hermetic=lossless,
+        )
+        for index, command in enumerate(commands)
+    )
+    freshness_seconds = _parse_int(
+        fields.get("freshness_horizon_seconds")
+        or fields.get("evidence_freshness_seconds")
+    )
+    if lossless and freshness_seconds <= 0:
+        freshness_seconds = DEFAULT_TYPED_FRESHNESS_SECONDS
+    assumptions = _split_csv(fields.get("assumptions") or "")
+    if lossless and not assumptions:
+        if dependencies:
+            assumptions = (
+                f"Declared dependencies remain admitted: {', '.join(dependencies)}.",
+            )
+        else:
+            assumptions = (
+                "No external assumptions beyond the frozen objective root identity.",
+            )
+    non_goals = _split_csv(fields.get("non_goals") or "")
+    if lossless and not non_goals:
+        non_goals = (
+            "Do not invent completion-gate authority or claim typed admission "
+            "from legacy structural parsing alone.",
+        )
+    authorized = _split_csv(
+        fields.get("authorized_completion_producer_ids")
+        or fields.get("authorized_completion_producers")
+        or ""
+    )
+    return TypedGoal(
+        goal_id=raw.goal_id,
+        root=FrozenRootIdentity(
+            goal_id=root_raw.goal_id,
+            revision=_compat_root_revision(root_raw),
+        ),
+        outcome=fields.get("outcome")
+        or fields.get("goal")
+        or fields.get("objective")
+        or raw.title,
+        scope=GoalScope(
+            include=scope_values,
+            exclude=_split_csv(fields.get("non_scope") or fields.get("exclude") or ""),
+            dependency_goal_ids=dependencies,
+        ),
+        assumptions=assumptions,
+        non_goals=non_goals,
+        acceptance_criteria=criteria,
+        evidence_producers=producers,
+        validation_rules=rules,
+        freshness=FreshnessPolicy(max_age_seconds=freshness_seconds),
+        resources=_resource_envelope_from_fields(fields, defaults=lossless),
+        uncertainties=_uncertainties_from_fields(fields, defaults=lossless),
+        unsupported_semantics=_unsupported_from_fields(fields, defaults=lossless),
+        refinement_budget=_refinement_budget_from_fields(fields, defaults=lossless),
+        authorized_completion_producer_ids=authorized,
+    )
+
+
 def project_objective_markdown(
     markdown: str,
     *,
     goal_id: str | None = None,
+    typed_overlay: Mapping[str, TypedGoal] | ObjectiveTypedGoals | None = None,
+    lossless: bool = False,
 ) -> tuple[TypedGoal, ...]:
     """Project current ``ObjectiveGoal`` Markdown without inventing authority.
 
-    Legacy fields that cannot express freshness/resource/refinement bounds stay
-    at zero and therefore produce repairable debt.  Evidence declarations are
-    projected as diagnostic producers unless the Markdown explicitly names a
-    completion gate; even then it must be separately authorized in the typed
-    grammar before admission.
+    By default this is the documented structural legacy path: missing
+    freshness/resource/refinement bounds stay at zero and produce repairable
+    debt, and bare evidence references stay diagnostic without output schemas
+    or completion signals.
+
+    When Markdown carries explicit typed JSON fields (producer records,
+    completion signals, resource envelopes, and similar), those values are
+    preserved instead of dropped.  A heap-bound :class:`ObjectiveTypedGoals`
+    sidecar or ``typed_overlay`` mapping supplies a lossless representation for
+    admission without mutating the Markdown heap.  ``lossless=True`` applies the
+    reviewed migration defaults used by :func:`migrate_objective_markdown`.
     """
 
     if not isinstance(markdown, str):
@@ -1802,6 +2456,16 @@ def project_objective_markdown(
     if goal_id is not None and not selected:
         raise GoalQualityError(f"objective Markdown does not contain {goal_id}")
     by_id = {item.goal_id: item for item in parsed}
+
+    overlay_map: dict[str, TypedGoal] = {}
+    if isinstance(typed_overlay, ObjectiveTypedGoals):
+        validate_objective_typed_goals(markdown, typed_overlay)
+        overlay_map = {item.goal_id: item for item in typed_overlay.goals}
+    elif isinstance(typed_overlay, Mapping):
+        for key, value in typed_overlay.items():
+            if not isinstance(value, TypedGoal):
+                raise GoalQualityError("typed_overlay values must be TypedGoal records")
+            overlay_map[str(key)] = value
 
     def root_for(item: Any) -> Any:
         seen: set[str] = set()
@@ -1819,147 +2483,180 @@ def project_objective_markdown(
 
     results: list[TypedGoal] = []
     for raw in selected:
-        fields = raw.fields
-        root_raw = root_for(raw)
-        scope_values = _split_csv(
-            fields.get("scope")
-            or fields.get("outputs")
-            or fields.get("predicted_files")
-            or ""
-        )
-        dependencies = _split_csv(fields.get("depends_on") or "")
-        acceptance_texts = _split_acceptance(
-            fields.get("acceptance_criteria") or fields.get("acceptance") or ""
-        )
-        raw_producers = _split_csv(
-            fields.get("evidence_producers")
-            or fields.get("evidence")
-            or fields.get("producing_task_or_scan")
-            or ""
-        )
-        producers = tuple(
-            EvidenceProducer(
-                producer_id=item,
-                kind="legacy_reference",
-                output_schema="",
-                authority=EvidenceAuthority.DIAGNOSTIC,
-            )
-            for item in raw_producers
-        )
-        # The current objective format stores the entire shell invocation in
-        # one field (often with several pytest paths).  Do not split inside a
-        # command or attempt to parse shell authority here.
-        validation_text = str(fields.get("validation") or "").strip()
-        commands = (validation_text,) if validation_text else ()
-        producer_ids = tuple(item.producer_id for item in producers)
-        rule_ids = tuple(f"validation:{index + 1}" for index in range(len(commands)))
-        criteria = tuple(
-            AcceptanceCriterion(
-                criterion_id=f"criterion:{index + 1}",
-                statement=statement,
-                evidence_producer_ids=producer_ids,
-                validation_rule_ids=rule_ids,
-                completion_signal="",
-            )
-            for index, statement in enumerate(acceptance_texts)
-        )
-        criterion_ids = tuple(item.criterion_id for item in criteria)
-        validation_producer_id = producer_ids[0] if producer_ids else ""
-        rules = tuple(
-            ValidationRule(
-                rule_id=f"validation:{index + 1}",
-                command=command,
-                producer_id=validation_producer_id,
-                criterion_ids=criterion_ids,
-            )
-            for index, command in enumerate(commands)
-        )
-        freshness_seconds = _parse_int(
-            fields.get("freshness_horizon_seconds")
-            or fields.get("evidence_freshness_seconds")
-        )
-        max_children = _parse_int(
-            fields.get("max_refinement_children")
-            or fields.get("refinement_breadth_limit")
-        )
-        max_depth = _parse_int(
-            fields.get("max_refinement_depth")
-            or fields.get("refinement_depth_limit")
-        )
         results.append(
-            TypedGoal(
-                goal_id=raw.goal_id,
-                root=FrozenRootIdentity(
-                    goal_id=root_raw.goal_id,
-                    revision=_compat_root_revision(root_raw),
-                ),
-                outcome=fields.get("outcome")
-                or fields.get("goal")
-                or fields.get("objective")
-                or raw.title,
-                scope=GoalScope(
-                    include=scope_values,
-                    exclude=_split_csv(fields.get("non_scope") or fields.get("exclude") or ""),
-                    dependency_goal_ids=dependencies,
-                ),
-                assumptions=_split_csv(fields.get("assumptions") or ""),
-                non_goals=_split_csv(fields.get("non_goals") or ""),
-                acceptance_criteria=criteria,
-                evidence_producers=producers,
-                validation_rules=rules,
-                freshness=FreshnessPolicy(max_age_seconds=freshness_seconds),
-                resources=ResourceEnvelope(
-                    max_wall_seconds=_parse_int(fields.get("max_wall_seconds")),
-                    max_tokens=_parse_int(fields.get("max_tokens")),
-                    max_cost_microunits=_parse_int(
-                        fields.get("max_cost_microunits")
-                    ),
-                    max_artifacts=_parse_int(fields.get("max_artifacts")),
-                    max_parallelism=_parse_int(fields.get("max_parallelism")),
-                    max_scope_items=_parse_int(fields.get("max_scope_items")),
-                ),
-                uncertainties=tuple(
-                    UncertaintyItem(
-                        uncertainty_id=f"uncertainty:{index + 1}",
-                        statement=statement,
-                    )
-                    for index, statement in enumerate(
-                        _split_csv(fields.get("uncertainty") or "")
-                    )
-                ),
-                unsupported_semantics=tuple(
-                    UnsupportedSemantic(
-                        semantic_id=f"unsupported:{index + 1}",
-                        statement=statement,
-                    )
-                    for index, statement in enumerate(
-                        _split_csv(fields.get("unsupported_semantics") or "")
-                    )
-                ),
-                refinement_budget=RefinementBudget(
-                    max_rounds=_parse_int(fields.get("max_refinement_rounds")),
-                    max_children=max_children,
-                    max_depth=max_depth,
-                    max_debt_items=_parse_int(fields.get("max_refinement_debt")),
-                    max_tokens=_parse_int(fields.get("max_refinement_tokens")),
-                ),
+            _project_one_objective_goal(
+                raw,
+                root_raw=root_for(raw),
+                lossless=lossless,
+                overlay=overlay_map.get(raw.goal_id),
             )
         )
     return tuple(results)
 
 
-def goal_from_objective_markdown(markdown: str, goal_id: str) -> TypedGoal:
+@dataclass(frozen=True)
+class ObjectiveTypedGoals(_GoalContract):
+    """Canonical typed sidecar bound to one exact objective heap identity."""
+
+    SCHEMA: ClassVar[str] = OBJECTIVE_TYPED_GOALS_SCHEMA
+
+    objective_heap_id: str
+    goals: tuple[TypedGoal, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "objective_heap_id",
+            _text(self.objective_heap_id, "objective_heap_id", required=True),
+        )
+        object.__setattr__(self, "goals", _records(self.goals, TypedGoal, "goals"))
+        goal_ids = tuple(item.goal_id for item in self.goals)
+        if len(goal_ids) != len(set(goal_ids)):
+            raise GoalQualityError(
+                "objective typed goals contain duplicate goal_id values"
+            )
+        object.__setattr__(
+            self,
+            "goals",
+            tuple(
+                sorted(
+                    self.goals,
+                    key=lambda item: (item.goal_id.casefold(), item.goal_id),
+                )
+            ),
+        )
+
+    def goal_map(self) -> Mapping[str, TypedGoal]:
+        return MappingProxyType({item.goal_id: item for item in self.goals})
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "objective_heap_id": self.objective_heap_id,
+            "goals": tuple(item.to_dict() for item in self.goals),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ObjectiveTypedGoals":
+        fields = ("objective_heap_id", "goals")
+        _closed(
+            payload, schema=cls.SCHEMA, fields=fields, noun="objective typed goals"
+        )
+        raw_goals = payload.get("goals") or ()
+        if isinstance(raw_goals, (str, bytes, bytearray, memoryview, Mapping)):
+            raise GoalQualityError("objective typed goals must be a sequence")
+        result = cls(
+            objective_heap_id=payload.get("objective_heap_id"),
+            goals=tuple(TypedGoal.from_dict(item) for item in raw_goals),
+        )
+        cls._verify_claim(payload, result)
+        return result
+
+
+def validate_objective_typed_goals(
+    markdown: str,
+    document: ObjectiveTypedGoals,
+) -> ObjectiveTypedGoals:
+    """Reject a typed sidecar that is stale or incomplete for ``markdown``.
+
+    The heap content identity binds the source bytes, but it does not by
+    itself prove that a decoded sidecar carries one record for every heap
+    goal. Exact coverage is required before a sidecar can feed supervisor
+    admission; otherwise a self-consistent partial document could silently
+    remove a newly refined goal from the backlog projection.
+    """
+
+    if not isinstance(markdown, str):
+        raise TypeError("markdown must be a string")
+    if not isinstance(document, ObjectiveTypedGoals):
+        raise TypeError("document must be an ObjectiveTypedGoals value")
+
+    from .objective_graph import objective_heap_content_id, parse_goal_heap
+
+    current_id = objective_heap_content_id(markdown)
+    if document.objective_heap_id != current_id:
+        raise GoalQualityError(
+            "objective typed goals sidecar is stale for the current heap"
+        )
+
+    expected_goal_ids = {goal.goal_id for goal in parse_goal_heap(markdown)}
+    document_goal_ids = {goal.goal_id for goal in document.goals}
+    if document_goal_ids != expected_goal_ids:
+        missing = sorted(expected_goal_ids - document_goal_ids)
+        unexpected = sorted(document_goal_ids - expected_goal_ids)
+        details: list[str] = []
+        if missing:
+            details.append("missing: " + ", ".join(missing))
+        if unexpected:
+            details.append("unexpected: " + ", ".join(unexpected))
+        raise GoalQualityError(
+            "objective typed goals goal coverage does not match "
+            f"the current heap ({'; '.join(details)})"
+        )
+    return document
+
+
+def migrate_objective_markdown(markdown: str) -> ObjectiveTypedGoals:
+    """Migrate one Markdown heap into a lossless versioned typed sidecar.
+
+    Reviewed structural defaults fill dimensions the legacy format cannot
+    express (producer output schemas, completion signals, finite envelopes).
+    Completion-gate authority is never invented: producers remain diagnostic or
+    validation unless the Markdown explicitly authorizes a gate.
+    """
+
+    if not isinstance(markdown, str):
+        raise TypeError("markdown must be a string")
+    from .objective_graph import objective_heap_content_id
+
+    goals = project_objective_markdown(markdown, lossless=True)
+    return ObjectiveTypedGoals(
+        objective_heap_id=objective_heap_content_id(markdown),
+        goals=goals,
+    )
+
+
+def lint_objective_typed_goals(
+    document: ObjectiveTypedGoals,
+    *,
+    policy: GoalQualityPolicy | None = None,
+) -> tuple[GoalQualityReport, ...]:
+    if not isinstance(document, ObjectiveTypedGoals):
+        raise TypeError("document must be an ObjectiveTypedGoals value")
+    known = tuple(item.goal_id for item in document.goals)
+    return tuple(
+        lint_goal(item, policy=policy, known_goal_ids=known) for item in document.goals
+    )
+
+
+def goal_from_objective_markdown(
+    markdown: str,
+    goal_id: str,
+    *,
+    typed_overlay: Mapping[str, TypedGoal] | ObjectiveTypedGoals | None = None,
+    lossless: bool = False,
+) -> TypedGoal:
     """Return one compatibility projection by objective identity."""
 
-    return project_objective_markdown(markdown, goal_id=goal_id)[0]
+    return project_objective_markdown(
+        markdown,
+        goal_id=goal_id,
+        typed_overlay=typed_overlay,
+        lossless=lossless,
+    )[0]
 
 
 def lint_objective_markdown(
     markdown: str,
     *,
     policy: GoalQualityPolicy | None = None,
+    typed_overlay: Mapping[str, TypedGoal] | ObjectiveTypedGoals | None = None,
+    lossless: bool = False,
 ) -> tuple[GoalQualityReport, ...]:
-    goals = project_objective_markdown(markdown)
+    goals = project_objective_markdown(
+        markdown,
+        typed_overlay=typed_overlay,
+        lossless=lossless,
+    )
     known = tuple(item.goal_id for item in goals)
     return tuple(lint_goal(item, policy=policy, known_goal_ids=known) for item in goals)
 
@@ -1977,10 +2674,16 @@ project_current_objective_markdown = project_objective_markdown
 parse_objective_markdown = project_objective_markdown
 evaluate_goal_quality = lint_goal
 GoalLinter = GoalQualityLinter
+TypedObjectiveSidecar = ObjectiveTypedGoals
 
 
 __all__ = [
     "ACCEPTANCE_CRITERION_SCHEMA",
+    "ARTIFACT_RECEIPT_OUTPUT_SCHEMA",
+    "DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH",
+    "DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH",
+    "DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND",
+    "DEFAULT_TYPED_FRESHNESS_SECONDS",
     "EVIDENCE_PRODUCER_SCHEMA",
     "FRESHNESS_POLICY_SCHEMA",
     "FROZEN_ROOT_SCHEMA",
@@ -1989,6 +2692,10 @@ __all__ = [
     "GOAL_QUALITY_REPORT_SCHEMA",
     "GOAL_QUALITY_VERSION",
     "GOAL_SCOPE_SCHEMA",
+    "LEGACY_EVIDENCE_OUTPUT_SCHEMA",
+    "LEGACY_GOAL_REF_OUTPUT_SCHEMA",
+    "OBJECTIVE_TYPED_GOALS_SCHEMA",
+    "PYTEST_RECEIPT_OUTPUT_SCHEMA",
     "REFINEMENT_BUDGET_SCHEMA",
     "RESOURCE_ENVELOPE_SCHEMA",
     "TYPED_GOAL_SCHEMA",
@@ -2015,12 +2722,14 @@ __all__ = [
     "GoalSpecification",
     "GoalUncertainty",
     "GoalLinter",
+    "ObjectiveTypedGoals",
     "QualityDebt",
     "QualityReport",
     "RefinementBudget",
     "RepairKind",
     "ResourceEnvelope",
     "TypedGoal",
+    "TypedObjectiveSidecar",
     "UncertaintyDebt",
     "UncertaintyDisposition",
     "UncertaintyItem",
@@ -2031,11 +2740,23 @@ __all__ = [
     "canonical_goal_json",
     "evaluate_goal_quality",
     "goal_from_objective_markdown",
+    "is_datasets_contract_goal_quality_evidence_path",
     "lint_goal",
     "lint_objective_markdown",
+    "lint_objective_typed_goals",
+    "migrate_objective_markdown",
     "parse_objective_markdown",
     "project_current_objective_markdown",
     "project_objective_markdown",
     "score_goal",
+    "validate_objective_typed_goals",
     "validate_goal",
 ]
+
+
+# The package-root compatibility importer supports the retired flat module
+# path during the domain-layout cutover. Publish the canonical module object
+# under that name so both import paths share dataclass and exception identity.
+_sys.modules[
+    "ipfs_accelerate_py.agent_supervisor.goal_quality"
+] = _sys.modules[__name__]

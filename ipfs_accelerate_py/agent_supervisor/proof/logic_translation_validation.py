@@ -909,6 +909,28 @@ def canonical_translation_json(value: Any) -> str:
     )
 
 
+def project_translation_contract_to_canonical(
+    contract: "TranslationContract",
+) -> dict[str, Any]:
+    """Project a supervisor translation contract onto canonical form/class ids."""
+
+    from ..canonical_logic_adapter import get_canonical_logic_adapter
+
+    return get_canonical_logic_adapter().project_translation_contract(contract)
+
+
+def project_translation_validation_to_canonical(
+    result: "TranslationValidationResult",
+) -> dict[str, Any]:
+    """Project a supervisor translation validation receipt for datasets consumers."""
+
+    from ..canonical_logic_adapter import get_canonical_logic_adapter
+
+    return get_canonical_logic_adapter().project_translation_validation_receipt(
+        result
+    )
+
+
 __all__ = [
     "ApproximationDirection",
     "LogicForm",
@@ -928,6 +950,8 @@ __all__ = [
     "TranslationValidationResult",
     "canonical_translation_json",
     "inventory_from_reviewed_formula",
+    "project_translation_contract_to_canonical",
+    "project_translation_validation_to_canonical",
     "semantic_inventory_identity",
     "validate_translation",
 ]

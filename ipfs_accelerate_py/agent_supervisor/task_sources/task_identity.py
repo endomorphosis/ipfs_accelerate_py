@@ -224,6 +224,16 @@ def canonical_task_identity(
                 if normalize_identity_text(item)
             }
         )
+        evidence_outputs = sorted(
+            {
+                normalize_identity_path(item)
+                for item in _sequence(
+                    _mapping_value(source, "evidence outputs")
+                    or _mapping_value(metadata, "evidence outputs")
+                )
+                if normalize_identity_path(item)
+            }
+        )
         goal = normalize_identity_text(
             _mapping_value(source, "goal id", "goal packet key", "goal")
             or _mapping_value(metadata, "goal id", "goal packet key", "goal")
@@ -239,6 +249,7 @@ def canonical_task_identity(
                 "outputs": outputs,
                 "acceptance": acceptance,
                 "evidence": evidence,
+                "evidence_outputs": evidence_outputs,
                 "goal": goal,
                 "semantic_hint": semantic_hint,
             }.items()

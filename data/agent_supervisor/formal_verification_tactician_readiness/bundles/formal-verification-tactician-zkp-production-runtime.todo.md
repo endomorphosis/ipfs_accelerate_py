@@ -1,0 +1,72 @@
+# Objective Bundle: formal-verification-tactician/zkp-production-runtime
+
+Source todo: docs/architecture/formal_verification_tactician_readiness.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## FVT-059 Close objective gap: Integrate the live secret-safe ZKP deployment certificate
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-047, FVT-064, FVT-065
+- Outputs: config/formal_verification_zkp_deployment.lock.json, tools/logic/certification/zkp.py, test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_zkp_live_verifier_deployment.py test/integration/toolchains/test_zkp_deployment_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-059-objective-gap-bc1f10387661.md
+- Bundle: formal-verification-tactician/zkp-production-runtime
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-zkp-production-runtime.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 5
+- Parallel lane: formal-verification-tactician/zkp-production-runtime
+- Conflict policy: Own live verifier binding and secret-safe aggregation only; never generate/expose private material or manufacture deployment evidence.
+- Predicted files: config/formal_verification_zkp_deployment.lock.json, tools/logic/certification/zkp.py, test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Changed paths:
+- Context paths: config/formal_verification_zkp_deployment.lock.json, tools/logic/certification/zkp.py, test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- AST symbols: test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Interfaces: ZKPLiveVerifierDeployment@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G211
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/f69a9ad353edf3ddd0d798b4bcaab007be817ad3aa46d7f8af8e8f7007cf2004
+- Canonical task CID: baguqeera62njvu2t5xz53ugxtc2lzkvqa67ic6wtvjdnp6fpr2hxab6peaca
+- Semantic identity: objective-evidence-obligation/v1/f22a97cbf12460568540b297a24d34b438668972d64812dbbe86e5a6a8c9c2fa
+- Acceptance subset: The configured backend performs live verification against exact circuit, ceremony, proving-key, verification-key, public-parameter, public-input-schema, version, expiry, freshness, and revocation identities, positive and corrupted proof/key/public-input, circuit mismatch, mutation, replay, stale, and revoked cases run against it, no private witness, proving-key bytes, trapdoor, secret path, or secret value enters Git, logs, caches, public receipts, or model context, absent operator-bound public artifacts remain deployment blockers, not platform exceptions, ZKP attests and never replaces underlying semantic authority.
+- Preconditions: objective goal FVT-G211 is schedulable
+- Effects: satisfy evidence requirement: test/integration/toolchains/test_zkp_live_verifier_deployment.py, satisfy evidence requirement: docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Evidence subset: test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G211
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/f22a97cbf12460568540b297a24d34b438668972d64812dbbe86e5a6a8c9c2fa
+- Missing evidence: test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Embedding query: Distinguish schema-valid sample bindings from a live verifier and bind the complete ZKP deployment receipt into the semantic fan-in.
+- AST query: test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json
+- Surplus group: objective/FVT-G211
+- Merge key: 8fc0d8e861a26fa8
+- Merge family: objective/FVT-G211
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 327c05af81f05a7c
+- Acceptance: Objective scan filed this gap for FVT-G211. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-059-objective-gap-bc1f10387661.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_zkp_live_verifier_deployment.py, docs/architecture/formal_verification_zkp_live_deployment_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

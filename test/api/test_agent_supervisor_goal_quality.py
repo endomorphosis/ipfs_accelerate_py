@@ -5,6 +5,12 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor import (
+    goal_quality as compatibility_goal_quality,
+)
+from ipfs_accelerate_py.agent_supervisor.objectives import (
+    goal_quality as canonical_goal_quality,
+)
 from ipfs_accelerate_py.agent_supervisor.objectives.goal_quality import (
     GOAL_GRAMMAR_REQUIREMENT_ID,
     AcceptanceCriterion,
@@ -37,6 +43,18 @@ from ipfs_accelerate_py.agent_supervisor.objectives.goal_quality import (
     score_goal,
     validate_goal,
 )
+
+
+def test_compatibility_and_canonical_imports_share_module_identity() -> None:
+    assert compatibility_goal_quality is canonical_goal_quality
+    assert (
+        compatibility_goal_quality.GoalQualityError
+        is canonical_goal_quality.GoalQualityError
+    )
+    assert (
+        compatibility_goal_quality.ObjectiveTypedGoals
+        is canonical_goal_quality.ObjectiveTypedGoals
+    )
 
 
 def _goal(*, reverse: bool = False) -> TypedGoal:

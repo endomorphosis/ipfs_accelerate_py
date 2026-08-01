@@ -1,0 +1,200 @@
+# Objective Bundle: formal-verification-tactician/real-tool-quality
+
+Source todo: docs/architecture/formal_verification_tactician_readiness.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## FVT-030 Close formal verification tactician readiness gap: Certify the real multi-prover matrix in hermetic lanes
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: real-tool-certification
+- Depends on: FVT-006, FVT-013, FVT-021, FVT-022
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, test/integration/test_formal_verification_real_tool_matrix.py, docs/architecture/formal_verification_toolchain_certificate.json
+- Validation: python -m pytest test/integration/test_formal_verification_real_tool_matrix.py -q
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-030-objective-gap-1816aa44917c.md
+- Bundle: formal-verification-tactician/real-tool-quality
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-real-tool-quality.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 29
+- Parallel lane: formal-verification-tactician/real-tool-quality
+- Conflict policy: Own certification runner, live matrix test, and certificate; do not make every optional tool mandatory for unrelated properties or conceal unavailable lanes.
+- Predicted files: tools/logic/certify_formal_verification_toolchains.py, test/integration/test_formal_verification_real_tool_matrix.py, docs/architecture/formal_verification_toolchain_certificate.json
+- Changed paths:
+- AST symbols: tools/logic/certify_formal_verification_toolchains.py, test/integration/test_formal_verification_real_tool_matrix.py
+- Interfaces: FormalVerificationToolchainCertificate@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G060
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/ae02a776f50384400c142e3a93df6d2cafa6efb56f1d7c4a7f4934b56d48d9fe
+- Canonical task CID: baguqeeravybko5xvaoceadaufy5jhx3nfsx2n35vn4oxyst7je2lk3ki3h7a
+- Semantic identity: objective-evidence-obligation/v1/990f8eeb255b6ac64063d6ff2fa0f0d0ddbd54b3642e79e277f0e8daac8914b7
+- Acceptance subset: Available tools pass live positive/negative/mutation/replay checks with exact identities, absent/mismatched lanes are explicit skips/unavailable and block only their promotion, PATH shims are not usability, certification performs no download/network/install and quarantines disagreement.
+- Preconditions: objective goal FVT-G060 is schedulable
+- Effects: satisfy evidence requirement: tools/logic/certify_formal_verification_toolchains.py, satisfy evidence requirement: test/integration/test_formal_verification_real_tool_matrix.py
+- Evidence subset: tools/logic/certify_formal_verification_toolchains.py, test/integration/test_formal_verification_real_tool_matrix.py
+- Resource class: cpu-proof-toolchain
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-toolchain
+- Merge fate: objective/FVT-G060
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/990f8eeb255b6ac64063d6ff2fa0f0d0ddbd54b3642e79e277f0e8daac8914b7
+- Missing evidence: tools/logic/certify_formal_verification_toolchains.py, test/integration/test_formal_verification_real_tool_matrix.py
+- Embedding query: Run property-specific offline-pinned live lanes for SMT, TLA/TLC/Apalache, Datalog/SecPAL, Tamarin/ProVerif, HyperLTL tools, ATP, Hammer, Lean/Rocq/Isabelle, runtime MTL, and attestation verification.
+- AST query: tools/logic/certify_formal_verification_toolchains.py, test/integration/test_formal_verification_real_tool_matrix.py
+- Surplus group: objective/FVT-G060
+- Merge key: 9e2466eed558cfbf
+- Merge family: objective/FVT-G060
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 343dc185e3d9a609
+- Acceptance: Objective scan filed this gap for FVT-G060. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-030-objective-gap-1816aa44917c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (tools/logic/certify_formal_verification_toolchains.py, test/integration/test_formal_verification_real_tool_matrix.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-032 Close formal verification tactician readiness gap: Prove soundness, privacy, and robustness adversarially
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: adversarial-quality
+- Depends on: FVT-016, FVT-031, FVT-030
+- Outputs: test/security/test_formal_verification_tactician_adversarial.py, ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py
+- Validation: python -m pytest test/security/test_formal_verification_tactician_adversarial.py ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py -q
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-032-objective-gap-1b17e547a8e2.md
+- Bundle: formal-verification-tactician/real-tool-quality
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-real-tool-quality.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 31
+- Parallel lane: formal-verification-tactician/real-tool-quality
+- Conflict policy: Own new cross-layer adversarial suites; fix production defects in the owning leaf module and preserve unrelated user changes.
+- Predicted files: test/security/test_formal_verification_tactician_adversarial.py, ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py
+- Changed paths:
+- AST symbols: test/security/test_formal_verification_tactician_adversarial.py, ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py
+- Interfaces: FormalVerificationTacticianAdversarialGate@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G062
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/5fa4934bdf413ff002ce9fbd8305ccb4a150c5116fc1394a711d6c8b4d4037fd
+- Canonical task CID: baguqeeral6sjgs67ie77aawot66ygbomwsqvbrirn7atsstrdvwiwtkag76q
+- Semantic identity: objective-evidence-obligation/v1/3d01bc5143209ef5a26b20bbd0b4e29f9bf6441d7b79b91ac5ec432f4edb5c35
+- Acceptance subset: False proof, false closure, authority escalation, hidden assumption, vacuous proof, circular lemma, forged receipt, stale identity, secret/private-witness leak, unbounded process, and unresolved disagreement reported as success are hard-zero failures, fuzz inputs remain bounded and fail closed.
+- Preconditions: objective goal FVT-G062 is schedulable
+- Effects: satisfy evidence requirement: test/security/test_formal_verification_tactician_adversarial.py, satisfy evidence requirement: ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py
+- Evidence subset: test/security/test_formal_verification_tactician_adversarial.py, ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py
+- Resource class: cpu-security
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-security
+- Merge fate: objective/FVT-G062
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/3d01bc5143209ef5a26b20bbd0b4e29f9bf6441d7b79b91ac5ec432f4edb5c35
+- Missing evidence: test/security/test_formal_verification_tactician_adversarial.py, ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py
+- Embedding query: Add property-based, fuzz, metamorphic, mutation, differential, packaging, cancellation, resource, injection, forged-identity, stale-cache, leakage, vacuity, circularity, disagreement, and restart tests across the complete workflow.
+- AST query: test/security/test_formal_verification_tactician_adversarial.py, ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py
+- Surplus group: objective/FVT-G062
+- Merge key: 4da9aaa31c67bc27
+- Merge family: objective/FVT-G062
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: fb1cbcf22f903d43
+- Acceptance: Objective scan filed this gap for FVT-G062. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-032-objective-gap-1b17e547a8e2.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/security/test_formal_verification_tactician_adversarial.py, ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-033 Close formal verification tactician readiness gap: Benchmark quality, resources, cache behavior, and observability
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: metrics-benchmark
+- Depends on: FVT-032
+- Outputs: test/benchmarks/test_formal_verification_tactician_benchmark.py, docs/architecture/formal_verification_tactician_benchmark.json, ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py
+- Validation: python -m pytest test/benchmarks/test_formal_verification_tactician_benchmark.py -q
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-033-objective-gap-74cd7f9d9446.md
+- Bundle: formal-verification-tactician/real-tool-quality
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-real-tool-quality.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 32
+- Parallel lane: formal-verification-tactician/real-tool-quality
+- Conflict policy: Own benchmark, report, and tactician metrics; do not turn unstable timing ratios or tool availability into correctness gates.
+- Predicted files: test/benchmarks/test_formal_verification_tactician_benchmark.py, docs/architecture/formal_verification_tactician_benchmark.json, ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py
+- Changed paths:
+- AST symbols: test/benchmarks/test_formal_verification_tactician_benchmark.py, docs/architecture/formal_verification_tactician_benchmark.json
+- Interfaces: GoalTacticianBenchmark@1, GoalTacticianMetrics@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G063
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/155ce624237e4c3970425e5ea44919a6041196649416ce29bb4967a12044f269
+- Canonical task CID: baguqeeracvoomjbdpzgds4cclzpkisizuycbdftesqlm4kn3jft2cice6juq
+- Semantic identity: objective-evidence-obligation/v1/2ace1e1325dddd1afc70711237286fe9c5915cc33a3197729049070ece8478d8
+- Acceptance subset: Metrics are derived from actual cohort receipts, not synthetic distributions, hard correctness/privacy/authority gates are 100 percent, timing is observational unless calibrated, cache hits preserve authority and exact identity, progress exposes unresolved holes, witnesses, critical path, budgets, and next actions.
+- Preconditions: objective goal FVT-G063 is schedulable
+- Effects: satisfy evidence requirement: test/benchmarks/test_formal_verification_tactician_benchmark.py, satisfy evidence requirement: docs/architecture/formal_verification_tactician_benchmark.json
+- Evidence subset: test/benchmarks/test_formal_verification_tactician_benchmark.py, docs/architecture/formal_verification_tactician_benchmark.json
+- Resource class: cpu-benchmark
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-benchmark
+- Merge fate: objective/FVT-G063
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/2ace1e1325dddd1afc70711237286fe9c5915cc33a3197729049070ece8478d8
+- Missing evidence: test/benchmarks/test_formal_verification_tactician_benchmark.py, docs/architecture/formal_verification_tactician_benchmark.json
+- Embedding query: Measure actual formalization, proof-gap recall/precision, plan solvability, proof authority, counterexample replay/reduction/explanation, provider agreement, resources, cancellation, cache correctness, and supervisor progress from run receipts.
+- AST query: test/benchmarks/test_formal_verification_tactician_benchmark.py, docs/architecture/formal_verification_tactician_benchmark.json
+- Surplus group: objective/FVT-G063
+- Merge key: 78c6cab04d198874
+- Merge family: objective/FVT-G063
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 0e229ef95e6a7224
+- Acceptance: Objective scan filed this gap for FVT-G063. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-033-objective-gap-74cd7f9d9446.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/benchmarks/test_formal_verification_tactician_benchmark.py, docs/architecture/formal_verification_tactician_benchmark.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

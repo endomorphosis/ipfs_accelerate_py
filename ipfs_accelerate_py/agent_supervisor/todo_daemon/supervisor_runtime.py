@@ -929,7 +929,9 @@ def run_process_group_stream(
     Supplying ``progress_timeout_seconds`` enables an idle-progress deadline:
     output-file or ``progress_paths`` mutations renew that deadline until the
     independent ``max_timeout_seconds`` hard cap.  The hard cap prevents a
-    noisy or malicious child from extending its lease forever.
+    noisy or malicious child from extending its lease forever. Supplying only
+    ``on_progress`` retains the absolute deadline while polling the same
+    progress marker for telemetry.
     """
 
     input_value: Any = input_text
@@ -938,6 +940,9 @@ def run_process_group_stream(
     idle_timeout: float | None = None
     hard_timeout: float | None = None
     poll_seconds: float | None = None
+    monitor_progress = (
+        progress_timeout_seconds is not None or on_progress is not None
+    )
     if progress_timeout_seconds is not None:
         idle_timeout = float(progress_timeout_seconds)
         hard_timeout = float(
@@ -971,6 +976,17 @@ def run_process_group_stream(
             0.01,
             min(requested_poll_seconds, idle_timeout),
         )
+    elif monitor_progress:
+        hard_timeout = max(0.0, float(timeout_seconds))
+        requested_poll_seconds = float(progress_poll_seconds)
+        if (
+            not math.isfinite(requested_poll_seconds)
+            or requested_poll_seconds <= 0
+        ):
+            raise ValueError(
+                "progress_poll_seconds must be finite and positive"
+            )
+        poll_seconds = max(0.01, requested_poll_seconds)
     process = launch_process_child(
         command,
         cwd=cwd,
@@ -982,18 +998,21 @@ def run_process_group_stream(
         text=text,
     )
     try:
-        if progress_timeout_seconds is None:
+        if not monitor_progress:
             process.communicate(
                 input=input_value,
                 timeout=max(0.0, float(timeout_seconds)),
             )
         else:
-            assert idle_timeout is not None
             assert hard_timeout is not None
             assert poll_seconds is not None
             started = time.monotonic()
             hard_deadline = started + hard_timeout
-            idle_deadline = started + idle_timeout
+            idle_deadline = (
+                started + idle_timeout
+                if idle_timeout is not None
+                else None
+            )
             progress_marker = _stream_progress_marker(
                 stdout,
                 progress_paths=progress_paths,
@@ -1031,17 +1050,21 @@ def run_process_group_stream(
                 now = time.monotonic()
                 timeout_reason = ""
                 if now >= hard_deadline:
-                    timeout_reason = "hard_timeout"
-                elif now >= idle_deadline:
+                    timeout_reason = (
+                        "hard_timeout"
+                        if idle_timeout is not None
+                        else "absolute_timeout"
+                    )
+                elif idle_deadline is not None and now >= idle_deadline:
                     timeout_reason = "progress_idle_timeout"
                 if timeout_reason:
+                    timeout_value = hard_timeout
+                    if timeout_reason == "progress_idle_timeout":
+                        assert idle_timeout is not None
+                        timeout_value = idle_timeout
                     exc = subprocess.TimeoutExpired(
                         cmd=list(command),
-                        timeout=(
-                            hard_timeout
-                            if timeout_reason == "hard_timeout"
-                            else idle_timeout
-                        ),
+                        timeout=timeout_value,
                     )
                     setattr(exc, "timeout_reason", timeout_reason)
                     setattr(exc, "elapsed_seconds", max(0.0, now - started))
@@ -1050,11 +1073,15 @@ def run_process_group_stream(
                     setattr(exc, "max_timeout_seconds", hard_timeout)
                     raise exc
 
-                wait_seconds = min(
+                wait_deadlines = [
                     poll_seconds,
                     max(0.001, hard_deadline - now),
-                    max(0.001, idle_deadline - now),
-                )
+                ]
+                if idle_deadline is not None:
+                    wait_deadlines.append(
+                        max(0.001, idle_deadline - now)
+                    )
+                wait_seconds = min(wait_deadlines)
                 try:
                     process.wait(timeout=wait_seconds)
                 except subprocess.TimeoutExpired:
@@ -1067,7 +1094,8 @@ def run_process_group_stream(
                     progress_marker = next_marker
                     progress_events += 1
                     observed_at = time.monotonic()
-                    idle_deadline = observed_at + idle_timeout
+                    if idle_timeout is not None:
+                        idle_deadline = observed_at + idle_timeout
                     if on_progress is not None:
                         try:
                             on_progress(
@@ -1414,8 +1442,19 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     command_line = process_args(pid)
     if not supervised_child_command_matches(command_line, spec.command):
         return None
-    log_path = spec.resolve(spec.log_path)
     latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
+    log_path = spec.resolve(spec.log_path)
+    if latest_log_path is not None:
+        try:
+            # A supervisor restart creates a fresh run id, but an adopted
+            # daemon continues writing the log selected by its original
+            # supervisor. The stable latest-log marker preserves that
+            # provenance across the supervisor-only restart.
+            adopted_log_path = latest_log_path.resolve(strict=True)
+            if adopted_log_path.is_file():
+                log_path = adopted_log_path
+        except (OSError, RuntimeError):
+            pass
     log_path.parent.mkdir(parents=True, exist_ok=True)
     return SupervisedChild(
         pid=int(pid),

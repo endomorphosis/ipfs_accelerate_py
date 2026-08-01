@@ -60,12 +60,19 @@ from .validation_commands import (
     select_validation_commands,
 )
 from .validation_runtime import (
+    VALIDATION_PYTHON_INTERPRETER_SHA256_ENV,
+    VALIDATION_PYTHON_INTERPRETER_STAT_ENV,
+    VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
+    VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
+    VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
     HermeticValidationRuntime,
     ValidationCancellationToken,
     ValidationResourceBounds,
     build_validation_environment,
     build_hermetic_validation_runtime,
+    runner_requires_sealed_validation_python,
     run_hermetic_validation_process,
+    validation_environment_for_runner,
     validation_shell_command,
 )
 
@@ -183,9 +190,16 @@ DEFAULT_RELEVANT_ENVIRONMENT = (
     "LC_ALL",
     "NODE_ENV",
     "PATH",
+    "PYTHON",
     "PYTHONHASHSEED",
+    "PYTHONNOUSERSITE",
     "PYTHONPATH",
     "PYTHONWARNINGS",
+    VALIDATION_PYTHON_INTERPRETER_SHA256_ENV,
+    VALIDATION_PYTHON_INTERPRETER_STAT_ENV,
+    VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
+    VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
+    VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
     "RUSTFLAGS",
     "VIRTUAL_ENV",
 )
@@ -335,8 +349,150 @@ def _validation_result_digest(
         # Seeded-defect observations are validation evidence and must not be
         # detachable from the result that observed them.
         "seeded_defect_id": str(result.get("seeded_defect_id") or ""),
+        # The nested-Python delivery receipt proves that execution used the
+        # launcher policy already bound into the semantic cache environment.
+        # Keep it authority-bearing rather than treating it as runtime
+        # telemetry.
+        "validation_python_launcher": _json_safe(
+            result.get("validation_python_launcher") or {}
+        ),
+        "attempt_validation_python_launchers": [
+            _json_safe(item.get("validation_python_launcher") or {})
+            for item in result.get("attempts", ())
+            if isinstance(item, Mapping)
+        ],
+        "runtime_id": str(result.get("runtime_id") or ""),
+        "cancellation_id": str(result.get("cancellation_id") or ""),
+        "hermetic_runtime": _json_safe(
+            result.get("hermetic_runtime") or {}
+        ),
+        "attempt_runtime_receipts": [
+            {
+                "runtime_id": str(item.get("runtime_id") or ""),
+                "cancellation_id": str(
+                    item.get("cancellation_id") or ""
+                ),
+                "expected_runtime_id": str(
+                    item.get("expected_runtime_id") or ""
+                ),
+                "expected_cancellation_id": str(
+                    item.get("expected_cancellation_id") or ""
+                ),
+            }
+            for item in result.get("attempts", ())
+            if isinstance(item, Mapping)
+        ],
     }
     return _sha256_bytes(_canonical_json(payload).encode("utf-8"))
+
+
+def _validation_python_launcher_receipt_matches_environment(
+    result: Mapping[str, object],
+    environment: Mapping[str, object],
+) -> bool:
+    """Require exact sealed-runner evidence for sealed cache identities."""
+
+    mode = str(
+        environment.get(VALIDATION_PYTHON_LAUNCHER_MODE_ENV) or ""
+    )
+    if not mode.endswith(":sealed-memfd"):
+        return True
+    receipt = result.get("validation_python_launcher")
+    if not isinstance(receipt, Mapping):
+        return False
+    expected = {
+        "content_sha256": str(
+            environment.get(VALIDATION_PYTHON_LAUNCHER_SHA256_ENV) or ""
+        ),
+        "interpreter_sha256": str(
+            environment.get(VALIDATION_PYTHON_INTERPRETER_SHA256_ENV) or ""
+        ),
+        "interpreter_stat": str(
+            environment.get(VALIDATION_PYTHON_INTERPRETER_STAT_ENV) or ""
+        ),
+        "mode": mode,
+        "policy_sha256": str(
+            environment.get(
+                VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
+            )
+            or ""
+        ),
+        "sealed": True,
+    }
+    if {str(key): value for key, value in receipt.items()} != expected:
+        return False
+    attempts = result.get("attempts")
+    if isinstance(attempts, Sequence) and not isinstance(
+        attempts, (str, bytes, bytearray)
+    ):
+        for attempt in attempts:
+            if not isinstance(attempt, Mapping):
+                return False
+            attempt_receipt = attempt.get("validation_python_launcher")
+            if not isinstance(attempt_receipt, Mapping):
+                return False
+            if (
+                {str(key): value for key, value in attempt_receipt.items()}
+                != expected
+            ):
+                return False
+    return True
+
+
+def _hermetic_runtime_receipts_match(
+    result: Mapping[str, object],
+    runtime: HermeticValidationRuntime,
+    *,
+    expected_attempts: int,
+) -> bool:
+    """Require cached authority to retain every exact runtime receipt."""
+
+    if (
+        str(result.get("runtime_id") or "") != runtime.runtime_id
+        or str(result.get("cancellation_id") or "")
+        != runtime.cancellation_id
+        or _json_safe(result.get("hermetic_runtime") or {})
+        != runtime.to_dict()
+        or str(result.get("outcome") or "")
+        != ValidationOutcome.PASSED.value
+        or str(result.get("classification") or "")
+        != ValidationOutcome.PASSED.value
+        or result.get("authoritative") is not True
+        or result.get("stable") is not True
+    ):
+        return False
+    attempts = result.get("attempts")
+    if not isinstance(attempts, Sequence) or isinstance(
+        attempts, (str, bytes, bytearray)
+    ):
+        return False
+    try:
+        recorded_attempt_count = int(result.get("attempt_count", -1))
+    except (TypeError, ValueError):
+        return False
+    if len(attempts) != expected_attempts or (
+        recorded_attempt_count != expected_attempts
+    ):
+        return False
+    for attempt in attempts:
+        if not isinstance(attempt, Mapping):
+            return False
+        try:
+            attempt_returncode = int(attempt.get("returncode", 1))
+        except (TypeError, ValueError):
+            return False
+        if (
+            str(attempt.get("runtime_id") or "") != runtime.runtime_id
+            or str(attempt.get("cancellation_id") or "")
+            != runtime.cancellation_id
+            or attempt_returncode != 0
+            or attempt.get("timed_out") is True
+            or attempt.get("cancelled") is True
+            or attempt.get("infrastructure_failure") is True
+            or attempt.get("inconclusive") is True
+        ):
+            return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -769,8 +925,37 @@ def collect_dependency_state(
 
 
 ValidationRunner = Callable[..., Mapping[str, object]]
+_HERMETIC_VALIDATION_RUNNER_ATTRIBUTE = (
+    "__ipfs_accelerate_hermetic_validation_runner__"
+)
 
 
+def hermetic_validation_runner(runner: ValidationRunner) -> ValidationRunner:
+    """Declare that a trusted runner executes the supplied runtime context."""
+
+    setattr(runner, _HERMETIC_VALIDATION_RUNNER_ATTRIBUTE, True)
+    return runner
+
+
+def _runner_supports_hermetic_validation(runner: ValidationRunner) -> bool:
+    target = getattr(runner, "__func__", runner)
+    if (
+        getattr(
+            target,
+            _HERMETIC_VALIDATION_RUNNER_ATTRIBUTE,
+            False,
+        )
+        is not True
+    ):
+        return False
+    try:
+        signature = inspect.signature(runner)
+    except (TypeError, ValueError):
+        return False
+    return "runtime_context" in signature.parameters
+
+
+@hermetic_validation_runner
 def run_validation_command(
     *,
     spec: ValidationCommand,
@@ -4775,6 +4960,60 @@ class ValidationScheduler:
     ) -> dict[str, object]:
         if hermetic_policy is None:
             hermetic_policy = self.hermetic_policy
+        if (
+            hermetic_policy is not None
+            and not _runner_supports_hermetic_validation(runner)
+        ):
+            capability_error = (
+                "hermetic_validation_runner_capability_missing"
+            )
+            capability_reason = (
+                "hermetic_runner_does_not_consume_runtime_context"
+            )
+        elif (
+            hermetic_policy is not None
+            and runner_requires_sealed_validation_python(runner)
+        ):
+            capability_error = (
+                "hermetic_sealed_runner_composition_unsupported"
+            )
+            capability_reason = (
+                "sealed_nested_python_runner_cannot_claim_hermetic_"
+                "execution"
+            )
+        else:
+            capability_error = ""
+            capability_reason = ""
+        if capability_error:
+            now = utc_now()
+            result: dict[str, object] = {
+                "command": spec.command,
+                "raw_command": spec.raw_command or spec.command,
+                "started_at": now,
+                "finished_at": now,
+                "returncode": 75,
+                "output": "",
+                "error": capability_error,
+                "reason": capability_reason,
+                "infrastructure_failure": True,
+                "outcome": (
+                    ValidationOutcome.INFRASTRUCTURE_FAILURE.value
+                ),
+                "classification": (
+                    ValidationOutcome.INFRASTRUCTURE_FAILURE.value
+                ),
+                "authoritative": False,
+                "stable": False,
+                "cache_hit": False,
+                "stage": spec.stage.label,
+                "resource_cost": spec.resource_cost,
+                "ordinal": spec.ordinal,
+                "validation_id": spec.validation_id,
+            }
+            result["validation_result_digest"] = (
+                _validation_result_digest(result)
+            )
+            return result
         timeout = spec.timeout_seconds or self.default_timeout_seconds
         runtime_context: HermeticValidationRuntime | None = None
         effective_dependencies = dependency_state
@@ -4843,6 +5082,36 @@ class ValidationScheduler:
         )
         if spec.cacheable and self.cache is not None:
             cached = self.cache.get(cache_key)
+            if (
+                cached is not None
+                and not _validation_python_launcher_receipt_matches_environment(
+                    cached,
+                    environment,
+                )
+            ):
+                cached = None
+            if (
+                cached is not None
+                and runtime_context is not None
+                and not _hermetic_runtime_receipts_match(
+                    cached,
+                    runtime_context,
+                    expected_attempts=hermetic_policy.stability_runs,
+                )
+            ):
+                cached = None
+            if (
+                cached is not None
+                and runtime_context is not None
+                and str(
+                    cached.get("validation_result_digest") or ""
+                )
+                != _validation_result_digest(
+                    cached,
+                    cache_key=cache_key,
+                )
+            ):
+                cached = None
             if cached is not None:
                 result = dict(cached)
                 # Entries produced before validation-result@1 remain readable.
@@ -5007,6 +5276,48 @@ class ValidationScheduler:
                         raw_result = runner(**runner_kwargs)
                         attempt = dict(raw_result)
                         if (
+                            hermetic_policy is not None
+                            and runtime_context is not None
+                        ):
+                            observed_runtime_id = str(
+                                attempt.get("runtime_id") or ""
+                            )
+                            observed_cancellation_id = str(
+                                attempt.get("cancellation_id") or ""
+                            )
+                            if (
+                                observed_runtime_id
+                                != runtime_context.runtime_id
+                                or observed_cancellation_id
+                                != runtime_context.cancellation_id
+                            ):
+                                attempt.update(
+                                    {
+                                        "returncode": 75,
+                                        "error": (
+                                            "hermetic_runtime_receipt_"
+                                            "mismatch"
+                                        ),
+                                        "reason": (
+                                            "runner_runtime_receipt_missing_"
+                                            "or_mismatched"
+                                        ),
+                                        "infrastructure_failure": True,
+                                        "expected_runtime_id": (
+                                            runtime_context.runtime_id
+                                        ),
+                                        "expected_cancellation_id": (
+                                            runtime_context.cancellation_id
+                                        ),
+                                        "observed_runtime_id": (
+                                            observed_runtime_id
+                                        ),
+                                        "observed_cancellation_id": (
+                                            observed_cancellation_id
+                                        ),
+                                    }
+                                )
+                        if (
                             cancellation_token is not None
                             and cancellation_token.is_set()
                         ):
@@ -5102,14 +5413,6 @@ class ValidationScheduler:
                     ValidationOutcome.INCONCLUSIVE: 79,
                     ValidationOutcome.CANCELLED: 130,
                 }[outcome]
-                result["runtime_id"] = (
-                    runtime_context.runtime_id if runtime_context else ""
-                )
-                result["cancellation_id"] = (
-                    runtime_context.cancellation_id
-                    if runtime_context
-                    else ""
-                )
                 result["hermetic_runtime"] = (
                     runtime_context.to_dict() if runtime_context else None
                 )
@@ -5126,6 +5429,36 @@ class ValidationScheduler:
         result["resource_cost"] = spec.resource_cost
         result["ordinal"] = spec.ordinal
         result["validation_id"] = spec.validation_id
+        if (
+            result["returncode"] == 0
+            and not _validation_python_launcher_receipt_matches_environment(
+                result,
+                environment,
+            )
+        ):
+            result.update(
+                {
+                    "returncode": 75,
+                    "error": (
+                        "validation_environment_python_launcher_"
+                        "receipt_mismatch"
+                    ),
+                    "reason": (
+                        "sealed_validation_python_launcher_"
+                        "receipt_mismatch"
+                    ),
+                    "infrastructure_failure": True,
+                    "outcome": (
+                        ValidationOutcome.INFRASTRUCTURE_FAILURE.value
+                    ),
+                    "classification": (
+                        ValidationOutcome.INFRASTRUCTURE_FAILURE.value
+                    ),
+                    "authoritative": False,
+                    "stable": False,
+                    "intermittent_pass": False,
+                }
+            )
         result["validation_result_digest"] = _validation_result_digest(
             result, cache_key=cache_key
         )
@@ -5443,7 +5776,13 @@ class ValidationScheduler:
             repository_policy=effective_repository_policy,
         )
         workspace = Path(workspace_path)
+        command_runner = runner or self.runner
         execution_environment = build_validation_environment(environment)
+        if hermetic is None:
+            execution_environment = validation_environment_for_runner(
+                execution_environment,
+                command_runner,
+            )
         dependencies = (
             collect_dependency_state(
                 workspace, changed_files=plan.impact.affected_paths
@@ -5451,7 +5790,6 @@ class ValidationScheduler:
             if dependency_state is None
             else dependency_state
         )
-        command_runner = runner or self.runner
         started_at = utc_now()
         started_monotonic = time.monotonic()
         selected_nodes = {node.check_id: node for node in plan.selected_nodes}
@@ -6209,8 +6547,13 @@ class ValidationScheduler:
             if dependency_state is None
             else dependency_state
         )
-        execution_environment = build_validation_environment(environment)
         command_runner = runner or self.runner
+        execution_environment = build_validation_environment(environment)
+        if self.hermetic_policy is None:
+            execution_environment = validation_environment_for_runner(
+                execution_environment,
+                command_runner,
+            )
         results: list[dict[str, object]] = []
         stages: list[dict[str, object]] = []
         stage_benchmarks: list[ValidationStageBatch] = []
@@ -6620,9 +6963,14 @@ class ValidationScheduler:
             if dependency_state is None
             else dependency_state
         )
-        execution_environment = build_validation_environment(environment)
         selected = tuple(selection.selected)
         command_runner = runner or self.runner
+        execution_environment = build_validation_environment(environment)
+        if self.hermetic_policy is None:
+            execution_environment = validation_environment_for_runner(
+                execution_environment,
+                command_runner,
+            )
         results: list[dict[str, object]] = []
         stages: list[dict[str, object]] = []
         stage_benchmarks: list[ValidationStageBatch] = []

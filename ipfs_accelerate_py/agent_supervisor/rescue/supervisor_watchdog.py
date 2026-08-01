@@ -1338,14 +1338,86 @@ def watchdog_process_status(
 
 
 def read_lane_manifest(manifest_path: Path) -> dict[str, Any]:
-    """Read the bundle lane manifest JSON."""
+    """Read the bundle lane manifest JSON with observed scheduler lifecycle.
+
+    Dynamic scheduler manifests contain a renewable heartbeat and the owning
+    process identifier.  Project those observations at read time so an abrupt
+    process exit cannot leave operator surfaces reporting ``running`` forever.
+    The artifact on disk remains an immutable record of what the writer last
+    declared; ``scheduler_state_declared`` preserves that value when the
+    observation changes it.
+    """
     if not manifest_path.exists():
         return {}
     try:
-        return json.loads(manifest_path.read_text(encoding="utf-8"))
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("Failed to read manifest %s: %s", manifest_path, exc)
         return {}
+    if not isinstance(payload, dict):
+        return {}
+    return project_dynamic_manifest_lifecycle(payload)
+
+
+def project_dynamic_manifest_lifecycle(
+    manifest: Mapping[str, Any],
+    *,
+    now_seconds: float | None = None,
+    pid_probe: Callable[[int], bool] = pid_alive,
+) -> dict[str, Any]:
+    """Derive the live lifecycle of an authoritative dynamic manifest.
+
+    A dead owning PID is terminal for that scheduler instance.  A live PID
+    whose renewable heartbeat has expired is stale.  Older manifests without
+    the lifecycle fields retain their declared state for compatibility.
+    """
+
+    payload = dict(manifest)
+    if not (
+        bool(payload.get("authoritative"))
+        and str(payload.get("schema") or "").startswith(
+            "ipfs_accelerate_py.agent_supervisor.dynamic_bundle_scheduler"
+        )
+    ):
+        return payload
+
+    declared_state = str(payload.get("scheduler_state") or "").strip().lower()
+    if declared_state not in {"running", "stopping"}:
+        return payload
+
+    raw_pid = payload.get("supervisor_pid")
+    try:
+        supervisor_pid = int(raw_pid)
+    except (TypeError, ValueError):
+        supervisor_pid = 0
+    has_pid_observation = raw_pid not in (None, "")
+    supervisor_alive = (
+        bool(pid_probe(supervisor_pid))
+        if has_pid_observation and supervisor_pid > 0
+        else False
+    )
+    if has_pid_observation:
+        payload["supervisor_pid_alive"] = supervisor_alive
+
+    expires_at = _timestamp_seconds(payload.get("heartbeat_expires_at"))
+    observed_at = time.time() if now_seconds is None else float(now_seconds)
+    derived_state = declared_state
+    reason = ""
+    if has_pid_observation and not supervisor_alive:
+        derived_state = "stopped"
+        reason = "supervisor_pid_not_running"
+    elif expires_at is not None and observed_at > expires_at:
+        derived_state = "stale"
+        reason = "heartbeat_expired"
+
+    if derived_state != declared_state:
+        payload["scheduler_state_declared"] = declared_state
+        payload["scheduler_state"] = derived_state
+        payload["scheduler_state_reason"] = reason
+        payload["scheduler_state_observed_at"] = datetime.fromtimestamp(
+            observed_at, timezone.utc
+        ).isoformat()
+    return payload
 
 
 def read_scheduler_snapshot(manifest_path: Path) -> dict[str, Any]:
@@ -2339,6 +2411,20 @@ class SupervisorWatchdog:
             "restarts": restarts,
             "reports": reports,
             "status": aggregate_status,
+            "scheduler_lifecycle": {
+                key: manifest[key]
+                for key in (
+                    "scheduler_state",
+                    "scheduler_state_declared",
+                    "scheduler_state_reason",
+                    "scheduler_state_observed_at",
+                    "supervisor_pid",
+                    "supervisor_pid_alive",
+                    "heartbeat_at",
+                    "heartbeat_expires_at",
+                )
+                if key in manifest
+            },
             "scheduler_snapshot": operator_snapshot,
             "scheduler_snapshot_id": str(operator_snapshot.get("snapshot_id") or ""),
         }

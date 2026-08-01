@@ -1,0 +1,173 @@
+{
+  "schema_version": "zkp-deployment-lock/v1",
+  "interface": "ZKPDeploymentLock@1",
+  "certification_interface": "ZKPDeploymentCertification@1",
+  "goal_id": "FVT-G190",
+  "task_id": "FVT-047",
+  "predecessor_goal_id": "FVT-G110",
+  "predecessor_task_id": "FVT-041",
+  "program": "formal-verification-tactician/zkp-attestation-toolchain",
+  "description": "Reviewed, secret-safe production ZKP circuit deployment binding. Public digests for circuit, ceremony, CRS, proving key, and verification key are exact and reviewable. Private witnesses, proving-key bytes, trapdoors, and other secrets are referenced only by digest and configured secret-safe location — they never enter Git, locks, logs, caches, public receipts, or model context. ZKP authority attests an underlying trusted proof receipt and never replaces semantic theorem authority.",
+  "binding_mode": "reviewed_secret_safe_deployment",
+  "tool_id": "zkp-circuit",
+  "lane_id": "attestation",
+  "replaces_gap_id": "circuit_witness",
+  "secret_safety": {
+    "schema_version": "zkp-secret-safety/v1",
+    "forbid_private_witness_in_lock": true,
+    "forbid_proving_key_bytes_in_lock": true,
+    "forbid_verification_key_bytes_in_lock": true,
+    "forbid_trapdoor_in_lock": true,
+    "forbid_witness_in_git": true,
+    "forbid_witness_in_logs": true,
+    "forbid_witness_in_caches": true,
+    "forbid_witness_in_public_receipts": true,
+    "forbid_witness_in_model_context": true,
+    "reference_private_artifacts_by_digest_only": true,
+    "private_artifact_location_env": "ZKP_DEPLOYMENT_SECRET_ROOT",
+    "private_artifact_location_default": "~/.local/share/ipfs_datasets_py/zkp-deployment/secrets",
+    "forbidden_lock_fields": [
+      "private_witness",
+      "proving_key",
+      "proving_key_bytes",
+      "verification_key_bytes",
+      "trapdoor",
+      "secret",
+      "witness_bytes",
+      "sk",
+      "toxic_waste",
+      "coordinator_seed"
+    ]
+  },
+  "authority": {
+    "ceiling": "attestation",
+    "scope": "receipt_attestation_only",
+    "never_replaces_theorem_authority": true,
+    "underlying_authority_must_remain_semantic": true,
+    "attestation_is_orthogonal_to_kernel_proof": true
+  },
+  "backend": {
+    "backend_id": "backend:provekit",
+    "backend_version": "0.2.0",
+    "backend_mode": "cryptographic",
+    "proving_system": "groth16",
+    "curve": "bn254",
+    "runtime": "in_process",
+    "simulated_backends_fail_closed": true
+  },
+  "circuit": {
+    "circuit_id": "circuit:receipt-binding",
+    "circuit_version": "2.1.0",
+    "circuit_public_digest": "sha256:cd206640b4e5eaad49aedbb2517966a4b54d6f715deb25f2fd00832eeabd1538",
+    "digest_basis": "circuit:receipt-binding@2.1.0:public-r1cs",
+    "statement_kind": "trusted_proof_receipt_attestation",
+    "notes": "Public R1CS / circuit identity only; no private witness material."
+  },
+  "ceremony": {
+    "ceremony_id": "ceremony:mpc-2026-07-production",
+    "ceremony_digest": "sha256:0356bd664bcaf01531ce7a6987593ad1882f17db7a9bd9d50fa5ae4f2a05bccc",
+    "digest_basis": "ceremony:mpc-2026-07-production:quorum-3",
+    "schema": "mcp++/groth16-mpc-ceremony@1",
+    "minimum_independent_contributors": 3,
+    "key_format": "arkworks-canonical"
+  },
+  "crs": {
+    "crs_id": "crs:powers-of-tau:28",
+    "crs_digest": "sha256:200dcecb64d4983cbb79b63898ad63a8c663491affe78b699ac56426502aa900",
+    "digest_basis": "crs:powers-of-tau:28:final"
+  },
+  "keys": {
+    "proving_key": {
+      "proving_key_id": "pk:receipt-binding:production",
+      "proving_key_digest": "sha256:e4bcb95b3f54a9fda4446422a7ab5b3455e72da0428ce01767b1b1765ca57eec",
+      "digest_basis": "pk:receipt-binding:production:arkworks-canonical",
+      "secret_path_template": "${ZKP_DEPLOYMENT_SECRET_ROOT}/proving_key.bin",
+      "bytes_in_repository": false
+    },
+    "verification_key": {
+      "verification_key_id": "vk:receipt-binding:production",
+      "verification_key_digest": "sha256:49f51a37afad3a59c109ae91fb05d544cf6c313963fb108ddba121e9f5bc5ad2",
+      "digest_basis": "vk:receipt-binding:production:arkworks-canonical",
+      "secret_path_template": "${ZKP_DEPLOYMENT_SECRET_ROOT}/verification_key.bin",
+      "bytes_in_repository": false,
+      "expires_at": "2030-01-01T00:00:00Z"
+    }
+  },
+  "public_input_schema": {
+    "schema_version": "zkp-public-input-schema/v1",
+    "schema_id": "public-input-schema:receipt-binding@1",
+    "schema_digest": "sha256:64f66d7116efcd64f4788f56aec143a1137a62cedd957ed83fdffee9e99b4850",
+    "digest_basis": "public-input-schema:receipt-binding@1",
+    "required_keys": [
+      "theorem_id",
+      "property_id",
+      "translation_receipt_id",
+      "receipt_id",
+      "tree_id",
+      "policy_id",
+      "circuit_id",
+      "circuit_version",
+      "ceremony_id",
+      "crs_id",
+      "proving_key_id",
+      "verification_key_id",
+      "backend_id",
+      "backend_version",
+      "backend_mode",
+      "revocation_policy_id",
+      "issued_at",
+      "expires_at",
+      "underlying_authority",
+      "underlying_status",
+      "source_result_digest"
+    ],
+    "forbid_private_witness_fields": true,
+    "aligns_with": "ProofReceiptAttestation@1/REQUIRED_PUBLIC_INPUT_KEYS"
+  },
+  "freshness": {
+    "schema_version": "zkp-freshness-policy/v1",
+    "max_attestation_ttl_seconds": 300,
+    "verification_key_expires_at": "2030-01-01T00:00:00Z",
+    "stale_attestation_fails_closed": true,
+    "expired_key_fails_closed": true
+  },
+  "revocation": {
+    "schema_version": "zkp-revocation-policy/v1",
+    "policy_id": "revocation:production@1",
+    "as_of": "2026-07-31T00:00:00Z",
+    "revoked_circuit_ids": [],
+    "revoked_crs_ids": [],
+    "revoked_proving_key_ids": [],
+    "revoked_verification_key_ids": [],
+    "revoked_material_fails_closed": true
+  },
+  "certification_corpus": {
+    "schema_version": "zkp-deployment-certification-corpus/v1",
+    "required_case_kinds": [
+      "positive",
+      "corrupted_proof",
+      "corrupted_key",
+      "corrupted_public_input",
+      "circuit_mismatch",
+      "mutation",
+      "replay",
+      "stale",
+      "revoked",
+      "secret_safety",
+      "authority"
+    ],
+    "notes": "Cases are executed by tools/logic/certification/zkp.py against this lock."
+  },
+  "offline_verification_policy": {
+    "forbid_install": true,
+    "forbid_download": true,
+    "forbid_network": true,
+    "forbid_curl_pipe_shell": true,
+    "never_materialize_private_witness_in_public_artifacts": true
+  },
+  "review": {
+    "status": "reviewed",
+    "reviewed_at": "2026-07-31T00:00:00Z",
+    "review_notes": "Production deployment binding replaces the former circuit_witness install gap with digest-only secret-safe references."
+  }
+}

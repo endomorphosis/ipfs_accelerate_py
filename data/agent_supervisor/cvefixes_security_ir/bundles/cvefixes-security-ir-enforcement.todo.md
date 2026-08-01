@@ -1,0 +1,135 @@
+# Objective Bundle: cvefixes-security-ir/enforcement
+
+Source todo: docs/architecture/cvefixes_security_ir.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## CVESIR-005 Close objective gap: Bounded security decision receipts and observability
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: receipts
+- Depends on: CVESIR-014, CVESIR-015
+- Outputs: ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py, test/api/test_agent_supervisor_cve_security_receipts.py
+- Validation: python -m pytest test/api/test_agent_supervisor_cve_security_receipts.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py/data/agent_supervisor/cvefixes_security_ir/discovery/2026-07-29-cvesir-005-objective-gap-2bc6de87a15e.md
+- Bundle: cvefixes-security-ir/enforcement
+- Bundle shard: data/agent_supervisor/cvefixes_security_ir/bundles/cvefixes-security-ir-enforcement.todo.md
+- Bundle strategy: explicit
+- Graph parents: CVESIR-G000
+- Graph depth: 1
+- Objective heap index: 4
+- Parallel lane: cvefixes-security-ir/enforcement
+- Conflict policy: Own receipt module and tests; extend event fields without logging code bodies or secrets.
+- Predicted files: ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py, test/api/test_agent_supervisor_cve_security_receipts.py
+- Changed paths:
+- AST symbols: ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py, test/api/test_agent_supervisor_cve_security_receipts.py
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: CVESIR-G170
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/775ec3f158d81079f85fa877914110162b82d28af16e76709ffa1a6cc6bd3d6c
+- Canonical task CID: baguqeerao5pmh4ky3aiht6c7vb3zcqiqcyvyfuuk6fxhm4e77ingzrv5hvwa
+- Semantic identity: objective-evidence-obligation/v1/59bf8f9dc4cc504b1a56f6cff3b96d87a89e631954f174da51ea116600a26a86
+- Acceptance subset: Receipts are canonical, bounded, redacted, stage/tree/root-bound, and distinguish evidence from authority, cache keys invalidate on every declared dependency.
+- Preconditions: objective goal CVESIR-G170 is schedulable
+- Effects: satisfy evidence requirement: ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py, satisfy evidence requirement: test/api/test_agent_supervisor_cve_security_receipts.py
+- Evidence subset: ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py, test/api/test_agent_supervisor_cve_security_receipts.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/CVESIR-G170
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/59bf8f9dc4cc504b1a56f6cff3b96d87a89e631954f174da51ea116600a26a86
+- Missing evidence: ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py, test/api/test_agent_supervisor_cve_security_receipts.py
+- Embedding query: Emit explainable bounded receipts linking intent/code facts, matching policies, CVE/CWE/source CIDs, roots, reason codes, counterexamples, and enforcement stage.
+- AST query: ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py, test/api/test_agent_supervisor_cve_security_receipts.py
+- Surplus group: objective/CVESIR-G170
+- Merge key: 7c0b08aecdebee2c
+- Merge family: objective/CVESIR-G170
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: f2dc3e9502d00a98
+- Acceptance: Objective scan filed this gap for CVESIR-G170. Use evidence in /home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py/data/agent_supervisor/cvefixes_security_ir/discovery/2026-07-29-cvesir-005-objective-gap-2bc6de87a15e.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py, test/api/test_agent_supervisor_cve_security_receipts.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## CVESIR-015 Close objective gap: Decision-runtime, permit, and merge enforcement
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: enforcement
+- Depends on: CVESIR-014
+- Outputs: ipfs_accelerate_py/agent_supervisor/security_constraint_adapter.py, ipfs_accelerate_py/agent_supervisor/ir_constraint_compiler.py, ipfs_accelerate_py/agent_supervisor/execution_permit.py, test/api/test_agent_supervisor_cve_security_enforcement.py
+- Validation: python -m pytest test/api/test_agent_supervisor_security_constraints.py test/api/test_agent_supervisor_ir_constraint_compiler.py test/api/test_agent_supervisor_cve_security_enforcement.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py/data/agent_supervisor/cvefixes_security_ir/discovery/2026-07-29-cvesir-015-objective-gap-d1063da4102f.md
+- Bundle: cvefixes-security-ir/enforcement
+- Bundle shard: data/agent_supervisor/cvefixes_security_ir/bundles/cvefixes-security-ir-enforcement.todo.md
+- Bundle strategy: explicit
+- Graph parents: CVESIR-G000
+- Graph depth: 1
+- Objective heap index: 14
+- Parallel lane: cvefixes-security-ir/enforcement
+- Conflict policy: Sole task allowed to edit the three shared enforcement files; preserve backward-compatible existing decisions and deny-overrides.
+- Predicted files: ipfs_accelerate_py/agent_supervisor/security_constraint_adapter.py, ipfs_accelerate_py/agent_supervisor/ir_constraint_compiler.py, ipfs_accelerate_py/agent_supervisor/execution_permit.py, test/api/test_agent_supervisor_cve_security_enforcement.py
+- Changed paths:
+- AST symbols: test/api/test_agent_supervisor_cve_security_enforcement.py
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: CVESIR-G160
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/2c548684cdc8fa32f93b81c32378df3a5145850fdc8d504ab55867ea4e1b3f6b
+- Canonical task CID: baguqeerafrkinbgnzd5df6j3qhbsg6g7hjiulbip3sgvasvvlbt6utq3h5vq
+- Semantic identity: objective-evidence-obligation/v1/add9042546b09921f838976124fccba0e29f75d8e3163d0c6e81ed682dad4f52
+- Acceptance subset: Deny/conflict/unknown/stale reject, allow requires existing authority, generated undeclared effects reject, root or tree drift invalidates receipts, no permit or merge path bypasses the gate.
+- Preconditions: objective goal CVESIR-G160 is schedulable
+- Effects: satisfy evidence requirement: test/api/test_agent_supervisor_cve_security_enforcement.py
+- Evidence subset: test/api/test_agent_supervisor_cve_security_enforcement.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/CVESIR-G160
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/add9042546b09921f838976124fccba0e29f75d8e3163d0c6e81ed682dad4f52
+- Missing evidence: test/api/test_agent_supervisor_cve_security_enforcement.py
+- Embedding query: Wire the CVE security gate into plan admission, pre-execution permits, post-generation validation, merge admission, and merged-tree revalidation.
+- AST query: test/api/test_agent_supervisor_cve_security_enforcement.py
+- Surplus group: objective/CVESIR-G160
+- Merge key: 517572fac131ba78
+- Merge family: objective/CVESIR-G160
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 2731dd334fc99450
+- Acceptance: Objective scan filed this gap for CVESIR-G160. Use evidence in /home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py/data/agent_supervisor/cvefixes_security_ir/discovery/2026-07-29-cvesir-015-objective-gap-d1063da4102f.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/api/test_agent_supervisor_cve_security_enforcement.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

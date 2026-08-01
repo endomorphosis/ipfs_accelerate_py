@@ -15,8 +15,10 @@ data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-019-object
 
 from __future__ import annotations
 
+import io
 import json
 import sys
+import wave
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -68,7 +70,17 @@ from ipfs_datasets_py.voice.schema import (  # noqa: E402
 )
 
 
-PRECOMPUTED_AUDIO_BYTES = b"RIFF....WAVE-precomputed-abby"
+def _fixture_wav(sample: int = 1_000) -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8_000)
+        audio.writeframes(sample.to_bytes(2, "little", signed=True))
+    return output.getvalue()
+
+
+PRECOMPUTED_AUDIO_BYTES = _fixture_wav()
 PRECOMPUTED_AUDIO_SHA = sha256(PRECOMPUTED_AUDIO_BYTES).hexdigest()
 SPOKEN_PHONE_A = "Community Food Network can help. Call 503-555-0111."
 SPOKEN_PHONE_B = "Community Food Network can help. Call 503-555-0199."
@@ -89,7 +101,7 @@ SYNTHESIS = SynthesisIdentity(
 @dataclass
 class FakeSpeech:
     transcript: str = "I need food help"
-    audio: bytes = b"RIFF-live-tts"
+    audio: bytes = _fixture_wav(2_000)
     calls: list[tuple[str, str]] = field(default_factory=list)
     fail_tts: bool = False
 
@@ -399,6 +411,41 @@ def test_exact_audio_resolver_requires_full_synthesis_identity() -> None:
     assert miss.audio is None
 
 
+def test_exact_audio_resolver_preserves_dataset_row_metadata_for_byte_fetcher() -> None:
+    """Canonical dataset rows carry audio paths through to resolver fetchers."""
+
+    bundle = _fixture_bundle()
+    row = dict(bundle["audio_rows"][0])
+    row["metadata"] = {
+        "dataset_audio_path": "audio/abby-tts/audio-food.wav",
+        "bucket_audio_paths": ["hf-bucket/audio-food.wav"],
+        "bucket_mapping_statuses": ["selected_for_response"],
+    }
+    observed: dict[str, Any] = {}
+
+    def fetcher(artifact: Any) -> bytes:
+        observed["metadata"] = dict(artifact.metadata)
+        return PRECOMPUTED_AUDIO_BYTES
+
+    resolver = PrecomputedVoiceAudioResolver.from_audio_rows(
+        [row],
+        byte_fetcher=fetcher,
+        default_identity={
+            "provider_version": SYNTHESIS.provider_version,
+            "generation_settings": dict(SYNTHESIS.generation_settings),
+        },
+    )
+
+    hit = resolver.resolve(SPOKEN_PHONE_A, SYNTHESIS, template_id=TEMPLATE_ID)
+    assert hit.hit
+    assert hit.reason == REASON_EXACT_MATCH
+    assert hit.audio == PRECOMPUTED_AUDIO_BYTES
+    assert hit.artifact is not None
+    assert hit.artifact.metadata["dataset_audio_path"] == "audio/abby-tts/audio-food.wav"
+    assert hit.artifact.metadata["bucket_audio_paths"] == ["hf-bucket/audio-food.wav"]
+    assert observed["metadata"]["dataset_audio_path"] == "audio/abby-tts/audio-food.wav"
+
+
 def test_stale_slot_regression_test_invalidates_phone_change() -> None:
     """stale-slot regression test: phone change invalidates precomputed audio.
 
@@ -485,7 +532,7 @@ def test_runtime_resolution_falls_through_to_live_tts_on_miss() -> None:
     )
 
     assert result.status == "completed"
-    assert result.audio == b"RIFF-live-tts"
+    assert result.audio == speech.audio
     assert result.provenance.tts_provider != "precomputed"
     assert any(call[0] == "synthesize" for call in speech.calls)
     precomputed_traces = [
@@ -500,6 +547,82 @@ def test_runtime_resolution_falls_through_to_live_tts_on_miss() -> None:
     # GraphRAG provenance is preserved through the live-TTS fallback.
     assert result.provenance.template_id == TEMPLATE_ID
     assert result.provenance.grounded_slots
+
+
+def test_invalid_precomputed_hit_emits_validated_live_tts_repair_event() -> None:
+    """A corrupt exact hit remains eligible for a validated replacement append."""
+
+    corrupt_audio = b"RIFFxxxxWAVEcorrupt"
+    corrupt_sha = sha256(corrupt_audio).hexdigest()
+    bundle = _fixture_bundle()
+    audio_row = {
+        **bundle["audio_rows"][0],
+        "content_sha256": corrupt_sha,
+        "byte_length": len(corrupt_audio),
+    }
+    resolver = PrecomputedVoiceAudioResolver.from_audio_rows(
+        [audio_row],
+        audio_bytes_by_sha256={corrupt_sha: corrupt_audio},
+        default_identity={
+            "provider_version": SYNTHESIS.provider_version,
+            "generation_settings": dict(SYNTHESIS.generation_settings),
+        },
+    )
+    speech = FakeSpeech()
+
+    result = process_voice_turn(
+        _request(request_id="corrupt-precomputed-turn"),
+        template_provider=FakeTemplateProvider(plan=_plan()),
+        tts_provider=speech,
+        audio_resolver=resolver,
+    )
+
+    assert result.audio == speech.audio
+    assert result.provenance.tts_provider != "precomputed"
+    failed_precomputed = [
+        trace
+        for trace in result.traces
+        if trace.stage == "synthesis"
+        and trace.provider == "precomputed"
+        and trace.status == "failed"
+    ]
+    assert len(failed_precomputed) == 1
+    assert (
+        failed_precomputed[0].details.get("resolver_reason")
+        == "precomputed_audio_validation_failed"
+    )
+    assert failed_precomputed[0].details.get("synthesis_identity") == SYNTHESIS.to_dict()
+
+    event = result.validated_cache_miss_event(
+        validation_receipt_id="round-trip-asr-pass-corrupt-replacement",
+        response_id="response-food",
+    )
+    assert event is not None
+    assert event.ready_for_dag_append is True
+    assert event.resolver_miss_reason == "precomputed_audio_validation_failed"
+    assert event.output_audio_sha256 == sha256(speech.audio).hexdigest()
+
+
+def test_precomputed_resolver_failure_does_not_emit_cache_miss_event() -> None:
+    """A transient resolver outage is not mistaken for a canonical cache miss."""
+
+    class FailingResolver:
+        def resolve(self, *_args: object, **_kwargs: object) -> None:
+            raise TimeoutError("transient pinned-release fetch failure")
+
+    speech = FakeSpeech()
+    result = process_voice_turn(
+        _request(request_id="failed-precomputed-resolver-turn"),
+        template_provider=FakeTemplateProvider(plan=_plan()),
+        tts_provider=speech,
+        audio_resolver=FailingResolver(),  # type: ignore[arg-type]
+    )
+
+    assert result.audio == speech.audio
+    assert result.validated_cache_miss_event(
+        validation_receipt_id="round-trip-asr-pass-resolver-outage",
+        response_id="response-food",
+    ) is None
 
 
 def test_runtime_resolution_text_only_fallback_receipt_on_total_audio_failure() -> None:
@@ -579,7 +702,7 @@ def test_end_to_end_release_loader_to_runtime_resolution(tmp_path: Path) -> None
         audio_resolver=resolver,
     )
 
-    assert result.audio in (PRECOMPUTED_AUDIO_BYTES, b"RIFF-live-tts")
+    assert result.audio in (PRECOMPUTED_AUDIO_BYTES, _fixture_wav(2_000))
     assert result.provenance.template_id is not None or result.response_text
     # If exact spoken text was produced, precomputed path must win.
     if result.response_text == SPOKEN_PHONE_A:
@@ -611,7 +734,7 @@ def test_stale_slot_runtime_path_falls_through_without_serving_stale_audio() -> 
     )
 
     assert result.response_text == SPOKEN_PHONE_B
-    assert result.audio == b"RIFF-live-tts"
+    assert result.audio == speech.audio
     assert result.provenance.tts_provider != "precomputed"
     precomputed_traces = [
         trace

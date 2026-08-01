@@ -1,0 +1,2648 @@
+{
+  "schema_version": "formal-verification-tactician-completion-receipt/v1",
+  "interface": "FormalVerificationTacticianCompletionReceipt@1",
+  "program_interface": "FormalVerificationTacticianRelease@1",
+  "program_goal_id": "FVT-G000",
+  "completion_goal_id": "FVT-G090",
+  "task_id": "FVT-036",
+  "program": "formal-verification-tactician/readiness",
+  "observed_at": "2026-07-31T17:32:52Z",
+  "binding_mode": "current_tree_content_identity",
+  "source": {
+    "parent_commit": "e7f3f44031cc4c44b129445feef04ab3c9146751",
+    "parent_tree": "e8de8689723edac7887573365654f3cc748cc2e3",
+    "datasets_gitlink": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
+    "datasets_embedded_head": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
+    "datasets_origin_main": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
+    "parent_origin_main": "48f13ab632dec4c3575acaad6e309ef60420904b",
+    "binding_mode": "current_tree_content_identity"
+  },
+  "acceptance": {
+    "implementation_complete": false,
+    "deployment_section_present": true,
+    "implementation_section_present": true,
+    "child_goal_count": 53,
+    "child_goals_bound": 36,
+    "schemas_corpus_public_ops_metrics_rollout_bound": true,
+    "parent_datasets_publication_bound": true,
+    "exact_tools_bound": true,
+    "live_simulated_skipped_bound": true,
+    "hard_zero_gates_clear": true,
+    "hardcoded_success_counters": false,
+    "false_proof_count": 0,
+    "false_closure_count": 0,
+    "secret_or_witness_leakage_count": 0,
+    "authority_boundary_violations": 0,
+    "unresolved_cross_provider_disagreement_count": 0
+  },
+  "hard_zero_gates": {
+    "false_proof_count": 0,
+    "false_closure_count": 0,
+    "secret_or_witness_leakage_count": 0,
+    "authority_boundary_violations": 0,
+    "unresolved_cross_provider_disagreement_count": 0,
+    "derivation": {
+      "source": "child_certificate_and_benchmark_hard_gates",
+      "hardcoded_success_counters_forbidden": true,
+      "benchmark_hard_gates_required_bps": 10000,
+      "open_baseline_findings_disclosed": 4,
+      "open_baseline_findings": [
+        {
+          "id": "receipt_verification_fail_open",
+          "severity": "p0",
+          "summary": "verify_receipt accepts empty/forged structural mappings as success."
+        },
+        {
+          "id": "public_counterexample_raw_leak",
+          "severity": "p0",
+          "summary": "Public datasets counterexample projection can expose raw/hidden_witness material."
+        },
+        {
+          "id": "structural_repair_as_closure",
+          "severity": "p0",
+          "summary": "Formal replanner closes counterexamples without fresh verifier receipts."
+        },
+        {
+          "id": "synthetic_examples_and_metrics",
+          "severity": "medium",
+          "summary": "Examples and some readiness metrics remain synthetic/offline and must stay labeled."
+        }
+      ]
+    }
+  },
+  "implementation": {
+    "status": "incomplete",
+    "description": "Current-tree implementation completion: child goal evidence, schemas/contracts, golden corpus, public operations, metrics, and rollout policy are bound by content identity. Implementation is not deployment certification.",
+    "child_goal_count": 53,
+    "child_goals_bound": 36,
+    "child_goals_unbound": [
+      "FVT-G100",
+      "FVT-G101",
+      "FVT-G102",
+      "FVT-G103",
+      "FVT-G110",
+      "FVT-G120",
+      "FVT-G130",
+      "FVT-G131",
+      "FVT-G140",
+      "FVT-G150",
+      "FVT-G151",
+      "FVT-G160",
+      "FVT-G170",
+      "FVT-G180",
+      "FVT-G181",
+      "FVT-G190",
+      "FVT-G200"
+    ],
+    "schemas_bound": true,
+    "schema_surfaces": [
+      "readiness_baseline",
+      "toolchain_certificate",
+      "toolchain_lock",
+      "corpus_manifest",
+      "benchmark_report",
+      "rollout_policy"
+    ],
+    "corpus_bound": true,
+    "corpus_case_count": 53,
+    "corpus_interface": "ProofTacticianCorpus@1",
+    "public_operations_bound": true,
+    "public_operation_evidence": [
+      "ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py",
+      "test/api/test_goal_tactician_cli_mcp_parity.py"
+    ],
+    "metrics_bound": true,
+    "rollout_policy_bound": true,
+    "completion_surfaces_bound": true,
+    "hardcoded_success_counters": false
+  },
+  "deployment": {
+    "status": "machine_specific_partial",
+    "description": "Machine-specific deployment certification binds exact tool identities, live/simulated/skipped evidence classes, publication alignment, and assurance ceilings. Implementation completeness never implies production certification.",
+    "tree_alignment": {
+      "description": "Parent commit, datasets gitlink, embedded HEAD, and origin/main are independent dimensions. Alignment of one never implies the others.",
+      "dimensions": [
+        "parent_commit",
+        "datasets_gitlink",
+        "datasets_embedded_head",
+        "datasets_origin_main",
+        "datasets_cleanliness",
+        "parent_origin_main"
+      ],
+      "parent": {
+        "path": ".",
+        "commit": "e7f3f44031cc4c44b129445feef04ab3c9146751",
+        "tree": "e8de8689723edac7887573365654f3cc748cc2e3",
+        "origin_main": "48f13ab632dec4c3575acaad6e309ef60420904b",
+        "clean": true,
+        "matches_origin_main": false
+      },
+      "gitlink": {
+        "path": "ipfs_datasets_py",
+        "mode": "160000",
+        "commit": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25"
+      },
+      "embedded_checkout": {
+        "path": "ipfs_datasets_py",
+        "head": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
+        "clean": true,
+        "matches_gitlink": true,
+        "origin_main": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
+        "matches_origin_main": true
+      },
+      "publication_gates": {
+        "parent_publication_lag": true,
+        "datasets_publication_lag": false,
+        "fetches_forbidden": true,
+        "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
+      },
+      "aligned_for_implementation": true,
+      "diagnostics": [
+        "parent_publication_lag_vs_origin_main"
+      ]
+    },
+    "exact_tools": [
+      {
+        "tool_id": "z3",
+        "certification_tool_id": "z3",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": true,
+          "installed": true,
+          "usable": true,
+          "production_certified": true,
+          "unsupported": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/bin/z3",
+        "version_string": "Z3 version 4.16.0 - 64 bit",
+        "package_or_toolchain": "z3-4.16.0",
+        "certification": {
+          "locked_version": ">=4.12.0,<5.0.0",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "production_certified",
+          "production_certified": true,
+          "promotion_blocked": false,
+          "block_reasons": []
+        }
+      },
+      {
+        "tool_id": "cvc5",
+        "certification_tool_id": "cvc5",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": true,
+          "installed": true,
+          "usable": true,
+          "production_certified": true,
+          "unsupported": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/bin/cvc5",
+        "version_string": "This is cvc5 version 1.3.3 [git 8ff882e on branch HEAD]",
+        "package_or_toolchain": "cvc5-1.3.3",
+        "certification": {
+          "locked_version": "1.3.3",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "production_certified",
+          "production_certified": true,
+          "promotion_blocked": false,
+          "block_reasons": []
+        }
+      },
+      {
+        "tool_id": "lean",
+        "certification_tool_id": "lean",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": true,
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unsupported": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.elan/bin/lean",
+        "version_string": "Lean (version 4.31.0, aarch64-unknown-linux-gnu, commit 68218e876d2a38b1985b8590fff244a83c321783, Release)",
+        "package_or_toolchain": "lean@v4.31.0",
+        "certification": {
+          "locked_version": "v4.31.0",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "live_checks_incomplete_or_failed"
+          ]
+        }
+      },
+      {
+        "tool_id": "lake",
+        "certification_tool_id": "lake",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": true,
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unsupported": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.elan/bin/lake",
+        "version_string": "Lake version 5.0.0-src+f3b06c7 (Lean version 4.32.2)",
+        "package_or_toolchain": "lake-5.0.0+lean-4.32.2",
+        "certification": null
+      },
+      {
+        "tool_id": "java",
+        "certification_tool_id": "java",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": false,
+          "live_tested": true,
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unsupported": false,
+          "unavailable": false
+        },
+        "executable_path": "/usr/bin/java",
+        "version_string": "openjdk version \"1.8.0_482\"",
+        "package_or_toolchain": "openjdk-1.8.0_482",
+        "certification": {
+          "locked_version": "",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "live_checks_incomplete_or_failed"
+          ]
+        }
+      },
+      {
+        "tool_id": "tlc",
+        "certification_tool_id": "tlc",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": false,
+          "installed": false,
+          "usable": false,
+          "production_certified": false,
+          "unsupported": false,
+          "unavailable": true
+        },
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": null,
+        "certification": {
+          "locked_version": "",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": false,
+          "evidence_class": "unavailable",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "declared_gap"
+          ]
+        }
+      },
+      {
+        "tool_id": "coqc",
+        "certification_tool_id": "coq",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": false,
+          "installed": false,
+          "usable": false,
+          "production_certified": false,
+          "unsupported": false,
+          "unavailable": true
+        },
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": null,
+        "certification": {
+          "locked_version": "9.1.1",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": false,
+          "evidence_class": "unavailable",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "tool_id": "isabelle",
+        "certification_tool_id": "isabelle",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": false,
+          "installed": false,
+          "usable": false,
+          "production_certified": false,
+          "unsupported": false,
+          "unavailable": true
+        },
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": null,
+        "certification": {
+          "locked_version": "Isabelle2025-2",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": false,
+          "evidence_class": "unavailable",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "tool_id": "vampire",
+        "certification_tool_id": "vampire",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": false,
+          "installed": false,
+          "usable": false,
+          "production_certified": false,
+          "unsupported": false,
+          "unavailable": true
+        },
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": null,
+        "certification": {
+          "locked_version": "5.0.1",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": false,
+          "evidence_class": "unavailable",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "tool_id": "eprover",
+        "certification_tool_id": "eprover",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": false,
+          "live_tested": false,
+          "installed": false,
+          "usable": false,
+          "production_certified": false,
+          "unsupported": false,
+          "unavailable": true
+        },
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": null,
+        "certification": {
+          "locked_version": "3.2.5",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": false,
+          "evidence_class": "unavailable",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "unavailable"
+          ]
+        }
+      }
+    ],
+    "usable_tools": [
+      "z3",
+      "cvc5",
+      "lean",
+      "lake",
+      "java"
+    ],
+    "unavailable_tools": [
+      "apalache",
+      "autohyper",
+      "coq",
+      "coqc",
+      "eprover",
+      "ergoai",
+      "hyperltl",
+      "isabelle",
+      "maude",
+      "mchyper",
+      "opam",
+      "proverif",
+      "runtime-mtl-external",
+      "secpal",
+      "souffle",
+      "symbolicai",
+      "tamarin",
+      "tlc",
+      "vampire",
+      "zkp-circuit"
+    ],
+    "production_certified_tool_ids": [
+      "cvc5",
+      "z3"
+    ],
+    "blocked_tool_ids": {
+      "apalache": [
+        "unavailable"
+      ],
+      "autohyper": [
+        "declared_gap"
+      ],
+      "coq": [
+        "unavailable"
+      ],
+      "datalog-authorization": [
+        "live_checks_incomplete_or_failed"
+      ],
+      "eprover": [
+        "unavailable"
+      ],
+      "ergoai": [
+        "unavailable"
+      ],
+      "hyperltl": [
+        "declared_gap"
+      ],
+      "isabelle": [
+        "unavailable"
+      ],
+      "java": [
+        "live_checks_incomplete_or_failed"
+      ],
+      "lean": [
+        "live_checks_incomplete_or_failed"
+      ],
+      "maude": [
+        "unavailable"
+      ],
+      "mchyper": [
+        "declared_gap"
+      ],
+      "opam": [
+        "unavailable"
+      ],
+      "proverif": [
+        "unavailable"
+      ],
+      "runtime-mtl": [
+        "live_checks_incomplete_or_failed"
+      ],
+      "runtime-mtl-external": [
+        "declared_gap"
+      ],
+      "secpal": [
+        "declared_gap"
+      ],
+      "secpal-authorization": [
+        "live_checks_incomplete_or_failed"
+      ],
+      "souffle": [
+        "declared_gap"
+      ],
+      "symbolicai": [
+        "unavailable"
+      ],
+      "tamarin": [
+        "unavailable"
+      ],
+      "tlc": [
+        "declared_gap"
+      ],
+      "vampire": [
+        "unavailable"
+      ],
+      "zkp-circuit": [
+        "declared_gap"
+      ]
+    },
+    "lane_promotion_ready": {
+      "smt": true,
+      "tla": false,
+      "datalog_secpal": false,
+      "protocol": false,
+      "hyperltl": false,
+      "atp": false,
+      "hammer": false,
+      "kernel": false,
+      "runtime_mtl": false,
+      "attestation": false
+    },
+    "live_simulated_skipped": {
+      "live_case_count": 2,
+      "simulated_or_fixture_case_count": 12,
+      "skipped_or_unavailable_case_count": 0,
+      "evidence_class_policy": {
+        "fixture": "Structural offline evidence only.",
+        "live": "Bounded live tool outcome on this machine; not production-certified alone.",
+        "simulated": "Interpreter or API evaluation without external prover authority.",
+        "skipped": "Intentionally not executed under current bounds.",
+        "synthetic_forbidden_as_readiness": true,
+        "unavailable": "Required tool or runtime missing.",
+        "unsupported": "Outside supported fragment; fail-closed."
+      },
+      "production_readiness_claims": {
+        "fixture_counts_as_production_certified": false,
+        "live_without_hermetic_certificate_is_not_production_certified": true,
+        "notes": "Live solver outcomes on this host are evidence class 'live' only. Production certification requires hermetic toolchain locks (FVT-006/FVT-030).",
+        "simulated_counts_as_production_certified": false,
+        "synthetic_distributions_forbidden": true
+      }
+    },
+    "unsupported_semantics": [],
+    "publication_gates": {
+      "parent_publication_lag": true,
+      "datasets_publication_lag": false,
+      "fetches_forbidden": true,
+      "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
+    },
+    "assurance_ceilings": {
+      "path_presence_is_not_usability": true,
+      "source_presence_is_not_usability": true,
+      "fixture_is_not_production_certified": true,
+      "live_without_hermetic_certificate_is_not_production_certified": true,
+      "lfv_completion_is_not_deployment_certificate": true,
+      "synthetic_evidence_cannot_certify_production": true,
+      "production_certified_count": 2,
+      "baseline_production_certified_count": 0,
+      "machine_certified": true,
+      "publication_aligned": false,
+      "hard_zero_clear": true
+    },
+    "hardcoded_success_counters": false
+  },
+  "artifacts": {
+    "objectives_heap": {
+      "path": "docs/architecture/formal_verification_tactician_readiness.objectives.md",
+      "present": true,
+      "content_identity": "sha256:d877915ecc29dc18cc47de578f3a678b6d68fa54f59999ed193ebbdc0b484c8a"
+    },
+    "readiness_baseline": {
+      "path": "docs/architecture/formal_verification_readiness_baseline.json",
+      "present": true,
+      "content_identity": "sha256:74235ec47e8a2e0d78fc6ccb57d5a4ab76a5cf3d4c055b03d29d3b53b85b7a76"
+    },
+    "toolchain_certificate": {
+      "path": "docs/architecture/formal_verification_toolchain_certificate.json",
+      "present": true,
+      "content_identity": "sha256:2709f49c4ac4fd804bf70c12ba5a35c589914fcdd49e00018f88c78bf955878b"
+    },
+    "toolchain_lock": {
+      "path": "config/formal_verification_toolchains.lock.json",
+      "present": true,
+      "content_identity": "sha256:4dc3ef7666ef33f2c82dba314a27e13d2a6fc438b07e7860f18f17a45163f51a"
+    },
+    "benchmark_report": {
+      "path": "docs/architecture/formal_verification_tactician_benchmark.json",
+      "present": true,
+      "content_identity": "sha256:2b61eea615e54092b8c130256c8e498dcacf4c006bf29e3e8923234ff174883c"
+    },
+    "live_example_report": {
+      "path": "docs/architecture/formal_verification_live_example_report.json",
+      "present": true,
+      "content_identity": "sha256:6949480646403408901728a130ebe14e95b69dbac0e18b1d0ae40dbd9973e693"
+    },
+    "rollout_policy": {
+      "path": "docs/architecture/formal_verification_tactician_rollout.md",
+      "present": true,
+      "content_identity": "sha256:63d8e99c2d4c4c645872d1910e43e757ffbe5f5ed0f086adb920378aa89502b2"
+    },
+    "corpus_manifest": {
+      "path": "ipfs_datasets_py/tests/fixtures/logic/proof_tactician/manifest.json",
+      "present": true,
+      "content_identity": "sha256:168c7902c975dc93a803558d4974e9a2c73f6fb07eabb9d93564935b1f61b02d"
+    },
+    "product_documentation": {
+      "path": "docs/formal_verification_tactician.md",
+      "present": true,
+      "content_identity": "sha256:374322ed38eecb4d81a2e9f258fd783ba7d01e2180c49c70ecf6b0e418c290b1"
+    },
+    "operator_runbook": {
+      "path": "docs/operations/formal_verification_tactician_runbook.md",
+      "present": true,
+      "content_identity": "sha256:c2611eea93ffe214355172334f3c1da646dcd89094fb0e40a4ed844c6fad0560"
+    },
+    "public_api_test": {
+      "path": "ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py",
+      "present": true,
+      "content_identity": "sha256:fe53ccc245b7f618735368668f34f9c4d669f5a3a6312700baa6ec5af95136c6"
+    },
+    "cli_mcp_parity_test": {
+      "path": "test/api/test_goal_tactician_cli_mcp_parity.py",
+      "present": true,
+      "content_identity": "sha256:a146a1a8f11f90f030373eecf85e612219077a1565c22b314a925dba766552c6"
+    },
+    "adversarial_root_test": {
+      "path": "test/security/test_formal_verification_tactician_adversarial.py",
+      "present": true,
+      "content_identity": "sha256:08b69d05b939afe07248af1bbdd9d9ab0f30b1d1649e03da18d4b813d89e7379"
+    },
+    "adversarial_datasets_test": {
+      "path": "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py",
+      "present": true,
+      "content_identity": "sha256:98dc0930749e2fc8903c420ee61e20037f5ac24a477b56dc694a6b45874c17cb"
+    },
+    "metrics_module": {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py",
+      "present": true,
+      "content_identity": "sha256:aa0d840ea411992ad9209767297e1003ba867e2956af23405e7901f72ca435af"
+    },
+    "receipt_builder": {
+      "path": "tools/logic/build_formal_verification_tactician_receipt.py",
+      "present": true,
+      "content_identity": "sha256:52f8819890c0c8c7179fd5b501727fbfae85e2a213d3248012f654320c3f620f"
+    },
+    "completion_test": {
+      "path": "test/api/test_formal_verification_tactician_readiness_completion.py",
+      "present": true,
+      "content_identity": "sha256:160e2dfd3be47f4ba3b3320d7c7ee7883a619f62d4bc06e0485fe91c86e6e695"
+    },
+    "completion_receipt": {
+      "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
+      "present": true,
+      "content_identity": "self:receipt_identity"
+    }
+  },
+  "child_goals": [
+    {
+      "goal_id": "FVT-G005",
+      "title": "Establish an executable production-readiness baseline",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [],
+      "interfaces": [
+        "FormalVerificationReadinessBaseline@1"
+      ],
+      "evidence": [
+        "docs/architecture/formal_verification_readiness_baseline.json",
+        "test/api/test_formal_verification_readiness_baseline.py"
+      ],
+      "outputs": [
+        "docs/architecture/formal_verification_readiness_baseline.json",
+        "test/api/test_formal_verification_readiness_baseline.py"
+      ],
+      "validation": "python -m pytest test/api/test_formal_verification_readiness_baseline.py -q",
+      "track": "readiness-baseline",
+      "evidence_present": [
+        "docs/architecture/formal_verification_readiness_baseline.json",
+        "test/api/test_formal_verification_readiness_baseline.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "docs/architecture/formal_verification_readiness_baseline.json",
+        "test/api/test_formal_verification_readiness_baseline.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G006",
+      "title": "Make receipt verification and attestation fail closed",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G005"
+      ],
+      "interfaces": [
+        "VerifiedReceiptDispatch@2",
+        "AttestationAuthorityBoundary@2"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py",
+        "test/api/test_logic_receipt_authority_boundary.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+        "ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py",
+        "test/api/test_logic_receipt_authority_boundary.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py test/api/test_logic_receipt_authority_boundary.py -q",
+      "track": "receipt-authority",
+      "evidence_present": [
+        "ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py",
+        "test/api/test_logic_receipt_authority_boundary.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+        "ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py",
+        "test/api/test_logic_receipt_authority_boundary.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G007",
+      "title": "Unify the secret-safe public counterexample boundary",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G005"
+      ],
+      "interfaces": [
+        "CounterexampleEnvelope@2",
+        "PublicCounterexampleBoundary@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py",
+        "test/api/test_counterexample_cross_repository_contract.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+        "ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py",
+        "test/api/test_counterexample_cross_repository_contract.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py test/api/test_counterexample_cross_repository_contract.py -q",
+      "track": "counterexample-boundary",
+      "evidence_present": [
+        "ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py",
+        "test/api/test_counterexample_cross_repository_contract.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+        "ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py",
+        "test/api/test_counterexample_cross_repository_contract.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G008",
+      "title": "Require verifier-backed counterexample closure",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G006",
+        "FVT-G007"
+      ],
+      "interfaces": [
+        "VerifierBackedRepairClosure@1"
+      ],
+      "evidence": [
+        "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py"
+      ],
+      "outputs": [
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py",
+        "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py"
+      ],
+      "validation": "python -m pytest test/api/test_agent_supervisor_formal_replanner.py test/api/test_agent_supervisor_formal_replanner_verifier_closure.py -q",
+      "track": "replan-soundness",
+      "evidence_present": [
+        "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py",
+        "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G009",
+      "title": "Route every external tool through one bounded lifecycle",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G005"
+      ],
+      "interfaces": [
+        "UniversalBoundedToolLifecycle@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py",
+        "ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py -q",
+      "track": "tool-runtime",
+      "evidence_present": [
+        "ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py",
+        "ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G010",
+      "title": "Qualify clean packages and hermetic offline toolchains",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G005",
+        "FVT-G009"
+      ],
+      "interfaces": [
+        "FormalVerificationPackagingGate@1",
+        "OfflineToolchainLock@1"
+      ],
+      "evidence": [
+        "config/formal_verification_toolchains.lock.json",
+        "test/packaging/test_logic_verification_clean_install.py",
+        "ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py"
+      ],
+      "outputs": [
+        "config/formal_verification_toolchains.lock.json",
+        "test/packaging/test_logic_verification_clean_install.py",
+        "ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py"
+      ],
+      "validation": "python -m pytest test/packaging/test_logic_verification_clean_install.py ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py -q",
+      "track": "packaging-toolchains",
+      "evidence_present": [
+        "config/formal_verification_toolchains.lock.json",
+        "test/packaging/test_logic_verification_clean_install.py",
+        "ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "config/formal_verification_toolchains.lock.json",
+        "test/packaging/test_logic_verification_clean_install.py",
+        "ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G011",
+      "title": "Build the source-to-VC-to-solver vertical slice",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G006",
+        "FVT-G007",
+        "FVT-G009"
+      ],
+      "interfaces": [
+        "SourceToVerificationPipeline@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py -q",
+      "track": "executable-pipeline",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G012",
+      "title": "Execute the full lazy provider matrix through stable surfaces",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G006",
+        "FVT-G009",
+        "FVT-G011"
+      ],
+      "interfaces": [
+        "ExecutableProviderMatrix@1",
+        "FormalVerificationMCPParity@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/tests/integration/logic/test_verification_provider_matrix_api.py",
+        "test/api/test_root_mcp_formal_verification_parity.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/registry.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+        "ipfs_datasets_py/tests/integration/logic/test_verification_provider_matrix_api.py",
+        "test/api/test_root_mcp_formal_verification_parity.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/test_verification_provider_matrix_api.py test/api/test_root_mcp_formal_verification_parity.py -q",
+      "track": "provider-execution",
+      "evidence_present": [
+        "ipfs_datasets_py/tests/integration/logic/test_verification_provider_matrix_api.py",
+        "test/api/test_root_mcp_formal_verification_parity.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/registry.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+        "ipfs_datasets_py/tests/integration/logic/test_verification_provider_matrix_api.py",
+        "test/api/test_root_mcp_formal_verification_parity.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G013",
+      "title": "Replace manifest-only examples and synthetic readiness claims",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G011",
+        "FVT-G012"
+      ],
+      "interfaces": [
+        "RunnableVerificationExamples@1",
+        "LiveReadinessReport@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/examples/logic/software_verification/README.md",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_runnable_examples.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/examples/logic/software_verification/README.md",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_runnable_examples.py",
+        "docs/architecture/formal_verification_live_example_report.json"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_runnable_examples.py -q",
+      "track": "runnable-examples",
+      "evidence_present": [
+        "ipfs_datasets_py/examples/logic/software_verification/README.md",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_runnable_examples.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/examples/logic/software_verification/README.md",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_runnable_examples.py",
+        "docs/architecture/formal_verification_live_example_report.json"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G014",
+      "title": "Expand source frontends with explicit semantic profiles",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G011"
+      ],
+      "interfaces": [
+        "SourceFrontendSemanticProfile@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py -q",
+      "track": "source-frontends",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G020",
+      "title": "Establish the goal/proof-gap/counterexample golden corpus",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G005"
+      ],
+      "interfaces": [
+        "ProofTacticianCorpus@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/tests/fixtures/logic/proof_tactician/manifest.json",
+        "test/api/test_formal_verification_tactician_corpus_contract.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/tests/fixtures/logic/proof_tactician/manifest.json",
+        "test/api/test_formal_verification_tactician_corpus_contract.py"
+      ],
+      "validation": "python -m pytest test/api/test_formal_verification_tactician_corpus_contract.py -q",
+      "track": "tactician-corpus",
+      "evidence_present": [
+        "ipfs_datasets_py/tests/fixtures/logic/proof_tactician/manifest.json",
+        "test/api/test_formal_verification_tactician_corpus_contract.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/tests/fixtures/logic/proof_tactician/manifest.json",
+        "test/api/test_formal_verification_tactician_corpus_contract.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G021",
+      "title": "Define closed end-goal, proof-hole, graph, and plan contracts",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G006",
+        "FVT-G007",
+        "FVT-G020"
+      ],
+      "interfaces": [
+        "EndGoalSpec@1",
+        "ProofHole@1",
+        "ProofObligationGraph@1",
+        "GoalDirectedProofPlan@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/contracts.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_contracts.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/contracts.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_contracts.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_contracts.py -q",
+      "track": "tactician-contracts",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/contracts.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_contracts.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/contracts.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_contracts.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G022",
+      "title": "Formalize prose end goals with source-grounded alternatives",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G021"
+      ],
+      "interfaces": [
+        "EndGoalFormalizer@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/end_goal_formalizer.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_end_goal_formalizer.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/end_goal_formalizer.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_end_goal_formalizer.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_end_goal_formalizer.py -q",
+      "track": "goal-formalization",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/end_goal_formalizer.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_end_goal_formalizer.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/end_goal_formalizer.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_end_goal_formalizer.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G023",
+      "title": "Expose ambiguity and require material interpretation selection",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G022"
+      ],
+      "interfaces": [
+        "GoalInterpretationSet@1",
+        "GoalAmbiguityGate@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/ambiguity.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_ambiguity.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/ambiguity.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_ambiguity.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_ambiguity.py -q",
+      "track": "goal-ambiguity",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/ambiguity.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_ambiguity.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/ambiguity.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_ambiguity.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G024",
+      "title": "Compile confirmed goals into shared verification semantics",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G011",
+        "FVT-G023"
+      ],
+      "interfaces": [
+        "FormalGoalCompiler@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/goal_compiler.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/goal_compiler.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py -q",
+      "track": "goal-compilation",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/goal_compiler.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/goal_compiler.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G025",
+      "title": "Invoke Leanstral goal development only after formalization",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G024"
+      ],
+      "interfaces": [
+        "FormalizedGoalDevelopmentRoute@1"
+      ],
+      "evidence": [
+        "test/api/test_leanstral_end_goal_formalization_route.py"
+      ],
+      "outputs": [
+        "ipfs_accelerate_py/agent_supervisor/proof/end_goal_development.py",
+        "test/api/test_leanstral_end_goal_formalization_route.py"
+      ],
+      "validation": "python -m pytest test/api/test_agent_supervisor_leanstral_goal_development.py test/api/test_leanstral_end_goal_formalization_route.py -q",
+      "track": "advisor-routing",
+      "evidence_present": [
+        "test/api/test_leanstral_end_goal_formalization_route.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_accelerate_py/agent_supervisor/proof/end_goal_development.py",
+        "test/api/test_leanstral_end_goal_formalization_route.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G030",
+      "title": "Emit actionable typed proof holes",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G011",
+        "FVT-G021"
+      ],
+      "interfaces": [
+        "TypedProofHoleEmitter@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_holes.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_holes.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_holes.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_holes.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_holes.py -q",
+      "track": "proof-holes",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_holes.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_holes.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_holes.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_holes.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G031",
+      "title": "Construct a bounded backward AND/OR obligation graph",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G024",
+        "FVT-G030"
+      ],
+      "interfaces": [
+        "BackwardProofObligationGraph@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_graph.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_graph.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_graph.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_graph.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_graph.py -q",
+      "track": "backward-proof-search",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_graph.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_graph.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_graph.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_graph.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G032",
+      "title": "Find weakest admissible missing premises by bounded abduction",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G031"
+      ],
+      "interfaces": [
+        "MissingProofAbduction@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/abduction.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_abduction.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/abduction.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_abduction.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_abduction.py -q",
+      "track": "proof-abduction",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/abduction.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_abduction.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/abduction.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_abduction.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G033",
+      "title": "Build the candidate lemma, invariant, contract, and evidence portfolio",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G030"
+      ],
+      "interfaces": [
+        "ProofCandidatePortfolio@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_synthesis.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_candidate_synthesis.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_synthesis.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_candidate_synthesis.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_candidate_synthesis.py -q",
+      "track": "candidate-synthesis",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_synthesis.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_candidate_synthesis.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_synthesis.py",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_candidate_synthesis.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G034",
+      "title": "Independently validate proof-gap candidates",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G012",
+        "FVT-G032",
+        "FVT-G033"
+      ],
+      "interfaces": [
+        "ProofCandidateValidator@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_validation.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_candidate_validation.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_validation.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_candidate_validation.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_candidate_validation.py -q",
+      "track": "candidate-validation",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_validation.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_candidate_validation.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_validation.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_candidate_validation.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G035",
+      "title": "Rank complete missing-proof plans by authority and utility",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G034"
+      ],
+      "interfaces": [
+        "GoalDirectedProofPlanRanker@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_plan.py",
+        "test/api/test_goal_directed_proof_plan_ranking.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_plan.py",
+        "test/api/test_goal_directed_proof_plan_ranking.py"
+      ],
+      "validation": "python -m pytest test/api/test_goal_directed_proof_plan_ranking.py -q",
+      "track": "proof-plan-ranking",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_plan.py",
+        "test/api/test_goal_directed_proof_plan_ranking.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_plan.py",
+        "test/api/test_goal_directed_proof_plan_ranking.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G036",
+      "title": "Integrate the goal-directed tactician with existing utilities",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G025",
+        "FVT-G035"
+      ],
+      "interfaces": [
+        "GoalDirectedProofTactician@1"
+      ],
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py",
+        "test/api/test_goal_directed_tactician_integration.py"
+      ],
+      "outputs": [
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py",
+        "test/api/test_goal_directed_tactician_integration.py"
+      ],
+      "validation": "python -m pytest test/api/test_goal_directed_tactician_integration.py -q",
+      "track": "tactician-integration",
+      "evidence_present": [
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py",
+        "test/api/test_goal_directed_tactician_integration.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py",
+        "test/api/test_goal_directed_tactician_integration.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G040",
+      "title": "Implement oracle-preserving semantic counterexample minimizers",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G007",
+        "FVT-G020"
+      ],
+      "interfaces": [
+        "SemanticCounterexampleMinimizer@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/minimization.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_semantic_minimization.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/minimization.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_semantic_minimization.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_semantic_minimization.py -q",
+      "track": "counterexample-minimization",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/minimization.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_semantic_minimization.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/minimization.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_semantic_minimization.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G041",
+      "title": "Make every counterexample exactly replayable",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G011",
+        "FVT-G040"
+      ],
+      "interfaces": [
+        "CounterexampleReplay@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/replay.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_replay.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/replay.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_replay.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_replay.py -q",
+      "track": "counterexample-replay",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/replay.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_replay.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/replay.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_replay.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G042",
+      "title": "Explain first divergence, causal slice, and missing proof",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G030",
+        "FVT-G041"
+      ],
+      "interfaces": [
+        "CounterexampleExplanation@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/explanation.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_explanation.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/explanation.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_explanation.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_explanation.py -q",
+      "track": "counterexample-explanation",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/explanation.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_explanation.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/explanation.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_explanation.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G043",
+      "title": "Deduplicate semantic witnesses and quarantine disagreement",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G012",
+        "FVT-G041"
+      ],
+      "interfaces": [
+        "CounterexampleSemanticEquivalence@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/equivalence.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/equivalence.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py -q",
+      "track": "counterexample-equivalence",
+      "evidence_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/equivalence.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/equivalence.py",
+        "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G044",
+      "title": "Close the loop with verifier-backed counterexample-guided synthesis",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G008",
+        "FVT-G034",
+        "FVT-G042",
+        "FVT-G043"
+      ],
+      "interfaces": [
+        "CounterexampleGuidedProofDevelopment@1"
+      ],
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py",
+        "test/api/test_counterexample_guided_tactician.py"
+      ],
+      "outputs": [
+        "ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py",
+        "test/api/test_counterexample_guided_tactician.py"
+      ],
+      "validation": "python -m pytest test/api/test_counterexample_guided_tactician.py -q",
+      "track": "cegis",
+      "evidence_present": [
+        "ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py",
+        "test/api/test_counterexample_guided_tactician.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py",
+        "test/api/test_counterexample_guided_tactician.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G050",
+      "title": "Expose stable goal-directed verification operations everywhere",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G036",
+        "FVT-G042",
+        "FVT-G044"
+      ],
+      "interfaces": [
+        "GoalTacticianAPI@1",
+        "GoalTacticianCLIMCP@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+        "ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py test/api/test_goal_tactician_cli_mcp_parity.py -q",
+      "track": "public-api",
+      "evidence_present": [
+        "ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+        "ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G051",
+      "title": "Make proof-tactician supervisor execution restartable and fenced",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G044",
+        "FVT-G050"
+      ],
+      "interfaces": [
+        "GoalTacticianSupervisorLifecycle@1"
+      ],
+      "evidence": [
+        "test/api/test_goal_tactician_supervisor_lifecycle.py",
+        "test/api/test_goal_tactician_supervisor_restart.py"
+      ],
+      "outputs": [
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_lifecycle.py",
+        "test/api/test_goal_tactician_supervisor_lifecycle.py",
+        "test/api/test_goal_tactician_supervisor_restart.py"
+      ],
+      "validation": "python -m pytest test/api/test_goal_tactician_supervisor_lifecycle.py test/api/test_goal_tactician_supervisor_restart.py -q",
+      "track": "supervisor-integration",
+      "evidence_present": [
+        "test/api/test_goal_tactician_supervisor_lifecycle.py",
+        "test/api/test_goal_tactician_supervisor_restart.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_lifecycle.py",
+        "test/api/test_goal_tactician_supervisor_lifecycle.py",
+        "test/api/test_goal_tactician_supervisor_restart.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G060",
+      "title": "Certify the real multi-prover matrix in hermetic lanes",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G010",
+        "FVT-G012",
+        "FVT-G013",
+        "FVT-G043"
+      ],
+      "interfaces": [
+        "FormalVerificationToolchainCertificate@1"
+      ],
+      "evidence": [
+        "tools/logic/certify_formal_verification_toolchains.py",
+        "test/integration/test_formal_verification_real_tool_matrix.py"
+      ],
+      "outputs": [
+        "tools/logic/certify_formal_verification_toolchains.py",
+        "test/integration/test_formal_verification_real_tool_matrix.py",
+        "docs/architecture/formal_verification_toolchain_certificate.json"
+      ],
+      "validation": "python -m pytest test/integration/test_formal_verification_real_tool_matrix.py -q",
+      "track": "real-tool-certification",
+      "evidence_present": [
+        "tools/logic/certify_formal_verification_toolchains.py",
+        "test/integration/test_formal_verification_real_tool_matrix.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "tools/logic/certify_formal_verification_toolchains.py",
+        "test/integration/test_formal_verification_real_tool_matrix.py",
+        "docs/architecture/formal_verification_toolchain_certificate.json"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G062",
+      "title": "Prove soundness, privacy, and robustness adversarially",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G014",
+        "FVT-G051",
+        "FVT-G060"
+      ],
+      "interfaces": [
+        "FormalVerificationTacticianAdversarialGate@1"
+      ],
+      "evidence": [
+        "test/security/test_formal_verification_tactician_adversarial.py",
+        "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py"
+      ],
+      "outputs": [
+        "test/security/test_formal_verification_tactician_adversarial.py",
+        "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py"
+      ],
+      "validation": "python -m pytest test/security/test_formal_verification_tactician_adversarial.py ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py -q",
+      "track": "adversarial-quality",
+      "evidence_present": [
+        "test/security/test_formal_verification_tactician_adversarial.py",
+        "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "test/security/test_formal_verification_tactician_adversarial.py",
+        "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G063",
+      "title": "Benchmark quality, resources, cache behavior, and observability",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G062"
+      ],
+      "interfaces": [
+        "GoalTacticianBenchmark@1",
+        "GoalTacticianMetrics@1"
+      ],
+      "evidence": [
+        "test/benchmarks/test_formal_verification_tactician_benchmark.py",
+        "docs/architecture/formal_verification_tactician_benchmark.json"
+      ],
+      "outputs": [
+        "test/benchmarks/test_formal_verification_tactician_benchmark.py",
+        "docs/architecture/formal_verification_tactician_benchmark.json",
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py"
+      ],
+      "validation": "python -m pytest test/benchmarks/test_formal_verification_tactician_benchmark.py -q",
+      "track": "metrics-benchmark",
+      "evidence_present": [
+        "test/benchmarks/test_formal_verification_tactician_benchmark.py",
+        "docs/architecture/formal_verification_tactician_benchmark.json"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "test/benchmarks/test_formal_verification_tactician_benchmark.py",
+        "docs/architecture/formal_verification_tactician_benchmark.json",
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G070",
+      "title": "Document operation, migration, evidence, and failure handling",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G050",
+        "FVT-G051",
+        "FVT-G063"
+      ],
+      "interfaces": [
+        "FormalVerificationTacticianDocumentation@1"
+      ],
+      "evidence": [
+        "docs/formal_verification_tactician.md",
+        "docs/operations/formal_verification_tactician_runbook.md"
+      ],
+      "outputs": [
+        "docs/formal_verification_tactician.md",
+        "docs/operations/formal_verification_tactician_runbook.md",
+        "ipfs_datasets_py/docs/logic/proof_tactician_migration.md"
+      ],
+      "validation": "python scripts/docs/check_agent_supervisor_docs.py && python -m pytest test/api/test_formal_verification_tactician_docs.py -q",
+      "track": "documentation",
+      "evidence_present": [
+        "docs/formal_verification_tactician.md",
+        "docs/operations/formal_verification_tactician_runbook.md"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "docs/formal_verification_tactician.md",
+        "docs/operations/formal_verification_tactician_runbook.md",
+        "ipfs_datasets_py/docs/logic/proof_tactician_migration.md"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G080",
+      "title": "Define property-specific rollout, promotion, and rollback",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G063",
+        "FVT-G070"
+      ],
+      "interfaces": [
+        "FormalVerificationTacticianRollout@1"
+      ],
+      "evidence": [
+        "docs/architecture/formal_verification_tactician_rollout.md",
+        "test/api/test_formal_verification_tactician_rollout.py"
+      ],
+      "outputs": [
+        "docs/architecture/formal_verification_tactician_rollout.md",
+        "test/api/test_formal_verification_tactician_rollout.py"
+      ],
+      "validation": "python -m pytest test/api/test_formal_verification_tactician_rollout.py -q",
+      "track": "rollout",
+      "evidence_present": [
+        "docs/architecture/formal_verification_tactician_rollout.md",
+        "test/api/test_formal_verification_tactician_rollout.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "docs/architecture/formal_verification_tactician_rollout.md",
+        "test/api/test_formal_verification_tactician_rollout.py"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G090",
+      "title": "Issue the final implementation and deployment-readiness receipts",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G080"
+      ],
+      "interfaces": [
+        "FormalVerificationTacticianCompletionReceipt@1"
+      ],
+      "evidence": [
+        "tools/logic/build_formal_verification_tactician_receipt.py",
+        "test/api/test_formal_verification_tactician_readiness_completion.py"
+      ],
+      "outputs": [
+        "tools/logic/build_formal_verification_tactician_receipt.py",
+        "test/api/test_formal_verification_tactician_readiness_completion.py",
+        "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
+      ],
+      "validation": "python -m pytest test/api/test_formal_verification_tactician_readiness_completion.py -q",
+      "track": "completion",
+      "evidence_present": [
+        "tools/logic/build_formal_verification_tactician_receipt.py",
+        "test/api/test_formal_verification_tactician_readiness_completion.py"
+      ],
+      "evidence_missing": [],
+      "outputs_present": [
+        "tools/logic/build_formal_verification_tactician_receipt.py",
+        "test/api/test_formal_verification_tactician_readiness_completion.py",
+        "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
+      ],
+      "outputs_missing": [],
+      "bound": true
+    },
+    {
+      "goal_id": "FVT-G100",
+      "title": "Define role-aware toolchain authority and promotion",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G060"
+      ],
+      "interfaces": [
+        "FormalVerificationToolRole@1",
+        "RoleAwarePromotionPolicy@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py",
+        "test/api/test_formal_verification_toolchain_roles.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py",
+        "tools/logic/certification/roles.py",
+        "test/api/test_formal_verification_toolchain_roles.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py test/api/test_formal_verification_toolchain_roles.py test/integration/test_formal_verification_real_tool_matrix.py -q",
+      "track": "toolchain-governance",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py",
+        "test/api/test_formal_verification_toolchain_roles.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py",
+        "tools/logic/certification/roles.py",
+        "test/api/test_formal_verification_toolchain_roles.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G101",
+      "title": "Semantically certify the pinned Lean kernel",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G100"
+      ],
+      "interfaces": [
+        "LeanSemanticCertification@1"
+      ],
+      "evidence": [
+        "tools/logic/certification/lean.py",
+        "test/integration/toolchains/test_lean_semantic_certification.py"
+      ],
+      "outputs": [
+        "tools/logic/certification/lean.py",
+        "test/fixtures/formal_verification/toolchains/lean/manifest.json",
+        "test/integration/toolchains/test_lean_semantic_certification.py"
+      ],
+      "validation": "ELAN_TOOLCHAIN=leanprover/lean4:v4.31.0 ELAN_NO_AUTO_INSTALL=1 python -m pytest test/integration/toolchains/test_lean_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k lean -q",
+      "track": "semantic-reference",
+      "evidence_present": [],
+      "evidence_missing": [
+        "tools/logic/certification/lean.py",
+        "test/integration/toolchains/test_lean_semantic_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "tools/logic/certification/lean.py",
+        "test/fixtures/formal_verification/toolchains/lean/manifest.json",
+        "test/integration/toolchains/test_lean_semantic_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G102",
+      "title": "Semantically certify reference Datalog and SecPAL authorization",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G100"
+      ],
+      "interfaces": [
+        "AuthorizationSemanticCertification@1"
+      ],
+      "evidence": [
+        "tools/logic/certification/authorization.py",
+        "test/integration/toolchains/test_authorization_semantic_certification.py"
+      ],
+      "outputs": [
+        "tools/logic/certification/authorization.py",
+        "test/fixtures/formal_verification/toolchains/authorization/manifest.json",
+        "test/integration/toolchains/test_authorization_semantic_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py test/integration/toolchains/test_authorization_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'authorization or datalog or secpal' -q",
+      "track": "semantic-reference",
+      "evidence_present": [],
+      "evidence_missing": [
+        "tools/logic/certification/authorization.py",
+        "test/integration/toolchains/test_authorization_semantic_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "tools/logic/certification/authorization.py",
+        "test/fixtures/formal_verification/toolchains/authorization/manifest.json",
+        "test/integration/toolchains/test_authorization_semantic_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G103",
+      "title": "Semantically certify finite-trace Runtime MTL",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G100"
+      ],
+      "interfaces": [
+        "RuntimeMTLSemanticCertification@1"
+      ],
+      "evidence": [
+        "tools/logic/certification/runtime_mtl.py",
+        "test/integration/toolchains/test_runtime_mtl_semantic_certification.py"
+      ],
+      "outputs": [
+        "tools/logic/certification/runtime_mtl.py",
+        "test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json",
+        "test/integration/toolchains/test_runtime_mtl_semantic_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_runtime_mtl_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q",
+      "track": "semantic-reference",
+      "evidence_present": [],
+      "evidence_missing": [
+        "tools/logic/certification/runtime_mtl.py",
+        "test/integration/toolchains/test_runtime_mtl_semantic_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "tools/logic/certification/runtime_mtl.py",
+        "test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json",
+        "test/integration/toolchains/test_runtime_mtl_semantic_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G110",
+      "title": "Replace declared external-tool gaps with reviewed deployment locks",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G100"
+      ],
+      "interfaces": [
+        "FormalVerificationDeploymentLock@2"
+      ],
+      "evidence": [
+        "config/formal_verification_toolchains.lock.json",
+        "test/packaging/test_formal_verification_external_tool_locks.py"
+      ],
+      "outputs": [
+        "config/formal_verification_toolchains.lock.json",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py",
+        "test/packaging/test_formal_verification_external_tool_locks.py"
+      ],
+      "validation": "python -m pytest test/packaging/test_formal_verification_external_tool_locks.py ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py -k 'pin or checksum or gap or install' -q",
+      "track": "toolchain-governance",
+      "evidence_present": [
+        "config/formal_verification_toolchains.lock.json"
+      ],
+      "evidence_missing": [
+        "test/packaging/test_formal_verification_external_tool_locks.py"
+      ],
+      "outputs_present": [
+        "config/formal_verification_toolchains.lock.json"
+      ],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py",
+        "test/packaging/test_formal_verification_external_tool_locks.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G120",
+      "title": "Install and certify TLC and Apalache state-model checking",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "StateModelToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py",
+        "test/integration/toolchains/test_state_model_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py",
+        "tools/logic/certification/state_model.py",
+        "test/integration/toolchains/test_state_model_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_tla_model_checkers.py test/integration/toolchains/test_state_model_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'tlc or apalache or state_model' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py",
+        "test/integration/toolchains/test_state_model_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py",
+        "tools/logic/certification/state_model.py",
+        "test/integration/toolchains/test_state_model_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G130",
+      "title": "Install and certify Tamarin with Maude",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "TamarinToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py",
+        "test/integration/toolchains/test_tamarin_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py",
+        "tools/logic/certification/tamarin.py",
+        "test/integration/toolchains/test_tamarin_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py test/integration/toolchains/test_tamarin_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'tamarin or maude' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py",
+        "test/integration/toolchains/test_tamarin_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py",
+        "tools/logic/certification/tamarin.py",
+        "test/integration/toolchains/test_tamarin_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G131",
+      "title": "Install and certify ProVerif in isolated OPAM",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "ProVerifToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py",
+        "test/integration/toolchains/test_proverif_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py",
+        "tools/logic/certification/proverif.py",
+        "test/integration/toolchains/test_proverif_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py test/integration/toolchains/test_proverif_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'proverif or opam' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py",
+        "test/integration/toolchains/test_proverif_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py",
+        "tools/logic/certification/proverif.py",
+        "test/integration/toolchains/test_proverif_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G140",
+      "title": "Install and certify Vampire and E ATP",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "ATPToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py",
+        "test/integration/toolchains/test_atp_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py",
+        "tools/logic/certification/atp.py",
+        "test/integration/toolchains/test_atp_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/unit_tests/logic/CEC/provers/test_vampire_eprover.py test/integration/toolchains/test_atp_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'vampire or eprover or atp' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py",
+        "test/integration/toolchains/test_atp_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py",
+        "tools/logic/certification/atp.py",
+        "test/integration/toolchains/test_atp_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G150",
+      "title": "Install and semantically certify Rocq",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "RocqToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py",
+        "test/integration/toolchains/test_rocq_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py",
+        "tools/logic/certification/rocq.py",
+        "test/integration/toolchains/test_rocq_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'rocq or coq' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py",
+        "test/integration/toolchains/test_rocq_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py",
+        "tools/logic/certification/rocq.py",
+        "test/integration/toolchains/test_rocq_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G151",
+      "title": "Install and semantically certify Isabelle",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "IsabelleToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
+        "test/integration/toolchains/test_isabelle_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
+        "tools/logic/certification/isabelle.py",
+        "test/integration/toolchains/test_isabelle_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py test/integration/toolchains/test_isabelle_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k isabelle -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
+        "test/integration/toolchains/test_isabelle_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
+        "tools/logic/certification/isabelle.py",
+        "test/integration/toolchains/test_isabelle_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G160",
+      "title": "Install and role-certify SymAI, ErgoAI, Leanstral, autoencoder, and Hammer advisors",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "AdvisorRoleCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
+        "test/integration/toolchains/test_advisor_role_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
+        "tools/logic/certification/advisors.py",
+        "test/integration/toolchains/test_advisor_role_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_proposal_advisors.py test/integration/toolchains/test_advisor_role_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'advisor or symbolicai or ergoai or leanstral or hammer or autoencoder' -q",
+      "track": "advisor-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
+        "test/integration/toolchains/test_advisor_role_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
+        "tools/logic/certification/advisors.py",
+        "test/integration/toolchains/test_advisor_role_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G170",
+      "title": "Install and certify HyperLTL, AutoHyper, and MCHyper",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "HyperpropertyToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py",
+        "test/integration/toolchains/test_hyperproperty_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py",
+        "tools/logic/certification/hyperproperty.py",
+        "test/integration/toolchains/test_hyperproperty_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'hyperltl or autohyper or mchyper or hyperproperty' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py",
+        "test/integration/toolchains/test_hyperproperty_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py",
+        "tools/logic/certification/hyperproperty.py",
+        "test/integration/toolchains/test_hyperproperty_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G180",
+      "title": "Install external Datalog and SecPAL differential shadows",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G102",
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "ExternalAuthorizationShadowCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
+        "test/integration/toolchains/test_external_authorization_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
+        "tools/logic/certification/authorization_external.py",
+        "test/integration/toolchains/test_external_authorization_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py test/integration/toolchains/test_external_authorization_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'souffle or secpal or authorization' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
+        "test/integration/toolchains/test_external_authorization_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
+        "tools/logic/certification/authorization_external.py",
+        "test/integration/toolchains/test_external_authorization_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G181",
+      "title": "Install and certify external Runtime MTL parity",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G103",
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "ExternalRuntimeMTLCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py",
+        "test/integration/toolchains/test_external_runtime_mtl_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py",
+        "tools/logic/certification/runtime_mtl_external.py",
+        "test/integration/toolchains/test_external_runtime_mtl_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_external_runtime_mtl_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py",
+        "test/integration/toolchains/test_external_runtime_mtl_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py",
+        "tools/logic/certification/runtime_mtl_external.py",
+        "test/integration/toolchains/test_external_runtime_mtl_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G190",
+      "title": "Bind and certify a production ZKP circuit deployment",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "ZKPDeploymentCertification@1"
+      ],
+      "evidence": [
+        "config/formal_verification_zkp_deployment.lock.json",
+        "test/integration/toolchains/test_zkp_deployment_certification.py"
+      ],
+      "outputs": [
+        "config/formal_verification_zkp_deployment.lock.json",
+        "tools/logic/certification/zkp.py",
+        "test/integration/toolchains/test_zkp_deployment_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest test/api/test_agent_supervisor_program_analysis_zkp_conformance.py ipfs_datasets_py/tests/integration/logic/test_proof_receipt_attestation.py test/integration/toolchains/test_zkp_deployment_certification.py -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "config/formal_verification_zkp_deployment.lock.json",
+        "test/integration/toolchains/test_zkp_deployment_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "config/formal_verification_zkp_deployment.lock.json",
+        "tools/logic/certification/zkp.py",
+        "test/integration/toolchains/test_zkp_deployment_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G200",
+      "title": "Reissue full role-aware deployment certification",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G090",
+        "FVT-G101",
+        "FVT-G102",
+        "FVT-G103",
+        "FVT-G120",
+        "FVT-G130",
+        "FVT-G131",
+        "FVT-G140",
+        "FVT-G150",
+        "FVT-G151",
+        "FVT-G160",
+        "FVT-G170",
+        "FVT-G180",
+        "FVT-G181",
+        "FVT-G190"
+      ],
+      "interfaces": [
+        "RoleAwareFormalVerificationRelease@1"
+      ],
+      "evidence": [
+        "test/integration/test_formal_verification_role_aware_completion.py",
+        "docs/architecture/formal_verification_role_aware_deployment_receipt.json"
+      ],
+      "outputs": [
+        "tools/logic/certify_formal_verification_toolchains.py",
+        "tools/logic/build_formal_verification_tactician_receipt.py",
+        "docs/architecture/formal_verification_toolchain_certificate.json",
+        "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
+        "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
+        "test/integration/test_formal_verification_role_aware_completion.py"
+      ],
+      "validation": "python -m pytest test/integration/test_formal_verification_real_tool_matrix.py test/integration/test_formal_verification_role_aware_completion.py test/api/test_formal_verification_tactician_readiness_completion.py -q",
+      "track": "completion",
+      "evidence_present": [],
+      "evidence_missing": [
+        "test/integration/test_formal_verification_role_aware_completion.py",
+        "docs/architecture/formal_verification_role_aware_deployment_receipt.json"
+      ],
+      "outputs_present": [
+        "tools/logic/certify_formal_verification_toolchains.py",
+        "tools/logic/build_formal_verification_tactician_receipt.py",
+        "docs/architecture/formal_verification_toolchain_certificate.json",
+        "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
+      ],
+      "outputs_missing": [
+        "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
+        "test/integration/test_formal_verification_role_aware_completion.py"
+      ],
+      "bound": false
+    }
+  ],
+  "disclosures": {
+    "remaining_bounds": [
+      "Machine-specific production certification is limited to tools with hermetic offline certificates.",
+      "Publication lag against origin/main is disclosed and never fetched away.",
+      "Unavailable tools and unsupported semantics remain explicit non-success outcomes."
+    ],
+    "unsupported_semantics": [],
+    "unavailable_tools": [
+      "apalache",
+      "autohyper",
+      "coq",
+      "coqc",
+      "eprover",
+      "ergoai",
+      "hyperltl",
+      "isabelle",
+      "maude",
+      "mchyper",
+      "opam",
+      "proverif",
+      "runtime-mtl-external",
+      "secpal",
+      "souffle",
+      "symbolicai",
+      "tamarin",
+      "tlc",
+      "vampire",
+      "zkp-circuit"
+    ],
+    "publication_gates": {
+      "parent_publication_lag": true,
+      "datasets_publication_lag": false,
+      "fetches_forbidden": true,
+      "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
+    },
+    "assurance_ceilings": {
+      "path_presence_is_not_usability": true,
+      "source_presence_is_not_usability": true,
+      "fixture_is_not_production_certified": true,
+      "live_without_hermetic_certificate_is_not_production_certified": true,
+      "lfv_completion_is_not_deployment_certificate": true,
+      "synthetic_evidence_cannot_certify_production": true,
+      "production_certified_count": 2,
+      "baseline_production_certified_count": 0,
+      "machine_certified": true,
+      "publication_aligned": false,
+      "hard_zero_clear": true
+    },
+    "open_baseline_findings": [
+      {
+        "id": "receipt_verification_fail_open",
+        "severity": "p0",
+        "summary": "verify_receipt accepts empty/forged structural mappings as success."
+      },
+      {
+        "id": "public_counterexample_raw_leak",
+        "severity": "p0",
+        "summary": "Public datasets counterexample projection can expose raw/hidden_witness material."
+      },
+      {
+        "id": "structural_repair_as_closure",
+        "severity": "p0",
+        "summary": "Formal replanner closes counterexamples without fresh verifier receipts."
+      },
+      {
+        "id": "synthetic_examples_and_metrics",
+        "severity": "medium",
+        "summary": "Examples and some readiness metrics remain synthetic/offline and must stay labeled."
+      }
+    ]
+  },
+  "notes": [
+    "Receipt binds every executable child goal of FVT-G000 under FormalVerificationTacticianCompletionReceipt@1.",
+    "Implementation and deployment sections are separate; code presence never invents production certification.",
+    "Hard-zero gates are derived from child certificates and benchmark hard gates; hardcoded success counters are forbidden.",
+    "Generate only from a clean current tree and immutable evidence."
+  ],
+  "receipt_identity": "sha256:3865df72fad7790d02bfd329fabfaaa2d45381abc5632ee4ad9889430ba7596c"
+}

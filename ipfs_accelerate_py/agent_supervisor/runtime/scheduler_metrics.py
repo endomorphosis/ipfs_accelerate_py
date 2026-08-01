@@ -159,6 +159,11 @@ _RESOLVER_EVENTS = frozenset(
 _COMPLETION_EVENTS = frozenset(
     {"task_completed", "task_succeeded", "completed", "merge_completed"}
 )
+_EXPLICIT_TASK_COMPLETION_EVENTS = frozenset(
+    {"task_completed", "task_succeeded"}
+)
+_SCHEDULER_STATE_PROJECTION_EVENT = "scheduler_state_projection"
+_SCHEDULER_STATE_PROJECTION_SCOPE = "authoritative_current"
 
 _RESOURCE_PROJECTION_KEYS = (
     "resource_admission",
@@ -471,23 +476,29 @@ def _resource_admission_projection(
         elif stage in metrics_by_stage:
             metrics_by_stage[stage]["backpressure_reason_counts"] = reason_counts
 
-    aggregate_reason_counts = _resource_reason_counts(
-        payload.get("backpressure_reason_counts")
-        or payload.get("backpressure_counts")
-        or (
+    # A live schedule's explicit empty histogram is authoritative.  Falling
+    # through to cumulative adaptive metrics here makes resolved historical
+    # pressure look like current backpressure after the queue drains.
+    if "backpressure_reason_counts" in payload:
+        aggregate_reason_counts = _resource_reason_counts(
+            payload.get("backpressure_reason_counts")
+        )
+    elif "backpressure_counts" in payload:
+        aggregate_reason_counts = _resource_reason_counts(
+            payload.get("backpressure_counts")
+        )
+    elif "backpressure_reasons" in payload:
+        aggregate_reason_counts = _resource_reason_counts(
             payload.get("backpressure_reasons")
-            if isinstance(payload.get("backpressure_reasons"), Mapping)
-            else None
         )
-        or (
+    elif isinstance(raw_adaptive_metrics.get("backpressure_reasons"), Mapping):
+        aggregate_reason_counts = _resource_reason_counts(
             raw_adaptive_metrics.get("backpressure_reasons")
-            if isinstance(
-                raw_adaptive_metrics.get("backpressure_reasons"), Mapping
-            )
-            else None
         )
-        or payload.get("reason_counts")
-    )
+    else:
+        aggregate_reason_counts = _resource_reason_counts(
+            payload.get("reason_counts")
+        )
     decision_reason_counts: dict[str, int] = {}
     decision_stage_reason_counts: dict[str, dict[str, int]] = {}
     backpressured_decisions = 0
@@ -648,10 +659,27 @@ def _resource_admission_projection(
         payload.get("configured_max_lanes"),
         _resource_integer(_resource_mapping(payload.get("policy")).get("max_lanes")),
     )
-    backpressured_count = _resource_integer(
-        payload.get("backpressured_count"), backpressured_decisions
+    live_backpressure_declared = any(
+        name in payload
+        for name in (
+            "backpressured_count",
+            "decisions",
+            "backpressure_reason_counts",
+            "backpressure_counts",
+            "backpressure_reasons",
+        )
     )
-    if not backpressured_count:
+    if "backpressured_count" in payload:
+        backpressured_count = _resource_integer(
+            payload.get("backpressured_count")
+        )
+    elif "decisions" in payload:
+        backpressured_count = backpressured_decisions
+    elif live_backpressure_declared:
+        backpressured_count = sum(aggregate_reason_counts.values())
+    else:
+        backpressured_count = 0
+    if not live_backpressure_declared:
         backpressured_count = sum(
             _resource_integer(row.get("backpressured"))
             for row in metrics_by_stage.values()
@@ -884,6 +912,18 @@ def _identity_key(identity: Mapping[str, str]) -> tuple[str, ...]:
         identity["template_id"],
         identity["resource_class"],
     )
+
+
+def _task_state_key(
+    identity: Mapping[str, str],
+    identity_key: tuple[str, ...] | None = None,
+) -> tuple[str, ...]:
+    """Return the logical identity used by current scheduler-state gauges."""
+
+    canonical_task_cid = identity["task_cid"]
+    if canonical_task_cid != UNKNOWN_IDENTITY:
+        return ("task", canonical_task_cid)
+    return ("identity", *(identity_key or _identity_key(identity)))
 
 
 def _metric_defaults(identity: Mapping[str, str]) -> dict[str, Any]:
@@ -2017,6 +2057,7 @@ class _Accumulator:
     merge_started_at: datetime | None = None
     merge_inflight: bool = False
     completed: bool = False
+    last_event_sequence: int = -1
 
 
 @dataclass(frozen=True)
@@ -2103,6 +2144,39 @@ def scheduler_snapshot(
             item[0],
         )
     )
+    explicit_completion_identities: set[str] = set()
+    explicit_completion_aggregate_aliases: set[str] = set()
+    for _index, event, _occurred in unique:
+        if _event_type(event) not in _EXPLICIT_TASK_COMPLETION_EVENTS:
+            continue
+        sources = (
+            (
+                dict(event["identity"])
+                if isinstance(event.get("identity"), Mapping)
+                else {}
+            ),
+            event,
+        )
+        completion_identity = _first_text(
+            sources,
+            (
+                "canonical_task_cid",
+                "canonical_task_id",
+                "canonical_task_key",
+            ),
+        ) or _first_text(sources, ("task_cid", "task_id", "task"))
+        if not completion_identity:
+            continue
+        explicit_completion_identities.add(completion_identity)
+        # Bundle supervisors retain the aggregate task CID in ``task_cid``
+        # while an explicit member completion carries its own canonical CID.
+        # Remember that relationship so an earlier aggregate merge terminal
+        # is not counted as an additional completed task.
+        for source in sources:
+            aggregate_identity = str(source.get("task_cid") or "")
+            if aggregate_identity and aggregate_identity != completion_identity:
+                explicit_completion_aggregate_aliases.add(aggregate_identity)
+    legacy_completion_identities: set[str] = set()
     scan_metrics = _reduce_scan_metrics(unique)
     completion_diagnostics = project_goal_completion_diagnostics(
         [event for _index, event, _occurred in unique], now=now
@@ -2129,9 +2203,26 @@ def scheduler_snapshot(
     accumulators: dict[tuple[str, ...], _Accumulator] = {}
     inherited_by_task: dict[str, dict[str, str]] = {}
     inherited_by_lane: dict[str, dict[str, str]] = {}
+    latest_projection: tuple[int, str] | None = None
+    for event_sequence, (_index, event, _occurred) in enumerate(unique):
+        if (
+            _event_type(event) == _SCHEDULER_STATE_PROJECTION_EVENT
+            and str(event.get("scheduler_projection_scope") or "")
+            == _SCHEDULER_STATE_PROJECTION_SCOPE
+        ):
+            latest_projection = (
+                event_sequence,
+                str(event.get("scheduler_projection_id") or ""),
+            )
+    authoritative_state_keys: set[tuple[str, ...]] = set()
 
-    for _index, event, occurred in unique:
+    for event_sequence, (_index, event, occurred) in enumerate(unique):
         kind = _event_type(event)
+        if kind == _SCHEDULER_STATE_PROJECTION_EVENT:
+            # This envelope declares the complete current task set. It is
+            # supervisor evidence and must never manufacture an anonymous
+            # scheduler task or contribute to cumulative task metrics.
+            continue
         if kind in _REFILL_SCAN_EVENT_TYPES or _scan_receipt_projection(event, kind) is not None:
             # A repository scan is supervisor-level evidence, not a scheduler
             # task.  It contributes to scan_metrics but must not manufacture an
@@ -2197,12 +2288,24 @@ def scheduler_snapshot(
         if lane_alias:
             inherited_by_lane[lane_alias] = identity
         key = _identity_key(identity)
+        if (
+            latest_projection is not None
+            and event_sequence > latest_projection[0]
+            and str(event.get("scheduler_projection_id") or "")
+            == latest_projection[1]
+            and str(event.get("scheduler_projection_scope") or "")
+            == _SCHEDULER_STATE_PROJECTION_SCOPE
+            and kind in {"scheduler_state", "scheduler_lane_state"}
+        ):
+            authoritative_state_keys.add(_task_state_key(identity, key))
         current = accumulators.get(key)
         if current is None:
             current = _Accumulator(identity=identity, metrics=_metric_defaults(identity))
             accumulators[key] = current
+        completed_before_event = current.completed
 
         current.last_event_type = kind
+        current.last_event_sequence = event_sequence
         if occurred is not None:
             current.last_event_at = occurred.isoformat()
         current.display_task_id = str(event.get("task_id") or current.display_task_id)
@@ -2341,6 +2444,27 @@ def scheduler_snapshot(
             current.phase = "idle"
             current.status = "completed"
 
+        if (
+            current.completed
+            and not completed_before_event
+            and kind not in _EXPLICIT_TASK_COMPLETION_EVENTS
+        ):
+            event_identity = (
+                dict(event["identity"])
+                if isinstance(event.get("identity"), Mapping)
+                else {}
+            )
+            legacy_identity = _first_text(
+                (event_identity, event),
+                (
+                    "canonical_task_cid",
+                    "canonical_task_id",
+                    "canonical_task_key",
+                ),
+            ) or identity["task_cid"]
+            if legacy_identity != UNKNOWN_IDENTITY:
+                legacy_completion_identities.add(legacy_identity)
+
         if kind in _RESOLVER_EVENTS or phase == "resolver":
             current.phase = "resolver"
 
@@ -2349,8 +2473,10 @@ def scheduler_snapshot(
             current.status = "blocked"
 
     rows: list[dict[str, Any]] = []
-    task_states: list[dict[str, Any]] = []
-    phase_items: dict[str, list[dict[str, Any]]] = {phase: [] for phase in SCHEDULER_PHASES}
+    state_candidates: dict[
+        tuple[str, ...],
+        tuple[int, dict[str, Any]],
+    ] = {}
     for key in sorted(accumulators):
         current = accumulators[key]
         metrics = current.metrics
@@ -2398,8 +2524,27 @@ def scheduler_snapshot(
         if goal_diagnostic is not None:
             # Additive nested data leaves all v1 task-state keys intact.
             state["goal_completion"] = dict(goal_diagnostic)
-        task_states.append(state)
-        phase_items[current.phase].append(state)
+        state_key = _task_state_key(current.identity, key)
+        if latest_projection is not None and state_key not in authoritative_state_keys:
+            continue
+        previous = state_candidates.get(state_key)
+        candidate = (current.last_event_sequence, state)
+        if previous is None or candidate[0] > previous[0]:
+            state_candidates[state_key] = candidate
+
+    # Metrics remain dimensioned by provider/tree/template/resource class, but
+    # current scheduler phase is a task-level gauge.  Select the latest state
+    # for each canonical task so a terminal lease projection supersedes active
+    # history emitted under an earlier provider or lane identity.
+    task_states = sorted(
+        (candidate[1] for candidate in state_candidates.values()),
+        key=_identity_key,
+    )
+    phase_items: dict[str, list[dict[str, Any]]] = {
+        phase: [] for phase in SCHEDULER_PHASES
+    }
+    for state in task_states:
+        phase_items[state["phase"]].append(state)
 
     dimensions_all = normalize_metric_identity({}, {
         "goal_cid": "all", "subgoal_cid": "all", "task_cid": "all",
@@ -2432,7 +2577,24 @@ def scheduler_snapshot(
         totals["retries"] / totals["implementation_attempts"]
         if totals["implementation_attempts"] else 0.0
     )
-    totals["completion_count"] = totals["completions"]
+    # ``completions`` retains the dimensioned lifecycle throughput used by
+    # existing dashboards.  Bundle logs can repeat one terminal task in more
+    # than one lane, or group several member terminals under one aggregate
+    # task CID, so the operator-facing count is instead the exact number of
+    # unique explicit terminal task identities when that evidence exists.
+    # Distinct legacy terminals remain part of a mixed event stream, while a
+    # bundle-level legacy terminal linked to explicit member receipts does not
+    # become a phantom extra completion.
+    totals["completion_count"] = (
+        len(explicit_completion_identities)
+        + len(
+            legacy_completion_identities
+            - explicit_completion_identities
+            - explicit_completion_aggregate_aliases
+        )
+        if explicit_completion_identities
+        else totals["completions"]
+    )
     totals["total_tokens"] = totals["tokens"]
     totals["total_cost_usd"] = totals["cost_usd"]
     # Additive flat aliases let existing totals-only consumers adopt the new
@@ -2693,7 +2855,18 @@ def scheduler_state_events(
     """Project lease/lane state into lifecycle events for the shared reducer."""
 
     occurred_at = timestamp or _now_iso()
-    events: list[dict[str, Any]] = []
+    projection_id = occurred_at
+    projection_metadata = {
+        "scheduler_projection_id": projection_id,
+        "scheduler_projection_scope": _SCHEDULER_STATE_PROJECTION_SCOPE,
+    }
+    events: list[dict[str, Any]] = [
+        {
+            "type": _SCHEDULER_STATE_PROJECTION_EVENT,
+            "timestamp": occurred_at,
+            **projection_metadata,
+        }
+    ]
     for raw in tasks:
         task = dict(raw)
         state = str(task.get("state") or task.get("lease_state") or "ready").lower()
@@ -2705,11 +2878,27 @@ def scheduler_state_events(
             state = "active"
         if state not in SCHEDULER_PHASES:
             state = "ready"
-        events.append({**task, "type": "scheduler_state", "timestamp": occurred_at, "phase": state})
+        events.append(
+            {
+                **task,
+                "type": "scheduler_state",
+                "timestamp": occurred_at,
+                "phase": state,
+                **projection_metadata,
+            }
+        )
     for raw in lanes:
         lane = dict(raw)
         phase = str(lane.get("phase") or lane.get("active_phase") or lane.get("state") or "active").lower()
-        events.append({**lane, "type": "scheduler_lane_state", "timestamp": occurred_at, "phase": phase})
+        events.append(
+            {
+                **lane,
+                "type": "scheduler_lane_state",
+                "timestamp": occurred_at,
+                "phase": phase,
+                **projection_metadata,
+            }
+        )
     return events
 
 

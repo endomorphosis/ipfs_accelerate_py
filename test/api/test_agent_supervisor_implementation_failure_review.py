@@ -57,6 +57,65 @@ def test_guide_rescue_for_incomplete_expected_outputs() -> None:
     assert compact["receipt_id"] == review.receipt_id
 
 
+def test_directory_output_is_satisfied_by_changed_descendants() -> None:
+    review = review_implementation_failure(
+        task_id="WALPROC-029",
+        attempt=1,
+        expected_outputs=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools",
+            "ipfs_datasets_py/tests/mcp/test_wallet_processor_tools.py",
+        ),
+        changed_paths=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools/__init__.py",
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools/ingest.py",
+            "ipfs_datasets_py/tests/mcp/test_wallet_processor_tools.py",
+        ),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "validation_failed",
+            "failed_commands": [
+                "python -m pytest "
+                "ipfs_datasets_py/tests/mcp/test_wallet_processor_tools.py -q"
+            ],
+        },
+    )
+
+    assert review.missing_expected_outputs == ()
+    assert (
+        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
+        not in review.reason_codes
+    )
+
+
+def test_directory_output_does_not_admit_prefix_siblings() -> None:
+    review = review_implementation_failure(
+        task_id="WALPROC-029",
+        attempt=1,
+        expected_outputs=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools",
+        ),
+        changed_paths=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools_extra.py",
+        ),
+        validation_result={
+            "attempted": False,
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+        },
+    )
+
+    assert review.missing_expected_outputs == (
+        "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools",
+    )
+    assert (
+        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
+        in review.reason_codes
+    )
+
+
 def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
     review = review_implementation_failure(
         task_id="EVAL-002",
@@ -104,6 +163,140 @@ def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
     assert "Do not modify these out-of-scope paths" in (
         review.next_attempt_prompt_addendum
     )
+
+
+def test_unverifiable_validation_companion_requests_contract_revision() -> None:
+    fixture_path = (
+        "wallet_interface/ui/tests/fixtures/world-id-fixtures.ts"
+    )
+    panel_path = (
+        "wallet_interface/ui/src/shared/components/"
+        "WorldIdVerificationPanel.tsx"
+    )
+    api_path = (
+        "wallet_interface/ui/src/features/wallet/lib/walletApi.ts"
+    )
+    review = review_implementation_failure(
+        task_id="WALPROC-065",
+        attempt=1,
+        expected_outputs=(api_path, panel_path),
+        changed_paths=(api_path, panel_path, fixture_path),
+        validation_commands=(
+            "npm --prefix wallet_interface/ui test -- --runInBand",
+        ),
+        proposal_accepted=False,
+        scope_adjudication={
+            "accepted": False,
+            "justified_paths": [],
+            "denied_paths": [fixture_path],
+            "decisions": [
+                {
+                    "path": fixture_path,
+                    "verdict": "denied",
+                    "reason_codes": ["test_change_unverifiable"],
+                }
+            ],
+        },
+        validation_result={
+            "attempted": False,
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+            "error": "proposal_validation_failed",
+            "proposal_gate": {
+                "reason_codes": ["path_outside_scope"],
+                "changed_paths": [api_path, panel_path, fixture_path],
+            },
+        },
+    )
+
+    assert review.decision is FailureReviewDecision.GUIDE_RESCUE
+    assert review.contract_gap_paths == (fixture_path,)
+    assert (
+        FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value
+        in review.reason_codes
+    )
+    assert "Task-scope contract revision required" in review.guidance_markdown
+    assert "protected-board authority" in review.guidance_markdown
+    assert fixture_path in review.next_attempt_prompt_addendum
+    assert "Do not modify these out-of-scope paths" not in (
+        review.next_attempt_prompt_addendum
+    )
+    restored = ImplementationFailureReviewReceipt.from_dict(
+        review.to_record()
+    )
+    assert restored == review
+    assert compact_failure_review(review)["contract_gap_paths"] == [
+        fixture_path
+    ]
+
+
+def test_validation_selection_impact_paths_are_not_candidate_changes() -> None:
+    expected_outputs = (
+        "data/validation/conformance-report.json",
+        "tests/contract/wallets/test_all_processors.py",
+        "tests/contract/wallets/test_worldcoin_differential.py",
+    )
+    review = review_implementation_failure(
+        task_id="WALPROC-027",
+        attempt=1,
+        expected_outputs=expected_outputs,
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "proposal_gate": {
+                "accepted": True,
+                "changed_paths": list(expected_outputs),
+            },
+            "selection": {
+                "changed_files": [
+                    *expected_outputs,
+                    "tests/contract/wallets",
+                    "tests/unit/wallets",
+                ],
+            },
+            "failed_commands": [
+                "python -m pytest -q tests/unit/wallets "
+                "tests/contract/wallets"
+            ],
+        },
+    )
+
+    assert review.changed_paths == expected_outputs
+    assert review.out_of_scope_paths == ()
+    assert (
+        FailureReviewReason.SCOPE_EXPANSION_DENIED.value
+        not in review.reason_codes
+    )
+    assert (
+        FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value
+        not in review.reason_codes
+    )
+    assert (
+        FailureReviewReason.VALIDATION_COMMAND_FAILED.value
+        in review.reason_codes
+    )
+
+
+def test_validation_selection_paths_remain_legacy_fallback() -> None:
+    review = review_implementation_failure(
+        task_id="LEGACY-001",
+        attempt=1,
+        expected_outputs=("src/runtime.py",),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "selection": {"changed_files": ["src/runtime.py"]},
+            "failed_commands": ["python -m pytest -q tests/test_runtime.py"],
+        },
+    )
+
+    assert review.changed_paths == ("src/runtime.py",)
+    assert review.out_of_scope_paths == ()
 
 
 def test_reject_hard_deny_secret_findings() -> None:

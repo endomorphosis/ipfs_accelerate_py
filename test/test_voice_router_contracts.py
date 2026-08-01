@@ -8,8 +8,10 @@ model or remote-provider dependencies.
 from __future__ import annotations
 
 import base64
+import io
 import inspect
 import json
+import wave
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -39,12 +41,22 @@ from ipfs_accelerate_py.voice_router import (
 )
 
 
+def _fixture_wav(sample: int = 1_000) -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8_000)
+        audio.writeframes(sample.to_bytes(2, "little", signed=True))
+    return output.getvalue()
+
+
 class FixedProvider:
     def __init__(
         self,
         name: str,
         *,
-        audio: bytes = b"RIFF\x00\x00\x00\x00WAVEcontract-audio",
+        audio: bytes = _fixture_wav(),
         transcript: str = "contract transcript",
     ) -> None:
         self.provider_name = name
@@ -438,7 +450,7 @@ def test_legacy_entrypoint_signatures_and_provider_injection_remain_compatible(
 ) -> None:
     tts_parameters = inspect.signature(text_to_speech).parameters
     stt_parameters = inspect.signature(speech_to_text).parameters
-    assert list(tts_parameters) == [
+    assert list(tts_parameters)[:9] == [
         "text",
         "voice",
         "model_name",
@@ -448,9 +460,9 @@ def test_legacy_entrypoint_signatures_and_provider_injection_remain_compatible(
         "provider",
         "provider_instance",
         "deps",
-        "kwargs",
     ]
-    assert list(stt_parameters) == [
+    assert list(tts_parameters)[-1] == "kwargs"
+    assert list(stt_parameters)[:7] == [
         "audio",
         "model_name",
         "language",
@@ -458,8 +470,8 @@ def test_legacy_entrypoint_signatures_and_provider_injection_remain_compatible(
         "provider",
         "provider_instance",
         "deps",
-        "kwargs",
     ]
+    assert list(stt_parameters)[-1] == "kwargs"
     assert all(
         parameter.kind is inspect.Parameter.KEYWORD_ONLY
         for name, parameter in tts_parameters.items()
@@ -512,16 +524,18 @@ def test_legacy_cache_identity_separates_provider_instances_and_options(
 ) -> None:
     monkeypatch.setenv("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE", "1")
     deps = RouterDeps()
-    first = FixedProvider("same-name", audio=b"first", transcript="first")
-    second = FixedProvider("same-name", audio=b"second", transcript="second")
+    first_audio = _fixture_wav(1_000)
+    second_audio = _fixture_wav(2_000)
+    first = FixedProvider("same-name", audio=first_audio, transcript="first")
+    second = FixedProvider("same-name", audio=second_audio, transcript="second")
 
-    assert text_to_speech("same", provider_instance=first, deps=deps) == b"first"
-    assert text_to_speech("same", provider_instance=second, deps=deps) == b"second"
+    assert text_to_speech("same", provider_instance=first, deps=deps) == first_audio
+    assert text_to_speech("same", provider_instance=second, deps=deps) == second_audio
     assert (
         text_to_speech(
             "same", provider_instance=first, output_format="mp3", deps=deps
         )
-        == b"first"
+        == first_audio
     )
     assert speech_to_text(b"same", provider_instance=first, deps=deps) == "first"
     assert speech_to_text(b"same", provider_instance=second, deps=deps) == "second"

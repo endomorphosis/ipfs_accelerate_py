@@ -2603,6 +2603,14 @@ def normalize_registry_logic_family(value: Any) -> LogicFamily:
     return normalize_logic_family(value)
 
 
+def to_canonical_registry_logic_family(value: Any) -> str:
+    """Project a Hammer/registry logic family onto the datasets family_id space."""
+
+    from ..canonical_logic_adapter import map_analysis_family_to_canonical
+
+    return map_analysis_family_to_canonical(normalize_registry_logic_family(value))
+
+
 def _registry_logic_capability_revision(provider_kind: AnalysisProviderKind) -> str:
     return _digest(
         {
@@ -4805,6 +4813,7 @@ __all__ = [
     "create_ipfs_datasets_logic_provider",
     "RegistryLogicProviderUnavailable",
     "normalize_registry_logic_family",
+    "to_canonical_registry_logic_family",
     "registry_logic_producer_declarations",
     "create_local_registry_logic_producer",
     "create_optional_registry_logic_producer",

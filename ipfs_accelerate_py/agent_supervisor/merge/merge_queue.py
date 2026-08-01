@@ -1208,6 +1208,41 @@ class MergeQueue:
         receipt_path = self._write_stage_receipt(revived)
         return replace(revived, file_path=receipt_path)
 
+    def quarantined_requests(
+        self,
+        *,
+        limit: int = 32,
+    ) -> tuple[MergeRequest, ...]:
+        """Return a bounded deterministic snapshot of target-bound quarantines.
+
+        This is intentionally read-only.  A merge train may use the snapshot
+        to prove that an immutable candidate was integrated before a worker
+        crashed, then revive that one request through
+        :meth:`revive_quarantined`.  Foreign target rows and malformed target
+        metadata are never exposed through a bound queue view.
+        """
+
+        requested = max(0, min(int(limit), 256))
+        if requested == 0:
+            return ()
+        # A shared legacy database can contain rows for another target.  Scan
+        # a small multiple of the requested bound, then apply the authoritative
+        # metadata predicate in Python just like the other queue projections.
+        scan_limit = min(256, max(requested, requested * 4))
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT * FROM merge_requests
+                   WHERE status='quarantined'
+                   ORDER BY finished_at, request_id
+                   LIMIT ?""",
+                (scan_limit,),
+            ).fetchall()
+        return tuple(
+            self._request_from_row(row)
+            for row in rows
+            if self._metadata_matches_target(row["metadata_json"])
+        )[:requested]
+
     def get(self, request_id: str) -> MergeRequest | None:
         """Return the current durable request by id."""
 
@@ -1226,6 +1261,57 @@ class MergeQueue:
         """Return content identities with a successful terminal merge receipt."""
 
         return self._canonical_task_ids_for_statuses(("completed",))
+
+    def completed_task_cid_bindings(self) -> dict[str, set[str]]:
+        """Return CID-bound primary and bundle members from completed receipts.
+
+        Only versioned queue requests whose primary row identity agrees with
+        the metadata binding participate.  This lets another daemon lane
+        repair a task board after callback completion without treating a
+        display ID or queue admission as proof of completion.
+        """
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT task_id, canonical_task_id, metadata_json
+                   FROM merge_requests
+                   WHERE status='completed'"""
+            ).fetchall()
+        bindings: dict[str, set[str]] = {}
+        for row in rows:
+            raw_metadata = row["metadata_json"] or "{}"
+            if not self._metadata_matches_target(raw_metadata):
+                continue
+            try:
+                metadata = json.loads(raw_metadata)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if (
+                not isinstance(metadata, dict)
+                or metadata.get("schema")
+                != "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+            ):
+                continue
+            raw_bindings = metadata.get("completion_task_cids")
+            if not isinstance(raw_bindings, dict) or not raw_bindings:
+                continue
+            primary_task_id = str(row["task_id"] or "")
+            primary_task_cid = str(row["canonical_task_id"] or "")
+            if (
+                not primary_task_id
+                or not primary_task_cid
+                or str(raw_bindings.get(primary_task_id) or "")
+                != primary_task_cid
+            ):
+                continue
+            for task_id, task_cid in raw_bindings.items():
+                normalized_id = str(task_id).strip()
+                normalized_cid = str(task_cid).strip()
+                if normalized_id and normalized_cid:
+                    bindings.setdefault(normalized_id, set()).add(
+                        normalized_cid
+                    )
+        return bindings
 
     def _canonical_task_ids_for_statuses(self, statuses: tuple[str, ...]) -> set[str]:
         normalized = tuple(

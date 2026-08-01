@@ -34,6 +34,7 @@ from ..context.decision_contracts import (
 )
 from ..proof.formal_verification_contracts import canonical_json_bytes, content_identity
 from ..proof.ir_constraint_compiler import (
+    CVESecurityEnforcementStage,
     PlanAdmissionReceipt,
     PlanAdmissionRequest,
     PlanAdmissionVerdict,
@@ -937,6 +938,17 @@ def _derived_evidence(
             for item in admission.validation_results
             if item.evidence_id
         ),
+        *(
+            ExecutionEvidence(
+                domain=f"cve_security_gate:{item.stage.value}",
+                receipt_id=item.evidence_id,
+                subject_ids=(item.gate_result.gate_id,),
+                semantic_roots=roots,
+                authority=item.authority,
+                expires_at_ms=item.expires_at_ms,
+            )
+            for item in admission.cve_security_evidence
+        ),
         *additional,
     ]
     by_id: dict[str, ExecutionEvidence] = {}
@@ -1000,6 +1012,16 @@ def issue_execution_permit(
             "permit issuance requires the complete canonical DecisionRequest"
         )
     _reject_completion(decision)
+    if admission_request.cve_security_evidence and (
+        admission_request.required_cve_security_stage
+        is not CVESecurityEnforcementStage.PRE_EXECUTION
+        or admission_request.cve_security_evidence[-1].stage
+        is not CVESecurityEnforcementStage.PRE_EXECUTION
+    ):
+        raise PermitIssuanceError(
+            "CVE-gated execution requires the complete pre-execution "
+            "enforcement stage"
+        )
     if decision.requested_authority is not DecisionAuthority.MUTATION:
         raise PermitIssuanceError(
             "permit issuance requires exact mutation authority"
@@ -1128,6 +1150,48 @@ def issue_execution_permit(
         expires_at_ms=expires,
         allowed_use_count=allowed_use_count,
         issuer_id=_text(issuer_id, "issuer_id"),
+    )
+
+
+def issue_cve_execution_permit(
+    admission_request: PlanAdmissionRequest,
+    admission_receipt: PlanAdmissionReceipt,
+    context_witness: ContextCompletenessWitness,
+    *,
+    caller: str,
+    policy_id: str,
+    policy_revision: str,
+    issued_at_ms: int,
+    expires_at_ms: int,
+    allowed_use_count: int = 1,
+    evidence_receipts: Sequence[ExecutionEvidence] = (),
+    issuer_id: str = "agent-supervisor:execution-permit-issuer",
+    max_ttl_ms: int = DEFAULT_MAX_PERMIT_TTL_MS,
+) -> ExecutionPermit:
+    """Issue only from a chain that reached the CVE pre-execution gate."""
+
+    if (
+        not isinstance(admission_request, PlanAdmissionRequest)
+        or not admission_request.cve_security_evidence
+        or admission_request.required_cve_security_stage
+        is not CVESecurityEnforcementStage.PRE_EXECUTION
+    ):
+        raise PermitIssuanceError(
+            "CVE execution permit requires a pre-execution-gated admission"
+        )
+    return issue_execution_permit(
+        admission_request,
+        admission_receipt,
+        context_witness,
+        caller=caller,
+        policy_id=policy_id,
+        policy_revision=policy_revision,
+        issued_at_ms=issued_at_ms,
+        expires_at_ms=expires_at_ms,
+        allowed_use_count=allowed_use_count,
+        evidence_receipts=evidence_receipts,
+        issuer_id=issuer_id,
+        max_ttl_ms=max_ttl_ms,
     )
 
 
@@ -1774,6 +1838,40 @@ def verify_execution_permit(
     ).verify(permit, attempt)
 
 
+def verify_cve_execution_permit(
+    permit: ExecutionPermit,
+    attempt: ExecutionAttempt,
+    *,
+    ledger: PermitUseLedger | None = None,
+    trusted_permit_ids: Sequence[str] | None = None,
+) -> PermitUseReceipt:
+    """Verify a CVE-gated permit immediately before its declared effect."""
+
+    required_domains = {
+        "cve_security_gate:"
+        f"{CVESecurityEnforcementStage.PLAN_ADMISSION.value}",
+        "cve_security_gate:"
+        f"{CVESecurityEnforcementStage.PRE_EXECUTION.value}",
+    }
+    observed_domains = {
+        item.domain
+        for item in permit.evidence_receipts
+        if item.domain.startswith("cve_security_gate:")
+    }
+    if observed_domains != required_domains:
+        raise PermitVerificationError(
+            PermitVerificationCode.INVALID_PERMIT,
+            "CVE execution permit lacks the exact plan and pre-execution "
+            "gate evidence",
+        )
+    return verify_execution_permit(
+        permit,
+        attempt,
+        ledger=ledger,
+        trusted_permit_ids=trusted_permit_ids,
+    )
+
+
 # Readable compatibility names for callers that use authorization terminology.
 ExactExecutionPermit = ExecutionPermit
 ExecutionPermitRequest = ExecutionAttempt
@@ -1811,7 +1909,9 @@ __all__ = [
     "PermitVerificationError",
     "PermitVerificationResult",
     "issue_execution_permit",
+    "issue_cve_execution_permit",
     "issue_permit",
+    "verify_cve_execution_permit",
     "verify_execution_permit",
     "verify_permit",
 ]

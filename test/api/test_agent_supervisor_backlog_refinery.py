@@ -47,6 +47,14 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.diagnostics import (
+    summarize_test_failure,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    normalize_reported_test_failure_path,
+    parse_task_file,
+    retry_budget_repair_validation_paths,
+)
 from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import agent_supervisor_namespace_paths
 from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     REFILL_SCAN_RESULT_SCHEMA_VERSION,
@@ -1039,6 +1047,14 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
         encoding="utf-8",
     )
     _write_todo(todo_path)
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Validation: test -f README.md",
+            "- Validation: test -f README.md\n"
+            "- Board namespace: swissknife-vfs-assurance-v1",
+        ),
+        encoding="utf-8",
+    )
     _git(repo, "add", "todo.md", "src/runtime.py")
     _git(repo, "commit", "-m", "seed repo")
 
@@ -1055,15 +1071,20 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
     )
 
     assert findings[0]["bundle_key"] == "codebase/runtime/src-runtime"
+    assert findings[0]["board_namespace"] == "swissknife-vfs-assurance-v1"
     shard_path = bundle_dir / "codebase-runtime-src-runtime.todo.md"
-    assert "## AUTO-002 Resolve code annotation" in shard_path.read_text(encoding="utf-8")
+    shard_text = shard_path.read_text(encoding="utf-8")
+    assert "## AUTO-002 Resolve code annotation" in shard_text
+    assert "- Board namespace: swissknife-vfs-assurance-v1" in shard_text
     todo_text = todo_path.read_text(encoding="utf-8")
+    assert "- Board namespace: swissknife-vfs-assurance-v1" in todo_text
     assert "- Bundle: codebase/runtime/src-runtime" in todo_text
     assert "- AST symbols:" in todo_text
     assert "- AST symbol scope: file" in todo_text
     assert "route_request" in todo_text
     index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
     member = index["bundles"]["codebase/runtime/src-runtime"]["tasks"][0]
+    assert member["board_namespace"] == "swissknife-vfs-assurance-v1"
     assert member["candidate_kind"] == "codebase_scan"
     assert member["goal_registration"] == "unscoped_legacy"
     assert member["paths"] == ["src/runtime.py"]
@@ -1485,6 +1506,46 @@ def test_backlog_refinery_goal_alignment_uses_declared_goal_outputs_and_records_
     assert tuple(inventory.findings) == raw_findings
     assert inventory.rejected_candidate_count == 0
     assert inventory.complete is True
+
+
+def test_codebase_admission_reason_summary_deduplicates_representative_paths():
+    first = CodebaseFinding(
+        fingerprint="a" * 40,
+        kind="swallowed_exception",
+        priority="P2",
+        track="runtime",
+        root_relative_path="src/runtime.py",
+        line_number=9,
+        snippet="except OSError: pass",
+        summary="Review first swallowed exception path",
+        validation="python3 -m py_compile src/runtime.py",
+    )
+    second = replace(
+        first,
+        fingerprint="b" * 40,
+        line_number=19,
+        summary="Review second swallowed exception path",
+    )
+    inventory = CodebaseScanInventory(
+        findings=[first, second],
+        raw_candidate_count=2,
+    )
+
+    admission = admit_codebase_refill_candidates(
+        inventory,
+        objective_goals=(),
+        max_findings=5,
+        objective_scope_configured=True,
+    )
+
+    assert admission.rejected_candidate_count == 2
+    assert admission.reason_summaries() == [
+        {
+            "reason_code": "no_schedulable_goal",
+            "count": 2,
+            "representative_paths": ["src/runtime.py"],
+        }
+    ]
 
 
 def test_goal_alignment_selects_specific_subgoal_and_rejects_ambiguous_siblings():
@@ -2021,6 +2082,174 @@ def test_backlog_refinery_dependency_guardrail_detects_dependency_cycle(tmp_path
     assert strategy["blocked_tasks"] == ["AUTO-001"]
 
 
+def test_dependency_guardrail_reports_cycle_members_not_downstream_waiters(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Cycle member one
+
+- Status: todo
+- Depends on: AUTO-002
+
+## AUTO-002 Cycle member two
+
+- Status: todo
+- Depends on: AUTO-001
+
+## AUTO-003 Downstream waiter
+
+- Status: todo
+- Depends on: AUTO-001
+""",
+        encoding="utf-8",
+    )
+
+    records = backlog_refinery.dependency_guardrail_records(
+        parse_task_file(todo_path, "## AUTO-")
+    )
+
+    assert {
+        record["source_task_id"]: record["dependency_cycle"]
+        for record in records
+    } == {
+        "AUTO-001": ["AUTO-001", "AUTO-002", "AUTO-001"],
+        "AUTO-002": ["AUTO-002", "AUTO-001", "AUTO-002"],
+    }
+
+
+def test_backlog_refinery_dependency_guardrail_preserves_prior_batches(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 First missing prerequisite
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AUTO-901
+- Outputs: src/first.py
+- Validation: test -f todo.md
+- Acceptance: First blocked task.
+
+## AUTO-002 Second missing prerequisite
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AUTO-902
+- Outputs: src/second.py
+- Validation: test -f todo.md
+- Acceptance: Second blocked task.
+""",
+        encoding="utf-8",
+    )
+
+    first = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        max_findings=1,
+        repo_root=repo,
+    )
+    second = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        max_findings=1,
+        repo_root=repo,
+    )
+
+    assert [item["source_task_id"] for item in first] == ["AUTO-001"]
+    assert [item["source_task_id"] for item in second] == ["AUTO-002"]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert {
+        item["source_task_id"]
+        for item in strategy["dependency_guardrail_findings"]
+    } == {"AUTO-001", "AUTO-002"}
+    assert strategy["blocked_tasks"] == ["AUTO-001", "AUTO-002"]
+
+
+def test_backlog_refinery_dependency_guardrail_can_refile_after_resolution(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Regressing dependency
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AUTO-999
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Missing dependency is repaired.
+""",
+        encoding="utf-8",
+    )
+
+    first = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        repo_root=repo,
+    )
+    assert [item["follow_up_task_id"] for item in first] == ["AUTO-002"]
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Depends on: AUTO-999",
+            "- Depends on:",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Depends on:",
+            "- Depends on: AUTO-999",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    second = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        repo_root=repo,
+    )
+
+    assert [item["follow_up_task_id"] for item in second] == ["AUTO-003"]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+    assert len(strategy["dependency_guardrail_findings"]) == 1
+
+
 def test_backlog_refinery_dependency_guardrail_detects_duplicate_task_ids(tmp_path):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"
@@ -2218,6 +2447,202 @@ def test_backlog_refinery_releases_completed_and_duplicate_stale_strategy_blocks
     ]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-002"]
+
+
+def test_backlog_refinery_retires_retry_repair_for_completed_source_only(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed source
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/completed.py
+- Validation: test -f todo.md
+- Acceptance: The original task completed through another implementation lane.
+
+## AUTO-002 Resolve merge retry-budget failure for AUTO-001
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in AUTO-001. Use evidence in data/discovery/auto-002.md to fix the merge blocker, then mark this repair task completed so the supervisor can release AUTO-001 from strategy blocked_tasks.
+
+## AUTO-003 Unresolved source
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/unresolved.py
+- Validation: test -f todo.md
+- Acceptance: The original task remains unresolved.
+
+## AUTO-004 Resolve implementation retry-budget failure for AUTO-003
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in AUTO-003. Use evidence in data/discovery/auto-004.md to fix the setup blocker, then mark this repair task completed so the supervisor can release AUTO-003 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    active_finding = {
+        "source_task_id": "AUTO-003",
+        "follow_up_task_id": "AUTO-004",
+        "failure_kind": "implementation",
+    }
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": [
+                    "AUTO-001",
+                    "AUTO-002",
+                    "AUTO-003",
+                ],
+                "retry_budget_findings": [
+                    {
+                        "source_task_id": "AUTO-001",
+                        "follow_up_task_id": "AUTO-002",
+                        "failure_kind": "merge",
+                    },
+                    active_finding,
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-002",
+            "guardrail_kind": "retry_budget",
+            "failure_kind": "merge",
+            "reason": "source_completed_repair_retired",
+        }
+    ]
+    todo_text = todo_path.read_text(encoding="utf-8")
+    completed_repair = todo_text.split("## AUTO-002", 1)[1].split(
+        "## AUTO-003", 1
+    )[0]
+    active_repair = todo_text.split("## AUTO-004", 1)[1]
+    assert "- Status: completed" in completed_repair
+    assert "- Status: todo" in active_repair
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-003"]
+    assert strategy["retry_budget_findings"] == [active_finding]
+    assert strategy[
+        "last_source_completed_retry_repair_retired_task_ids"
+    ] == ["AUTO-002"]
+
+
+def test_backlog_refinery_prunes_peer_retired_retry_projection(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed source
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/completed.py
+- Validation: test -f todo.md
+- Acceptance: The original task completed through another implementation lane.
+
+## AUTO-002 Resolve merge retry-budget failure for AUTO-001
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in AUTO-001. Use evidence in data/discovery/auto-002.md to fix the merge blocker, then mark this repair task completed so the supervisor can release AUTO-001 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001", "AUTO-002"],
+                "retry_budget_findings": [
+                    {
+                        "source_task_id": "AUTO-001",
+                        "follow_up_task_id": "AUTO-002",
+                        "failure_kind": "merge",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-002",
+            "guardrail_kind": "retry_budget",
+            "failure_kind": "merge",
+            "reason": (
+                "source_completed_retry_repair_projection_repaired"
+            ),
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["retry_budget_findings"] == []
+    assert strategy[
+        "last_repaired_source_completed_retry_projection_task_ids"
+    ] == ["AUTO-002"]
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    strategy_after_first_pass = strategy_path.read_bytes()
+
+    repeated_releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert repeated_releases == []
+    assert strategy_path.read_bytes() == strategy_after_first_pass
 
 
 def test_backlog_refinery_releases_historical_completed_retry_repairs(tmp_path):
@@ -2588,6 +3013,288 @@ def test_backlog_refinery_releases_stale_dependency_guardrail_after_metadata_rep
             "follow_up_task_id": "AUTO-002",
             "guardrail_kind": "dependency_guardrail",
             "reason": "dependency_metadata_resolved",
+        },
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-002",
+            "guardrail_kind": "dependency_guardrail",
+            "reason": "resolved_repair_task_retired",
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["dependency_guardrail_findings"] == []
+    assert strategy["last_resolved_dependency_guardrail_task_ids"] == [
+        "AUTO-002"
+    ]
+    repair_block = todo_path.read_text(encoding="utf-8").split(
+        "## AUTO-002", 1
+    )[1]
+    assert "- Status: completed" in repair_block
+
+
+def test_backlog_refinery_repairs_generated_packet_self_goal_and_retires_guardrail(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 External prerequisite
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Depends on:
+- Outputs: src/base.py
+- Validation: true
+- Acceptance: External prerequisite is complete.
+
+## AUTO-002 Generated packet aggregate
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: runtime
+- Depends on: AUTO-001, VAIOS-G101, VAIOS-G102
+- Outputs: src/runtime.py
+- Validation: true
+- Goal id: VAIOS-G101
+- Semantic identity: objective-evidence-packet/v1/packet
+- Evidence obligation key: objective-evidence-packet/v1/packet
+- Goal packet: goal_packet/runtime/shared
+- Goal packet role: packet_aggregate
+- Goal packet goals: VAIOS-G101, VAIOS-G102
+- Completion goal bindings: {"VAIOS-G101":["anchor.json"],"VAIOS-G102":["member.json"]}
+- Candidate kind: goal_packet_aggregate
+- Acceptance: Close the packet goals together.
+
+## AUTO-003 Resolve dependency guardrail for AUTO-002
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: todo.md
+- Validation: test -f todo.md
+- Acceptance: Repair the generated dependency cycle.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-002"],
+                "dependency_guardrail_findings": [
+                    {
+                        "source_task_id": "AUTO-002",
+                        "follow_up_task_id": "AUTO-003",
+                        "fingerprint": "stale-self-cycle",
+                        "dependency_cycle": ["AUTO-002", "AUTO-002"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    todo_text = todo_path.read_text(encoding="utf-8")
+    packet_block = todo_text.split("## AUTO-002", 1)[1].split(
+        "## AUTO-003", 1
+    )[0]
+    repair_block = todo_text.split("## AUTO-003", 1)[1]
+    assert "- Depends on: AUTO-001" in packet_block
+    assert "VAIOS-G101" not in packet_block.split(
+        "- Depends on:", 1
+    )[1].splitlines()[0]
+    assert "- Status: completed" in repair_block
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["dependency_guardrail_findings"] == []
+    assert strategy["last_objective_packet_dependency_repairs"][0][
+        "removed_dependencies"
+    ] == ["VAIOS-G101", "VAIOS-G102"]
+    assert {
+        release.get("reason")
+        for release in releases
+    } == {
+        "objective_packet_internal_dependency_removed",
+        "dependency_metadata_resolved",
+        "resolved_repair_task_retired",
+    }
+
+
+def test_generated_packet_dependency_repair_leaves_unproven_metadata_fail_closed(
+    tmp_path,
+):
+    todo_text = """# Agent Todos
+
+## AUTO-001 Unproven packet aggregate
+
+- Status: todo
+- Is schedulable: true
+- Review only: false
+- Depends on: VAIOS-G101
+- Goal id: VAIOS-G101
+- Semantic identity: objective-evidence-packet/v1/packet
+- Evidence obligation key: objective-evidence-packet/v1/packet
+- Goal packet: goal_packet/runtime/shared
+- Goal packet role: packet_aggregate
+- Goal packet goals: VAIOS-G101
+- Completion goal bindings: {"VAIOS-G101":[]}
+- Candidate kind: goal_packet_aggregate
+"""
+
+    updated, repairs = (
+        backlog_refinery.repair_generated_packet_internal_dependencies(
+            todo_text,
+            task_prefix="AUTO-",
+        )
+    )
+
+    assert updated == todo_text
+    assert repairs == []
+    todo_path = tmp_path / "todo.md"
+    todo_path.write_text(todo_text, encoding="utf-8")
+    tasks = parse_task_file(
+        todo_path,
+        "## AUTO-",
+    )
+    assert backlog_refinery.dependency_guardrail_records(tasks)[0][
+        "dependency_cycle"
+    ] == ["AUTO-001", "AUTO-001"]
+
+
+def test_backlog_refinery_retires_dependency_repair_and_releases_lost_finding(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Ready source
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Dependency metadata is currently valid.
+
+## AUTO-002 Resolve dependency guardrail for AUTO-001
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Depends on:
+- Outputs: todo.md
+- Validation: test -f todo.md
+- Acceptance: Repair an earlier dependency finding.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001"],
+                "dependency_guardrail_findings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-002",
+            "guardrail_kind": "dependency_guardrail",
+            "reason": "resolved_repair_task_retired",
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    repair_block = todo_path.read_text(encoding="utf-8").split(
+        "## AUTO-002", 1
+    )[1]
+    assert "- Status: completed" in repair_block
+
+
+def test_backlog_refinery_releases_legacy_dependency_finding_without_fingerprint(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Ready source
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Dependency metadata is currently valid.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001"],
+                "dependency_guardrail_findings": [
+                    {
+                        "source_task_id": "AUTO-001",
+                        "follow_up_task_id": "AUTO-999",
+                        "guardrail_kind": "dependency_guardrail",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-999",
+            "guardrail_kind": "dependency_guardrail",
+            "reason": "dependency_metadata_resolved",
         }
     ]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
@@ -2654,6 +3361,554 @@ def test_backlog_refinery_keeps_block_when_dependency_guardrail_still_active(tmp
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
     assert strategy["dependency_guardrail_findings"][0]["source_task_id"] == "AUTO-001"
+
+
+def test_backlog_refinery_retires_clean_reconciliation_guardrail_and_refiles_regression(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    dirty_result = {
+        "attempted": True,
+        "main_checkout_status_available": True,
+        "main_checkout_dirty": True,
+        "main_status_short": [" M src/runtime.py"],
+        "candidate_count": 1,
+        "candidates": [
+            {
+                "branch": "implementation/auto-001-attempt-1",
+                "path": "/tmp/worktrees/auto-001",
+                "target_ref": "main",
+            }
+        ],
+    }
+
+    first = backlog_refinery.record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        reconciliation_result=dirty_result,
+        task_prefix="AUTO-",
+        repo_root=repo,
+    )
+    assert [finding["follow_up_task_id"] for finding in first] == [
+        "AUTO-001"
+    ]
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": True,
+            "main_checkout_dirty": False,
+            "main_status_short": [],
+            "raw_main_checkout_dirty": True,
+            "raw_main_status_short": [" m ipfs_datasets_py"],
+            "main_dirty_evidence": {
+                "nonblocking_submodule_content_status": [
+                    {
+                        "path": "ipfs_datasets_py",
+                        "candidate_commit": "candidate",
+                    }
+                ],
+            },
+            "candidate_count": 1,
+        },
+        cleanup_result={"attempted": True},
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "",
+            "guardrail_kind": "reconciliation_guardrail",
+            "reason": "reconciliation_finding_resolved",
+            "dedupe_key": "reconciliation_guardrail:main_checkout_dirty",
+        }
+    ]
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "- Status: completed" in todo_text.split("## AUTO-001", 1)[1]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["reconciliation_guardrail_findings"] == []
+    assert strategy["reconciliation_guardrail_seen_fingerprints"] == []
+    assert strategy[
+        "last_resolved_reconciliation_guardrail_task_ids"
+    ] == ["AUTO-001"]
+
+    # A crash between the protected board write and lane-local strategy write
+    # must be replayable without reopening or duplicating the completed card.
+    strategy["blocked_tasks"] = ["AUTO-001"]
+    strategy["reconciliation_guardrail_findings"] = [first[0]]
+    strategy["reconciliation_guardrail_seen_fingerprints"] = [
+        first[0]["fingerprint"]
+    ]
+    strategy_path.write_text(json.dumps(strategy), encoding="utf-8")
+    projection_repair = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": True,
+            "main_checkout_dirty": False,
+            "main_status_short": [],
+            "candidate_count": 0,
+        },
+        task_prefix="AUTO-",
+    )
+    assert projection_repair == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "",
+            "guardrail_kind": "reconciliation_guardrail",
+            "reason": "resolved_reconciliation_projection_repaired",
+            "dedupe_key": "reconciliation_guardrail:main_checkout_dirty",
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["reconciliation_guardrail_findings"] == []
+    assert strategy["reconciliation_guardrail_seen_fingerprints"] == []
+
+    second = backlog_refinery.record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        reconciliation_result=dirty_result,
+        task_prefix="AUTO-",
+        repo_root=repo,
+    )
+    assert [finding["follow_up_task_id"] for finding in second] == [
+        "AUTO-002"
+    ]
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert todo_text.count(
+        "Dedupe key: reconciliation_guardrail:main_checkout_dirty"
+    ) == 2
+    assert "- Status: blocked" in todo_text.split("## AUTO-002", 1)[1]
+
+
+def test_backlog_refinery_retires_reconciliation_guardrail_after_candidates_reach_zero(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: dirty-fingerprint
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: discovery, todo.md
+- Validation: test -f todo.md
+- Acceptance: Confirm that the blocked candidate count decreases.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001"],
+                "reconciliation_guardrail_seen_fingerprints": [
+                    "dirty-fingerprint"
+                ],
+                "reconciliation_guardrail_findings": [
+                    {
+                        "follow_up_task_id": "AUTO-001",
+                        "fingerprint": "dirty-fingerprint",
+                        "kind": "main_checkout_dirty",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": True,
+            "main_checkout_status_error": "",
+            "main_checkout_dirty": True,
+            "main_status_short": [" m ipfs_accelerate_py"],
+            "candidate_count": 0,
+            "processed_count": 0,
+            "reconciled_count": 0,
+            "preflight_blocked_count": 0,
+            "preflight_resolver_escalation_count": 0,
+            "cleanup_count": 0,
+            "skipped_count": 0,
+            "candidates": [],
+            "processed": [],
+            "skipped": [],
+        },
+        replay_result={
+            "attempted": False,
+            "reason": "no_pending_reconciliation_replays",
+            "pending_count": 0,
+            "processed_count": 0,
+            "completed_count": 0,
+            "failed_count": 0,
+            "deferred_count": 0,
+            "results": [],
+        },
+        cleanup_result={
+            "attempted": True,
+            "prune_returncode": 0,
+            "removed_count": 1,
+            "skipped_count": 0,
+            "dirty_worktree_groups": {},
+            "removed": [
+                {
+                    "path": "/tmp/worktrees/auto-001",
+                    "removed": True,
+                    "returncode": 0,
+                    "branch_delete": {
+                        "attempted": True,
+                        "deleted": True,
+                        "returncode": 0,
+                    },
+                }
+            ],
+            "skipped": [],
+        },
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "",
+            "guardrail_kind": "reconciliation_guardrail",
+            "reason": "reconciliation_finding_resolved",
+            "dedupe_key": "reconciliation_guardrail:main_checkout_dirty",
+        }
+    ]
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["reconciliation_guardrail_findings"] == []
+    assert strategy["reconciliation_guardrail_seen_fingerprints"] == []
+
+
+def test_backlog_refinery_zero_candidate_reconciliation_proof_fails_closed():
+    reconciliation = {
+        "attempted": True,
+        "main_checkout_status_available": True,
+        "main_checkout_status_error": "",
+        "main_checkout_dirty": True,
+        "main_status_short": [" m ipfs_accelerate_py"],
+        "candidate_count": 0,
+        "processed_count": 0,
+        "reconciled_count": 0,
+        "preflight_blocked_count": 0,
+        "preflight_resolver_escalation_count": 0,
+        "cleanup_count": 0,
+        "skipped_count": 0,
+        "candidates": [],
+        "processed": [],
+        "skipped": [],
+    }
+    replay = {
+        "attempted": False,
+        "reason": "no_pending_reconciliation_replays",
+        "pending_count": 0,
+        "processed_count": 0,
+        "completed_count": 0,
+        "failed_count": 0,
+        "deferred_count": 0,
+        "results": [],
+    }
+    cleanup = {
+        "attempted": True,
+        "prune_returncode": 0,
+        "removed_count": 0,
+        "skipped_count": 0,
+        "dirty_worktree_groups": {},
+        "removed": [],
+        "skipped": [],
+    }
+
+    assert backlog_refinery.resolved_reconciliation_guardrail_keys(
+        reconciliation_result=reconciliation,
+        replay_result=replay,
+        cleanup_result=cleanup,
+    ) == {"reconciliation_guardrail:main_checkout_dirty"}
+
+    bad_proofs = [
+        (
+            "missing candidate count",
+            {key: value for key, value in reconciliation.items() if key != "candidate_count"},
+            replay,
+            cleanup,
+        ),
+        (
+            "string candidate count",
+            {**reconciliation, "candidate_count": "0"},
+            replay,
+            cleanup,
+        ),
+        (
+            "nonzero candidate count",
+            {
+                **reconciliation,
+                "candidate_count": 1,
+                "candidates": [{"branch": "implementation/auto-001"}],
+            },
+            replay,
+            cleanup,
+        ),
+        (
+            "status unavailable",
+            {
+                **reconciliation,
+                "main_checkout_status_available": False,
+                "main_checkout_status_error": "git status failed",
+            },
+            replay,
+            cleanup,
+        ),
+        (
+            "preflight blocked",
+            {**reconciliation, "preflight_blocked_count": 1},
+            replay,
+            cleanup,
+        ),
+        (
+            "reconciliation dirty worktree",
+            {
+                **reconciliation,
+                "skipped_count": 1,
+                "skipped": [{"reason": "dirty_worktree"}],
+            },
+            replay,
+            cleanup,
+        ),
+        (
+            "replay deferred",
+            reconciliation,
+            {
+                **replay,
+                "attempted": False,
+                "pending_count": 1,
+                "deferred_count": 1,
+                "results": [
+                    {
+                        "attempted": False,
+                        "settled": False,
+                        "reason": "task_claim_held",
+                    }
+                ],
+            },
+            cleanup,
+        ),
+        (
+            "replay disabled",
+            reconciliation,
+            {
+                **replay,
+                "reason": "worktree_reconciliation_replay_disabled",
+            },
+            cleanup,
+        ),
+        (
+            "replay reason missing",
+            reconciliation,
+            {
+                **replay,
+                "reason": "",
+            },
+            cleanup,
+        ),
+        (
+            "replay settlement unproven",
+            reconciliation,
+            {
+                **replay,
+                "attempted": True,
+                "reason": "reconciliation_replays_processed",
+                "pending_count": 1,
+                "processed_count": 1,
+                "results": [
+                    {
+                        "attempted": True,
+                        "completed": False,
+                        "queued": False,
+                        "settled": True,
+                    }
+                ],
+            },
+            cleanup,
+        ),
+        (
+            "cleanup failed",
+            reconciliation,
+            replay,
+            {**cleanup, "prune_returncode": 1},
+        ),
+        (
+            "cleanup dirty worktree",
+            reconciliation,
+            replay,
+            {
+                **cleanup,
+                "skipped_count": 1,
+                "dirty_worktree_groups": {
+                    "content_not_in_target": {"count": 1}
+                },
+                "skipped": [{"reason": "dirty_worktree"}],
+            },
+        ),
+        (
+            "cleanup branch delete failed",
+            reconciliation,
+            replay,
+            {
+                **cleanup,
+                "removed_count": 1,
+                "removed": [
+                    {
+                        "removed": True,
+                        "returncode": 0,
+                        "branch_delete": {
+                            "attempted": True,
+                            "deleted": False,
+                            "returncode": 1,
+                        },
+                    }
+                ],
+            },
+        ),
+    ]
+    for label, bad_reconciliation, bad_replay, bad_cleanup in bad_proofs:
+        assert backlog_refinery.resolved_reconciliation_guardrail_keys(
+            reconciliation_result=bad_reconciliation,
+            replay_result=bad_replay,
+            cleanup_result=bad_cleanup,
+        ) == set(), label
+
+
+def test_backlog_refinery_reconciliation_guardrail_retirement_fails_closed(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: dirty-fingerprint
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: discovery, todo.md
+- Validation: test -f todo.md
+- Acceptance: Keep this guardrail until a conclusive clean scan.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001"],
+                "reconciliation_guardrail_seen_fingerprints": [
+                    "dirty-fingerprint"
+                ],
+                "reconciliation_guardrail_findings": [
+                    {
+                        "follow_up_task_id": "AUTO-001",
+                        "fingerprint": "dirty-fingerprint",
+                        "kind": "main_checkout_dirty",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    unavailable = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": False,
+            "main_checkout_dirty": True,
+            "main_status_short": [],
+            "candidate_count": 1,
+        },
+        task_prefix="AUTO-",
+    )
+    staged = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": True,
+            "main_checkout_dirty": True,
+            "main_status_short": ["M  src/runtime.py"],
+            "candidate_count": 1,
+            "candidates": [
+                {
+                    "branch": "implementation/auto-001-attempt-1",
+                    "path": "/tmp/worktrees/auto-001",
+                }
+            ],
+        },
+        task_prefix="AUTO-",
+    )
+    inconsistent = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": True,
+            "main_checkout_dirty": False,
+            "main_status_short": [" m unknown-submodule"],
+            "candidate_count": 1,
+        },
+        task_prefix="AUTO-",
+    )
+
+    assert unavailable == []
+    assert staged == []
+    assert inconsistent == []
+    assert "- Status: blocked" in todo_path.read_text(encoding="utf-8")
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+    assert strategy["reconciliation_guardrail_findings"] == [
+        {
+            "follow_up_task_id": "AUTO-001",
+            "fingerprint": "dirty-fingerprint",
+            "kind": "main_checkout_dirty",
+        }
+    ]
 
 
 def test_backlog_refinery_preserves_reconciliation_resolution_sections(tmp_path):
@@ -2796,6 +4051,238 @@ def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
         in todo_text
     )
     assert "do not weaken correct assertions or policy" in todo_text
+
+
+def test_summarize_test_failure_parses_playwright_identifiers_and_paths():
+    summary = summarize_test_failure(
+        "\n".join(
+            [
+                "\x1b[31m  ✘  1 [Desktop Chrome] › "
+                "tests/abby-style.spec.ts:42:3 › home layout stays bounded"
+                "\x1b[39m",
+                "",
+                "  1) [Desktop Chrome] › "
+                "tests/abby-style.spec.ts:42:3 › home layout stays bounded",
+                "    AssertionError: expect(locator).toBeVisible() failed",
+                "",
+                "  2) [Mobile Safari] › "
+                "tests/world-id-ux.spec.ts:268:1 › raw nullifier stays hidden",
+            ]
+        )
+    )
+
+    assert summary["failed_tests"] == [
+        "[Desktop Chrome] › tests/abby-style.spec.ts:42:3 › "
+        "home layout stays bounded",
+        "[Mobile Safari] › tests/world-id-ux.spec.ts:268:1 › "
+        "raw nullifier stays hidden",
+    ]
+    assert summary["failed_test_paths"] == [
+        "tests/abby-style.spec.ts",
+        "tests/world-id-ux.spec.ts",
+    ]
+    assert "tests/abby-style.spec.ts:42:3" in summary["failure_head"]
+    assert "AssertionError" in summary["exception_types"]
+    assert normalize_reported_test_failure_path(
+        "npm --prefix wallet_interface/ui test -- --runInBand",
+        summary["failed_test_paths"][1],
+    ) == "wallet_interface/ui/tests/world-id-ux.spec.ts"
+
+
+def test_summarize_test_failure_ignores_passed_and_skipped_playwright_results():
+    summary = summarize_test_failure(
+        "\n".join(
+            [
+                "Running 20 tests using 1 worker",
+                "",
+                "  ✓   1 [Desktop Chrome] › "
+                "tests/world-id-ux.spec.ts:264:1 › "
+                "review matrix covers World ID IDKit UX evidence (172ms)",
+                "  -  16 [Desktop Chrome] › "
+                "tests/world-id.spec.ts:686:1 › "
+                "World ID panel renders correctly on mobile viewport",
+                "  -  17 [Desktop Chrome] › "
+                "tests/world-id.spec.ts:731:1 › "
+                "World ID panel elements are accessible on mobile",
+                "  ✓  20 [Desktop Chrome] › "
+                "tests/world-id.spec.ts:850:1 › "
+                "World ID disclosure panel lists public claims (1.6s)",
+                "",
+                "  2 skipped",
+                "  18 passed (45.3s)",
+                "",
+                "Running 3 tests using 1 worker",
+                "",
+                "  ✘  1 [Desktop Chrome] › "
+                "tests/world-id-fullstack.spec.ts:487:1 › "
+                "World ID guards stay safe with a live wallet API (225ms)",
+                "  ✓  3 [Desktop Chrome] › "
+                "tests/world-id-fullstack.spec.ts:602:1 › "
+                "World ID QR fixtures render sanitized metadata (13ms)",
+                "",
+                "  1) [Desktop Chrome] › "
+                "tests/world-id-fullstack.spec.ts:487:1 › "
+                "World ID guards stay safe with a live wallet API",
+                "",
+                "    Error: wallet API exited early with 1",
+            ]
+        )
+    )
+
+    assert summary["failed_tests"] == [
+        "[Desktop Chrome] › tests/world-id-fullstack.spec.ts:487:1 › "
+        "World ID guards stay safe with a live wallet API",
+    ]
+    assert summary["failed_test_paths"] == [
+        "tests/world-id-fullstack.spec.ts",
+    ]
+    assert "world-id-ux.spec.ts" not in summary["failure_head"]
+
+
+def test_playwright_retry_focus_falls_back_for_unqualified_or_unsafe_paths():
+    broad_command = (
+        "npm --prefix wallet_interface/ui test -- --runInBand"
+    )
+
+    assert backlog_refinery._focused_npm_playwright_retry_command(
+        broad_command,
+        failed_test_paths=("tests/world-id-ux.spec.ts",),
+    ) == broad_command
+    assert backlog_refinery._focused_npm_playwright_retry_command(
+        broad_command,
+        failed_test_paths=("../outside.spec.ts",),
+    ) == broad_command
+    assert backlog_refinery._focused_npm_playwright_retry_command(
+        broad_command,
+        failed_test_paths=("wallet_interface/ui/tests/*.spec.ts",),
+    ) == broad_command
+    compound_command = f"{broad_command} || echo unsafe"
+    assert backlog_refinery._focused_npm_playwright_retry_command(
+        compound_command,
+        failed_test_paths=(
+            "wallet_interface/ui/tests/world-id-ux.spec.ts",
+        ),
+    ) == compound_command
+
+
+def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    events_path = repo / "state" / "events.jsonl"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Fix the World ID panel
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: wallet_interface/ui/src/WorldIdPanel.tsx
+- Validation: npm --prefix wallet_interface/ui test -- --runInBand
+- Acceptance: Keep World ID proof details private.
+""",
+        encoding="utf-8",
+    )
+    events_path.parent.mkdir(parents=True)
+    summary = summarize_test_failure(
+        "  1) [Desktop Chrome] › "
+        "tests/world-id-ux.spec.ts:268:1 › raw nullifier stays hidden\n"
+        "    Error: expect(locator).toHaveCount(0) failed\n"
+    )
+    rooted_paths = [
+        f"wallet_interface/ui/{path}"
+        for path in summary["failed_test_paths"]
+    ]
+    failure = {
+        "type": "implementation_finished",
+        "task_id": "AUTO-001",
+        "attempt": 1,
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "error": "validation_command_failed",
+            "reason": "declared_validation_failed",
+            "failed_command": (
+                "npm --prefix wallet_interface/ui test -- --runInBand"
+            ),
+            "failed_tests": summary["failed_tests"],
+            "failed_test_paths": rooted_paths,
+            "validation_impact_paths": ["wallet_interface/ui"],
+            "failure_head": summary["failure_head"],
+        },
+        "log_path": "state/implementation_logs/auto-001-attempt-1.log",
+    }
+    events_path.write_text(
+        json.dumps(failure)
+        + "\n"
+        + json.dumps({**failure, "attempt": 2})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    findings = record_retry_budget_findings(
+        todo_path=todo_path,
+        events_path=events_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_header_prefix_value="## AUTO-",
+        task_prefix="AUTO-",
+        validation_retry_budget=2,
+        merge_retry_budget=0,
+    )
+
+    assert len(findings) == 1
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert (
+        "The declared validation target paths "
+        "(wallet_interface/ui/tests/world-id-ux.spec.ts) are bounded "
+        "diagnostic and repair scope"
+        in todo_text
+    )
+    assert (
+        "The declared validation target paths (wallet_interface/ui) "
+        "are bounded diagnostic and repair scope"
+        not in todo_text
+    )
+    assert (
+        "- Outputs: wallet_interface/ui/src/WorldIdPanel.tsx, "
+        "data/agent_supervisor/discovery, "
+        "wallet_interface/ui/tests/world-id-ux.spec.ts"
+        in todo_text
+    )
+    assert (
+        "- Validation: npm --prefix wallet_interface/ui test -- "
+        "--runInBand tests/world-id-ux.spec.ts"
+        in todo_text
+    )
+    repair_task = parse_task_file(
+        todo_path,
+        "## AUTO-",
+    )[1]
+    assert repair_task.metadata["validation failure paths"] == (
+        "wallet_interface/ui/tests/world-id-ux.spec.ts"
+    )
+    assert retry_budget_repair_validation_paths(repair_task) == (
+        "wallet_interface/ui/tests/world-id-ux.spec.ts",
+    )
+    assert repair_task.outputs[-1] == (
+        "wallet_interface/ui/tests/world-id-ux.spec.ts"
+    )
+    discovery_text = Path(findings[0]["discovery_path"]).read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "- Failed test paths: "
+        "wallet_interface/ui/tests/world-id-ux.spec.ts"
+        in discovery_text
+    )
 
 
 def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):
@@ -3320,9 +4807,13 @@ def test_backlog_refinery_objective_scan_refills_low_backlog(tmp_path):
     assert (bundle_dir / "index.json").exists()
 
 
-def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_path):
+def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(
+    tmp_path,
+    monkeypatch,
+):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
     _write_todo(todo_path)
     (repo / "healthy.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(repo, "add", ".")
@@ -3332,7 +4823,7 @@ def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_p
     receipt = record_codebase_scan_findings(
         todo_path=todo_path,
         state_path=None,
-        strategy_path=repo / "state" / "strategy.json",
+        strategy_path=strategy_path,
         discovery_dir=repo / "discovery",
         repo_root=repo,
         max_findings=5,
@@ -3347,6 +4838,26 @@ def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_p
     assert receipt.metadata["analyzer_health"]["status"] == "healthy"
     assert receipt.metadata["analyzer_canaries"]["passed"] is True
     assert receipt.metadata["expected_git_root_count"] == 1
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["last_drained_codebase_scan_task_count"] == 1
+
+    def scan_must_not_run(*_args, **_kwargs):
+        raise AssertionError("healthy single-channel exhaustion bypassed cooldown")
+
+    monkeypatch.setattr(backlog_refinery, "scan_codebase_findings", scan_must_not_run)
+    cooled = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=repo / "discovery",
+        repo_root=repo,
+        max_findings=5,
+        health_thresholds=thresholds,
+    )
+
+    assert cooled.terminal_reason is ScanTerminalReason.COOLDOWN
+    assert cooled.scan_mode == "cooldown"
+    assert cooled.safe_for_completion_reasoning is False
 
 
 def test_codebase_scan_missing_root_fails_closed_without_suppressing_retry(tmp_path, monkeypatch):

@@ -1,0 +1,135 @@
+# Objective Bundle: logic-formal-verification/api
+
+Source todo: docs/architecture/logic_formal_verification_expansion.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## LFV-036 Close objective gap: Expose the stable Python software-verification API
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: python-api
+- Depends on: LFV-003, LFV-016, LFV-018, LFV-035, LFV-023, LFV-021, LFV-027, LFV-024, LFV-026, LFV-032, LFV-033, LFV-025, LFV-034
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/ipfs_datasets_py/logic/api.py, ipfs_datasets_py/ipfs_datasets_py/logic/__init__.py, ipfs_datasets_py/ipfs_datasets_py/logic/submodule_registry.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/registry.py, ipfs_datasets_py/tests/unit/logic/test_verification_api.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_api.py ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-036-objective-gap-b43e03c61ed0.md
+- Bundle: logic-formal-verification/api
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-api.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 35
+- Parallel lane: logic-formal-verification/api
+- Conflict policy: Single owner for `logic.api`, package exports, submodule registry, and the new verification facade; do not edit CLI/MCP or supervisor routers.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/ipfs_datasets_py/logic/api.py, ipfs_datasets_py/ipfs_datasets_py/logic/__init__.py, ipfs_datasets_py/ipfs_datasets_py/logic/submodule_registry.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/registry.py, ipfs_datasets_py/tests/unit/logic/test_verification_api.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/tests/unit/logic/test_verification_api.py
+- Interfaces: LogicVerificationAPI@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G070
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/863dbd51e5a6292d6e9c17a45be72a78f55a1560eacb7895828856c06b870be0
+- Canonical task CID: baguqeeraqy632upfuyus23u4c6sfxzzkpd2vufla5lfxrfmcrblma24hbpqa
+- Semantic identity: objective-evidence-obligation/v1/59ad2b3cc265db9ff2774e31d84e86992287285dc79faff3a47af6c7c1d84932
+- Acceptance subset: API imports quietly without optional tools, discovery is declarative, responses expose typed status/authority/assumptions/bounds/translations/witnesses/cache provenance, absent features are explicit, legacy API behavior stays green.
+- Preconditions: objective goal LFV-G070 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/test_verification_api.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/tests/unit/logic/test_verification_api.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/LFV-G070
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/59ad2b3cc265db9ff2774e31d84e86992287285dc79faff3a47af6c7c1d84932
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/tests/unit/logic/test_verification_api.py
+- Embedding query: Add lightweight generic family/provider discovery, compilation, checking, monitoring, portfolio, counterexample, receipt, advisor, and attestation operations while preserving legacy imports.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/tests/unit/logic/test_verification_api.py
+- Surplus group: objective/LFV-G070
+- Merge key: dce7397638b02dc8
+- Merge family: objective/LFV-G070
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 5611f36099f6c17c
+- Acceptance: Objective scan filed this gap for LFV-G070. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-036-objective-gap-b43e03c61ed0.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/tests/unit/logic/test_verification_api.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## LFV-038 Close objective gap: Expose equivalent CLI and MCP verification operations
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: cli-mcp
+- Depends on: LFV-036
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/cli.py, ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_verification.py, ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_tools/__init__.py, ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/__init__.py, ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py
+- Validation: python -m pytest ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-038-objective-gap-054dc8ddf20f.md
+- Bundle: logic-formal-verification/api
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-api.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 37
+- Parallel lane: logic-formal-verification/api
+- Conflict policy: Single owner for CLI/MCP registration and tests; reuse the Python facade and preserve existing command/tool names and behavior.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/cli.py, ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_verification.py, ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_tools/__init__.py, ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/__init__.py, ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_verification.py, ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py
+- Interfaces: LogicVerificationCLI@1, LogicVerificationMCP@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G071
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/6c25ba9450f078313c04ec22f529000483501ac1c7f2b55af3f4deba7185de98
+- Canonical task CID: baguqeeranqs3vfcq6b4dcpae5qrpkkiaasbvagwby7zlkwxt6tplu4mf32ma
+- Semantic identity: objective-evidence-obligation/v1/4282e827d5bb39161bf7b8e6b9b431d06a89b7f8b35118533fc8ddc09d3cfa43
+- Acceptance subset: CLI/MCP cover list, capability, compile, check, monitor, portfolio, counterexample, receipt, advisor, and attestation operations, schemas match Python, inputs/outputs are bounded, errors and unavailable tools are stable and secret safe.
+- Preconditions: objective goal LFV-G071 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_verification.py, satisfy evidence requirement: ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_verification.py, ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/LFV-G071
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/4282e827d5bb39161bf7b8e6b9b431d06a89b7f8b35118533fc8ddc09d3cfa43
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_verification.py, ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py
+- Embedding query: Add bounded machine-readable CLI and MCP operations for the stable verification API with capability inspection and receipt retrieval.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_verification.py, ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py
+- Surplus group: objective/LFV-G071
+- Merge key: 7eb4ec390c2ecb0e
+- Merge family: objective/LFV-G071
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: f1db81194d376ffe
+- Acceptance: Objective scan filed this gap for LFV-G071. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-038-objective-gap-054dc8ddf20f.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_verification.py, ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

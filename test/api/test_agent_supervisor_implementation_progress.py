@@ -156,6 +156,34 @@ def test_progress_output_renews_idle_deadline_but_not_hard_cap(
     assert getattr(raised.value, "progress_events") > 0
 
 
+def test_absolute_timeout_output_emits_progress_without_extending_deadline(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "absolute.log"
+    script = (
+        "import time\n"
+        "for index in range(100):\n"
+        " print(index, flush=True)\n"
+        " time.sleep(0.03)\n"
+    )
+    progress_events: list[dict[str, object]] = []
+    with log_path.open("w", encoding="utf-8") as log_fh:
+        with pytest.raises(subprocess.TimeoutExpired) as raised:
+            run_process_group_stream(
+                [sys.executable, "-c", script],
+                cwd=tmp_path,
+                stdout=log_fh,
+                timeout_seconds=0.25,
+                on_progress=lambda value: progress_events.append(dict(value)),
+                progress_poll_seconds=0.02,
+                termination_grace_seconds=0.05,
+            )
+
+    assert getattr(raised.value, "timeout_reason") == "absolute_timeout"
+    assert getattr(raised.value, "progress_events") > 0
+    assert progress_events
+
+
 def test_silent_process_hits_progress_idle_timeout(tmp_path: Path) -> None:
     log_path = tmp_path / "silent.log"
     with log_path.open("w", encoding="utf-8") as log_fh:
@@ -246,6 +274,7 @@ def test_progress_observer_refreshes_durable_supervisor_heartbeat(
         active_attempt=2,
         implementation_in_progress=True,
     )
+    state.save(daemon.state_path)
 
     observer = daemon._implementation_progress_observer(
         state,
@@ -257,6 +286,44 @@ def test_progress_observer_refreshes_durable_supervisor_heartbeat(
     persisted = PortalTaskState.load(daemon.state_path)
     assert persisted.heartbeat_at
     assert persisted.last_progress_at == persisted.heartbeat_at
+
+
+def test_progress_observer_preserves_concurrent_projection_fields(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    task = _task(metadata={"requires provider": "true"})
+    state = PortalTaskState(
+        active_task_id=task.task_id,
+        active_attempt=2,
+        implementation_in_progress=True,
+        completed_task_ids=["SRT-001"],
+        completed_count=1,
+    )
+    state.save(daemon.state_path)
+    observer = daemon._implementation_progress_observer(
+        state,
+        task,
+        attempt=2,
+    )
+
+    concurrent = PortalTaskState.load(daemon.state_path)
+    concurrent.completed_task_ids = ["SRT-001", "SRT-002"]
+    concurrent.completed_count = 2
+    concurrent.blocked_task_ids = ["SRT-003"]
+    concurrent.blocked_count = 1
+    concurrent.save(daemon.state_path)
+
+    observer({"progress_events": 1})
+
+    persisted = PortalTaskState.load(daemon.state_path)
+    assert persisted.completed_task_ids == ["SRT-001", "SRT-002"]
+    assert persisted.completed_count == 2
+    assert persisted.blocked_task_ids == ["SRT-003"]
+    assert persisted.blocked_count == 1
+    assert persisted.heartbeat_at
+    assert persisted.last_progress_at == persisted.heartbeat_at
+    assert state.heartbeat_at == persisted.heartbeat_at
 
 
 def test_checkpoint_manifest_is_cid_bound_and_propagated_to_retry(

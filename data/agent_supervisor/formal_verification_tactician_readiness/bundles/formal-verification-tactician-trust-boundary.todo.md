@@ -1,0 +1,200 @@
+# Objective Bundle: formal-verification-tactician/trust-boundary
+
+Source todo: docs/architecture/formal_verification_tactician_readiness.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## FVT-002 Close formal verification tactician readiness gap: Unify the secret-safe public counterexample boundary
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: counterexample-boundary
+- Depends on: FVT-001
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py, ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py, test/api/test_counterexample_cross_repository_contract.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py test/api/test_counterexample_cross_repository_contract.py -q
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-002-objective-gap-d3ffe0b86118.md
+- Bundle: formal-verification-tactician/trust-boundary
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-trust-boundary.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 1
+- Parallel lane: formal-verification-tactician/trust-boundary
+- Conflict policy: Own the new datasets wire contract, verification API delegation, and cross-repository adapter tests; extend the mature supervisor normalizer without creating a second semantic identity.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py, ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py, test/api/test_counterexample_cross_repository_contract.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py, test/api/test_counterexample_cross_repository_contract.py
+- Interfaces: CounterexampleEnvelope@2, PublicCounterexampleBoundary@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G007
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/82f1fc780075afe55c09b5b78367bcb5ef4b957702b4d21cd64e1927b6f6f312
+- Canonical task CID: baguqeeraqly7y6aaowx6kxajww3ygz54wxxuxflxak2nehgwjymspnxw6mja
+- Semantic identity: objective-evidence-obligation/v1/354741044b7242c2b3136059a83f20492130b377b0149d4017c77056ef5db7be
+- Acceptance subset: Unknown fields and forged identities fail closed, hidden_witness, token, credential, raw source, stdout, and private channels never appear publicly, raw artifacts are referenced only by private digest/retention metadata, all projections preserve kind, property, source-map, tool, assumptions, bounds, and authority.
+- Preconditions: objective goal FVT-G007 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py, satisfy evidence requirement: test/api/test_counterexample_cross_repository_contract.py
+- Evidence subset: ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py, test/api/test_counterexample_cross_repository_contract.py
+- Resource class: cpu-proof-sanitize
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-sanitize
+- Merge fate: objective/FVT-G007
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/354741044b7242c2b3136059a83f20492130b377b0149d4017c77056ef5db7be
+- Missing evidence: ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py, test/api/test_counterexample_cross_repository_contract.py
+- Embedding query: Route datasets Python/CLI/MCP and supervisor/model projections through one closed, bounded, content-addressed counterexample envelope and eliminate raw payload exposure.
+- AST query: ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py, test/api/test_counterexample_cross_repository_contract.py
+- Surplus group: objective/FVT-G007
+- Merge key: 056b47ce6688b35c
+- Merge family: objective/FVT-G007
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 57cc0226a519caa1
+- Acceptance: Objective scan filed this gap for FVT-G007. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-002-objective-gap-d3ffe0b86118.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py, test/api/test_counterexample_cross_repository_contract.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-003 Close formal verification tactician readiness gap: Make receipt verification and attestation fail closed
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: receipt-authority
+- Depends on: FVT-001
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py, test/api/test_logic_receipt_authority_boundary.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py test/api/test_logic_receipt_authority_boundary.py -q
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-003-objective-gap-e10e787fbcfd.md
+- Bundle: formal-verification-tactician/trust-boundary
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-trust-boundary.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 2
+- Parallel lane: formal-verification-tactician/trust-boundary
+- Conflict policy: Own stable receipt and attestation dispatch plus adversarial tests; preserve existing typed receipt schemas and do not weaken them to accommodate legacy mappings.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py, test/api/test_logic_receipt_authority_boundary.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py, test/api/test_logic_receipt_authority_boundary.py
+- Interfaces: VerifiedReceiptDispatch@2, AttestationAuthorityBoundary@2
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G006
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/ea91e1d23ac3d66115982c44cacb6854dd506838d26e836461e00cf71f85767e
+- Canonical task CID: baguqeera5ki6dur2yplgcfmyfrcmvs3iktova2by2jxigzdb4agpoh4foz7a
+- Semantic identity: objective-evidence-obligation/v1/3ccddcedda257673f37f0549326bba38258afe72196498d6307dfbdfbea58b7b
+- Acceptance subset: Empty, unknown, forged-kernel, stale, wrong-tree, wrong-property, wrong-assumption, wrong-bound, wrong-tool, and cross-authority inputs are rejected, a prepared/simulated attestation cannot report proof success, valid typed receipts round trip without authority loss.
+- Preconditions: objective goal FVT-G006 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py, satisfy evidence requirement: test/api/test_logic_receipt_authority_boundary.py
+- Evidence subset: ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py, test/api/test_logic_receipt_authority_boundary.py
+- Resource class: cpu-proof-type-check
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-type-check
+- Merge fate: objective/FVT-G006
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/3ccddcedda257673f37f0549326bba38258afe72196498d6307dfbdfbea58b7b
+- Missing evidence: ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py, test/api/test_logic_receipt_authority_boundary.py
+- Embedding query: Replace permissive structural receipt handling with closed schema dispatch and exact validation of content identity, source/property/assumption/bound/tool bindings, freshness, authority, proof artifacts, and independent checker evidence.
+- AST query: ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py, test/api/test_logic_receipt_authority_boundary.py
+- Surplus group: objective/FVT-G006
+- Merge key: 9abc34169c0086ee
+- Merge family: objective/FVT-G006
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 2caafa5c363949f8
+- Acceptance: Objective scan filed this gap for FVT-G006. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-003-objective-gap-e10e787fbcfd.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py, test/api/test_logic_receipt_authority_boundary.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-009 Close formal verification tactician readiness gap: Require verifier-backed counterexample closure
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: replan-soundness
+- Depends on: FVT-003, FVT-002
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py, test/api/test_agent_supervisor_formal_replanner_verifier_closure.py
+- Validation: python -m pytest test/api/test_agent_supervisor_formal_replanner.py test/api/test_agent_supervisor_formal_replanner_verifier_closure.py -q
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-009-objective-gap-29bfa68551c3.md
+- Bundle: formal-verification-tactician/trust-boundary
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-trust-boundary.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 8
+- Parallel lane: formal-verification-tactician/trust-boundary
+- Conflict policy: Own formal-replanner closure semantics and focused tests; preserve bounded repair proposal generation and do not treat a successful compile or plan consistency check as semantic verification.
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py, test/api/test_agent_supervisor_formal_replanner_verifier_closure.py
+- Changed paths:
+- AST symbols: test/api/test_agent_supervisor_formal_replanner_verifier_closure.py
+- Interfaces: VerifierBackedRepairClosure@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G008
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/f49222f9a241687b5a6978a9b8d348abcd9b9d647b459ba8b2e03dc615c16b7c
+- Canonical task CID: baguqeera6sjcf6ncifuhwwtjpcu3ru2ivpgzxhlepnczxkfs4a64mfobnn6a
+- Semantic identity: objective-evidence-obligation/v1/49d2b3e71cb5ab1b4ab938fa4d422371581dad4a0678371eeb78051670146fc4
+- Acceptance subset: `_addresses_counterexample` alone never changes open count from one to zero, no verifier, unavailable verifier, stale receipt, changed tree/property/assumption/bound, timeout, and disagreement leave the witness open or unknown, closure names a fresh matching verifier receipt.
+- Preconditions: objective goal FVT-G008 is schedulable
+- Effects: satisfy evidence requirement: test/api/test_agent_supervisor_formal_replanner_verifier_closure.py
+- Evidence subset: test/api/test_agent_supervisor_formal_replanner_verifier_closure.py
+- Resource class: cpu-proof-check
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-check
+- Merge fate: objective/FVT-G008
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/49d2b3e71cb5ab1b4ab938fa4d422371581dad4a0678371eeb78051670146fc4
+- Missing evidence: test/api/test_agent_supervisor_formal_replanner_verifier_closure.py
+- Embedding query: Make formal replanning distinguish a structurally admissible repair from a verifier-confirmed repair and keep every witness open until exact fresh re-verification succeeds.
+- AST query: test/api/test_agent_supervisor_formal_replanner_verifier_closure.py
+- Surplus group: objective/FVT-G008
+- Merge key: caa961a0d00e3a57
+- Merge family: objective/FVT-G008
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: fbb610d6cb2f0bf9
+- Acceptance: Objective scan filed this gap for FVT-G008. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-009-objective-gap-29bfa68551c3.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/api/test_agent_supervisor_formal_replanner_verifier_closure.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

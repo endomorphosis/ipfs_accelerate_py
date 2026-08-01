@@ -11,9 +11,10 @@ This module is the small coordination boundary for that stream:
 * provider health and capacity are checked immediately before dispatch; and
 * every completed batch has a content-addressed receipt.
 
-IndexTTS/Whisper batch-size-one policy: IndexTTS and Whisper adapter aliases in
-``_SINGLE_MEMBER_AUDIO_PROVIDERS`` remain physical batch size one until those
-adapters prove real multi-member batching.
+IndexTTS/Whisper batch-size-one policy: canonical Publicus/Abby IndexTTS
+aliases use the adapter's real multi-member ``/gen_batch`` wire API.  Whisper
+and generic IndexTTS identifiers in ``_SINGLE_MEMBER_AUDIO_PROVIDERS`` remain
+physical batch size one until their adapters prove real batching.
 
 Provider callbacks receive a tuple of :class:`ProviderBatchRequest` objects and
 may return either a sequence in request order or a mapping keyed by request id.
@@ -51,11 +52,18 @@ PROVIDER_BATCH_METRICS_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/provider-batch-metrics@2"
 )
 _PROVIDER_BATCH_RECEIPT_SEAL: Final = object()
+_BATCH_CAPABLE_AUDIO_PROVIDERS: Final = frozenset(
+    {
+        "abby_index_tts",
+        "abby_indextts",
+        "publicus",
+        "publicus_indextts",
+        "publicus_tts",
+    }
+)
 _SINGLE_MEMBER_AUDIO_PROVIDERS: Final = frozenset(
     {
         "abby_hf_whisper",
-        "abby_index_tts",
-        "abby_indextts",
         "abby_whisper",
         "hf_whisper",
         "huggingface_whisper",
@@ -154,12 +162,21 @@ def _cancelled(token: Any) -> bool:
 def _requires_single_member_batch(provider_id: str) -> bool:
     """Enforce the IndexTTS/Whisper batch-size-one policy for audio adapters.
 
-    Returns whether the provider's current adapter lacks a batch wire API and
-    therefore must launch with at most one physical member per provider call.
+    Canonical Publicus aliases identify the package-owned adapter with a real
+    ``/gen_batch`` contract.  Generic IndexTTS and Whisper identifiers retain
+    the conservative single-member policy because their wire capabilities are
+    not known here.
     """
 
     normalized = str(provider_id).strip().lower().replace("-", "_")
-    return normalized in _SINGLE_MEMBER_AUDIO_PROVIDERS
+    if normalized in _BATCH_CAPABLE_AUDIO_PROVIDERS:
+        return False
+    compact = normalized.replace("_", "")
+    return (
+        normalized in _SINGLE_MEMBER_AUDIO_PROVIDERS
+        or "indextts" in compact
+        or "whisper" in compact
+    )
 
 
 class ProviderBatchStatus(str, Enum):
@@ -1238,10 +1255,9 @@ class ProviderBatchScheduler:
     def _effective_size(
         self, provider_id: str, capacity: ProviderBatchCapacity
     ) -> int:
-        # The current remote Abby adapters expose one-request HTTP APIs.  Keep
-        # physical calls at one member until an adapter explicitly implements
-        # a real batch wire contract.  Identical logical subscribers can still
-        # share that member through single-flight.
+        # Keep providers without a proved batch wire contract at one physical
+        # member.  Identical logical subscribers can still share that member
+        # through single-flight.
         if _requires_single_member_batch(provider_id):
             self._adaptive_sizes[provider_id] = 1
             return 1

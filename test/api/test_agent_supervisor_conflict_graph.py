@@ -247,6 +247,7 @@ def test_file_isolated_bundle_policy_scopes_generated_ast_terms(
             "tasks": [
                 {
                     "task_id": name.upper(),
+                    "canonical_task_cid": f"task-cid-{name}",
                     "outputs": [f"src/{name}.py"],
                     "ast_symbols": ["__init__", "datetime.datetime"],
                 }
@@ -283,6 +284,7 @@ def test_bundle_lane_prefers_canonical_files_over_broad_planning_paths(
             "tasks": [
                 {
                     "task_id": "ALPHA",
+                    "canonical_task_cid": "task-cid-alpha",
                     "files": ["src/alpha.py", "tests/test_alpha.py"],
                     "outputs": ["src/alpha.py", "tests/test_alpha.py"],
                     "predicted_files": [
@@ -332,6 +334,7 @@ def test_shared_bookkeeping_paths_do_not_block_disjoint_bundle_files(
             "tasks": [
                 {
                     "task_id": name.upper(),
+                    "canonical_task_cid": f"task-cid-{name}",
                     "files": [f"src/{name}.py"],
                     "outputs": [f"src/{name}.py"],
                     "predicted_files": [f"src/{name}.py", *shared],
@@ -373,6 +376,7 @@ def test_same_canonical_file_still_blocks_bundle_concurrency(
             "tasks": [
                 {
                     "task_id": name.upper(),
+                    "canonical_task_cid": f"task-cid-{name}",
                     "files": ["src/shared.py"],
                     "predicted_files": [
                         "src/shared.py",
@@ -408,6 +412,152 @@ def test_same_canonical_file_still_blocks_bundle_concurrency(
     )
 
 
+def test_managed_submodule_disjoint_paths_can_opt_in_to_concurrency(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    payloads = [
+        {
+            "bundle_key": f"bundle/{name}",
+            "todo_path": f"{name}.md",
+            "tasks": [
+                {
+                    "task_id": name.upper(),
+                    "canonical_task_cid": f"task-cid-{name}",
+                    "files": [f"vendor/runtime/src/{name}.py"],
+                    "predicted_files": [f"vendor/runtime/src/{name}.py"],
+                    "submodules": ["vendor/runtime"],
+                    "interfaces": [f"{name.title()}API@1"],
+                }
+            ],
+            "profile_g": {"task_cid": f"cid-{name}"},
+        }
+        for name in ("alpha", "beta")
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: payloads,
+    )
+
+    conservative = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "conservative-state",
+        worktree_root=tmp_path / "conservative-worktrees",
+        log_dir=tmp_path / "conservative-logs",
+        worktree_submodule_paths=("vendor/runtime",),
+        optimize_bundles=False,
+    )
+    conservative_by_key = {lane.bundle_key: lane for lane in conservative}
+    assert "bundle/beta" in conservative_by_key["bundle/alpha"].conflicting_task_ids
+
+    concurrent = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "concurrent-state",
+        worktree_root=tmp_path / "concurrent-worktrees",
+        log_dir=tmp_path / "concurrent-logs",
+        worktree_submodule_paths=("vendor/runtime",),
+        allow_disjoint_submodule_concurrency=True,
+        optimize_bundles=False,
+    )
+    concurrent_by_key = {lane.bundle_key: lane for lane in concurrent}
+
+    assert concurrent_by_key["bundle/alpha"].conflicting_task_ids == []
+    assert concurrent_by_key["bundle/beta"].conflicting_task_ids == []
+    assert (
+        concurrent_by_key["bundle/alpha"].conflict_color
+        == concurrent_by_key["bundle/beta"].conflict_color
+    )
+    assert any(
+        decision["action"] == "concurrent_override"
+        and "explicit concurrency override" in decision["explanation"]
+        for decision in concurrent_by_key["bundle/alpha"].conflict_decisions
+    )
+
+
+@pytest.mark.parametrize(
+    ("alpha_file", "beta_file", "alpha_interface", "beta_interface"),
+    [
+        (
+            "vendor/runtime/src/shared.py",
+            "vendor/runtime/src/shared.py",
+            "AlphaAPI@1",
+            "BetaAPI@1",
+        ),
+        (
+            "vendor/runtime",
+            "vendor/runtime/src/beta.py",
+            "AlphaAPI@1",
+            "BetaAPI@1",
+        ),
+        (
+            "vendor/runtime/src/alpha.py",
+            "vendor/runtime/src/beta.py",
+            "SharedAPI@1",
+            "SharedAPI@1",
+        ),
+    ],
+)
+def test_managed_submodule_concurrency_keeps_ambiguous_or_exact_conflicts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    alpha_file: str,
+    beta_file: str,
+    alpha_interface: str,
+    beta_interface: str,
+) -> None:
+    payloads = [
+        {
+            "bundle_key": "bundle/alpha",
+            "todo_path": "alpha.md",
+            "tasks": [
+                {
+                    "task_id": "ALPHA",
+                    "canonical_task_cid": "task-cid-alpha",
+                    "files": [alpha_file],
+                    "submodules": ["vendor/runtime"],
+                    "interfaces": [alpha_interface],
+                }
+            ],
+            "profile_g": {"task_cid": "cid-alpha"},
+        },
+        {
+            "bundle_key": "bundle/beta",
+            "todo_path": "beta.md",
+            "tasks": [
+                {
+                    "task_id": "BETA",
+                    "canonical_task_cid": "task-cid-beta",
+                    "files": [beta_file],
+                    "submodules": ["vendor/runtime"],
+                    "interfaces": [beta_interface],
+                }
+            ],
+            "profile_g": {"task_cid": "cid-beta"},
+        },
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: payloads,
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        worktree_submodule_paths=("vendor/runtime",),
+        allow_disjoint_submodule_concurrency=True,
+        optimize_bundles=False,
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+
+    assert "bundle/beta" in by_key["bundle/alpha"].conflicting_task_ids
+    assert "bundle/alpha" in by_key["bundle/beta"].conflicting_task_ids
+
+
 def test_bundle_ast_symbols_are_file_local_unless_explicitly_global(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -419,6 +569,7 @@ def test_bundle_ast_symbols_are_file_local_unless_explicitly_global(
             "tasks": [
                 {
                     "task_id": name.upper(),
+                    "canonical_task_cid": f"task-cid-{name}",
                     "files": [f"src/{name}.py"],
                     "ast_symbols": ["__post_init__", "_digest"],
                     **(
@@ -594,26 +745,50 @@ def test_bundle_lane_planner_projects_blocking_edges_but_honors_overrides(
         {
             "bundle_key": "bundle/base",
             "todo_path": "base.md",
-            "tasks": [{"task_id": "BASE", "outputs": ["src/shared.py"]}],
+            "tasks": [
+                {
+                    "task_id": "BASE",
+                    "canonical_task_cid": "task-cid-base",
+                    "outputs": ["src/shared.py"],
+                }
+            ],
             "profile_g": {"task_cid": "cid-base"},
         },
         {
             "bundle_key": "bundle/blocked",
             "todo_path": "blocked.md",
-            "tasks": [{"task_id": "BLOCKED", "outputs": ["src/shared.py"]}],
+            "tasks": [
+                {
+                    "task_id": "BLOCKED",
+                    "canonical_task_cid": "task-cid-blocked",
+                    "outputs": ["src/shared.py"],
+                }
+            ],
             "profile_g": {"task_cid": "cid-blocked"},
         },
         {
             "bundle_key": "bundle/allowed",
             "todo_path": "allowed.md",
             "allow_concurrent_with": ["cid-base"],
-            "tasks": [{"task_id": "ALLOWED", "outputs": ["src/shared.py"]}],
+            "tasks": [
+                {
+                    "task_id": "ALLOWED",
+                    "canonical_task_cid": "task-cid-allowed",
+                    "outputs": ["src/shared.py"],
+                }
+            ],
             "profile_g": {"task_cid": "cid-allowed"},
         },
         {
             "bundle_key": "bundle/disjoint",
             "todo_path": "disjoint.md",
-            "tasks": [{"task_id": "DISJOINT", "outputs": ["docs/disjoint.md"]}],
+            "tasks": [
+                {
+                    "task_id": "DISJOINT",
+                    "canonical_task_cid": "task-cid-disjoint",
+                    "outputs": ["docs/disjoint.md"],
+                }
+            ],
             "profile_g": {"task_cid": "cid-disjoint"},
         },
     ]
@@ -673,11 +848,13 @@ def test_bundle_lane_planner_excludes_completed_members_from_conflict_surface(
             "tasks": [
                 {
                     "task_id": "REF-001",
+                    "canonical_task_cid": "task-cid-ref-001",
                     "status": "todo",
                     "outputs": ["src/shared.py"],
                 },
                 {
                     "task_id": "REF-002",
+                    "canonical_task_cid": "task-cid-ref-002",
                     "status": "todo",
                     "outputs": ["src/base.py"],
                 },
@@ -690,6 +867,7 @@ def test_bundle_lane_planner_excludes_completed_members_from_conflict_surface(
             "tasks": [
                 {
                     "task_id": "REF-003",
+                    "canonical_task_cid": "task-cid-ref-003",
                     "status": "todo",
                     "outputs": ["src/shared.py"],
                 }

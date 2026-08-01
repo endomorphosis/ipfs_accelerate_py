@@ -1,0 +1,1 @@
+{"evidence":"vfs/finding-ledger@1","evidence_terms":["vfs/finding-ledger@1","vfs/vulnerability-evidence-policy@1"],"goal_id":"VFS-G100","history_is_append_only":true,"ledger_version":"contract-finding-ledger@1","projection_is_mutable_current_tree":true,"record_count":2,"schema":"ipfs_accelerate_py/agent-supervisor/contract-finding/ledger-meta@1","sequence":2}

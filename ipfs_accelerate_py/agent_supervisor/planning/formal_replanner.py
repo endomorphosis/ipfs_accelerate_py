@@ -7,6 +7,12 @@ the rule edits only bound source records, and the resulting source is compiled
 and checked by the normal formal-plan compiler and validator before it can be
 offered to a taskboard admission callback.
 
+Structural compile/check success is not semantic verification.
+:class:`VerifierBackedRepairClosure` keeps every witness open until a fresh
+verifier receipt matches the repaired tree, property, assumptions, tool,
+policy, and bounds.  ``_addresses_counterexample`` alone never reduces the
+open-witness count from one to zero.
+
 Only :class:`CodexRepairPacket` is model-facing.  It contains the selected
 transition and the already redacted, byte-bounded counterexample capsule; it
 never contains the source snapshot, rejected candidates, compiler diagnostics,
@@ -80,6 +86,9 @@ DELTA_PLAN_SCHEMA: Final = (
 )
 DELTA_REPLAN_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/delta-replan-decision@1"
+)
+VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/verifier-backed-repair-closure@1"
 )
 # Objective-heap evidence identity for one bounded changed-evidence refinement.
 BOUNDED_REFINEMENT_EVIDENCE_ID: Final = (
@@ -339,7 +348,12 @@ RepairRule = RepairOperation
 
 @dataclass(frozen=True)
 class RepairProgress:
-    """Lexicographic measure proving that a repair step moves forward."""
+    """Lexicographic measure proving that a repair step moves forward.
+
+    Open-counterexample counts are verifier-backed only.  A structural repair
+    may advance the plan while leaving the witness open; that is progress, but
+    it must never pretend the counterexample was closed.
+    """
 
     before_open_counterexamples: int
     after_open_counterexamples: int
@@ -370,7 +384,17 @@ class RepairProgress:
 
     @property
     def improved(self) -> bool:
-        return self.after < self.before
+        # Strongest progress: verifier-backed open count decreases.
+        if self.after < self.before:
+            return True
+        # Structural progress: the plan advanced and findings did not grow,
+        # but the witness remains open until a fresh verifier receipt closes it.
+        return (
+            self.before_open_counterexamples > 0
+            and self.after_open_counterexamples == self.before_open_counterexamples
+            and self.after_validation_findings <= self.before_validation_findings
+            and self.changed_records > 0
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -386,6 +410,502 @@ class RepairProgress:
             "generated_tasks": self.generated_tasks,
             "improved": self.improved,
         }
+
+
+class WitnessClosureStatus(str, Enum):
+    """Authority-facing status for one counterexample witness."""
+
+    OPEN = "open"
+    UNKNOWN = "unknown"
+    CLOSED = "closed"
+
+
+@dataclass(frozen=True)
+class VerifierClosureReceipt:
+    """Claimed re-verification outcome for a repaired plan.
+
+    Receipts are untrusted input.  :func:`evaluate_verifier_backed_closure`
+    decides whether the claim is a fresh, exact match that may close a witness.
+    """
+
+    receipt_id: str
+    counterexample_id: str
+    repository_tree_id: str
+    property_id: str
+    assumption_ids: tuple[str, ...] = ()
+    bound_digest: str = ""
+    tool_id: str = ""
+    policy_id: str = ""
+    repaired_plan_id: str = ""
+    freshness: str = "current"
+    outcome: str = "verified"
+    available: bool = True
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "receipt_id", str(self.receipt_id or "").strip()
+        )
+        object.__setattr__(
+            self, "counterexample_id", str(self.counterexample_id or "").strip()
+        )
+        object.__setattr__(
+            self,
+            "repository_tree_id",
+            str(self.repository_tree_id or "").strip(),
+        )
+        object.__setattr__(
+            self, "property_id", str(self.property_id or "").strip()
+        )
+        object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids))
+        object.__setattr__(
+            self, "bound_digest", str(self.bound_digest or "").strip()
+        )
+        object.__setattr__(self, "tool_id", str(self.tool_id or "").strip())
+        object.__setattr__(self, "policy_id", str(self.policy_id or "").strip())
+        object.__setattr__(
+            self, "repaired_plan_id", str(self.repaired_plan_id or "").strip()
+        )
+        freshness = str(self.freshness or "current").strip().lower()
+        object.__setattr__(self, "freshness", freshness or "current")
+        outcome = str(self.outcome or "").strip().lower()
+        object.__setattr__(self, "outcome", outcome or "verified")
+        object.__setattr__(self, "available", bool(self.available))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "receipt_id": self.receipt_id,
+            "counterexample_id": self.counterexample_id,
+            "repository_tree_id": self.repository_tree_id,
+            "property_id": self.property_id,
+            "assumption_ids": list(self.assumption_ids),
+            "bound_digest": self.bound_digest,
+            "tool_id": self.tool_id,
+            "policy_id": self.policy_id,
+            "repaired_plan_id": self.repaired_plan_id,
+            "freshness": self.freshness,
+            "outcome": self.outcome,
+            "available": self.available,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any] | None) -> "VerifierClosureReceipt":
+        value = dict(payload or {})
+        return cls(
+            receipt_id=str(value.get("receipt_id") or ""),
+            counterexample_id=str(value.get("counterexample_id") or ""),
+            repository_tree_id=str(
+                value.get("repository_tree_id") or value.get("tree_id") or ""
+            ),
+            property_id=str(
+                value.get("property_id") or value.get("violated_property") or ""
+            ),
+            assumption_ids=tuple(value.get("assumption_ids") or ()),
+            bound_digest=str(
+                value.get("bound_digest") or value.get("bounds_digest") or ""
+            ),
+            tool_id=str(
+                value.get("tool_id")
+                or value.get("solver_id")
+                or value.get("provider_id")
+                or ""
+            ),
+            policy_id=str(value.get("policy_id") or ""),
+            repaired_plan_id=str(
+                value.get("repaired_plan_id") or value.get("plan_id") or ""
+            ),
+            freshness=str(value.get("freshness") or "current"),
+            outcome=str(
+                value.get("outcome")
+                or value.get("verdict")
+                or value.get("status")
+                or "verified"
+            ),
+            available=bool(value.get("available", True)),
+        )
+
+
+@dataclass(frozen=True)
+class VerifierBackedRepairClosure:
+    """Verifier-backed decision for whether a counterexample witness is closed.
+
+    Structural admissibility (:meth:`FormalReplanner._addresses_counterexample`)
+    never alone reduces the open-witness count.  Only a fresh receipt that
+    matches the repaired tree, property, assumptions, tool, policy, and bounds
+    may set ``status`` to :attr:`WitnessClosureStatus.CLOSED`.
+    """
+
+    SCHEMA: ClassVar[str] = VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA
+
+    counterexample_id: str
+    status: WitnessClosureStatus
+    open_counterexamples: int
+    structural_addressed: bool
+    reason_code: str
+    verifier_receipt_id: str = ""
+    repository_tree_id: str = ""
+    property_id: str = ""
+    assumption_ids: tuple[str, ...] = ()
+    bound_digest: str = ""
+    tool_id: str = ""
+    policy_id: str = ""
+    repaired_plan_id: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "counterexample_id", str(self.counterexample_id or "").strip()
+        )
+        if not self.counterexample_id:
+            raise ReplannerValidationError(
+                "counterexample_id is required for verifier-backed closure"
+            )
+        object.__setattr__(
+            self, "status", WitnessClosureStatus(self.status)
+        )
+        if (
+            isinstance(self.open_counterexamples, bool)
+            or not isinstance(self.open_counterexamples, int)
+            or self.open_counterexamples < 0
+        ):
+            raise ReplannerValidationError(
+                "open_counterexamples must be a non-negative integer"
+            )
+        object.__setattr__(
+            self, "structural_addressed", bool(self.structural_addressed)
+        )
+        object.__setattr__(
+            self, "reason_code", str(self.reason_code or "").strip()
+        )
+        if not self.reason_code:
+            raise ReplannerValidationError("reason_code is required")
+        object.__setattr__(
+            self,
+            "verifier_receipt_id",
+            str(self.verifier_receipt_id or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "repository_tree_id",
+            str(self.repository_tree_id or "").strip(),
+        )
+        object.__setattr__(
+            self, "property_id", str(self.property_id or "").strip()
+        )
+        object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids))
+        object.__setattr__(
+            self, "bound_digest", str(self.bound_digest or "").strip()
+        )
+        object.__setattr__(self, "tool_id", str(self.tool_id or "").strip())
+        object.__setattr__(self, "policy_id", str(self.policy_id or "").strip())
+        object.__setattr__(
+            self, "repaired_plan_id", str(self.repaired_plan_id or "").strip()
+        )
+        if self.status is WitnessClosureStatus.CLOSED:
+            if self.open_counterexamples != 0:
+                raise ReplannerValidationError(
+                    "closed witnesses must report zero open counterexamples"
+                )
+            if not self.verifier_receipt_id:
+                raise ReplannerValidationError(
+                    "closed witnesses must name a fresh matching verifier receipt"
+                )
+            if not self.structural_addressed:
+                raise ReplannerValidationError(
+                    "closure requires a structurally addressed repair"
+                )
+        else:
+            if self.open_counterexamples < 1:
+                raise ReplannerValidationError(
+                    "open or unknown witnesses must keep a non-zero open count"
+                )
+            if self.verifier_receipt_id and self.status is WitnessClosureStatus.OPEN:
+                # Stale/mismatched receipts may still be recorded for audit, but
+                # they must not be treated as closing authorities.
+                pass
+
+    @property
+    def closed(self) -> bool:
+        return self.status is WitnessClosureStatus.CLOSED
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA,
+            "counterexample_id": self.counterexample_id,
+            "status": self.status.value,
+            "open_counterexamples": self.open_counterexamples,
+            "structural_addressed": self.structural_addressed,
+            "reason_code": self.reason_code,
+            "verifier_receipt_id": self.verifier_receipt_id,
+            "repository_tree_id": self.repository_tree_id,
+            "property_id": self.property_id,
+            "assumption_ids": list(self.assumption_ids),
+            "bound_digest": self.bound_digest,
+            "tool_id": self.tool_id,
+            "policy_id": self.policy_id,
+            "repaired_plan_id": self.repaired_plan_id,
+            "closed": self.closed,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "VerifierBackedRepairClosure":
+        if payload.get("schema") not in {
+            None,
+            VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA,
+        }:
+            raise ReplannerValidationError(
+                "unsupported verifier-backed repair closure schema"
+            )
+        return cls(
+            counterexample_id=str(payload.get("counterexample_id") or ""),
+            status=payload.get("status", WitnessClosureStatus.OPEN),
+            open_counterexamples=payload.get("open_counterexamples", 1),
+            structural_addressed=bool(payload.get("structural_addressed", False)),
+            reason_code=str(payload.get("reason_code") or ""),
+            verifier_receipt_id=str(payload.get("verifier_receipt_id") or ""),
+            repository_tree_id=str(payload.get("repository_tree_id") or ""),
+            property_id=str(payload.get("property_id") or ""),
+            assumption_ids=tuple(payload.get("assumption_ids") or ()),
+            bound_digest=str(payload.get("bound_digest") or ""),
+            tool_id=str(payload.get("tool_id") or ""),
+            policy_id=str(payload.get("policy_id") or ""),
+            repaired_plan_id=str(payload.get("repaired_plan_id") or ""),
+        )
+
+
+def _bound_digest(value: Mapping[str, Any] | None) -> str:
+    if not value:
+        return content_identity({"finite_bounds": {}})
+    return content_identity({"finite_bounds": dict(value)})
+
+
+def _closure_binding(
+    source: Mapping[str, Any],
+    counterexample: FormalCounterexample,
+    *,
+    repaired_plan_id: str = "",
+    tool_id: str = "",
+    policy_id: str = "",
+) -> dict[str, Any]:
+    """Exact binding a fresh verifier receipt must match for closure."""
+
+    tree = str(source.get("repository_tree_id") or "").strip()
+    if not tree and counterexample.bindings.tree_ids:
+        tree = counterexample.bindings.tree_ids[0]
+    assumptions = _strings(
+        tuple(counterexample.assumption_ids)
+        + tuple(counterexample.bindings.assumption_ids)
+    )
+    property_id = str(counterexample.violated_property or "").strip()
+    if not property_id and counterexample.bindings.obligation_ids:
+        property_id = counterexample.bindings.obligation_ids[0]
+    policy = str(policy_id or "").strip()
+    if not policy:
+        policy = str(counterexample.observation_policy_id or "").strip()
+    if not policy and counterexample.bindings.policy_ids:
+        policy = counterexample.bindings.policy_ids[0]
+    if not policy:
+        policies = source.get("policies") or ()
+        if isinstance(policies, Sequence) and policies:
+            first = policies[0]
+            if isinstance(first, Mapping):
+                policy = str(
+                    first.get("policy_id") or first.get("id") or ""
+                ).strip()
+    tool = str(tool_id or "").strip()
+    if not tool and counterexample.bindings.provider_ids:
+        tool = counterexample.bindings.provider_ids[0]
+    return {
+        "counterexample_id": counterexample.semantic_id,
+        "repository_tree_id": tree,
+        "property_id": property_id,
+        "assumption_ids": assumptions,
+        "bound_digest": _bound_digest(counterexample.finite_bounds),
+        "tool_id": tool,
+        "policy_id": policy,
+        "repaired_plan_id": str(repaired_plan_id or "").strip(),
+    }
+
+
+def evaluate_verifier_backed_closure(
+    *,
+    counterexample_id: str,
+    structural_addressed: bool,
+    repository_tree_id: str = "",
+    property_id: str = "",
+    assumption_ids: Sequence[str] = (),
+    bound_digest: str = "",
+    tool_id: str = "",
+    policy_id: str = "",
+    repaired_plan_id: str = "",
+    verifier_available: bool | None = None,
+    receipt: VerifierClosureReceipt | Mapping[str, Any] | None = None,
+) -> VerifierBackedRepairClosure:
+    """Decide open/unknown/closed for one counterexample after a repair attempt.
+
+    Compile success and plan consistency are intentionally not arguments: they
+    never authorize semantic closure.  Only a fresh matching verifier receipt
+    can reduce the open-witness count to zero.
+    """
+
+    cid = str(counterexample_id or "").strip()
+    if not cid:
+        raise ReplannerValidationError("counterexample_id is required")
+    assumptions = _strings(assumption_ids)
+    binding = {
+        "repository_tree_id": str(repository_tree_id or "").strip(),
+        "property_id": str(property_id or "").strip(),
+        "assumption_ids": assumptions,
+        "bound_digest": str(bound_digest or "").strip(),
+        "tool_id": str(tool_id or "").strip(),
+        "policy_id": str(policy_id or "").strip(),
+        "repaired_plan_id": str(repaired_plan_id or "").strip(),
+    }
+
+    def _open(
+        reason: str,
+        *,
+        status: WitnessClosureStatus = WitnessClosureStatus.OPEN,
+        receipt_id: str = "",
+    ) -> VerifierBackedRepairClosure:
+        return VerifierBackedRepairClosure(
+            counterexample_id=cid,
+            status=status,
+            open_counterexamples=1,
+            structural_addressed=bool(structural_addressed),
+            reason_code=reason,
+            verifier_receipt_id=receipt_id,
+            repository_tree_id=binding["repository_tree_id"],
+            property_id=binding["property_id"],
+            assumption_ids=assumptions,
+            bound_digest=binding["bound_digest"],
+            tool_id=binding["tool_id"],
+            policy_id=binding["policy_id"],
+            repaired_plan_id=binding["repaired_plan_id"],
+        )
+
+    if not structural_addressed:
+        return _open("structural_address_required")
+
+    if receipt is None and verifier_available is False:
+        return _open(
+            "verifier_unavailable",
+            status=WitnessClosureStatus.UNKNOWN,
+        )
+    if receipt is None:
+        if verifier_available is None or verifier_available is True:
+            # No receipt was supplied.  Absence is not semantic verification.
+            return _open(
+                "no_verifier_receipt",
+                status=WitnessClosureStatus.UNKNOWN,
+            )
+        return _open(
+            "verifier_unavailable",
+            status=WitnessClosureStatus.UNKNOWN,
+        )
+
+    claimed = (
+        receipt
+        if isinstance(receipt, VerifierClosureReceipt)
+        else VerifierClosureReceipt.from_dict(receipt)
+    )
+    if not claimed.available or claimed.outcome in {
+        "unavailable",
+        "verifier_unavailable",
+        "not_available",
+    }:
+        return _open(
+            "verifier_unavailable",
+            status=WitnessClosureStatus.UNKNOWN,
+            receipt_id=claimed.receipt_id,
+        )
+    if claimed.freshness not in {"current", "fresh"}:
+        return _open("stale_receipt", receipt_id=claimed.receipt_id)
+    if claimed.counterexample_id and claimed.counterexample_id != cid:
+        return _open("counterexample_mismatch", receipt_id=claimed.receipt_id)
+
+    mismatches: list[str] = []
+    if binding["repository_tree_id"] and claimed.repository_tree_id != binding[
+        "repository_tree_id"
+    ]:
+        mismatches.append("tree")
+    if binding["property_id"] and claimed.property_id != binding["property_id"]:
+        mismatches.append("property")
+    if assumptions and claimed.assumption_ids != assumptions:
+        mismatches.append("assumption")
+    if binding["bound_digest"] and claimed.bound_digest != binding["bound_digest"]:
+        mismatches.append("bound")
+    if binding["tool_id"] and claimed.tool_id != binding["tool_id"]:
+        mismatches.append("tool")
+    if binding["policy_id"] and claimed.policy_id != binding["policy_id"]:
+        mismatches.append("policy")
+    if binding["repaired_plan_id"] and claimed.repaired_plan_id != binding[
+        "repaired_plan_id"
+    ]:
+        mismatches.append("plan")
+    if mismatches:
+        return _open(
+            "binding_mismatch:" + ",".join(mismatches),
+            receipt_id=claimed.receipt_id,
+        )
+
+    if claimed.outcome in {"timeout", "timed_out", "deadline_exceeded"}:
+        return _open(
+            "verifier_timeout",
+            status=WitnessClosureStatus.UNKNOWN,
+            receipt_id=claimed.receipt_id,
+        )
+    if claimed.outcome in {
+        "disagreement",
+        "disagree",
+        "portfolio_disagreement",
+        "conflict",
+    }:
+        return _open("verifier_disagreement", receipt_id=claimed.receipt_id)
+    if claimed.outcome in {
+        "still_violated",
+        "counterexample",
+        "sat",
+        "invalid",
+        "failed",
+        "unsat_core",
+        "violated",
+    }:
+        return _open("witness_still_open", receipt_id=claimed.receipt_id)
+    if claimed.outcome not in {
+        "verified",
+        "valid",
+        "unsat",
+        "proved",
+        "closed",
+        "pass",
+        "passed",
+        "ok",
+    }:
+        return _open(
+            f"inconclusive_outcome:{claimed.outcome or 'missing'}",
+            status=WitnessClosureStatus.UNKNOWN,
+            receipt_id=claimed.receipt_id,
+        )
+    if not claimed.receipt_id:
+        return _open(
+            "missing_receipt_id",
+            status=WitnessClosureStatus.UNKNOWN,
+        )
+
+    return VerifierBackedRepairClosure(
+        counterexample_id=cid,
+        status=WitnessClosureStatus.CLOSED,
+        open_counterexamples=0,
+        structural_addressed=True,
+        reason_code="fresh_matching_verifier_receipt",
+        verifier_receipt_id=claimed.receipt_id,
+        repository_tree_id=binding["repository_tree_id"],
+        property_id=binding["property_id"],
+        assumption_ids=assumptions,
+        bound_digest=binding["bound_digest"],
+        tool_id=binding["tool_id"],
+        policy_id=binding["policy_id"],
+        repaired_plan_id=binding["repaired_plan_id"],
+    )
 
 
 @dataclass(frozen=True)
@@ -549,6 +1069,7 @@ class RepairCandidate:
     validation: PlanValidationResult | None = None
     transition: RepairTransition | None = None
     rejection_reasons: tuple[str, ...] = ()
+    closure: VerifierBackedRepairClosure | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", RepairCandidateStatus(self.status))
@@ -557,6 +1078,12 @@ class RepairCandidate:
             "rejection_reasons",
             tuple(str(item).strip() for item in self.rejection_reasons if str(item).strip()),
         )
+        if self.closure is not None and not isinstance(
+            self.closure, VerifierBackedRepairClosure
+        ):
+            raise ReplannerValidationError(
+                "closure must be VerifierBackedRepairClosure or None"
+            )
         if self.status in {
             RepairCandidateStatus.ADMISSIBLE,
             RepairCandidateStatus.ADMITTED,
@@ -589,6 +1116,10 @@ class RepairCandidate:
             RepairCandidateStatus.ADMITTED,
         }
 
+    @property
+    def verifier_confirmed(self) -> bool:
+        return self.closure is not None and self.closure.closed
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": REPAIR_CANDIDATE_SCHEMA,
@@ -605,6 +1136,8 @@ class RepairCandidate:
                 self.transition.transition_id if self.transition else None
             ),
             "rejection_reasons": list(self.rejection_reasons),
+            "closure": self.closure.to_dict() if self.closure else None,
+            "verifier_confirmed": self.verifier_confirmed,
         }
 
 
@@ -1750,7 +2283,13 @@ def _counterexample(
 
 
 class FormalReplanner:
-    """Generate, compile, check, rank, and admit one bounded repair transition."""
+    """Generate, compile, check, rank, and admit one bounded repair transition.
+
+    Structural compile/check success produces a *structurally admissible*
+    repair proposal.  Counterexample witnesses remain open until
+    :class:`VerifierBackedRepairClosure` records a fresh matching verifier
+    receipt.  Plan consistency is never treated as semantic verification.
+    """
 
     def __init__(
         self,
@@ -1759,6 +2298,8 @@ class FormalReplanner:
         validator: FormalPlanValidator | None = None,
         limits: ReplanLimits | Mapping[str, Any] | None = None,
         admission_callback: Callable[[RepairTransition], bool | None] | None = None,
+        verifier: Callable[[Mapping[str, Any]], Any] | None = None,
+        verifier_available: bool | None = None,
     ) -> None:
         self.compiler = compiler or FormalPlanCompiler()
         self.validator = validator or FormalPlanValidator()
@@ -1776,6 +2317,8 @@ class FormalReplanner:
             raise ReplannerValidationError("limits must be ReplanLimits or an object")
         self.limits = limits
         self.admission_callback = admission_callback
+        self.verifier = verifier
+        self.verifier_available = verifier_available
         self._seen_semantic_ids: set[str] = set()
         self._attempts: dict[str, int] = {}
 
@@ -2521,14 +3064,29 @@ class FormalReplanner:
             )
         addressed = self._addresses_counterexample(repaired, operation, counterexample)
         if not addressed:
+            closure = self._evaluate_verifier_closure(
+                repaired,
+                counterexample,
+                repaired_plan_id=compilation.plan_id,
+                structural_addressed=False,
+            )
             return RepairCandidate(
                 operation, RepairCandidateStatus.COUNTEREXAMPLE_REJECTED,
                 compilation=compilation, validation=validation,
                 rejection_reasons=("typed postcondition did not address the counterexample",),
+                closure=closure,
             )
+        closure = self._evaluate_verifier_closure(
+            repaired,
+            counterexample,
+            repaired_plan_id=compilation.plan_id,
+            structural_addressed=True,
+        )
+        # Structural address alone never reduces the open-witness count.
+        # Only a fresh matching verifier receipt may report open count zero.
         progress = RepairProgress(
             before_open_counterexamples=1,
-            after_open_counterexamples=0,
+            after_open_counterexamples=closure.open_counterexamples,
             before_validation_findings=len(original_validation.findings),
             after_validation_findings=len(validation.findings),
             changed_records=changed,
@@ -2539,6 +3097,7 @@ class FormalReplanner:
                 operation, RepairCandidateStatus.NO_PROGRESS,
                 compilation=compilation, validation=validation,
                 rejection_reasons=("explicit progress measure did not decrease",),
+                closure=closure,
             )
         assert original.plan is not None
         transition = RepairTransition(
@@ -2557,6 +3116,7 @@ class FormalReplanner:
             compilation=compilation,
             validation=validation,
             transition=transition,
+            closure=closure,
         )
 
     def _apply(
@@ -2755,6 +3315,90 @@ class FormalReplanner:
             before_records == after_records
             and {item.goal_id for item in original.plan.goals}
             == {item.goal_id for item in repaired.plan.goals}
+        )
+
+    def _evaluate_verifier_closure(
+        self,
+        source: Mapping[str, Any],
+        counterexample: FormalCounterexample,
+        *,
+        repaired_plan_id: str,
+        structural_addressed: bool,
+    ) -> VerifierBackedRepairClosure:
+        """Resolve open/unknown/closed for one structural repair attempt."""
+
+        binding = _closure_binding(
+            source,
+            counterexample,
+            repaired_plan_id=repaired_plan_id,
+        )
+        receipt: VerifierClosureReceipt | Mapping[str, Any] | None = None
+        available = self.verifier_available
+        if self.verifier is not None:
+            if available is False:
+                return evaluate_verifier_backed_closure(
+                    counterexample_id=binding["counterexample_id"],
+                    structural_addressed=structural_addressed,
+                    repository_tree_id=binding["repository_tree_id"],
+                    property_id=binding["property_id"],
+                    assumption_ids=binding["assumption_ids"],
+                    bound_digest=binding["bound_digest"],
+                    tool_id=binding["tool_id"],
+                    policy_id=binding["policy_id"],
+                    repaired_plan_id=binding["repaired_plan_id"],
+                    verifier_available=False,
+                    receipt=None,
+                )
+            try:
+                raw = self.verifier(dict(binding))
+            except Exception:
+                return evaluate_verifier_backed_closure(
+                    counterexample_id=binding["counterexample_id"],
+                    structural_addressed=structural_addressed,
+                    repository_tree_id=binding["repository_tree_id"],
+                    property_id=binding["property_id"],
+                    assumption_ids=binding["assumption_ids"],
+                    bound_digest=binding["bound_digest"],
+                    tool_id=binding["tool_id"],
+                    policy_id=binding["policy_id"],
+                    repaired_plan_id=binding["repaired_plan_id"],
+                    verifier_available=False,
+                    receipt=None,
+                )
+            if raw is None:
+                receipt = None
+                if available is None:
+                    available = True
+            elif isinstance(raw, VerifierClosureReceipt):
+                receipt = raw
+            elif isinstance(raw, Mapping):
+                receipt = raw
+            else:
+                return evaluate_verifier_backed_closure(
+                    counterexample_id=binding["counterexample_id"],
+                    structural_addressed=structural_addressed,
+                    repository_tree_id=binding["repository_tree_id"],
+                    property_id=binding["property_id"],
+                    assumption_ids=binding["assumption_ids"],
+                    bound_digest=binding["bound_digest"],
+                    tool_id=binding["tool_id"],
+                    policy_id=binding["policy_id"],
+                    repaired_plan_id=binding["repaired_plan_id"],
+                    verifier_available=False,
+                    receipt=None,
+                )
+        return evaluate_verifier_backed_closure(
+            counterexample_id=binding["counterexample_id"],
+            structural_addressed=structural_addressed,
+            repository_tree_id=binding["repository_tree_id"],
+            property_id=binding["property_id"],
+            assumption_ids=binding["assumption_ids"],
+            bound_digest=binding["bound_digest"],
+            tool_id=binding["tool_id"],
+            policy_id=binding["policy_id"],
+            repaired_plan_id=binding["repaired_plan_id"],
+            verifier_available=available,
+            receipt=receipt,
         )
 
     @staticmethod
@@ -3340,6 +3984,7 @@ __all__ = [
     "REPLAN_RESULT_SCHEMA",
     "RESPONSIVE_REPLAN_DECISION_SCHEMA",
     "RESPONSIVE_REPLAN_SIGNAL_KINDS",
+    "VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA",
     "CodexRepairPacket",
     "CounterexampleDeltaReplanner",
     "DeltaPlan",
@@ -3370,9 +4015,13 @@ __all__ = [
     "ReplanStopReason",
     "ReplannerValidationError",
     "ResponsiveReplanDecision",
+    "VerifierBackedRepairClosure",
+    "VerifierClosureReceipt",
+    "WitnessClosureStatus",
     "PlanSnapshot",
     "PlanStep",
     "delta_replan",
+    "evaluate_verifier_backed_closure",
     "generate_plan_repairs",
     "replan_plan_delta",
     "replan_if_changed",

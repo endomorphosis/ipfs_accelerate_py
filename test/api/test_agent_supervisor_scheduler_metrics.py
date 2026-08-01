@@ -21,6 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.scheduler_metrics import (
     normalize_metric_identity,
     project_goal_completion_diagnostics,
     read_scheduler_snapshot,
+    scheduler_state_events,
     write_scheduler_snapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import SupervisorWatchdog
@@ -133,6 +134,124 @@ def test_timestamped_projection_overrides_undated_legacy_lane_state() -> None:
     assert snapshot["phase_counts"]["ready"] == 0
     assert snapshot["phase_counts"]["blocked"] == 1
     assert snapshot["phases"]["blocked"]["items"][0]["task_cid"] == IDENTITY["task_cid"]
+
+
+def test_terminal_projection_deduplicates_provider_history_and_clears_live_backpressure() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "implementation_started",
+                "timestamp": "2026-01-01T00:00:00Z",
+                **IDENTITY,
+                "provider_id": "provider:grok",
+            },
+            {
+                "type": "scheduler_state",
+                "timestamp": "2026-01-01T00:01:00Z",
+                **IDENTITY,
+                "provider_id": "did:supervisor",
+                "state": "completed",
+                "phase": "idle",
+            },
+            {
+                "type": "resource_schedule_observed",
+                "timestamp": "2026-01-01T00:01:00Z",
+                "resource_schedule": {
+                    "observed_at_ms": 60_000,
+                    "configured_max_lanes": 4,
+                    "effective_slots": 4,
+                    "available_slots": 4,
+                    "admitted_count": 0,
+                    "active_lease_count": 0,
+                    "decisions": [],
+                    "backpressure_reasons": [],
+                    "backpressure_counts": {},
+                    "adaptive_metrics": {
+                        "stages": [
+                            {
+                                "stage": "inference",
+                                "scheduled": 12,
+                                "admitted": 8,
+                                "backpressured": 4,
+                                "backpressure_reasons": {
+                                    "provider_concurrency": 4
+                                },
+                            }
+                        ],
+                        "backpressure_reasons": {
+                            "provider_concurrency": 4
+                        },
+                    },
+                },
+            },
+        ]
+    )
+
+    assert snapshot["phase_counts"]["active"] == 0
+    assert snapshot["phase_counts"]["idle"] == 1
+    assert len(snapshot["task_states"]) == 1
+    assert len(snapshot["metrics"]) == 2
+    assert snapshot["resource_admission"]["backpressured_count"] == 0
+    assert snapshot["resource_admission"]["backpressure_reasons"] == []
+    assert snapshot["resource_admission"]["backpressure_reason_counts"] == {}
+    assert (
+        snapshot["resource_admission"]["by_stage"]["inference"][
+            "backpressured"
+        ]
+        == 4
+    )
+
+
+def test_authoritative_projection_replaces_historical_child_task_identities() -> None:
+    child_identity = {
+        **IDENTITY,
+        "task_cid": "task:child-attempt",
+        "repository_tree_id": "tree:attempt",
+    }
+    bundle_identity = {
+        **IDENTITY,
+        "task_cid": "task:bundle-projection",
+        "repository_tree_id": "tree:merged",
+        "state": "completed",
+    }
+
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "implementation_started",
+                "timestamp": "2026-01-01T00:00:00Z",
+                **child_identity,
+            },
+            *scheduler_state_events(
+                [bundle_identity],
+                timestamp="2026-01-01T00:01:00Z",
+            ),
+        ]
+    )
+
+    assert len(snapshot["metrics"]) == 2
+    assert snapshot["phase_counts"]["active"] == 0
+    assert snapshot["phase_counts"]["idle"] == 1
+    assert [
+        (state["task_cid"], state["status"])
+        for state in snapshot["task_states"]
+    ] == [("task:bundle-projection", "completed")]
+
+
+def test_empty_authoritative_projection_clears_historical_live_state() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            _event("implementation_started", "2026-01-01T00:00:00Z"),
+            *scheduler_state_events(
+                [],
+                timestamp="2026-01-01T00:01:00Z",
+            ),
+        ]
+    )
+
+    assert len(snapshot["metrics"]) == 1
+    assert snapshot["task_states"] == []
+    assert all(count == 0 for count in snapshot["phase_counts"].values())
 
 
 def test_rates_usage_and_identity_grouping_are_zero_safe_and_canonical() -> None:
@@ -413,6 +532,147 @@ def test_scheduler_decisions_reference_the_exposed_event_snapshot(tmp_path: Path
         (repo / "state" / "scheduler_decision_metrics.json").read_text(encoding="utf-8")
     )
     assert decision_input["snapshot_id"] == decision["snapshot_id"]
+
+
+def test_bundle_snapshot_counts_unique_member_completion_identities(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    index = repo / "index.json"
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/g9/g9-s4": {
+                        "shard_path": "bundle.todo.md",
+                        "parallel_lane": "g9-s4",
+                        "tasks": [
+                            {"task_id": "REF-044", "title": "first"},
+                            {"task_id": "REF-045", "title": "second"},
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    scheduler = DynamicBundleScheduler(
+        bundle_index_path=index,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        coordination_path=repo / "coordination.sqlite3",
+        max_lanes=1,
+        launcher=lambda _lane, _grant: _Process(),
+    )
+    lane = scheduler._plan()[0]
+    event_path = lane.state_dir / f"{lane.state_prefix}_events.jsonl"
+    append_jsonl_event(
+        event_path,
+        "merge_finished",
+        {
+            "timestamp": "2026-01-01T00:00:00Z",
+            "merged": True,
+            "returncode": 0,
+        },
+    )
+    append_jsonl_event(
+        event_path,
+        "task_completed",
+        {
+            "timestamp": "2026-01-01T00:00:01Z",
+            "task_id": "REF-044",
+            "canonical_task_cid": "task:member-044",
+            "canonical_task_key": "task/v1/member-044",
+        },
+    )
+    append_jsonl_event(
+        event_path,
+        "task_completed",
+        {
+            "timestamp": "2026-01-01T00:00:02Z",
+            "task_id": "REF-045",
+            "canonical_task_cid": "task:member-045",
+            "canonical_task_key": "task/v1/member-045",
+        },
+    )
+
+    snapshot = scheduler._build_scheduler_snapshot([lane], [])
+
+    assert snapshot["totals"]["completions"] == 1
+    assert snapshot["totals"]["completion_count"] == 2
+
+
+def test_completion_count_deduplicates_cross_lane_terminal_replays() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "task_completed",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "task_cid": "task:bundle-a",
+                "canonical_task_cid": "task:member-044",
+                "lane_id": "lane:a",
+            },
+            {
+                "type": "task_completed",
+                "timestamp": "2026-01-01T00:00:02Z",
+                "task_cid": "task:bundle-b",
+                "canonical_task_cid": "task:member-044",
+                "lane_id": "lane:b",
+            },
+        ]
+    )
+
+    assert snapshot["totals"]["completions"] == 2
+    assert snapshot["totals"]["completion_count"] == 1
+
+
+def test_completion_count_includes_distinct_legacy_and_explicit_terminals() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "completed",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "task_cid": "task:legacy-043",
+                "lane_id": "lane:legacy",
+            },
+            {
+                "type": "task_completed",
+                "timestamp": "2026-01-01T00:00:02Z",
+                "canonical_task_cid": "task:member-044",
+                "lane_id": "lane:current",
+            },
+        ]
+    )
+
+    assert snapshot["totals"]["completions"] == 2
+    assert snapshot["totals"]["completion_count"] == 2
+
+
+def test_completion_count_does_not_add_represented_legacy_bundle_terminal() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "merge_finished",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "task_cid": "task:bundle-043-044",
+                "lane_id": "lane:bundle",
+                "merged": True,
+                "returncode": 0,
+            },
+            {
+                "type": "task_completed",
+                "timestamp": "2026-01-01T00:00:02Z",
+                "task_cid": "task:bundle-043-044",
+                "canonical_task_cid": "task:member-044",
+                "lane_id": "lane:bundle",
+            },
+        ]
+    )
+
+    assert snapshot["totals"]["completions"] == 1
+    assert snapshot["totals"]["completion_count"] == 1
 
 
 def test_watchdog_returns_same_snapshot_and_defers_dynamic_lane_recovery(tmp_path: Path) -> None:

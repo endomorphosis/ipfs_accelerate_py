@@ -22,7 +22,8 @@ import sysconfig
 import tempfile
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -36,6 +37,21 @@ VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
 )
 VALIDATION_SUPERVISOR_STATE_ROOT_ENV = "LPR_STATE_ROOT"
+VALIDATION_PYTHON_LAUNCHER_SHA256_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_PYTHON_LAUNCHER_SHA256"
+)
+VALIDATION_PYTHON_LAUNCHER_MODE_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_PYTHON_LAUNCHER_MODE"
+)
+VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256"
+)
+VALIDATION_PYTHON_INTERPRETER_SHA256_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_PYTHON_INTERPRETER_SHA256"
+)
+VALIDATION_PYTHON_INTERPRETER_STAT_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_PYTHON_INTERPRETER_STAT"
+)
 _CHILD_PYTHON_ENV = "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
 _NEUTRAL_HOME = "/nonexistent/ipfs-accelerate-validation"
 _NPM_DISABLED_USER_CONFIG = "/dev/null/npmrc"
@@ -44,6 +60,17 @@ HERMETIC_VALIDATION_RUNTIME_SCHEMA = (
 )
 _RUNTIME_ID_ENV = "IPFS_ACCELERATE_VALIDATION_RUNTIME_ID"
 _CANCELLATION_ID_ENV = "IPFS_ACCELERATE_VALIDATION_CANCELLATION_ID"
+_VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "nested-validation-python-launcher@1;"
+    "seals=write,grow,shrink,seal;"
+    "shell-startup=privileged-no-bash-env;"
+    "user-site=interpreter-s-flag;"
+    "pythonpath=task-local-then-approved"
+)
+_SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE = (
+    "__ipfs_accelerate_sealed_validation_python__"
+)
 
 # These values affect deterministic/offline validation without carrying the
 # provider, wallet, registry, signing, or cloud credentials commonly present
@@ -85,6 +112,19 @@ _SYSTEM_VALIDATION_PATHS = (
 
 class ValidationRuntimeError(ValueError):
     """Raised before execution when the validation runtime policy is invalid."""
+
+
+@dataclass(frozen=True)
+class ValidationPythonLauncherReceipt:
+    """Identity and isolation evidence for a nested-process Python launcher."""
+
+    executable: str
+    content_sha256: str
+    interpreter_sha256: str
+    interpreter_stat: str
+    mode: str
+    policy_sha256: str
+    sealed: bool
 
 
 class ValidationNetworkMode(str, Enum):
@@ -684,12 +724,102 @@ def _approved_directory(
     return str(resolved)
 
 
+def _validation_python_launcher_mode(*, sealed: bool = False) -> str:
+    delivery = "sealed-memfd" if sealed else "canonical-direct"
+    return f"{sys.platform}:{delivery}"
+
+
+def _validation_python_launcher_policy_sha256(mode: str) -> str:
+    return hashlib.sha256(
+        (
+            f"{_VALIDATION_PYTHON_LAUNCHER_POLICY_BASE};"
+            f"delivery={mode}"
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _validation_python_interpreter_identity(
+    executable: Path | str,
+) -> tuple[str, str]:
+    resolved = Path(executable).resolve(strict=True)
+    identity = _file_identity(resolved)
+    details = resolved.stat()
+    stat_identity = _canonical_json(
+        {
+            "path": str(resolved),
+            "device": int(details.st_dev),
+            "inode": int(details.st_ino),
+            "size": int(details.st_size),
+            "mode": stat.S_IMODE(details.st_mode),
+            "mtime_ns": int(details.st_mtime_ns),
+        }
+    )
+    return str(identity["sha256"]), stat_identity
+
+
+def sealed_validation_python_runner(runner: Any) -> Any:
+    """Mark a trusted runner as requiring sealed nested-Python delivery."""
+
+    setattr(runner, _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE, True)
+    return runner
+
+
+def runner_requires_sealed_validation_python(runner: Any) -> bool:
+    """Return whether a runner declares the sealed nested-Python contract."""
+
+    target = getattr(runner, "__func__", runner)
+    return (
+        getattr(
+            target,
+            _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE,
+            False,
+        )
+        is True
+    )
+
+
+def validation_environment_for_runner(
+    environment: Mapping[str, str],
+    runner: Any,
+) -> dict[str, str]:
+    """Bind runner-specific launcher policy before scheduler cache lookup."""
+
+    result = {str(key): str(value) for key, value in environment.items()}
+    if (
+        not sys.platform.startswith("linux")
+        or not runner_requires_sealed_validation_python(runner)
+    ):
+        return result
+    executable = str(result.get(_CHILD_PYTHON_ENV) or "").strip()
+    if not executable:
+        raise ValidationRuntimeError(
+            "validation environment is missing its canonical Python"
+        )
+    mode = _validation_python_launcher_mode(sealed=True)
+    result.update(
+        {
+            VALIDATION_PYTHON_LAUNCHER_MODE_ENV: mode,
+            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV: (
+                _validation_python_launcher_policy_sha256(mode)
+            ),
+            VALIDATION_PYTHON_LAUNCHER_SHA256_ENV: hashlib.sha256(
+                _validation_python_launcher_source(
+                    executable=executable,
+                    approved_pythonpath=result.get("PYTHONPATH", ""),
+                )
+            ).hexdigest(),
+        }
+    )
+    return result
+
+
 def build_validation_environment(
     environment: Mapping[str, object] | None = None,
 ) -> dict[str, str]:
     """Build the complete allowlisted environment for a validation child."""
 
     source = os.environ if environment is None else environment
+    python_executable = validation_python_executable(source)
     result = {
         key: str(source[key])
         for key in sorted(VALIDATION_ENVIRONMENT_ALLOWLIST)
@@ -697,7 +827,7 @@ def build_validation_environment(
     }
     result.update(
         {
-            _CHILD_PYTHON_ENV: validation_python_executable(source),
+            _CHILD_PYTHON_ENV: python_executable,
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_PAGER": "cat",
@@ -714,6 +844,12 @@ def build_validation_environment(
             "PIP_CONFIG_FILE": "/dev/null",
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",
             "PIP_NO_INPUT": "1",
+            # Nested tools commonly honor PYTHON when starting a Python
+            # helper.  Pin its harmless baseline to the same canonical
+            # interpreter; command runners can replace it with a sealed
+            # launcher when approved package roots must survive a nested
+            # PYTHONPATH replacement.
+            "PYTHON": python_executable,
             "PYTHONNOUSERSITE": "1",
             "TERM": "dumb",
             "XDG_CACHE_HOME": _NEUTRAL_HOME,
@@ -740,11 +876,250 @@ def build_validation_environment(
     python_path = _runtime_python_path_entries(source)
     if python_path:
         result["PYTHONPATH"] = os.pathsep.join(python_path)
+    interpreter_sha256, interpreter_stat = (
+        _validation_python_interpreter_identity(python_executable)
+    )
+    launcher_mode = _validation_python_launcher_mode()
+    result.update(
+        {
+            VALIDATION_PYTHON_LAUNCHER_MODE_ENV: launcher_mode,
+            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV: (
+                _validation_python_launcher_policy_sha256(launcher_mode)
+            ),
+            VALIDATION_PYTHON_LAUNCHER_SHA256_ENV: interpreter_sha256,
+            VALIDATION_PYTHON_INTERPRETER_SHA256_ENV: interpreter_sha256,
+            VALIDATION_PYTHON_INTERPRETER_STAT_ENV: interpreter_stat,
+        }
+    )
     result.setdefault("LANG", "C")
     result.setdefault("LC_ALL", "C")
     result.setdefault("PYTHONHASHSEED", "0")
     result.setdefault("TZ", "UTC")
     return result
+
+
+def _validation_python_launcher_source(
+    *,
+    executable: str,
+    approved_pythonpath: str,
+) -> bytes:
+    """Render a launcher containing no child-controlled configuration."""
+
+    return (
+        "#!/bin/bash -p\n"
+        f"readonly executable={shlex.quote(executable)}\n"
+        f"readonly approved={shlex.quote(approved_pythonpath)}\n"
+        "unset BASH_ENV ENV PYTHONHOME PYTHONSTARTUP\n"
+        "export PYTHONNOUSERSITE=1\n"
+        'requested="${PYTHONPATH-}"\n'
+        'if [[ -n "$approved" && "$requested" != "$approved" ]]; then\n'
+        '    if [[ -n "$requested" ]]; then\n'
+        '        export PYTHONPATH="$requested:$approved"\n'
+        "    else\n"
+        '        export PYTHONPATH="$approved"\n'
+        "    fi\n"
+        "fi\n"
+        'exec "$executable" -s "$@"\n'
+    ).encode("utf-8")
+
+
+def _write_all(fd: int, payload: bytes) -> None:
+    offset = 0
+    while offset < len(payload):
+        written = os.write(fd, payload[offset:])
+        if written <= 0:
+            raise ValidationRuntimeError(
+                "sealed validation Python launcher write was incomplete"
+            )
+        offset += written
+
+
+@contextmanager
+def validation_python_launcher_environment(
+    environment: Mapping[str, str],
+) -> Iterator[tuple[dict[str, str], ValidationPythonLauncherReceipt]]:
+    """Yield an environment that pins nested Python to approved packages.
+
+    Linux uses a sealed anonymous executable addressed through the supervisor's
+    procfs descriptor.  A child can replace ``PYTHONPATH`` for workspace-local
+    imports, but the launcher appends the roots already admitted by
+    :func:`build_validation_environment`.  ``PYTHONNOUSERSITE`` remains set, so
+    Python never rediscovers packages through a child-controlled HOME.
+
+    The descriptor stays open only for the yielded subprocess lifetime and is
+    closed on every exit path.  Linux fails closed if immutable delivery cannot
+    be established.  Other platforms retain the canonical interpreter without
+    attempting a weaker mutable launcher.
+    """
+
+    child_environment = {
+        str(key): str(value) for key, value in environment.items()
+    }
+    executable_text = str(
+        child_environment.get(_CHILD_PYTHON_ENV) or ""
+    ).strip()
+    if not executable_text:
+        raise ValidationRuntimeError(
+            "validation environment is missing its canonical Python"
+        )
+    executable = Path(executable_text)
+    if not executable.is_absolute():
+        raise ValidationRuntimeError(
+            "validation environment Python must be absolute"
+        )
+    try:
+        resolved_executable = executable.resolve(strict=True)
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            f"validation Python is unavailable: {executable}"
+        ) from exc
+    if not resolved_executable.is_file() or not os.access(
+        resolved_executable, os.X_OK
+    ):
+        raise ValidationRuntimeError(
+            f"validation Python is not executable: {executable}"
+        )
+    _reject_writable_path(
+        resolved_executable,
+        source="validation Python",
+    )
+    rendered_executable = str(resolved_executable)
+    approved_pythonpath = str(child_environment.get("PYTHONPATH") or "")
+    expected_mode = _validation_python_launcher_mode(
+        sealed=sys.platform.startswith("linux")
+    )
+    recorded_mode = str(
+        child_environment.get(VALIDATION_PYTHON_LAUNCHER_MODE_ENV) or ""
+    )
+    if recorded_mode != expected_mode:
+        raise ValidationRuntimeError(
+            "validation Python launcher mode does not match runtime policy"
+        )
+    recorded_policy_sha256 = str(
+        child_environment.get(
+            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
+        )
+        or ""
+    )
+    expected_policy_sha256 = _validation_python_launcher_policy_sha256(
+        expected_mode
+    )
+    if recorded_policy_sha256 != expected_policy_sha256:
+        raise ValidationRuntimeError(
+            "validation Python launcher policy identity mismatch"
+        )
+    recorded_content_sha256 = str(
+        child_environment.get(VALIDATION_PYTHON_LAUNCHER_SHA256_ENV) or ""
+    )
+    recorded_interpreter_sha256 = str(
+        child_environment.get(VALIDATION_PYTHON_INTERPRETER_SHA256_ENV)
+        or ""
+    )
+    recorded_interpreter_stat = str(
+        child_environment.get(VALIDATION_PYTHON_INTERPRETER_STAT_ENV)
+        or ""
+    )
+    interpreter_sha256, interpreter_stat = (
+        _validation_python_interpreter_identity(resolved_executable)
+    )
+    if (
+        recorded_interpreter_sha256 != interpreter_sha256
+        or recorded_interpreter_stat != interpreter_stat
+    ):
+        raise ValidationRuntimeError(
+            "validation Python interpreter identity mismatch"
+        )
+
+    if not sys.platform.startswith("linux"):
+        if recorded_content_sha256 != interpreter_sha256:
+            raise ValidationRuntimeError(
+                "validation Python launcher content identity mismatch"
+            )
+        child_environment["PYTHON"] = rendered_executable
+        yield child_environment, ValidationPythonLauncherReceipt(
+            executable=rendered_executable,
+            content_sha256=interpreter_sha256,
+            interpreter_sha256=interpreter_sha256,
+            interpreter_stat=interpreter_stat,
+            mode=expected_mode,
+            policy_sha256=recorded_policy_sha256,
+            sealed=False,
+        )
+        return
+
+    try:
+        import fcntl
+
+        required_seals = (
+            fcntl.F_SEAL_WRITE
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_SEAL
+        )
+        creation_flags = os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
+    except (AttributeError, ImportError) as exc:
+        raise ValidationRuntimeError(
+            "sealed validation Python launcher is unavailable on Linux"
+        ) from exc
+
+    payload = _validation_python_launcher_source(
+        executable=rendered_executable,
+        approved_pythonpath=approved_pythonpath,
+    )
+    content_sha256 = hashlib.sha256(payload).hexdigest()
+    if recorded_content_sha256 != content_sha256:
+        raise ValidationRuntimeError(
+            "validation Python launcher content identity mismatch"
+        )
+    fd = -1
+    try:
+        fd = os.memfd_create(
+            "ipfs-accelerate-validation-python",
+            creation_flags,
+        )
+        _write_all(fd, payload)
+        os.fchmod(fd, 0o500)
+        fcntl.fcntl(fd, fcntl.F_ADD_SEALS, required_seals)
+        actual_seals = int(fcntl.fcntl(fd, fcntl.F_GET_SEALS))
+        if actual_seals & required_seals != required_seals:
+            raise ValidationRuntimeError(
+                "validation Python launcher did not acquire all required seals"
+            )
+        persisted = os.pread(fd, len(payload) + 1, 0)
+        if (
+            len(persisted) != len(payload)
+            or hashlib.sha256(persisted).hexdigest() != content_sha256
+        ):
+            raise ValidationRuntimeError(
+                "sealed validation Python launcher content mismatch"
+            )
+        launcher_path = f"/proc/{os.getpid()}/fd/{fd}"
+        if not os.access(launcher_path, os.R_OK | os.X_OK):
+            raise ValidationRuntimeError(
+                "sealed validation Python launcher is not executable"
+            )
+        child_environment["PYTHON"] = launcher_path
+        yield child_environment, ValidationPythonLauncherReceipt(
+            executable=launcher_path,
+            content_sha256=content_sha256,
+            interpreter_sha256=interpreter_sha256,
+            interpreter_stat=interpreter_stat,
+            mode=expected_mode,
+            policy_sha256=recorded_policy_sha256,
+            sealed=True,
+        )
+    except ValidationRuntimeError:
+        raise
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "sealed validation Python launcher construction failed"
+        ) from exc
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
 
 
 def validation_shell_command(command: str) -> list[str]:
@@ -828,13 +1203,13 @@ def validation_shell_command(command: str) -> list[str]:
         'if [[ -n "$approved" && "$requested" != "$approved" ]]; then '
         'if [[ -n "$requested" ]]; then '
         'PYTHONPATH="$requested:$approved" '
-        f'"${{{_CHILD_PYTHON_ENV}}}" "$@"; '
+        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
         "else "
         'PYTHONPATH="$approved" '
-        f'"${{{_CHILD_PYTHON_ENV}}}" "$@"; '
+        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
         "fi; "
         "else "
-        f'"${{{_CHILD_PYTHON_ENV}}}" "$@"; '
+        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
         "fi; "
         "}; "
         'python() { _ipfs_accelerate_validation_python "$@"; }; '
@@ -861,9 +1236,15 @@ def validation_argv_command(command: Sequence[str]) -> list[str]:
     if not parts or not parts[0]:
         raise ValidationRuntimeError("validation argv must not be empty")
     if parts[0] in {"python", "python3"}:
-        return [validation_python_executable(), *parts[1:]]
+        return [validation_python_executable(), "-s", *parts[1:]]
     if parts[0] == "pytest":
-        return [validation_python_executable(), "-m", "pytest", *parts[1:]]
+        return [
+            validation_python_executable(),
+            "-s",
+            "-m",
+            "pytest",
+            *parts[1:],
+        ]
     executable = Path(parts[0]).name
     if executable not in {"bash", "sh"}:
         if any(Path(part).name in {"bash", "sh"} for part in parts[1:]):
@@ -911,7 +1292,9 @@ def build_hermetic_validation_runtime(
     Strict execution uses Bubblewrap because an environment variable cannot
     enforce a network or filesystem boundary.  Missing namespace support is
     reported by the runner as an infrastructure failure; it never silently
-    falls back to an unisolated process.
+    falls back to an unisolated process.  The supplied environment is always
+    rebuilt through the validation allowlist; callers cannot bypass secret and
+    startup-hook scrubbing by claiming that a mapping was already sanitized.
     """
 
     child_environment = build_validation_environment(environment)

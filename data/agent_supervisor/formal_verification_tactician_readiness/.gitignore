@@ -1,0 +1,6 @@
+/runtime*/
+/live/
+/worktrees/
+/logs/
+/datasets/
+/bundles/.*.lock

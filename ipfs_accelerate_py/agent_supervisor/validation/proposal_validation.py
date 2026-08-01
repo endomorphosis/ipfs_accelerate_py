@@ -147,6 +147,9 @@ class ProposalFindingCode(str, Enum):
     BASELINE_CONTENT_MISMATCH = "baseline_content_mismatch"
     CANDIDATE_IDENTITY_MISMATCH = "candidate_identity_mismatch"
     EXPECTED_EFFECT_MISMATCH = "expected_effect_mismatch"
+    EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED = (
+        "expected_output_ignored_or_unstaged"
+    )
     HARDLINK_BOUNDARY_FORBIDDEN = "hardlink_boundary_forbidden"
     PROTECTED_PATH_FORBIDDEN = "protected_path_forbidden"
     REPOSITORY_PATH_RACE = "repository_path_race"
@@ -2880,6 +2883,19 @@ _SECRET_PLACEHOLDER_RE = re.compile(
     r"""dummy|fake[_-]?secret"""
     r""")"""
 )
+_SYNTHETIC_TEST_SECRET_CANARY_RE = re.compile(
+    r"""(?ix)^(?:"""
+    r"""(?:literal|synthetic|canary|super|test[-_ ]?only)[-_ ]"""
+    r"""(?:secret|api[-_ ]?key|access[-_ ]?token|auth[-_ ]?token|"""
+    r"""refresh[-_ ]?token|client[-_ ]?secret|password)"""
+    r"""(?:[-_ ]value)?|"""
+    r"""should[-_ ]not[-_ ]appear"""
+    r""")$"""
+)
+_SYNTHETIC_TEST_SECRET_REFERENCE_RE = re.compile(
+    r"""(?x)^(?:env://[A-Z][A-Z0-9_]{1,127}|"""
+    r"""vault://[A-Za-z0-9_.][A-Za-z0-9_./-]{0,255})$"""
+)
 _NEVER_EXPOSE_SENTINEL_RE = re.compile(
     r"""(?ix)^(?:should|must)[_-]?never[_-]?"""
     r"""(?:appear|persist|log|store|commit)$"""
@@ -2887,6 +2903,33 @@ _NEVER_EXPOSE_SENTINEL_RE = re.compile(
 _TEST_ONLY_NON_SECRET_SENTINEL_RE = re.compile(
     r"(?i)^sk[_-]live[_-]not[_-]a[_-]real[_-]key$"
 )
+_SECRET_CLASSIFICATION_LABEL_RE = re.compile(
+    r"""(?ix)^secret[_-]?material$"""
+)
+
+
+def _introduces_secret_content(
+    before_source: str | None,
+    after_source: str | None,
+) -> bool:
+    """Return whether a candidate adds or changes secret-like content.
+
+    Candidate entries contain the complete before and after source. Scanning
+    only the latter rejects unrelated edits whenever a file already contains
+    a secret-like environment lookup. Compare match populations so unchanged
+    pre-existing content does not acquire new secret-mutation authority.
+    """
+
+    before_matches = Counter(
+        match.group(0) for match in _SECRET_CONTENT_RE.finditer(before_source or "")
+    )
+    after_matches = Counter(
+        match.group(0) for match in _SECRET_CONTENT_RE.finditer(after_source or "")
+    )
+    return any(
+        count > before_matches.get(value, 0)
+        for value, count in after_matches.items()
+    )
 
 
 _TEST_SKIP_RE = re.compile(
@@ -2908,6 +2951,67 @@ def _path_at_boundary(path: str, boundaries: Sequence[str]) -> bool:
 def _is_test_path(path: str) -> bool:
     name = path.rsplit("/", 1)[-1]
     return path.startswith(("test/", "tests/")) or name.startswith("test_")
+
+
+def _is_scoped_python_test_source(
+    path: str,
+    policy: ProposalValidationPolicy,
+) -> bool:
+    """Return whether ``path`` is a task-owned Python test source.
+
+    Test modules commonly describe the security property they exercise in
+    their filename (for example, ``test_wallet_processor_secrets.py``).
+    Such a name is not itself evidence that the candidate persists a secret.
+    Keep the exception narrow: non-source fixtures and paths outside either
+    authority envelope remain subject to the sensitive-path gate.
+    """
+
+    return (
+        path.endswith((".py", ".pyi"))
+        and _is_test_path(path)
+        and policy.path_is_in_scope(path)
+    )
+
+
+def _is_inert_test_package_marker_companion(
+    entry: CandidateDiffEntry,
+    policy: ProposalValidationPolicy,
+) -> bool:
+    """Allow only an empty test-package marker enclosing declared test work."""
+
+    path = entry.path
+    if (
+        entry.change_kind is not DiffChangeKind.ADD
+        or entry.before_source is not None
+        or entry.after_source is None
+        or not path.endswith("/__init__.py")
+        or not _is_test_path(path)
+    ):
+        return False
+    try:
+        if ast.parse(entry.after_source, filename=path).body:
+            return False
+    except (SyntaxError, TypeError, ValueError):
+        return False
+    package_prefix = path.rsplit("/", 1)[0] + "/"
+
+    def has_declared_descendant(patterns: Sequence[str]) -> bool:
+        return any(
+            normalized.startswith(package_prefix)
+            and normalized != path
+            and not any(character in normalized for character in "*?[")
+            for raw_pattern in patterns
+            if (
+                normalized := str(raw_pattern)
+                .strip()
+                .replace("\\", "/")
+                .removeprefix("./")
+            )
+        )
+
+    return has_declared_descendant(
+        policy.allowed_paths
+    ) and has_declared_descendant(policy.task_owned_paths)
 
 
 def _introduced_candidate_text(entry: CandidateDiffEntry) -> str:
@@ -2960,6 +3064,12 @@ def _is_concrete_secret_value(
         return False
     if _SECRET_PLACEHOLDER_RE.search(value):
         return False
+    # Public-boundary schemas may map sensitive field names to this exact
+    # classification label.  It describes how a value must be handled; it is
+    # not credential material.  Keep this exception exact so a longer value
+    # containing the same words still fails closed.
+    if _SECRET_CLASSIFICATION_LABEL_RE.fullmatch(value):
+        return False
     # Security tests commonly need a deterministic value that proves secret
     # material is rejected or redacted. Only accept an exact "never expose"
     # sentinel so a concrete credential containing those words still fails
@@ -2974,20 +3084,44 @@ def _is_concrete_secret_value(
     return True
 
 
-def _entry_introduces_secret(entry: CandidateDiffEntry) -> bool:
+def _is_synthetic_test_secret_canary(raw_value: str) -> bool:
+    """Return whether a quoted value is an explicit non-credential test value."""
+
+    quoted = _QUOTED_SECRET_VALUE_RE.fullmatch(raw_value.strip())
+    if not quoted:
+        return False
+    value = quoted.group("value").strip()
+    return bool(
+        _SYNTHETIC_TEST_SECRET_CANARY_RE.fullmatch(value)
+        or _SYNTHETIC_TEST_SECRET_REFERENCE_RE.fullmatch(value)
+    )
+
+
+def _entry_introduces_secret(
+    entry: CandidateDiffEntry,
+    *,
+    allow_synthetic_test_canaries: bool = False,
+) -> bool:
     introduced = _introduced_candidate_text(entry)
     if not introduced:
         return False
     if _PRIVATE_KEY_CONTENT_RE.search(introduced):
         return True
     allow_test_sentinel = _is_test_path(entry.new_path or entry.old_path)
-    return any(
-        _is_concrete_secret_value(
-            match.group("value"),
+    for match in _SECRET_ASSIGNMENT_RE.finditer(introduced):
+        value = match.group("value")
+        if not _is_concrete_secret_value(
+            value,
             allow_test_sentinel=allow_test_sentinel,
-        )
-        for match in _SECRET_ASSIGNMENT_RE.finditer(introduced)
-    )
+        ):
+            continue
+        if (
+            allow_synthetic_test_canaries
+            and _is_synthetic_test_secret_canary(value)
+        ):
+            continue
+        return True
+    return False
 
 
 def _python_test_names(source: str) -> frozenset[str]:
@@ -3604,6 +3738,9 @@ class ProposalValidator:
                 "declared paths do not exactly match the normalized candidate diff",
             )
         for entry in entries:
+            inert_test_package_marker = (
+                _is_inert_test_package_marker_companion(entry, policy)
+            )
             for path in (entry.old_path, entry.new_path):
                 if not path:
                     continue
@@ -3646,14 +3783,20 @@ class ProposalValidator:
                         "candidate path crosses a submodule boundary",
                         path,
                     )
-                if not policy.path_is_allowed(path):
+                if (
+                    not policy.path_is_allowed(path)
+                    and not inert_test_package_marker
+                ):
                     add(
                         ProposalFindingCode.PATH_OUTSIDE_SCOPE,
                         ProposalGate.PATH,
                         "candidate path is outside the task-owned scope",
                         path,
                     )
-                if not policy.path_is_task_owned(path):
+                if (
+                    not policy.path_is_task_owned(path)
+                    and not inert_test_package_marker
+                ):
                     add(
                         ProposalFindingCode.PATH_OUTSIDE_SCOPE,
                         ProposalGate.PATH,
@@ -3705,8 +3848,21 @@ class ProposalValidator:
                 or fnmatch.fnmatchcase(entry.path.rsplit("/", 1)[-1], pattern)
                 for pattern in policy.sensitive_path_patterns
             )
-            sensitive_content = _entry_introduces_secret(entry)
-            if not policy.allow_secrets and (sensitive_path or sensitive_content):
+            scoped_python_test_source = _is_scoped_python_test_source(
+                entry.path,
+                policy,
+            )
+            sensitive_content = _entry_introduces_secret(
+                entry,
+                allow_synthetic_test_canaries=scoped_python_test_source,
+            )
+            path_requires_secret_authority = (
+                sensitive_path
+                and not scoped_python_test_source
+            )
+            if not policy.allow_secrets and (
+                path_requires_secret_authority or sensitive_content
+            ):
                 add(
                     ProposalFindingCode.SECRET_CHANGE_FORBIDDEN,
                     ProposalGate.CONTENT,

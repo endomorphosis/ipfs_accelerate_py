@@ -28,6 +28,7 @@ OwnerAlivePredicate = Callable[[int, Path, Path], bool]
 TraceResultFormatter = Callable[[CommandResult, int], Any]
 WorktreeOwnerWriter = Callable[[Path], None]
 WorktreePrepare = Callable[[Path], Any]
+WorktreeReuseAuthorizer = Callable[[Path, str, str], tuple[bool, str]]
 
 
 WORKTREE_POOL_SCHEMA = "agent-supervisor-worktree-pool-v1"
@@ -419,6 +420,10 @@ class WorktreeLease:
     estimated_seconds_saved: float
     entry_id: str
     invalidation_reasons: tuple[str, ...] = ()
+    reuse_authorizer: Optional[WorktreeReuseAuthorizer] = field(
+        default=None,
+        repr=False,
+    )
     acquired_at_epoch: float = field(default_factory=time.time)
     _released: bool = field(default=False, init=False, repr=False)
 
@@ -454,8 +459,10 @@ class WorktreeLease:
 
         if self._released:
             return {"released": False, "reason": "already_released", **self.metadata}
-        self._released = True
-        return self.pool.release(self, reusable=reusable)
+        result = self.pool.release(self, reusable=reusable)
+        if result.get("released") is True:
+            self._released = True
+        return result
 
     def __enter__(self) -> "WorktreeLease":
         return self
@@ -486,6 +493,7 @@ class WorktreePool:
         max_entries: int = 4,
         command_timeout_seconds: int = 120,
         state_dirname: str = ".pool-state",
+        reuse_authorizer: Optional[WorktreeReuseAuthorizer] = None,
     ) -> None:
         self.repo_root = repo_root.resolve()
         self.worktree_root = worktree_root.resolve()
@@ -493,6 +501,7 @@ class WorktreePool:
         self.max_entries = max(1, int(max_entries))
         self.command_timeout_seconds = max(1, int(command_timeout_seconds))
         self.state_root = self.worktree_root / state_dirname
+        self.reuse_authorizer = reuse_authorizer
         try:
             common_dir_result = _run_command_with_timeout(
                 run_command_fn,
@@ -544,6 +553,7 @@ class WorktreePool:
         prepare: Optional[WorktreePrepare] = None,
         activate: Optional[WorktreePrepare] = None,
         worktree_path: Optional[Path] = None,
+        authorize_reuse: Optional[WorktreeReuseAuthorizer] = None,
     ) -> WorktreeLease:
         """Exclusively acquire a clean prepared worktree.
 
@@ -551,6 +561,12 @@ class WorktreePool:
         checkout.  ``activate`` runs on both paths after binding the task branch
         and is intended for inexpensive task-specific submodule branch setup.
         Both callbacks must finish with all repositories clean.
+
+        When supplied, ``authorize_reuse`` runs as a read-only ``preflight``
+        before the sidecar claim and as ``claimed`` immediately after it.  A
+        denial, malformed response, or authorization error fails closed: the
+        existing entry is left untouched and acquisition continues on a
+        distinct cold checkout.
         """
 
         normalized_key = str(cache_key).strip()
@@ -577,10 +593,16 @@ class WorktreePool:
         acquired_started = time.monotonic()
         reclaimed_dead_leases = self._reclaim_dead_leases()
         invalidation_reasons = ["dead_lease_owner"] * len(reclaimed_dead_leases)
+        effective_authorizer = authorize_reuse or self.reuse_authorizer
         for state in self._states():
             if not self._state_matches(state, cache_key=normalized_key, base_commit=base_commit, dependencies=dependencies):
                 continue
-            lock_path = self._try_claim(state)
+            lock_path, admission_reason = self._try_claim_authorized(
+                state,
+                authorize_reuse=effective_authorizer,
+            )
+            if admission_reason:
+                invalidation_reasons.append(admission_reason)
             if lock_path is None:
                 continue
             if state.get("state") == "initializing":
@@ -647,7 +669,7 @@ class WorktreePool:
             self._metrics["warm_acquisitions"] += 1
             self._metrics["setup_seconds"] += elapsed
             self._metrics["estimated_seconds_saved"] += estimated_saved
-            return self._lease_from_state(
+            lease = self._lease_from_state(
                 state,
                 base_ref=base_ref,
                 branch_name=branch_name,
@@ -656,8 +678,10 @@ class WorktreePool:
                 estimated_seconds_saved=estimated_saved,
                 invalidation_reasons=tuple(invalidation_reasons),
             )
+            lease.reuse_authorizer = effective_authorizer
+            return lease
 
-        return self._create_cold_entry(
+        lease = self._create_cold_entry(
             cache_key=normalized_key,
             base_ref=base_ref,
             base_commit=base_commit,
@@ -669,6 +693,69 @@ class WorktreePool:
             started=acquired_started,
             invalidation_reasons=tuple(invalidation_reasons),
         )
+        lease.reuse_authorizer = effective_authorizer
+        return lease
+
+    def _try_claim_authorized(
+        self,
+        state: Mapping[str, Any],
+        *,
+        authorize_reuse: Optional[WorktreeReuseAuthorizer],
+    ) -> tuple[Optional[Path], str]:
+        """Claim one entry only while its external lifecycle permits reuse."""
+
+        if authorize_reuse is not None:
+            admitted, reason = self._authorize_entry_reuse(
+                state,
+                authorize_reuse=authorize_reuse,
+                phase="preflight",
+            )
+            if not admitted:
+                self._record_rejection(reason)
+                return None, reason
+        lock_path = self._try_claim(state)
+        if lock_path is None:
+            return None, ""
+        if authorize_reuse is not None:
+            admitted, reason = self._authorize_entry_reuse(
+                state,
+                authorize_reuse=authorize_reuse,
+                phase="claimed",
+            )
+            if not admitted:
+                self._record_rejection(reason)
+                # Release only the sidecar lock created by _try_claim.
+                # Lifecycle denial never authorizes state/worktree cleanup.
+                self._remove_lock(lock_path)
+                return None, reason
+        return lock_path, ""
+
+    @staticmethod
+    def _authorize_entry_reuse(
+        state: Mapping[str, Any],
+        *,
+        authorize_reuse: WorktreeReuseAuthorizer,
+        phase: str,
+    ) -> tuple[bool, str]:
+        """Fail closed around the claim of a lifecycle-sensitive pool entry."""
+
+        path = Path(str(state.get("path") or ""))
+        branch = str(state.get("branch") or "")
+        try:
+            allowed, reason = authorize_reuse(path, branch, phase)
+        except Exception:
+            return False, "worktree_reuse_authorization_unknown"
+        normalized_reason = str(reason or "").strip()
+        if allowed is not True:
+            return (
+                False,
+                (
+                    f"worktree_reuse_denied:{normalized_reason}"
+                    if normalized_reason
+                    else "worktree_reuse_authorization_denied"
+                ),
+            )
+        return True, normalized_reason or "worktree_reuse_authorized"
 
     @contextmanager
     def lease(self, **kwargs: Any) -> Iterator[WorktreeLease]:
@@ -691,6 +778,22 @@ class WorktreePool:
         if not state or str(state.get("lease_token")) != lease.entry_id:
             self._remove_lock(lock_path)
             return {"released": False, "reason": "lease_state_missing", **lease.metadata}
+        authorize_reuse = lease.reuse_authorizer or self.reuse_authorizer
+        if authorize_reuse is not None:
+            admitted, admission_reason = self._authorize_entry_reuse(
+                state,
+                authorize_reuse=authorize_reuse,
+                phase="claimed",
+            )
+            if not admitted:
+                self._record_rejection(admission_reason)
+                return {
+                    "released": False,
+                    "deferred": True,
+                    "retryable": True,
+                    "reason": admission_reason,
+                    **lease.metadata,
+                }
         if not reusable:
             discard = self._discard_state(state)
             self._remove_lock(lock_path)
@@ -739,9 +842,17 @@ class WorktreePool:
         for state in self._states():
             if cache_key is not None and str(state.get("cache_key")) != str(cache_key):
                 continue
-            lock_path = self._try_claim(state)
+            lock_path, admission_reason = self._try_claim_authorized(
+                state,
+                authorize_reuse=self.reuse_authorizer,
+            )
             if lock_path is None:
-                skipped.append({"path": str(state.get("path") or ""), "reason": "leased"})
+                skipped.append(
+                    {
+                        "path": str(state.get("path") or ""),
+                        "reason": admission_reason or "leased",
+                    }
+                )
                 continue
             removed.append(self._discard_state(state))
             self._remove_lock(lock_path)
@@ -1182,7 +1293,10 @@ class WorktreePool:
             state = idle.pop(0)
             if str(state.get("lease_token")) == exclude_entry_id and idle:
                 state = idle.pop(0)
-            lock_path = self._try_claim(state)
+            lock_path, _admission_reason = self._try_claim_authorized(
+                state,
+                authorize_reuse=self.reuse_authorizer,
+            )
             if lock_path is None:
                 continue
             self._discard_state(state)

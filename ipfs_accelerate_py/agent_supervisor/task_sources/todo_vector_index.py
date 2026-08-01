@@ -29,6 +29,7 @@ from ..objectives.objective_graph import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_BUNDLE_CLUSTER_MIN_SCORE,
     cosine,
+    materialize_task_dependency_graph,
     objective_tokens,
     repo_relative_path,
     repo_relative_path_safe,
@@ -80,6 +81,7 @@ class TodoIndexRecord:
     conflict_policy: str = ""
     context_paths: list[str] = field(default_factory=list)
     resource_class: str = ""
+    resources: list[str] = field(default_factory=list)
     provider_batch_key: str = ""
     provider_id: str = ""
     provider_route: str = ""
@@ -434,6 +436,7 @@ def record_embedding_text(record: TodoIndexRecord) -> str:
             " ".join(record.missing_evidence),
             " ".join(record.context_paths),
             record.resource_class,
+            " ".join(record.resources),
             record.provider_batch_key,
             record.provider_id,
             record.provider_route,
@@ -804,6 +807,12 @@ def parse_todo_vector_records(
                 "context_keys",
             ),
             resource_class=str(fields.get("resource_class") or "").strip(),
+            resources=_all_csv(
+                fields,
+                "resources",
+                "required_resources",
+                "resource_needs",
+            ),
             provider_batch_key=str(
                 fields.get("provider_batch_key")
                 or fields.get("provider_compatibility_key")
@@ -2584,9 +2593,8 @@ def update_bundle_index_with_todo_vectors(
                 dependency_diagnostics.get(task_identity, [])
             )
             task["context_paths"] = record.context_paths
-            task["resource_class"] = (
-                record.resource_class or task.get("resource_class", "")
-            )
+            task["resource_class"] = record.resource_class
+            task["resources"] = list(record.resources)
             task["provider_batch_key"] = (
                 record.provider_batch_key or task.get("provider_batch_key", "")
             )
@@ -2671,6 +2679,17 @@ def update_bundle_index_with_todo_vectors(
                 "task_cid": record_conflict_key,
                 "tables": ["conflict_edges", "planning_decisions"],
             }
+    dependency_graph = materialize_task_dependency_graph(
+        [
+            dict(task)
+            for bundle_payload in bundles.values()
+            if isinstance(bundle_payload, Mapping)
+            for task in (bundle_payload.get("tasks") or [])
+            if isinstance(task, Mapping)
+        ]
+    ).to_dict()
+    payload["task_dependency_graph"] = dependency_graph
+    payload["dependency_dag"] = dependency_graph
     if graph_payload:
         payload["conflict_graph"] = graph_payload
         payload["task_conflict_graph"] = graph_payload

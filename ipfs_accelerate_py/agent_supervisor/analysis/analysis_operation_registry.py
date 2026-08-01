@@ -242,6 +242,23 @@ def normalize_logic_family(value: Any) -> LogicFamily:
         ) from exc
 
 
+def to_canonical_logic_family_id(value: Any) -> str:
+    """Project a supervisor analysis family onto the datasets family_id space.
+
+    Delegates to :mod:`canonical_logic_adapter` so routing/cache code can use
+    one shared vocabulary without importing the datasets package.
+    """
+
+    from ..canonical_logic_adapter import map_analysis_family_to_canonical
+
+    try:
+        return map_analysis_family_to_canonical(value)
+    except Exception as exc:
+        raise AnalysisOperationRegistryError(
+            "cannot project logic family to canonical id: " + str(value)
+        ) from exc
+
+
 @dataclass(frozen=True)
 class AnalysisCacheSemantics:
     """Cache identity and reuse constraints for one operation."""
@@ -1918,4 +1935,5 @@ __all__ = [
     "normalize_analysis_reference",
     "normalize_logic_family",
     "normalized_reference_payload",
+    "to_canonical_logic_family_id",
 ]

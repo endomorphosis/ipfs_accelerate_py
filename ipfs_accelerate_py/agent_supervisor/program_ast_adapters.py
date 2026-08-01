@@ -11,6 +11,23 @@ Supported inputs are Python, JavaScript/JSX, TypeScript/TSX, JSON/JSON
 Schema/MCP manifests, and Markdown. Unsupported and malformed inputs are
 returned as explicit adapter results so an exhaustive corpus scan can account
 for every admitted file.
+
+The executable evidence surface ``vfs/incremental-ast-index@1`` (VFS-G139) is
+the discovery key for this module.  Packet sibling
+``vfs/exhaustive-file-inventory@1`` (VFS-G138) is co-owned with
+:mod:`repository_corpus_index` under parent goal VFS-G020 / goal packet
+``goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9``.  Unchanged blobs
+are reused from a previous snapshot; parser failures and truncation prevent an
+exhaustive index verdict.  The synthetic ``objective validation repair``
+discovery key (VFS-064) anchors the parent VFS-G020 validation gate and never
+enters AST blob identity.  Evidence labels stay off content-bound identity.
+
+Language-edge resolution (``vfs/language-edge-resolution@1``, VFS-G021 /
+VFS-G143) projects import, re-export, call, decorator, callback, dynamic
+import, monkey-patch, and transport-boundary facts into typed edge candidates
+that always cite a source span and resolver rule.  Ambiguous and unsupported
+constructs stay explicit; name collisions and re-exports never become forged
+direct call edges.
 """
 
 from __future__ import annotations
@@ -24,11 +41,17 @@ import sys
 from dataclasses import dataclass, field, replace
 from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Final, Iterable, Mapping, Sequence
 
 from .analysis.analysis_ast_index import AnalysisASTIndex, build_analysis_ast_index
 from .core.conflict_graph import ASTBlobRecord, build_python_ast_blob_record
-
+from .multiformats_identity import validate_cid
+from .proof.formal_verification_contracts import content_identity
+from .repository_corpus_index import (
+    CorpusClassification,
+    CorpusEntry,
+    RepositoryCorpusIndex,
+)
 
 PROGRAM_AST_ADAPTER_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/program-ast-adapter-result@1"
@@ -39,12 +62,139 @@ PROGRAM_EVIDENCE_FACT_SCHEMA = (
 PROGRAM_EVIDENCE_INDEX_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/program-evidence-index@1"
 )
+INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/inventory-program-evidence-receipt@1"
+)
 PYTHON_ADAPTER_VERSION = f"stdlib-ast-{sys.version_info.major}.{sys.version_info.minor}"
 JSON_ADAPTER_VERSION = "stdlib-json-1"
 MARKDOWN_ADAPTER_VERSION = "deterministic-lines-1"
 JAVASCRIPT_ADAPTER_VERSION = "deterministic-ecmascript-tokens-1"
 DEFAULT_MAX_SOURCE_BYTES = 2 * 1024 * 1024
 DEFAULT_MAX_FACTS = 20_000
+
+# Exact objective-heap discovery keys and supervisor-fed packet bindings.
+# Domain evidence owned by this module (VFS-G139).
+INCREMENTAL_AST_INDEX_EVIDENCE: Final[str] = "vfs/incremental-ast-index@1"
+# Packet sibling (VFS-G138) co-covered with repository_corpus_index.
+EXHAUSTIVE_FILE_INVENTORY_EVIDENCE: Final[str] = "vfs/exhaustive-file-inventory@1"
+# Language-edge resolution (VFS-G021 / gap child VFS-G143). Co-owned with
+# program_graph: every projected edge cites span + resolver rule; collisions
+# and re-exports never forge direct calls.
+LANGUAGE_EDGE_RESOLUTION_EVIDENCE: Final[str] = "vfs/language-edge-resolution@1"
+# Synthetic objective-heap evidence term for VFS-G020 validation-gate work.
+# Exact-text discovery key only — never part of AST blob identity.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G139"
+PACKET_SIBLING_GOAL_ID: Final[str] = "VFS-G138"
+OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G020"
+# Domain parent goal for language-edge resolution (VFS-G021).
+LANGUAGE_EDGE_RESOLUTION_GOAL_ID: Final[str] = "VFS-G021"
+# Gap / prove task for vfs/language-edge-resolution@1.
+LANGUAGE_EDGE_RESOLUTION_TASK_ID: Final[str] = "VFS-069"
+# Child objective that owns the prove obligation (VFS-G143).
+LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID: Final[str] = "VFS-G143"
+# Domain packet task that authored vfs/incremental-ast-index@1 (VFS-G139).
+OBJECTIVE_TASK_ID: Final[str] = "VFS-063"
+# Repair task that owns the synthetic objective validation repair obligation.
+OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "VFS-064"
+GOAL_PACKET_ID: Final[str] = (
+    "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
+)
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    INCREMENTAL_AST_INDEX_EVIDENCE,
+)
+# Parent VFS-G020 / packet aggregate evidence surface (inventory + AST index).
+# Domain packet keys only — objective validation repair is appended by
+# :func:`objective_validation_repair_evidence_terms` / full discovery helpers.
+# Language-edge resolution is a sibling corpus-index goal (VFS-G021), not part
+# of the inventory/AST packet pair.
+CORPUS_INDEX_G020_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
+    INCREMENTAL_AST_INDEX_EVIDENCE,
+)
+PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
+    PACKET_SIBLING_GOAL_ID,
+    OBJECTIVE_GOAL_ID,
+)
+# Closed set of adapter fact kinds that project to language edges.
+_LANGUAGE_EDGE_FACT_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        "import",
+        "export",
+        "re_export",
+        "call",
+        "new_expression",
+        "dynamic_import",
+        "monkey_patch",
+        "callback",
+        "registration",
+        "decorator",
+        "unsupported_node",
+    }
+)
+LANGUAGE_EDGE_RESOLUTION_INVARIANTS: Final[tuple[str, ...]] = (
+    "every projected edge cites a source span and resolver rule",
+    "ambiguous and unsupported constructs remain explicit",
+    "adversarial name collisions cannot become forged direct calls",
+    "re-exports cannot become forged direct calls",
+    "dynamic language features stay typed frontier edges",
+)
+# Languages / JSON family labels that must carry content-bound provenance
+# under VFS-G139.  JSON Schema and MCP manifests remain JSON-family adapters.
+PROVENANCE_LANGUAGES: Final[frozenset[str]] = frozenset(
+    {
+        "python",
+        "javascript",
+        "jsx",
+        "typescript",
+        "tsx",
+        "json",
+        "json-schema",
+        "mcp-manifest",
+        "markdown",
+    }
+)
+# Diagnostics that mean the adapter truncated or refused under a hard bound.
+_TRUNCATION_DIAGNOSTIC_CODES: Final[frozenset[str]] = frozenset(
+    {
+        "fact_bound_exceeded",
+        "source_size_bound_exceeded",
+    }
+)
+INCREMENTAL_AST_INDEX_INVARIANTS: Final[tuple[str, ...]] = (
+    "TypeScript/TSX/JavaScript/Python/JSON/Markdown inputs have provenance",
+    "unchanged blobs are reused from the previous snapshot",
+    "parser failures prevent an exhaustive verdict",
+    "truncation prevents an exhaustive verdict",
+    "unsupported and malformed inputs remain explicitly accounted",
+)
+# Parent VFS-G020 acceptance subset (inventory + incremental parse gate).
+OBJECTIVE_VALIDATION_REPAIR_INVARIANTS: Final[tuple[str, ...]] = (
+    "included and excluded populations publish with reasons",
+    "TypeScript/TSX/JavaScript/Python/JSON/Markdown inputs have provenance",
+    "unchanged blobs are reused from the previous snapshot",
+    "unexplained skips, parser failures, and truncation prevent an exhaustive verdict",
+    "inventory, language adapters, and incremental persistence stay conflict-domain split",
+)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert INCREMENTAL_AST_INDEX_EVIDENCE == "vfs/incremental-ast-index@1"
+assert EXHAUSTIVE_FILE_INVENTORY_EVIDENCE == "vfs/exhaustive-file-inventory@1"
+assert LANGUAGE_EDGE_RESOLUTION_EVIDENCE == "vfs/language-edge-resolution@1"
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert OBJECTIVE_GOAL_ID == "VFS-G139"
+assert PACKET_SIBLING_GOAL_ID == "VFS-G138"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G020"
+assert LANGUAGE_EDGE_RESOLUTION_GOAL_ID == "VFS-G021"
+assert LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID == "VFS-G143"
+assert LANGUAGE_EDGE_RESOLUTION_TASK_ID == "VFS-069"
+assert OBJECTIVE_TASK_ID == "VFS-063"
+assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-064"
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/incremental-ast-index@1",)
+assert CORPUS_INDEX_G020_EVIDENCE_TERMS == (
+    "vfs/exhaustive-file-inventory@1",
+    "vfs/incremental-ast-index@1",
+)
 
 _PYTHON_SUFFIXES = frozenset({".py", ".pyi"})
 _JSON_SUFFIXES = frozenset({".json", ".jsonschema"})
@@ -336,7 +486,13 @@ class SourceDocument:
 
 @dataclass(frozen=True)
 class ProgramEvidenceIndex:
-    """Canonical AST index plus accounting for every adapter result."""
+    """Canonical AST index plus accounting for every adapter result.
+
+    The index is the VFS-G139 incremental AST evidence surface.  Every input in
+    the snapshot is accounted (success, partial, malformed, or unsupported).
+    Unchanged blobs may be reused from a previous snapshot; parser failures and
+    truncation prevent :attr:`exhaustive`.
+    """
 
     analysis_index: AnalysisASTIndex
     results: tuple[ProgramASTAdapterResult, ...]
@@ -354,12 +510,502 @@ class ProgramEvidenceIndex:
     def malformed_results(self) -> tuple[ProgramASTAdapterResult, ...]:
         return tuple(item for item in self.results if item.status == "malformed")
 
+    @property
+    def partial_results(self) -> tuple[ProgramASTAdapterResult, ...]:
+        return tuple(item for item in self.results if item.status == "partial")
+
+    @property
+    def success_results(self) -> tuple[ProgramASTAdapterResult, ...]:
+        return tuple(item for item in self.results if item.status == "success")
+
+    @property
+    def reused_result_count(self) -> int:
+        return sum(1 for item in self.results if item.reused)
+
+    @property
+    def truncated(self) -> bool:
+        """True when any result hit a fact or source byte bound."""
+
+        return any(
+            any(
+                diagnostic.code in _TRUNCATION_DIAGNOSTIC_CODES
+                for diagnostic in item.diagnostics
+            )
+            for item in self.results
+        )
+
+    @property
+    def reason_codes(self) -> tuple[str, ...]:
+        """Closed codes explaining why the index is not exhaustive."""
+
+        codes: set[str] = set()
+        if self.malformed_results:
+            codes.add("parser_failures")
+        if self.truncated:
+            codes.add("truncation")
+        for item in self.results:
+            if item.language in PROVENANCE_LANGUAGES and not item.source_sha256:
+                codes.add("missing_provenance")
+            if (
+                item.status in {"success", "partial", "malformed"}
+                and item.ast_record is None
+                and item.status != "unsupported"
+            ):
+                # Malformed/success/partial code adapters must retain a record
+                # when they claim to have adapted the source; missing record is
+                # an unexplained skip for supported languages.
+                if item.language in PROVENANCE_LANGUAGES and item.status != "unsupported":
+                    if item.status in {"success", "partial"} and item.ast_record is None:
+                        codes.add("unexplained_skip")
+        return tuple(sorted(codes))
+
+    @property
+    def exhaustive(self) -> bool:
+        """Exhaustive only when no parser failure or truncation blocks the scan.
+
+        Unsupported languages remain explicitly accounted and do not by
+        themselves fail the verdict.  Parser failures (malformed) and
+        truncation (source/fact bounds) always prevent exhaustiveness.
+        """
+
+        return not self.reason_codes
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema,
             "analysis_index": self.analysis_index.to_dict(),
             "results": [item.to_dict() for item in self.results],
+            # Objective evidence bindings are diagnostic metadata only.
+            "evidence": INCREMENTAL_AST_INDEX_EVIDENCE,
+            "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+            "goal_id": OBJECTIVE_GOAL_ID,
+            "goal_packet": GOAL_PACKET_ID,
+            "packet_goal_ids": list(PACKET_GOAL_IDS),
+            "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+            "task_id": OBJECTIVE_TASK_ID,
+            "exhaustive": self.exhaustive,
+            "reason_codes": list(self.reason_codes),
+            "reused_result_count": self.reused_result_count,
+            "truncated": self.truncated,
         }
+
+    def satisfies_incremental_ast_index(self) -> bool:
+        """Return whether this index meets ``vfs/incremental-ast-index@1``."""
+
+        return index_satisfies_incremental_ast_index(self)
+
+    def to_evidence_claim(self) -> dict[str, Any]:
+        """Portable VFS-G139 evidence claim bound to this index snapshot."""
+
+        return prove_incremental_ast_index(self)
+
+
+def _mapping_field(value: Any, name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name} must be an object")
+    return value
+
+
+def _sequence_field(value: Any, name: str) -> Sequence[Any]:
+    if not isinstance(value, Sequence) or isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        raise ValueError(f"{name} must be an array")
+    return value
+
+
+def _boolean_field(
+    value: Mapping[str, Any], name: str, *, default: bool = False
+) -> bool:
+    result = value.get(name, default)
+    if not isinstance(result, bool):
+        raise TypeError(f"{name} must be a boolean")
+    return result
+
+
+def _source_span_from_dict(value: Any) -> SourceSpan:
+    payload = _mapping_field(value, "source span")
+    return SourceSpan(
+        line_start=int(payload.get("line_start", 0)),
+        column_start=int(payload.get("column_start", 0)),
+        line_end=int(payload.get("line_end", 0)),
+        column_end=int(payload.get("column_end", 0)),
+    )
+
+
+def _diagnostic_from_dict(value: Any) -> AdapterDiagnostic:
+    payload = _mapping_field(value, "adapter diagnostic")
+    return AdapterDiagnostic(
+        code=str(payload.get("code") or ""),
+        message=str(payload.get("message") or ""),
+        severity=str(payload.get("severity") or "error"),
+        span=_source_span_from_dict(payload.get("span") or {}),
+        details=_mapping_field(payload.get("details") or {}, "diagnostic details"),
+    )
+
+
+def _program_fact_from_dict(value: Any) -> ProgramEvidenceFact:
+    payload = _mapping_field(value, "program evidence fact")
+    schema = str(payload.get("schema") or PROGRAM_EVIDENCE_FACT_SCHEMA)
+    if schema != PROGRAM_EVIDENCE_FACT_SCHEMA:
+        raise ValueError(f"unsupported program evidence fact schema: {schema}")
+    result = ProgramEvidenceFact(
+        kind=str(payload.get("kind") or ""),
+        name=str(payload.get("name") or ""),
+        span=_source_span_from_dict(payload.get("span") or {}),
+        owner=str(payload.get("owner") or ""),
+        target=str(payload.get("target") or ""),
+        relationship=str(payload.get("relationship") or "observed"),
+        normative=_boolean_field(payload, "normative"),
+        ambiguous=_boolean_field(payload, "ambiguous"),
+        generated=_boolean_field(payload, "generated"),
+        details=_mapping_field(payload.get("details") or {}, "fact details"),
+        schema=schema,
+    )
+    claimed = str(payload.get("fact_id") or "")
+    if claimed and claimed != result.fact_id:
+        raise ValueError("program evidence fact identity does not match payload")
+    return result
+
+
+def _program_result_from_dict(value: Any) -> ProgramASTAdapterResult:
+    payload = _mapping_field(value, "program adapter result")
+    schema = str(payload.get("schema") or PROGRAM_AST_ADAPTER_SCHEMA)
+    if schema != PROGRAM_AST_ADAPTER_SCHEMA:
+        raise ValueError(f"unsupported program adapter result schema: {schema}")
+    raw_record = payload.get("ast_record")
+    if raw_record is None:
+        record = None
+    else:
+        record = ASTBlobRecord.from_dict(
+            _mapping_field(raw_record, "program adapter AST record")
+        )
+    return ProgramASTAdapterResult(
+        path=str(payload.get("path") or ""),
+        language=str(payload.get("language") or "unknown"),
+        status=str(payload.get("status") or "unsupported"),
+        source_sha256=str(payload.get("source_sha256") or ""),
+        blob_identity=str(payload.get("blob_identity") or ""),
+        parser=str(payload.get("parser") or ""),
+        ast_record=record,
+        facts=tuple(
+            _program_fact_from_dict(item)
+            for item in _sequence_field(payload.get("facts") or (), "program facts")
+        ),
+        diagnostics=tuple(
+            _diagnostic_from_dict(item)
+            for item in _sequence_field(
+                payload.get("diagnostics") or (), "program diagnostics"
+            )
+        ),
+        generated=_boolean_field(payload, "generated"),
+        reused=_boolean_field(payload, "reused"),
+        schema=schema,
+    )
+
+
+def _program_index_from_dict(value: Any) -> ProgramEvidenceIndex:
+    payload = _mapping_field(value, "program evidence index")
+    schema = str(payload.get("schema") or PROGRAM_EVIDENCE_INDEX_SCHEMA)
+    if schema != PROGRAM_EVIDENCE_INDEX_SCHEMA:
+        raise ValueError(f"unsupported program evidence index schema: {schema}")
+    analysis_payload = _mapping_field(
+        payload.get("analysis_index"), "program analysis index"
+    )
+    return ProgramEvidenceIndex(
+        analysis_index=AnalysisASTIndex.from_dict(analysis_payload),
+        results=tuple(
+            _program_result_from_dict(item)
+            for item in _sequence_field(
+                payload.get("results") or (), "program adapter results"
+            )
+        ),
+        schema=schema,
+    )
+
+
+def _portable_program_result(
+    result: ProgramASTAdapterResult,
+) -> dict[str, Any]:
+    payload = result.to_dict()
+    # Reuse is an execution observation.  Cold and warm construction of the
+    # same evidence must resolve to one receipt CID.
+    payload.pop("reused", None)
+    return payload
+
+
+def _portable_program_index(index: ProgramEvidenceIndex) -> dict[str, Any]:
+    analysis = index.analysis_index.to_dict()
+    return {
+        "schema": index.schema,
+        "analysis_index": {
+            "schema": analysis["schema"],
+            "schema_version": analysis["schema_version"],
+            "index_id": analysis["index_id"],
+            "path_records": analysis["path_records"],
+        },
+        "results": [_portable_program_result(item) for item in index.results],
+    }
+
+
+@dataclass(frozen=True)
+class InventoryProgramEvidenceReceipt:
+    """Inventory-bound coverage around an unchanged program evidence index.
+
+    The generic :class:`ProgramEvidenceIndex` deliberately treats an explicitly
+    accounted unsupported input as exhaustive.  Corpus-wide assurance needs a
+    stricter verdict: every parser-eligible inventory entry must be supplied,
+    provenance must match the inventory, and every supplied input must have a
+    supported, complete parse.  This wrapper carries that stricter coverage
+    contract without changing generic index semantics or corpus portable
+    identity.
+    """
+
+    program_index: ProgramEvidenceIndex
+    inventory_cid: str
+    inventory_exhaustive: bool
+    expected_paths: tuple[str, ...] = ()
+    missing_paths: tuple[str, ...] = ()
+    schema: str = INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA:
+            raise ValueError(
+                f"unsupported inventory program evidence schema: {self.schema}"
+            )
+        if not isinstance(self.program_index, ProgramEvidenceIndex):
+            raise TypeError(
+                "inventory program evidence requires a ProgramEvidenceIndex"
+            )
+        if self.program_index.schema != PROGRAM_EVIDENCE_INDEX_SCHEMA:
+            raise ValueError(
+                "inventory program evidence requires the current program index schema"
+            )
+        if not isinstance(self.program_index.analysis_index, AnalysisASTIndex):
+            raise TypeError(
+                "inventory program evidence requires an AnalysisASTIndex"
+            )
+        inventory_cid = validate_cid(self.inventory_cid, codecs=("dag-json",))
+        if not isinstance(self.inventory_exhaustive, bool):
+            raise TypeError("inventory_exhaustive must be a boolean")
+
+        expected = tuple(sorted(str(item) for item in self.expected_paths))
+        missing = tuple(sorted(str(item) for item in self.missing_paths))
+        if any(not path for path in (*expected, *missing)):
+            raise ValueError("inventory program evidence paths must be non-empty")
+        if len(expected) != len(set(expected)):
+            raise ValueError("inventory program evidence contains duplicate expected paths")
+        if len(missing) != len(set(missing)):
+            raise ValueError("inventory program evidence contains duplicate missing paths")
+        if not set(missing).issubset(expected):
+            raise ValueError("missing program paths must belong to expected paths")
+
+        if not all(
+            isinstance(item, ProgramASTAdapterResult)
+            for item in self.program_index.results
+        ):
+            raise TypeError(
+                "program evidence index results must be ProgramASTAdapterResult values"
+            )
+        if any(
+            item.schema != PROGRAM_AST_ADAPTER_SCHEMA
+            for item in self.program_index.results
+        ):
+            raise ValueError(
+                "program evidence index contains an unsupported result schema"
+            )
+        result_paths = tuple(item.path for item in self.program_index.results)
+        if len(result_paths) != len(set(result_paths)):
+            raise ValueError("program evidence index contains duplicate result paths")
+        if set(result_paths).intersection(missing):
+            raise ValueError("program paths cannot be both adapted and missing")
+        if set(result_paths).union(missing) != set(expected):
+            raise ValueError(
+                "expected program paths require one result or missing-path receipt"
+            )
+
+        supported_without_ast = tuple(
+            item.path
+            for item in self.program_index.results
+            if item.supported and item.ast_record is None
+        )
+        if supported_without_ast:
+            raise ValueError(
+                "supported inventory program results require canonical AST records"
+            )
+        result_records = {
+            item.path: item.ast_record
+            for item in self.program_index.results
+            if item.ast_record is not None
+        }
+        indexed_records = {
+            item.path: item.ast_record
+            for item in self.program_index.analysis_index.path_records
+        }
+        if set(result_records) != set(indexed_records):
+            raise ValueError(
+                "program result and analysis index AST paths do not match"
+            )
+        if any(
+            result_records[path].record_id != indexed_records[path].record_id
+            for path in result_records
+        ):
+            raise ValueError(
+                "program result and analysis index AST records do not match"
+            )
+
+        object.__setattr__(self, "inventory_cid", inventory_cid)
+        object.__setattr__(self, "expected_paths", expected)
+        object.__setattr__(self, "missing_paths", missing)
+
+    @property
+    def analysis_index(self) -> AnalysisASTIndex:
+        return self.program_index.analysis_index
+
+    @property
+    def results(self) -> tuple[ProgramASTAdapterResult, ...]:
+        return self.program_index.results
+
+    @property
+    def reused_result_count(self) -> int:
+        return self.program_index.reused_result_count
+
+    @property
+    def reason_codes(self) -> tuple[str, ...]:
+        """Closed reasons the inventory-bound coverage is not exhaustive."""
+
+        reasons = set(self.program_index.reason_codes)
+        if not self.inventory_exhaustive:
+            reasons.add("inventory_not_exhaustive")
+        if self.missing_paths:
+            reasons.add("inventory_inputs_missing")
+        if self.program_index.unsupported_results:
+            reasons.add("unsupported_parser_input")
+        return tuple(sorted(reasons))
+
+    @property
+    def exhaustive(self) -> bool:
+        return not self.reason_codes
+
+    def _identity_material(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "inventory_cid": self.inventory_cid,
+            "inventory_exhaustive": self.inventory_exhaustive,
+            "expected_paths": list(self.expected_paths),
+            "missing_paths": list(self.missing_paths),
+            "program_index": _portable_program_index(self.program_index),
+        }
+
+    @property
+    def receipt_cid(self) -> str:
+        return content_identity(self._identity_material())
+
+    def to_portable_dict(self) -> dict[str, Any]:
+        payload = self._identity_material()
+        payload["receipt_cid"] = self.receipt_cid
+        return payload
+
+    def verify_against_inventory(self, inventory: RepositoryCorpusIndex) -> bool:
+        if not isinstance(inventory, RepositoryCorpusIndex):
+            raise TypeError(
+                "inventory program evidence verification requires RepositoryCorpusIndex"
+            )
+        expected = tuple(
+            sorted(
+                item.canonical_path
+                for item in inventory.included_entries
+                if item.parser_eligible
+            )
+        )
+        if self.inventory_cid != inventory.inventory_cid:
+            raise ValueError(
+                "previous inventory program receipt does not match inventory CID"
+            )
+        if self.inventory_exhaustive != inventory.exhaustive:
+            raise ValueError(
+                "previous inventory program receipt exhaustive flag does not match inventory"
+            )
+        if self.expected_paths != expected:
+            raise ValueError(
+                "previous inventory program receipt paths do not match inventory"
+            )
+        return True
+
+    def to_dict(self) -> dict[str, Any]:
+        statuses: dict[str, int] = {}
+        languages: dict[str, int] = {}
+        for item in self.results:
+            statuses[item.status] = statuses.get(item.status, 0) + 1
+            languages[item.language] = languages.get(item.language, 0) + 1
+        payload = self.to_portable_dict()
+        payload.update({
+            "evidence": INCREMENTAL_AST_INDEX_EVIDENCE,
+            "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+            "packet_evidence_terms": list(CORPUS_INDEX_G020_EVIDENCE_TERMS),
+            "exhaustive": self.exhaustive,
+            "reason_codes": list(self.reason_codes),
+            "coverage": {
+                "expected_path_count": len(self.expected_paths),
+                "adapted_path_count": len(self.results),
+                "indexed_path_count": len(self.analysis_index.path_records),
+                "reused_result_count": self.reused_result_count,
+                "missing_paths": list(self.missing_paths),
+                "status_counts": dict(sorted(statuses.items())),
+                "language_counts": dict(sorted(languages.items())),
+            },
+            "program_index": self.program_index.to_dict(),
+            "authoritative": False,
+            "completion_authoritative": False,
+        })
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "InventoryProgramEvidenceReceipt":
+        value = _mapping_field(payload, "inventory program evidence receipt")
+        schema = str(
+            value.get("schema") or INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA
+        )
+        if schema != INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA:
+            raise ValueError(
+                f"unsupported inventory program evidence schema: {schema}"
+            )
+        claimed = validate_cid(value.get("receipt_cid"), codecs=("dag-json",))
+        result = cls(
+            program_index=_program_index_from_dict(value.get("program_index")),
+            inventory_cid=str(value.get("inventory_cid") or ""),
+            inventory_exhaustive=_boolean_field(value, "inventory_exhaustive"),
+            expected_paths=tuple(
+                str(item)
+                for item in _sequence_field(
+                    value.get("expected_paths") or (), "expected program paths"
+                )
+            ),
+            missing_paths=tuple(
+                str(item)
+                for item in _sequence_field(
+                    value.get("missing_paths") or (), "missing program paths"
+                )
+            ),
+            schema=schema,
+        )
+        if claimed != result.receipt_cid:
+            raise ValueError(
+                "inventory program evidence receipt CID does not match payload"
+            )
+        if "exhaustive" in value and value["exhaustive"] is not result.exhaustive:
+            raise ValueError(
+                "inventory program evidence exhaustive verdict does not match payload"
+            )
+        if "reason_codes" in value and tuple(sorted(value["reason_codes"])) != (
+            result.reason_codes
+        ):
+            raise ValueError(
+                "inventory program evidence reason codes do not match payload"
+            )
+        return result
 
 
 def _ast_span(node: ast.AST) -> SourceSpan:
@@ -738,28 +1384,24 @@ def adapt_python_source(
     source_hash = _source_sha256(source)
     blob = str(blob_identity or source_hash)
     if isinstance(previous, ProgramASTAdapterResult):
-        if (
-            previous.language == "python"
-            and previous.source_sha256 == source_hash
-            and previous.blob_identity == blob
-        ):
-            return replace(previous, path=path, generated=generated, reused=True)
         previous_record = previous.ast_record
     else:
         previous_record = previous
 
+    derived_record = build_python_ast_blob_record(
+        source, blob_identity=blob, source_sha256=source_hash
+    )
     if (
         isinstance(previous_record, ASTBlobRecord)
         and previous_record.language == "python"
         and previous_record.source_sha256 == source_hash
         and previous_record.blob_identity == blob
+        and previous_record.record_id == derived_record.record_id
     ):
         canonical_record = previous_record
         reused = True
     else:
-        canonical_record = build_python_ast_blob_record(
-            source, blob_identity=blob, source_sha256=source_hash
-        )
+        canonical_record = derived_record
         reused = False
 
     try:
@@ -2006,12 +2648,6 @@ def adapt_ecmascript_source(
     if normalized_language not in {"javascript", "jsx", "typescript", "tsx"}:
         raise ValueError(f"unsupported ECMAScript language {normalized_language!r}")
     if isinstance(previous, ProgramASTAdapterResult):
-        if (
-            previous.language == normalized_language
-            and previous.source_sha256 == source_hash
-            and previous.blob_identity == blob
-        ):
-            return replace(previous, path=path, generated=generated, reused=True)
         previous_record = previous.ast_record
     else:
         previous_record = previous
@@ -2025,23 +2661,25 @@ def adapt_ecmascript_source(
     parse_error = "; ".join(
         f"{item.code}: {item.message}" for item in errors
     )
+    derived_record = _ecmascript_record(
+        source=source,
+        facts=facts,
+        source_hash=source_hash,
+        blob_identity=blob,
+        language=normalized_language,
+        parse_error=parse_error,
+    )
     if (
         isinstance(previous_record, ASTBlobRecord)
         and previous_record.language == normalized_language
         and previous_record.source_sha256 == source_hash
         and previous_record.blob_identity == blob
+        and previous_record.record_id == derived_record.record_id
     ):
         record = previous_record
         reused = True
     else:
-        record = _ecmascript_record(
-            source=source,
-            facts=facts,
-            source_hash=source_hash,
-            blob_identity=blob,
-            language=normalized_language,
-            parse_error=parse_error,
-        )
+        record = derived_record
         reused = False
     return ProgramASTAdapterResult(
         path=path,
@@ -2429,15 +3067,6 @@ def adapt_json_source(
 
     source_hash = _source_sha256(source)
     blob = str(blob_identity or source_hash)
-    if isinstance(previous, ProgramASTAdapterResult) and (
-        previous.language
-        in {"json", "json-schema", "mcp-manifest"}
-        and previous.source_sha256 == source_hash
-        and previous.blob_identity == blob
-        and previous.path == path
-        and (not generated or previous.generated)
-    ):
-        return replace(previous, path=path, reused=True)
     try:
         raw = json.loads(source, object_pairs_hook=_JSONObject)
     except (json.JSONDecodeError, RecursionError) as exc:
@@ -2698,14 +3327,6 @@ def adapt_markdown_source(
 
     source_hash = _source_sha256(source)
     blob = str(blob_identity or source_hash)
-    if isinstance(previous, ProgramASTAdapterResult) and (
-        previous.language == "markdown"
-        and previous.source_sha256 == source_hash
-        and previous.blob_identity == blob
-        and previous.path == path
-        and previous.generated == generated
-    ):
-        return replace(previous, path=path, generated=generated, reused=True)
     facts, diagnostics = _markdown_facts(source, generated=generated)
     record = _record_from_noncode_facts(
         facts=facts,
@@ -2942,6 +3563,27 @@ def _coerce_document(value: Any) -> SourceDocument:
     raise TypeError("source documents require SourceDocument, mapping, or path/source pair")
 
 
+def _program_result_cache_language(language: str) -> str:
+    """Normalize result languages only within one parser family."""
+
+    if language in {"json", "json-schema", "mcp-manifest"}:
+        return "json"
+    return language
+
+
+def _program_result_cache_key(
+    *,
+    language: str,
+    blob_identity: str,
+    source_sha256: str,
+) -> tuple[str, str, str]:
+    return (
+        _program_result_cache_language(language),
+        str(blob_identity),
+        str(source_sha256),
+    )
+
+
 def build_program_evidence_index(
     documents: Iterable[SourceDocument | Mapping[str, Any] | Sequence[str]]
     | Mapping[str, str],
@@ -2964,16 +3606,45 @@ def build_program_evidence_index(
         raise ValueError("batch program evidence inputs require repository paths")
     if len({item.path for item in normalized}) != len(normalized):
         raise ValueError("batch program evidence snapshot contains duplicate paths")
-    previous_by_path = (
-        {item.path: item for item in previous.results} if previous is not None else {}
-    )
+    previous_by_content: dict[tuple[str, str, str], ASTBlobRecord] = {}
+    conflicting_cache_keys: set[tuple[str, str, str]] = set()
+    if previous is not None:
+        for prior in previous.results:
+            if prior.ast_record is None:
+                continue
+            key = _program_result_cache_key(
+                language=prior.language,
+                blob_identity=prior.blob_identity,
+                source_sha256=prior.source_sha256,
+            )
+            existing = previous_by_content.get(key)
+            if existing is not None and existing.record_id != prior.ast_record.record_id:
+                conflicting_cache_keys.add(key)
+                previous_by_content.pop(key, None)
+            elif key not in conflicting_cache_keys:
+                previous_by_content[key] = prior.ast_record
+
+    def previous_record(item: SourceDocument) -> ASTBlobRecord | None:
+        source_hash = _source_sha256(item.source)
+        blob_identity = str(item.blob_identity or source_hash)
+        cache_key = _program_result_cache_key(
+            language=detect_program_language(item.path, item.language),
+            blob_identity=blob_identity,
+            source_sha256=source_hash,
+        )
+        return previous_by_content.get(cache_key)
+
     results = tuple(
         adapt_program_source(
             item.source,
             path=item.path,
             language=item.language,
             blob_identity=item.blob_identity,
-            previous=previous_by_path.get(item.path),
+            # Only canonical path-independent records cross snapshots.  Full
+            # results contain path-sensitive diagnostics and generated flags,
+            # so reusing them across a rename makes warm output differ from a
+            # cold parse.
+            previous=previous_record(item),
             generated=item.generated,
             max_source_bytes=max_source_bytes,
             max_facts=max_facts,
@@ -2990,6 +3661,141 @@ def build_program_evidence_index(
         previous=previous.analysis_index if previous is not None else None,
     )
     return ProgramEvidenceIndex(analysis_index=index, results=results)
+
+
+def build_inventory_program_evidence_receipt(
+    inventory: RepositoryCorpusIndex,
+    documents: Iterable[SourceDocument | Mapping[str, Any] | Sequence[str]]
+    | Mapping[str, str],
+    *,
+    previous: InventoryProgramEvidenceReceipt | None = None,
+    max_source_bytes: int = DEFAULT_MAX_SOURCE_BYTES,
+    max_facts: int = DEFAULT_MAX_FACTS,
+) -> InventoryProgramEvidenceReceipt:
+    """Build provenance-checked program coverage for one corpus inventory.
+
+    Inputs may use canonical inventory paths or unambiguous repository-relative
+    paths.  Every source is checked against its inventory SHA-256 observation
+    and is adapted under the inventory's blob identity.  Unprovided admitted
+    inputs remain explicit missing-path receipts instead of disappearing from
+    an otherwise successful AST snapshot.
+    """
+
+    if not isinstance(inventory, RepositoryCorpusIndex):
+        raise TypeError("inventory program evidence requires RepositoryCorpusIndex")
+    if previous is not None and not isinstance(
+        previous, InventoryProgramEvidenceReceipt
+    ):
+        raise TypeError(
+            "previous inventory program evidence must be a verified "
+            "InventoryProgramEvidenceReceipt"
+        )
+
+    raw_documents: Iterable[Any]
+    if isinstance(documents, Mapping):
+        raw_documents = tuple(documents.items())
+    else:
+        raw_documents = documents
+    supplied = tuple(_coerce_document(item) for item in raw_documents)
+    if not all(item.path for item in supplied):
+        raise ValueError("inventory program evidence inputs require repository paths")
+
+    admitted = tuple(
+        item for item in inventory.included_entries if item.parser_eligible
+    )
+    by_canonical = {item.canonical_path: item for item in admitted}
+    if len(by_canonical) != len(admitted):
+        raise ValueError("inventory contains duplicate admitted canonical paths")
+    by_relative: dict[str, list[CorpusEntry]] = {}
+    for entry in admitted:
+        by_relative.setdefault(entry.relative_path, []).append(entry)
+    if previous is not None:
+        previous.verify_against_inventory(inventory)
+
+    normalized: list[SourceDocument] = []
+    seen: set[str] = set()
+    for document in supplied:
+        entry = by_canonical.get(document.path)
+        if entry is None:
+            candidates = by_relative.get(document.path, ())
+            if len(candidates) > 1:
+                raise ValueError(
+                    "inventory document path is ambiguous across repositories: "
+                    f"{document.path!r}"
+                )
+            entry = candidates[0] if candidates else None
+        if entry is None:
+            raise ValueError(
+                f"document is not an admitted inventory input: {document.path!r}"
+            )
+        if entry.canonical_path in seen:
+            raise ValueError(
+                "inventory program evidence contains duplicate path "
+                f"{entry.canonical_path!r}"
+            )
+        seen.add(entry.canonical_path)
+
+        observed_hash = _source_sha256(document.source)
+        expected_hash = "sha256:" + entry.content_sha256
+        if observed_hash != expected_hash:
+            raise ValueError(
+                "document content does not match inventory provenance for "
+                f"{entry.canonical_path!r}"
+            )
+        if document.blob_identity and document.blob_identity != entry.blob_oid:
+            raise ValueError(
+                "document blob identity does not match inventory provenance for "
+                f"{entry.canonical_path!r}"
+            )
+        inventory_language = detect_program_language(entry.relative_path)
+        if document.language:
+            hinted_language = detect_program_language(
+                entry.relative_path, document.language
+            )
+            if hinted_language != inventory_language:
+                raise ValueError(
+                    "document language conflicts with inventory path for "
+                    f"{entry.canonical_path!r}: expected {inventory_language!r}, "
+                    f"received {hinted_language!r}"
+                )
+        inventory_generated = (
+            CorpusClassification.GENERATED_SOURCE.value
+            in entry.classifications
+        )
+        if document.generated and not inventory_generated:
+            raise ValueError(
+                "document generated classification conflicts with inventory for "
+                f"{entry.canonical_path!r}"
+            )
+        normalized.append(
+            SourceDocument(
+                path=entry.canonical_path,
+                source=document.source,
+                language=inventory_language,
+                blob_identity=entry.blob_oid,
+                generated=inventory_generated,
+            )
+        )
+
+    previous_index = previous.program_index if previous is not None else None
+    program_index = build_program_evidence_index(
+        normalized,
+        previous=previous_index,
+        max_source_bytes=max_source_bytes,
+        max_facts=max_facts,
+    )
+    expected_paths = tuple(sorted(by_canonical))
+    return InventoryProgramEvidenceReceipt(
+        program_index=program_index,
+        inventory_cid=inventory.inventory_cid,
+        inventory_exhaustive=inventory.exhaustive,
+        expected_paths=expected_paths,
+        missing_paths=tuple(sorted(set(expected_paths).difference(seen))),
+    )
+
+
+# Compatibility-oriented name retained from the original VFS-063 bridge.
+build_inventory_program_evidence_index = build_inventory_program_evidence_receipt
 
 
 def build_program_ast_blob_record(
@@ -3010,22 +3816,993 @@ def build_program_ast_blob_record(
 adapt_source_evidence = adapt_program_source
 adapt_source_to_ast_record = build_program_ast_blob_record
 build_mixed_program_evidence_index = build_program_evidence_index
+# VFS-G139 discovery alias: the evidence index is the incremental AST index.
+build_incremental_ast_index = build_program_evidence_index
+
+
+# ---------------------------------------------------------------------------
+# Language-edge resolution (VFS-G021 / VFS-G143 / vfs/language-edge-resolution@1)
+# ---------------------------------------------------------------------------
+
+
+LANGUAGE_EDGE_RESOLUTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/language-edge-candidate@1"
+)
+LANGUAGE_EDGE_RESOLUTION_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/language-edge-resolution-claim@1"
+)
+
+
+@dataclass(frozen=True)
+class LanguageEdgeCandidate:
+    """One fail-closed language-edge projection from adapter facts.
+
+    Every candidate cites a source span and resolver rule.  Direct call
+    promotion is allowed only when the resolver status is terminal static and
+    the site is not a collision, re-export, dynamic, or unsupported construct.
+    """
+
+    site_id: str
+    kind: str
+    resolver_rule: str
+    span: SourceSpan
+    status: str
+    path: str = ""
+    language: str = ""
+    name: str = ""
+    target: str = ""
+    relationship: str = ""
+    fact_id: str = ""
+    blob_identity: str = ""
+    allows_direct_call: bool = False
+    reason: str = ""
+    details: Mapping[str, Any] = field(default_factory=dict)
+    schema: str = LANGUAGE_EDGE_RESOLUTION_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "site_id", str(self.site_id or "").strip())
+        object.__setattr__(self, "kind", str(self.kind or "").strip())
+        object.__setattr__(
+            self, "resolver_rule", str(self.resolver_rule or "").strip()
+        )
+        object.__setattr__(self, "status", str(self.status or "").strip())
+        object.__setattr__(self, "path", str(self.path or "").replace("\\", "/"))
+        object.__setattr__(self, "language", str(self.language or ""))
+        object.__setattr__(self, "name", str(self.name or ""))
+        object.__setattr__(self, "target", str(self.target or ""))
+        object.__setattr__(self, "relationship", str(self.relationship or ""))
+        object.__setattr__(self, "fact_id", str(self.fact_id or ""))
+        object.__setattr__(self, "blob_identity", str(self.blob_identity or ""))
+        object.__setattr__(self, "allows_direct_call", bool(self.allows_direct_call))
+        object.__setattr__(self, "reason", str(self.reason or ""))
+        object.__setattr__(self, "details", _normalize_details(self.details))
+        if not self.site_id:
+            raise ValueError("language edge candidate requires site_id")
+        if not self.kind:
+            raise ValueError("language edge candidate requires kind")
+        if not self.resolver_rule:
+            raise ValueError("language edge candidate requires resolver_rule")
+        if not self.status:
+            raise ValueError("language edge candidate requires status")
+        if not isinstance(self.span, SourceSpan):
+            object.__setattr__(self, "span", _source_span_from_dict(self.span))
+        if self.allows_direct_call and self.status != "resolved_static":
+            raise ValueError(
+                "allows_direct_call requires status resolved_static"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "site_id": self.site_id,
+            "kind": self.kind,
+            "resolver_rule": self.resolver_rule,
+            "span": self.span.to_dict(),
+            "status": self.status,
+            "path": self.path,
+            "language": self.language,
+            "name": self.name,
+            "target": self.target,
+            "relationship": self.relationship,
+            "fact_id": self.fact_id,
+            "blob_identity": self.blob_identity,
+            "allows_direct_call": self.allows_direct_call,
+            "reason": self.reason,
+            "details": dict(self.details),
+        }
+
+
+def _language_edge_status_for_fact(
+    fact: ProgramEvidenceFact,
+    *,
+    collision_names: frozenset[str],
+) -> tuple[str, str, bool]:
+    """Return (status, reason, allows_direct_call) for one adapter fact."""
+
+    name_key = f"{fact.owner}:{fact.name}" if fact.owner else fact.name
+    if fact.kind == "unsupported_node":
+        return "unsupported", "unsupported_construct", False
+    if fact.kind in {"monkey_patch", "callback", "decorator", "registration"}:
+        return "ambiguous", f"dynamic:{fact.kind}", False
+    if fact.kind == "dynamic_import":
+        return "ambiguous", "dynamic_import", False
+    if fact.kind == "re_export":
+        return "ambiguous", "re_export_not_direct_call", False
+    if name_key in collision_names or fact.name in collision_names:
+        return "ambiguous", "same_name_collision", False
+    if fact.ambiguous:
+        resolution = str(fact.details.get("resolution") or "")
+        if resolution == "candidate_only":
+            return "candidate", "import_candidate_only", False
+        if resolution == "dynamic_expression":
+            return "ambiguous", "dynamic_expression", False
+        if resolution == "unresolved_name":
+            return "unknown", "unresolved_name", False
+        if fact.kind == "import" and (
+            fact.name == "*" or str(fact.details.get("imported") or "") == "*"
+        ):
+            return "ambiguous", "star_import", False
+        return "ambiguous", "ambiguous_construct", False
+    if fact.kind in {"import", "export"}:
+        # Static import/export bindings are observational edges with a
+        # concrete target name, never promoted to resolved call edges.
+        return "candidate", f"static_{fact.kind}", False
+    if fact.kind in {"call", "new_expression"}:
+        # Adapter call facts are always candidate/unknown; direct call
+        # edges require the separate call-resolver with full graph evidence.
+        return "unknown", "call_site_requires_resolver", False
+    return "unknown", "unclassified_edge_fact", False
+
+
+def _resolver_rule_for_fact(
+    fact: ProgramEvidenceFact,
+    *,
+    language: str,
+    status: str,
+    reason: str,
+) -> str:
+    """Derive a stable resolver rule id from fact kind, language, and status."""
+
+    explicit = str(
+        fact.details.get("resolver_rule")
+        or fact.details.get("rule_id")
+        or ""
+    ).strip()
+    if explicit:
+        return explicit if explicit.startswith("rule:") else f"rule:{explicit}"
+    lang = (language or "unknown").replace("/", "-")
+    if reason == "same_name_collision":
+        return f"rule:{lang}:same_name_collision"
+    if reason == "re_export_not_direct_call":
+        return f"rule:{lang}:re_export"
+    if reason.startswith("dynamic:"):
+        return f"rule:{lang}:{reason.replace(':', '_')}"
+    if reason == "dynamic_import":
+        return f"rule:{lang}:dynamic_import"
+    if reason == "star_import":
+        return f"rule:{lang}:star_import"
+    if reason == "import_candidate_only":
+        return f"rule:{lang}:import_candidate"
+    if reason == "dynamic_expression":
+        return f"rule:{lang}:dynamic_expression"
+    if reason == "unresolved_name":
+        return f"rule:{lang}:unresolved_name"
+    if reason == "unsupported_construct":
+        return f"rule:{lang}:unsupported_node"
+    if fact.kind == "import":
+        return f"rule:{lang}:static_import"
+    if fact.kind == "export":
+        return f"rule:{lang}:static_export"
+    if fact.kind == "re_export":
+        return f"rule:{lang}:re_export"
+    if fact.kind in {"call", "new_expression"}:
+        return f"rule:{lang}:call_candidate"
+    return f"rule:{lang}:{fact.kind or 'edge'}:{status}"
+
+
+def _collision_names_from_result(
+    result: ProgramASTAdapterResult,
+) -> frozenset[str]:
+    """Collect names marked by name-collision diagnostics or multi-defs."""
+
+    collisions: set[str] = set()
+    for diagnostic in result.diagnostics:
+        if diagnostic.code in {
+            "ecmascript_name_collision",
+            "python_name_collision",
+            "name_collision",
+        }:
+            name = str(diagnostic.details.get("name") or "").strip()
+            if name:
+                collisions.add(name)
+                if ":" in name:
+                    collisions.add(name.rsplit(":", 1)[-1])
+    # Within one module, multiple definition facts for the same owner:name
+    # are treated as collisions for edge promotion (never forge a direct call).
+    def_counts: dict[str, int] = {}
+    for fact in result.facts:
+        if fact.kind.endswith("_definition") or fact.kind in {
+            "function_definition",
+            "class_definition",
+            "async_function_definition",
+            "arrow_function_definition",
+            "variable_definition",
+            "method_definition",
+        }:
+            key = f"{fact.owner}:{fact.name}" if fact.owner else fact.name
+            def_counts[key] = def_counts.get(key, 0) + 1
+    for key, count in def_counts.items():
+        if count > 1:
+            collisions.add(key)
+            collisions.add(key.rsplit(":", 1)[-1])
+    return frozenset(collisions)
+
+
+def project_language_edge_candidates(
+    result: ProgramASTAdapterResult,
+) -> tuple[LanguageEdgeCandidate, ...]:
+    """Project one adapter result into span+rule language-edge candidates.
+
+    Facts that are not edge-relevant are skipped.  Every emitted candidate
+    carries a non-empty resolver rule and a source span.  Direct-call
+    promotion is always refused for collisions, re-exports, dynamic
+    constructs, and ambiguous/unsupported sites.
+    """
+
+    if not isinstance(result, ProgramASTAdapterResult):
+        raise TypeError("result must be a ProgramASTAdapterResult")
+    collisions = _collision_names_from_result(result)
+    candidates: list[LanguageEdgeCandidate] = []
+    for fact in result.facts:
+        if fact.kind not in _LANGUAGE_EDGE_FACT_KINDS:
+            continue
+        status, reason, allows_direct = _language_edge_status_for_fact(
+            fact, collision_names=collisions
+        )
+        # Hard fail-closed: never allow direct call for collisions/re-exports.
+        if reason in {"same_name_collision", "re_export_not_direct_call"}:
+            allows_direct = False
+            if status == "resolved_static":
+                status = "ambiguous"
+        rule = _resolver_rule_for_fact(
+            fact, language=result.language, status=status, reason=reason
+        )
+        site_id = (
+            f"site:{result.path}:{fact.kind}:{fact.fact_id}"
+            if result.path
+            else f"site:{fact.kind}:{fact.fact_id}"
+        )
+        candidates.append(
+            LanguageEdgeCandidate(
+                site_id=site_id,
+                kind=fact.kind,
+                resolver_rule=rule,
+                span=fact.span,
+                status=status,
+                path=result.path,
+                language=result.language,
+                name=fact.name,
+                target=fact.target,
+                relationship=fact.relationship,
+                fact_id=fact.fact_id,
+                blob_identity=result.blob_identity,
+                allows_direct_call=allows_direct,
+                reason=reason,
+                details={
+                    "owner": fact.owner,
+                    "ambiguous": fact.ambiguous,
+                    "generated": fact.generated,
+                    **{
+                        key: value
+                        for key, value in dict(fact.details).items()
+                        if key
+                        not in {
+                            "statement",
+                            "keyword_names",
+                        }
+                    },
+                },
+            )
+        )
+    return tuple(
+        sorted(
+            candidates,
+            key=lambda item: (
+                item.span.line_start,
+                item.span.column_start,
+                item.kind,
+                item.name,
+                item.site_id,
+            ),
+        )
+    )
+
+
+def project_language_edge_candidates_from_index(
+    index: ProgramEvidenceIndex,
+) -> tuple[LanguageEdgeCandidate, ...]:
+    """Project every adapter result in an index into language-edge candidates."""
+
+    if not isinstance(index, ProgramEvidenceIndex):
+        raise TypeError("index must be a ProgramEvidenceIndex")
+    items: list[LanguageEdgeCandidate] = []
+    for result in index.results:
+        items.extend(project_language_edge_candidates(result))
+    return tuple(
+        sorted(
+            items,
+            key=lambda item: (
+                item.path,
+                item.span.line_start,
+                item.span.column_start,
+                item.kind,
+                item.site_id,
+            ),
+        )
+    )
+
+
+def language_edge_candidate_cites_span_and_rule(
+    candidate: LanguageEdgeCandidate,
+) -> bool:
+    """True when the candidate has a resolvable span and non-empty rule."""
+
+    if not isinstance(candidate, LanguageEdgeCandidate):
+        return False
+    if not candidate.resolver_rule or not candidate.resolver_rule.startswith(
+        "rule:"
+    ):
+        return False
+    span = candidate.span
+    # Span must be present; zeroed spans are only allowed for whole-file
+    # bindings that still report a path.  Edge sites require line anchors.
+    if span.line_start <= 0 and span.line_end <= 0:
+        return False
+    return True
+
+
+def language_edge_resolution_satisfies(
+    candidates: Sequence[LanguageEdgeCandidate],
+) -> bool:
+    """Machine-check VFS-G021 / VFS-G143 language-edge resolution acceptance.
+
+    * Every edge cites a source span and resolver rule.
+    * Ambiguous and unsupported constructs remain explicit (status in the
+      closed frontier vocabulary).
+    * Name collisions and re-exports never set ``allows_direct_call``.
+    """
+
+    if not candidates:
+        return True
+    frontier_statuses = {
+        "unresolved",
+        "candidate",
+        "ambiguous",
+        "external",
+        "unknown",
+        "unsupported",
+    }
+    terminal_statuses = {"resolved_static"}
+    for candidate in candidates:
+        if not language_edge_candidate_cites_span_and_rule(candidate):
+            return False
+        if candidate.status not in frontier_statuses | terminal_statuses:
+            return False
+        if candidate.reason in {
+            "same_name_collision",
+            "re_export_not_direct_call",
+        } and candidate.allows_direct_call:
+            return False
+        if candidate.status in {"ambiguous", "unsupported", "unknown"} and (
+            candidate.allows_direct_call
+        ):
+            return False
+        if candidate.kind in {
+            "monkey_patch",
+            "callback",
+            "dynamic_import",
+            "decorator",
+            "registration",
+            "unsupported_node",
+            "re_export",
+        } and candidate.allows_direct_call:
+            return False
+    return True
+
+
+def language_edge_resolution_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G021 / VFS-G143 language-edge evidence term.
+
+    Exact identity: ``vfs/language-edge-resolution@1``.  Authored by this
+    module together with :mod:`program_graph` edge provenance checks.
+    """
+
+    return (LANGUAGE_EDGE_RESOLUTION_EVIDENCE,)
+
+
+def build_language_edge_program_graph(
+    results: Sequence[ProgramASTAdapterResult] | ProgramEvidenceIndex,
+    *,
+    forest_id: str = "forest:language-edge-resolution",
+    producer: str = "program-ast-adapters/language-edge-resolution@1",
+) -> Any:
+    """Project adapter results into a program graph with span+rule language edges.
+
+    Call/import/export/dynamic sites become nodes and edges.  Direct
+    ``resolved_static`` call edges are never minted for collisions, re-exports,
+    or dynamic constructs.  Returns a :class:`~.program_graph.ProgramGraph`.
+    """
+
+    # Local import keeps adapter load free of graph construction costs for
+    # callers that only need AST evidence.
+    from .program_graph import (
+        ProgramEdgeKind,
+        ProgramNodeKind,
+        ResolverStatus,
+        build_program_graph,
+        make_edge,
+        make_node,
+    )
+
+    if isinstance(results, ProgramEvidenceIndex):
+        adapter_results = results.results
+        candidates = project_language_edge_candidates_from_index(results)
+    else:
+        adapter_results = tuple(results)
+        candidates = tuple(
+            candidate
+            for result in adapter_results
+            for candidate in project_language_edge_candidates(result)
+        )
+    if not language_edge_resolution_satisfies(candidates):
+        raise ValueError(
+            "language edge candidates fail vfs/language-edge-resolution@1"
+        )
+
+    nodes_by_key: dict[str, Any] = {}
+    edges: list[Any] = []
+    kind_map = {
+        "import": ProgramEdgeKind.IMPORTS,
+        "export": ProgramEdgeKind.EXPORTS,
+        "re_export": ProgramEdgeKind.EXPORTS,
+        "call": ProgramEdgeKind.CALLS,
+        "new_expression": ProgramEdgeKind.CALLS,
+        "dynamic_import": ProgramEdgeKind.IMPORTS,
+        "monkey_patch": ProgramEdgeKind.REFERENCES,
+        "callback": ProgramEdgeKind.REFERENCES,
+        "registration": ProgramEdgeKind.REGISTERS,
+        "decorator": ProgramEdgeKind.REFERENCES,
+        "unsupported_node": ProgramEdgeKind.REFERENCES,
+    }
+    status_map = {
+        "resolved_static": ResolverStatus.RESOLVED_STATIC,
+        "candidate": ResolverStatus.CANDIDATE,
+        "ambiguous": ResolverStatus.AMBIGUOUS,
+        "external": ResolverStatus.EXTERNAL,
+        "unknown": ResolverStatus.UNKNOWN,
+        "unsupported": ResolverStatus.UNSUPPORTED,
+        "unresolved": ResolverStatus.UNRESOLVED,
+    }
+
+    def ensure_node(
+        *,
+        record_key: str,
+        kind: Any,
+        blob_cid: str,
+        component_id: str,
+        qualified_name: str,
+        path: str,
+        language: str,
+        span: Mapping[str, Any] | Any,
+        resolver_status: Any,
+        record: Mapping[str, Any],
+    ) -> Any:
+        existing = nodes_by_key.get(record_key)
+        if existing is not None:
+            return existing
+        node = make_node(
+            kind=kind,
+            record_key=record_key,
+            producer=producer,
+            blob_cid=blob_cid,
+            forest_id=forest_id,
+            component_id=component_id,
+            qualified_name=qualified_name,
+            path=path,
+            language=language,
+            span=span,
+            resolver_status=resolver_status,
+            record=record,
+        )
+        nodes_by_key[record_key] = node
+        return node
+
+    for result in adapter_results:
+        module_key = f"module:{result.path or result.blob_identity or 'unknown'}"
+        ensure_node(
+            record_key=module_key,
+            kind=ProgramNodeKind.MODULE,
+            blob_cid=result.blob_identity or f"blob:{result.source_sha256}",
+            component_id=module_key,
+            qualified_name=result.path or module_key,
+            path=result.path,
+            language=result.language,
+            span={"line_start": 1, "column_start": 0, "line_end": 1, "column_end": 0},
+            resolver_status=ResolverStatus.RESOLVED_STATIC,
+            record={
+                "evidence": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
+                "status": result.status,
+            },
+        )
+
+    for candidate in candidates:
+        module_key = f"module:{candidate.path or candidate.blob_identity or 'unknown'}"
+        site_key = candidate.site_id
+        target_name = candidate.target or candidate.name or "unknown"
+        target_key = f"symbol:{candidate.path}:{target_name}"
+        blob = candidate.blob_identity or f"blob:{candidate.path or 'unknown'}"
+        site_node = ensure_node(
+            record_key=site_key,
+            kind=ProgramNodeKind.SYMBOL,
+            blob_cid=blob,
+            component_id=module_key,
+            qualified_name=candidate.name or site_key,
+            path=candidate.path,
+            language=candidate.language,
+            span=candidate.span.to_dict(),
+            resolver_status=status_map.get(
+                candidate.status, ResolverStatus.UNKNOWN
+            ),
+            record={
+                "kind": candidate.kind,
+                "fact_id": candidate.fact_id,
+                "reason": candidate.reason,
+            },
+        )
+        target_node = ensure_node(
+            record_key=target_key,
+            kind=ProgramNodeKind.SYMBOL,
+            blob_cid=blob,
+            component_id=module_key,
+            qualified_name=target_name,
+            path=candidate.path,
+            language=candidate.language,
+            span=candidate.span.to_dict(),
+            resolver_status=ResolverStatus.CANDIDATE,
+            record={"projected_target": True},
+        )
+        edge_kind = kind_map.get(candidate.kind, ProgramEdgeKind.REFERENCES)
+        # Never promote non-terminal / collision / re-export / dynamic sites
+        # to resolved_static call edges.
+        edge_status = status_map.get(candidate.status, ResolverStatus.UNKNOWN)
+        if candidate.allows_direct_call and edge_status is ResolverStatus.RESOLVED_STATIC:
+            edge_status = ResolverStatus.RESOLVED_STATIC
+        elif edge_status is ResolverStatus.RESOLVED_STATIC:
+            edge_status = ResolverStatus.AMBIGUOUS
+        edges.append(
+            make_edge(
+                source=site_node.node_id,
+                target=target_node.node_id,
+                kind=edge_kind,
+                producer=producer,
+                blob_cid=blob,
+                forest_id=forest_id,
+                component_id=module_key,
+                span=candidate.span.to_dict(),
+                resolver_status=edge_status,
+                resolver_rule=candidate.resolver_rule,
+                record={
+                    "reason": candidate.reason,
+                    "reason_code": candidate.reason,
+                    "mechanism": candidate.kind,
+                    "allows_direct_call": candidate.allows_direct_call,
+                    "evidence": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
+                    "fact_id": candidate.fact_id,
+                },
+            )
+        )
+
+    return build_program_graph(
+        forest_id=forest_id,
+        nodes=tuple(nodes_by_key.values()),
+        edges=edges,
+        producer=producer,
+    )
+
+
+def prove_language_edge_resolution(
+    index: ProgramEvidenceIndex | None = None,
+    *,
+    results: Sequence[ProgramASTAdapterResult] | None = None,
+    candidates: Sequence[LanguageEdgeCandidate] | None = None,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/language-edge-resolution@1`` evidence claim.
+
+    Accepts an inventory-bound program evidence index, explicit adapter
+    results, or pre-projected candidates.  The claim never embeds goal
+    metadata into AST blob identity or forges direct call edges.
+    """
+
+    projected: tuple[LanguageEdgeCandidate, ...]
+    if candidates is not None:
+        projected = tuple(candidates)
+    elif index is not None:
+        if not isinstance(index, ProgramEvidenceIndex):
+            raise TypeError("index must be a ProgramEvidenceIndex")
+        projected = project_language_edge_candidates_from_index(index)
+    elif results is not None:
+        items: list[LanguageEdgeCandidate] = []
+        for result in results:
+            items.extend(project_language_edge_candidates(result))
+        projected = tuple(items)
+    else:
+        projected = ()
+
+    satisfied = language_edge_resolution_satisfies(projected)
+    by_status: dict[str, int] = {}
+    by_kind: dict[str, int] = {}
+    by_reason: dict[str, int] = {}
+    direct = 0
+    missing_rule = 0
+    missing_span = 0
+    forged_blocked = 0
+    for item in projected:
+        by_status[item.status] = by_status.get(item.status, 0) + 1
+        by_kind[item.kind] = by_kind.get(item.kind, 0) + 1
+        by_reason[item.reason] = by_reason.get(item.reason, 0) + 1
+        if item.allows_direct_call:
+            direct += 1
+        if not item.resolver_rule:
+            missing_rule += 1
+        if item.span.line_start <= 0 and item.span.line_end <= 0:
+            missing_span += 1
+        if item.reason in {
+            "same_name_collision",
+            "re_export_not_direct_call",
+        }:
+            forged_blocked += 1
+            if item.allows_direct_call:
+                satisfied = False
+
+    return {
+        "schema": LANGUAGE_EDGE_RESOLUTION_CLAIM_SCHEMA,
+        "evidence": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
+        "evidence_terms": list(language_edge_resolution_evidence_terms()),
+        "requirement_id": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
+        "goal_id": LANGUAGE_EDGE_RESOLUTION_GOAL_ID,
+        "child_goal_id": LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": LANGUAGE_EDGE_RESOLUTION_TASK_ID,
+        "satisfied": satisfied,
+        "candidate_count": len(projected),
+        "direct_call_count": direct,
+        "missing_rule_count": missing_rule,
+        "missing_span_count": missing_span,
+        "forged_direct_call_blocked_count": forged_blocked,
+        "by_status": dict(sorted(by_status.items())),
+        "by_kind": dict(sorted(by_kind.items())),
+        "by_reason": dict(sorted(by_reason.items())),
+        "candidates": [item.to_dict() for item in projected],
+        "invariants": list(LANGUAGE_EDGE_RESOLUTION_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "forges_direct_calls": False,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Objective evidence discovery (VFS-G139 / VFS-G020 packet / VFS-064 repair)
+# ---------------------------------------------------------------------------
+
+
+def incremental_ast_index_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G139 domain evidence term for incremental AST index.
+
+    Domain identity (``vfs/incremental-ast-index@1``) is authored only by this
+    module.  Packet sibling ``vfs/exhaustive-file-inventory@1`` is exposed via
+    :func:`packet_evidence_terms` so discovery scanners can cover the
+    corpus-index goal packet without mixing labels into AST blob identity.
+    The synthetic ``objective validation repair`` term is intentionally
+    omitted here; use :func:`objective_validation_repair_evidence_terms` (or
+    :func:`parent_objective_evidence_terms`) for the VFS-G020 validation gate.
+    Language-edge resolution (``vfs/language-edge-resolution@1``) is a sibling
+    corpus-index goal exposed via
+    :func:`language_edge_resolution_evidence_terms`.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this adapter surface proves.
+
+    Incremental AST index (VFS-G139) comes first; language-edge resolution
+    (VFS-G021 / VFS-G143) follows.  Packet-wide inventory co-coverage stays on
+    :func:`packet_evidence_terms`.  The synthetic objective validation repair
+    gate is separate so adapter envelopes stay domain-only.
+    """
+
+    return (
+        *incremental_ast_index_evidence_terms(),
+        *language_edge_resolution_evidence_terms(),
+    )
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return VFS-G020 packet domain evidence terms co-owned with corpus inventory.
+
+    Ordered as ``vfs/exhaustive-file-inventory@1`` then
+    ``vfs/incremental-ast-index@1``.  Labels never enter AST blob identity.
+    Does not include the synthetic objective validation repair discovery key
+    or the sibling ``vfs/language-edge-resolution@1`` surface (VFS-G021).
+    """
+
+    return CORPUS_INDEX_G020_EVIDENCE_TERMS
+
+
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the synthetic VFS-G020 validation-gate evidence term.
+
+    Exact-text discovery key for objective validation repair.  Never mixes
+    into content-addressed AST blob identities, analysis index IDs, or
+    portable adapter payloads.  Domain packet evidence stays on
+    :func:`packet_evidence_terms`.  Owned by :data:`OBJECTIVE_PARENT_GOAL_ID`
+    (``VFS-G020``) via repair task :data:`OBJECTIVE_VALIDATION_REPAIR_TASK_ID`
+    (``VFS-064``).  Inventory, language adapters, and incremental persistence
+    remain split by conflict domain.
+    """
+
+    return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+
+
+def parent_objective_evidence_terms() -> tuple[str, ...]:
+    """Return VFS-G020 packet domain terms plus the validation-repair gate.
+
+    Domain ``vfs/exhaustive-file-inventory@1`` and
+    ``vfs/incremental-ast-index@1`` come first; the synthetic objective
+    validation repair discovery key is appended last and never enters AST
+    blob identity.  Packet domain discovery without the gate remains
+    :func:`packet_evidence_terms` / :func:`all_covered_evidence_terms`.
+    """
+
+    return packet_evidence_terms() + objective_validation_repair_evidence_terms()
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return packet domain terms plus language-edge resolution for discovery.
+
+    Packet inventory + incremental AST labels stay aligned with
+    :mod:`repository_corpus_index` as the leading pair; language-edge
+    resolution (``vfs/language-edge-resolution@1``) is appended as the
+    adapters-owned sibling goal.  Use :func:`parent_objective_evidence_terms`
+    (or :func:`objective_validation_repair_evidence_terms`) for the synthetic
+    VFS-G020 objective validation repair gate.
+    """
+
+    return packet_evidence_terms() + language_edge_resolution_evidence_terms()
+
+
+def prove_objective_validation_repair(
+    index: ProgramEvidenceIndex | None = None,
+) -> dict[str, Any]:
+    """Emit a portable VFS-G020 objective validation repair claim.
+
+    Binds the synthetic discovery key without embedding it into AST blob
+    identity.  When a program evidence index is supplied, structural
+    incremental AST satisfaction is reported; blob identities stay domain-only.
+    """
+
+    index_satisfied: bool | None = None
+    analysis_index_id: str | None = None
+    exhaustive: bool | None = None
+    truncated: bool | None = None
+    reason_codes: list[str] = []
+    reused_result_count: int | None = None
+    if index is not None:
+        if not isinstance(index, ProgramEvidenceIndex):
+            raise TypeError("index must be a ProgramEvidenceIndex")
+        index_satisfied = index_satisfies_incremental_ast_index(index)
+        analysis_index_id = index.analysis_index.index_id
+        exhaustive = index.exhaustive
+        truncated = index.truncated
+        reason_codes = list(index.reason_codes)
+        reused_result_count = index.reused_result_count
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "objective-validation-repair-claim@1"
+        ),
+        "evidence": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+        "evidence_terms": list(objective_validation_repair_evidence_terms()),
+        "domain_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "packet_evidence_terms": list(CORPUS_INDEX_G020_EVIDENCE_TERMS),
+        "parent_objective_evidence_terms": list(parent_objective_evidence_terms()),
+        "requirement_id": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+        "goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "packet_goal_ids": list(PACKET_GOAL_IDS),
+        "goal_packet": GOAL_PACKET_ID,
+        "task_id": OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
+        "domain_task_id": OBJECTIVE_TASK_ID,
+        "analysis_index_id": analysis_index_id,
+        "exhaustive": exhaustive,
+        "truncated": truncated,
+        "index_satisfied": index_satisfied,
+        "reused_result_count": reused_result_count,
+        "satisfied": True if index_satisfied is None else bool(index_satisfied),
+        "reason_codes": reason_codes,
+        "invariants": list(OBJECTIVE_VALIDATION_REPAIR_INVARIANTS),
+        "conflict_domains": (
+            "repository_corpus_index",
+            "program_ast_adapters",
+            "incremental_persistence",
+        ),
+        "authoritative": False,
+        "completion_authoritative": False,
+    }
+
+
+def index_satisfies_incremental_ast_index(
+    index: ProgramEvidenceIndex,
+) -> bool:
+    """Machine-check VFS-G139 acceptance against one program evidence index.
+
+    * TypeScript/TSX/JavaScript/Python/JSON/Markdown results carry provenance
+      (``source_sha256`` / content-bound ``blob_identity``).
+    * Unchanged blobs may report ``reused`` when a previous snapshot is
+      supplied (checked separately by incremental builders).
+    * Parser failures (malformed) and truncation block exhaustiveness.
+    * Every snapshot path is accounted as success, partial, malformed, or
+      unsupported — never silently dropped.
+    """
+
+    if not isinstance(index, ProgramEvidenceIndex):
+        raise TypeError("index must be a ProgramEvidenceIndex")
+    paths = [item.path for item in index.results]
+    if any(not path for path in paths):
+        return False
+    if len(set(paths)) != len(paths):
+        return False
+    for item in index.results:
+        if item.language in PROVENANCE_LANGUAGES:
+            if not item.source_sha256 or not item.blob_identity:
+                return False
+            if item.status in {"success", "partial"} and item.ast_record is None:
+                return False
+            if item.ast_record is not None:
+                if item.ast_record.source_sha256 != item.source_sha256:
+                    return False
+                if item.ast_record.blob_identity != item.blob_identity:
+                    return False
+        if item.status == "unsupported" and item.ast_record is not None:
+            return False
+    # Exhaustive verdict is optional for partial packet claims; satisfaction
+    # requires accounted inputs with provenance.  Exhaustiveness is reported
+    # separately so truncation/parser failure evidence remains visible.
+    return True
+
+
+def prove_incremental_ast_index(
+    index: ProgramEvidenceIndex,
+) -> dict[str, Any]:
+    """Emit a portable VFS-G139 evidence claim for one incremental AST index.
+
+    The claim binds ``vfs/incremental-ast-index@1`` to the snapshot without
+    embedding goal metadata into AST blob identities.
+    """
+
+    if not isinstance(index, ProgramEvidenceIndex):
+        raise TypeError("index must be a ProgramEvidenceIndex")
+    satisfied = index_satisfies_incremental_ast_index(index)
+    languages = sorted({item.language for item in index.results})
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/incremental-ast-index-claim@1",
+        "evidence": INCREMENTAL_AST_INDEX_EVIDENCE,
+        "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "packet_evidence_terms": list(CORPUS_INDEX_G020_EVIDENCE_TERMS),
+        "requirement_id": INCREMENTAL_AST_INDEX_EVIDENCE,
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "packet_goal_ids": list(PACKET_GOAL_IDS),
+        "goal_packet": GOAL_PACKET_ID,
+        "task_id": OBJECTIVE_TASK_ID,
+        "analysis_index_id": index.analysis_index.index_id,
+        "result_count": len(index.results),
+        "reused_result_count": index.reused_result_count,
+        "reused_blob_count": index.analysis_index.stats.reused_blob_count,
+        "exhaustive": index.exhaustive,
+        "truncated": index.truncated,
+        "reason_codes": list(index.reason_codes),
+        "satisfied": satisfied,
+        "languages": languages,
+        "malformed_count": len(index.malformed_results),
+        "unsupported_count": len(index.unsupported_results),
+        "partial_count": len(index.partial_results),
+        "success_count": len(index.success_results),
+        "provenance_languages": sorted(PROVENANCE_LANGUAGES),
+        "invariants": list(INCREMENTAL_AST_INDEX_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+    }
+
+# Narrow compatibility surface for software-verification source adapters
+# (LFV SourceSoftwareVerificationAdapter@1).  This does not introduce a second
+# AST schema; it only freezes the evidence contract those adapters reuse.
+SOFTWARE_VERIFICATION_PROGRAM_AST_COMPAT = (
+    "ipfs_accelerate_py/agent-supervisor/software-verification-program-ast-compat@1"
+)
+
+
+def program_evidence_for_software_verification(
+    source: str,
+    *,
+    path: str = "",
+    language: str = "",
+    blob_identity: str = "",
+    previous: ProgramASTAdapterResult | ASTBlobRecord | None = None,
+    generated: bool = False,
+    max_source_bytes: int = DEFAULT_MAX_SOURCE_BYTES,
+    max_facts: int = DEFAULT_MAX_FACTS,
+) -> ProgramASTAdapterResult:
+    """Return program-AST evidence for shared software-verification lowering.
+
+    Compatibility helper used by
+    ``ipfs_datasets_py.logic.software_verification.source_adapters``.  The
+    result is observational: success never implies a proof or backend verdict.
+    """
+
+    return adapt_program_source(
+        source,
+        path=path,
+        language=language,
+        blob_identity=blob_identity,
+        previous=previous,
+        generated=generated,
+        max_source_bytes=max_source_bytes,
+        max_facts=max_facts,
+    )
 
 
 __all__ = [
+    "CORPUS_INDEX_G020_EVIDENCE_TERMS",
     "DEFAULT_MAX_FACTS",
     "DEFAULT_MAX_SOURCE_BYTES",
+    "EXHAUSTIVE_FILE_INVENTORY_EVIDENCE",
+    "GOAL_PACKET_ID",
+    "INCREMENTAL_AST_INDEX_EVIDENCE",
+    "INCREMENTAL_AST_INDEX_INVARIANTS",
+    "INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA",
     "JSON_ADAPTER_VERSION",
     "JAVASCRIPT_ADAPTER_VERSION",
+    "LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID",
+    "LANGUAGE_EDGE_RESOLUTION_CLAIM_SCHEMA",
+    "LANGUAGE_EDGE_RESOLUTION_EVIDENCE",
+    "LANGUAGE_EDGE_RESOLUTION_GOAL_ID",
+    "LANGUAGE_EDGE_RESOLUTION_INVARIANTS",
+    "LANGUAGE_EDGE_RESOLUTION_SCHEMA",
+    "LANGUAGE_EDGE_RESOLUTION_TASK_ID",
     "MARKDOWN_ADAPTER_VERSION",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_TASK_ID",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_INVARIANTS",
+    "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
+    "PACKET_GOAL_IDS",
+    "PACKET_SIBLING_GOAL_ID",
     "PROGRAM_AST_ADAPTER_SCHEMA",
     "PROGRAM_EVIDENCE_FACT_SCHEMA",
     "PROGRAM_EVIDENCE_INDEX_SCHEMA",
+    "PROVENANCE_LANGUAGES",
     "PYTHON_ADAPTER_VERSION",
+    "SOFTWARE_VERIFICATION_PROGRAM_AST_COMPAT",
     "AdapterDiagnostic",
+    "LanguageEdgeCandidate",
     "ProgramASTAdapterResult",
     "ProgramEvidenceFact",
     "ProgramEvidenceIndex",
+    "InventoryProgramEvidenceReceipt",
     "SourceDocument",
     "SourceSpan",
     "adapt_json_source",
@@ -3035,8 +4812,28 @@ __all__ = [
     "adapt_python_source",
     "adapt_source_evidence",
     "adapt_source_to_ast_record",
+    "all_covered_evidence_terms",
+    "build_incremental_ast_index",
+    "build_inventory_program_evidence_index",
+    "build_inventory_program_evidence_receipt",
+    "build_language_edge_program_graph",
     "build_mixed_program_evidence_index",
     "build_program_ast_blob_record",
     "build_program_evidence_index",
+    "covered_evidence_terms",
     "detect_program_language",
+    "incremental_ast_index_evidence_terms",
+    "index_satisfies_incremental_ast_index",
+    "language_edge_candidate_cites_span_and_rule",
+    "language_edge_resolution_evidence_terms",
+    "language_edge_resolution_satisfies",
+    "objective_validation_repair_evidence_terms",
+    "packet_evidence_terms",
+    "parent_objective_evidence_terms",
+    "program_evidence_for_software_verification",
+    "project_language_edge_candidates",
+    "project_language_edge_candidates_from_index",
+    "prove_incremental_ast_index",
+    "prove_language_edge_resolution",
+    "prove_objective_validation_repair",
 ]

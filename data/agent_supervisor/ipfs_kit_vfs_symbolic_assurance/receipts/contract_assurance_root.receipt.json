@@ -1,0 +1,118 @@
+{
+  "acceptance_subset": {
+    "accepted_repairs_retain_normal_auth_validation_merge_gates": true,
+    "complete_frozen_repository_inventory_accounted_for": true,
+    "drained_work_triggers_bounded_refill_or_conclusive_exhaustion": true,
+    "every_direct_child_has_fresh_criterion_level_evidence": true,
+    "no_unsupported_or_stale_result_promoted_to_proof": true
+  },
+  "adversarial_e2e": {
+    "automatic_mutation_enabled": false,
+    "observation_count": 26,
+    "passed": true,
+    "report_id": "sha256:5cb952ea3d9fe7289389f616c98a2b414490c2ec2a1427b2ac0e3d1396548422",
+    "schema": "vfs/adversarial-e2e-gate@1"
+  },
+  "authoritative": false,
+  "bundle": "vfs-assurance/root",
+  "child_evidence_terms": [
+    "vfs/repository-forest-receipt@1",
+    "vfs/exhaustive-index-receipt@1",
+    "vfs/autonomous-refill-exhaustion@1"
+  ],
+  "child_receipts": {
+    "vfs/autonomous-refill-exhaustion@1": "receipts/autonomous_refill_exhaustion.receipt.json",
+    "vfs/exhaustive-index-receipt@1": "receipts/exhaustive_index_receipt.receipt.json",
+    "vfs/repository-forest-receipt@1": "receipts/repository_forest_receipt.receipt.json"
+  },
+  "completion_authoritative": false,
+  "control_gates": {
+    "automatic_mutation_disabled": {
+      "gate_id": "automatic_mutation_disabled",
+      "observation_id": "sha256:76cca2374d4843298db2fb167bca2e26f88d954336dd06260e7afcfd5192d7c3",
+      "passed": true
+    },
+    "control_parity": {
+      "gate_id": "control_parity",
+      "observation_id": "sha256:99d1769a170dfabf91b69f6d3a9d409fb25e32e9e8f37060edff07642cb7d351",
+      "passed": true
+    },
+    "rollback": {
+      "gate_id": "rollback",
+      "observation_id": "sha256:963a40c59adc73ed2fb0e5f9deaff5229345b0c7aec9110e862ab9d82764edae",
+      "passed": true
+    }
+  },
+  "discovery_fingerprint": "63a470e6d54804ee5e67ac758689da07d52f0b4d",
+  "discovery_input": "/home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-062-objective-gap-63a470e6d548.md",
+  "evidence_claim_references": [
+    "vfs/contract-assurance-root@1",
+    "vfs/repository-forest-receipt@1",
+    "vfs/exhaustive-index-receipt@1",
+    "vfs/autonomous-refill-exhaustion@1"
+  ],
+  "evidence_id": "contract-assurance-root:sha256:5cb952ea3d9fe7289389f616c98a2b414490c2ec2a1427b2ac0e3d1396548422",
+  "fixture_cid": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+  "forest_id": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+  "goal_id": "VFS-G134",
+  "goal_packet": null,
+  "invariants": [
+    "shadow mode default; no automatic mutation",
+    "control parity across Python/CLI/MCP projections",
+    "no stale or unsupported result promoted to proof",
+    "accepted repairs retain normal auth/validation/merge gates"
+  ],
+  "materialization": {
+    "child_terms": [
+      "vfs/repository-forest-receipt@1",
+      "vfs/exhaustive-index-receipt@1",
+      "vfs/autonomous-refill-exhaustion@1"
+    ],
+    "kind": "durable_evidence_package",
+    "primary_term": "vfs/contract-assurance-root@1",
+    "validation_command": "python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q"
+  },
+  "materialized_by": "VFS-062",
+  "policy_id": "policy:vfs-symbolic-rollout@1",
+  "policy_revision": "sha256:frozen-vfs-symbolic-policy",
+  "producers": [
+    "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py",
+    "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_pilot.py",
+    "ipfs_accelerate_py/agent_supervisor/vfs_mcp_contract_checker.py",
+    "ipfs_accelerate_py/agent_supervisor/program_assurance_contracts.py",
+    "ipfs_accelerate_py/agent_supervisor/vfs_contract_pack.py"
+  ],
+  "receipt_id": "contract-assurance-root:sha256:5cb952ea3d9fe7289389f616c98a2b414490c2ec2a1427b2ac0e3d1396548422",
+  "related_goal_packets": [
+    "goal_packet/vfs_symbolic_assurance/general/13f52635926c",
+    "goal_packet/vfs_symbolic_assurance/general/7414e86c1a7c",
+    "goal_packet/vfs_symbolic_assurance/general/ab6d1ed417d3"
+  ],
+  "repository_id": "repository:ipfs-accelerate-py@fixture",
+  "repository_tree": "sha256:31db96185d07b13c287a5fc57a8b18bc3dbac55624d16645244b8ae810890bc1",
+  "requirement_id": "vfs/contract-assurance-root@1",
+  "requirement_ids": [
+    "vfs/contract-assurance-root@1",
+    "vfs/repository-forest-receipt@1",
+    "vfs/exhaustive-index-receipt@1",
+    "vfs/autonomous-refill-exhaustion@1"
+  ],
+  "rollout": {
+    "authoritative": false,
+    "automatic_mutation_enabled": false,
+    "completion_authoritative": false,
+    "effective_mode": "shadow",
+    "shadow_report_schema": "vfs/shadow-rollout-report@1"
+  },
+  "safe_for_completion_reasoning": false,
+  "schema": "vfs/contract-assurance-root@1",
+  "schema_version": 1,
+  "source_path": "data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/receipts/contract_assurance_root.receipt.json",
+  "status": "nominated",
+  "task_id": "VFS-062",
+  "track": "vfs-symbolic-assurance",
+  "tree_id": "sha256:31db96185d07b13c287a5fc57a8b18bc3dbac55624d16645244b8ae810890bc1",
+  "validation_surfaces": [
+    "test/api/test_vfs_symbolic_assurance_e2e.py"
+  ]
+}
