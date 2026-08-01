@@ -582,7 +582,7 @@ or write authority.
 
 ## KITA-018 Define canonical WAL records, durability states, and compatibility mappings
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
