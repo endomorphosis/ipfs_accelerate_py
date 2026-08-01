@@ -510,6 +510,140 @@ def test_daemon_does_not_expand_limits_for_an_oversized_raw_patch() -> None:
     }
 
 
+def test_daemon_accepts_bounded_compaction_of_oversized_tracked_text(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    report = repo / "docs" / "legacy-certificate.json"
+    report.parent.mkdir(parents=True)
+    baseline = '{"raw_evidence":"' + (
+        "x" * (DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES + 200_000)
+    ) + '"}\n'
+    compact = (
+        '{"projection":"digest-bound","certificate_digest_sha256":'
+        '"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n'
+    )
+    report.write_text(baseline, encoding="utf-8")
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "supervisor@example.invalid")
+    _git(repo, "config", "user.name", "Supervisor Test")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "baseline")
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    report.write_text(compact, encoding="utf-8")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_pool_enabled=False,
+    )
+    relative_report = report.relative_to(repo).as_posix()
+    task = PortalTask(
+        task_id="ASI-141D",
+        title="Compact a legacy certificate",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=[relative_report],
+        validation=["python -m pytest"],
+        acceptance=(
+            "Replace the oversized raw dump with a digest-bound projection."
+        ),
+    )
+
+    result = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline_ref,
+    )
+
+    assert result.accepted
+    assert result.proposal.changed_paths == (relative_report,)
+    assert result.policy.max_file_bytes == len(baseline.encode("utf-8"))
+    assert (
+        result.policy.max_patch_bytes
+        > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+    )
+    assert (
+        result.policy.max_output_bytes
+        > DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES
+    )
+    assert result.policy.policy_version.endswith(
+        "+bounded-size-reduction-v1"
+    )
+    assert result.policy.allow_large_files is False
+    assert result.policy.allow_generated is False
+
+
+def test_daemon_rejects_oversized_patch_that_grows_after_state(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    report = repo / "docs" / "legacy-certificate.json"
+    report.parent.mkdir(parents=True)
+    baseline = '{"raw_evidence":"' + (
+        "x" * (DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES + 100_000)
+    ) + '"}\n'
+    report.write_text(baseline, encoding="utf-8")
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "supervisor@example.invalid")
+    _git(repo, "config", "user.name", "Supervisor Test")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "baseline")
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    report.write_text(
+        '{"raw_evidence":"'
+        + (
+            "x"
+            * (
+                DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+                + 200_000
+            )
+        )
+        + '"}\n',
+        encoding="utf-8",
+    )
+
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_pool_enabled=False,
+    )
+    relative_report = report.relative_to(repo).as_posix()
+    task = PortalTask(
+        task_id="ASI-141E",
+        title="Reject growth disguised as certificate compaction",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=[relative_report],
+        validation=["python -m pytest"],
+        acceptance="Keep ordinary proposal limits for growing artifacts.",
+    )
+
+    result = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline_ref,
+    )
+
+    assert not result.accepted
+    assert result.policy.max_patch_bytes == (
+        DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+    )
+    assert not result.policy.policy_version.endswith(
+        "+bounded-size-reduction-v1"
+    )
+
+
 def test_daemon_accepts_exact_declared_large_artifact_envelope(
     tmp_path: Path,
 ) -> None:

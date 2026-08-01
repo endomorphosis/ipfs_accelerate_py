@@ -23615,25 +23615,84 @@ class PortalImplementationDaemon:
         )
         if raw_patch_bytes > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES:
             return defaults
-        if (
-            raw_patch_bytes
-            > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
-            and (
-                task is None
-                or not str(
-                    task.metadata.get(
-                        PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY,
-                        "",
-                    )
-                    or ""
-                ).strip()
-            )
-        ):
-            return defaults
+        declared_artifact_envelope = bool(
+            task is not None
+            and str(
+                task.metadata.get(
+                    PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY,
+                    "",
+                )
+                or ""
+            ).strip()
+        )
 
         materialized_bytes = 0
         largest_file_bytes = 0
+        total_before_bytes = 0
+        total_after_bytes = 0
+        compacted_oversized_file = False
+        bounded_size_reduction = bool(
+            tuple(getattr(proposal, "candidate_diff", ()) or ())
+        )
         for entry in tuple(getattr(proposal, "candidate_diff", ()) or ()):
+            change_kind = str(
+                getattr(getattr(entry, "change_kind", None), "value", "")
+                or getattr(entry, "change_kind", "")
+                or ""
+            )
+            before_source = getattr(entry, "before_source", None)
+            after_source = getattr(entry, "after_source", None)
+            before_bytes = (
+                len(
+                    str(before_source).encode(
+                        "utf-8",
+                        errors="surrogatepass",
+                    )
+                )
+                if before_source is not None
+                else 0
+            )
+            after_bytes = (
+                len(
+                    str(after_source).encode(
+                        "utf-8",
+                        errors="surrogatepass",
+                    )
+                )
+                if after_source is not None
+                else 0
+            )
+            total_before_bytes += before_bytes
+            total_after_bytes += after_bytes
+            if (
+                bool(getattr(entry, "binary", False))
+                or change_kind not in {"add", "modify"}
+                or after_source is None
+                or after_bytes > DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+                or (
+                    change_kind == "add"
+                    and before_source is not None
+                )
+                or (
+                    change_kind == "modify"
+                    and (
+                        before_source is None
+                        or (
+                            before_bytes
+                            > DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+                            and after_bytes >= before_bytes
+                        )
+                    )
+                )
+            ):
+                bounded_size_reduction = False
+            if (
+                change_kind == "modify"
+                and before_bytes
+                > DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+                and after_bytes < before_bytes
+            ):
+                compacted_oversized_file = True
             for source_name in ("before_source", "after_source"):
                 source = getattr(entry, source_name, None)
                 if source is None:
@@ -23679,6 +23738,53 @@ class PortalImplementationDaemon:
                 ).encode("utf-8", errors="surrogatepass")
             )
         except (AttributeError, TypeError, ValueError):
+            return defaults
+
+        # A locally collected proposal may legitimately replace an oversized
+        # tracked text artifact with a compact digest-bound projection.  Git's
+        # unified patch repeats every deleted byte, so counting that deletion
+        # as newly introduced payload otherwise makes safe compaction
+        # impossible.  Admit only monotonic reductions: every resulting file
+        # and the aggregate after-state remain inside the ordinary limits, at
+        # least one oversized tracked file shrinks, no deletes/renames/binary
+        # changes are present, and the fully materialized baseline remains
+        # inside the immutable process caps.  The ordinary repository-envelope
+        # validator still binds every before byte to the exact baseline.
+        bounded_size_reduction = bool(
+            bounded_size_reduction
+            and compacted_oversized_file
+            and total_after_bytes <= DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+            and total_after_bytes < total_before_bytes
+            and materialized_bytes
+            <= MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+            and largest_file_bytes
+            <= MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+            and serialized_bytes <= MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES
+        )
+        if (
+            raw_patch_bytes > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+            and bounded_size_reduction
+        ):
+            return {
+                "max_file_bytes": max(
+                    DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES,
+                    largest_file_bytes,
+                ),
+                "max_patch_bytes": max(
+                    DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
+                    raw_patch_bytes,
+                    materialized_bytes,
+                ),
+                "max_output_bytes": max(
+                    DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES,
+                    serialized_bytes,
+                ),
+                "bounded_size_reduction": True,
+            }
+        if (
+            raw_patch_bytes > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+            and not declared_artifact_envelope
+        ):
             return defaults
 
         # Small raw unified patches against established modules may still
@@ -25081,6 +25187,8 @@ class PortalImplementationDaemon:
             },
         }
         policy_version = "strict-proposal-v2+local-envelope-v2"
+        if local_envelope_limits.get("bounded_size_reduction"):
+            policy_version += "+bounded-size-reduction-v1"
         policy_allowed_paths = allowed_paths
         # Only a task-declared artifact envelope may rewrite allowed_paths to
         # the exact changed set.  Local auto-raise of max_file_bytes for
