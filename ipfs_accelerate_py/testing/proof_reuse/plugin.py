@@ -26,6 +26,7 @@ ISSUER_SERVICE_ATTRIBUTE = "_ipfs_proof_reuse_issuer_service"
 DEPENDENCY_INSTALLER_ATTRIBUTE = "_ipfs_proof_reuse_dependency_installer"
 SERVICE_RESOLVER_ATTRIBUTE = "_ipfs_proof_reuse_service_resolver"
 SERVICE_RESOLUTION_ATTRIBUTE = "_ipfs_proof_reuse_service_resolution"
+IDENTITY_SERVICES_ATTRIBUTE = "_ipfs_proof_reuse_identity_services"
 RUNTIME_PLUGIN_ATTRIBUTE = "_ipfs_proof_reuse_runtime_plugin"
 RUNTIME_TRACE_ATTRIBUTE = "_ipfs_proof_reuse_runtime_trace"
 DEFERRED_REQUEST_ATTRIBUTE = "_ipfs_proof_reuse_deferred_request"
@@ -305,6 +306,21 @@ def _inject_default_services(config: Any) -> None:
             setattr(config, attribute, service)
 
 
+def set_proof_reuse_identity_services(config: Any, services: Any) -> None:
+    """Inject the validated automatic item-identity service bundle.
+
+    The assembler module is cold-safe and imported only when this explicit
+    setter is used or when enabled collection needs it.  Provider callbacks
+    are never called here.
+    """
+
+    from .item_identity import ItemIdentityAssemblyServices
+
+    if not isinstance(services, ItemIdentityAssemblyServices):
+        raise TypeError("services must be ItemIdentityAssemblyServices")
+    setattr(config, IDENTITY_SERVICES_ATTRIBUTE, services)
+
+
 def _install_runtime_plugin(config: Any) -> None:
     if getattr(config, RUNTIME_PLUGIN_ATTRIBUTE, None) is not None:
         return
@@ -421,6 +437,24 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
     )
     from .receipt import attach_collector
     from .xdist import ProofReuseXdistCoordinator, force_real_execution
+
+    # Item identity is assembled through one session-scoped DI boundary.  An
+    # absent bundle is represented by an empty bundle: each enabled item then
+    # receives a typed RUN diagnostic and no lookup request.  Existing manual
+    # identities are detected by the assembler and left untouched.
+    from .item_identity import (
+        ItemIdentityAssemblyServices,
+        assemble_and_attach_item_identity,
+    )
+
+    identity_services = getattr(config, IDENTITY_SERVICES_ATTRIBUTE, None)
+    if not isinstance(identity_services, ItemIdentityAssemblyServices):
+        identity_services = ItemIdentityAssemblyServices()
+    for item in collected:
+        metadata = get_item_metadata(item)
+        if metadata is None or metadata.disabled:
+            continue
+        assemble_and_attach_item_identity(item, identity_services)
 
     metrics = getattr(config, METRICS_ATTRIBUTE, None)
     coordinator = getattr(config, COORDINATOR_ATTRIBUTE, None)
@@ -708,6 +742,7 @@ __all__ = [
     "DISABLED_MARKER",
     "EFFECTS_MARKER",
     "EXECUTION_RECORDED_ATTRIBUTE",
+    "IDENTITY_SERVICES_ATTRIBUTE",
     "ISSUER_SERVICE_ATTRIBUTE",
     "ITEM_METADATA_ATTRIBUTE",
     "LOOKUP_SERVICE_ATTRIBUTE",
@@ -732,5 +767,6 @@ __all__ = [
     "pytest_testnodedown",
     "set_proof_reuse_dependency_installer",
     "set_proof_reuse_service_resolver",
+    "set_proof_reuse_identity_services",
     "set_proof_reuse_services",
 ]

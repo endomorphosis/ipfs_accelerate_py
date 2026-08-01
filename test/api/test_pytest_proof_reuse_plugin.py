@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import builtins
 import json
 import os
 import subprocess
@@ -18,10 +19,12 @@ from ipfs_accelerate_py.testing.proof_reuse.config import (
 )
 from ipfs_accelerate_py.testing.proof_reuse.plugin import (
     CONFIG_ATTRIBUTE,
+    IDENTITY_SERVICES_ATTRIBUTE,
     ITEM_METADATA_ATTRIBUTE,
     ProofReuseItemMetadata,
     collect_item_metadata,
     pytest_collection_modifyitems,
+    set_proof_reuse_identity_services,
 )
 
 
@@ -240,3 +243,166 @@ def test_module_reload_is_pure(monkeypatch):
     reloaded = importlib.reload(module)
 
     assert not hasattr(reloaded, "PROOF_REUSE_CONFIG")
+
+
+def test_identity_services_setter_validates_without_calling_providers():
+    from ipfs_accelerate_py.testing.proof_reuse.item_identity import (
+        ItemIdentityAssemblyServices,
+    )
+
+    calls = []
+    services = ItemIdentityAssemblyServices(
+        repository_forest_provider=lambda item: calls.append(item)
+    )
+    config = _Config()
+
+    set_proof_reuse_identity_services(config, services)
+
+    assert getattr(config, IDENTITY_SERVICES_ATTRIBUTE) is services
+    assert calls == []
+    with pytest.raises(TypeError, match="ItemIdentityAssemblyServices"):
+        set_proof_reuse_identity_services(config, object())
+
+
+def test_enabled_collection_calls_automatic_identity_for_direct_node(
+    monkeypatch,
+):
+    from ipfs_accelerate_py.testing.proof_reuse import item_identity
+    from ipfs_accelerate_py.testing.proof_reuse.item_identity import (
+        ItemIdentityAssemblyServices,
+    )
+
+    config = _Config()
+    setattr(
+        config,
+        CONFIG_ATTRIBUTE,
+        ProofReuseConfig(mode=ProofReuseMode.SHADOW),
+    )
+    services = ItemIdentityAssemblyServices()
+    set_proof_reuse_identity_services(config, services)
+    item = _Item("test_direct.py::test_one")
+    calls = []
+
+    def record(direct_item, direct_services):
+        calls.append((direct_item, direct_services))
+
+    monkeypatch.setattr(
+        item_identity,
+        "assemble_and_attach_item_identity",
+        record,
+    )
+
+    pytest_collection_modifyitems(config, [item])
+
+    assert calls == [(item, services)]
+    assert getattr(item, ITEM_METADATA_ATTRIBUTE).nodeid == item.nodeid
+
+
+def test_enabled_collection_without_identity_di_attaches_typed_run(
+    tmp_path,
+):
+    from ipfs_accelerate_py.testing.proof_reuse.item_identity import (
+        ITEM_IDENTITY_RESULT_ATTRIBUTE,
+        ItemIdentityAssemblyReason,
+    )
+
+    source = tmp_path / "test_direct.py"
+    source.write_text("def test_one():\n    assert True\n", encoding="utf-8")
+    config = _Config()
+    setattr(
+        config,
+        CONFIG_ATTRIBUTE,
+        ProofReuseConfig(mode=ProofReuseMode.SHADOW),
+    )
+    item = _Item("test_direct.py::test_one")
+    item.path = source
+    item.originalname = "test_one"
+    item.name = "test_one"
+    item.fixturenames = ()
+    item.cls = None
+    item.own_markers = []
+
+    pytest_collection_modifyitems(config, [item])
+
+    result = getattr(item, ITEM_IDENTITY_RESULT_ATTRIBUTE)
+    assert result.reason is ItemIdentityAssemblyReason.PROVIDER_UNAVAILABLE
+    assert result.stage == "repository_forest"
+    assert result.action == "RUN"
+    assert result.authorizes_skip is False
+    assert not hasattr(item, "_ipfs_proof_reuse_lookup_request")
+    assert not any(
+        getattr(marker, "name", "") == "skip" for marker in item.own_markers
+    )
+    assert item._ipfs_proof_reuse_decision.action.value == "RUN"
+
+
+def test_off_collection_does_not_import_or_call_identity_assembler(
+    monkeypatch,
+):
+    config = _Config()
+    setattr(config, CONFIG_ATTRIBUTE, ProofReuseConfig())
+    item = _Item("test_direct.py::test_one")
+    imported = []
+    real_import = builtins.__import__
+
+    def guarded(name, *args, **kwargs):
+        if name.endswith("item_identity"):
+            imported.append(name)
+            raise AssertionError("off mode imported item identity")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded)
+
+    pytest_collection_modifyitems(config, [item])
+
+    assert imported == []
+    assert not hasattr(item, ITEM_METADATA_ATTRIBUTE)
+
+
+def test_manual_exact_identity_is_untouched_by_automatic_boundary(
+    tmp_path,
+):
+    from ipfs_accelerate_py.testing.proof_reuse.item_identity import (
+        ITEM_IDENTITY_RESULT_ATTRIBUTE,
+        ItemIdentityAssemblyReason,
+    )
+
+    source = tmp_path / "test_direct.py"
+    source.write_text("def test_one():\n    assert True\n", encoding="utf-8")
+    config = _Config()
+    setattr(
+        config,
+        CONFIG_ATTRIBUTE,
+        ProofReuseConfig(mode=ProofReuseMode.SHADOW),
+    )
+    item = _Item("test_direct.py::test_one")
+    item.path = source
+    item.originalname = "test_one"
+    item.name = "test_one"
+    item.fixturenames = ()
+    item.cls = None
+    locator = object()
+    execution_key = object()
+    item._ipfs_proof_reuse_locator = locator
+    item._ipfs_proof_reuse_execution_key = execution_key
+
+    pytest_collection_modifyitems(config, [item])
+
+    result = getattr(item, ITEM_IDENTITY_RESULT_ATTRIBUTE)
+    assert result.reason is ItemIdentityAssemblyReason.EXISTING_IDENTITY_CONFLICT
+    assert item._ipfs_proof_reuse_locator is locator
+    assert item._ipfs_proof_reuse_execution_key is execution_key
+    assert not hasattr(item, "_ipfs_proof_reuse_lookup_request")
+
+
+def test_plugin_source_has_no_per_file_identity_registry():
+    from ipfs_accelerate_py.testing.proof_reuse import plugin
+
+    source = Path(plugin.__file__).read_text(encoding="utf-8")
+    for forbidden in (
+        "PROOF_REUSE_TEST_LIST",
+        "proof_reuse_test_paths",
+        "TEST_PATH_REGISTRY",
+        "allowed_test_files",
+    ):
+        assert forbidden not in source
