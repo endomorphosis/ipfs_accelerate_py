@@ -111,6 +111,7 @@ VENDOR_HANDLER_ID: Final = "external_runtime_mtl_vendor_certification@1"
 DEFAULT_VENDOR_RECEIPT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json"
 )
+PUBLIC_MANAGED_PATH_REDACTION: Final = "<managed-tool-path-redacted>"
 
 TOOL_EXTERNAL: Final = mtl_installer.TOOL_RUNTIME_MTL_EXTERNAL
 EXTERNAL_ENGINES: Final = (TOOL_EXTERNAL,)
@@ -1788,6 +1789,9 @@ def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, An
     """Build the checked-in vendor install receipt envelope."""
 
     engine = certificate.get("runtime_mtl_external") or {}
+    hermetic_shadow = dict(certificate.get("hermetic_parity_shadow") or {})
+    if hermetic_shadow.get("executable"):
+        hermetic_shadow["executable"] = PUBLIC_MANAGED_PATH_REDACTION
     receipt = {
         "schema_version": VENDOR_INSTALL_RECEIPT_SCHEMA,
         "interface": VENDOR_INTERFACE,
@@ -1801,7 +1805,11 @@ def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, An
         "runtime_mtl_external": {
             "tool_id": TOOL_EXTERNAL,
             "version": engine.get("version"),
-            "executable": engine.get("executable"),
+            "executable": (
+                PUBLIC_MANAGED_PATH_REDACTION
+                if engine.get("executable")
+                else ""
+            ),
             "usable": engine.get("usable"),
             "certified": engine.get("certified"),
             "is_vendor_build": True,
@@ -1821,9 +1829,7 @@ def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, An
             "finite_trace_authority_only": True,
             "no_python_reference_dispatch": True,
         },
-        "hermetic_parity_shadow": dict(
-            certificate.get("hermetic_parity_shadow") or {}
-        ),
+        "hermetic_parity_shadow": hermetic_shadow,
         "categories_exercised": list(certificate.get("categories_exercised") or []),
         "mutation_kinds": list(certificate.get("mutation_kinds") or []),
         "policy": dict(certificate.get("policy") or {}),

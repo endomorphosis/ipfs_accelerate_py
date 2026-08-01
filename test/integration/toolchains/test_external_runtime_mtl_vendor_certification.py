@@ -723,7 +723,8 @@ def test_vendor_lane_handler(certifier, install_root) -> None:
 
 
 def test_checked_in_vendor_receipt_structure() -> None:
-    receipt = json.loads(RECEIPT_PATH.read_text(encoding="utf-8"))
+    receipt_text = RECEIPT_PATH.read_text(encoding="utf-8")
+    receipt = json.loads(receipt_text)
     assert receipt["schema_version"] == VENDOR_RECEIPT_SCHEMA
     assert receipt["interface"] == VENDOR_INTERFACE
     assert receipt["goal_id"] == VENDOR_GOAL_ID
@@ -734,6 +735,13 @@ def test_checked_in_vendor_receipt_structure() -> None:
     assert engine["is_vendor_build"] is True
     assert engine["is_hermetic_parity_engine"] is False
     assert engine["package_identity"] == PACKAGE_IDENTITY
+    assert engine["executable"] == "<managed-tool-path-redacted>"
+    assert (
+        receipt["hermetic_parity_shadow"]["executable"]
+        == "<managed-tool-path-redacted>"
+    )
+    assert "/home/" not in receipt_text
+    assert "/tmp/" not in receipt_text
     for key in (
         "package_digest_sha256",
         "source_digest_sha256",
