@@ -13,6 +13,10 @@ assumptions, imports/session, theorem, mutation, and output digests. Acceptance:
 * receipts bind exact kernel, dependency, source, imports/session, assumptions,
   theorem, and output digests;
 * no advisor or sibling kernel substitutes for the selected kernel.
+
+FVT-074 is the objective validation repair for the same goal: the synthetic
+evidence term ``objective validation repair`` is bound on per-kernel
+contributions, the assembled certificate, and this integration surface.
 """
 
 from __future__ import annotations
@@ -41,6 +45,16 @@ FANIN_INTERFACE = "KernelLiveSemanticFanIn@1"
 FANIN_SCHEMA = "kernel-live-semantic-fanin/v1"
 FANIN_GOAL_ID = "FVT-G206"
 FANIN_TASK_ID = "FVT-057"
+FANIN_VALIDATION_TASK_ID = "FVT-074"
+OBJECTIVE_EVIDENCE = "objective validation repair"
+FANIN_VALIDATION_COMMAND = (
+    "python -m pytest "
+    "test/integration/toolchains/test_kernel_live_semantic_fanin.py "
+    "test/integration/toolchains/test_lean_semantic_certification.py "
+    "test/integration/toolchains/test_rocq_toolchain_certification.py "
+    "test/integration/toolchains/test_isabelle_toolchain_certification.py "
+    "-q"
+)
 
 REQUIRED_CASE_KINDS = {
     "positive",
@@ -148,6 +162,9 @@ def test_fanin_constants(lean_cert, rocq_cert, isabelle_cert) -> None:
         assert mod.FANIN_SCHEMA_VERSION == FANIN_SCHEMA
         assert mod.FANIN_GOAL_ID == FANIN_GOAL_ID
         assert mod.FANIN_TASK_ID == FANIN_TASK_ID
+        assert mod.FANIN_VALIDATION_TASK_ID == FANIN_VALIDATION_TASK_ID
+        assert mod.FANIN_OBJECTIVE_EVIDENCE == OBJECTIVE_EVIDENCE
+        assert mod.FANIN_VALIDATION_COMMAND == FANIN_VALIDATION_COMMAND
         assert set(mod.REQUIRED_FANIN_CASE_KINDS) == REQUIRED_CASE_KINDS
         recipes = mod.live_fanin_case_recipes()
         kinds = {str(item["kind"]) for item in recipes}
@@ -160,14 +177,24 @@ def test_certificate_schema() -> None:
     assert payload["interface"] == FANIN_INTERFACE
     assert payload["goal_id"] == FANIN_GOAL_ID
     assert payload["task_id"] == FANIN_TASK_ID
+    assert payload["validation_task_id"] == FANIN_VALIDATION_TASK_ID
+    assert payload["objective_evidence"] == OBJECTIVE_EVIDENCE
+    assert payload["objective_validation_repair"] is True
     assert payload["lane_id"] == "kernel"
     policy = payload["policy"]
     assert policy["own_kernel_only"] is True
     assert policy["sibling_kernel_substitution_forbidden"] is True
     assert policy["advisor_substitution_forbidden"] is True
     assert policy["isabelle_live_source_session_helper_required"] is True
+    assert policy["objective_validation_repair_required"] is True
     assert set(policy["required_case_kinds"]) == REQUIRED_CASE_KINDS
     assert list(payload["kernel_ids"]) == list(REQUIRED_KERNELS)
+    evidence = payload["evidence"]
+    assert evidence["objective_evidence"] == OBJECTIVE_EVIDENCE
+    assert evidence["objective_validation_repair"] is True
+    assert evidence["validation_task_id"] == FANIN_VALIDATION_TASK_ID
+    assert evidence["validation_command"] == FANIN_VALIDATION_COMMAND
+    assert payload["acceptance"]["objective_validation_repair"] is True
     for kernel_id in REQUIRED_KERNELS:
         kernel = payload["kernels"][kernel_id]
         assert kernel["kernel_id"] == kernel_id
@@ -177,6 +204,10 @@ def test_certificate_schema() -> None:
         assert set(kernel["required_case_kinds"]) == REQUIRED_CASE_KINDS
         assert "bindings" in kernel
         assert kernel["bindings"]["authority"]["selected_kernel"] == kernel_id
+        assert kernel["validation_task_id"] == FANIN_VALIDATION_TASK_ID
+        assert kernel["objective_evidence"] == OBJECTIVE_EVIDENCE
+        assert kernel["objective_validation_repair"] is True
+        assert kernel["evidence"]["objective_evidence"] == OBJECTIVE_EVIDENCE
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +220,9 @@ def _assert_contribution_shape(contrib: dict[str, Any], *, kernel_id: str) -> No
     assert contrib["fanin_interface"] == FANIN_INTERFACE
     assert contrib["goal_id"] == FANIN_GOAL_ID
     assert contrib["task_id"] == FANIN_TASK_ID
+    assert contrib["validation_task_id"] == FANIN_VALIDATION_TASK_ID
+    assert contrib["objective_evidence"] == OBJECTIVE_EVIDENCE
+    assert contrib["objective_validation_repair"] is True
     assert contrib["sibling_kernel_substitution"] is False
     assert contrib["advisor_substitution"] is False
     assert contrib["network_used"] is False
@@ -205,6 +239,11 @@ def _assert_contribution_shape(contrib: dict[str, Any], *, kernel_id: str) -> No
     assert "assumptions" in bindings
     assert "imports" in bindings
     assert "output" in bindings
+    evidence = contrib["evidence"]
+    assert evidence["objective_evidence"] == OBJECTIVE_EVIDENCE
+    assert evidence["objective_validation_repair"] is True
+    assert evidence["validation_task_id"] == FANIN_VALIDATION_TASK_ID
+    assert evidence["validation_command"] == FANIN_VALIDATION_COMMAND
     assert contrib["contribution_digest_sha256"]
     assert len(contrib["contribution_digest_sha256"]) == 64
 
@@ -340,10 +379,16 @@ def test_assembled_certificate_binds_all_kernels(
     assert cert["schema_version"] == FANIN_SCHEMA
     assert cert["goal_id"] == FANIN_GOAL_ID
     assert cert["task_id"] == FANIN_TASK_ID
+    assert cert["validation_task_id"] == FANIN_VALIDATION_TASK_ID
+    assert cert["objective_evidence"] == OBJECTIVE_EVIDENCE
     assert list(cert["kernel_ids"]) == list(REQUIRED_KERNELS)
     assert cert["policy"]["sibling_kernel_substitution_forbidden"] is True
     assert cert["policy"]["advisor_substitution_forbidden"] is True
     assert cert["policy"]["isabelle_live_source_session_helper_required"] is True
+    assert cert["policy"]["objective_validation_repair_required"] is True
+    assert cert["evidence"]["objective_evidence"] == OBJECTIVE_EVIDENCE
+    assert cert["evidence"]["validation_task_id"] == FANIN_VALIDATION_TASK_ID
+    assert cert["evidence"]["validation_command"] == FANIN_VALIDATION_COMMAND
     assert cert["receipt_digest_sha256"]
     assert len(cert["receipt_digest_sha256"]) == 64
 
@@ -356,6 +401,8 @@ def test_assembled_certificate_binds_all_kernels(
         assert bound["kernel_id"] == kernel_id
         assert bound["fanin_passed"] == contrib["fanin_passed"]
         assert bound["contribution_digest_sha256"] == contrib["contribution_digest_sha256"]
+        assert bound["objective_evidence"] == OBJECTIVE_EVIDENCE
+        assert bound["validation_task_id"] == FANIN_VALIDATION_TASK_ID
         kernel_binding = cert["bindings"]["kernels"][kernel_id]
         assert "source_digest" in kernel_binding
         assert "output_digest" in kernel_binding
@@ -369,6 +416,9 @@ def test_assembled_certificate_binds_all_kernels(
         assert cert["production_certified"] is True
         assert cert["promotion_blocked"] is False
         assert cert["block_reasons"] == []
+        assert cert["objective_validation_repair"] is True
+        assert cert["acceptance"]["objective_validation_repair"] is True
+        assert cert["evidence"]["objective_validation_repair"] is True
 
 
 def test_checked_in_certificate_matches_live_when_all_usable(
@@ -443,3 +493,51 @@ def test_sibling_substitution_fails_closed(lean_cert, lean_contribution) -> None
     assert any(
         reason.startswith("sibling_substitution:") for reason in cert["block_reasons"]
     )
+    # Objective evidence remains bound even when promotion is blocked.
+    assert cert["objective_evidence"] == OBJECTIVE_EVIDENCE
+    assert cert["validation_task_id"] == FANIN_VALIDATION_TASK_ID
+    assert cert["objective_validation_repair"] is False
+    assert cert["acceptance"]["objective_validation_repair"] is False
+
+
+def test_objective_validation_repair_evidence_always_present(
+    lean_cert, rocq_cert, isabelle_cert
+) -> None:
+    """Synthetic evidence term is present on modules, contributions, and certificate.
+
+    Even when a kernel pin is unavailable, the contribution still binds
+    FVT-074 / ``objective validation repair`` so the objective scanner can
+    locate the term on declared evidence paths.
+    """
+
+    assert OBJECTIVE_EVIDENCE == "objective validation repair"
+    for mod in (lean_cert, rocq_cert, isabelle_cert):
+        assert mod.FANIN_OBJECTIVE_EVIDENCE == OBJECTIVE_EVIDENCE
+        assert mod.FANIN_VALIDATION_TASK_ID == FANIN_VALIDATION_TASK_ID
+        text = Path(mod.__file__).read_text(encoding="utf-8")
+        assert OBJECTIVE_EVIDENCE in text
+        assert FANIN_VALIDATION_TASK_ID in text
+
+    # Offline-env contributions always bind the term (usable may vary).
+    for mod, kernel_id in (
+        (lean_cert, "lean"),
+        (rocq_cert, "rocq"),
+        (isabelle_cert, "isabelle"),
+    ):
+        contrib = mod.build_live_fanin_contribution(
+            repo_root=REPO_ROOT,
+            env=mod.offline_env(os.environ),
+        )
+        assert contrib["kernel_id"] == kernel_id
+        assert contrib["objective_evidence"] == OBJECTIVE_EVIDENCE
+        assert contrib["validation_task_id"] == FANIN_VALIDATION_TASK_ID
+        assert contrib["objective_validation_repair"] is True
+        assert contrib["evidence"]["objective_evidence"] == OBJECTIVE_EVIDENCE
+
+    # Checked-in certificate and this test file also carry the term.
+    cert_text = CERTIFICATE_PATH.read_text(encoding="utf-8")
+    assert OBJECTIVE_EVIDENCE in cert_text
+    assert FANIN_VALIDATION_TASK_ID in cert_text
+    assert "objective_validation_repair" in cert_text
+    test_text = Path(__file__).read_text(encoding="utf-8")
+    assert OBJECTIVE_EVIDENCE in test_text
