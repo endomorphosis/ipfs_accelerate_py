@@ -91,6 +91,7 @@ from ..worktree_lifecycle import (
     FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
     FenceMismatchError,
     LifecycleFailureKind,
+    OwnerLiveness,
     OwnershipError,
     WorkspaceLifecycleRecord,
     WorkspaceLifecycleState,
@@ -98,6 +99,7 @@ from ..worktree_lifecycle import (
     WorktreeLifecycleStore,
     lifecycle_race_result,
     normalize_workspace_path,
+    owner_liveness,
 )
 from ..runtime.event_log import (
     append_jsonl_event,
@@ -7080,14 +7082,223 @@ class PortalImplementationDaemon:
         )
         return result
 
+    def _reconcile_quiesced_worktree_lifecycle(
+        self,
+        state: PortalTaskState,
+        *,
+        terminalize: bool,
+    ) -> dict[str, Any]:
+        """Fence one exact dead lifecycle owner before clearing active state.
+
+        The lifecycle lease is deliberately independent of the lane task-state
+        file.  Clearing only the latter leaves the task/attempt index blocked
+        until the six-hour lifecycle lease expires.  A controlled shutdown may
+        bypass that expiry only when repository, state directory, active
+        attempt identity, and process-birth liveness all prove that this lane's
+        former daemon is the exact dead owner.
+
+        ``terminalize=False`` is the non-mutating preflight used before the
+        protected-path crash fence is reconciled.  The mutating pass repeats
+        every proof under the lifecycle store's CAS transition, so a concurrent
+        owner/fence change remains blocked.
+        """
+
+        workspace_value = str(state.active_worktree_path or "").strip()
+        if not workspace_value:
+            return {
+                "reconciled": False,
+                "blocked": False,
+                "reason": "no_active_worktree",
+            }
+        workspace_path = Path(workspace_value)
+        record_path = self.worktree_lifecycle.workspace_path_for(workspace_path)
+        record = self.worktree_lifecycle.load_workspace(workspace_path)
+        if record is None:
+            if record_path.exists():
+                return {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "worktree_lifecycle_record_malformed",
+                    "workspace_path": workspace_value,
+                    "record_path": str(record_path),
+                }
+            # Backward compatibility for attempts created before fenced
+            # lifecycle records were introduced.  There is no persisted owner
+            # capable of blocking a replacement task/attempt claim.
+            return {
+                "reconciled": False,
+                "blocked": False,
+                "reason": "no_worktree_lifecycle_record",
+                "workspace_path": workspace_value,
+            }
+
+        common = {
+            "workspace_path": record.workspace_path,
+            "record_id": record.record_id,
+            "task_id": record.task_id,
+            "canonical_task_cid": record.canonical_task_cid,
+            "attempt": record.attempt,
+            "state": record.state.value,
+            "fence": record.fence,
+            "owner_pid": record.owner.pid,
+            "owner_state_dir": record.state_dir,
+        }
+        expected_repo = normalize_workspace_path(self.repo_root)
+        expected_state_dir = normalize_workspace_path(
+            self.state_path.parent.resolve()
+        )
+        if not record.repo_root or not record.state_dir:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "worktree_lifecycle_ownership_unknown",
+                **common,
+            }
+        if normalize_workspace_path(record.repo_root) != expected_repo:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "worktree_lifecycle_repo_mismatch",
+                "expected_repo_root": expected_repo,
+                "observed_repo_root": record.repo_root,
+                **common,
+            }
+        if normalize_workspace_path(record.state_dir) != expected_state_dir:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "worktree_lifecycle_state_dir_mismatch",
+                "expected_state_dir": expected_state_dir,
+                **common,
+            }
+
+        identity_mismatches: dict[str, dict[str, Any]] = {}
+
+        def compare_identity(
+            field_name: str,
+            expected: str | int,
+            observed: str | int,
+            *,
+            expected_present: bool,
+        ) -> None:
+            if expected_present and expected != observed:
+                identity_mismatches[field_name] = {
+                    "expected": expected,
+                    "observed": observed,
+                }
+
+        compare_identity(
+            "task_id",
+            str(state.active_task_id or ""),
+            record.task_id,
+            expected_present=bool(state.active_task_id),
+        )
+        compare_identity(
+            "canonical_task_cid",
+            str(state.active_task_cid or ""),
+            record.canonical_task_cid,
+            expected_present=bool(state.active_task_cid),
+        )
+        compare_identity(
+            "attempt",
+            int(state.active_attempt or 0),
+            record.attempt,
+            expected_present=int(state.active_attempt or 0) > 0,
+        )
+        compare_identity(
+            "branch",
+            str(state.active_branch or "").removeprefix("refs/heads/"),
+            record.branch.removeprefix("refs/heads/"),
+            expected_present=bool(state.active_branch),
+        )
+        if identity_mismatches:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "worktree_lifecycle_attempt_identity_mismatch",
+                "identity_mismatches": identity_mismatches,
+                **common,
+            }
+
+        if record.is_terminal:
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "worktree_lifecycle_already_terminal",
+                **common,
+            }
+
+        liveness = owner_liveness(
+            record.owner,
+            proc_root=self.worktree_lifecycle.proc_root,
+        )
+        if liveness is OwnerLiveness.ALIVE:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "worktree_lifecycle_owner_still_active",
+                "owner_liveness": liveness.value,
+                **common,
+            }
+        if liveness is OwnerLiveness.UNKNOWN:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "worktree_lifecycle_owner_liveness_unknown",
+                "owner_liveness": liveness.value,
+                **common,
+            }
+        if not terminalize:
+            return {
+                "reconciled": False,
+                "blocked": False,
+                "reason": "worktree_lifecycle_dead_owner_reclaimable",
+                "owner_liveness": liveness.value,
+                **common,
+            }
+
+        terminal = (
+            self.worktree_lifecycle.reclaim_dead_owner_for_controlled_restart(
+                record.workspace_path,
+                expected_state_dir=expected_state_dir,
+                reason="controlled_shutdown_quiesced_owner",
+            )
+        )
+        if terminal is None:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "worktree_lifecycle_terminalization_race",
+                "owner_liveness": liveness.value,
+                **common,
+            }
+        return {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "worktree_lifecycle_dead_owner_terminalized",
+            "owner_liveness": liveness.value,
+            "workspace_path": terminal.workspace_path,
+            "record_id": terminal.record_id,
+            "task_id": terminal.task_id,
+            "canonical_task_cid": terminal.canonical_task_cid,
+            "attempt": terminal.attempt,
+            "state": terminal.state.value,
+            "fence": terminal.fence,
+            "owner_pid": terminal.owner.pid,
+            "owner_state_dir": terminal.state_dir,
+            "terminal_reason": terminal.terminal_reason,
+        }
+
     def reconcile_quiesced_active_attempt(self) -> dict[str, Any]:
         """Finalize an interrupted attempt after proving no worker owns it.
 
         Supervisor shutdown can terminate the daemon between provider exit and
         the normal fence/state cleanup. This recovery is deliberately ordered:
-        prove the implementation is quiescent, reconcile the protected-path
-        identity, and only then clear stale execution state. A live owner,
-        malformed lease, or protected-path mutation remains fail closed.
+        prove the implementation is quiescent, prove the exact worktree
+        lifecycle owner is dead, reconcile the protected-path identity,
+        terminalize the lifecycle claim, and only then clear stale execution
+        state. A live or unknown owner, mismatched lane, malformed lease, or
+        protected-path mutation remains fail closed.
         """
 
         live_implementation = self._find_live_inflight_implementation()
@@ -7138,6 +7349,24 @@ class PortalImplementationDaemon:
             )
             return result
 
+        state = PortalTaskState.load(self.state_path)
+        lifecycle_preflight = self._reconcile_quiesced_worktree_lifecycle(
+            state,
+            terminalize=False,
+        )
+        if lifecycle_preflight.get("blocked", False):
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "worktree_lifecycle_reconciliation_blocked",
+                "worktree_lifecycle_reconciliation": lifecycle_preflight,
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
+
         protected_path_reconciliation = (
             self._reconcile_implementation_protected_path_fence()
         )
@@ -7156,7 +7385,30 @@ class PortalImplementationDaemon:
             )
             return result
 
-        state = PortalTaskState.load(self.state_path)
+        worktree_lifecycle_reconciliation = (
+            self._reconcile_quiesced_worktree_lifecycle(
+                state,
+                terminalize=True,
+            )
+        )
+        if worktree_lifecycle_reconciliation.get("blocked", False):
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "worktree_lifecycle_reconciliation_blocked",
+                "worktree_lifecycle_reconciliation": (
+                    worktree_lifecycle_reconciliation
+                ),
+                "protected_path_reconciliation": (
+                    protected_path_reconciliation
+                ),
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
+
         task_id = state.active_task_id or state.last_implementation_task_id
         attempt = int(state.active_attempt or 0)
         had_active_state = bool(
@@ -7200,6 +7452,9 @@ class PortalImplementationDaemon:
             "attempt_recovery": attempt_recovery,
             "protected_path_reconciliation": (
                 protected_path_reconciliation
+            ),
+            "worktree_lifecycle_reconciliation": (
+                worktree_lifecycle_reconciliation
             ),
             "stale_lock_cleared": stale_lock_cleared,
         }
