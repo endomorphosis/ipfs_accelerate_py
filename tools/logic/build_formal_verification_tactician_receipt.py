@@ -574,12 +574,27 @@ def _declared_mapping_identity_valid(
     *,
     field: str,
     prefix: str = "",
+    ensure_ascii: bool = False,
 ) -> bool:
     """Recompute a canonical identity instead of trusting a claimed digest."""
 
     stored = str(payload.get(field) or "")
     body = {key: value for key, value in payload.items() if key != field}
-    computed = content_digest(body)
+    if ensure_ascii:
+        # FormalVerificationToolchainCertificate@1 is emitted by the certifier,
+        # whose canonical JSON digest uses json.dumps' escaped-Unicode default.
+        # Preserve that schema's canonicalization instead of silently applying
+        # this builder's unescaped-Unicode receipt encoding.
+        encoded = json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            default=str,
+        )
+        computed = sha256_bytes(encoded.encode("utf-8"))
+    else:
+        computed = content_digest(body)
     if prefix:
         computed = prefix + computed.removeprefix("sha256:")
     candidates = {computed, computed.removeprefix("sha256:")}
@@ -917,6 +932,7 @@ def derive_hard_zero_gates(
         and _declared_mapping_identity_valid(
             certificate,
             field="certificate_digest_sha256",
+            ensure_ascii=True,
         )
     )
     if certificate_identity_valid and certificate is not None:

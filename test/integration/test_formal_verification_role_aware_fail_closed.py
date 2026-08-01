@@ -143,6 +143,32 @@ def test_missing_hard_zero_inputs_are_unresolved_not_zero(builder) -> None:
     assert partial["authority_boundary_violations"] > 0
 
 
+def test_certificate_identity_uses_certifier_unicode_canonicalization(
+    builder,
+    certifier,
+) -> None:
+    certificate = {
+        "interface": "FormalVerificationToolchainCertificate@1",
+        "description": "kernel obligation ∀ state",
+        "disagreement_quarantines": [],
+    }
+    certificate["certificate_digest_sha256"] = certifier.content_digest(
+        certificate
+    )
+
+    result = builder.derive_hard_zero_gates(
+        certificate=certificate,
+        benchmark=None,
+        baseline={"known_findings": []},
+    )
+
+    assert result["derivation"]["certificate_identity_valid"] is True
+    assert "certificate.content_identity" not in result["derivation"][
+        "missing_measurements"
+    ]
+    assert result["unresolved_cross_provider_disagreement_count"] == 0
+
+
 def test_fixture_benchmark_cannot_clear_deployment_hard_zero(builder) -> None:
     result = builder.derive_hard_zero_gates(
         certificate=_bound_certificate(builder),
