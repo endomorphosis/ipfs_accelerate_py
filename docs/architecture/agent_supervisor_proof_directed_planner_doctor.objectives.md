@@ -74,7 +74,7 @@ PDR-G000  Proof-directed Planner and Doctor self-improvement loop
 
 ## PDR-G010 Baseline, trust boundary, threat model, and benchmark anchors
 
-- Status: active
+- Status: completed
 - Parent: PDR-G000
 - Depends on:
 - Fib priority: 89

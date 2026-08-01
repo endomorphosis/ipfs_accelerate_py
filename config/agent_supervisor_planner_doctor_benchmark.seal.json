@@ -1,0 +1,79 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.benchmark_policy_seal@1",
+  "interface": "PlannerDoctorBenchmarkPolicySeal@1",
+  "receipt_version": "1",
+  "task_id": "PDR-003",
+  "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+  "policy_revision": "1",
+  "reviewed_base": {
+    "commit": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
+    "tree": "cf6f6450bba0126a9846ae88bf7764f3e1ccb7c3",
+    "git_object_format": "sha1",
+    "relation_to_activation_head": "equal_or_ancestor",
+    "benchmark_policy_cid": "baguqeerawp37ni46umcuqcx6lmcdpb62nsrflcbkryy4kjtvrcdiiwvmffjq",
+    "benchmark_manifest_cid": "baguqeeratdt3yv2jwcorvsuaae5zh2vypsrwiry7luohli3gb6ecjkghm2na",
+    "partition_algorithm": "sha2-256-provenance-family-modulo-v2",
+    "partition_algorithm_version": 2,
+    "partition_seed": "pdr-benchmark-corpus-v2",
+    "partition_policy_cid": "baguqeeras2xzxocvbhs74ka47svq2nxfc4xjcleojebdrkrkbpjyu5vke6gq",
+    "development_index_cid": "baguqeerajbqnhanydnp2via2erbrg5fxb3j3v6es6pmxr2zpos6nbq2btzta",
+    "development_member_count": 9899,
+    "heldout_index_cid": "baguqeerata5zmzkyuae3hb6flnop6eqxi3tlka2sm4ccwjkea45mdph3ijta",
+    "heldout_member_count": 2354,
+    "qualifying_case_count": 12,
+    "oracle_handle": "opaque:operator-cas/planner-doctor-quality-oracle@1",
+    "operator_seal_handle": "opaque:operator-seal/planner-doctor-benchmark-pdr-003@1",
+    "corpus_authority": "public-conformance-only"
+  },
+  "artifacts": [
+    {
+      "role": "benchmark_policy",
+      "path": "config/agent_supervisor_planner_doctor_benchmark.json",
+      "sha256": "sha256:dd6df2b3c14d818c7760743afa5bec2ba05891ceded8e494ad05c410905ff917",
+      "size_bytes": 26712
+    },
+    {
+      "role": "holdout_manifest",
+      "path": "test/fixtures/agent_supervisor/planner_doctor_holdout/manifest.json",
+      "sha256": "sha256:9617804bfcd095d3ccb4fe25729d4133dd35380c916e524df4f9c2cc99ede5be",
+      "size_bytes": 27484
+    },
+    {
+      "role": "benchmark_architecture",
+      "path": "docs/architecture/agent_supervisor_planner_doctor_benchmark.md",
+      "sha256": "sha256:9739bcfbfd9a829be3a14282a8756ab9ef776dafcc212bd74b76980da6833b46",
+      "size_bytes": 10119
+    },
+    {
+      "role": "benchmark_contract_test",
+      "path": "test/api/test_agent_supervisor_planner_doctor_benchmark_contract.py",
+      "sha256": "sha256:248ad4c0d316bccb4c2805d48a3b386210411b7d1bb407465f5950527537b469",
+      "size_bytes": 12914
+    }
+  ],
+  "operator": {
+    "identity": "interactive_user",
+    "authority_basis": "interactive_user_delegation",
+    "candidate": false,
+    "model": false,
+    "automatic_controller": false
+  },
+  "grant": {
+    "type": "benchmark_activation",
+    "allowed_actions": [
+      "activate_benchmark_policy"
+    ],
+    "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+    "policy_revision": "1",
+    "benchmark_activation": true,
+    "delegable": false,
+    "mutation_authority": false,
+    "completion_authority": false,
+    "promotion_authority": false,
+    "automatic_promotion": false,
+    "task_status_authority": false,
+    "protected_anchor_write_authority": false
+  },
+  "decision": "sealed",
+  "receipt_id": "sha256:ed25fcb542b0c7bb34f96c1d231b542f57ab1807d2c573052e6c71ba1ed47abe"
+}

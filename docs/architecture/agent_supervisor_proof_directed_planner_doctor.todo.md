@@ -92,7 +92,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-002 Seal authority, threat model, mutation boundary, and safety floors
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -100,7 +100,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Track: trust
 - Depends on: PDR-000
 - Goal id: PDR-G010
-- Outputs: docs/architecture/agent_supervisor_planner_doctor_threat_model.md, config/agent_supervisor_planner_doctor_authority_policy.json, test/api/test_agent_supervisor_planner_doctor_authority_policy.py
+- Outputs: docs/architecture/agent_supervisor_planner_doctor_threat_model.md, config/agent_supervisor_planner_doctor_authority_policy.json, config/agent_supervisor_planner_doctor_authority_policy.seal.json, test/api/test_agent_supervisor_planner_doctor_authority_policy.py
 - Validation: python -m pytest test/api/test_agent_supervisor_planner_doctor_authority_policy.py -q
 - Board namespace: agent-supervisor-proof-directed-planner-doctor-v1
 - Bundle: agent-supervisor/proof-directed-planner-doctor/foundation
@@ -108,7 +108,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Resource class: cpu-small
 - Resource stage: analysis
 - Implementation timeout seconds: 5400
-- Predicted files: docs/architecture/agent_supervisor_planner_doctor_threat_model.md, config/agent_supervisor_planner_doctor_authority_policy.json, test/api/test_agent_supervisor_planner_doctor_authority_policy.py
+- Predicted files: docs/architecture/agent_supervisor_planner_doctor_threat_model.md, config/agent_supervisor_planner_doctor_authority_policy.json, config/agent_supervisor_planner_doctor_authority_policy.seal.json, test/api/test_agent_supervisor_planner_doctor_authority_policy.py
 - Interfaces: PlannerDoctorAuthorityPolicy@1, PlannerDoctorThreatModel@1
 - Conflict policy: Own new PDR policy only; do not weaken existing control, proof, Doctor, or completion policies.
 - Preconditions: Existing assurance lattice, control permits, Doctor rollout policy, proof cache, IR adapters, and self-improvement rollout contracts are inventoried.
@@ -118,7 +118,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-003 Preregister live paired benchmark, protected holdouts, and budgets
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -126,7 +126,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Track: benchmark-contract
 - Depends on: PDR-000
 - Goal id: PDR-G010
-- Outputs: config/agent_supervisor_planner_doctor_benchmark.json, test/fixtures/agent_supervisor/planner_doctor_holdout/manifest.json, docs/architecture/agent_supervisor_planner_doctor_benchmark.md, test/api/test_agent_supervisor_planner_doctor_benchmark_contract.py
+- Outputs: config/agent_supervisor_planner_doctor_benchmark.json, config/agent_supervisor_planner_doctor_benchmark.seal.json, test/fixtures/agent_supervisor/planner_doctor_holdout/manifest.json, docs/architecture/agent_supervisor_planner_doctor_benchmark.md, test/api/test_agent_supervisor_planner_doctor_benchmark_contract.py
 - Validation: python -m pytest test/api/test_agent_supervisor_planner_doctor_benchmark_contract.py -q
 - Board namespace: agent-supervisor-proof-directed-planner-doctor-v1
 - Bundle: agent-supervisor/proof-directed-planner-doctor/benchmark-contract
@@ -134,7 +134,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Resource class: cpu-small
 - Resource stage: analysis
 - Implementation timeout seconds: 5400
-- Predicted files: config/agent_supervisor_planner_doctor_benchmark.json, test/fixtures/agent_supervisor/planner_doctor_holdout/manifest.json, docs/architecture/agent_supervisor_planner_doctor_benchmark.md, test/api/test_agent_supervisor_planner_doctor_benchmark_contract.py
+- Predicted files: config/agent_supervisor_planner_doctor_benchmark.json, config/agent_supervisor_planner_doctor_benchmark.seal.json, test/fixtures/agent_supervisor/planner_doctor_holdout/manifest.json, docs/architecture/agent_supervisor_planner_doctor_benchmark.md, test/api/test_agent_supervisor_planner_doctor_benchmark_contract.py
 - Interfaces: PlannerDoctorBenchmarkManifest@1, PlannerDoctorBenchmarkPolicy@1
 - Conflict policy: Holdout manifest and benchmark policy become protected after review; candidate code cannot edit or read hidden oracle bodies.
 - Preconditions: PDR seed plan describes the paired benchmark dimensions and promotion boundary.

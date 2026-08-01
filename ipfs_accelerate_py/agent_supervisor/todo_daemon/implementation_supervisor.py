@@ -19,6 +19,10 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from ..control.manual_completion_seal import (
+    ManualCompletionSealError,
+    verify_manual_completion_seal,
+)
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     CheckoutMutationLease,
@@ -383,12 +387,265 @@ def load_supervisor_scheduler_config(
         field_name="protected_paths",
     )
     try:
-        normalized["protected_paths"] = normalize_implementation_protected_paths(
+        normalized_protected_paths = normalize_implementation_protected_paths(
             protected_paths,
             repo_root=root,
         )
     except ValueError as exc:
         raise SupervisorSchedulerConfigError(str(exc)) from exc
+
+    staged_raw = _scheduler_config_mapping(
+        payload.get("protected_after_manual_completion", {}),
+        field_name="protected_after_manual_completion",
+    )
+    tasks = parse_task_file(
+        root / normalized["taskboard_path"],
+        normalized["task_prefix"],
+    )
+    task_ids = [task.task_id for task in tasks]
+    if len(task_ids) != len(set(task_ids)):
+        raise SupervisorSchedulerConfigError(
+            "taskboard contains duplicate task IDs"
+        )
+    task_by_id = {task.task_id: task for task in tasks}
+    seal_config_fields = {
+        "artifact_paths",
+        "grant_action",
+        "grant_claims",
+        "grant_type",
+        "interface",
+        "policy_revision",
+        "expected_receipt_id",
+        "receipt_path",
+        "reviewed_base_claims",
+        "schema",
+    }
+    manual_seal_raw = _scheduler_config_mapping(
+        payload.get("manual_completion_seals", {}),
+        field_name="manual_completion_seals",
+    )
+    manual_seals: dict[str, dict[str, Any]] = {}
+    for task_id, raw_seal in manual_seal_raw.items():
+        if not isinstance(task_id, str) or task_id not in task_by_id:
+            raise SupervisorSchedulerConfigError(
+                "manual_completion_seals keys must name declared tasks"
+            )
+        if task_by_id[task_id].completion != "manual":
+            raise SupervisorSchedulerConfigError(
+                "manual_completion_seals tasks must use manual completion"
+            )
+        seal = _scheduler_config_mapping(
+            raw_seal,
+            field_name=f"manual_completion_seals.{task_id}",
+        )
+        if set(seal) != seal_config_fields:
+            raise SupervisorSchedulerConfigError(
+                f"manual_completion_seals.{task_id} fields do not match "
+                "the closed schema"
+            )
+        strings: dict[str, str] = {}
+        for field_name in (
+            "grant_action",
+            "grant_type",
+            "interface",
+            "policy_revision",
+            "schema",
+        ):
+            value = seal.get(field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise SupervisorSchedulerConfigError(
+                    f"manual_completion_seals.{task_id}.{field_name} "
+                    "must be a non-empty string"
+                )
+            strings[field_name] = value.strip()
+        expected_receipt_id = seal.get("expected_receipt_id")
+        if (
+            not isinstance(expected_receipt_id, str)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", expected_receipt_id)
+        ):
+            raise SupervisorSchedulerConfigError(
+                f"manual_completion_seals.{task_id}.expected_receipt_id "
+                "must be a canonical SHA-256 identity"
+            )
+        receipt_path = _scheduler_config_relative_path(
+            seal.get("receipt_path"),
+            field_name=f"manual_completion_seals.{task_id}.receipt_path",
+            repo_root=root,
+            must_exist=False,
+        )
+        raw_artifacts = _scheduler_config_mapping(
+            seal.get("artifact_paths"),
+            field_name=f"manual_completion_seals.{task_id}.artifact_paths",
+        )
+        artifact_paths: dict[str, str] = {}
+        for role, raw_artifact_path in raw_artifacts.items():
+            if (
+                not isinstance(role, str)
+                or not re.fullmatch(r"[a-z][a-z0-9_]{1,63}", role)
+            ):
+                raise SupervisorSchedulerConfigError(
+                    f"manual_completion_seals.{task_id} artifact roles "
+                    "must be canonical identifiers"
+                )
+            artifact_paths[role] = _scheduler_config_relative_path(
+                raw_artifact_path,
+                field_name=(
+                    f"manual_completion_seals.{task_id}.artifact_paths.{role}"
+                ),
+                repo_root=root,
+                must_exist=False,
+            )
+        if not artifact_paths or len(set(artifact_paths.values())) != len(
+            artifact_paths
+        ):
+            raise SupervisorSchedulerConfigError(
+                f"manual_completion_seals.{task_id} artifact paths must "
+                "be non-empty and unique"
+            )
+        normalized_claims: dict[str, dict[str, Any]] = {}
+        for field_name in ("grant_claims", "reviewed_base_claims"):
+            raw_claims = _scheduler_config_mapping(
+                seal.get(field_name),
+                field_name=f"manual_completion_seals.{task_id}.{field_name}",
+            )
+            claims: dict[str, Any] = {}
+            for claim_name, claim_value in raw_claims.items():
+                if (
+                    not isinstance(claim_name, str)
+                    or not re.fullmatch(r"[a-z][a-z0-9_]{1,63}", claim_name)
+                    or isinstance(claim_value, float)
+                    or not isinstance(claim_value, (str, int, bool))
+                ):
+                    raise SupervisorSchedulerConfigError(
+                        f"manual_completion_seals.{task_id}.{field_name} "
+                        "must contain canonical scalar claims"
+                    )
+                claims[claim_name] = claim_value
+            normalized_claims[field_name] = claims
+        manual_seals[task_id] = {
+            **strings,
+            **normalized_claims,
+            "expected_receipt_id": expected_receipt_id,
+            "receipt_path": receipt_path,
+            "artifact_paths": artifact_paths,
+        }
+
+    staged_protected_paths: dict[str, tuple[str, ...]] = {}
+    activated_task_ids: list[str] = []
+    verified_manual_seals: dict[str, str] = {}
+    active_paths = list(normalized_protected_paths)
+    for task_id, raw_paths in staged_raw.items():
+        if not isinstance(task_id, str) or task_id not in task_by_id:
+            raise SupervisorSchedulerConfigError(
+                "protected_after_manual_completion keys must name declared tasks"
+            )
+        task = task_by_id[task_id]
+        if task.completion != "manual":
+            raise SupervisorSchedulerConfigError(
+                "protected_after_manual_completion tasks must use manual completion"
+            )
+        staged_values = _scheduler_config_sequence(
+            raw_paths,
+            field_name=f"protected_after_manual_completion.{task_id}",
+        )
+        try:
+            staged_paths = normalize_implementation_protected_paths(
+                staged_values,
+                repo_root=root,
+            )
+        except ValueError as exc:
+            raise SupervisorSchedulerConfigError(str(exc)) from exc
+        if not staged_paths:
+            raise SupervisorSchedulerConfigError(
+                f"protected_after_manual_completion.{task_id} cannot be empty"
+            )
+        try:
+            declared_outputs = set(
+                normalize_implementation_protected_paths(
+                    task.outputs,
+                    repo_root=root,
+                )
+            )
+        except ValueError as exc:
+            raise SupervisorSchedulerConfigError(
+                f"{task_id} has an unsafe declared output: {exc}"
+            ) from exc
+        undeclared_paths = set(staged_paths) - declared_outputs
+        if undeclared_paths:
+            raise SupervisorSchedulerConfigError(
+                "protected_after_manual_completion paths must be declared "
+                f"task outputs: {sorted(undeclared_paths)!r}"
+            )
+        omitted_paths = declared_outputs - set(staged_paths)
+        if omitted_paths:
+            raise SupervisorSchedulerConfigError(
+                "protected_after_manual_completion must protect every "
+                f"declared task output: {sorted(omitted_paths)!r}"
+            )
+        seal = manual_seals.get(task_id)
+        if seal is not None:
+            receipt_path = str(seal["receipt_path"])
+            artifact_path_set = set(seal["artifact_paths"].values())
+            if receipt_path not in staged_paths:
+                raise SupervisorSchedulerConfigError(
+                    f"{task_id} manual seal receipt must become protected"
+                )
+            if artifact_path_set != declared_outputs - {receipt_path}:
+                raise SupervisorSchedulerConfigError(
+                    f"{task_id} manual seal must bind every non-receipt output"
+                )
+        staged_protected_paths[task_id] = staged_paths
+        if task.status != "completed":
+            continue
+        if seal is None:
+            raise SupervisorSchedulerConfigError(
+                f"completed manual protection task {task_id} has no "
+                "operator seal configuration"
+            )
+        try:
+            verified = verify_manual_completion_seal(
+                str(seal["receipt_path"]),
+                repo_root=root,
+                task_id=task_id,
+                board_namespace=normalized["board_namespace"],
+                schema=str(seal["schema"]),
+                interface=str(seal["interface"]),
+                policy_revision=str(seal["policy_revision"]),
+                expected_receipt_id=str(seal["expected_receipt_id"]),
+                artifact_paths=seal["artifact_paths"],
+                grant_type=str(seal["grant_type"]),
+                grant_action=str(seal["grant_action"]),
+                reviewed_base_claims=seal["reviewed_base_claims"],
+                grant_claims=seal["grant_claims"],
+            )
+        except ManualCompletionSealError as exc:
+            raise SupervisorSchedulerConfigError(
+                f"manual completion seal verification failed for {task_id}: {exc}"
+            ) from exc
+        verified_manual_seals[task_id] = str(verified["receipt_id"])
+        for relative in staged_paths:
+            candidate = root / relative
+            if not candidate.is_file():
+                raise SupervisorSchedulerConfigError(
+                    "completed manual protection task references a missing "
+                    f"or non-file artifact: {relative!r}"
+                )
+            if relative not in active_paths:
+                active_paths.append(relative)
+        activated_task_ids.append(task_id)
+
+    orphaned_seal_configs = set(manual_seals) - set(staged_protected_paths)
+    if orphaned_seal_configs:
+        raise SupervisorSchedulerConfigError(
+            "manual_completion_seals tasks must also declare staged protection: "
+            f"{sorted(orphaned_seal_configs)!r}"
+        )
+
+    normalized["protected_after_manual_completion"] = staged_protected_paths
+    normalized["manual_completion_seals"] = manual_seals
+    normalized["verified_manual_completion_seals"] = verified_manual_seals
+    normalized["activated_protected_task_ids"] = tuple(activated_task_ids)
+    normalized["protected_paths"] = tuple(active_paths)
     normalized["_config_path"] = str(resolved_config_path)
     return normalized
 

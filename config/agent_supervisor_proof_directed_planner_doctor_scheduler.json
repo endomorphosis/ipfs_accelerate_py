@@ -29,13 +29,94 @@
   "protected_after_manual_completion": {
     "PDR-002": [
       "docs/architecture/agent_supervisor_planner_doctor_threat_model.md",
-      "config/agent_supervisor_planner_doctor_authority_policy.json"
+      "config/agent_supervisor_planner_doctor_authority_policy.json",
+      "config/agent_supervisor_planner_doctor_authority_policy.seal.json",
+      "test/api/test_agent_supervisor_planner_doctor_authority_policy.py"
     ],
     "PDR-003": [
       "config/agent_supervisor_planner_doctor_benchmark.json",
+      "config/agent_supervisor_planner_doctor_benchmark.seal.json",
       "docs/architecture/agent_supervisor_planner_doctor_benchmark.md",
-      "test/fixtures/agent_supervisor/planner_doctor_holdout"
+      "test/fixtures/agent_supervisor/planner_doctor_holdout/manifest.json",
+      "test/api/test_agent_supervisor_planner_doctor_benchmark_contract.py"
+    ],
+    "PDR-060": [
+      "ipfs_accelerate_py/agent_supervisor/proof/planner_doctor_attestation.py",
+      "docs/architecture/agent_supervisor_planner_doctor_zkp_threat_model.md",
+      "test/api/test_agent_supervisor_planner_doctor_attestation.py"
+    ],
+    "PDR-072": [
+      "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_quality_oracle.py",
+      "test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json",
+      "test/api/test_agent_supervisor_planner_doctor_quality_oracle.py"
+    ],
+    "PDR-082": [
+      "ipfs_accelerate_py/agent_supervisor/self_improvement/planner_doctor_rollout.py",
+      "test/api/test_agent_supervisor_planner_doctor_rollout.py"
+    ],
+    "PDR-091": [
+      "scripts/ops/agent_supervisor/proof_directed_planner_doctor.py",
+      "docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md",
+      "test/api/test_agent_supervisor_planner_doctor_operations.py"
+    ],
+    "PDR-092": [
+      "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_release.py",
+      "docs/architecture/PROOF_DIRECTED_PLANNER_DOCTOR_RELEASE.md",
+      "test/api/test_agent_supervisor_planner_doctor_release.py"
     ]
+  },
+  "manual_completion_seals": {
+    "PDR-002": {
+      "receipt_path": "config/agent_supervisor_planner_doctor_authority_policy.seal.json",
+      "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.authority_policy_seal@1",
+      "interface": "PlannerDoctorAuthorityPolicySeal@1",
+      "policy_revision": "1",
+      "expected_receipt_id": "sha256:c05dedf05f9724c95d7d74a1e247e83a1be95e309b62e68a8282ae8d02f4a067",
+      "artifact_paths": {
+        "authority_policy": "config/agent_supervisor_planner_doctor_authority_policy.json",
+        "authority_test": "test/api/test_agent_supervisor_planner_doctor_authority_policy.py",
+        "threat_model": "docs/architecture/agent_supervisor_planner_doctor_threat_model.md"
+      },
+      "grant_type": "policy_activation",
+      "grant_action": "activate_policy_revision",
+      "grant_claims": {},
+      "reviewed_base_claims": {}
+    },
+    "PDR-003": {
+      "receipt_path": "config/agent_supervisor_planner_doctor_benchmark.seal.json",
+      "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.benchmark_policy_seal@1",
+      "interface": "PlannerDoctorBenchmarkPolicySeal@1",
+      "policy_revision": "1",
+      "expected_receipt_id": "sha256:ed25fcb542b0c7bb34f96c1d231b542f57ab1807d2c573052e6c71ba1ed47abe",
+      "artifact_paths": {
+        "benchmark_architecture": "docs/architecture/agent_supervisor_planner_doctor_benchmark.md",
+        "benchmark_contract_test": "test/api/test_agent_supervisor_planner_doctor_benchmark_contract.py",
+        "benchmark_policy": "config/agent_supervisor_planner_doctor_benchmark.json",
+        "holdout_manifest": "test/fixtures/agent_supervisor/planner_doctor_holdout/manifest.json"
+      },
+      "grant_type": "benchmark_activation",
+      "grant_action": "activate_benchmark_policy",
+      "grant_claims": {
+        "automatic_promotion": false,
+        "benchmark_activation": true
+      },
+      "reviewed_base_claims": {
+        "benchmark_manifest_cid": "baguqeeratdt3yv2jwcorvsuaae5zh2vypsrwiry7luohli3gb6ecjkghm2na",
+        "benchmark_policy_cid": "baguqeerawp37ni46umcuqcx6lmcdpb62nsrflcbkryy4kjtvrcdiiwvmffjq",
+        "corpus_authority": "public-conformance-only",
+        "development_index_cid": "baguqeerajbqnhanydnp2via2erbrg5fxb3j3v6es6pmxr2zpos6nbq2btzta",
+        "development_member_count": 9899,
+        "heldout_index_cid": "baguqeerata5zmzkyuae3hb6flnop6eqxi3tlka2sm4ccwjkea45mdph3ijta",
+        "heldout_member_count": 2354,
+        "operator_seal_handle": "opaque:operator-seal/planner-doctor-benchmark-pdr-003@1",
+        "oracle_handle": "opaque:operator-cas/planner-doctor-quality-oracle@1",
+        "partition_algorithm": "sha2-256-provenance-family-modulo-v2",
+        "partition_algorithm_version": 2,
+        "partition_policy_cid": "baguqeeras2xzxocvbhs74ka47svq2nxfc4xjcleojebdrkrkbpjyu5vke6gq",
+        "partition_seed": "pdr-benchmark-corpus-v2",
+        "qualifying_case_count": 12
+      }
+    }
   },
   "derived_refill": {
     "enabled_at_bootstrap": false,

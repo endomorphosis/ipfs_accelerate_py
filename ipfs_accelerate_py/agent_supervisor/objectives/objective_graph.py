@@ -12080,12 +12080,10 @@ def build_bundle_task_payloads(
             "source_todo": payload.get("source_todo", ""),
             "objective_bundle_index": str(bundle_index_path),
         }
-        # The local scheduler uses zero as the "unlimited" sentinel, while
-        # Profile G requires a positive bounded attempt count. Omitting the
-        # field lets the adapter apply its valid Profile-G default without
-        # changing the local scheduler's unlimited-attempt contract.
-        if selected_max_attempts > 0:
-            task_payload["max_attempts"] = selected_max_attempts
+        # Zero is the shared unlimited sentinel. Preserve it explicitly across
+        # the queue payload and Profile-G projection so the coordinator, worker,
+        # and durable queue cannot silently disagree on retry policy.
+        task_payload["max_attempts"] = selected_max_attempts
         task_payloads.append(task_payload)
 
     flat_tasks = [

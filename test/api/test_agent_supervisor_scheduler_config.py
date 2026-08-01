@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -71,6 +74,108 @@ def _write_profile(
     return path
 
 
+def _write_manual_task(
+    root: Path,
+    *,
+    status: str,
+    completion: str = "manual",
+    output: str = "docs/sealed-policy.json",
+) -> None:
+    (root / "docs" / "tasks.md").write_text(
+        (
+            "# Tasks\n\n"
+            "## TEST-001 Seal reviewed policy artifacts\n\n"
+            f"- Status: {status}\n"
+            f"- Completion: {completion}\n"
+            f"- Outputs: {output}\n"
+        ),
+        encoding="utf-8",
+    )
+
+
+def _git(root: Path, *arguments: str) -> str:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": __import__("os").environ["PATH"],
+            "GIT_AUTHOR_NAME": "Scheduler Test",
+            "GIT_AUTHOR_EMAIL": "scheduler@example.invalid",
+            "GIT_COMMITTER_NAME": "Scheduler Test",
+            "GIT_COMMITTER_EMAIL": "scheduler@example.invalid",
+        },
+    ).stdout.strip()
+
+
+def _write_test_operator_seal(root: Path) -> str:
+    _git(root, "init", "-q")
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "reviewed base")
+    commit = _git(root, "rev-parse", "HEAD")
+    tree = _git(root, "rev-parse", "HEAD^{tree}")
+    artifact_path = "docs/sealed-policy.json"
+    artifact = (root / artifact_path).read_bytes()
+    receipt: dict[str, object] = {
+        "schema": "example.test.operator_seal@1",
+        "interface": "TestOperatorSeal@1",
+        "receipt_version": "1",
+        "task_id": "TEST-001",
+        "board_namespace": "test-supervisor-v1",
+        "decision": "sealed",
+        "policy_revision": "1",
+        "reviewed_base": {
+            "commit": commit,
+            "tree": tree,
+            "git_object_format": "sha1",
+            "relation_to_activation_head": "equal_or_ancestor",
+        },
+        "artifacts": [
+            {
+                "role": "policy",
+                "path": artifact_path,
+                "sha256": "sha256:" + hashlib.sha256(artifact).hexdigest(),
+                "size_bytes": len(artifact),
+            },
+        ],
+        "operator": {
+            "identity": "interactive_user",
+            "authority_basis": "interactive_user_delegation",
+            "candidate": False,
+            "model": False,
+            "automatic_controller": False,
+        },
+        "grant": {
+            "type": "policy_activation",
+            "allowed_actions": ["activate_policy_revision"],
+            "board_namespace": "test-supervisor-v1",
+            "policy_revision": "1",
+            "delegable": False,
+            "mutation_authority": False,
+            "completion_authority": False,
+            "promotion_authority": False,
+            "task_status_authority": False,
+            "protected_anchor_write_authority": False,
+        },
+    }
+    body = copy.deepcopy(receipt)
+    receipt["receipt_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    (root / "config" / "operator-seal.json").write_text(
+        json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return str(receipt["receipt_id"])
+
+
 def test_scheduler_config_maps_safe_defaults_and_cli_scalars_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -119,6 +224,253 @@ def test_scheduler_config_maps_safe_defaults_and_cli_scalars_override(
     command = PortalImplementationSupervisor(config)._build_daemon_command()
     assert command[command.index("--validation-max-workers") + 1] == "2"
     assert "--implement" not in command
+
+
+def test_scheduler_config_activates_protection_only_after_manual_completion(
+    tmp_path: Path,
+) -> None:
+    profile_path = _write_profile(
+        tmp_path,
+        overrides={
+            "protected_after_manual_completion": {
+                "TEST-001": [
+                    "docs/sealed-policy.json",
+                    "config/operator-seal.json",
+                ],
+            },
+            "manual_completion_seals": {
+                "TEST-001": {
+                    "receipt_path": "config/operator-seal.json",
+                    "schema": "example.test.operator_seal@1",
+                    "interface": "TestOperatorSeal@1",
+                    "policy_revision": "1",
+                    "artifact_paths": {
+                        "policy": "docs/sealed-policy.json",
+                    },
+                    "grant_type": "policy_activation",
+                    "grant_action": "activate_policy_revision",
+                    "grant_claims": {},
+                    "reviewed_base_claims": {},
+                },
+            },
+        },
+    )
+    (tmp_path / "docs" / "sealed-policy.json").write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+    _write_manual_task(
+        tmp_path,
+        status="pending",
+        output="docs/sealed-policy.json, config/operator-seal.json",
+    )
+    receipt_id = _write_test_operator_seal(tmp_path)
+    profile_payload = json.loads(profile_path.read_text(encoding="utf-8"))
+    profile_payload["manual_completion_seals"]["TEST-001"][
+        "expected_receipt_id"
+    ] = receipt_id
+    profile_path.write_text(
+        json.dumps(profile_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    pending = load_supervisor_scheduler_config(
+        profile_path,
+        repo_root=tmp_path,
+    )
+
+    assert pending["activated_protected_task_ids"] == ()
+    assert "docs/sealed-policy.json" not in pending["protected_paths"]
+    assert pending["verified_manual_completion_seals"] == {}
+
+    _write_manual_task(
+        tmp_path,
+        status="completed",
+        output="docs/sealed-policy.json, config/operator-seal.json",
+    )
+    completed = load_supervisor_scheduler_config(
+        profile_path,
+        repo_root=tmp_path,
+    )
+
+    assert completed["activated_protected_task_ids"] == ("TEST-001",)
+    assert completed["protected_paths"][-2:] == (
+        "docs/sealed-policy.json",
+        "config/operator-seal.json",
+    )
+    assert completed["verified_manual_completion_seals"]["TEST-001"].startswith(
+        "sha256:"
+    )
+
+    seal_path = tmp_path / "config" / "operator-seal.json"
+    original = seal_path.read_text(encoding="utf-8")
+    tampered = json.loads(original)
+    tampered["grant"]["mutation_authority"] = True
+    body = {key: value for key, value in tampered.items() if key != "receipt_id"}
+    tampered["receipt_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    seal_path.write_text(
+        json.dumps(tampered, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        with pytest.raises(
+            SupervisorSchedulerConfigError,
+            match="protected pinned identity",
+        ):
+            load_supervisor_scheduler_config(
+                profile_path,
+                repo_root=tmp_path,
+            )
+    finally:
+        seal_path.write_text(original, encoding="utf-8")
+
+    artifact_path = tmp_path / "docs" / "sealed-policy.json"
+    original_artifact = artifact_path.read_text(encoding="utf-8")
+    artifact_path.write_text('{"candidate_replacement":true}\n', encoding="utf-8")
+    rehashed = json.loads(original)
+    replacement = artifact_path.read_bytes()
+    rehashed["artifacts"][0]["sha256"] = (
+        "sha256:" + hashlib.sha256(replacement).hexdigest()
+    )
+    rehashed["artifacts"][0]["size_bytes"] = len(replacement)
+    body = {key: value for key, value in rehashed.items() if key != "receipt_id"}
+    rehashed["receipt_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    seal_path.write_text(
+        json.dumps(rehashed, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        with pytest.raises(
+            SupervisorSchedulerConfigError,
+            match="protected pinned identity",
+        ):
+            load_supervisor_scheduler_config(
+                profile_path,
+                repo_root=tmp_path,
+            )
+    finally:
+        artifact_path.write_text(original_artifact, encoding="utf-8")
+        seal_path.write_text(original, encoding="utf-8")
+
+
+def test_scheduler_config_rejects_invalid_staged_protection(
+    tmp_path: Path,
+) -> None:
+    unknown_root = tmp_path / "unknown"
+    unknown_profile = _write_profile(
+        unknown_root,
+        overrides={
+            "protected_after_manual_completion": {
+                "TEST-404": ["docs/sealed-policy.json"],
+            },
+        },
+    )
+    with pytest.raises(
+        SupervisorSchedulerConfigError,
+        match="declared tasks",
+    ):
+        load_supervisor_scheduler_config(
+            unknown_profile,
+            repo_root=unknown_root,
+        )
+
+    automatic_root = tmp_path / "automatic"
+    automatic_profile = _write_profile(
+        automatic_root,
+        overrides={
+            "protected_after_manual_completion": {
+                "TEST-001": ["docs/sealed-policy.json"],
+            },
+        },
+    )
+    _write_manual_task(automatic_root, status="pending", completion="auto")
+    with pytest.raises(
+        SupervisorSchedulerConfigError,
+        match="manual completion",
+    ):
+        load_supervisor_scheduler_config(
+            automatic_profile,
+            repo_root=automatic_root,
+        )
+
+    undeclared_root = tmp_path / "undeclared"
+    undeclared_profile = _write_profile(
+        undeclared_root,
+        overrides={
+            "protected_after_manual_completion": {
+                "TEST-001": ["docs/not-declared.json"],
+            },
+        },
+    )
+    _write_manual_task(undeclared_root, status="pending")
+    with pytest.raises(
+        SupervisorSchedulerConfigError,
+        match="declared task outputs",
+    ):
+        load_supervisor_scheduler_config(
+            undeclared_profile,
+            repo_root=undeclared_root,
+        )
+
+    omitted_root = tmp_path / "omitted"
+    omitted_profile = _write_profile(
+        omitted_root,
+        overrides={
+            "protected_after_manual_completion": {
+                "TEST-001": ["docs/sealed-policy.json"],
+            },
+        },
+    )
+    _write_manual_task(
+        omitted_root,
+        status="pending",
+        output="docs/sealed-policy.json, docs/omitted.json",
+    )
+    with pytest.raises(
+        SupervisorSchedulerConfigError,
+        match="protect every declared task output",
+    ):
+        load_supervisor_scheduler_config(
+            omitted_profile,
+            repo_root=omitted_root,
+        )
+
+    missing_root = tmp_path / "missing"
+    missing_profile = _write_profile(
+        missing_root,
+        overrides={
+            "protected_after_manual_completion": {
+                "TEST-001": ["docs/missing-policy.json"],
+            },
+        },
+    )
+    _write_manual_task(
+        missing_root,
+        status="completed",
+        output="docs/missing-policy.json",
+    )
+    with pytest.raises(
+        SupervisorSchedulerConfigError,
+        match="no operator seal configuration",
+    ):
+        load_supervisor_scheduler_config(
+            missing_profile,
+            repo_root=missing_root,
+        )
 
 
 def test_scheduler_config_never_enables_effects_but_explicit_operator_can(
