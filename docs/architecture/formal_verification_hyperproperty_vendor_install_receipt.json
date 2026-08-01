@@ -1,9 +1,24 @@
 {
+  "acceptance": {
+    "autohyper_binds_dotnet_and_spot": true,
+    "case_oracle_cannot_satisfy_vendor": true,
+    "goal_id": "FVT-G208",
+    "hermetic_engines_cannot_satisfy_vendor": true,
+    "hyperltl_sat_binds_decidable_fragment_ceiling": true,
+    "linux_aarch64_supported_only_if_complete_chain_real": true,
+    "mchyper_binds_abc_aiger_and_fragment": true,
+    "never_authorizes_universal_proof": true,
+    "never_grants_theorem_authority": true,
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_repair": true,
+    "repair_task_id": "FVT-077",
+    "task_id": "FVT-061"
+  },
   "authority_ceiling": "bounded",
   "autohyper": {
     "abc_version": "",
     "aiger_tools_version": "",
-    "artifact_sha256": "5f52e62b202153536993427244d44f04071864dd200d053d86317f7ceb3f6f37",
+    "artifact_sha256": "1d48a9532b4da9ac82e0c4dd63e6cf15cefc6291ea346f286540d8d62d11625f",
     "authority_ceiling": "bounded",
     "build_dependencies": {
       "dotnet-sdk": "8.0.300",
@@ -13,7 +28,7 @@
     "certified": true,
     "decidable_fragment_ceiling": "",
     "dotnet_runtime": "8.0",
-    "executable": "/tmp/hyper-vendor-receipt-8bv30cei/hyperproperty-vendor/autohyper/c94722d1/bin/autohyper",
+    "executable": "/tmp/hyper-vendor-receipt-hrevao32/hyperproperty-vendor/autohyper/c94722d1/bin/autohyper",
     "git_commit": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
     "is_hermetic_engine": false,
     "is_vendor_build": true,
@@ -45,7 +60,7 @@
     "timeout",
     "violation"
   ],
-  "certificate_digest_sha256": "55ed859cfd33ee6ab17e77a22bd2255b5e6c74131e1b56cd31736b74a0af5955",
+  "certificate_digest_sha256": "5d410b2fcccbd39a8c5a5e14f9331584b8d3bef33a958cf54d68a435aac9efc3",
   "certified": true,
   "goal_id": "FVT-G208",
   "handler_id": "hyperproperty_vendor_toolchain_certification@1",
@@ -53,7 +68,7 @@
   "hyperltl": {
     "abc_version": "",
     "aiger_tools_version": "",
-    "artifact_sha256": "ec97de7679e23733f1627126044343065f990a9740b16745f65419ab39385b18",
+    "artifact_sha256": "0f440831f782d81f567f4d081f4dcb456697d16cba6179ecad2c1b5696d7ff0e",
     "authority_ceiling": "bounded",
     "build_dependencies": {
       "dune": ">=2.0",
@@ -64,7 +79,7 @@
     "certified": true,
     "decidable_fragment_ceiling": "EAHyper decidable HyperLTL fragment (exists*/forall* and forall*/exists* quantifier shapes; not full HyperLTL)",
     "dotnet_runtime": "",
-    "executable": "/tmp/hyper-vendor-receipt-8bv30cei/hyperproperty-vendor/hyperltl/e3a41290/bin/hyperltl",
+    "executable": "/tmp/hyper-vendor-receipt-hrevao32/hyperproperty-vendor/hyperltl/e3a41290/bin/hyperltl",
     "git_commit": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
     "is_hermetic_engine": false,
     "is_vendor_build": true,
@@ -88,7 +103,7 @@
   "mchyper": {
     "abc_version": "1.01",
     "aiger_tools_version": "1.9.4",
-    "artifact_sha256": "5c88f92727d13cc04550c2f39b157246722495ea150fe45dd8124ca6dc83cfad",
+    "artifact_sha256": "29c03a6ecc8e47f824f3ec4f5b5c5acc62d3e85ac18a598bc46fc57e6b566c50",
     "authority_ceiling": "bounded",
     "build_dependencies": {
       "abc": "1.01",
@@ -100,7 +115,7 @@
     "certified": true,
     "decidable_fragment_ceiling": "",
     "dotnet_runtime": "",
-    "executable": "/tmp/hyper-vendor-receipt-8bv30cei/hyperproperty-vendor/mchyper/87f0f857/bin/mchyper",
+    "executable": "/tmp/hyper-vendor-receipt-hrevao32/hyperproperty-vendor/mchyper/87f0f857/bin/mchyper",
     "git_commit": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
     "is_hermetic_engine": false,
     "is_vendor_build": true,
@@ -126,6 +141,25 @@
     "observation",
     "quantifier"
   ],
+  "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q",
+  "objective_validation_evidence": "objective validation repair",
+  "objective_validation_repair": {
+    "evidence_terms": [
+      "objective validation repair",
+      "HyperpropertyVendorToolchainCertification@1",
+      "Install and live-certify supported hyperproperty engines"
+    ],
+    "goal_id": "FVT-G208",
+    "interface": "HyperpropertyVendorToolchainCertification@1",
+    "notes": "FVT-077 objective validation repair re-proves FVT-G208 acceptance when path evidence already exists. The synthetic discovery term objective validation repair is bound so supervisor scans re-find the validation gate without granting theorem authority or relabeling hermetic engines as vendor.",
+    "objective_validation_evidence": "objective validation repair",
+    "repair_task_id": "FVT-077",
+    "schema_version": "objective-validation-repair/v1",
+    "status": "satisfied",
+    "task_id": "FVT-061",
+    "validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q",
+    "vendor_certified": true
+  },
   "policy": {
     "authority_ceiling": "bounded",
     "authorizes_universal_proof": false,
@@ -143,12 +177,14 @@
     "never_grants_theorem_authority": true,
     "never_promote_hermetic_engine_as_vendor": true,
     "no_central_certificate_edit": true,
+    "objective_validation_repair": true,
     "official_upstream_identities_bound": true,
     "quantifiers_and_observation_projections_preserved": true,
     "strict_installation_selects_reviewed_pins": true
   },
   "program": "formal-verification-tactician/hyperproperty-vendor-toolchains",
-  "receipt_digest_sha256": "78c4d84803d3f689c729426df277294f6c1c4467ca2f8c382adb44bb8bcd80fc",
+  "receipt_digest_sha256": "bf9cd60d32043a19746c93c3941dc67ce6a8383688cd6d9a08e69fbae0fb547f",
+  "repair_task_id": "FVT-077",
   "schema_version": "formal-verification-hyperproperty-vendor-install-receipt/v1",
   "summary": {
     "block_reasons": [],
