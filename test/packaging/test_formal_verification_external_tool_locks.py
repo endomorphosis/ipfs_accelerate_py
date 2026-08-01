@@ -70,6 +70,7 @@ REPLACED_GAP_IDS = (
 IMMUTABLE_IDENTITY_KINDS = frozenset(
     {
         "release_archive",
+        "immutable_git_commit",
         "immutable_release_tag",
         "immutable_source_tag",
         "immutable_toolchain_identity",
@@ -412,6 +413,23 @@ def test_gap_replacement_tools_have_deployment_contracts_not_live_gaps() -> None
         assert contract["replaces_gap_id"] == expected_gap
         assert contract["unsupported_platforms_fail_closed"] is True
         assert entry["installer_entry"]
+
+
+def test_runtime_mtl_vendor_launcher_matches_locked_path_candidate() -> None:
+    _ensure_datasets_on_path()
+    from ipfs_datasets_py.logic.backends.installers import runtime_mtl
+
+    entry = _tools_by_id(_load_lock())["runtime-mtl-external"]
+    assert runtime_mtl.MANAGED_EXECUTABLE_NAME in entry["executable_candidates"]
+    metadata = runtime_mtl.describe_runtime_mtl_installer()
+    assert (
+        metadata["vendor"]["managed_executable_name"]
+        == runtime_mtl.MANAGED_EXECUTABLE_NAME
+    )
+    assert (
+        metadata["policy"]["vendor_launcher_is_digest_bound_and_path_visible"]
+        is True
+    )
 
 
 def test_lock_stable_modules_include_installer_registry_path() -> None:

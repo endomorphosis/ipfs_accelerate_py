@@ -235,6 +235,14 @@ def test_vendor_install_independent_typescript_engine(installer, vendor_bundle) 
     assert len(identity.lockfile_digest_sha256) == 64
     assert Path(identity.executable).is_file()
     assert "runtime-mtl-vendor" in identity.executable
+    managed_launcher = (
+        Path(identity.install_root) / "bin" / installer.MANAGED_EXECUTABLE_NAME
+    )
+    assert managed_launcher.is_file()
+    assert managed_launcher.stat().st_mode & 0o111
+    assert hashlib.sha256(managed_launcher.read_bytes()).hexdigest() == (
+        identity.executable_digest_sha256
+    )
 
     completed = subprocess.run(
         [identity.executable, "--version"],
@@ -247,6 +255,20 @@ def test_vendor_install_independent_typescript_engine(installer, vendor_bundle) 
     assert PIN_VERSION in banner or "1.0.0" in banner
     assert "typescript-vendor" in banner.casefold()
     assert "hermetic-parity-engine" not in banner.casefold()
+
+    managed_completed = subprocess.run(
+        [managed_launcher, "--version"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    managed_banner = (
+        (managed_completed.stdout or "") + (managed_completed.stderr or "")
+    )
+    assert managed_completed.returncode == 0
+    assert PIN_VERSION in managed_banner
+    assert "typescript-vendor" in managed_banner.casefold()
 
     # Independence: wrapper must not import the Python reference.
     wrapper = Path(identity.executable).read_text(encoding="utf-8")
@@ -274,6 +296,11 @@ def test_hermetic_parity_cannot_satisfy_vendor(installer, install_root) -> None:
     assert "runtime-mtl-external" in hermetic_parts
     # Lane directory (not a coincidental tmp path substring) must not be vendor.
     assert "runtime-mtl-vendor" not in hermetic_parts
+    assert not (
+        Path(hermetic.identity.install_root)
+        / "bin"
+        / installer.MANAGED_EXECUTABLE_NAME
+    ).exists()
 
     vendor = installer.ensure_runtime_mtl_external(
         yes=True,
