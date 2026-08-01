@@ -93,6 +93,10 @@ from ipfs_datasets_py.logic.bridge.proof_receipt_attestation import (  # noqa: E
 )
 from ipfs_datasets_py.logic.families.models import EvidenceAuthority  # noqa: E402
 from ipfs_datasets_py.logic.ir_core.protocols import ExecutionBounds  # noqa: E402
+from tools.logic.certification.public_evidence import (  # noqa: E402
+    public_evidence_audit,
+    public_evidence_projection,
+)
 
 try:  # pragma: no cover - worktree packaging varies
     from tools.logic.certification.roles import (  # type: ignore
@@ -283,6 +287,56 @@ def content_digest(payload: Any) -> str:
     return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def _public_lock_path(path: Path | str | None, *, repo_root: Path) -> str | None:
+    """Represent a reviewed lock relative to its repository when possible."""
+
+    if path in (None, ""):
+        return None
+    candidate = Path(str(path))
+    try:
+        return candidate.resolve().relative_to(repo_root.resolve()).as_posix()
+    except (OSError, ValueError):
+        return str(candidate)
+
+
+def _finalize_public_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Project a ZKP receipt before computing its portable outer digest."""
+
+    projected = public_evidence_projection(dict(receipt), repo_root=repo_root)
+    if not isinstance(projected, dict):
+        raise ZKPDeploymentCertificationError(
+            "public evidence projection did not produce a ZKP receipt object"
+        )
+    projected["receipt_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in projected.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    return projected
+
+
+def _audit_public_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    repo_root: Path,
+) -> None:
+    """Refuse durable writes of unsafe or host-specific public evidence."""
+
+    audit = public_evidence_audit(receipt, repo_root=repo_root)
+    if not audit.get("satisfied"):
+        failures = ",".join(str(item) for item in audit.get("failures") or [])
+        raise ZKPDeploymentCertificationError(
+            "refusing to write unsafe public ZKP receipt"
+            + (f": {failures}" if failures else "")
+        )
+
+
 def identity_digest(basis: str) -> str:
     return content_digest(basis)
 
@@ -407,18 +461,13 @@ class ZKPDeploymentCertification:
     policy: dict[str, Any] = field(default_factory=dict)
     notes: str = ""
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, repo_root: Path | None = None) -> dict[str, Any]:
+        root = repo_root or repo_root_from()
         payload = asdict(self)
         payload["checks"] = [check.to_dict() for check in self.checks]
         payload["cases"] = [case.to_dict() for case in self.cases]
-        payload["receipt_digest_sha256"] = content_digest(
-            {
-                key: value
-                for key, value in payload.items()
-                if key != "receipt_digest_sha256"
-            }
-        )
-        return payload
+        payload["lock_path"] = _public_lock_path(payload.get("lock_path"), repo_root=root)
+        return _finalize_public_receipt(payload, repo_root=root)
 
 
 # ---------------------------------------------------------------------------
@@ -1494,13 +1543,14 @@ def build_certification_receipt(
 ) -> dict[str, Any]:
     """Machine-readable receipt for operators, tests, and lane binding."""
 
+    root = repo_root or repo_root_from()
     cert = run_deployment_certification(
-        repo_root=repo_root,
+        repo_root=root,
         lock_path=lock_path,
         lock=lock,
         env=env,
     )
-    return cert.to_dict()
+    return cert.to_dict(repo_root=root)
 
 
 def certify_zkp_deployment(
@@ -1529,7 +1579,10 @@ def certify_zkp_deployment(
     )
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
-    return receipt
+    return _finalize_public_receipt(
+        receipt,
+        repo_root=repo_root or repo_root_from(),
+    )
 
 
 def lane_handler(*args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -1598,7 +1651,7 @@ def assess_sample_binding(
         "schema_version": LOCK_SCHEMA_VERSION,
         "goal_id": GOAL_ID,
         "task_id": TASK_ID,
-        "lock_path": str(resolved),
+        "lock_path": _public_lock_path(resolved, repo_root=root),
         "lock_digest": content_digest(payload),
         "schema_valid": not reasons,
         "sample_binding_valid": not reasons and not missing_identities,
@@ -1842,7 +1895,7 @@ def run_live_verifier_deployment(
         "handler_id": LIVE_HANDLER_ID,
         "authority_ceiling": AUTHORITY_CEILING,
         "authority_scope": AUTHORITY_SCOPE,
-        "lock_path": str(resolved_lock_path),
+        "lock_path": _public_lock_path(resolved_lock_path, repo_root=root),
         "lock_digest": content_digest(payload),
         "receipt_path": str(DEFAULT_LIVE_RECEIPT_RELATIVE),
         "network_used": False,
@@ -1940,10 +1993,7 @@ def run_live_verifier_deployment(
         )
         receipt["sample_vs_live_distinction"] = distinction
         attach_objective_validation_repair(receipt)
-        receipt["receipt_digest_sha256"] = content_digest(
-            {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
-        )
-        return receipt
+        return _finalize_public_receipt(receipt, repo_root=root)
 
     if not sample.get("sample_binding_valid") or operator_artifacts["deployment_blockers"]:
         receipt["execution_mode"] = "blocked_before_live"
@@ -1959,10 +2009,7 @@ def run_live_verifier_deployment(
         )
         receipt["sample_vs_live_distinction"] = distinction
         attach_objective_validation_repair(receipt)
-        receipt["receipt_digest_sha256"] = content_digest(
-            {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
-        )
-        return receipt
+        return _finalize_public_receipt(receipt, repo_root=root)
 
     # Live cryptographic verification corpus against exact lock identities.
     cert = run_deployment_certification(
@@ -1971,7 +2018,7 @@ def run_live_verifier_deployment(
         lock=payload,
         env=env,
     )
-    cert_dict = cert.to_dict()
+    cert_dict = cert.to_dict(repo_root=root)
     receipt["live_verifier_executed"] = True
     receipt["live_execution"] = True
     receipt["execution_mode"] = "live_cryptographic_verifier"
@@ -2204,10 +2251,7 @@ def run_live_verifier_deployment(
     receipt["live_corpus_passed"] = corpus_ok and cert_ok
     # FVT-080 objective validation repair: re-prove FVT-G211 acceptance.
     attach_objective_validation_repair(receipt)
-    receipt["receipt_digest_sha256"] = content_digest(
-        {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
-    )
-    return receipt
+    return _finalize_public_receipt(receipt, repo_root=root)
 
 
 def build_live_deployment_receipt(
@@ -2252,6 +2296,8 @@ def write_live_deployment_receipt(
             env=env,
         )
     )
+    _audit_public_receipt(payload, repo_root=root)
+    payload = _finalize_public_receipt(payload, repo_root=root)
     # Compact: drop any accidental private markers; keep public surfaces only.
     encoded = json.dumps(payload, sort_keys=True, default=str)
     if PRIVATE_SECRET_MARKER in encoded or LIVE_PRIVATE_SECRET_MARKER in encoded:
@@ -2295,7 +2341,10 @@ def certify_zkp_live_verifier_deployment(*args: Any, **kwargs: Any) -> dict[str,
         if isinstance(receipt.get("objective_validation_repair"), Mapping)
         else bool(receipt.get("production_certified"))
     )
-    return receipt
+    return _finalize_public_receipt(
+        receipt,
+        repo_root=repo_root or repo_root_from(),
+    )
 
 
 # ---------------------------------------------------------------------------

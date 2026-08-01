@@ -69,6 +69,59 @@ def test_task_identity_binds_explicit_evidence_outputs() -> None:
     )
 
 
+def test_task_identity_binds_exact_additional_path_authority() -> None:
+    first = _task("REF-001")
+    second = _task("REF-001")
+    first["metadata"] = {
+        **first["metadata"],
+        "allowed paths": "docs/first.json",
+    }
+    second["metadata"] = {
+        **second["metadata"],
+        "allowed paths": "docs/second.json",
+    }
+
+    first_identity = canonical_task_identity(first)
+    second_identity = canonical_task_identity(second)
+    assert first_identity.canonical_task_key != second_identity.canonical_task_key
+    assert first_identity.canonical_task_cid != second_identity.canonical_task_cid
+
+
+def test_task_identity_ignores_rejected_glob_path_authority() -> None:
+    baseline = _task("REF-001")
+    wildcard = _task("REF-001")
+    wildcard["metadata"] = {
+        **wildcard["metadata"],
+        "allowed paths": "*, **, docs/?.json, docs/[ab].json",
+    }
+
+    assert (
+        canonical_task_identity(baseline).canonical_task_cid
+        == canonical_task_identity(wildcard).canonical_task_cid
+    )
+
+
+def test_provided_task_identity_still_binds_path_authority() -> None:
+    base = {
+        "task_id": "REF-001",
+        "canonical_task_key": "task/v1/" + "a" * 64,
+        "canonical_task_cid": "bafyprovidedidentity",
+    }
+    first = {
+        **base,
+        "metadata": {"allowed paths": "docs/first.json"},
+    }
+    second = {
+        **base,
+        "metadata": {"allowed paths": "docs/second.json"},
+    }
+
+    assert (
+        canonical_task_identity(first).canonical_task_cid
+        != canonical_task_identity(second).canonical_task_cid
+    )
+
+
 def test_explicit_dedupe_key_migrates_legacy_aliases_idempotently() -> None:
     first = _task("REF-001")
     second = _task("OTHER-002")

@@ -33,7 +33,7 @@
     "deny",
     "unknown"
   ],
-  "certificate_digest_sha256": "07c42962b1308242e146e7deaf0a3ec519dc9e640786dd98c46c8d680217caf2",
+  "certificate_digest_sha256": "d87734106021fd1f932598e5ea7e185bb2e375089ee4d2310ab3a793ddbd39a8",
   "certified": true,
   "goal_id": "FVT-G209",
   "handler_id": "external_authorization_vendor_certification@1",
@@ -66,7 +66,7 @@
     "strict_installation_selects_exact_pins": true
   },
   "program": "formal-verification-tactician/authorization-vendor-toolchains",
-  "receipt_digest_sha256": "3c6ca27e36aa90582b0a73b3f9ae79952bbc42069921fa3eb90fa290f11443a0",
+  "receipt_digest_sha256": "b421ede25eede91c301c7eb601bddc917d6d835a8b6ea96652c6b2fb12f2a720",
   "repair_task_id": "FVT-073",
   "schema_version": "formal-verification-authorization-vendor-install-receipt/v1",
   "secpal_platform_exception": {
@@ -85,7 +85,7 @@
     "tool_id": "secpal"
   },
   "souffle": {
-    "artifact_sha256": "e0beec9344631e0aa88ad08aef2dc00d1e5dd5fa5746d0b2418af896b7de44dd",
+    "artifact_sha256": "d9db0a7a9b513b96f8702b5094678c5498b01179595788c15b4487d5eb56126d",
     "authority_ceiling": "none",
     "build_dependencies": {
       "bison": ">=3.0",
@@ -97,10 +97,12 @@
       "sqlite3": ">=3.0"
     },
     "certified": true,
-    "executable": "/tmp/authz-vendor-receipt-final-iefckvf7/authorization-vendor/souffle/2.4.1/bin/souffle",
+    "executable": "<managed-tool-path-redacted>/souffle",
+    "executable_basename": "souffle",
     "is_hermetic_shadow": false,
     "is_vendor_build": true,
     "linux_aarch64_supported": true,
+    "managed_executable": true,
     "never_grants_authorization_authority": true,
     "never_grants_theorem_authority": true,
     "platform_id": "linux-aarch64",

@@ -37,6 +37,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Final, Mapping, Sequence
 
+from tools.logic.certification.public_evidence import (
+    public_evidence_audit,
+    public_evidence_projection,
+)
+
 INTERFACE: Final = "LeanSemanticCertification@1"
 SCHEMA_VERSION: Final = "lean-semantic-certification/v1"
 CORPUS_SCHEMA: Final = "lean-semantic-corpus/v1"
@@ -58,11 +63,15 @@ AUTHORITY_SCOPE: Final = "kernel_proof_checking_only"
 
 PROBE_TIMEOUT_SECONDS: Final = 5.0
 CHECK_TIMEOUT_SECONDS: Final = 20.0
+MANAGED_TOOL_PATH_MARKER: Final = "<managed-tool-path-redacted>"
 
 DEFAULT_MANIFEST_RELATIVE: Final = Path(
     "test/fixtures/formal_verification/toolchains/lean/manifest.json"
 )
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
+DEFAULT_FANIN_CERTIFICATE_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_kernel_live_certificate.json"
+)
 
 _SORRY = re.compile(
     r"(?<![A-Za-z0-9_'])(?:sorry|admit|sorryAx)(?![A-Za-z0-9_'])"
@@ -224,6 +233,38 @@ def content_digest(payload: Any) -> str:
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _managed_executable_reference(value: object) -> tuple[str | None, str | None]:
+    """Return a portable kernel executable marker and useful basename."""
+
+    if value in (None, ""):
+        return None, None
+    basename = Path(str(value)).name
+    return f"{MANAGED_TOOL_PATH_MARKER}/{basename}", basename
+
+
+def _finalize_public_evidence(
+    value: Mapping[str, Any],
+    *,
+    repo_root: Path,
+    digest_field: str,
+) -> dict[str, Any]:
+    """Project a kernel receipt before computing its outer digest."""
+
+    projected = public_evidence_projection(dict(value), repo_root=repo_root)
+    if not isinstance(projected, dict):
+        raise RuntimeError("kernel public evidence projection must be an object")
+    audit = public_evidence_audit(projected, repo_root=repo_root)
+    if not audit.get("satisfied"):
+        raise RuntimeError(
+            "unsafe kernel public evidence: "
+            + ",".join(str(item) for item in audit.get("failures") or [])
+        )
+    projected[digest_field] = content_digest(
+        {key: item for key, item in projected.items() if key != digest_field}
+    )
+    return projected
 
 
 def offline_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -1431,10 +1472,15 @@ def build_live_fanin_contribution(
         )
 
     positive = outcomes_by_id.get("true_theorem")
+    public_executable, public_executable_basename = _managed_executable_reference(
+        identity.get("executable_path")
+    )
     bindings = {
         "kernel_id": FANIN_KERNEL_ID,
         "tool_id": TOOL_ID,
-        "executable_path": identity.get("executable_path"),
+        "executable_path": public_executable,
+        "executable_basename": public_executable_basename,
+        "managed_executable": public_executable is not None,
         "version_string": identity.get("version_string"),
         "locked_toolchain": LOCKED_TOOLCHAIN,
         "locked_version": LOCKED_VERSION,
@@ -1499,7 +1545,9 @@ def build_live_fanin_contribution(
         "live_source_helper": "check_lean_source",
         "sibling_kernel_substitution": False,
         "advisor_substitution": False,
-        "executable_path": identity.get("executable_path"),
+        "executable_path": public_executable,
+        "executable_basename": public_executable_basename,
+        "managed_executable": public_executable is not None,
         "version_string": identity.get("version_string"),
         "network_used": bool(identity.get("network_used")),
         "install_attempted": bool(identity.get("install_attempted")),
@@ -1528,14 +1576,11 @@ def build_live_fanin_contribution(
             else "Lean pin unavailable; live fan-in contribution incomplete."
         ),
     }
-    contribution["contribution_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in contribution.items()
-            if key != "contribution_digest_sha256"
-        }
+    return _finalize_public_evidence(
+        contribution,
+        repo_root=root,
+        digest_field="contribution_digest_sha256",
     )
-    return contribution
 
 
 def assemble_kernel_live_fanin_certificate(
@@ -1683,14 +1728,40 @@ def assemble_kernel_live_fanin_certificate(
             else "Kernel live fan-in incomplete or blocked; promotion denied."
         ),
     }
-    certificate["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in certificate.items()
-            if key != "receipt_digest_sha256"
-        }
+    return _finalize_public_evidence(
+        certificate,
+        repo_root=root,
+        digest_field="receipt_digest_sha256",
     )
-    return certificate
+
+
+def write_kernel_live_fanin_certificate(
+    certificate: Mapping[str, Any],
+    *,
+    repo_root: Path | None = None,
+    path: Path | None = None,
+) -> Path:
+    """Audit and write a portable kernel live fan-in certificate."""
+
+    root = repo_root or repo_root_from()
+    target = path or (root / DEFAULT_FANIN_CERTIFICATE_RELATIVE)
+    audit = public_evidence_audit(certificate, repo_root=root)
+    if not audit.get("satisfied"):
+        raise RuntimeError(
+            "refusing to write unsafe kernel public evidence: "
+            + ",".join(str(item) for item in audit.get("failures") or [])
+        )
+    payload = _finalize_public_evidence(
+        certificate,
+        repo_root=root,
+        digest_field="receipt_digest_sha256",
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return target
 
 
 # ---------------------------------------------------------------------------
@@ -1812,5 +1883,6 @@ __all__ = [
     "live_fanin_case_recipes",
     "build_live_fanin_contribution",
     "assemble_kernel_live_fanin_certificate",
+    "write_kernel_live_fanin_certificate",
     "main",
 ]

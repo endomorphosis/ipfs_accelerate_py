@@ -421,6 +421,94 @@ def test_assembled_certificate_binds_all_kernels(
         assert cert["evidence"]["objective_validation_repair"] is True
 
 
+def test_kernel_fanin_public_evidence_is_portable_and_self_digesting(
+    lean_cert,
+    rocq_cert,
+    isabelle_cert,
+    lean_contribution: dict[str, Any],
+    rocq_contribution: dict[str, Any],
+    isabelle_contribution: dict[str, Any],
+    assembled_certificate: dict[str, Any],
+) -> None:
+    contributions = (
+        (lean_cert, lean_contribution),
+        (rocq_cert, rocq_contribution),
+        (isabelle_cert, isabelle_contribution),
+    )
+    for module, contribution in contributions:
+        encoded = json.dumps(contribution, sort_keys=True)
+        assert str(REPO_ROOT) not in encoded
+        assert module.public_evidence_audit(
+            contribution, repo_root=REPO_ROOT
+        )["satisfied"] is True
+        assert contribution["contribution_digest_sha256"] == module.content_digest(
+            {
+                key: value
+                for key, value in contribution.items()
+                if key != "contribution_digest_sha256"
+            }
+        )
+        executable = contribution.get("executable_path")
+        if executable:
+            assert executable == (
+                f"<managed-tool-path-redacted>/"
+                f"{contribution['executable_basename']}"
+            )
+            assert contribution["managed_executable"] is True
+
+    dependencies = rocq_contribution["bindings"]["dependency_digests"]
+    assert dependencies["isolated_opam_root"] == "<isolated-opam-root-redacted>"
+    assert dependencies["isolated_opam_root_portable"] is True
+    assert dependencies["isolated_opam_root_authoritative"] is False
+    if dependencies.get("opam_executable_path"):
+        assert dependencies["opam_executable_path"] == (
+            f"<managed-tool-path-redacted>/"
+            f"{dependencies['opam_executable_basename']}"
+        )
+
+    encoded_certificate = json.dumps(assembled_certificate, sort_keys=True)
+    assert str(REPO_ROOT) not in encoded_certificate
+    assert lean_cert.public_evidence_audit(
+        assembled_certificate, repo_root=REPO_ROOT
+    )["satisfied"] is True
+    assert assembled_certificate["receipt_digest_sha256"] == lean_cert.content_digest(
+        {
+            key: value
+            for key, value in assembled_certificate.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+
+
+def test_kernel_fanin_writer_audits_before_durable_write(
+    lean_cert,
+    assembled_certificate: dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "kernel-live-certificate.json"
+    written = lean_cert.write_kernel_live_fanin_certificate(
+        assembled_certificate,
+        repo_root=REPO_ROOT,
+        path=target,
+    )
+    assert written == target
+    loaded = json.loads(target.read_text(encoding="utf-8"))
+    assert loaded["receipt_digest_sha256"] == (
+        assembled_certificate["receipt_digest_sha256"]
+    )
+
+    unsafe = dict(assembled_certificate)
+    unsafe["repo_root"] = "/home/example/private/kernel-worktree"
+    refused = tmp_path / "unsafe-kernel-live-certificate.json"
+    with pytest.raises(RuntimeError, match="unsafe kernel public evidence"):
+        lean_cert.write_kernel_live_fanin_certificate(
+            unsafe,
+            repo_root=REPO_ROOT,
+            path=refused,
+        )
+    assert not refused.exists()
+
+
 def test_checked_in_certificate_matches_live_when_all_usable(
     assembled_certificate: dict[str, Any],
     lean_contribution: dict[str, Any],

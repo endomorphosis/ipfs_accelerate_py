@@ -31,6 +31,7 @@ from ..context.context_compiler import (
     ContextCompilationReceipt,
     ContextCompileResult,
     ContextCompiler,
+    ContextDeltaBudgetError,
     ContextDeltaResult,
     ContextExpansionCancelled,
     RequiredContextOverflowError,
@@ -134,6 +135,7 @@ from ..task_sources.task_identity import (
     TaskIdentity,
     canonical_content_cid,
     canonical_task_identity,
+    normalize_exact_authorized_paths,
 )
 from ..task_sources.task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
@@ -2437,6 +2439,14 @@ def task_declared_output_paths(task: PortalTask) -> tuple[str, ...]:
                 *task_evidence_output_paths(task),
             ]
         )
+    )
+
+
+def task_additional_allowed_paths(task: PortalTask) -> tuple[str, ...]:
+    """Return safe exact edit paths that are authorized but not mandatory."""
+
+    return normalize_exact_authorized_paths(
+        task.metadata.get("allowed paths", "")
     )
 
 
@@ -5757,7 +5767,6 @@ class PortalImplementationDaemon:
         can keep those scans outside the exclusive lease.
         """
 
-        resolved_task_id = task.task_id if task is not None else task_id
         missing_ephemeral_before = (
             self._missing_ephemeral_workspace_shared_snapshot(
                 workspace_path,
@@ -22803,8 +22812,11 @@ class PortalImplementationDaemon:
     def _proposal_scope_paths(task: PortalTask) -> tuple[str, ...]:
         """Return exact repository paths owned by a task's output declaration."""
 
-        raw_paths: list[str] = list(task_declared_output_paths(task))
-        for metadata_name in ("predicted files", "allowed paths"):
+        raw_paths: list[str] = [
+            *task_declared_output_paths(task),
+            *task_additional_allowed_paths(task),
+        ]
+        for metadata_name in ("predicted files",):
             raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
         normalized: set[str] = set()
         for raw_path in raw_paths:
@@ -40333,6 +40345,265 @@ class PortalImplementationDaemon:
             unresolved_requirements=unresolved,
         )
 
+    @staticmethod
+    def _implementation_retry_diagnostic_projections(
+        diagnostic: ImplementationDiagnosticReceipt,
+    ) -> tuple[tuple[str, dict[str, Any]], ...]:
+        """Return progressively smaller, receipt-bound retry evidence.
+
+        The durable diagnostic remains complete and content addressed on disk.
+        A provider retry only needs a bounded semantic projection because the
+        retry capsule separately binds the exact diagnostic receipt, changed
+        paths/symbols, and unresolved requirements.  Progressive projections
+        prevent a verbose validation transcript from making an otherwise
+        valid retry impossible while retaining a minimal actionable failure.
+        """
+
+        failure = dict(diagnostic.failure)
+
+        def bounded_text(value: Any, *, limit: int) -> str:
+            text = str(value or "").strip()
+            if len(text) <= limit:
+                return text
+            marker = "...<truncated>"
+            return text[: max(0, limit - len(marker))].rstrip() + marker
+
+        def bounded_strings(
+            value: Any,
+            *,
+            count: int,
+            width: int,
+        ) -> list[str]:
+            if isinstance(value, Sequence) and not isinstance(
+                value,
+                (str, bytes, bytearray),
+            ):
+                candidates = value
+            elif value not in (None, ""):
+                candidates = (value,)
+            else:
+                candidates = ()
+            return [
+                bounded_text(item, limit=width)
+                for item in candidates[:count]
+                if bounded_text(item, limit=width)
+            ]
+
+        def selected_scalar_fields(
+            source: Mapping[str, Any],
+            names: Sequence[str],
+        ) -> dict[str, Any]:
+            return {
+                name: source[name]
+                for name in names
+                if source.get(name) not in (None, "", (), [], {})
+            }
+
+        compact_failure = selected_scalar_fields(
+            failure,
+            (
+                "kind",
+                "reason",
+                "returncode",
+                "exception_type",
+                "phase",
+                "counterexample_id",
+                "timeout_reason",
+                "timeout_policy",
+            ),
+        )
+        for name in (
+            "counterexample_ids",
+            "reason_codes",
+            "failed_commands",
+            "failing_checks",
+            "missing_outputs",
+        ):
+            values = bounded_strings(
+                failure.get(name),
+                count=16,
+                width=1_024,
+            )
+            if values:
+                compact_failure[name] = values
+        addendum = bounded_text(
+            failure.get("next_attempt_prompt_addendum"),
+            limit=2_048,
+        )
+        if addendum:
+            compact_failure["next_attempt_prompt_addendum"] = addendum
+
+        review = failure.get("failure_review")
+        if isinstance(review, Mapping):
+            compact_review = selected_scalar_fields(
+                review,
+                (
+                    "receipt_id",
+                    "decision",
+                    "accepted",
+                    "policy_version",
+                ),
+            )
+            for name in (
+                "reason_codes",
+                "finding_codes",
+                "missing_expected_outputs",
+                "out_of_scope_paths",
+                "justified_paths",
+                "denied_paths",
+                "failed_commands",
+            ):
+                values = bounded_strings(
+                    review.get(name),
+                    count=16,
+                    width=1_024,
+                )
+                if values:
+                    compact_review[name] = values
+            review_addendum = bounded_text(
+                review.get("next_attempt_prompt_addendum"),
+                limit=2_048,
+            )
+            if review_addendum:
+                compact_review["next_attempt_prompt_addendum"] = (
+                    review_addendum
+                )
+            if compact_review:
+                compact_failure["failure_review"] = compact_review
+
+        validation = failure.get("validation")
+        if isinstance(validation, Mapping):
+            compact_validation = selected_scalar_fields(
+                validation,
+                ("passed", "returncode", "reason"),
+            )
+            for name in ("reason_codes", "failed_commands"):
+                values = bounded_strings(
+                    validation.get(name),
+                    count=16,
+                    width=1_024,
+                )
+                if values:
+                    compact_validation[name] = values
+            if compact_validation:
+                compact_failure["validation"] = compact_validation
+
+        for field_name in ("proposal_gate", "scope_adjudication"):
+            source = failure.get(field_name)
+            if not isinstance(source, Mapping):
+                continue
+            compact = selected_scalar_fields(
+                source,
+                (
+                    "accepted",
+                    "proposal_id",
+                    "policy_id",
+                    "receipt_id",
+                    "repository_tree_id",
+                ),
+            )
+            for name in (
+                "reason_codes",
+                "authorized_paths",
+                "denied_paths",
+            ):
+                values = bounded_strings(
+                    source.get(name),
+                    count=16,
+                    width=1_024,
+                )
+                if values:
+                    compact[name] = values
+            if compact:
+                compact_failure[field_name] = compact
+
+        minimal_failure = selected_scalar_fields(
+            failure,
+            (
+                "kind",
+                "reason",
+                "returncode",
+                "exception_type",
+                "phase",
+                "timeout_reason",
+            ),
+        )
+        minimal_review = review if isinstance(review, Mapping) else {}
+        for output_name, sources in (
+            (
+                "reason_codes",
+                (failure.get("reason_codes"), minimal_review.get("reason_codes")),
+            ),
+            (
+                "missing_outputs",
+                (
+                    failure.get("missing_outputs"),
+                    minimal_review.get("missing_expected_outputs"),
+                ),
+            ),
+            (
+                "denied_paths",
+                (
+                    minimal_review.get("denied_paths"),
+                    (
+                        failure.get("scope_adjudication", {}).get(
+                            "denied_paths"
+                        )
+                        if isinstance(
+                            failure.get("scope_adjudication"),
+                            Mapping,
+                        )
+                        else ()
+                    ),
+                ),
+            ),
+            (
+                "failed_commands",
+                (
+                    failure.get("failed_commands"),
+                    minimal_review.get("failed_commands"),
+                ),
+            ),
+        ):
+            values: list[str] = []
+            for source in sources:
+                values.extend(
+                    bounded_strings(source, count=4, width=256)
+                )
+            values = list(dict.fromkeys(values))[:4]
+            if values:
+                minimal_failure[output_name] = values
+        minimal_addendum = bounded_text(
+            failure.get("next_attempt_prompt_addendum")
+            or minimal_review.get("next_attempt_prompt_addendum"),
+            limit=512,
+        )
+        if minimal_addendum:
+            minimal_failure["next_attempt_prompt_addendum"] = minimal_addendum
+
+        binding = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "implementation-retry-diagnostic-projection@1"
+            ),
+            "diagnostic_receipt_id": diagnostic.receipt_id,
+            "failure_id": diagnostic.failure_id,
+        }
+        candidates = (
+            ("full", diagnostic.to_record()),
+            ("compact", {**binding, "failure": compact_failure}),
+            ("minimal", {**binding, "failure": minimal_failure}),
+        )
+        projections: list[tuple[str, dict[str, Any]]] = []
+        seen: set[str] = set()
+        for name, payload in candidates:
+            encoded = canonical_json(payload)
+            if encoded in seen:
+                continue
+            seen.add(encoded)
+            projections.append((name, payload))
+        return tuple(projections)
+
     def _compile_implementation_retry_context(
         self,
         task: PortalTask,
@@ -40364,17 +40635,6 @@ class PortalImplementationDaemon:
             raise RuntimeError(
                 "implementation retry parent invalidated by changed repository tree"
             )
-        failure_text = canonical_json(diagnostic.to_record())
-        failure_references = build_text_context_references(
-            failure_text,
-            reference_prefix=f"retry-failure-{repair_round}",
-            kind="implementation-failure",
-            repository_id=repository_id,
-            tree_id=tree_id,
-            priority=1_000,
-            chunk_bytes=8_192,
-            coverage_ids=diagnostic.unresolved_requirements,
-        )
         provider_window, configured_budget, prompt_byte_limit = (
             self._implementation_provider_context_window_for_task(task)
         )
@@ -40424,25 +40684,60 @@ class PortalImplementationDaemon:
             provider_max_input_tokens=self.implementation_provider_max_input_tokens,
             provider_max_input_bytes=prompt_byte_limit,
         )
+        result: RetryContextResult | None = None
+        projection_name = ""
+        attempted_projections: list[str] = []
+        last_budget_error: ContextDeltaBudgetError | None = None
         try:
-            result = compile_retry_context(
-                compiler,
-                parent_capsule,
-                prior_decision_id=prior_decision_id,
-                diagnostic_receipt_id=diagnostic.receipt_id,
-                evidence=(*parent_capsule.evidence, *failure_references),
-                failure_evidence_ids=tuple(
-                    item.reference_id for item in failure_references
-                ),
-                changed_files=diagnostic.changed_files,
-                changed_symbols=diagnostic.changed_symbols,
-                unresolved_requirement_ids=diagnostic.unresolved_requirements,
-                repair_round=repair_round,
-                max_repair_rounds=self.implementation_max_repair_rounds,
-                repository_id=repository_id,
-                tree_id=tree_id,
-                cancelled=self.implementation_cancelled,
-            )
+            for (
+                candidate_name,
+                diagnostic_projection,
+            ) in self._implementation_retry_diagnostic_projections(
+                diagnostic
+            ):
+                attempted_projections.append(candidate_name)
+                failure_references = build_text_context_references(
+                    canonical_json(diagnostic_projection),
+                    reference_prefix=f"retry-failure-{repair_round}",
+                    kind="implementation-failure",
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    priority=1_000,
+                    chunk_bytes=8_192,
+                    coverage_ids=diagnostic.unresolved_requirements,
+                )
+                try:
+                    result = compile_retry_context(
+                        compiler,
+                        parent_capsule,
+                        prior_decision_id=prior_decision_id,
+                        diagnostic_receipt_id=diagnostic.receipt_id,
+                        evidence=(
+                            *parent_capsule.evidence,
+                            *failure_references,
+                        ),
+                        failure_evidence_ids=tuple(
+                            item.reference_id
+                            for item in failure_references
+                        ),
+                        changed_files=diagnostic.changed_files,
+                        changed_symbols=diagnostic.changed_symbols,
+                        unresolved_requirement_ids=(
+                            diagnostic.unresolved_requirements
+                        ),
+                        repair_round=repair_round,
+                        max_repair_rounds=(
+                            self.implementation_max_repair_rounds
+                        ),
+                        repository_id=repository_id,
+                        tree_id=tree_id,
+                        cancelled=self.implementation_cancelled,
+                    )
+                except ContextDeltaBudgetError as exc:
+                    last_budget_error = exc
+                    continue
+                projection_name = candidate_name
+                break
         except ContextExpansionCancelled as exc:
             raise ImplementationRetryDeferred(
                 "implementation retry cancelled during compilation"
@@ -40453,6 +40748,11 @@ class PortalImplementationDaemon:
             raise ImplementationRetryDeferred(
                 "implementation context byte budget exhausted"
             ) from exc
+        if result is None:
+            raise ImplementationRetryDeferred(
+                "implementation retry context budget exhausted",
+                backoff_seconds=300,
+            ) from last_budget_error
         self._last_implementation_context = result.delta_result
         self._last_implementation_retry = result
         self._decision_runtime_route(
@@ -40464,6 +40764,8 @@ class PortalImplementationDaemon:
                 "prior_decision_id": prior_decision_id,
                 "diagnostic_receipt_id": diagnostic.receipt_id,
                 "context_receipt_id": result.delta_result.receipt.receipt_id,
+                "diagnostic_projection": projection_name,
+                "diagnostic_projection_attempts": attempted_projections,
             },
         )
         return result
@@ -40481,6 +40783,7 @@ class PortalImplementationDaemon:
             repo_root=self.repo_root,
         )
         declared_output_paths = task_declared_output_paths(task)
+        additional_allowed_paths = task_additional_allowed_paths(task)
         evidence_output_paths = task_evidence_output_paths(task)
         expected_output_paths = (
             tuple(completion_scope)
@@ -40540,6 +40843,11 @@ class PortalImplementationDaemon:
                 *rules,
                 "An explicit validation test target absent from the baseline is an implied task output. Add substantive regression coverage there; placeholders or weakened assertions will fail scope adjudication.",
             )
+        if additional_allowed_paths:
+            rules = (
+                *rules,
+                "Paths declared in Allowed paths may be changed when required by the task, but they are not mandatory expected outputs.",
+            )
         if (
             completion_scope is None
             and len(declared_output_paths) > 3
@@ -40551,9 +40859,15 @@ class PortalImplementationDaemon:
             )
         protected_edit_paths = tuple(self.implementation_protected_paths)
         base_allowed_edit_paths = tuple(
-            completion_scope
+            (
+                *completion_scope,
+                *additional_allowed_paths,
+            )
             if completion_scope is not None
-            else declared_output_paths
+            else (
+                *declared_output_paths,
+                *additional_allowed_paths,
+            )
         )
         allowed_edit_paths = tuple(
             dict.fromkeys(
@@ -40596,6 +40910,8 @@ class PortalImplementationDaemon:
                 if implied_validation_paths
                 else "task_output_and_evidence_exact"
                 if evidence_output_paths
+                else "task_output_and_allowed_exact"
+                if additional_allowed_paths
                 else "task_output_exact"
             ),
             "allowed_paths": allowed_edit_paths,

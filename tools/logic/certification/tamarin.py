@@ -62,6 +62,10 @@ from ipfs_datasets_py.logic.backends.toolchain_roles import (  # noqa: E402
     evaluate_role_aware_promotion,
     get_tool_role,
 )
+from tools.logic.certification.public_evidence import (  # noqa: E402
+    public_evidence_audit,
+    public_evidence_projection,
+)
 from ipfs_datasets_py.logic.software_verification.protocol import (  # noqa: E402
     EquationalTheory,
     ProtocolClaimKind,
@@ -667,7 +671,11 @@ def _redact_strings_deep(value: Any) -> Any:
     return value
 
 
-def compact_live_case_for_certificate(case: Mapping[str, Any]) -> dict[str, Any]:
+def compact_live_case_for_certificate(
+    case: Mapping[str, Any],
+    *,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
     """Shrink one live case for durable certificate storage.
 
     Keeps digests, status, and binding metadata. Drops full source bodies and
@@ -709,17 +717,25 @@ def compact_live_case_for_certificate(case: Mapping[str, Any]) -> dict[str, Any]
                 )
                 del attack_copy[key]
         compact["attack_trace"] = _redact_strings_deep(attack_copy)
-    return _redact_strings_deep(compact)
+    projected = public_evidence_projection(
+        compact,
+        repo_root=repo_root,
+    )
+    if not isinstance(projected, dict):
+        raise ValueError("protocol case public evidence projection returned a non-mapping")
+    return projected
 
 
 def compact_live_tool_receipt_for_certificate(
     receipt: Mapping[str, Any],
+    *,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     """Produce a durable, host-portable tool receipt for the protocol certificate."""
 
     payload = dict(receipt)
     payload["cases"] = [
-        compact_live_case_for_certificate(case)
+        compact_live_case_for_certificate(case, repo_root=repo_root)
         for case in (payload.get("cases") or [])
         if isinstance(case, Mapping)
     ]
@@ -791,8 +807,18 @@ def compact_live_tool_receipt_for_certificate(
     payload.pop("repo_root", None)
     payload["certificate_compact"] = True
     payload["repair_task_id"] = LIVE_REPAIR_TASK_ID
-    payload = _redact_strings_deep(payload)
     payload.pop("receipt_digest_sha256", None)
+    projected = public_evidence_projection(payload, repo_root=repo_root)
+    if not isinstance(projected, dict):
+        raise ValueError("protocol public evidence projection returned a non-mapping")
+    payload = projected
+    audit = public_evidence_audit(payload, repo_root=repo_root)
+    if not audit["satisfied"]:
+        raise ValueError(
+            "protocol tool receipt public evidence is unsafe: "
+            + ", ".join(audit["failures"])
+        )
+    payload["public_evidence_policy"] = audit
     payload["receipt_digest_sha256"] = content_digest(
         {
             key: value
@@ -2585,8 +2611,14 @@ def build_protocol_live_certificate(
 
     # Durable certificate stores compact per-tool receipts (digests/previews),
     # not full live stdout envelopes or host-absolute managed paths.
-    tamarin_public = compact_live_tool_receipt_for_certificate(tamarin_payload)
-    proverif_public = compact_live_tool_receipt_for_certificate(proverif_payload)
+    tamarin_public = compact_live_tool_receipt_for_certificate(
+        tamarin_payload,
+        repo_root=root,
+    )
+    proverif_public = compact_live_tool_receipt_for_certificate(
+        proverif_payload,
+        repo_root=root,
+    )
 
     capability_gaps = [
         gap
@@ -2686,6 +2718,17 @@ def build_protocol_live_certificate(
             )
         ),
     }
+    projected = public_evidence_projection(certificate, repo_root=root)
+    if not isinstance(projected, dict):
+        raise ValueError("protocol public evidence projection returned a non-mapping")
+    certificate = projected
+    audit = public_evidence_audit(certificate, repo_root=root)
+    if not audit["satisfied"]:
+        raise ValueError(
+            "protocol certificate public evidence is unsafe: "
+            + ", ".join(audit["failures"])
+        )
+    certificate["public_evidence_policy"] = audit
     certificate["certificate_digest_sha256"] = content_digest(
         {
             key: value
@@ -2712,6 +2755,12 @@ def write_protocol_live_certificate(
         if certificate is not None
         else build_protocol_live_certificate(repo_root=root, env=env)
     )
+    audit = public_evidence_audit(payload, repo_root=root)
+    if not audit["satisfied"]:
+        raise ValueError(
+            "refusing to write unsafe protocol public evidence: "
+            + ", ".join(audit["failures"])
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     tmp_path = path.with_suffix(path.suffix + ".tmp")

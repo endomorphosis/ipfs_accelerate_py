@@ -607,6 +607,59 @@ def test_write_vendor_receipt_roundtrip(
     assert loaded["repair_task_id"] == VENDOR_REPAIR_TASK_ID
 
 
+def test_public_vendor_receipt_is_portable_and_self_digesting(
+    certifier, vendor_certificate: dict[str, Any], install_root: Path
+) -> None:
+    receipt = certifier.build_vendor_install_receipt(
+        vendor_certificate,
+        repo_root=REPO_ROOT,
+    )
+    encoded = json.dumps(receipt, sort_keys=True)
+    executable = receipt["souffle"]["executable"]
+    assert executable == "<managed-tool-path-redacted>/souffle"
+    assert receipt["souffle"]["executable_basename"] == "souffle"
+    assert receipt["souffle"]["managed_executable"] is True
+    assert str(install_root) not in encoded
+    assert str(REPO_ROOT) not in encoded
+    assert certifier.public_evidence_audit(
+        receipt, repo_root=REPO_ROOT
+    )["satisfied"] is True
+    assert receipt["receipt_digest_sha256"] == certifier._stable_json_digest(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+
+
+def test_vendor_receipt_writer_fails_closed_on_public_evidence_audit(
+    certifier,
+    vendor_certificate: dict[str, Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "unsafe-authorization-receipt.json"
+    monkeypatch.setattr(
+        certifier,
+        "public_evidence_audit",
+        lambda *_args, **_kwargs: {
+            "satisfied": False,
+            "failures": ["host_private_path"],
+        },
+    )
+    with pytest.raises(
+        certifier.ExternalAuthorizationCertificationError,
+        match="unsafe public authorization receipt",
+    ):
+        certifier.write_vendor_install_receipt(
+            vendor_certificate,
+            repo_root=REPO_ROOT,
+            receipt_path=path,
+        )
+    assert not path.exists()
+
+
 # ---------------------------------------------------------------------------
 # Objective validation repair (FVT-073 / FVT-G209)
 # ---------------------------------------------------------------------------

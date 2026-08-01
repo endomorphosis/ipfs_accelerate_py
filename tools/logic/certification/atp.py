@@ -66,6 +66,10 @@ from ipfs_datasets_py.logic.backends.toolchain_roles import (  # noqa: E402
     evaluate_role_aware_promotion,
     get_tool_role,
 )
+from tools.logic.certification.public_evidence import (  # noqa: E402
+    public_evidence_audit,
+    public_evidence_projection,
+)
 
 try:  # pragma: no cover - worktree packaging varies
     from tools.logic.certification.roles import (  # type: ignore
@@ -1472,6 +1476,13 @@ def certify_atp_toolchain(*args: Any, **kwargs: Any) -> dict[str, Any]:
     )
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
+    receipt["receipt_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
     return receipt
 
 
@@ -2706,8 +2717,9 @@ def build_live_semantic_receipt(
     vampire_executable: str | None = None,
     eprover_executable: str | None = None,
 ) -> dict[str, Any]:
+    root = repo_root or repo_root_from()
     cert = run_live_semantic_suite(
-        repo_root=repo_root,
+        repo_root=root,
         manifest=manifest,
         env=env,
         vampire_executable=vampire_executable,
@@ -2775,12 +2787,27 @@ def build_live_semantic_receipt(
         compact.pop("stdout", None)
         compact.pop("stderr", None)
         compact["raw_szs_output_digest"] = content_digest(raw)
-        compact["raw_szs_output_preview"] = raw[:400]
+        compact["raw_szs_output_preview"] = public_evidence_projection(
+            raw[:400],
+            repo_root=root,
+        )
         # Durable cert binds digests; absolute host paths are not authoritative.
         if compact.get("executable_path") and compact.get("binary_digest"):
             compact["executable_path_binding"] = "digest_bound"
         compact_cases.append(compact)
     payload["cases"] = compact_cases
+    payload.pop("receipt_digest_sha256", None)
+    projected = public_evidence_projection(payload, repo_root=root)
+    if not isinstance(projected, dict):  # defensive: receipt roots are mappings
+        raise ValueError("ATP public evidence projection returned a non-mapping")
+    payload = projected
+    audit = public_evidence_audit(payload, repo_root=root)
+    if not audit["satisfied"]:
+        raise ValueError(
+            "ATP public evidence projection is unsafe: "
+            + ", ".join(audit["failures"])
+        )
+    payload["public_evidence_policy"] = audit
     payload["receipt_digest_sha256"] = content_digest(
         {
             key: value
@@ -2831,6 +2858,12 @@ def write_live_certificate(
             eprover_executable=eprover_executable,
         )
     )
+    audit = public_evidence_audit(payload, repo_root=root)
+    if not audit["satisfied"]:
+        raise ValueError(
+            "refusing to write unsafe ATP public evidence: "
+            + ", ".join(audit["failures"])
+        )
     target.parent.mkdir(parents=True, exist_ok=True)
 
     if (

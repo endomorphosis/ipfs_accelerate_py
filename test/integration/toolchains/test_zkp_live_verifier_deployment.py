@@ -303,6 +303,46 @@ def test_live_receipt_schema_and_policy(live_receipt: dict[str, Any]) -> None:
     ) == 71  # sha256:<64hex>
 
 
+def test_live_public_receipt_uses_portable_lock_paths_and_outer_digest(
+    zkp_cert, live_receipt: dict[str, Any]
+) -> None:
+    expected = "config/formal_verification_zkp_deployment.lock.json"
+    encoded = json.dumps(live_receipt, sort_keys=True)
+    assert live_receipt["lock_path"] == expected
+    assert live_receipt["sample_binding"]["lock_path"] == expected
+    assert str(REPO_ROOT) not in encoded
+    assert zkp_cert.public_evidence_audit(
+        live_receipt, repo_root=REPO_ROOT
+    )["satisfied"] is True
+    assert live_receipt["receipt_digest_sha256"] == zkp_cert.content_digest(
+        {
+            key: value
+            for key, value in live_receipt.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+
+
+def test_live_receipt_writer_fails_closed_on_host_path(
+    zkp_cert,
+    live_receipt: dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    unsafe = dict(live_receipt)
+    unsafe["lock_path"] = "/home/example/private/zkp.lock.json"
+    target = tmp_path / "unsafe-zkp-live-receipt.json"
+    with pytest.raises(
+        zkp_cert.ZKPDeploymentCertificationError,
+        match="unsafe public ZKP receipt",
+    ):
+        zkp_cert.write_live_deployment_receipt(
+            unsafe,
+            repo_root=REPO_ROOT,
+            path=target,
+        )
+    assert not target.exists()
+
+
 def test_live_production_certified(live_receipt: dict[str, Any]) -> None:
     assert live_receipt["production_certified"] is True
     assert live_receipt["certified"] is True

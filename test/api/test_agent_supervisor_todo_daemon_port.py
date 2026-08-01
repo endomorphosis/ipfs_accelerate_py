@@ -10973,6 +10973,81 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
     assert events[-1]["status"] == "stopped"
 
 
+def test_implementation_supervisor_bounds_outer_recovery_without_progress(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+
+    class CrashingLoop:
+        calls = 0
+
+        def __init__(self, config, *, watchdog_hook=None):
+            self.config = config
+            self.watchdog_hook = watchdog_hook
+
+        def run(self):
+            CrashingLoop.calls += 1
+            return SupervisorLoopResult(
+                status="child_exited",
+                restart_count=1,
+                last_exit_code=1,
+                last_recycle_reason="child_exited",
+                last_run_id=f"crash-{CrashingLoop.calls}",
+            )
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            check_interval=0.01,
+            max_restarts=1,
+            repo_root=repo,
+        )
+    )
+    supervisor.shared_supervisor_loop_class = CrashingLoop
+    supervisor.ensure_event_log_file = lambda: {
+        "repaired": False,
+        "reason": "valid",
+    }
+    supervisor.ensure_managed_daemon_pid_file = lambda: {
+        "adopted": False,
+        "reason": "not_running",
+    }
+    run_once_calls: list[bool] = []
+
+    def fake_run_once(*, include_refill=True):
+        run_once_calls.append(include_refill)
+        return {"stuck": False, "active_task_id": "ACCEL-001"}
+
+    supervisor.run_once = fake_run_once
+    supervisor._supervisor_loop_recovery_delay_seconds = lambda: 0.0
+
+    supervisor.run_forever()
+
+    assert CrashingLoop.calls == 2
+    assert run_once_calls == [False, True, True]
+    events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    assert events[-1]["type"] == "supervisor_loop_recovery_exhausted"
+    assert events[-1]["no_progress_recovery_count"] == 2
+    assert events[-1]["no_progress_recovery_limit"] == 2
+    assert sum(
+        event["type"] == "supervisor_loop_restarting_after_recovery"
+        for event in events
+    ) == 1
+
+
 def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
     tmp_path, monkeypatch
 ):
@@ -20201,6 +20276,93 @@ def test_general_task_authorizes_identity_bound_evidence_outputs(tmp_path):
         task_declared_output_paths(task)
     )
     assert capsule["scope"]["evidence_output_paths"] == list(manifests)
+
+
+def test_general_task_authorizes_nonmandatory_allowed_paths(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    task = PortalTask(
+        task_id="FVT-081",
+        title="Build a release candidate",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="completion",
+        outputs=["docs/release-candidate.json"],
+        metadata={
+            "allowed paths": (
+                "docs/completion-receipt.json, ../outside.json"
+            ),
+        },
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+    )
+
+    assert daemon._proposal_scope_paths(task) == (
+        "docs/completion-receipt.json",
+        "docs/release-candidate.json",
+    )
+    capsule = json.loads(daemon._build_implementation_prompt(task, attempt=1))
+    edit_policy = capsule["authority"]["edit_policy"]
+    assert edit_policy["mode"] == "task_output_and_allowed_exact"
+    assert edit_policy["allowed_paths"] == [
+        "docs/release-candidate.json",
+        "docs/completion-receipt.json",
+    ]
+    assert capsule["scope"]["expected_outputs"] == [
+        "docs/release-candidate.json"
+    ]
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    ("*", "**", "docs/?.json", "docs/[ab].json"),
+)
+def test_general_task_rejects_glob_allowed_path_authority(
+    tmp_path,
+    unsafe_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    task = PortalTask(
+        task_id="FVT-999",
+        title="Keep optional authority exact",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="completion",
+        outputs=["docs/release-candidate.json"],
+        metadata={"allowed paths": unsafe_path},
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+    )
+
+    assert daemon._proposal_scope_paths(task) == (
+        "docs/release-candidate.json",
+    )
+    capsule = json.loads(daemon._build_implementation_prompt(task, attempt=1))
+    assert capsule["authority"]["edit_policy"]["allowed_paths"] == [
+        "docs/release-candidate.json"
+    ]
+    assert capsule["authority"]["edit_policy"]["mode"] == "task_output_exact"
 
 
 @pytest.mark.parametrize(

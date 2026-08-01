@@ -4,7 +4,7 @@
   "block_reasons": [],
   "capability_gaps": [],
   "certificate_compact": true,
-  "certificate_digest_sha256": "c72e1eae8c9e3059ac576d2811c4f4d9db08f23ddedb4d89b7f3b2c5a35ed3f9",
+  "certificate_digest_sha256": "dc3b9d2d8e947a96d4c1a3e1be4c6c73e4236f765fbf378005a3f05e4ca1600f",
   "engine_independence": {
     "independence_ok": true,
     "proverif_cannot_substitute_tamarin": true,
@@ -34,6 +34,18 @@
   "production_certified": true,
   "program": "formal-verification-tactician/protocol-live-semantics",
   "promotion_blocked": false,
+  "public_evidence_policy": {
+    "failures": [],
+    "host_private_paths_forbidden": true,
+    "max_public_string_bytes": 8192,
+    "raw_process_output_forbidden": true,
+    "raw_secret_or_witness_forbidden": true,
+    "repo_root_paths_forbidden": true,
+    "safe": true,
+    "satisfied": true,
+    "violation_count": 0,
+    "violations": []
+  },
   "repair_task_id": "FVT-075",
   "required_case_kinds": [
     "attack",
@@ -243,7 +255,7 @@
             }
           ],
           "detail": "Live secure secrecy and authentication queries",
-          "elapsed_ms": 4,
+          "elapsed_ms": 6,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "secure",
@@ -439,7 +451,7 @@
             }
           ],
           "detail": "Premise/conclusion mutation must not remain secure",
-          "elapsed_ms": 4,
+          "elapsed_ms": 5,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "rejected_or_quarantined",
@@ -610,9 +622,9 @@
           "kind": "malformed",
           "live_executed": true,
           "matched": true,
-          "output_digest": "c4f2698bb62bcc43320cf88acf632119c3041d24002affe0ccca895e901a4619",
+          "output_digest": "017557ce308ad9cf2c22af4a64ee83e7e0204857945e7f2b61934d5db6fe3e99",
           "query": "parse/prove malformed model",
-          "raw_output_preview": "File \"/tmp/proverif-live-81sxh8kn/live_malformed_model.pv\", line 1, characters 1-4:\nError: Syntax error.\n\n",
+          "raw_output_preview": "File \"<host-path-redacted>/live_malformed_model.pv\", line 1, characters 1-4:\nError: Syntax error.\n\n",
           "reason_codes": [
             "inconclusive"
           ],
@@ -761,7 +773,7 @@
             }
           ],
           "detail": "Mixed true/false claims quarantine or attack",
-          "elapsed_ms": 5,
+          "elapsed_ms": 4,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "rejected_or_quarantined",
@@ -805,7 +817,7 @@
             }
           ],
           "detail": "Bounded search cannot-prove quarantines",
-          "elapsed_ms": 3,
+          "elapsed_ms": 5,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "quarantined",
@@ -998,7 +1010,7 @@
             "query",
             "source_digest"
           ],
-          "bindings_digest": "3c1e474a21534ab46f5003bfc6932c322ef5686ed6d457ce6c838c6d2218eb11",
+          "bindings_digest": "cb37bedf15019d01ab1b70d4ac726319a7777911962ed103a09b94d403f2abfb",
           "check_id": "proverif.live.live_malformed_model",
           "detail": "Malformed model never reports SECURE",
           "expected": "quarantined",
@@ -1173,7 +1185,19 @@
       "proverif_executable": "<managed-tool-path-redacted>/proverif",
       "proverif_usable": true,
       "proverif_version_string": "<managed-tool-path-redacted>/proverif: unknown option '--version'.",
-      "receipt_digest_sha256": "d4df637eb7c8c3531912ec4c2d2ec1737466411b95f42640860643f7109fce90",
+      "public_evidence_policy": {
+        "failures": [],
+        "host_private_paths_forbidden": true,
+        "max_public_string_bytes": 8192,
+        "raw_process_output_forbidden": true,
+        "raw_secret_or_witness_forbidden": true,
+        "repo_root_paths_forbidden": true,
+        "safe": true,
+        "satisfied": true,
+        "violation_count": 0,
+        "violations": []
+      },
+      "receipt_digest_sha256": "47bb31b99ae99b43d83801583cbdbd4e202b40283c43c1cb560968c650cfc2d1",
       "repair_task_id": "FVT-075",
       "schema_version": "protocol-live-semantic-certification/v1",
       "support_tool_id": "opam",
@@ -1214,7 +1238,7 @@
         },
         "query": "prove secrecy_claim + auth_claim",
         "raw_output": {
-          "output_digest": "62566ebd65529410e90b167cb13705a890efd17edaa4589c6efd58f152ac5b4c",
+          "output_digest": "e9deecf478a4807d9da07ef1e6b3026ec61a4bccd98d2e797ff97331ebdb6cba",
           "raw_output_cap_bytes": 8192
         },
         "source": {
@@ -1233,7 +1257,7 @@
         "witnesses_traces": {
           "live_attack_leak": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "11e37524fd68833c18a1d6d1355b3a408c19c7f07ed443db73431daa3cd5b65d",
+            "raw_digest": "780ba92e41bd8c54267c33c15efbb1ac53a4470b4f305a0ac44c9bdc0d0c1430",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1247,11 +1271,11 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:c0f40ef6c7b9bc614e6fc97c6bfdb18e428ded0a3bad45fb095d9ceea06e65cc"
+            "trace_id": "attack-trace:4a6f1618e1d2b9a8ff7e3f7dfb5f10671294213438eac9686d9ffe97d8c0d4ab"
           },
           "live_disagreement": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "e1d270c2e7836af6fcc72d52b6a7b71716720245a5ed32fea27e43a7cc215a5a",
+            "raw_digest": "d18e95931c7d032051b34cbc54902a530043a0620d9d41dac89acb377001c6d9",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1265,11 +1289,11 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:f91f25c8587fdf1a0970dc0859fdf9fc8f479c02eae4c61533ec7a3be2475447"
+            "trace_id": "attack-trace:e9dbfb0a1cffe362c45cf6d05a269141bb7650af6298e558166dbae624f884d5"
           },
           "live_mutated_claim": {
             "claim_id": "claim:auth",
-            "raw_digest": "ce7f12defced46d31a140574b8d1dd3a7e803119b0f7090212490a85efbd4177",
+            "raw_digest": "7ea9c86f9b0e1e983b0d2854a59578dcf0419a7aace6f93cbaa0349b5406865f",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1283,11 +1307,11 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:e8c5cc21efe602e0dca4d91f1b8326f9838577c511806e0df881f7508eee6f8c"
+            "trace_id": "attack-trace:82ef0f60c1e4d57b4d6bbeab4a35d5f03154c1b627d7dd713369e6c25d1c6d18"
           },
           "live_mutated_protocol": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "97a0cb4afce8639f99cfcdf33930fc8c202023826def213d7229b65b4b214fb5",
+            "raw_digest": "9965a7cd3d8995a54e25c637e922370102673464824f4cf8a41ba758c6302e9b",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1301,7 +1325,7 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:5c48074e7c7c5a4d0b398dbfbc5ff702d12d3304a3e5a08dc7eb242d15a3eaaf"
+            "trace_id": "attack-trace:03da5ecf228a52a7a783336e26473361b094f24be6751eb3942d63f596eb728b"
           }
         }
       },
@@ -1337,14 +1361,14 @@
             }
           ],
           "detail": "Live secure secrecy and authentication lemmas",
-          "elapsed_ms": 139,
+          "elapsed_ms": 129,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "secure",
           "kind": "secure",
           "live_executed": true,
           "matched": true,
-          "output_digest": "62566ebd65529410e90b167cb13705a890efd17edaa4589c6efd58f152ac5b4c",
+          "output_digest": "e9deecf478a4807d9da07ef1e6b3026ec61a4bccd98d2e797ff97331ebdb6cba",
           "query": "prove secrecy_claim + auth_claim",
           "raw_output_preview": "theory LiveSecureChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( ",
           "reason_codes": [],
@@ -1364,7 +1388,7 @@
           ],
           "attack_trace": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "11e37524fd68833c18a1d6d1355b3a408c19c7f07ed443db73431daa3cd5b65d",
+            "raw_digest": "780ba92e41bd8c54267c33c15efbb1ac53a4470b4f305a0ac44c9bdc0d0c1430",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1378,7 +1402,7 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:c0f40ef6c7b9bc614e6fc97c6bfdb18e428ded0a3bad45fb095d9ceea06e65cc"
+            "trace_id": "attack-trace:4a6f1618e1d2b9a8ff7e3f7dfb5f10671294213438eac9686d9ffe97d8c0d4ab"
           },
           "bounds": {
             "timeout_seconds": 60.0
@@ -1388,7 +1412,7 @@
             {
               "attack_trace": {
                 "claim_id": "claim:secrecy",
-                "raw_digest": "11e37524fd68833c18a1d6d1355b3a408c19c7f07ed443db73431daa3cd5b65d",
+                "raw_digest": "780ba92e41bd8c54267c33c15efbb1ac53a4470b4f305a0ac44c9bdc0d0c1430",
                 "replay": [
                   "0:marker:falsified:"
                 ],
@@ -1402,7 +1426,7 @@
                   }
                 ],
                 "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:c0f40ef6c7b9bc614e6fc97c6bfdb18e428ded0a3bad45fb095d9ceea06e65cc"
+                "trace_id": "attack-trace:4a6f1618e1d2b9a8ff7e3f7dfb5f10671294213438eac9686d9ffe97d8c0d4ab"
               },
               "claim_id": "claim:secrecy",
               "lemma_name": "secrecy_claim",
@@ -1411,14 +1435,14 @@
             }
           ],
           "detail": "Live concrete attack: secret leaked on the network",
-          "elapsed_ms": 126,
+          "elapsed_ms": 128,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "attack",
           "kind": "attack",
           "live_executed": true,
           "matched": true,
-          "output_digest": "2bcdaf8f56741166187bc67f79223bbe5156d2bc82b243cefbcded0b59be2ab7",
+          "output_digest": "6975d6dc2bfb9750df7c37c344125185fd98521e6398381664171e13463d9867",
           "query": "prove secrecy_claim (expect attack)",
           "raw_output_preview": "theory LiveAttackChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k )",
           "reason_codes": [],
@@ -1439,7 +1463,7 @@
           ],
           "attack_trace": {
             "claim_id": "claim:auth",
-            "raw_digest": "ce7f12defced46d31a140574b8d1dd3a7e803119b0f7090212490a85efbd4177",
+            "raw_digest": "7ea9c86f9b0e1e983b0d2854a59578dcf0419a7aace6f93cbaa0349b5406865f",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1453,7 +1477,7 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:e8c5cc21efe602e0dca4d91f1b8326f9838577c511806e0df881f7508eee6f8c"
+            "trace_id": "attack-trace:82ef0f60c1e4d57b4d6bbeab4a35d5f03154c1b627d7dd713369e6c25d1c6d18"
           },
           "bounds": {
             "timeout_seconds": 60.0
@@ -1470,7 +1494,7 @@
             {
               "attack_trace": {
                 "claim_id": "claim:auth",
-                "raw_digest": "ce7f12defced46d31a140574b8d1dd3a7e803119b0f7090212490a85efbd4177",
+                "raw_digest": "7ea9c86f9b0e1e983b0d2854a59578dcf0419a7aace6f93cbaa0349b5406865f",
                 "replay": [
                   "0:marker:falsified:"
                 ],
@@ -1484,7 +1508,7 @@
                   }
                 ],
                 "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:e8c5cc21efe602e0dca4d91f1b8326f9838577c511806e0df881f7508eee6f8c"
+                "trace_id": "attack-trace:82ef0f60c1e4d57b4d6bbeab4a35d5f03154c1b627d7dd713369e6c25d1c6d18"
               },
               "claim_id": "claim:auth",
               "lemma_name": "auth_claim",
@@ -1493,14 +1517,14 @@
             }
           ],
           "detail": "Premise/conclusion mutation must not remain secure",
-          "elapsed_ms": 141,
+          "elapsed_ms": 119,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "rejected_or_quarantined",
           "kind": "mutation",
           "live_executed": true,
           "matched": true,
-          "output_digest": "5119e72ad7a45729312716a2f9474a103bb7b22a0c644e449eca2ed9ae735102",
+          "output_digest": "8ea4dd41abb0c73184dcd6008990badc81672b07e9d4c3b07ec42057d36db7a3",
           "query": "prove mutated auth conclusion",
           "raw_output_preview": "theory LiveMutatedClaim\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~",
           "reason_codes": [
@@ -1523,7 +1547,7 @@
           ],
           "attack_trace": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "97a0cb4afce8639f99cfcdf33930fc8c202023826def213d7229b65b4b214fb5",
+            "raw_digest": "9965a7cd3d8995a54e25c637e922370102673464824f4cf8a41ba758c6302e9b",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1537,7 +1561,7 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:5c48074e7c7c5a4d0b398dbfbc5ff702d12d3304a3e5a08dc7eb242d15a3eaaf"
+            "trace_id": "attack-trace:03da5ecf228a52a7a783336e26473361b094f24be6751eb3942d63f596eb728b"
           },
           "bounds": {
             "timeout_seconds": 60.0
@@ -1547,7 +1571,7 @@
             {
               "attack_trace": {
                 "claim_id": "claim:secrecy",
-                "raw_digest": "97a0cb4afce8639f99cfcdf33930fc8c202023826def213d7229b65b4b214fb5",
+                "raw_digest": "9965a7cd3d8995a54e25c637e922370102673464824f4cf8a41ba758c6302e9b",
                 "replay": [
                   "0:marker:falsified:"
                 ],
@@ -1561,7 +1585,7 @@
                   }
                 ],
                 "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:5c48074e7c7c5a4d0b398dbfbc5ff702d12d3304a3e5a08dc7eb242d15a3eaaf"
+                "trace_id": "attack-trace:03da5ecf228a52a7a783336e26473361b094f24be6751eb3942d63f596eb728b"
               },
               "claim_id": "claim:secrecy",
               "lemma_name": "secrecy_claim",
@@ -1570,14 +1594,14 @@
             }
           ],
           "detail": "Protocol mutation yields an attack",
-          "elapsed_ms": 128,
+          "elapsed_ms": 107,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "attack",
           "kind": "mutation",
           "live_executed": true,
           "matched": true,
-          "output_digest": "24b483240e1541577019d09fd3b6168cc9841f05760f74998651064764e4fd4c",
+          "output_digest": "534ce6607401762d630689e8bcc34bea38e5361236fb0edb1c6e456f809a6440",
           "query": "prove secrecy after protocol mutation",
           "raw_output_preview": "theory LiveMutatedProtocol\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ), St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 ",
           "reason_codes": [],
@@ -1619,14 +1643,14 @@
             }
           ],
           "detail": "Deterministic live replay of the secure case",
-          "elapsed_ms": 143,
+          "elapsed_ms": 119,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "secure",
           "kind": "replay",
           "live_executed": true,
           "matched": true,
-          "output_digest": "315523b77362c4dacb85e05228e8a79304d4715dd75539bd8decd1f6501efbaf",
+          "output_digest": "25fc5bf84250021de0dcb1bb254b6a58cd1acf4b9011c51516276dbd1e1c8805",
           "query": "replay prove secrecy_claim + auth_claim",
           "raw_output_preview": "theory LiveSecureChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( ",
           "reason_codes": [],
@@ -1657,16 +1681,16 @@
             }
           ],
           "detail": "Malformed model never reports SECURE",
-          "elapsed_ms": 65,
+          "elapsed_ms": 55,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "quarantined",
           "kind": "malformed",
           "live_executed": true,
           "matched": true,
-          "output_digest": "f0d0a0e2b6ae731335be780f153fce44ad302ab00e6f9dbd6ce3df37a3af46df",
+          "output_digest": "b183bb06d048fb65fd6d4509096a777b1972c4165084323e9905f8b0820c6df7",
           "query": "parse/prove malformed model",
-          "raw_output_preview": "\nmaude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n\"/tmp/tamarin-live-yueh5u2n/live_malformed_model.spthy\" (line 3, column 5):\nunexpected \" \"\nexpecting letter or \"{*\"\n",
+          "raw_output_preview": "\nmaude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n\"<host-path-redacted>/live_malformed_model.spthy\" (line 3, column 5):\nunexpected \" \"\nexpecting letter or \"{*\"\n",
           "reason_codes": [
             "inconclusive"
           ],
@@ -1691,7 +1715,7 @@
           "case_id": "live_timeout",
           "claim_outcomes": [],
           "detail": "Subprocess timeout quarantines rather than SECURE",
-          "elapsed_ms": 2,
+          "elapsed_ms": 1,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "quarantined",
@@ -1721,7 +1745,7 @@
           ],
           "attack_trace": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "e1d270c2e7836af6fcc72d52b6a7b71716720245a5ed32fea27e43a7cc215a5a",
+            "raw_digest": "d18e95931c7d032051b34cbc54902a530043a0620d9d41dac89acb377001c6d9",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1735,7 +1759,7 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:f91f25c8587fdf1a0970dc0859fdf9fc8f479c02eae4c61533ec7a3be2475447"
+            "trace_id": "attack-trace:e9dbfb0a1cffe362c45cf6d05a269141bb7650af6298e558166dbae624f884d5"
           },
           "bounds": {
             "timeout_seconds": 60.0
@@ -1745,7 +1769,7 @@
             {
               "attack_trace": {
                 "claim_id": "claim:secrecy",
-                "raw_digest": "e1d270c2e7836af6fcc72d52b6a7b71716720245a5ed32fea27e43a7cc215a5a",
+                "raw_digest": "d18e95931c7d032051b34cbc54902a530043a0620d9d41dac89acb377001c6d9",
                 "replay": [
                   "0:marker:falsified:"
                 ],
@@ -1759,7 +1783,7 @@
                   }
                 ],
                 "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:f91f25c8587fdf1a0970dc0859fdf9fc8f479c02eae4c61533ec7a3be2475447"
+                "trace_id": "attack-trace:e9dbfb0a1cffe362c45cf6d05a269141bb7650af6298e558166dbae624f884d5"
               },
               "claim_id": "claim:secrecy",
               "lemma_name": "secrecy_claim",
@@ -1775,14 +1799,14 @@
             }
           ],
           "detail": "Mixed verified/falsified claims quarantine",
-          "elapsed_ms": 130,
+          "elapsed_ms": 133,
           "evidence_class": "live",
           "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "rejected_or_quarantined",
           "kind": "disagreement",
           "live_executed": true,
           "matched": true,
-          "output_digest": "fdd4be7a44227d044384bddbf6f0a3af9a284aed7601820d2e5d778a91161612",
+          "output_digest": "4191ecf1e24f31b177d7716c7f817842bc5bf2a332722f80a286f1bf71bdd4fd",
           "query": "prove mixed secrecy(attack)+auth(secure)",
           "raw_output_preview": "theory LiveDisagreement\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~n) )",
           "reason_codes": [
@@ -1826,7 +1850,7 @@
           "kind": "bounded_search",
           "live_executed": true,
           "matched": true,
-          "output_digest": "90496e25a14f9c2a1a247bd65dc00427b3155e626cdefdff4d5d8457e4696e96",
+          "output_digest": "732c1601da56c9259707c9d315e908450dca1c86010fae7ff37a814935f52ad3",
           "query": "prove secrecy with --bound=0",
           "raw_output_preview": "theory LiveBoundedSearch\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"",
           "reason_codes": [
@@ -1905,7 +1929,7 @@
             "query",
             "source_digest"
           ],
-          "bindings_digest": "6c5e6651665f104788e6fee6601e44e3d1c42379b1c3ef5f8f8a0b8efdb409ab",
+          "bindings_digest": "73354b00afce54843c958fc24e9d4b01b1fde01f38a49f3361cfbb874bd54fe1",
           "check_id": "tamarin.live.live_secure_secrecy_auth",
           "detail": "Live secure secrecy and authentication lemmas",
           "expected": "secure",
@@ -1926,7 +1950,7 @@
             "query",
             "source_digest"
           ],
-          "bindings_digest": "fe00e0f06c1be36065633aaefb3430ca72cc975d41d971d1ed75c492b3360742",
+          "bindings_digest": "7d5c75424ae0eac4647bbb3506b9ba0b1bbbbac030441f46777fa5b3598374f0",
           "check_id": "tamarin.live.live_attack_leak",
           "detail": "Live concrete attack: secret leaked on the network",
           "expected": "attack",
@@ -1947,7 +1971,7 @@
             "query",
             "source_digest"
           ],
-          "bindings_digest": "cb3ce51833bfb95359fd08fc8147fcb4bae6d8819048a9ed01afbc85f28d34fb",
+          "bindings_digest": "9b9fa1bdd735fdf9038121ee26109338c2abad4b1b48f5f8f74c8b24f8db3009",
           "check_id": "tamarin.live.live_mutated_claim",
           "detail": "Premise/conclusion mutation must not remain secure",
           "expected": "rejected_or_quarantined",
@@ -1970,7 +1994,7 @@
             "query",
             "source_digest"
           ],
-          "bindings_digest": "c7e14066ecb945c8912a2625d771072ed88db4267c9991648bd0d25fb9109152",
+          "bindings_digest": "27dbe78c9f89b9c07b72e68b3a7ebb94a315e2add093b4c95b2b24ced197fae3",
           "check_id": "tamarin.live.live_mutated_protocol",
           "detail": "Protocol mutation yields an attack",
           "expected": "attack",
@@ -1991,7 +2015,7 @@
             "query",
             "source_digest"
           ],
-          "bindings_digest": "fe24eaa154bd5577a4a0b28544cb9e059ee087c7a92b8a72a39ee089c6169803",
+          "bindings_digest": "7f043a2fce4456df884a64d027b90f965acae0326c3458815640711b2e9d0204",
           "check_id": "tamarin.live.live_deterministic_replay",
           "detail": "Deterministic live replay of the secure case",
           "expected": "secure",
@@ -2012,7 +2036,7 @@
             "query",
             "source_digest"
           ],
-          "bindings_digest": "66c4583fd4d8e6343693e71e57606de9bd1bb6ec6d38da2cf37a272afe571cdb",
+          "bindings_digest": "2b3b450c11512f281aa75c8cf47699ad30b25f096ee9d0c08275648da03a176e",
           "check_id": "tamarin.live.live_malformed_model",
           "detail": "Malformed model never reports SECURE",
           "expected": "quarantined",
@@ -2058,7 +2082,7 @@
             "query",
             "source_digest"
           ],
-          "bindings_digest": "0b47723401908e84df4af670d1b7b4820159d3d49440349ad5cfca9f13fb14d4",
+          "bindings_digest": "8e04f8b934b15dc4b21966cb8455579cc05e95836c5ad2591917b124856c7270",
           "check_id": "tamarin.live.live_disagreement",
           "detail": "Mixed verified/falsified claims quarantine",
           "expected": "rejected_or_quarantined",
@@ -2081,7 +2105,7 @@
             "query",
             "source_digest"
           ],
-          "bindings_digest": "33b1cac991db100c6f96e3e215772c0660ab7bd988e733b1e94b7fa53e2c0d38",
+          "bindings_digest": "2ab79ef0f7b8bd89223c6158a3abcd0f996dde207440ee7574ba635fcd760956",
           "check_id": "tamarin.live.live_bounded_search",
           "detail": "Bounded search incompleteness quarantines",
           "expected": "quarantined",
@@ -2099,12 +2123,12 @@
             "secure_output_digest",
             "secure_source_digest"
           ],
-          "bindings_digest": "a054b5f15e42dc81262824be686ecd8f7e4b8a9fa45b4c7d445afc830abe2123",
+          "bindings_digest": "08b26e01f6dcba88838b5439447ca54913eb641fdd6ff73bb043392da3bb6a5e",
           "check_id": "tamarin.live.deterministic_replay_binding",
           "detail": "",
           "expected": "identical secure source digests",
           "kind": "replay",
-          "observed": "secure=ebb363d1e4d5,replay=ebb363d1e4d5,out_secure=62566ebd6552,out_replay=315523b77362",
+          "observed": "secure=ebb363d1e4d5,replay=ebb363d1e4d5,out_secure=e9deecf478a4,out_replay=25fc5bf84250",
           "reason_codes": [],
           "status": "passed"
         },
@@ -2142,12 +2166,12 @@
             "tool",
             "witnesses_traces"
           ],
-          "bindings_digest": "3d543c6ee9aadeb302c0c1fa434cf6ad70b543186b264867947bc2823a99ecb6",
+          "bindings_digest": "bdabb33e31c7d6185105ef4ca5079e18cdbfcc9df68c5c3fde82df2c62437e69",
           "check_id": "tamarin.live.bindings",
           "detail": "",
           "expected": "tool,dependency,source,query,assumptions,bound,witnesses_traces,raw_output",
           "kind": "binding",
-          "observed": "3d543c6ee9aadeb3",
+          "observed": "bdabb33e31c7d618",
           "reason_codes": [],
           "status": "passed"
         }
@@ -2183,7 +2207,19 @@
       "production_certified": true,
       "program": "formal-verification-tactician/protocol-live-semantics",
       "promotion_blocked": false,
-      "receipt_digest_sha256": "6d6c0f38eb2caca98d9611135fdc50d001b4dfda492227678551d141bb9bce95",
+      "public_evidence_policy": {
+        "failures": [],
+        "host_private_paths_forbidden": true,
+        "max_public_string_bytes": 8192,
+        "raw_process_output_forbidden": true,
+        "raw_secret_or_witness_forbidden": true,
+        "repo_root_paths_forbidden": true,
+        "safe": true,
+        "satisfied": true,
+        "violation_count": 0,
+        "violations": []
+      },
+      "receipt_digest_sha256": "d4a1e1efed23c05c1e9055ebcbb926fdf52a9a3815ef5907e718ccba1cabe219",
       "repair_task_id": "FVT-075",
       "schema_version": "protocol-live-semantic-certification/v1",
       "support_tool_id": "maude",

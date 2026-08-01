@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import os
 import re
@@ -20,7 +21,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Final, Iterable, Mapping, Sequence
+from typing import Any, Final, Mapping, Sequence
 
 INTERFACE: Final = "FormalVerificationTacticianCompletionReceipt@1"
 PROGRAM_INTERFACE: Final = "FormalVerificationTacticianRelease@1"
@@ -49,6 +50,31 @@ RELEASE_CANDIDATE_PROGRAM: Final = (
     "formal-verification-tactician/toolchain-release-candidate"
 )
 
+# Production-semantic elevation fan-in (FVT-G213 / FVT-081). This receipt
+# independently reconstructs the required PNMR evidence before a production
+# elevation may appear on any release-candidate surface.
+PRODUCTION_ELEVATION_FANIN_INTERFACE: Final = (
+    "ProductionSemanticElevationFanIn@1"
+)
+PRODUCTION_ELEVATION_FANIN_SCHEMA_VERSION: Final = (
+    "formal-verification-production-semantic-elevation-fanin/v1"
+)
+PRODUCTION_ELEVATION_FANIN_GOAL_ID: Final = "FVT-G213"
+PRODUCTION_ELEVATION_FANIN_TASK_ID: Final = "FVT-081"
+PRODUCTION_ELEVATION_FANIN_PROGRAM: Final = RELEASE_CANDIDATE_PROGRAM
+PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS: Final[tuple[str, ...]] = (
+    "positive",
+    "negative",
+    "mutation",
+    "replay",
+)
+PRODUCTION_ELEVATION_FANIN_VALIDATION_COMMAND: Final = (
+    "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py "
+    "test/integration/test_formal_verification_role_aware_release_candidate.py "
+    "test/integration/test_formal_verification_real_tool_matrix.py -q"
+)
+
 DEFAULT_OBJECTIVES_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_tactician_readiness.objectives.md"
 )
@@ -61,6 +87,9 @@ DEFAULT_ROLE_AWARE_RECEIPT_RELATIVE: Final = Path(
 DEFAULT_RELEASE_CANDIDATE_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_role_aware_release_candidate.json"
 )
+DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
+)
 DEFAULT_BUILDER_RELATIVE: Final = Path(
     "tools/logic/build_formal_verification_tactician_receipt.py"
 )
@@ -72,6 +101,10 @@ DEFAULT_ROLE_AWARE_TEST_RELATIVE: Final = Path(
 )
 DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE: Final = Path(
     "test/integration/test_formal_verification_role_aware_release_candidate.py"
+)
+DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE: Final = Path(
+    "test/integration/toolchains/"
+    "test_formal_verification_production_elevation_fanin.py"
 )
 DEFAULT_CERTIFIER_RELATIVE: Final = Path(
     "tools/logic/certify_formal_verification_toolchains.py"
@@ -114,8 +147,10 @@ ROLE_AWARE_ATTESTATION_PATHS: Final[frozenset[str]] = frozenset(
 )
 RELEASE_CANDIDATE_ATTESTATION_PATHS: Final[frozenset[str]] = frozenset(
     {
+        DEFAULT_RECEIPT_RELATIVE.as_posix(),
         DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix(),
         "docs/architecture/formal_verification_toolchain_certificate.json",
+        DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix(),
     }
 )
 
@@ -3169,6 +3204,215 @@ def _compact_tool_binding(
     }
 
 
+HOST_PATH_REDACTION = "<host-path-redacted>"
+MANAGED_PROVER_ROOT_ENV = "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT"
+ELAN_HOME_ENV = "ELAN_HOME"
+JAVA_HOME_ENV = "JAVA_HOME"
+
+
+def _redacted_host_basename(raw_path: str) -> str | None:
+    """Return the single safe basename carried by a public host marker."""
+
+    prefix = HOST_PATH_REDACTION + "/"
+    if not raw_path.startswith(prefix):
+        return None
+    suffix = raw_path.removeprefix(prefix)
+    if (
+        not suffix
+        or suffix in {".", ".."}
+        or "/" in suffix
+        or "\\" in suffix
+        or "\0" in suffix
+        or Path(suffix).name != suffix
+    ):
+        return None
+    return suffix
+
+
+def _approved_managed_prover_roots(
+    lock_entry: Mapping[str, Any],
+) -> tuple[Path, ...]:
+    """Return installer-policy roots allowed to resolve public path markers."""
+
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def add_root(raw_root: object) -> None:
+        if raw_root in (None, ""):
+            return
+        try:
+            resolved = Path(
+                os.path.expanduser(str(raw_root))
+            ).resolve()
+        except OSError:
+            return
+        key = str(resolved)
+        if key not in seen:
+            seen.add(key)
+            roots.append(resolved)
+
+    # This explicit deployment root is part of the sealed validation
+    # environment and is never inferred from a redacted receipt value.
+    add_root(os.environ.get(MANAGED_PROVER_ROOT_ENV))
+    try:
+        installer_registry = importlib.import_module(
+            "ipfs_datasets_py.logic.backends.installers.registry"
+        )
+        add_root(
+            getattr(
+                installer_registry,
+                "DEFAULT_USER_LOCAL_INSTALL_ROOT",
+                None,
+            )
+        )
+    except (ImportError, OSError, RuntimeError, ValueError):
+        pass
+
+    plugin_name = str(lock_entry.get("installer_plugin") or "").strip()
+    if plugin_name == "solver":
+        # Python-distributed SMT launchers are installed under the interpreter
+        # user base rather than the theorem-prover plugin root.
+        try:
+            site_module = importlib.import_module("site")
+            add_root(site_module.getuserbase())
+        except (ImportError, OSError, RuntimeError, ValueError):
+            pass
+    if str(lock_entry.get("tool_id") or "") == "lean":
+        # Lean's reviewed managed launcher is owned by elan rather than an
+        # ipfs_datasets_py installer plugin.  Restrict reconstruction to the
+        # configured/default elan root; digest and artifact-class equality are
+        # still mandatory before this path can satisfy an evidence binding.
+        add_root(
+            os.environ.get(ELAN_HOME_ENV)
+            or (Path.home() / ".elan")
+        )
+    if str(lock_entry.get("tool_id") or "") == "java":
+        # The state-model lane binds the reviewed JVM through the explicitly
+        # sealed JAVA_HOME rather than the theorem-prover root's top-level bin.
+        # Keep the same exact basename, digest, and artifact-class checks used
+        # for every other public host-path reconstruction.
+        add_root(os.environ.get(JAVA_HOME_ENV))
+
+    if re.fullmatch(r"[a-z][a-z0-9_]*", plugin_name):
+        try:
+            installer = importlib.import_module(
+                "ipfs_datasets_py.logic.backends.installers."
+                + plugin_name
+            )
+            expand_root = getattr(
+                installer,
+                "expand_user_local_root",
+                None,
+            )
+            if callable(expand_root):
+                add_root(expand_root())
+        except (ImportError, OSError, RuntimeError, ValueError):
+            # Missing installer policy is a closed resolution failure; callers
+            # retain no ambient-PATH fallback.
+            pass
+    return tuple(roots)
+
+
+def _approved_redacted_executable_candidates(
+    *,
+    certifier,
+    lock_entry: Mapping[str, Any],
+    raw_path: str,
+) -> tuple[Path, ...]:
+    """Resolve a public host marker only inside approved managed bin roots."""
+
+    marker_basename = _redacted_host_basename(raw_path)
+    if raw_path != HOST_PATH_REDACTION and marker_basename is None:
+        return ()
+
+    declared_names = [
+        str(value).strip()
+        for value in _safe_list(lock_entry.get("executable_candidates"))
+        if str(value).strip()
+    ]
+    declared_basenames = {
+        Path(name).name
+        for name in declared_names
+        if Path(name).name not in {"", ".", ".."}
+    }
+    if marker_basename is not None:
+        if marker_basename not in declared_basenames:
+            return ()
+        search_basenames = [marker_basename]
+    else:
+        search_basenames = sorted(declared_basenames)
+
+    roots = _approved_managed_prover_roots(lock_entry)
+    managed_bins = [
+        (root / "bin").resolve()
+        for root in roots
+    ]
+    managed_path = os.pathsep.join(str(path) for path in managed_bins)
+    candidates: list[Path] = []
+    seen: set[str] = set()
+
+    def add_candidate(raw_candidate: str | Path) -> None:
+        try:
+            candidate = Path(raw_candidate).resolve()
+        except OSError:
+            return
+        if not candidate.is_file() or not os.access(candidate, os.X_OK):
+            return
+        if not any(
+            candidate.parent == managed_bin
+            for managed_bin in managed_bins
+        ):
+            return
+        key = str(candidate)
+        if key not in seen:
+            seen.add(key)
+            candidates.append(candidate)
+
+    for managed_bin in managed_bins:
+        for basename in search_basenames:
+            add_candidate(managed_bin / basename)
+
+    # Resolve the lock's reviewed bare candidates against only the approved
+    # managed bins. Never consult the process's ambient PATH here.
+    if managed_path:
+        for candidate_name in declared_names:
+            if marker_basename is not None and (
+                Path(candidate_name).name != marker_basename
+            ):
+                continue
+            resolved = certifier.resolve_executable(
+                [candidate_name],
+                env={"PATH": managed_path},
+            )
+            if resolved:
+                add_candidate(resolved)
+    return tuple(candidates)
+
+
+def _matching_approved_redacted_executables(
+    *,
+    certifier,
+    lock_entry: Mapping[str, Any],
+    artifact: Mapping[str, Any],
+) -> tuple[Path, ...]:
+    """Resolve and verify one redacted executable identity fail closed."""
+
+    raw_path = str(artifact.get("path") or "")
+    return tuple(
+        candidate
+        for candidate in _approved_redacted_executable_candidates(
+            certifier=certifier,
+            lock_entry=lock_entry,
+            raw_path=raw_path,
+        )
+        if (
+            certifier.file_digest(candidate) == artifact.get("sha256")
+            and certifier.classify_executable_artifact(candidate)
+            == artifact.get("artifact_class")
+        )
+    )
+
+
 def _recompute_semantic_tool_payload(
     *,
     certifier,
@@ -3306,10 +3550,15 @@ def _recompute_semantic_tool_payload(
 
         raw_path = str(artifact.get("path") or "")
         candidate_paths: list[Path] = []
-        if raw_path and raw_path not in {
-            "<host-path-redacted>",
-            "<repo-root>",
-        }:
+        redacted_host_path = bool(
+            raw_path == HOST_PATH_REDACTION
+            or _redacted_host_basename(raw_path) is not None
+        )
+        if (
+            raw_path
+            and not redacted_host_path
+            and raw_path != "<repo-root>"
+        ):
             if raw_path.startswith("<repo-root>/"):
                 candidate_paths.append(
                     repo_root / raw_path.removeprefix("<repo-root>/")
@@ -3320,15 +3569,14 @@ def _recompute_semantic_tool_payload(
                     path if path.is_absolute() else repo_root / path
                 )
         if kind == "semantic_executable":
-            for candidate_name in _safe_list(
-                lock_entry.get("executable_candidates")
-            ):
-                resolved = certifier.resolve_executable(
-                    [str(candidate_name)],
-                    env=os.environ,
+            if redacted_host_path:
+                candidate_paths.extend(
+                    _matching_approved_redacted_executables(
+                        certifier=certifier,
+                        lock_entry=lock_entry,
+                        artifact=artifact,
+                    )
                 )
-                if resolved:
-                    candidate_paths.append(Path(resolved))
         unique_candidates: list[Path] = []
         seen_candidates: set[str] = set()
         for candidate_path in candidate_paths:
@@ -4323,27 +4571,18 @@ def _audit_platform_support(
                 continue
             artifact = dict(raw_artifact)
             raw_path = str(artifact.get("path") or "")
-            if raw_path == "<host-path-redacted>":
-                matches: list[Path] = []
-                for candidate_name in _safe_list(
-                    entry.get("executable_candidates")
-                ):
-                    resolved = certifier.resolve_executable(
-                        [str(candidate_name)],
-                        env=os.environ,
+            redacted_host_path = bool(
+                raw_path == HOST_PATH_REDACTION
+                or _redacted_host_basename(raw_path) is not None
+            )
+            if redacted_host_path:
+                matches = list(
+                    _matching_approved_redacted_executables(
+                        certifier=certifier,
+                        lock_entry=entry,
+                        artifact=artifact,
                     )
-                    if not resolved:
-                        continue
-                    resolved_path = Path(resolved).resolve()
-                    if (
-                        certifier.file_digest(resolved_path)
-                        == artifact.get("sha256")
-                        and certifier.classify_executable_artifact(
-                            resolved_path
-                        )
-                        == artifact.get("artifact_class")
-                    ):
-                        matches.append(resolved_path)
+                )
                 if not matches:
                     semantic_bindings = (
                         non_production_semantic_artifact_bindings.get(
@@ -4426,10 +4665,75 @@ def _audit_platform_support(
         authority_roles=authority_roles,
         repo_root=repo_root,
     )
+    # Deleted hermetic executables are intentionally omitted only after their
+    # exact non-production semantic binding is independently verified above.
+    # Preserve their disclosed artifact class in the reconstructed blocker
+    # projection so comparison with the live certificate is lossless, without
+    # treating the missing shim as an installed or authority-bearing artifact.
+    omitted_classes_by_tool: dict[str, set[str]] = {}
+    for omission in non_production_artifact_omissions:
+        omitted_classes_by_tool.setdefault(
+            str(omission.get("tool_id") or ""),
+            set(),
+        ).add(str(omission.get("artifact_class") or ""))
+    for blocker_field in (
+        "capability_blockers",
+        "dependency_blockers",
+        "all_blockers",
+    ):
+        for blocker in _safe_list(
+            reconstructed_managed.get(blocker_field)
+        ):
+            if not isinstance(blocker, dict):
+                continue
+            omitted_classes = omitted_classes_by_tool.get(
+                str(blocker.get("tool_id") or "")
+            )
+            if omitted_classes:
+                blocker["artifact_classes"] = sorted(
+                    {
+                        str(item)
+                        for item in _safe_list(
+                            blocker.get("artifact_classes")
+                        )
+                        if str(item)
+                    }
+                    | {item for item in omitted_classes if item}
+                )
     reconstructed_managed = certifier.public_evidence_projection(
         reconstructed_managed,
         repo_root=repo_root,
     )
+    # A deleted hermetic shim cannot be passed to the managed-readiness
+    # validator as a live artifact. Preserve only its independently bound,
+    # non-authoritative class in the reconstructed blocker metadata so the
+    # comparison remains exact without granting artifact validity.
+    for omission in non_production_artifact_omissions:
+        tool_id = omission["tool_id"]
+        artifact_class = omission["artifact_class"]
+        for blocker_key in (
+            "capability_blockers",
+            "dependency_blockers",
+            "all_blockers",
+        ):
+            for blocker in _safe_list(
+                reconstructed_managed.get(blocker_key)
+            ):
+                if (
+                    isinstance(blocker, dict)
+                    and blocker.get("tool_id") == tool_id
+                ):
+                    blocker["artifact_classes"] = sorted(
+                        {
+                            *(
+                                str(item)
+                                for item in _safe_list(
+                                    blocker.get("artifact_classes")
+                                )
+                            ),
+                            str(artifact_class),
+                        }
+                    )
     blockers_and_ready_valid = bool(
         not live_artifact_failures
         and reconstructed_managed == _safe_dict(managed)
@@ -5570,7 +5874,8 @@ def build_role_aware_release_candidate(
     # supplied certificate so a digest-valid document cannot conceal private
     # evidence behind a forged ``satisfied: true`` declaration.
     recomputed_public_certificate_policy = certifier.public_evidence_audit(
-        certificate
+        certificate,
+        repo_root=repo_root,
     )
     tools = {
         str(tool.get("tool_id") or ""): tool
@@ -5707,6 +6012,60 @@ def build_role_aware_release_candidate(
     )
     missing_required = list(
         _safe_list(elevation_audit.get("missing"))
+    )
+    production_elevation_fanin = (
+        build_production_semantic_elevation_fanin(
+            repo_root=repo_root,
+            observed_at=timestamp,
+            role_aware_certificate=certificate,
+            certifier_module=certifier,
+        )
+    )
+    production_elevation_fanin_binding = (
+        compact_production_elevation_fanin_binding(
+            production_elevation_fanin
+        )
+    )
+    checked_production_elevation_fanin = (
+        verify_checked_production_elevation_fanin(
+            repo_root=repo_root,
+            live_fanin=production_elevation_fanin,
+        )
+    )
+    fanin_summary = _safe_dict(
+        production_elevation_fanin.get("summary")
+    )
+    fanin_acceptance = _safe_dict(
+        production_elevation_fanin.get("acceptance")
+    )
+    production_elevation_fanin_bound = bool(
+        fanin_summary.get("structurally_valid") is True
+        and fanin_summary.get("all_required_reconstructions_valid") is True
+        and fanin_acceptance.get(
+            "role_aware_certificate_identity_bound"
+        )
+        is True
+        and fanin_acceptance.get("checks_never_collapsed") is True
+        and fanin_acceptance.get("offline_only") is True
+        and checked_production_elevation_fanin.get("matches_live") is True
+    )
+    production_elevation_fanin_closed = bool(
+        production_elevation_fanin_bound
+        and fanin_summary.get("fanin_closed") is True
+    )
+    digest_material.update(
+        {
+            "production_elevation_fanin_receipt_digest": (
+                production_elevation_fanin.get(
+                    "receipt_digest_sha256"
+                )
+            ),
+            "checked_production_elevation_fanin_content_identity": (
+                checked_production_elevation_fanin.get(
+                    "content_identity"
+                )
+            ),
+        }
     )
 
     source = build_release_candidate_source_attestation(repo_root)
@@ -5855,6 +6214,37 @@ def build_role_aware_release_candidate(
                 repo_root / DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE
             ),
         },
+        "production_elevation_fanin_receipt": {
+            "path": (
+                DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix()
+            ),
+            "present": checked_production_elevation_fanin.get("present"),
+            "content_identity": checked_production_elevation_fanin.get(
+                "content_identity"
+            ),
+            "stored_digest_valid": (
+                checked_production_elevation_fanin.get(
+                    "stored_digest_valid"
+                )
+            ),
+            "matches_live": checked_production_elevation_fanin.get(
+                "matches_live"
+            ),
+            "live_digest_sha256": production_elevation_fanin.get(
+                "receipt_digest_sha256"
+            ),
+        },
+        "production_elevation_fanin_test": {
+            "path": (
+                DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE.as_posix()
+            ),
+            "present": (
+                repo_root / DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE
+            ).is_file(),
+            "content_identity": sha256_file(
+                repo_root / DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE
+            ),
+        },
         "certifier": {
             "path": DEFAULT_CERTIFIER_RELATIVE.as_posix(),
             "present": (repo_root / DEFAULT_CERTIFIER_RELATIVE).is_file(),
@@ -5952,6 +6342,22 @@ def build_role_aware_release_candidate(
         "deployment_not_claimed": True,
         "stage_at_most_release_candidate": True,
         "artifacts_present": artifacts_present,
+        "production_semantic_elevation_fanin_bound": (
+            production_elevation_fanin_bound
+        ),
+        "production_semantic_elevation_fanin_closed": (
+            production_elevation_fanin_closed
+        ),
+        "production_elevation_requires_independent_pnmr": bool(
+            fanin_acceptance.get(
+                "no_elevation_without_reconstruction"
+            )
+            is True
+        ),
+        "checked_production_elevation_fanin_matches_live": bool(
+            checked_production_elevation_fanin.get("matches_live")
+            is True
+        ),
     }
 
     readiness_requirements = {
@@ -5979,6 +6385,10 @@ def build_role_aware_release_candidate(
             "semantic_receipts_full_and_bound",
             "required_semantic_elevations_present",
             "supported_managed_capabilities_ready",
+            "production_semantic_elevation_fanin_bound",
+            "production_semantic_elevation_fanin_closed",
+            "production_elevation_requires_independent_pnmr",
+            "checked_production_elevation_fanin_matches_live",
             "merge_not_claimed",
             "deployment_not_claimed",
             "stage_at_most_release_candidate",
@@ -6008,6 +6418,10 @@ def build_role_aware_release_candidate(
         + specialized_binding_failures
         + _safe_list(platform_audit.get("failures"))
         + _safe_list(elevation_audit.get("failures"))
+        + [
+            f"production_elevation_fanin:{failure}"
+            for failure in _safe_list(fanin_summary.get("failures"))
+        ]
         + [
             f"managed:{item.get('tool_id')}:{reason}"
             for item in _safe_list(managed.get("all_blockers"))
@@ -6045,6 +6459,9 @@ def build_role_aware_release_candidate(
         "elevation_count": len(_safe_list(role_aware.get("elevations"))),
         "demotion_count": len(_safe_list(role_aware.get("demotions"))),
         "release_candidate": _safe_dict(role_aware.get("release_candidate")),
+        "production_semantic_elevation_fanin": _safe_dict(
+            role_aware.get("production_semantic_elevation_fanin")
+        ),
     }
 
     candidate: dict[str, Any] = {
@@ -6093,6 +6510,12 @@ def build_role_aware_release_candidate(
         "semantic_audit": semantic_audit,
         "platform_support_audit": platform_audit,
         "required_elevation_audit": elevation_audit,
+        "production_semantic_elevation_fanin": (
+            production_elevation_fanin_binding
+        ),
+        "checked_production_semantic_elevation_fanin": (
+            checked_production_elevation_fanin
+        ),
         "acceptance": acceptance,
         "readiness_requirements": readiness_requirements,
         "blockers": blockers,
@@ -6239,6 +6662,9 @@ def build_role_aware_release_candidate(
             "RoleAwareFormalVerificationReleaseCandidate@1 owns central "
             "candidate fan-in for FVT-G213 without installing during offline "
             "certification or concealing blockers.",
+            "ProductionSemanticElevationFanIn@1 independently reconstructs "
+            "positive, negative, mutation, and replay evidence and exact "
+            "compact bindings for every required semantic elevation.",
             "Every raw receipt, check, case, binding, executable, artifact, "
             "and dependency digest participates in the certificate digest "
             "and therefore in this candidate identity.",
@@ -6253,7 +6679,10 @@ def build_role_aware_release_candidate(
     candidate = certifier.public_evidence_projection(
         candidate, repo_root=repo_root
     )
-    public_evidence_policy = certifier.public_evidence_audit(candidate)
+    public_evidence_policy = certifier.public_evidence_audit(
+        candidate,
+        repo_root=repo_root,
+    )
     candidate["public_evidence_policy"] = public_evidence_policy
     if not public_evidence_policy["satisfied"]:
         candidate["acceptance"]["public_surfaces_bound"] = False
@@ -6266,6 +6695,859 @@ def build_role_aware_release_candidate(
         candidate["public_surfaces"]["bound"] = False
     candidate["candidate_identity"] = content_digest(candidate)
     return candidate
+
+
+def _tool_spec_for_elevation(certifier, tool_id: str) -> dict[str, Any] | None:
+    """Locate the semantic-certifier policy row that owns ``tool_id``."""
+
+    for raw_spec in certifier.SEMANTIC_CERTIFIER_SPECS:
+        spec = _safe_dict(raw_spec)
+        if tool_id in {
+            str(item) for item in _safe_list(spec.get("tool_ids"))
+        }:
+            return spec
+    return None
+
+
+def _certificate_identity_for_production_fanin(
+    *,
+    certifier,
+    certificate: Mapping[str, Any],
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Independently verify the outer certificate used by the fan-in."""
+
+    stored_digest = str(certificate.get("certificate_digest_sha256") or "")
+    computed_digest = certifier.content_digest(
+        {
+            key: value
+            for key, value in certificate.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    digest_valid = bool(stored_digest and stored_digest == computed_digest)
+    interface_valid = bool(
+        certificate.get("interface") == certifier.INTERFACE
+        and certificate.get("schema_version") == certifier.SCHEMA_VERSION
+        and certificate.get("goal_id") == certifier.GOAL_ID
+        and certificate.get("task_id") == certifier.TASK_ID
+    )
+    role_aware = _safe_dict(certificate.get("role_aware"))
+    role_aware_valid = bool(
+        role_aware.get("enabled") is True
+        and role_aware.get("interface") == certifier.ROLE_AWARE_INTERFACE
+        and role_aware.get("goal_id") == certifier.ROLE_AWARE_GOAL_ID
+        and role_aware.get("task_id") == certifier.ROLE_AWARE_TASK_ID
+    )
+    declared_public = _safe_dict(certificate.get("public_evidence_policy"))
+    recomputed_public = certifier.public_evidence_audit(
+        certificate,
+        repo_root=repo_root,
+    )
+    public_evidence_valid = bool(
+        declared_public.get("satisfied") is True
+        and recomputed_public.get("satisfied") is True
+    )
+    return {
+        "valid": bool(
+            digest_valid
+            and interface_valid
+            and role_aware_valid
+            and public_evidence_valid
+        ),
+        "digest_valid": digest_valid,
+        "stored_digest_sha256": stored_digest or None,
+        "computed_digest_sha256": computed_digest,
+        "interface_valid": interface_valid,
+        "role_aware_identity_valid": role_aware_valid,
+        "public_evidence_valid": public_evidence_valid,
+        "recomputed_public_evidence_policy": recomputed_public,
+    }
+
+
+def _independent_pnmr_reconstruction(
+    *,
+    certifier,
+    semantic_result: Mapping[str, Any],
+    tool_id: str,
+    compact_tool: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reconstruct and bind positive/negative/mutation/replay evidence."""
+
+    required = set(PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS)
+    recomputed = certifier.recompute_semantic_tool_check_binding(
+        semantic_result,
+        tool_id,
+    )
+    checks = [
+        _safe_dict(item)
+        for item in _safe_list(recomputed.get("checks"))
+        if isinstance(item, Mapping)
+    ]
+    kinds_present = {
+        str(kind)
+        for kind in _safe_list(recomputed.get("check_kinds_present"))
+        if str(kind or "")
+    }
+    required_checks = [
+        check
+        for check in checks
+        if str(check.get("kind") or "") in required
+    ]
+    passed_required_kinds = {
+        str(check.get("kind") or "")
+        for check in required_checks
+        if str(check.get("status") or "") == "passed"
+    }
+    failed_required_kinds = sorted(
+        {
+            str(check.get("kind") or "")
+            for check in required_checks
+            if str(check.get("status") or "") != "passed"
+        }
+    )
+    required_kinds_present = required <= kinds_present
+    required_kinds_all_passed = bool(
+        required <= passed_required_kinds and not failed_required_kinds
+    )
+
+    compact_status_counts = _safe_dict(
+        compact_tool.get("check_status_counts")
+    )
+    recomputed_status_counts = _safe_dict(
+        recomputed.get("check_status_counts")
+    )
+    compact_binding_valid = bool(
+        str(compact_tool.get("check_set_digest_sha256") or "")
+        == str(recomputed.get("check_set_digest_sha256") or "")
+        and int(compact_tool.get("checks_total") or 0)
+        == int(recomputed.get("checks_total") or 0)
+        and int(compact_tool.get("checks_passed") or 0)
+        == int(recomputed.get("checks_passed") or 0)
+        and sorted(_safe_list(compact_tool.get("check_kinds_present")))
+        == sorted(_safe_list(recomputed.get("check_kinds_present")))
+        and compact_status_counts == recomputed_status_counts
+    )
+    valid = bool(
+        recomputed.get("valid") is True
+        and required_kinds_present
+        and required_kinds_all_passed
+        and compact_binding_valid
+        and str(recomputed.get("check_set_digest_sha256") or "")
+    )
+    # Compact by construction: raw check bodies stay in the canonical lane
+    # receipt and this independent surface keeps only exact commitments.
+    return {
+        "valid": valid,
+        "recompute_valid": bool(recomputed.get("valid")),
+        "recompute_failure": recomputed.get("failure"),
+        "check_kinds_present": sorted(kinds_present),
+        "required_check_kinds": list(
+            PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS
+        ),
+        "required_kinds_present": required_kinds_present,
+        "required_kinds_all_passed": required_kinds_all_passed,
+        "required_kinds_failed": failed_required_kinds,
+        "required_kinds_missing": sorted(required - kinds_present),
+        "check_set_digest_sha256": recomputed.get(
+            "check_set_digest_sha256"
+        ),
+        "compact_check_set_digest_sha256": compact_tool.get(
+            "check_set_digest_sha256"
+        ),
+        "compact_binding_valid": compact_binding_valid,
+        "checks_total": int(recomputed.get("checks_total") or 0),
+        "checks_passed": int(recomputed.get("checks_passed") or 0),
+        "check_status_counts": recomputed_status_counts,
+        "raw_checks_embedded": False,
+    }
+
+
+def _production_fanin_offline_policy(
+    *,
+    certificate: Mapping[str, Any],
+    semantic_results: Mapping[str, Mapping[str, Any]],
+    required_lane_ids: Sequence[str],
+) -> dict[str, Any]:
+    """Derive the no-install/download/network gate from bound evidence."""
+
+    policy = _safe_dict(certificate.get("certification_policy"))
+    policy_satisfied = bool(
+        policy.get("offline_policy_satisfied") is True
+        and policy.get("forbid_install") is True
+        and policy.get("forbid_download") is True
+        and policy.get("forbid_network") is True
+    )
+    lanes: dict[str, dict[str, Any]] = {}
+    for lane_id in sorted(set(required_lane_ids)):
+        lane = _safe_dict(semantic_results.get(lane_id))
+        observation = _safe_dict(lane.get("offline_observation"))
+        lane_satisfied = bool(
+            lane.get("status") == "ran"
+            and observation.get("satisfied") is True
+            and observation.get("install_attempted") is not True
+            and observation.get("download_attempted") is not True
+            and observation.get("network_used") is not True
+        )
+        lanes[lane_id] = {
+            "satisfied": lane_satisfied,
+            "install_attempted": bool(
+                observation.get("install_attempted")
+            ),
+            "download_attempted": bool(
+                observation.get("download_attempted")
+            ),
+            "network_used": bool(observation.get("network_used")),
+        }
+    return {
+        "satisfied": bool(
+            policy_satisfied
+            and lanes
+            and all(row["satisfied"] for row in lanes.values())
+        ),
+        "certificate_policy_satisfied": policy_satisfied,
+        "required_lanes": lanes,
+    }
+
+
+def build_production_semantic_elevation_fanin(
+    *,
+    repo_root: Path | None = None,
+    observed_at: str | None = None,
+    role_aware_certificate: Mapping[str, Any] | None = None,
+    certifier_module: Any | None = None,
+) -> dict[str, Any]:
+    """Build the fail-closed production-semantic elevation fan-in.
+
+    Each required baseline tool is independently reconstructed from its
+    canonical semantic receipt. No missing, mismatched, failed, non-authority,
+    or non-production artifact binding can become elevation eligibility.
+    """
+
+    root = (repo_root or repo_root_from()).resolve()
+    certifier = certifier_module or _load_certifier_module(root)
+    certificate = (
+        dict(role_aware_certificate)
+        if isinstance(role_aware_certificate, Mapping)
+        else certifier.build_certificate(repo_root=root, role_aware=True)
+    )
+    certificate_identity = _certificate_identity_for_production_fanin(
+        certifier=certifier,
+        certificate=certificate,
+        repo_root=root,
+    )
+    semantic_results = {
+        str(item.get("lane_id") or ""): _safe_dict(item)
+        for item in _safe_list(certificate.get("semantic_lane_results"))
+        if isinstance(item, Mapping) and str(item.get("lane_id") or "")
+    }
+    tools_by_id = {
+        str(item.get("tool_id") or ""): _safe_dict(item)
+        for item in _safe_list(certificate.get("tools"))
+        if isinstance(item, Mapping) and str(item.get("tool_id") or "")
+    }
+    role_aware = _safe_dict(certificate.get("role_aware"))
+    promotion = _safe_dict(certificate.get("promotion"))
+    elevated_ids = {
+        str(item)
+        for item in _safe_list(role_aware.get("elevated_tool_ids"))
+    }
+    promotion_ids = {
+        str(item)
+        for item in _safe_list(
+            promotion.get("production_certified_tool_ids")
+        )
+    }
+    elevation_decisions = {
+        str(item.get("tool_id") or ""): _safe_dict(item)
+        for item in _safe_list(role_aware.get("elevations"))
+        if isinstance(item, Mapping) and str(item.get("tool_id") or "")
+    }
+
+    semantic_audit = _audit_semantic_lane_results(
+        certifier=certifier,
+        repo_root=root,
+        semantic_results=[
+            semantic_results[lane_id]
+            for lane_id in sorted(semantic_results)
+        ],
+    )
+    elevation_audit = _audit_required_elevations(
+        certifier=certifier,
+        repo_root=root,
+        certificate=certificate,
+        semantic_audit=semantic_audit,
+    )
+    canonical_roles = _safe_dict(
+        certifier.load_authority_roles(root).get("tools")
+    )
+
+    required_specs = {
+        tool_id: _tool_spec_for_elevation(certifier, tool_id) or {}
+        for tool_id in REQUIRED_SEMANTIC_ELEVATIONS
+    }
+    offline = _production_fanin_offline_policy(
+        certificate=certificate,
+        semantic_results=semantic_results,
+        required_lane_ids=[
+            str(spec.get("lane_id") or "")
+            for spec in required_specs.values()
+        ],
+    )
+
+    per_tool: dict[str, dict[str, Any]] = {}
+    failures: list[str] = []
+    reconstruction_complete: list[str] = []
+    reconstruction_incomplete: list[str] = []
+    elevation_present: list[str] = []
+    elevation_missing: list[str] = []
+    elevation_without_reconstruction: list[str] = []
+    elevation_with_disallowed_class: list[str] = []
+
+    lane_audits = _safe_dict(semantic_audit.get("lanes"))
+    required_elevation_tools = _safe_dict(elevation_audit.get("tools"))
+    for tool_id in REQUIRED_SEMANTIC_ELEVATIONS:
+        spec = required_specs[tool_id]
+        lane_id = str(spec.get("lane_id") or "")
+        lane = _safe_dict(semantic_results.get(lane_id))
+        compact_tool = _safe_dict(
+            _safe_dict(lane.get("per_tool")).get(tool_id)
+        )
+        tool_row = _safe_dict(tools_by_id.get(tool_id))
+        reconstruction = (
+            _independent_pnmr_reconstruction(
+                certifier=certifier,
+                semantic_result=lane,
+                tool_id=tool_id,
+                compact_tool=compact_tool,
+            )
+            if lane.get("status") == "ran"
+            else {
+                "valid": False,
+                "recompute_valid": False,
+                "recompute_failure": "semantic_lane_not_run",
+                "check_kinds_present": [],
+                "required_check_kinds": list(
+                    PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS
+                ),
+                "required_kinds_present": False,
+                "required_kinds_all_passed": False,
+                "required_kinds_failed": [],
+                "required_kinds_missing": list(
+                    PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS
+                ),
+                "check_set_digest_sha256": None,
+                "compact_check_set_digest_sha256": compact_tool.get(
+                    "check_set_digest_sha256"
+                ),
+                "compact_binding_valid": False,
+                "checks_total": 0,
+                "checks_passed": 0,
+                "check_status_counts": {},
+                "raw_checks_embedded": False,
+            }
+        )
+        lane_audit = _safe_dict(lane_audits.get(lane_id))
+        lane_tool_audit = _safe_dict(
+            _safe_dict(lane_audit.get("tools")).get(tool_id)
+        )
+        elevation_tool_audit = _safe_dict(
+            required_elevation_tools.get(tool_id)
+        )
+        production_allowed = bool(
+            spec.get("production_elevation_allowed")
+        )
+        authority_role = _safe_dict(canonical_roles.get(tool_id))
+        decision = _safe_dict(elevation_decisions.get(tool_id))
+        surfaces = {
+            "role_aware": tool_id in elevated_ids,
+            "promotion": tool_id in promotion_ids,
+            "tool": tool_row.get("production_certified") is True,
+            "lane": tool_id
+            in {
+                str(item)
+                for item in _safe_list(lane.get("elevated_tool_ids"))
+            },
+            "decision": decision.get("elevated") is True,
+        }
+        surfaces_consistent = len(set(surfaces.values())) == 1
+        production_present = bool(
+            elevation_tool_audit.get("present") is True
+            and surfaces_consistent
+            and all(surfaces.values())
+        )
+        semantic_authority_valid = bool(
+            lane_audit.get("valid") is True
+            and lane_tool_audit.get(
+                "checks_match_canonical_receipt"
+            )
+            is True
+            and lane_tool_audit.get("artifact_validation_valid") is True
+            and _safe_list(
+                lane_tool_audit.get("expected_production_bindings")
+            )
+            and elevation_tool_audit.get("semantic_evidence_valid") is True
+            and authority_role.get(
+                "can_satisfy_certified_authority"
+            )
+            is True
+        )
+        eligible = bool(
+            reconstruction.get("valid") is True
+            and production_allowed
+            and compact_tool.get("certified") is True
+            and semantic_authority_valid
+        )
+
+        block_reasons: list[str] = []
+        if lane.get("status") != "ran":
+            block_reasons.append("semantic_lane_not_run")
+        if reconstruction.get("valid") is not True:
+            block_reasons.append(
+                "independent_pnmr_reconstruction_incomplete"
+            )
+        if reconstruction.get("compact_binding_valid") is not True:
+            block_reasons.append("compact_pnmr_binding_mismatch")
+        if not production_allowed:
+            block_reasons.append(
+                "production_elevation_not_allowed_by_evidence_class"
+            )
+        if compact_tool.get("certified") is not True:
+            block_reasons.append("semantic_tool_not_certified")
+        if production_allowed and not semantic_authority_valid:
+            block_reasons.append(
+                "production_authority_or_artifact_binding_invalid"
+            )
+        if not surfaces_consistent and any(surfaces.values()):
+            block_reasons.append("elevation_surface_mismatch")
+            failures.append(f"{tool_id}:elevation_surface_mismatch")
+        if production_present and reconstruction.get("valid") is not True:
+            block_reasons.append(
+                "elevation_without_independent_reconstruction"
+            )
+            elevation_without_reconstruction.append(tool_id)
+            failures.append(
+                f"{tool_id}:elevation_without_independent_reconstruction"
+            )
+        if production_present and not production_allowed:
+            block_reasons.append(
+                "elevation_with_disallowed_evidence_class"
+            )
+            elevation_with_disallowed_class.append(tool_id)
+            failures.append(
+                f"{tool_id}:elevation_with_disallowed_evidence_class"
+            )
+        if production_present and not eligible:
+            block_reasons.append(
+                "elevation_without_production_authority"
+            )
+            failures.append(
+                f"{tool_id}:elevation_without_production_authority"
+            )
+
+        if reconstruction.get("valid") is True:
+            reconstruction_complete.append(tool_id)
+        else:
+            reconstruction_incomplete.append(tool_id)
+        if production_present:
+            elevation_present.append(tool_id)
+        else:
+            elevation_missing.append(tool_id)
+
+        per_tool[tool_id] = {
+            "tool_id": tool_id,
+            "lane_id": lane_id,
+            "interface": spec.get("interface"),
+            "evidence_class": (
+                tool_row.get("evidence_class")
+                or spec.get("evidence_class")
+            ),
+            "production_elevation_allowed": production_allowed,
+            "lane_status": lane.get("status") or "missing",
+            "lane_digest_sha256": lane.get("digest_sha256"),
+            "compact_tool_certified": (
+                compact_tool.get("certified") is True
+            ),
+            "independent_reconstruction": reconstruction,
+            "semantic_authority_valid": semantic_authority_valid,
+            "surfaces": surfaces,
+            "surfaces_consistent": surfaces_consistent,
+            "production_elevation_present": production_present,
+            "eligible_for_production_elevation": eligible,
+            "required_elevation_audit_present": bool(
+                elevation_tool_audit.get("present")
+            ),
+            "block_reasons": sorted(set(block_reasons)),
+        }
+
+    declared_required = [
+        str(item)
+        for item in _safe_list(
+            role_aware.get("required_baseline_elevations")
+        )
+    ]
+    population_exact = bool(
+        declared_required == list(REQUIRED_SEMANTIC_ELEVATIONS)
+        and len(declared_required) == len(set(declared_required))
+        and set(per_tool) == set(REQUIRED_SEMANTIC_ELEVATIONS)
+    )
+    reconstruction_surfaces_exact = bool(
+        set(per_tool) == set(REQUIRED_SEMANTIC_ELEVATIONS)
+        and all(
+            isinstance(row.get("independent_reconstruction"), Mapping)
+            for row in per_tool.values()
+        )
+    )
+    checks_never_collapsed = bool(
+        reconstruction_surfaces_exact
+        and all(
+            _safe_dict(row.get("independent_reconstruction")).get(
+                "compact_binding_valid"
+            )
+            is True
+            for row in per_tool.values()
+        )
+    )
+    raw_checks_not_reembedded = bool(
+        all(
+            "checks"
+            not in _safe_dict(row.get("independent_reconstruction"))
+            and _safe_dict(row.get("independent_reconstruction")).get(
+                "raw_checks_embedded"
+            )
+            is False
+            for row in per_tool.values()
+        )
+    )
+    all_reconstructions_valid = bool(
+        not reconstruction_incomplete
+        and set(reconstruction_complete)
+        == set(REQUIRED_SEMANTIC_ELEVATIONS)
+    )
+    if not population_exact:
+        failures.append("required_elevation_population_mismatch")
+    if not certificate_identity["valid"]:
+        failures.append("role_aware_certificate_identity_invalid")
+    if elevation_audit.get("valid") is not True:
+        failures.extend(
+            f"required_elevation_audit:{item}"
+            for item in _safe_list(elevation_audit.get("failures"))
+        )
+    if not checks_never_collapsed:
+        failures.append("required_pnmr_compact_binding_invalid")
+    if not raw_checks_not_reembedded:
+        failures.append("raw_checks_reembedded")
+    if not offline["satisfied"]:
+        failures.append("offline_policy_not_satisfied")
+
+    no_elevation_without_reconstruction = not (
+        elevation_without_reconstruction
+    )
+    production_allowed_respected = not (
+        elevation_with_disallowed_class
+    )
+    structurally_valid = bool(
+        population_exact
+        and reconstruction_surfaces_exact
+        and certificate_identity["valid"]
+        and checks_never_collapsed
+        and raw_checks_not_reembedded
+        and offline["satisfied"]
+        and no_elevation_without_reconstruction
+        and production_allowed_respected
+        and elevation_audit.get("valid") is True
+        and not failures
+    )
+    fanin_closed = bool(
+        structurally_valid
+        and all_reconstructions_valid
+        and not elevation_missing
+        and set(elevation_present) == set(REQUIRED_SEMANTIC_ELEVATIONS)
+        and all(
+            row.get("eligible_for_production_elevation") is True
+            for row in per_tool.values()
+        )
+    )
+
+    observed = observed_at or datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    receipt: dict[str, Any] = {
+        "schema_version": PRODUCTION_ELEVATION_FANIN_SCHEMA_VERSION,
+        "interface": PRODUCTION_ELEVATION_FANIN_INTERFACE,
+        "program_interface": PROGRAM_INTERFACE,
+        "program_goal_id": PROGRAM_GOAL_ID,
+        "goal_id": PRODUCTION_ELEVATION_FANIN_GOAL_ID,
+        "task_id": PRODUCTION_ELEVATION_FANIN_TASK_ID,
+        "program": PRODUCTION_ELEVATION_FANIN_PROGRAM,
+        "observed_at": observed,
+        "description": (
+            "Fail-closed production-semantic elevation fan-in. Each required "
+            "tool is independently reconstructed from its canonical PNMR "
+            "receipt and exact compact binding before production elevation."
+        ),
+        "policy": {
+            "required_check_kinds": list(
+                PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS
+            ),
+            "independent_reconstruction_required_before_production_elevation": True,
+            "production_elevation_allowed_gate_required": True,
+            "hardcoded_success_forbidden": True,
+            "no_install": True,
+            "no_download": True,
+            "no_network": True,
+            "self_referential_current_tree_claim_forbidden": True,
+            "merge_claim_forbidden": True,
+            "deployment_claim_forbidden": True,
+            "raw_checks_bound_by_digest_only": True,
+        },
+        "required_tools": list(REQUIRED_SEMANTIC_ELEVATIONS),
+        "tools": per_tool,
+        "certificate_identity": certificate_identity,
+        "offline_derivation": offline,
+        "summary": {
+            "required_count": len(REQUIRED_SEMANTIC_ELEVATIONS),
+            "independent_reconstruction_complete": reconstruction_complete,
+            "independent_reconstruction_incomplete": reconstruction_incomplete,
+            "all_required_reconstructions_valid": (
+                all_reconstructions_valid
+            ),
+            "production_elevation_present": elevation_present,
+            "production_elevation_missing": elevation_missing,
+            "elevation_without_reconstruction": (
+                elevation_without_reconstruction
+            ),
+            "elevation_with_disallowed_evidence_class": (
+                elevation_with_disallowed_class
+            ),
+            "structurally_valid": structurally_valid,
+            "fanin_closed": fanin_closed,
+            "failures": sorted(set(failures)),
+        },
+        "required_elevation_audit": {
+            "valid": elevation_audit.get("valid"),
+            "required": list(_safe_list(elevation_audit.get("required"))),
+            "present": list(_safe_list(elevation_audit.get("present"))),
+            "missing": list(_safe_list(elevation_audit.get("missing"))),
+            "expected_global_production_certified_tool_ids": list(
+                _safe_list(
+                    elevation_audit.get(
+                        "expected_global_production_certified_tool_ids"
+                    )
+                )
+            ),
+            "failures": list(
+                _safe_list(elevation_audit.get("failures"))
+            ),
+        },
+        "role_aware_certificate": {
+            "digest_sha256": certificate.get(
+                "certificate_digest_sha256"
+            ),
+            "interface": certificate.get("interface"),
+            "projection_model": "digest_bound_compact_projection/v1",
+            "raw_certificate_embedded": False,
+        },
+        "acceptance": {
+            "role_aware_certificate_identity_bound": (
+                certificate_identity["valid"]
+            ),
+            "required_tools_population_exact": population_exact,
+            "each_required_tool_has_independent_reconstruction_surface": (
+                reconstruction_surfaces_exact
+            ),
+            "all_required_reconstructions_valid": (
+                all_reconstructions_valid
+            ),
+            "production_elevation_requires_independent_pnmr": (
+                no_elevation_without_reconstruction
+            ),
+            "no_elevation_without_reconstruction": (
+                no_elevation_without_reconstruction
+            ),
+            "production_elevation_allowed_respected": (
+                production_allowed_respected
+            ),
+            "checks_never_collapsed": checks_never_collapsed,
+            "raw_checks_not_reembedded": raw_checks_not_reembedded,
+            "offline_only": offline["satisfied"],
+            "structurally_valid": structurally_valid,
+            "fanin_closed": fanin_closed,
+            "merge_not_claimed": True,
+            "deployment_not_claimed": True,
+            "required_elevation_audit_bound": (
+                elevation_audit.get("valid") is True
+            ),
+        },
+        "evidence": {
+            "integration_test": (
+                DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE.as_posix()
+            ),
+            "receipt": (
+                DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix()
+            ),
+            "release_candidate": (
+                DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix()
+            ),
+            "release_candidate_integration_test": (
+                DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE.as_posix()
+            ),
+            "certifier": DEFAULT_CERTIFIER_RELATIVE.as_posix(),
+            "receipt_builder": DEFAULT_BUILDER_RELATIVE.as_posix(),
+            "validation_command": (
+                PRODUCTION_ELEVATION_FANIN_VALIDATION_COMMAND
+            ),
+        },
+        "claims": {
+            "merge": False,
+            "deployment": False,
+            "post_merge_attestation": False,
+            "self_referential_current_tree": False,
+            "max_stage": RELEASE_CANDIDATE_MAX_STAGE,
+        },
+        "status": (
+            "production_semantic_elevation_fanin_closed"
+            if fanin_closed
+            else (
+                "production_semantic_elevation_fanin_structurally_valid"
+                if structurally_valid
+                else "production_semantic_elevation_fanin_blocked"
+            )
+        ),
+    }
+    receipt = certifier.public_evidence_projection(
+        receipt,
+        repo_root=root,
+    )
+    public_policy = certifier.public_evidence_audit(
+        receipt,
+        repo_root=root,
+    )
+    receipt["public_evidence_policy"] = public_policy
+    if not public_policy.get("satisfied"):
+        receipt["acceptance"]["offline_only"] = False
+        receipt["acceptance"]["structurally_valid"] = False
+        receipt["acceptance"]["fanin_closed"] = False
+        receipt["summary"]["structurally_valid"] = False
+        receipt["summary"]["fanin_closed"] = False
+        receipt["status"] = "production_semantic_elevation_fanin_blocked"
+        public_failures = receipt["summary"]["failures"]
+        if "public_evidence_redaction_failed" not in public_failures:
+            public_failures.append("public_evidence_redaction_failed")
+    receipt["receipt_digest_sha256"] = content_digest(receipt)
+    return receipt
+
+
+def compact_production_elevation_fanin_binding(
+    fanin: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the digest-bound fan-in projection embedded in a candidate."""
+
+    tools = _safe_dict(fanin.get("tools"))
+    summary = _safe_dict(fanin.get("summary"))
+    acceptance = _safe_dict(fanin.get("acceptance"))
+    return {
+        "interface": fanin.get("interface"),
+        "schema_version": fanin.get("schema_version"),
+        "goal_id": fanin.get("goal_id"),
+        "task_id": fanin.get("task_id"),
+        "status": fanin.get("status"),
+        "receipt_digest_sha256": fanin.get("receipt_digest_sha256"),
+        "certificate_identity_valid": _safe_dict(
+            fanin.get("certificate_identity")
+        ).get("valid"),
+        "structurally_valid": summary.get("structurally_valid"),
+        "all_required_reconstructions_valid": summary.get(
+            "all_required_reconstructions_valid"
+        ),
+        "fanin_closed": summary.get("fanin_closed"),
+        "required_tools": list(_safe_list(fanin.get("required_tools"))),
+        "independent_reconstruction_complete": list(
+            _safe_list(
+                summary.get("independent_reconstruction_complete")
+            )
+        ),
+        "production_elevation_present": list(
+            _safe_list(summary.get("production_elevation_present"))
+        ),
+        "production_elevation_missing": list(
+            _safe_list(summary.get("production_elevation_missing"))
+        ),
+        "tool_reconstruction_digests": {
+            tool_id: _safe_dict(
+                _safe_dict(tools.get(tool_id)).get(
+                    "independent_reconstruction"
+                )
+            ).get("check_set_digest_sha256")
+            for tool_id in _safe_list(fanin.get("required_tools"))
+        },
+        "checks_never_collapsed": acceptance.get(
+            "checks_never_collapsed"
+        ),
+        "offline_only": acceptance.get("offline_only"),
+        "path": (
+            DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix()
+        ),
+        "integration_test": (
+            DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE.as_posix()
+        ),
+        "raw_receipt_embedded": False,
+    }
+
+
+def verify_checked_production_elevation_fanin(
+    *,
+    repo_root: Path,
+    live_fanin: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify that the durable fan-in artifact exactly matches live evidence."""
+
+    path = repo_root / DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE
+    checked = load_json(path)
+    if not isinstance(checked, Mapping):
+        return {
+            "present": False,
+            "content_identity": None,
+            "stored_digest_valid": False,
+            "identity_valid": False,
+            "matches_live": False,
+            "stored_digest_sha256": None,
+            "live_digest_sha256": live_fanin.get(
+                "receipt_digest_sha256"
+            ),
+        }
+    stored_digest = str(checked.get("receipt_digest_sha256") or "")
+    computed_digest = content_digest(
+        {
+            key: value
+            for key, value in checked.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    stored_digest_valid = bool(
+        stored_digest and stored_digest == computed_digest
+    )
+    identity_valid = bool(
+        checked.get("interface") == PRODUCTION_ELEVATION_FANIN_INTERFACE
+        and checked.get("schema_version")
+        == PRODUCTION_ELEVATION_FANIN_SCHEMA_VERSION
+        and checked.get("goal_id") == PRODUCTION_ELEVATION_FANIN_GOAL_ID
+        and checked.get("task_id") == PRODUCTION_ELEVATION_FANIN_TASK_ID
+    )
+    live_digest = str(live_fanin.get("receipt_digest_sha256") or "")
+    return {
+        "present": True,
+        "content_identity": sha256_file(path),
+        "stored_digest_valid": stored_digest_valid,
+        "identity_valid": identity_valid,
+        "matches_live": bool(
+            stored_digest_valid
+            and identity_valid
+            and stored_digest == live_digest
+        ),
+        "stored_digest_sha256": stored_digest or None,
+        "live_digest_sha256": live_digest or None,
+    }
 
 
 def write_receipt(receipt: Mapping[str, Any], output: Path) -> None:
@@ -6334,6 +7616,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--production-elevation-fanin-output",
+        type=Path,
+        default=None,
+        help=(
+            "Write the production-semantic elevation fan-in "
+            f"(default: "
+            f"{DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE})"
+        ),
+    )
+    parser.add_argument(
+        "--production-elevation-fanin",
+        action="store_true",
+        help=(
+            "Build and write ProductionSemanticElevationFanIn@1 "
+            "(FVT-G213 / FVT-081)"
+        ),
+    )
+    parser.add_argument(
         "--stdout",
         action="store_true",
         help="Print receipt JSON to stdout instead of writing a file",
@@ -6371,10 +7671,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     want_release_candidate = bool(
         args.release_candidate or args.release_candidate_output is not None
     )
+    want_production_elevation_fanin = bool(
+        args.production_elevation_fanin
+        or args.production_elevation_fanin_output is not None
+        or want_release_candidate
+    )
     want_role_aware = bool(args.role_aware or args.role_aware_output is not None)
     receipt = build_receipt(repo_root=root, observed_at=args.observed_at)
 
-    if args.stdout and not want_role_aware and not want_release_candidate:
+    if (
+        args.stdout
+        and not want_role_aware
+        and not want_release_candidate
+        and not want_production_elevation_fanin
+    ):
         json.dump(receipt, sys.stdout, indent=2, ensure_ascii=False)
         sys.stdout.write("\n")
     else:
@@ -6389,9 +7699,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     role_aware_receipt: dict[str, Any] | None = None
     release_candidate: dict[str, Any] | None = None
+    production_elevation_fanin: dict[str, Any] | None = None
     role_certificate: dict[str, Any] | None = None
     role_full_evidence: dict[str, Any] = {}
-    if want_role_aware or want_release_candidate:
+    if (
+        want_role_aware
+        or want_release_candidate
+        or want_production_elevation_fanin
+    ):
         certifier = _load_certifier_module(root)
         role_certificate = certifier.build_certificate(
             repo_root=root,
@@ -6450,6 +7765,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             if not args.quiet:
                 print(f"wrote {role_output}", file=sys.stderr)
 
+    if want_production_elevation_fanin:
+        assert role_certificate is not None
+        production_elevation_fanin = (
+            build_production_semantic_elevation_fanin(
+                repo_root=root,
+                observed_at=args.observed_at or receipt.get("observed_at"),
+                role_aware_certificate=role_certificate,
+            )
+        )
+        fanin_output = (
+            args.production_elevation_fanin_output.resolve()
+            if args.production_elevation_fanin_output
+            else (
+                root
+                / DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE
+            )
+        )
+        write_receipt(production_elevation_fanin, fanin_output)
+        if not args.quiet:
+            print(f"wrote {fanin_output}", file=sys.stderr)
+
     if want_release_candidate:
         assert role_certificate is not None
         release_candidate = build_role_aware_release_candidate(
@@ -6507,6 +7843,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(
                 f"role_aware_identity={role_aware_receipt['receipt_identity']}",
+                file=sys.stderr,
+            )
+        if production_elevation_fanin is not None:
+            fanin_summary = _safe_dict(
+                production_elevation_fanin.get("summary")
+            )
+            print(
+                "production_elevation_fanin_status="
+                f"{production_elevation_fanin.get('status')} "
+                f"structurally_valid="
+                f"{fanin_summary.get('structurally_valid')} "
+                f"closed={fanin_summary.get('fanin_closed')}",
                 file=sys.stderr,
             )
         if release_candidate is not None:

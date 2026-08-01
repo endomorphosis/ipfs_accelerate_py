@@ -96,6 +96,10 @@ from ipfs_datasets_py.logic.software_verification.hyperproperties import (  # no
     TraceQuantifier,
     TraceVariable,
 )
+from tools.logic.certification.public_evidence import (  # noqa: E402
+    public_evidence_audit,
+    public_evidence_projection,
+)
 
 INTERFACE: Final = "HyperpropertyToolchainCertification@1"
 VENDOR_INTERFACE: Final = "HyperpropertyVendorToolchainCertification@1"
@@ -118,6 +122,7 @@ OBJECTIVE_VALIDATION_COMMAND: Final = (
     "test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py "
     "test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q"
 )
+MANAGED_TOOL_PATH_MARKER: Final = "<managed-tool-path-redacted>"
 PROGRAM: Final = "formal-verification-tactician/hyperproperty-toolchains"
 VENDOR_PROGRAM: Final = (
     "formal-verification-tactician/hyperproperty-vendor-toolchains"
@@ -1269,6 +1274,55 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def _managed_executable_reference(value: object) -> tuple[str | None, str | None]:
+    """Keep a portable managed-tool identity without retaining its host path."""
+
+    if value in (None, ""):
+        return None, None
+    basename = Path(str(value)).name
+    return f"{MANAGED_TOOL_PATH_MARKER}/{basename}", basename
+
+
+def _finalize_public_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    repo_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Project a receipt before assigning its portable outer digest."""
+
+    root = Path(repo_root) if repo_root is not None else _repo_root()
+    projected = public_evidence_projection(dict(receipt), repo_root=root)
+    if not isinstance(projected, dict):
+        raise HyperpropertyCertificationError(
+            "public evidence projection did not produce a receipt object"
+        )
+    projected["receipt_digest_sha256"] = _stable_json_digest(
+        {
+            key: value
+            for key, value in projected.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    return projected
+
+
+def _audit_public_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    repo_root: Path | str | None = None,
+) -> None:
+    """Refuse durable writes when public-evidence policy is not satisfied."""
+
+    root = Path(repo_root) if repo_root is not None else _repo_root()
+    audit = public_evidence_audit(receipt, repo_root=root)
+    if not audit.get("satisfied"):
+        failures = ",".join(str(item) for item in audit.get("failures") or [])
+        raise HyperpropertyCertificationError(
+            "refusing to write unsafe public hyperproperty receipt"
+            + (f": {failures}" if failures else "")
+        )
+
+
 def certify_hyperproperty_toolchains(
     *,
     install_root: Path | str | None = None,
@@ -1819,6 +1873,7 @@ def certify_hyperproperty_vendor_toolchains(
     the synthetic discovery term ``objective validation repair``.
     """
 
+    public_root = Path(repo_root) if repo_root is not None else _repo_root()
     selected = tuple(engines or EXTERNAL_ENGINES)
     host = platform_id or hyper_installer._detect_platform()
     root = hyper_installer._expand_install_root(install_root)
@@ -1997,12 +2052,15 @@ def certify_hyperproperty_vendor_toolchains(
     }
     # FVT-077 objective validation repair: re-prove FVT-G208 acceptance.
     attach_objective_validation_repair(payload)
-    payload["certificate_digest_sha256"] = _stable_json_digest(
-        {k: v for k, v in payload.items() if k != "certificate_digest_sha256"}
+    certificate_basis = public_evidence_projection(
+        {k: v for k, v in payload.items() if k != "certificate_digest_sha256"},
+        repo_root=public_root,
     )
-    receipt = build_vendor_install_receipt(payload)
+    payload["certificate_digest_sha256"] = _stable_json_digest(certificate_basis)
+    receipt = build_vendor_install_receipt(payload, repo_root=public_root)
     if write_receipt_path is not None:
         path = Path(write_receipt_path)
+        _audit_public_receipt(receipt, repo_root=public_root)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(receipt, indent=2, sort_keys=True) + "\n",
@@ -2013,15 +2071,24 @@ def certify_hyperproperty_vendor_toolchains(
     return payload
 
 
-def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, Any]:
+def build_vendor_install_receipt(
+    certificate: Mapping[str, Any],
+    *,
+    repo_root: Path | str | None = None,
+) -> dict[str, Any]:
     """Build the checked-in vendor install receipt envelope."""
 
     def _engine_receipt(key: str) -> dict[str, Any]:
         item = certificate.get(key) or {}
+        executable, executable_basename = _managed_executable_reference(
+            item.get("executable")
+        )
         return {
             "tool_id": item.get("engine_id") or key,
             "version": item.get("version"),
-            "executable": item.get("executable"),
+            "executable": executable,
+            "executable_basename": executable_basename,
+            "managed_executable": executable is not None,
             "usable": item.get("usable"),
             "certified": item.get("certified"),
             "is_vendor_build": True,
@@ -2082,10 +2149,7 @@ def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, An
             attach_objective_validation_repair(receipt)
     else:
         attach_objective_validation_repair(receipt)
-    receipt["receipt_digest_sha256"] = _stable_json_digest(
-        {k: v for k, v in receipt.items() if k != "receipt_digest_sha256"}
-    )
-    return receipt
+    return _finalize_public_receipt(receipt, repo_root=repo_root)
 
 
 def write_vendor_install_receipt(
@@ -2113,7 +2177,8 @@ def write_vendor_install_receipt(
             write_receipt_path=path,
         )
         return dict(certificate.get("install_receipt") or {})
-    receipt = build_vendor_install_receipt(certificate)
+    receipt = build_vendor_install_receipt(certificate, repo_root=root)
+    _audit_public_receipt(receipt, repo_root=root)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return receipt

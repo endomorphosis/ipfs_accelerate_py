@@ -30,7 +30,18 @@ import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Final, Iterable, Mapping, Sequence
+from typing import Any, Final, Mapping, Sequence
+
+try:  # pragma: no cover - script/package import paths vary by worktree
+    from tools.logic.certification.public_evidence import (
+        public_evidence_audit,
+        public_evidence_projection,
+    )
+except ModuleNotFoundError:  # pragma: no cover
+    from certification.public_evidence import (  # type: ignore
+        public_evidence_audit,
+        public_evidence_projection,
+    )
 
 INTERFACE: Final = "FormalVerificationToolchainCertificate@1"
 SCHEMA_VERSION: Final = "formal-verification-toolchain-certificate/v1"
@@ -56,6 +67,22 @@ RELEASE_CANDIDATE_INTERFACE: Final = (
 RELEASE_CANDIDATE_GOAL_ID: Final = "FVT-G213"
 RELEASE_CANDIDATE_TASK_ID: Final = "FVT-066"
 RELEASE_CANDIDATE_MAX_STAGE: Final = "release_candidate"
+
+# Production-semantic elevation fan-in (FVT-G213 / FVT-081). The certificate
+# records the durable evidence hooks; the receipt builder performs the
+# independent reconstruction and release-candidate fan-in.
+PRODUCTION_ELEVATION_FANIN_INTERFACE: Final = (
+    "ProductionSemanticElevationFanIn@1"
+)
+PRODUCTION_ELEVATION_FANIN_GOAL_ID: Final = "FVT-G213"
+PRODUCTION_ELEVATION_FANIN_TASK_ID: Final = "FVT-081"
+DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
+)
+DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE: Final = Path(
+    "test/integration/toolchains/"
+    "test_formal_verification_production_elevation_fanin.py"
+)
 
 # Lossless specialized receipt aggregation (FVT-G203 / FVT-065).
 # FVT-079 re-proves acceptance when path evidence already exists (objective
@@ -91,27 +118,6 @@ DEFAULT_RELEASE_CANDIDATE_RELATIVE: Final = Path(
 
 PROBE_TIMEOUT_SECONDS: Final = 5.0
 CHECK_TIMEOUT_SECONDS: Final = 8.0
-MAX_PUBLIC_STRING_BYTES: Final = 8192
-HOST_PRIVATE_PATH_RE: Final = re.compile(
-    r"/(?:home|tmp|private/tmp)/[^\s\"'<>]*"
-)
-RAW_OUTPUT_KEYS: Final = frozenset(
-    {"stdout", "stderr", "raw_stdout", "raw_stderr"}
-)
-RAW_SECRET_KEYS: Final = frozenset(
-    {
-        "secret",
-        "private_secret",
-        "private_witness",
-        "witness",
-        "witness_bytes",
-        "trapdoor",
-        "toxic_waste",
-        "private_key",
-        "api_key",
-        "access_token",
-    }
-)
 
 # Property lanes from FVT-G060. Each lane owns a closed set of tools; absence
 # of one tool never conceals or fails unrelated lanes.
@@ -353,142 +359,6 @@ def bounded_run(
 def content_digest(payload: Any) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-def _redacted_value(value: Any, *, reason: str) -> dict[str, Any]:
-    encoded = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        default=str,
-    ).encode("utf-8")
-    return {
-        "redacted": True,
-        "reason": reason,
-        "byte_length": len(encoded),
-        "sha256": hashlib.sha256(encoded).hexdigest(),
-    }
-
-
-def _contains_raw_secret_marker(value: str) -> bool:
-    lowered = value.lower()
-    return any(
-        marker in lowered
-        for marker in (
-            "private-witness-fvt047-secret-axiom-never-leak",
-            "witness_bytes=",
-            "toxic_waste=",
-            "trapdoor=",
-            "private_secret=",
-            "secret=",
-        )
-    )
-
-
-def public_evidence_projection(
-    payload: Any,
-    *,
-    repo_root: Path | None = None,
-    _key: str = "",
-) -> Any:
-    """Return a portable, bounded projection safe for checked-in receipts."""
-
-    normalized_key = _key.lower()
-    if normalized_key in RAW_OUTPUT_KEYS:
-        if isinstance(payload, Mapping) and payload.get("redacted") is True:
-            return dict(payload)
-        return _redacted_value(payload, reason="raw_process_output_forbidden")
-    if normalized_key in RAW_SECRET_KEYS and payload not in (None, True, False):
-        if isinstance(payload, Mapping) and payload.get("redacted") is True:
-            return dict(payload)
-        return _redacted_value(payload, reason="raw_secret_or_witness_forbidden")
-    if isinstance(payload, Mapping):
-        return {
-            str(key): public_evidence_projection(
-                value,
-                repo_root=repo_root,
-                _key=str(key),
-            )
-            for key, value in payload.items()
-        }
-    if isinstance(payload, Sequence) and not isinstance(
-        payload, (str, bytes, bytearray)
-    ):
-        return [
-            public_evidence_projection(value, repo_root=repo_root)
-            for value in payload
-        ]
-    if isinstance(payload, bytes):
-        return _redacted_value(payload.hex(), reason="raw_bytes_forbidden")
-    if not isinstance(payload, str):
-        return payload
-    if _contains_raw_secret_marker(payload):
-        return _redacted_value(
-            payload,
-            reason="raw_secret_or_witness_marker_forbidden",
-        )
-
-    value = payload
-    if repo_root is not None:
-        root_text = str(repo_root.resolve())
-        value = value.replace(root_text, "<repo-root>")
-    value = HOST_PRIVATE_PATH_RE.sub("<host-path-redacted>", value)
-    if len(value.encode("utf-8")) > MAX_PUBLIC_STRING_BYTES:
-        return _redacted_value(value, reason="unbounded_public_string_forbidden")
-    return value
-
-
-def public_evidence_audit(payload: Any) -> dict[str, Any]:
-    """Fail closed if a public receipt still contains private/unbounded data."""
-
-    failures: list[str] = []
-
-    def walk(value: Any, key: str = "") -> None:
-        normalized_key = key.lower()
-        if normalized_key in RAW_OUTPUT_KEYS:
-            if not (
-                isinstance(value, Mapping)
-                and value.get("redacted") is True
-                and value.get("sha256")
-            ):
-                failures.append(f"raw_process_output:{key}")
-            return
-        if normalized_key in RAW_SECRET_KEYS and value not in (None, True, False):
-            if not (
-                isinstance(value, Mapping)
-                and value.get("redacted") is True
-                and value.get("sha256")
-            ):
-                failures.append(f"raw_secret_or_witness:{key}")
-            return
-        if isinstance(value, Mapping):
-            for child_key, child in value.items():
-                walk(child, str(child_key))
-            return
-        if isinstance(value, Sequence) and not isinstance(
-            value, (str, bytes, bytearray)
-        ):
-            for child in value:
-                walk(child)
-            return
-        if isinstance(value, str):
-            if HOST_PRIVATE_PATH_RE.search(value):
-                failures.append("host_private_path")
-            if _contains_raw_secret_marker(value):
-                failures.append("raw_secret_or_witness_marker")
-            if len(value.encode("utf-8")) > MAX_PUBLIC_STRING_BYTES:
-                failures.append("unbounded_public_string")
-
-    walk(payload)
-    unique_failures = sorted(set(failures))
-    return {
-        "satisfied": not unique_failures,
-        "failures": unique_failures,
-        "host_private_paths_forbidden": True,
-        "raw_process_output_forbidden": True,
-        "raw_secret_or_witness_forbidden": True,
-        "max_public_string_bytes": MAX_PUBLIC_STRING_BYTES,
-    }
 
 
 def _project_semantic_lane_result(
@@ -4612,6 +4482,19 @@ def build_certificate(
                 "claims_merge": False,
                 "claims_deployment": False,
             },
+            "production_semantic_elevation_fanin": {
+                "interface": PRODUCTION_ELEVATION_FANIN_INTERFACE,
+                "goal_id": PRODUCTION_ELEVATION_FANIN_GOAL_ID,
+                "task_id": PRODUCTION_ELEVATION_FANIN_TASK_ID,
+                "path": str(
+                    DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE
+                ).replace("\\", "/"),
+                "integration_test": str(
+                    DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE
+                ).replace("\\", "/"),
+                "claims_merge": False,
+                "claims_deployment": False,
+            },
         },
         "check_kinds_required": ["positive", "negative", "mutation", "replay"],
         "evidence": {
@@ -4629,12 +4512,18 @@ def build_certificate(
             "release_candidate": str(DEFAULT_RELEASE_CANDIDATE_RELATIVE).replace(
                 "\\", "/"
             ),
+            "production_elevation_fanin_integration_test": str(
+                DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE
+            ).replace("\\", "/"),
+            "production_elevation_fanin_receipt": str(
+                DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE
+            ).replace("\\", "/"),
             "lock": str(DEFAULT_LOCK_RELATIVE).replace("\\", "/"),
         },
         "certificate_digest_sha256": "",  # filled below
     }
     certificate = public_evidence_projection(certificate, repo_root=root)
-    public_evidence_policy = public_evidence_audit(certificate)
+    public_evidence_policy = public_evidence_audit(certificate, repo_root=root)
     certificate["public_evidence_policy"] = public_evidence_policy
     if not public_evidence_policy["satisfied"]:
         managed = certificate.get("managed_deployment_readiness")

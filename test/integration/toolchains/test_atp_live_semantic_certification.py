@@ -451,6 +451,57 @@ def test_live_certificate_schema(live_certificate: dict[str, Any]) -> None:
     assert live_certificate.get("policy", {}).get("objective_validation_repair") is True
 
 
+def test_live_and_checked_in_certificates_are_portable_and_digest_valid(
+    atp_cert,
+    live_receipt: dict[str, Any],
+    live_certificate: dict[str, Any],
+) -> None:
+    for payload in (live_receipt, live_certificate):
+        encoded = json.dumps(payload, sort_keys=True)
+        for private_root in ("/home/", "/Users/", "/tmp/", "/private/tmp/"):
+            assert private_root not in encoded
+        assert str(REPO_ROOT.resolve()) not in encoded
+        assert payload["public_evidence_policy"]["satisfied"] is True
+        assert payload["receipt_digest_sha256"] == atp_cert.content_digest(
+            {
+                key: value
+                for key, value in payload.items()
+                if key != "receipt_digest_sha256"
+            }
+        )
+
+    checked_in = json.loads(LIVE_CERTIFICATE_PATH.read_text(encoding="utf-8"))
+    encoded = LIVE_CERTIFICATE_PATH.read_text(encoding="utf-8")
+    for private_root in ("/home/", "/Users/", "/tmp/", "/private/tmp/"):
+        assert private_root not in encoded
+    assert str(REPO_ROOT.resolve()) not in encoded
+    assert checked_in["public_evidence_policy"]["satisfied"] is True
+
+
+def test_public_projection_preserves_portable_atp_basename_markers(atp_cert) -> None:
+    projected = atp_cert.public_evidence_projection(
+        {
+            "executable": "/home/operator/tools/bin/vampire",
+            "macos_executable": "/Users/operator/tools/bin/eprover",
+            "preview": "file('/tmp/atp-live-random/problem.p', axiom)",
+            "macos_preview": (
+                "file('/private/tmp/atp-live-random/problem.p', axiom)"
+            ),
+            "source": f"{REPO_ROOT}/tools/logic/certification/atp.py",
+        },
+        repo_root=REPO_ROOT,
+    )
+    assert projected["executable"] == "<host-path-redacted>/vampire"
+    assert projected["macos_executable"] == "<host-path-redacted>/eprover"
+    assert "<host-path-redacted>/problem.p" in projected["preview"]
+    assert "<host-path-redacted>/problem.p" in projected["macos_preview"]
+    assert projected["source"] == "<repo-root>/tools/logic/certification/atp.py"
+    assert atp_cert.public_evidence_audit(
+        projected,
+        repo_root=REPO_ROOT,
+    )["satisfied"] is True
+
+
 def test_live_certificate_cases_bind_digests(live_certificate: dict[str, Any]) -> None:
     if not live_certificate.get("live_execution"):
         pytest.skip("live ATP binaries unavailable when certificate was written")
@@ -575,6 +626,24 @@ def test_write_live_certificate_does_not_demote_production(
     assert forced == target
     demoted = json.loads(target.read_text(encoding="utf-8"))
     assert demoted["production_certified"] is False
+
+
+def test_write_live_certificate_rejects_unsafe_passed_receipt(
+    atp_cert,
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "unsafe-atp-certificate.json"
+    with pytest.raises(ValueError, match="unsafe ATP public evidence"):
+        atp_cert.write_live_certificate(
+            {
+                "interface": LIVE_INTERFACE,
+                "notes": "generated under /tmp/private-atp-run/problem.p",
+            },
+            repo_root=REPO_ROOT,
+            path=target,
+            force=True,
+        )
+    assert not target.exists()
 
 
 def test_managed_execution_env_prefers_managed_bin(atp_cert, tmp_path) -> None:

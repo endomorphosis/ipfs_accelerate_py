@@ -2277,6 +2277,17 @@ class PortalImplementationSupervisor:
             raise
         self._record_event("supervisor_preflight_maintenance_pass", preflight)
         self._last_supervisor_maintenance_at = time.monotonic()
+        durable_progress_signature = (
+            self._supervisor_durable_progress_signature()
+        )
+        no_progress_recovery_count = 0
+        # Preserve one recovery opportunity even for configurations that allow
+        # only one inner restart.  After that, the configured restart ceiling
+        # also bounds consecutive outer loop reconstruction.
+        no_progress_recovery_limit = max(
+            2,
+            int(self.config.max_restarts),
+        )
         while True:
             loop = self.shared_supervisor_loop_class(
                 self.build_supervisor_loop_config(),
@@ -2322,6 +2333,32 @@ class PortalImplementationSupervisor:
                     },
                 )
 
+            current_progress_signature = (
+                self._supervisor_durable_progress_signature()
+            )
+            if current_progress_signature != durable_progress_signature:
+                durable_progress_signature = current_progress_signature
+                no_progress_recovery_count = 0
+            else:
+                no_progress_recovery_count += 1
+            if no_progress_recovery_count >= no_progress_recovery_limit:
+                self._record_event(
+                    "supervisor_loop_recovery_exhausted",
+                    {
+                        "loop_result": result_payload,
+                        "no_progress_recovery_count": (
+                            no_progress_recovery_count
+                        ),
+                        "no_progress_recovery_limit": (
+                            no_progress_recovery_limit
+                        ),
+                        "durable_progress_signature": (
+                            durable_progress_signature
+                        ),
+                    },
+                )
+                return
+
             delay_seconds = self._supervisor_loop_recovery_delay_seconds()
             self._record_event(
                 "supervisor_loop_restarting_after_recovery",
@@ -2336,6 +2373,48 @@ class PortalImplementationSupervisor:
         """Back off between outer loop recovery attempts without exceeding one check interval."""
 
         return max(5.0, min(float(self.config.check_interval), 60.0))
+
+    def _supervisor_durable_progress_signature(self) -> str:
+        """Bind task progress while excluding liveness-only timestamps.
+
+        The inner supervisor loop owns heartbeat and log timestamps, so those
+        fields cannot prove that reconstructing the loop is useful.  Attempt,
+        task, completion, implementation, and merge transitions can.  A stable
+        signature across repeated recoverable child-loop exits therefore
+        provides a deterministic lease-release boundary.
+        """
+
+        state = PortalTaskState.load(self.config.state_path)
+        return content_identity(
+            {
+                "active": {
+                    "task_id": state.active_task_id,
+                    "task_cid": state.active_task_cid,
+                    "attempt": state.active_attempt,
+                    "phase": state.active_phase,
+                    "implementation_in_progress": (
+                        state.implementation_in_progress
+                    ),
+                },
+                "attempts_by_cid": dict(
+                    sorted(state.implementation_attempts_by_cid.items())
+                ),
+                "completed_task_ids": sorted(state.completed_task_ids),
+                "task_statuses": dict(sorted(state.task_statuses.items())),
+                "last_implementation": {
+                    "task_cid": state.last_implementation_task_cid,
+                    "finished_at": state.last_implementation_finished_at,
+                    "returncode": state.last_implementation_returncode,
+                    "commit": state.last_implementation_commit,
+                },
+                "last_merge": {
+                    "finished_at": state.last_merge_finished_at,
+                    "returncode": state.last_merge_returncode,
+                    "commit": state.last_merge_commit,
+                },
+                "selection_idle_reason": state.selection_idle_reason,
+            }
+        )
 
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())

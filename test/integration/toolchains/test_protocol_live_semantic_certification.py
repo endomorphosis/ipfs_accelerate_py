@@ -401,6 +401,7 @@ def test_fixture_only_cannot_satisfy_live_goal(
 
 
 def test_protocol_live_certificate_aggregate(
+    tamarin_cert,
     protocol_certificate: dict[str, Any],
 ) -> None:
     cert = protocol_certificate
@@ -420,6 +421,14 @@ def test_protocol_live_certificate_aggregate(
     assert "tamarin" in cert["tools"]
     assert "proverif" in cert["tools"]
     assert cert["engine_independence"]["independence_ok"] is True
+    assert cert["public_evidence_policy"]["satisfied"] is True
+    assert cert["certificate_digest_sha256"] == tamarin_cert.content_digest(
+        {
+            key: value
+            for key, value in cert.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
 
     # Compact durable receipts must not re-emit full raw tool envelopes.
     for tool_id in ("tamarin", "proverif"):
@@ -471,8 +480,11 @@ def test_checked_in_certificate_matches_interface() -> None:
 
     # Durable certificate must stay compact (no bulk golden dumps / host homes).
     encoded = CERTIFICATE_PATH.read_text(encoding="utf-8")
-    assert "/home/" not in encoded
+    for private_root in ("/home/", "/Users/", "/tmp/", "/private/tmp/"):
+        assert private_root not in encoded
+    assert str(REPO_ROOT.resolve()) not in encoded
     assert len(encoded.encode("utf-8")) < 200_000
+    assert payload["public_evidence_policy"]["satisfied"] is True
     for tool_id in ("tamarin", "proverif"):
         tool = payload["tools"][tool_id]
         assert tool.get("certificate_compact") is True
@@ -527,6 +539,23 @@ def test_write_protocol_live_certificate_roundtrip(
     ]
 
 
+def test_write_protocol_live_certificate_rejects_unsafe_passed_certificate(
+    tamarin_cert,
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "unsafe-protocol-certificate.json"
+    with pytest.raises(ValueError, match="unsafe protocol public evidence"):
+        tamarin_cert.write_protocol_live_certificate(
+            {
+                "interface": LIVE_INTERFACE,
+                "diagnostic": "failed at /private/tmp/protocol-run/model.pv",
+            },
+            repo_root=REPO_ROOT,
+            output=out,
+        )
+    assert not out.exists()
+
+
 def test_compact_helpers_redact_paths_and_drop_raw_bodies(tamarin_cert) -> None:
     case = {
         "case_id": "sample",
@@ -538,10 +567,20 @@ def test_compact_helpers_redact_paths_and_drop_raw_bodies(tamarin_cert) -> None:
         "raw_output": "verified\n",
         "output_digest": "",
         "executable_path": "/home/operator/.local/share/tools/bin/tamarin-prover",
+        "diagnostics": {
+            "temporary_source": "/tmp/tamarin-live-random/sample.spthy",
+            "macos_source": "/private/tmp/proverif-live-random/sample.pv",
+            "repo_source": (
+                f"{REPO_ROOT}/tools/logic/certification/tamarin.py"
+            ),
+        },
         "evidence_class": "live",
         "live_executed": True,
     }
-    compact = tamarin_cert.compact_live_case_for_certificate(case)
+    compact = tamarin_cert.compact_live_case_for_certificate(
+        case,
+        repo_root=REPO_ROOT,
+    )
     assert "source" not in compact
     assert "stdout" not in compact
     assert "stderr" not in compact
@@ -553,6 +592,19 @@ def test_compact_helpers_redact_paths_and_drop_raw_bodies(tamarin_cert) -> None:
     assert compact["executable_path"] == (
         f"{PUBLIC_MANAGED_PATH_REDACTION}/tamarin-prover"
     )
+    assert compact["diagnostics"]["temporary_source"] == (
+        "<host-path-redacted>/sample.spthy"
+    )
+    assert compact["diagnostics"]["macos_source"] == (
+        "<host-path-redacted>/sample.pv"
+    )
+    assert compact["diagnostics"]["repo_source"] == (
+        "<repo-root>/tools/logic/certification/tamarin.py"
+    )
+    assert tamarin_cert.public_evidence_audit(
+        compact,
+        repo_root=REPO_ROOT,
+    )["satisfied"] is True
 
 
 def test_offline_policy_never_installs_during_live(

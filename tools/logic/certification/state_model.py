@@ -74,6 +74,10 @@ from ipfs_datasets_py.logic.backends.toolchain_roles import (  # noqa: E402
     evaluate_role_aware_promotion,
     get_tool_role,
 )
+from tools.logic.certification.public_evidence import (  # noqa: E402
+    public_evidence_audit,
+    public_evidence_projection,
+)
 
 try:  # pragma: no cover - worktree packaging varies
     from tools.logic.certification.roles import (  # type: ignore
@@ -3461,6 +3465,36 @@ def build_live_semantic_receipt(
     return payload
 
 
+def _is_valid_production_live_certificate(
+    payload: Mapping[str, Any],
+    *,
+    repo_root: Path,
+) -> bool:
+    """Recognize portable, self-digesting production evidence."""
+
+    declared_digest = payload.get("receipt_digest_sha256")
+    expected_digest = content_digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    audit = public_evidence_audit(payload, repo_root=repo_root)
+    return bool(
+        payload.get("interface") == LIVE_INTERFACE
+        and payload.get("production_certified")
+        and payload.get("live_execution")
+        and payload.get("live_semantic_corpus_passed")
+        and payload.get("tlc_usable")
+        and payload.get("apalache_usable")
+        and payload.get("java_usable")
+        and not payload.get("block_reasons")
+        and audit["satisfied"]
+        and declared_digest == expected_digest
+    )
+
+
 def write_live_certificate(
     receipt: Mapping[str, Any] | None = None,
     *,
@@ -3470,12 +3504,17 @@ def write_live_certificate(
     tlc_executable: str | None = None,
     apalache_executable: str | None = None,
     java_executable: str | None = None,
+    force: bool = False,
 ) -> Path:
-    """Write the durable state-model live semantic certificate."""
+    """Write a portable, audited state-model live semantic certificate.
+
+    A tool-less or failed rerun cannot demote a valid production certificate
+    unless ``force=True`` is explicitly supplied.
+    """
 
     root = repo_root or repo_root_from()
     target = path or (root / DEFAULT_LIVE_CERTIFICATE_RELATIVE)
-    payload = (
+    candidate = (
         dict(receipt)
         if receipt is not None
         else build_live_semantic_receipt(
@@ -3486,7 +3525,40 @@ def write_live_certificate(
             java_executable=java_executable,
         )
     )
+    candidate.pop("receipt_digest_sha256", None)
+    projected = public_evidence_projection(candidate, repo_root=root)
+    if not isinstance(projected, dict):
+        raise ValueError(
+            "state-model public evidence projection returned a non-mapping"
+        )
+    audit = public_evidence_audit(projected, repo_root=root)
+    if not audit["satisfied"]:
+        raise ValueError(
+            "refusing to write unsafe state-model public evidence: "
+            + ", ".join(audit["failures"])
+        )
+    payload = projected
+    payload["public_evidence_policy"] = audit
+    payload["receipt_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
     target.parent.mkdir(parents=True, exist_ok=True)
+    if not force and target.is_file() and not _is_valid_production_live_certificate(
+        payload,
+        repo_root=root,
+    ):
+        try:
+            existing = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            existing = None
+        if isinstance(
+            existing, dict
+        ) and _is_valid_production_live_certificate(existing, repo_root=root):
+            return target
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     target.write_text(text, encoding="utf-8")
     return target

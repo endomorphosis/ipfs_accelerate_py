@@ -342,7 +342,7 @@ def test_generated_public_json_artifacts_are_portable_and_redacted(
         observed_at="2026-07-31T00:00:00Z",
     )
     completion_probe = private_completion["deployment"]["private_probe"]
-    assert completion_probe["executable_path"] == "<host-path-redacted>"
+    assert completion_probe["executable_path"] == "<host-path-redacted>/lake"
     assert completion_probe["artifact_digest_sha256"] == "sha256:" + ("a" * 64)
     assert completion_probe["version_string"] == "Lake version 5.0.0"
     for key in ("stdout", "stderr", "secret", "witness"):

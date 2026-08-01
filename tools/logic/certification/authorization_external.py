@@ -80,6 +80,10 @@ from ipfs_datasets_py.logic.software_verification.authorization import (  # noqa
     DecisionOutcome,
     DecisionQuery,
 )
+from tools.logic.certification.public_evidence import (  # noqa: E402
+    public_evidence_audit,
+    public_evidence_projection,
+)
 
 # Reuse compact recipes / mutations from the in-process semantic certifier.
 _SEMANTIC_CERTIFIER_PATH = (
@@ -142,6 +146,7 @@ OBJECTIVE_VALIDATION_COMMAND: Final = (
     "test/integration/toolchains/test_external_authorization_toolchain_certification.py "
     "-q"
 )
+MANAGED_TOOL_PATH_MARKER: Final = "<managed-tool-path-redacted>"
 
 # External engines are shadows — authority ceiling is none.
 SHADOW_AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.NONE.value
@@ -343,6 +348,55 @@ def _stable_json_digest(payload: Mapping[str, Any] | Sequence[Any] | str) -> str
     else:
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+def _managed_executable_reference(value: object) -> tuple[str | None, str | None]:
+    """Keep a portable managed-tool identity without retaining its host path."""
+
+    if value in (None, ""):
+        return None, None
+    basename = Path(str(value)).name
+    return f"{MANAGED_TOOL_PATH_MARKER}/{basename}", basename
+
+
+def _finalize_public_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    repo_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Project a receipt before assigning its portable outer digest."""
+
+    root = Path(repo_root) if repo_root is not None else _repo_root()
+    projected = public_evidence_projection(dict(receipt), repo_root=root)
+    if not isinstance(projected, dict):
+        raise ExternalAuthorizationCertificationError(
+            "public evidence projection did not produce a receipt object"
+        )
+    projected["receipt_digest_sha256"] = _stable_json_digest(
+        {
+            key: value
+            for key, value in projected.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    return projected
+
+
+def _audit_public_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    repo_root: Path | str | None = None,
+) -> None:
+    """Refuse durable writes when public-evidence policy is not satisfied."""
+
+    root = Path(repo_root) if repo_root is not None else _repo_root()
+    audit = public_evidence_audit(receipt, repo_root=root)
+    if not audit.get("satisfied"):
+        failures = ",".join(str(item) for item in audit.get("failures") or [])
+        raise ExternalAuthorizationCertificationError(
+            "refusing to write unsafe public authorization receipt"
+            + (f": {failures}" if failures else "")
+        )
 
 
 def _reference_outcome(
@@ -1344,6 +1398,7 @@ def certify_external_authorization_vendor(
     * hermetic shadows remain differential-only.
     """
 
+    public_root = Path(repo_root) if repo_root is not None else _repo_root()
     host = platform_id or authz_installer._detect_platform()
     root = authz_installer._expand_install_root(install_root)
     install_bundle: authz_installer.AuthorizationInstallBundle | None = None
@@ -1560,17 +1615,20 @@ def certify_external_authorization_vendor(
             "repair_task_id": VENDOR_REPAIR_TASK_ID,
         },
     }
-    payload["certificate_digest_sha256"] = _stable_json_digest(
+    certificate_basis = public_evidence_projection(
         {
             key: value
             for key, value in payload.items()
             if key != "certificate_digest_sha256"
-        }
+        },
+        repo_root=public_root,
     )
+    payload["certificate_digest_sha256"] = _stable_json_digest(certificate_basis)
 
-    receipt = build_vendor_install_receipt(payload)
+    receipt = build_vendor_install_receipt(payload, repo_root=public_root)
     if write_receipt_path is not None:
         path = Path(write_receipt_path)
+        _audit_public_receipt(receipt, repo_root=public_root)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(receipt, indent=2, sort_keys=True) + "\n",
@@ -1581,10 +1639,17 @@ def certify_external_authorization_vendor(
     return payload
 
 
-def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, Any]:
+def build_vendor_install_receipt(
+    certificate: Mapping[str, Any],
+    *,
+    repo_root: Path | str | None = None,
+) -> dict[str, Any]:
     """Build the checked-in vendor install receipt envelope."""
 
     souffle = certificate.get("souffle") or {}
+    executable, executable_basename = _managed_executable_reference(
+        souffle.get("executable")
+    )
     exception = certificate.get("secpal_platform_exception") or {}
     certified = bool(certificate.get("certified"))
     acceptance = dict(certificate.get("acceptance") or {})
@@ -1619,7 +1684,9 @@ def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, An
         "souffle": {
             "tool_id": TOOL_SOUFFLE,
             "version": souffle.get("version"),
-            "executable": souffle.get("executable"),
+            "executable": executable,
+            "executable_basename": executable_basename,
+            "managed_executable": executable is not None,
             "usable": souffle.get("usable"),
             "certified": souffle.get("certified"),
             "is_vendor_build": True,
@@ -1654,10 +1721,7 @@ def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, An
         "summary": summary,
         "certificate_digest_sha256": certificate.get("certificate_digest_sha256"),
     }
-    receipt["receipt_digest_sha256"] = _stable_json_digest(
-        {k: v for k, v in receipt.items() if k != "receipt_digest_sha256"}
-    )
-    return receipt
+    return _finalize_public_receipt(receipt, repo_root=repo_root)
 
 
 def write_vendor_install_receipt(
@@ -1684,7 +1748,8 @@ def write_vendor_install_receipt(
             write_receipt_path=path,
         )
         return dict(certificate.get("install_receipt") or {})
-    receipt = build_vendor_install_receipt(certificate)
+    receipt = build_vendor_install_receipt(certificate, repo_root=root)
+    _audit_public_receipt(receipt, repo_root=root)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return receipt
