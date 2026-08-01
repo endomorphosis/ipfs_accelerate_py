@@ -1,4 +1,33 @@
 {
+  "acceptance": {
+    "categories": [
+      "clean_prefix",
+      "event_mutation",
+      "interval_mutation",
+      "malformed",
+      "parity",
+      "satisfied",
+      "shortest_violating_prefix",
+      "timestamp_boundary",
+      "violated"
+    ],
+    "clean_prefix_never_theorem": true,
+    "finite_trace_authority_only": true,
+    "forbids_theorem_authority": true,
+    "goal_id": "FVT-G103",
+    "mutation_kinds": [
+      "event",
+      "interval"
+    ],
+    "mutations_must_change_verdict": true,
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_repair": true,
+    "python_typescript_golden_parity": true,
+    "receipts_bind_formula_trace_clock_bounds_implementation_source_tree": true,
+    "repair_task_id": "FVT-069",
+    "shortest_violating_prefix_replay": true,
+    "task_id": "FVT-039"
+  },
   "authority_ceiling": "finite_trace",
   "authority_scope": "finite_trace_monitor_only",
   "case_recipes": [
@@ -140,9 +169,12 @@
   "interface": "RuntimeMTLSemanticCertification@1",
   "lane_id": "runtime_mtl",
   "monitor_interface": "RuntimeMTLMonitor@1",
+  "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_runtime_mtl_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q",
+  "objective_validation_evidence": "objective validation repair",
+  "objective_validation_repair": true,
   "policy": {
-    "clean_prefix_never_theorem": true,
     "certification_never_builds_typescript": true,
+    "clean_prefix_never_theorem": true,
     "finite_trace_authority_only": true,
     "in_process_only": true,
     "mutations_must_change_verdict": true,
@@ -154,6 +186,7 @@
     "shortest_violating_prefix_replay": true
   },
   "program": "formal-verification-tactician/runtime-mtl-certification",
+  "repair_task_id": "FVT-069",
   "required_categories": [
     "clean_prefix",
     "event_mutation",
