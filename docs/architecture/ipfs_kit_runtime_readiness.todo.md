@@ -892,7 +892,7 @@ or write authority.
 
 ## KITA-028 Migrate legacy replication and tiered-cache paths
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
