@@ -9,6 +9,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     BundleLaneSpec,
+    DynamicBundleScheduler,
     _execution_slice_implementation_max_timeout,
     launch_bundle_lanes,
     plan_bundle_lanes,
@@ -363,6 +364,79 @@ def test_bundle_lane_planner_skips_explicitly_excluded_execution_units(
     )
 
     assert [lane.bundle_key for lane in lanes] == ["bundle/included"]
+
+
+def test_bundle_lane_planner_combines_runtime_and_index_exclusions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "index.json"
+    index_path.write_text(
+        json.dumps({"excluded_bundle_keys": ["bundle/index-excluded"]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: [
+            {
+                "bundle_key": bundle_key,
+                "todo_path": f"{bundle_key.rsplit('/', 1)[-1]}.md",
+                "tasks": [
+                    {
+                        "task_id": task_id,
+                        "canonical_task_cid": f"cid-member-{task_id.lower()}",
+                    }
+                ],
+                "profile_g": {"task_cid": f"cid-{task_id.lower()}"},
+            }
+            for bundle_key, task_id in (
+                ("bundle/included", "INCLUDED"),
+                ("bundle/index-excluded", "INDEX-EXCLUDED"),
+                ("bundle/runtime-excluded", "RUNTIME-EXCLUDED"),
+            )
+        ],
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        excluded_bundle_keys=("bundle/runtime-excluded",),
+    )
+
+    assert [lane.bundle_key for lane in lanes] == ["bundle/included"]
+
+
+def test_dynamic_scheduler_propagates_runtime_bundle_exclusions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "index.json"
+    index_path.write_text("{}", encoding="utf-8")
+    observed_exclusions: tuple[str, ...] | None = None
+
+    def fake_plan_bundle_lanes(**kwargs):
+        nonlocal observed_exclusions
+        observed_exclusions = tuple(kwargs.get("excluded_bundle_keys") or ())
+        return []
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.plan_bundle_lanes",
+        fake_plan_bundle_lanes,
+    )
+    scheduler = DynamicBundleScheduler(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        excluded_bundle_keys=("bundle/runtime-excluded",),
+    )
+
+    assert scheduler._plan() == []
+    assert observed_exclusions == ("bundle/runtime-excluded",)
 
 
 def test_bundle_lane_planner_preserves_task_specific_implementation_timeout(

@@ -16,7 +16,6 @@ import subprocess
 import sys
 import threading
 import time
-import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
 from datetime import datetime, timedelta, timezone
@@ -3135,6 +3134,7 @@ def plan_bundle_lanes(
     completion_receipts: Mapping[str, Any] | None = None,
     optimize_bundles: bool = True,
     bundle_optimization_policy: BundleOptimizationPolicy | None = None,
+    excluded_bundle_keys: Sequence[str] = (),
 ) -> list[BundleLaneSpec]:
     """Return one isolated supervisor command for each objective bundle."""
 
@@ -3172,7 +3172,14 @@ def plan_bundle_lanes(
         for payload in bundle_payloads
         for task_id in _string_list(payload.get("completed_member_task_ids"))
     )
-    excluded_bundle_keys = _excluded_bundle_keys(bundle_index_path)
+    excluded_bundle_keys = {
+        *_excluded_bundle_keys(bundle_index_path),
+        *(
+            str(bundle_key).strip()
+            for bundle_key in excluded_bundle_keys
+            if str(bundle_key).strip()
+        ),
+    }
     bundle_payloads = [
         payload
         for payload in bundle_payloads
@@ -4254,7 +4261,8 @@ class DynamicBundleScheduler:
                 self._plan_cache = None
         if self._plan_cache is None:
             allowed = {
-                "task_prefix", "implement", "daemon_interval", "stale_seconds",
+                "task_prefix", "excluded_bundle_keys", "implement",
+                "daemon_interval", "stale_seconds",
                 "check_interval", "max_restarts", "max_task_attempts",
                 "implementation_timeout",
                 "implementation_command", "llm_merge_resolver_command",
@@ -5787,6 +5795,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-path", type=Path, default=None)
     parser.add_argument("--metrics-path", type=Path, default=None)
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
+    parser.add_argument(
+        "--exclude-bundle-key",
+        action="append",
+        default=[],
+        help=(
+            "Exact bundle key to omit from this supervisor run; repeat the "
+            "option to fence multiple bundles without rewriting the index"
+        ),
+    )
     parser.add_argument("--start", action="store_true", help="Launch the planned lane supervisors")
     parser.add_argument("--max-lanes", type=int, default=1, help="Maximum concurrent leased workers")
     parser.add_argument("--poll-interval", type=float, default=5.0)
@@ -5902,6 +5919,11 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
     bundle_index_path = args.bundle_index_path.resolve()
     lane_options = dict(
         task_prefix=args.task_prefix,
+        excluded_bundle_keys=tuple(
+            str(bundle_key).strip()
+            for bundle_key in (getattr(args, "exclude_bundle_key", ()) or ())
+            if str(bundle_key).strip()
+        ),
         implement=args.implement,
         daemon_interval=args.daemon_interval,
         stale_seconds=args.stale_seconds,
