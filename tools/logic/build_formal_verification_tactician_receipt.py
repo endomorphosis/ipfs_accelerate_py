@@ -2921,9 +2921,11 @@ def build_receipt(
 def build_release_candidate_source_attestation(repo_root: Path) -> dict[str, Any]:
     """Bind an explicit certified source commit/tree for the release candidate.
 
-    The candidate path itself is excluded from the certified source tree so the
-    artifact never makes a self-referential current-tree claim. Merge and
-    deployment remain unclaimed until FVT-G214 post-merge attestation.
+    The generated candidate identity is never used as its own source identity.
+    A prior checked-in version of the candidate may already be present in the
+    certified Git tree; that fact is measured rather than falsely described as
+    path exclusion. Merge and deployment remain unclaimed until FVT-G214
+    post-merge attestation.
     """
 
     base = build_source_attestation(repo_root)
@@ -2940,6 +2942,20 @@ def build_release_candidate_source_attestation(repo_root: Path) -> dict[str, Any
         and COMMIT_RE.fullmatch(str(source_tree))
         and base.get("source_commit_bound")
     )
+    candidate_path_present_in_source_tree = False
+    if source_commit and COMMIT_RE.fullmatch(str(source_commit)):
+        candidate_entry = _git(
+            repo_root,
+            "cat-file",
+            "-e",
+            (
+                f"{source_commit}:"
+                f"{DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix()}"
+            ),
+        )
+        candidate_path_present_in_source_tree = bool(
+            candidate_entry is not None and candidate_entry.returncode == 0
+        )
     return {
         "model": "pre_merge_release_candidate_source/v1",
         "certified_source_commit": source_commit,
@@ -2951,8 +2967,15 @@ def build_release_candidate_source_attestation(repo_root: Path) -> dict[str, Any
         "dirty_paths_at_certification": dirty,
         "non_candidate_dirty_paths": non_candidate_dirty,
         "attestation_paths": sorted(RELEASE_CANDIDATE_ATTESTATION_PATHS),
-        "candidate_excluded_from_source_tree": True,
+        "candidate_path_present_in_source_tree": (
+            candidate_path_present_in_source_tree
+        ),
+        "candidate_excluded_from_source_tree": (
+            not candidate_path_present_in_source_tree
+        ),
+        "generated_candidate_identity_excluded_from_source_identity": True,
         "self_referential_current_tree_claim_forbidden": True,
+        "source_binding_uses_committed_tree_not_candidate_identity": True,
         "merge_event_required_to_exceed_release_candidate": True,
         "merge_event_present": False,
         "deployment_attestation_present": False,
@@ -2986,8 +3009,12 @@ def _compact_tool_binding(
     }
 
 
-def _compact_semantic_lane(result: Mapping[str, Any]) -> dict[str, Any]:
-    """Keep lane identity and digests without bulk raw receipts."""
+def _compact_semantic_lane(
+    result: Mapping[str, Any],
+    *,
+    per_tool_evidence_digests: Mapping[str, str],
+) -> dict[str, Any]:
+    """Keep lane/per-tool identities and digests without bulk raw receipts."""
 
     integrity = _safe_dict(result.get("receipt_integrity"))
     return {
@@ -2996,8 +3023,18 @@ def _compact_semantic_lane(result: Mapping[str, Any]) -> dict[str, Any]:
         "digest_sha256": result.get("digest_sha256"),
         "block_reasons": list(_safe_list(result.get("block_reasons"))),
         "receipt_integrity_valid": integrity.get("valid"),
-        "check_set_digests": {
-            str(tool_id): _safe_dict(per_tool).get("check_set_digest_sha256")
+        "per_tool_bindings": {
+            str(tool_id): {
+                "check_set_digest_sha256": _safe_dict(per_tool).get(
+                    "check_set_digest_sha256"
+                ),
+                "tool_evidence_digest_sha256": per_tool_evidence_digests.get(
+                    str(tool_id)
+                ),
+                "artifact_validation_valid": _safe_dict(
+                    _safe_dict(per_tool).get("artifact_validation")
+                ).get("valid"),
+            }
             for tool_id, per_tool in _safe_dict(result.get("per_tool")).items()
         },
     }
@@ -3005,8 +3042,11 @@ def _compact_semantic_lane(result: Mapping[str, Any]) -> dict[str, Any]:
 
 def _compact_specialized_aggregation(
     specialized: Mapping[str, Any],
+    *,
+    handlers: Mapping[str, Any],
+    aggregation_digest_valid: bool,
 ) -> dict[str, Any]:
-    """Bind specialized aggregation by digest, not full receipt bodies."""
+    """Bind specialized aggregation and every handler by compact digests."""
 
     return {
         "schema_version": specialized.get("schema_version"),
@@ -3016,6 +3056,7 @@ def _compact_specialized_aggregation(
         "enabled": specialized.get("enabled"),
         "aggregation_digest_sha256": specialized.get("aggregation_digest_sha256")
         or specialized.get("digest_sha256"),
+        "aggregation_digest_valid": aggregation_digest_valid,
         "all_required_certifiers_represented": specialized.get(
             "all_required_certifiers_represented"
         ),
@@ -3028,6 +3069,11 @@ def _compact_specialized_aggregation(
         "certifier_families_represented": list(
             _safe_list(specialized.get("certifier_families_represented"))
         ),
+        "handlers": {
+            str(handler_key): dict(handler)
+            for handler_key, handler in sorted(handlers.items())
+            if isinstance(handler, Mapping)
+        },
     }
 
 
@@ -3112,6 +3158,12 @@ def build_role_aware_release_candidate(
     public_certificate_policy = _safe_dict(
         certificate.get("public_evidence_policy")
     )
+    # The certificate policy is evidence, not authority. Re-audit the complete
+    # supplied certificate so a digest-valid document cannot conceal private
+    # evidence behind a forged ``satisfied: true`` declaration.
+    recomputed_public_certificate_policy = certifier.public_evidence_audit(
+        certificate
+    )
     tools = {
         str(tool.get("tool_id") or ""): tool
         for tool in _safe_list(certificate.get("tools"))
@@ -3163,8 +3215,17 @@ def build_role_aware_release_candidate(
     )
     semantic_binding_failures: list[str] = []
     semantic_receipt_digests: dict[str, str] = {}
+    semantic_per_tool_evidence_digests: dict[str, dict[str, str]] = {}
     for result in semantic_results:
         lane_id = str(result.get("lane_id") or "unknown")
+        per_tool_evidence_digests: dict[str, str] = {}
+        for tool_id, per_tool in _safe_dict(result.get("per_tool")).items():
+            per_tool_evidence_digests[str(tool_id)] = certifier.content_digest(
+                _safe_dict(per_tool)
+            )
+        semantic_per_tool_evidence_digests[lane_id] = (
+            per_tool_evidence_digests
+        )
         raw_receipt = result.get("receipt")
         if not isinstance(raw_receipt, Mapping):
             if result.get("status") == "ran":
@@ -3196,17 +3257,70 @@ def build_role_aware_release_candidate(
                     f"{lane_id}:{tool_id}:check_set_digest_mismatch"
                 )
 
+    specialized = _safe_dict(certificate.get("specialized_receipt_aggregation"))
+    specialized_digest = str(
+        specialized.get("aggregation_digest_sha256")
+        or specialized.get("digest_sha256")
+        or ""
+    )
+    specialized_digest_valid = bool(
+        specialized_digest
+        and specialized_digest
+        == certifier.content_digest(
+            {
+                key: value
+                for key, value in specialized.items()
+                if key not in {"aggregation_digest_sha256", "digest_sha256"}
+            }
+        )
+    )
+    specialized_handler_bindings: dict[str, dict[str, Any]] = {}
+    specialized_binding_failures: list[str] = []
+    for handler_key, handler_value in sorted(
+        _safe_dict(specialized.get("specialized_by_handler")).items()
+    ):
+        handler = _safe_dict(handler_value)
+        declared_handler_digest = str(
+            handler.get("tool_evidence_digest_sha256") or ""
+        )
+        computed_handler_digest = certifier.content_digest(
+            {
+                key: value
+                for key, value in handler.items()
+                if key != "tool_evidence_digest_sha256"
+            }
+        )
+        handler_digest_valid = bool(
+            declared_handler_digest
+            and declared_handler_digest == computed_handler_digest
+        )
+        if not handler_digest_valid:
+            specialized_binding_failures.append(
+                f"specialized:{handler_key}:tool_evidence_digest_mismatch"
+            )
+        specialized_handler_bindings[str(handler_key)] = {
+            "handler_key": handler.get("handler_key"),
+            "tool_id": handler.get("tool_id"),
+            "semantic_lane_id": handler.get("semantic_lane_id"),
+            "property_lane_id": handler.get("property_lane_id"),
+            "certifier_family": handler.get("certifier_family"),
+            "tool_evidence_digest_sha256": declared_handler_digest,
+            "tool_evidence_digest_valid": handler_digest_valid,
+            "check_set_digest_sha256": handler.get(
+                "check_set_digest_sha256"
+            ),
+            "raw_receipt_digest": handler.get("raw_receipt_digest"),
+            "certified": handler.get("certified"),
+            "promotion_blocked": handler.get("promotion_blocked"),
+            "block_reasons": list(_safe_list(handler.get("block_reasons"))),
+        }
+
     digest_material = {
         "certificate_digest_sha256": certificate.get("certificate_digest_sha256"),
         "tool_check_digests": tool_check_digests,
         "tool_artifact_digests": tool_artifact_digests,
         "semantic_receipt_digests": semantic_receipt_digests,
-        "specialized_aggregation_digest": _safe_dict(
-            certificate.get("specialized_receipt_aggregation")
-        ).get("aggregation_digest_sha256")
-        or _safe_dict(certificate.get("specialized_receipt_aggregation")).get(
-            "digest_sha256"
-        ),
+        "specialized_aggregation_digest": specialized_digest or None,
         "authority_roles_policy_digest": authority_roles.get(
             "policy_digest_sha256"
         ),
@@ -3288,7 +3402,10 @@ def build_role_aware_release_candidate(
     offline_policy_satisfied = bool(
         certification_policy.get("offline_policy_satisfied")
     )
-    public_evidence_safe = bool(public_certificate_policy.get("satisfied"))
+    public_evidence_safe = bool(
+        public_certificate_policy.get("satisfied")
+        and recomputed_public_certificate_policy.get("satisfied")
+    )
     quarantines = _safe_list(certificate.get("disagreement_quarantines"))
     quarantines_bound = certificate_digest_valid and isinstance(
         certificate.get("disagreement_quarantines"), list
@@ -3326,16 +3443,21 @@ def build_role_aware_release_candidate(
 
     public_surfaces = {
         "certificate_public_evidence_policy": {
-            "satisfied": public_certificate_policy.get("satisfied"),
-            "host_private_paths_forbidden": public_certificate_policy.get(
-                "host_private_paths_forbidden"
-            ),
-            "raw_process_output_forbidden": public_certificate_policy.get(
-                "raw_process_output_forbidden"
-            ),
-            "raw_secret_or_witness_forbidden": public_certificate_policy.get(
-                "raw_secret_or_witness_forbidden"
-            ),
+            "declared": {
+                "satisfied": public_certificate_policy.get("satisfied"),
+                "host_private_paths_forbidden": public_certificate_policy.get(
+                    "host_private_paths_forbidden"
+                ),
+                "raw_process_output_forbidden": public_certificate_policy.get(
+                    "raw_process_output_forbidden"
+                ),
+                "raw_secret_or_witness_forbidden": (
+                    public_certificate_policy.get(
+                        "raw_secret_or_witness_forbidden"
+                    )
+                ),
+            },
+            "recomputed": recomputed_public_certificate_policy,
         },
         "host_private_paths_forbidden": bool(
             public_certificate_policy.get("host_private_paths_forbidden")
@@ -3358,12 +3480,8 @@ def build_role_aware_release_candidate(
         },
         "release_candidate": {
             "path": DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix(),
-            "present_before_generation": (
-                repo_root / DEFAULT_RELEASE_CANDIDATE_RELATIVE
-            ).is_file(),
-            "content_identity_before_generation": sha256_file(
-                repo_root / DEFAULT_RELEASE_CANDIDATE_RELATIVE
-            ),
+            "previous_candidate_content_not_read": True,
+            "generated_after_certified_source": True,
             "publication_identity": "self:candidate_identity",
         },
         "release_candidate_test": {
@@ -3392,11 +3510,15 @@ def build_role_aware_release_candidate(
         if key != "release_candidate"
     )
 
-    specialized = _safe_dict(certificate.get("specialized_receipt_aggregation"))
     specialized_bound = bool(
-        specialized.get("enabled") is True
-        or specialized.get("interface")
-        == "FormalVerificationSpecializedReceiptAggregation@1"
+        (
+            specialized.get("interface")
+            == "FormalVerificationSpecializedReceiptAggregation@1"
+            and specialized_digest_valid
+            and bool(specialized_handler_bindings)
+            and not specialized_binding_failures
+        )
+        or not bool(role_aware.get("enabled"))
     )
 
     acceptance = {
@@ -3414,7 +3536,16 @@ def build_role_aware_release_candidate(
         "self_referential_current_tree_claim_absent": bool(
             source.get("self_referential_current_tree_claim_forbidden")
         )
-        and bool(source.get("candidate_excluded_from_source_tree")),
+        and bool(
+            source.get(
+                "generated_candidate_identity_excluded_from_source_identity"
+            )
+        )
+        and bool(
+            source.get(
+                "source_binding_uses_committed_tree_not_candidate_identity"
+            )
+        ),
         "host_support_derived": bool(host_support.get("host_platform")),
         "roles_bound": bool(
             roles_summary.get("present")
@@ -3497,6 +3628,7 @@ def build_role_aware_release_candidate(
             if not satisfied
         ]
         + semantic_binding_failures
+        + specialized_binding_failures
         + [
             f"managed:{item.get('tool_id')}:{reason}"
             for item in _safe_list(managed.get("all_blockers"))
@@ -3584,6 +3716,8 @@ def build_role_aware_release_candidate(
         "blockers": blockers,
         "digest_material": digest_material,
         "role_aware_certificate": {
+            "projection_model": "digest_bound_compact_projection/v1",
+            "raw_certificate_embedded": False,
             "interface": certificate.get("interface"),
             "schema_version": certificate.get("schema_version"),
             "goal_id": certificate.get("goal_id"),
@@ -3617,10 +3751,21 @@ def build_role_aware_release_candidate(
                 )
             },
             "semantic_lane_results": [
-                _compact_semantic_lane(result) for result in semantic_results
+                _compact_semantic_lane(
+                    result,
+                    per_tool_evidence_digests=(
+                        semantic_per_tool_evidence_digests.get(
+                            str(result.get("lane_id") or "unknown"),
+                            {},
+                        )
+                    ),
+                )
+                for result in semantic_results
             ],
             "specialized_receipt_aggregation": _compact_specialized_aggregation(
-                specialized
+                specialized,
+                handlers=specialized_handler_bindings,
+                aggregation_digest_valid=specialized_digest_valid,
             ),
             "managed_deployment_readiness": _compact_managed_readiness(managed),
             "tools": [
@@ -3640,7 +3785,10 @@ def build_role_aware_release_candidate(
                 "forbid_network": certification_policy.get("forbid_network"),
             },
             "public_evidence_policy": {
-                "satisfied": public_certificate_policy.get("satisfied"),
+                "declared_satisfied": public_certificate_policy.get(
+                    "satisfied"
+                ),
+                "recomputed": recomputed_public_certificate_policy,
             },
         },
         "elevations": {
@@ -3714,7 +3862,9 @@ def build_role_aware_release_candidate(
             "and dependency digest participates in the certificate digest "
             "and therefore in this candidate identity.",
             "The checked-in candidate binds an explicit certified source "
-            "commit/tree and excludes its own path from that tree identity.",
+            "commit/tree. A prior candidate path may be present in that tree; "
+            "the newly generated candidate identity is never used as its own "
+            "source identity.",
             "Bulk formal artifacts are bound by digest; rebuild at load time "
             "from the live certificate rather than embedding full dumps.",
         ],
