@@ -1,0 +1,2977 @@
+{
+  "schema_version": "formal-verification-role-aware-release-candidate/v1",
+  "interface": "RoleAwareFormalVerificationReleaseCandidate@1",
+  "program_interface": "FormalVerificationTacticianRelease@1",
+  "program_goal_id": "FVT-G000",
+  "goal_id": "FVT-G213",
+  "task_id": "FVT-066",
+  "program": "formal-verification-tactician/toolchain-release-candidate",
+  "observed_at": "2026-08-01T00:00:00Z",
+  "binding_mode": "pre_merge_role_aware_release_candidate",
+  "status": "role_aware_release_candidate_blocked",
+  "readiness_stage": "blocked",
+  "description": "Fail-closed role-aware release candidate. Fans in host support, roles, ceilings, evidence classes, platform exceptions, blockers, offline policy, quarantine state, and public surfaces from bound matrix evidence without claiming merge or deployment. Maximum stage before a merge event exists is release_candidate. Bulk certificate bodies are bound by digest only.",
+  "source": {
+    "model": "pre_merge_release_candidate_source/v1",
+    "certified_source_commit": "fa52304868ed9892b23dc3f3d9af4dc88437c4c4",
+    "certified_source_tree": "3a814ac1333aec1989391a85aa27d819f70c809d",
+    "datasets_gitlink": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
+    "datasets_embedded_head": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
+    "source_commit_bound": true,
+    "source_candidate_clean": false,
+    "dirty_paths_at_certification": [
+      "docs/architecture/formal_verification_role_aware_release_candidate.json",
+      "test/integration/test_formal_verification_role_aware_release_candidate.py",
+      "tools/logic/build_formal_verification_tactician_receipt.py",
+      "tools/logic/certify_formal_verification_toolchains.py"
+    ],
+    "non_candidate_dirty_paths": [
+      "test/integration/test_formal_verification_role_aware_release_candidate.py",
+      "tools/logic/build_formal_verification_tactician_receipt.py",
+      "tools/logic/certify_formal_verification_toolchains.py"
+    ],
+    "attestation_paths": [
+      "docs/architecture/formal_verification_role_aware_release_candidate.json",
+      "docs/architecture/formal_verification_toolchain_certificate.json"
+    ],
+    "candidate_excluded_from_source_tree": true,
+    "self_referential_current_tree_claim_forbidden": true,
+    "merge_event_required_to_exceed_release_candidate": true,
+    "merge_event_present": false,
+    "deployment_attestation_present": false,
+    "claims_own_future_merge": false,
+    "claims_own_future_deployment": false,
+    "valid_for_release_candidate": false,
+    "tree_alignment": {
+      "description": "Parent commit, datasets gitlink, embedded HEAD, and origin/main are independent dimensions. Alignment of one never implies the others.",
+      "dimensions": [
+        "parent_commit",
+        "datasets_gitlink",
+        "datasets_embedded_head",
+        "datasets_origin_main",
+        "datasets_cleanliness",
+        "parent_origin_main"
+      ],
+      "parent": {
+        "path": ".",
+        "commit": "fa52304868ed9892b23dc3f3d9af4dc88437c4c4",
+        "tree": "3a814ac1333aec1989391a85aa27d819f70c809d",
+        "origin_main": "fa52304868ed9892b23dc3f3d9af4dc88437c4c4",
+        "clean": false,
+        "matches_origin_main": true
+      },
+      "gitlink": {
+        "path": "ipfs_datasets_py",
+        "mode": "160000",
+        "commit": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46"
+      },
+      "embedded_checkout": {
+        "path": "ipfs_datasets_py",
+        "head": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
+        "clean": true,
+        "matches_gitlink": true,
+        "origin_main": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
+        "matches_origin_main": true
+      },
+      "publication_gates": {
+        "parent_publication_lag": false,
+        "datasets_publication_lag": false,
+        "fetches_forbidden": true,
+        "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
+      },
+      "aligned_for_implementation": false,
+      "diagnostics": [
+        "parent_working_tree_dirty"
+      ]
+    }
+  },
+  "host_support": {
+    "host_platform": "linux-aarch64",
+    "global_supported_platforms": [
+      "linux-x86_64",
+      "linux-aarch64",
+      "darwin-x86_64",
+      "darwin-arm64"
+    ],
+    "host_globally_supported": true,
+    "derived_from": "managed_deployment_readiness"
+  },
+  "roles": {
+    "present": true,
+    "interface": "RoleAwarePromotionPolicy@1",
+    "role_interface": "FormalVerificationToolRole@1",
+    "policy_digest_sha256": "8d7d6054ea356000e1f6bf4de9c58d6b4eab1e6cd5b4171295a1a3e7a748ceec",
+    "boundary": {
+      "support_only": [
+        "java",
+        "maude",
+        "opam"
+      ],
+      "advisor_or_candidate_only": [
+        "autoencoder",
+        "ergoai",
+        "hammer",
+        "leanstral",
+        "symbolicai"
+      ],
+      "shadow_checkers": [
+        "secpal",
+        "souffle"
+      ],
+      "kernel_authority": [
+        "coq",
+        "isabelle",
+        "lean"
+      ],
+      "authorization_only": [
+        "datalog-authorization",
+        "secpal-authorization"
+      ],
+      "finite_trace_authority": [
+        "runtime-mtl",
+        "runtime-mtl-external"
+      ],
+      "attestation_authority_only": [
+        "zkp-circuit"
+      ],
+      "policy": {
+        "support_advisor_shadow_presence_cannot_certify": true,
+        "availability_is_not_authority": true,
+        "exactly_one_role_and_ceiling_per_tool": true,
+        "lanes_independently_owned": true,
+        "central_certifier_not_required_for_lane_binding": true
+      }
+    },
+    "tool_count": 29
+  },
+  "ceilings": {
+    "max_stage": "release_candidate",
+    "merge_event_present": false,
+    "deployment_claimed": false,
+    "post_merge_attestation_claimed": false,
+    "cannot_exceed_release_candidate_without_merge_event": true,
+    "authority_ceiling_respected": true,
+    "non_authoritative_promotions": []
+  },
+  "evidence_classes": [
+    "external_prover_installation_pending",
+    "live",
+    "path_shim",
+    "production_certified",
+    "proposal_only_semantics",
+    "unavailable",
+    "usable_pending_authorization_vendor_fanin",
+    "usable_pending_external_runtime_mtl",
+    "usable_pending_kernel_live_fanin"
+  ],
+  "offline_policy": {
+    "satisfied": true,
+    "forbid_install": true,
+    "forbid_download": true,
+    "forbid_network": true,
+    "lock_offline_verification_policy": {
+      "forbid_install": true,
+      "forbid_download": true,
+      "forbid_network": true,
+      "forbid_curl_pipe_shell": true,
+      "forbid_system_package_mutation": true,
+      "require_exact_pin_match_for_production_certification": true,
+      "path_presence_is_not_usability": true,
+      "shim_toolchain_mismatch_fails_closed": true
+    },
+    "offline_observation_count": 13
+  },
+  "quarantine_state": {
+    "bound": true,
+    "disagreement_quarantines": [],
+    "count": 0
+  },
+  "public_surfaces": {
+    "certificate_public_evidence_policy": {
+      "satisfied": true,
+      "host_private_paths_forbidden": true,
+      "raw_process_output_forbidden": true,
+      "raw_secret_or_witness_forbidden": true
+    },
+    "host_private_paths_forbidden": true,
+    "raw_process_output_forbidden": true,
+    "raw_secret_or_witness_forbidden": true,
+    "bound": true
+  },
+  "acceptance": {
+    "role_aware_certificate_bound": true,
+    "certificate_digest_participates_in_identity": true,
+    "raw_receipt_check_case_binding_digests_bound": true,
+    "executable_artifact_dependency_digests_bound": true,
+    "specialized_receipt_aggregation_bound": true,
+    "certified_source_bound": true,
+    "source_valid_for_release_candidate": false,
+    "self_referential_current_tree_claim_absent": true,
+    "host_support_derived": true,
+    "roles_bound": true,
+    "ceilings_derived": true,
+    "evidence_classes_derived": true,
+    "platform_exceptions_derived_and_narrow": true,
+    "unsupported_only_as_narrow_exceptions": true,
+    "blockers_derived_not_concealed": true,
+    "offline_policy_satisfied": true,
+    "quarantine_state_bound": true,
+    "public_surfaces_bound": true,
+    "authority_ceiling_respected": true,
+    "synthetic_evidence_cannot_certify_production": true,
+    "no_install_during_offline_certification": true,
+    "semantic_receipts_full_and_bound": true,
+    "required_semantic_elevations_present": false,
+    "supported_managed_capabilities_ready": false,
+    "supported_managed_capability_blockers": [
+      {
+        "tool_id": "apalache",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "autohyper",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "coq",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "kernel",
+        "evidence_class": "external_prover_installation_pending",
+        "artifact_classes": [
+          "launcher_script",
+          "repository_source"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "cvc5",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "satisfiability",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "eprover",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "reconstruction",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "hyperltl",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "isabelle",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "kernel",
+        "evidence_class": "external_prover_installation_pending",
+        "artifact_classes": [
+          "launcher_script",
+          "repository_source"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "lean",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "kernel",
+        "evidence_class": "usable_pending_kernel_live_fanin",
+        "artifact_classes": [
+          "native_or_managed_binary",
+          "repository_source"
+        ],
+        "reasons": [
+          "semantic_evidence_below_authority_ceiling"
+        ]
+      },
+      {
+        "tool_id": "mchyper",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "proverif",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "protocol",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "runtime-mtl-external",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "finite_trace",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "souffle",
+        "category": "capability",
+        "role": "shadow",
+        "authority_ceiling": "none",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "tamarin",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "protocol",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "tlc",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "evidence_class": "path_shim",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "vampire",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "reconstruction",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "zkp-circuit",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "attestation",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      }
+    ],
+    "supported_managed_dependency_blockers": [
+      {
+        "tool_id": "maude",
+        "category": "dependency",
+        "role": "support",
+        "authority_ceiling": "none",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "opam",
+        "category": "dependency",
+        "role": "support",
+        "authority_ceiling": "none",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "stack",
+        "category": "dependency",
+        "role": "unclassified",
+        "authority_ceiling": null,
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      }
+    ],
+    "merge_not_claimed": true,
+    "deployment_not_claimed": true,
+    "stage_at_most_release_candidate": true,
+    "artifacts_present": true
+  },
+  "readiness_requirements": {
+    "role_aware_certificate_bound": true,
+    "raw_receipt_check_case_binding_digests_bound": true,
+    "executable_artifact_dependency_digests_bound": true,
+    "certified_source_bound": true,
+    "source_valid_for_release_candidate": false,
+    "self_referential_current_tree_claim_absent": true,
+    "host_support_derived": true,
+    "roles_bound": true,
+    "platform_exceptions_derived_and_narrow": true,
+    "unsupported_only_as_narrow_exceptions": true,
+    "offline_policy_satisfied": true,
+    "quarantine_state_bound": true,
+    "public_surfaces_bound": true,
+    "authority_ceiling_respected": true,
+    "synthetic_evidence_cannot_certify_production": true,
+    "no_install_during_offline_certification": true,
+    "semantic_receipts_full_and_bound": true,
+    "supported_managed_capabilities_ready": false,
+    "merge_not_claimed": true,
+    "deployment_not_claimed": true,
+    "stage_at_most_release_candidate": true,
+    "artifacts_present": true
+  },
+  "blockers": [
+    "managed:apalache:full_semantic_check_set_missing_or_failed",
+    "managed:apalache:launcher_target_artifact_unbound",
+    "managed:apalache:semantic_evidence_below_authority_ceiling",
+    "managed:apalache:semantic_receipt_not_bound",
+    "managed:apalache:supported_managed_installation_missing_or_shim_only",
+    "managed:autohyper:full_semantic_check_set_missing_or_failed",
+    "managed:autohyper:locked_version_mismatch",
+    "managed:autohyper:semantic_evidence_below_authority_ceiling",
+    "managed:autohyper:semantic_receipt_not_bound",
+    "managed:autohyper:supported_managed_installation_missing_or_shim_only",
+    "managed:coq:launcher_target_artifact_unbound",
+    "managed:coq:semantic_evidence_below_authority_ceiling",
+    "managed:coq:supported_managed_installation_missing_or_shim_only",
+    "managed:cvc5:launcher_target_artifact_unbound",
+    "managed:cvc5:semantic_evidence_below_authority_ceiling",
+    "managed:cvc5:semantic_receipt_not_bound",
+    "managed:cvc5:supported_managed_installation_missing_or_shim_only",
+    "managed:eprover:full_semantic_check_set_missing_or_failed",
+    "managed:eprover:launcher_target_artifact_unbound",
+    "managed:eprover:semantic_evidence_below_authority_ceiling",
+    "managed:eprover:semantic_receipt_not_bound",
+    "managed:eprover:supported_managed_installation_missing_or_shim_only",
+    "managed:hyperltl:full_semantic_check_set_missing_or_failed",
+    "managed:hyperltl:locked_version_mismatch",
+    "managed:hyperltl:semantic_evidence_below_authority_ceiling",
+    "managed:hyperltl:semantic_receipt_not_bound",
+    "managed:hyperltl:supported_managed_installation_missing_or_shim_only",
+    "managed:isabelle:launcher_target_artifact_unbound",
+    "managed:isabelle:semantic_evidence_below_authority_ceiling",
+    "managed:isabelle:supported_managed_installation_missing_or_shim_only",
+    "managed:lean:semantic_evidence_below_authority_ceiling",
+    "managed:maude:launcher_target_artifact_unbound",
+    "managed:maude:supported_managed_installation_missing_or_shim_only",
+    "managed:mchyper:full_semantic_check_set_missing_or_failed",
+    "managed:mchyper:locked_version_mismatch",
+    "managed:mchyper:semantic_evidence_below_authority_ceiling",
+    "managed:mchyper:semantic_receipt_not_bound",
+    "managed:mchyper:supported_managed_installation_missing_or_shim_only",
+    "managed:opam:launcher_target_artifact_unbound",
+    "managed:opam:supported_managed_installation_missing_or_shim_only",
+    "managed:proverif:full_semantic_check_set_missing_or_failed",
+    "managed:proverif:launcher_target_artifact_unbound",
+    "managed:proverif:semantic_evidence_below_authority_ceiling",
+    "managed:proverif:semantic_receipt_not_bound",
+    "managed:proverif:supported_managed_installation_missing_or_shim_only",
+    "managed:runtime-mtl-external:full_semantic_check_set_missing_or_failed",
+    "managed:runtime-mtl-external:locked_version_mismatch",
+    "managed:runtime-mtl-external:semantic_evidence_below_authority_ceiling",
+    "managed:runtime-mtl-external:semantic_receipt_not_bound",
+    "managed:runtime-mtl-external:supported_managed_installation_missing_or_shim_only",
+    "managed:souffle:full_semantic_check_set_missing_or_failed",
+    "managed:souffle:locked_version_mismatch",
+    "managed:souffle:supported_managed_installation_missing_or_shim_only",
+    "managed:stack:launcher_target_artifact_unbound",
+    "managed:stack:supported_managed_installation_missing_or_shim_only",
+    "managed:tamarin:full_semantic_check_set_missing_or_failed",
+    "managed:tamarin:launcher_target_artifact_unbound",
+    "managed:tamarin:semantic_evidence_below_authority_ceiling",
+    "managed:tamarin:semantic_receipt_not_bound",
+    "managed:tamarin:supported_managed_installation_missing_or_shim_only",
+    "managed:tlc:full_semantic_check_set_missing_or_failed",
+    "managed:tlc:launcher_target_artifact_unbound",
+    "managed:tlc:locked_version_mismatch",
+    "managed:tlc:semantic_evidence_below_authority_ceiling",
+    "managed:tlc:semantic_receipt_not_bound",
+    "managed:tlc:supported_managed_installation_missing_or_shim_only",
+    "managed:vampire:full_semantic_check_set_missing_or_failed",
+    "managed:vampire:launcher_target_artifact_unbound",
+    "managed:vampire:semantic_evidence_below_authority_ceiling",
+    "managed:vampire:semantic_receipt_not_bound",
+    "managed:vampire:supported_managed_installation_missing_or_shim_only",
+    "managed:zkp-circuit:full_semantic_check_set_missing_or_failed",
+    "managed:zkp-circuit:locked_version_mismatch",
+    "managed:zkp-circuit:semantic_evidence_below_authority_ceiling",
+    "managed:zkp-circuit:semantic_receipt_not_bound",
+    "managed:zkp-circuit:supported_managed_installation_missing_or_shim_only",
+    "required_elevation_missing:coq",
+    "required_elevation_missing:datalog-authorization",
+    "required_elevation_missing:isabelle",
+    "required_elevation_missing:lean",
+    "required_elevation_missing:runtime-mtl",
+    "required_elevation_missing:secpal-authorization",
+    "source_valid_for_release_candidate",
+    "supported_managed_capabilities_ready"
+  ],
+  "digest_material": {
+    "certificate_digest_sha256": "92307fb220edee7433e615fa079b96a8b6947a8b13c76317b2c822cdd8d95f6f",
+    "tool_check_digests": {
+      "apalache": "71d2e0f49fa58c3f378fa4d0e0db1220409bbe609d70fe66e1cc23c83565c2ca",
+      "autohyper": "208f76bf07ffc9c0b80a3cb0ddd5415eb10c786f793362a244b81538e722013f",
+      "coq": "e9abe7be67d5d87d93176476693e1903a9755e35a0d8016a8e2e8ee5c0aafa0a",
+      "cvc5": "851f7e7aa9455288a29ebc84d19eb2640cde2af0ad0e8af04d6c071baf663460",
+      "datalog-authorization": "017b17fd14348ed4cb9a4fac7f263be1ae02b5823378c50e6a4c24a8effbc296",
+      "eprover": "d801883123df92dc748303f8c3fec450a6ff6eb1ff9a1eadde04f1d6d991ef2d",
+      "ergoai": "1fb32624d1f7c23cdca76da29205334cef043bb364448d2cb1004a216d783251",
+      "hyperltl": "3f59130a98b7a67b1463d64607d7e2b6e48856507b1f9fa839d18f74d85a8cbe",
+      "isabelle": "40a647919c7365c0e2564505a63dde40f40f0ab8d8d66ce1cd7af14d38f9d4eb",
+      "java": "484f20e95d3ac53ef218025546333706701bbd707d84449859cf182a2f7d3278",
+      "lean": "ee292794b1d1f11ec28a8f14f053d462377d631f6ce3142742aaf465dede5419",
+      "maude": "fc25c82f7e7fe7ef174957f3bf08f8c29cffb7c0ec0895a1d2eb4762156a27f9",
+      "mchyper": "4dcba5b93fcbe3761e307dae20ee95047650d2727b47c3ac6c4c53c39abe960a",
+      "opam": "495bfe1e48cd83beb5db3038ab8e0397be6a7088857f4e4d383639c1adb670f8",
+      "proverif": "c9ec566bcb011227b51076ab26eabc1f417f9f4aca7d46dc2cabbd546a703abb",
+      "runtime-mtl": "d0d3e74a078116cda28017fd3c81fb128cf2299fecf54fb119d09e4f376cdc6a",
+      "runtime-mtl-external": "71ba74cf23aa2aa07e75d5fa1072c9c7ce4de3a7870a2be00ebc01db352c8360",
+      "secpal": "45f8b49f35728085436d03eb4cea391619e23c32877fa7ebd08fc816b95fd367",
+      "secpal-authorization": "f81d07888f4e03b9fe7f70a7232fbf44de81d80049cd56f082fab6ca5e8023b8",
+      "souffle": "d8a8dee98b0cf7e9fd92b3f851b034918543e7d90febe72f5a42cdc820e33f3a",
+      "stack": "ded23cf85e28d394cc5fced540258b617819692fd9bd33b2a5d463122b601997",
+      "symbolicai": "34be3ec0920e3246b05f2c9aac71b6b06debfa18a22d3053fd77ac00221c4f58",
+      "tamarin": "297532f5fdcc740c89937afc88678afa292f96c7cf93ae907da95bcea9cf6d32",
+      "tlc": "ead33bb994ac15f24828a43e85388ec79ae27ed73d682e4d2e5ee80993c5242d",
+      "vampire": "1687f5280bcc68a9783e0cb17ed0b103c590c19d641ed79a96f01a4af588ba46",
+      "z3": "1038d1271831b00768d7ed4dede12516d972c770fc43e5e4fd0ecc1424c84598",
+      "zkp-circuit": "78d08201756cd02f5bd73deb58130b80f0a3b79158491d29cc3b063bcb6cc791"
+    },
+    "tool_artifact_digests": {
+      "apalache": [
+        "sha256:fcaec70743b22c912b3356464ec690c694d482f61e59a667da7ecbe251651560"
+      ],
+      "autohyper": [],
+      "coq": [
+        "sha256:200e02ae6308968ee401b8998f98b9d797c912a807d5d3a43037538a8e21e404",
+        "sha256:632f5be0def7ed93485d33df4716d88bc21cbb51215c582a01a25b70485e5a22"
+      ],
+      "cvc5": [
+        "sha256:85827e46576d68570c520a2b2927fe1d260d0bfb2b93919f53f50ed29ee1e419"
+      ],
+      "datalog-authorization": [
+        "sha256:f8fd4ea76691172f4fbfb2deaca565be4920ebf56cd90e8350c87d0625d4cb6e"
+      ],
+      "eprover": [
+        "sha256:da17ca834957a49def615b69bcf36f34f8e8a8417f9043191b15249fabe05748"
+      ],
+      "ergoai": [
+        "sha256:3b7bcf499f2f485071ca8f4ac2120ec61964eaa3418028d980619d20a554c0be",
+        "sha256:7d2bbdbf49bb5d0f00c26d8d4b365fb81b9dbc0f508df2dd8256f3e03945dfec"
+      ],
+      "hyperltl": [],
+      "isabelle": [
+        "sha256:0ac87f15bb1b2c966e1818027be762fd5f1fbaaa7a54ac40ce4acc4010661734",
+        "sha256:e9880ebe203029cbaff5e446712a9407c922d4d4a29d3f3b6b304ea18ad2df61"
+      ],
+      "java": [
+        "sha256:29cd006b1db6557741e1c5c0a5d43370a25358a3b72780a2c9b1515833af89dc"
+      ],
+      "lean": [
+        "sha256:a8c016ce2b9add449f49d65d29744b9b9d9f87da1eb0796123ba6ad594e3296d",
+        "sha256:b480595a22661f4cb22b37602b0de664ab1aaf815e243c42b7e7eb51c6163b7d"
+      ],
+      "maude": [
+        "sha256:08df9a4d71e80de3144964a5d8132c76f895da8d1afe9635e075ccb75ea09846"
+      ],
+      "mchyper": [],
+      "opam": [
+        "sha256:f7b235be8dabfdde7993ad679c8ab3a29ff89e64409ccb268d8147465e66a4b5"
+      ],
+      "proverif": [
+        "sha256:3a2febf527ff9af3f3270b482d465729a8e6024fe01f2e53aa18aacaaa47dbf4"
+      ],
+      "runtime-mtl": [
+        "sha256:40f509d3bc712e3ded40d403dd8548ec0d9e03933deb985caf38ba56e044de40"
+      ],
+      "runtime-mtl-external": [],
+      "secpal": [],
+      "secpal-authorization": [
+        "sha256:f8fd4ea76691172f4fbfb2deaca565be4920ebf56cd90e8350c87d0625d4cb6e"
+      ],
+      "souffle": [],
+      "stack": [
+        "sha256:5faddbcd8ef6257a1694b5100da377cd7cd9ec0d4956d5b87b262bb41b2784e3"
+      ],
+      "symbolicai": [
+        "sha256:3b7bcf499f2f485071ca8f4ac2120ec61964eaa3418028d980619d20a554c0be"
+      ],
+      "tamarin": [
+        "sha256:cdeb7d03815063d3ea6a8407fe2dcfde05a888c57ae25ab3a698472a953b537b"
+      ],
+      "tlc": [
+        "sha256:e162af5b1a4f161d6d672c78bc0e2b4aa6160151b9f558cd543cac3aa43434ac"
+      ],
+      "vampire": [
+        "sha256:c526c9c1561024f7a297ef4acf3cc31238aaabd6bb4908c1a62ea9f7feced992"
+      ],
+      "z3": [
+        "sha256:9496faf344fc64efa725b689ee6928f123da717d265a752d5929a59e267521e3"
+      ],
+      "zkp-circuit": []
+    },
+    "semantic_receipt_digests": {
+      "kernel": "7cae581bb3efad2724182183f65af87b2dd96dc038b456c168aebd0b3b640cb4",
+      "kernel_rocq": "c6be5ccb1385f6e0ab2f1d9b1db62e93bd509cef46a37c424fb7ea566400a93e",
+      "kernel_isabelle": "962e8fc7773fd47f26cd2f7b8bb302cd3648e378c02643c23f3a0a648d61769a",
+      "runtime_mtl": "82303d2067cdc057235c1266f306c63c3d322dbda3f3d1bf8f15fa8a3eba2743",
+      "datalog_secpal": "1c56612f1405ed2bb53ea52bb8ebdbeb38147b7fb4c3b83ca2d1cbf07a1be8dd",
+      "state_model": "e07d77ed67ec73928671190b68b07319388d950e3f612c9a7278551ef0147f5b",
+      "protocol_tamarin": "631cfcdbc88b12894eec09eb38de8bed90624891260e1d65bbb05d7844336dc5",
+      "protocol_proverif": "9e254f1a2112c40891a11af1a511aca864d6a7c559844040be6a23e95602435a",
+      "atp": "32638a4b24925ab5c91917fb4c2d856be6662e50bf70b171b1e86c5ee74265cb",
+      "runtime_mtl_external": "6fa81ead68bc7a7b520f10ec58ff38516da71bbfb8649dd035591b213dfe5aa1",
+      "authorization_external": "46773d7f8ab87996007ef7bb1a48a0c857a81dbaa1a87f8fcadcb1358b5a7892",
+      "attestation": "c1a6547dca7f7431fe3f0657a4cd8675af39091bebe866763a423822791de722",
+      "advisors": "781cd5fe254ee3411e39f94d386f734f722cb52fcbdd553f31b134304ed545e9"
+    },
+    "specialized_aggregation_digest": "7fb2ed761807475498d02bfa4ebfc6f7bca4b4a1b4688ec4d7893c6f924e2613",
+    "authority_roles_policy_digest": "8d7d6054ea356000e1f6bf4de9c58d6b4eab1e6cd5b4171295a1a3e7a748ceec",
+    "lock_digest": "8ec39a0339029f6c89c512f7dfc263b7e64c7960f9bfa1e09dfd8ecc18763228",
+    "quarantine_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "role_aware_certificate": {
+    "interface": "FormalVerificationToolchainCertificate@1",
+    "schema_version": "formal-verification-toolchain-certificate/v1",
+    "goal_id": "FVT-G060",
+    "task_id": "FVT-030",
+    "binding_mode": "offline_pinned_live_lanes_role_aware",
+    "certificate_digest_sha256": "92307fb220edee7433e615fa079b96a8b6947a8b13c76317b2c822cdd8d95f6f",
+    "role_aware": {
+      "enabled": true,
+      "goal_id": "FVT-G200",
+      "task_id": "FVT-053",
+      "interface": "RoleAwareFormalVerificationRelease@1",
+      "elevated_tool_ids": [],
+      "required_baseline_elevations": [
+        "lean",
+        "runtime-mtl",
+        "datalog-authorization",
+        "secpal-authorization",
+        "coq",
+        "isabelle"
+      ],
+      "elevation_count": 18,
+      "demotion_count": 0,
+      "release_candidate": {
+        "interface": "RoleAwareFormalVerificationReleaseCandidate@1",
+        "goal_id": "FVT-G213",
+        "task_id": "FVT-066",
+        "max_stage": "release_candidate",
+        "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
+        "claims_merge": false,
+        "claims_deployment": false
+      }
+    },
+    "promotion": {
+      "production_certified_tool_ids": [
+        "z3"
+      ],
+      "merely_usable_tool_ids": [
+        "apalache",
+        "cvc5",
+        "datalog-authorization",
+        "eprover",
+        "ergoai",
+        "java",
+        "lean",
+        "maude",
+        "opam",
+        "proverif",
+        "runtime-mtl",
+        "secpal-authorization",
+        "stack",
+        "symbolicai",
+        "tamarin",
+        "vampire"
+      ],
+      "unavailable_tool_ids": [
+        "autohyper",
+        "coq",
+        "hyperltl",
+        "isabelle",
+        "mchyper",
+        "runtime-mtl-external",
+        "secpal",
+        "souffle",
+        "tlc",
+        "zkp-circuit"
+      ]
+    },
+    "property_lanes": [
+      {
+        "lane_id": "smt",
+        "property_class": "smt_software_verification",
+        "description": "SMT solvers for software-verification VCs",
+        "tool_ids": [
+          "z3",
+          "cvc5"
+        ],
+        "authority_tool_ids": [
+          "z3",
+          "cvc5"
+        ],
+        "certified_tool_ids": [
+          "z3"
+        ],
+        "certified_authority_tool_ids": [
+          "z3"
+        ],
+        "unavailable_tool_ids": [],
+        "blocked_tool_ids": [
+          "cvc5"
+        ],
+        "disagreement_quarantine_ids": [],
+        "promotion_ready": true,
+        "notes": ""
+      },
+      {
+        "lane_id": "tla",
+        "property_class": "tla_state_model",
+        "description": "TLA+/TLC/Apalache state-model checking",
+        "tool_ids": [
+          "apalache",
+          "tlc",
+          "java"
+        ],
+        "authority_tool_ids": [
+          "apalache",
+          "tlc"
+        ],
+        "certified_tool_ids": [],
+        "certified_authority_tool_ids": [],
+        "unavailable_tool_ids": [
+          "tlc"
+        ],
+        "blocked_tool_ids": [
+          "apalache",
+          "tlc",
+          "java"
+        ],
+        "disagreement_quarantine_ids": [],
+        "promotion_ready": false,
+        "notes": "Absent tools block only their own promotion."
+      },
+      {
+        "lane_id": "datalog_secpal",
+        "property_class": "authorization_datalog_secpal",
+        "description": "Datalog/SecPAL authorization reasoning",
+        "tool_ids": [
+          "datalog-authorization",
+          "secpal-authorization",
+          "souffle",
+          "secpal"
+        ],
+        "authority_tool_ids": [
+          "datalog-authorization",
+          "secpal-authorization",
+          "souffle",
+          "secpal"
+        ],
+        "certified_tool_ids": [],
+        "certified_authority_tool_ids": [],
+        "unavailable_tool_ids": [
+          "souffle",
+          "secpal"
+        ],
+        "blocked_tool_ids": [
+          "datalog-authorization",
+          "secpal-authorization",
+          "souffle",
+          "secpal"
+        ],
+        "disagreement_quarantine_ids": [],
+        "promotion_ready": false,
+        "notes": "Absent tools block only their own promotion."
+      },
+      {
+        "lane_id": "protocol",
+        "property_class": "protocol_verification",
+        "description": "Tamarin/ProVerif protocol verification",
+        "tool_ids": [
+          "tamarin",
+          "proverif",
+          "maude"
+        ],
+        "authority_tool_ids": [
+          "tamarin",
+          "proverif"
+        ],
+        "certified_tool_ids": [],
+        "certified_authority_tool_ids": [],
+        "unavailable_tool_ids": [],
+        "blocked_tool_ids": [
+          "tamarin",
+          "proverif",
+          "maude"
+        ],
+        "disagreement_quarantine_ids": [],
+        "promotion_ready": false,
+        "notes": ""
+      },
+      {
+        "lane_id": "hyperltl",
+        "property_class": "hyperproperty",
+        "description": "HyperLTL / hyperproperty tools",
+        "tool_ids": [
+          "hyperltl",
+          "autohyper",
+          "mchyper"
+        ],
+        "authority_tool_ids": [
+          "hyperltl",
+          "autohyper",
+          "mchyper"
+        ],
+        "certified_tool_ids": [],
+        "certified_authority_tool_ids": [],
+        "unavailable_tool_ids": [
+          "hyperltl",
+          "autohyper",
+          "mchyper"
+        ],
+        "blocked_tool_ids": [
+          "hyperltl",
+          "autohyper",
+          "mchyper"
+        ],
+        "disagreement_quarantine_ids": [],
+        "promotion_ready": false,
+        "notes": "Absent tools block only their own promotion."
+      },
+      {
+        "lane_id": "atp",
+        "property_class": "automated_theorem_proving",
+        "description": "First-order ATP portfolio",
+        "tool_ids": [
+          "vampire",
+          "eprover"
+        ],
+        "authority_tool_ids": [
+          "vampire",
+          "eprover"
+        ],
+        "certified_tool_ids": [],
+        "certified_authority_tool_ids": [],
+        "unavailable_tool_ids": [],
+        "blocked_tool_ids": [
+          "vampire",
+          "eprover"
+        ],
+        "disagreement_quarantine_ids": [],
+        "promotion_ready": false,
+        "notes": ""
+      },
+      {
+        "lane_id": "hammer",
+        "property_class": "hammer_advisor",
+        "description": "Hammer / advisor bridges (non-kernel authority)",
+        "tool_ids": [
+          "symbolicai",
+          "ergoai"
+        ],
+        "authority_tool_ids": [
+          "symbolicai",
+          "ergoai"
+        ],
+        "certified_tool_ids": [],
+        "certified_authority_tool_ids": [],
+        "unavailable_tool_ids": [],
+        "blocked_tool_ids": [
+          "symbolicai",
+          "ergoai"
+        ],
+        "disagreement_quarantine_ids": [],
+        "promotion_ready": false,
+        "notes": ""
+      },
+      {
+        "lane_id": "kernel",
+        "property_class": "interactive_proof_kernel",
+        "description": "Lean / Rocq / Isabelle kernels",
+        "tool_ids": [
+          "lean",
+          "coq",
+          "isabelle"
+        ],
+        "authority_tool_ids": [
+          "lean",
+          "coq",
+          "isabelle"
+        ],
+        "certified_tool_ids": [],
+        "certified_authority_tool_ids": [],
+        "unavailable_tool_ids": [
+          "coq",
+          "isabelle"
+        ],
+        "blocked_tool_ids": [
+          "lean",
+          "coq",
+          "isabelle"
+        ],
+        "disagreement_quarantine_ids": [],
+        "promotion_ready": false,
+        "notes": "Absent tools block only their own promotion."
+      },
+      {
+        "lane_id": "runtime_mtl",
+        "property_class": "runtime_mtl_monitoring",
+        "description": "Runtime MTL monitors",
+        "tool_ids": [
+          "runtime-mtl",
+          "runtime-mtl-external"
+        ],
+        "authority_tool_ids": [
+          "runtime-mtl",
+          "runtime-mtl-external"
+        ],
+        "certified_tool_ids": [],
+        "certified_authority_tool_ids": [],
+        "unavailable_tool_ids": [
+          "runtime-mtl-external"
+        ],
+        "blocked_tool_ids": [
+          "runtime-mtl",
+          "runtime-mtl-external"
+        ],
+        "disagreement_quarantine_ids": [],
+        "promotion_ready": false,
+        "notes": "Absent tools block only their own promotion."
+      },
+      {
+        "lane_id": "attestation",
+        "property_class": "attestation_zkp",
+        "description": "Attestation / ZKP circuit bindings",
+        "tool_ids": [
+          "zkp-circuit"
+        ],
+        "authority_tool_ids": [
+          "zkp-circuit"
+        ],
+        "certified_tool_ids": [],
+        "certified_authority_tool_ids": [],
+        "unavailable_tool_ids": [
+          "zkp-circuit"
+        ],
+        "blocked_tool_ids": [
+          "zkp-circuit"
+        ],
+        "disagreement_quarantine_ids": [],
+        "promotion_ready": false,
+        "notes": "Absent tools block only their own promotion."
+      }
+    ],
+    "disagreement_quarantines": [],
+    "authority_roles": {
+      "present": true,
+      "interface": "RoleAwarePromotionPolicy@1",
+      "role_interface": "FormalVerificationToolRole@1",
+      "boundary": {
+        "support_only": [
+          "java",
+          "maude",
+          "opam"
+        ],
+        "advisor_or_candidate_only": [
+          "autoencoder",
+          "ergoai",
+          "hammer",
+          "leanstral",
+          "symbolicai"
+        ],
+        "shadow_checkers": [
+          "secpal",
+          "souffle"
+        ],
+        "kernel_authority": [
+          "coq",
+          "isabelle",
+          "lean"
+        ],
+        "authorization_only": [
+          "datalog-authorization",
+          "secpal-authorization"
+        ],
+        "finite_trace_authority": [
+          "runtime-mtl",
+          "runtime-mtl-external"
+        ],
+        "attestation_authority_only": [
+          "zkp-circuit"
+        ],
+        "policy": {
+          "support_advisor_shadow_presence_cannot_certify": true,
+          "availability_is_not_authority": true,
+          "exactly_one_role_and_ceiling_per_tool": true,
+          "lanes_independently_owned": true,
+          "central_certifier_not_required_for_lane_binding": true
+        }
+      },
+      "policy_digest_sha256": "8d7d6054ea356000e1f6bf4de9c58d6b4eab1e6cd5b4171295a1a3e7a748ceec"
+    },
+    "semantic_lane_results": [
+      {
+        "lane_id": "kernel",
+        "status": "ran",
+        "digest_sha256": "7cae581bb3efad2724182183f65af87b2dd96dc038b456c168aebd0b3b640cb4",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "lean": "ee292794b1d1f11ec28a8f14f053d462377d631f6ce3142742aaf465dede5419"
+        }
+      },
+      {
+        "lane_id": "kernel_rocq",
+        "status": "ran",
+        "digest_sha256": "c6be5ccb1385f6e0ab2f1d9b1db62e93bd509cef46a37c424fb7ea566400a93e",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "coq": "e9abe7be67d5d87d93176476693e1903a9755e35a0d8016a8e2e8ee5c0aafa0a"
+        }
+      },
+      {
+        "lane_id": "kernel_isabelle",
+        "status": "ran",
+        "digest_sha256": "962e8fc7773fd47f26cd2f7b8bb302cd3648e378c02643c23f3a0a648d61769a",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "isabelle": "40a647919c7365c0e2564505a63dde40f40f0ab8d8d66ce1cd7af14d38f9d4eb"
+        }
+      },
+      {
+        "lane_id": "runtime_mtl",
+        "status": "ran",
+        "digest_sha256": "82303d2067cdc057235c1266f306c63c3d322dbda3f3d1bf8f15fa8a3eba2743",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "runtime-mtl": "d0d3e74a078116cda28017fd3c81fb128cf2299fecf54fb119d09e4f376cdc6a"
+        }
+      },
+      {
+        "lane_id": "datalog_secpal",
+        "status": "ran",
+        "digest_sha256": "1c56612f1405ed2bb53ea52bb8ebdbeb38147b7fb4c3b83ca2d1cbf07a1be8dd",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "datalog-authorization": "017b17fd14348ed4cb9a4fac7f263be1ae02b5823378c50e6a4c24a8effbc296",
+          "secpal-authorization": "f81d07888f4e03b9fe7f70a7232fbf44de81d80049cd56f082fab6ca5e8023b8"
+        }
+      },
+      {
+        "lane_id": "state_model",
+        "status": "ran",
+        "digest_sha256": "e07d77ed67ec73928671190b68b07319388d950e3f612c9a7278551ef0147f5b",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "apalache": "c8013b5eda591dd03b2f3339eab62e7070f541937019735a13bf2c4e5177a41f",
+          "tlc": "b20fdbd29eac9f73d0bafae018bbf7177871844b5da15f3ba8de502951cb4709"
+        }
+      },
+      {
+        "lane_id": "protocol_tamarin",
+        "status": "ran",
+        "digest_sha256": "631cfcdbc88b12894eec09eb38de8bed90624891260e1d65bbb05d7844336dc5",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "tamarin": "bff7a25b5c9462cb3b9deda5da79a622fb73823017fda00f8e9458b41124efe3"
+        }
+      },
+      {
+        "lane_id": "protocol_proverif",
+        "status": "ran",
+        "digest_sha256": "9e254f1a2112c40891a11af1a511aca864d6a7c559844040be6a23e95602435a",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "proverif": "28f5333663c2864396f9ae21199f48c8137f1b0131ca4555787ba9c2761db64b"
+        }
+      },
+      {
+        "lane_id": "atp",
+        "status": "ran",
+        "digest_sha256": "32638a4b24925ab5c91917fb4c2d856be6662e50bf70b171b1e86c5ee74265cb",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "vampire": "4ad1e99dea5f251dc727d8ef2f5a9922ccf9e61d72596093b3384a8fd9b3fd40",
+          "eprover": "e9da09a48ecc7d8c339a84f3df6537d2430a12259602500efcb9368594912d68"
+        }
+      },
+      {
+        "lane_id": "hyperltl",
+        "status": "certifier_error",
+        "digest_sha256": null,
+        "block_reasons": [
+          "HyperpropertyCertificationError:skip_install requested but hyperltl is not installed under <host-path-redacted>"
+        ],
+        "receipt_integrity_valid": null,
+        "check_set_digests": {}
+      },
+      {
+        "lane_id": "runtime_mtl_external",
+        "status": "ran",
+        "digest_sha256": "6fa81ead68bc7a7b520f10ec58ff38516da71bbfb8649dd035591b213dfe5aa1",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "runtime-mtl-external": "a3d973e024ee13653255d5cb7bfb7954c46c63feaaecf39d5fb14701adf8bbbf"
+        }
+      },
+      {
+        "lane_id": "authorization_external",
+        "status": "ran",
+        "digest_sha256": "46773d7f8ab87996007ef7bb1a48a0c857a81dbaa1a87f8fcadcb1358b5a7892",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "souffle": "4a54a2bbddef78c1d083b59966e941df8e256f94942e372b08b5a53a30cf0464",
+          "secpal": "faf9e10c0b059ab28db9bcdf86148d704eb7d33ebeffe770819692ee2d9b7174"
+        }
+      },
+      {
+        "lane_id": "attestation",
+        "status": "ran",
+        "digest_sha256": "c1a6547dca7f7431fe3f0657a4cd8675af39091bebe866763a423822791de722",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "zkp-circuit": "d832e874461a85fd22ef21fe751eea5ef0715ef1a03ecfbd42459e190917f0e6"
+        }
+      },
+      {
+        "lane_id": "advisors",
+        "status": "ran",
+        "digest_sha256": "781cd5fe254ee3411e39f94d386f734f722cb52fcbdd553f31b134304ed545e9",
+        "block_reasons": [],
+        "receipt_integrity_valid": true,
+        "check_set_digests": {
+          "symbolicai": "34be3ec0920e3246b05f2c9aac71b6b06debfa18a22d3053fd77ac00221c4f58",
+          "ergoai": "1fb32624d1f7c23cdca76da29205334cef043bb364448d2cb1004a216d783251"
+        }
+      }
+    ],
+    "specialized_receipt_aggregation": {
+      "schema_version": "formal-verification-specialized-receipt-aggregation/v1",
+      "interface": "FormalVerificationSpecializedReceiptAggregation@1",
+      "goal_id": "FVT-G203",
+      "task_id": "FVT-065",
+      "enabled": null,
+      "aggregation_digest_sha256": "7fb2ed761807475498d02bfa4ebfc6f7bca4b4a1b4688ec4d7893c6f924e2613",
+      "all_required_certifiers_represented": true,
+      "missing_certifier_families": [],
+      "certifier_families_required": [
+        "advisor",
+        "atp",
+        "authorization_external",
+        "authorization_in_process",
+        "hyperproperty",
+        "kernel",
+        "protocol",
+        "runtime_mtl_external",
+        "runtime_mtl_in_process",
+        "state",
+        "zkp"
+      ],
+      "certifier_families_represented": [
+        "advisor",
+        "atp",
+        "authorization_external",
+        "authorization_in_process",
+        "hyperproperty",
+        "kernel",
+        "protocol",
+        "runtime_mtl_external",
+        "runtime_mtl_in_process",
+        "state",
+        "zkp"
+      ]
+    },
+    "managed_deployment_readiness": {
+      "host_platform": "linux-aarch64",
+      "global_supported_platforms": [
+        "linux-x86_64",
+        "linux-aarch64",
+        "darwin-x86_64",
+        "darwin-arm64"
+      ],
+      "host_globally_supported": true,
+      "supported_managed_capability_tool_ids": [
+        "apalache",
+        "autohyper",
+        "coq",
+        "cvc5",
+        "eprover",
+        "hyperltl",
+        "isabelle",
+        "lean",
+        "mchyper",
+        "proverif",
+        "runtime-mtl-external",
+        "souffle",
+        "tamarin",
+        "tlc",
+        "vampire",
+        "zkp-circuit"
+      ],
+      "supported_managed_dependency_tool_ids": [
+        "maude",
+        "opam",
+        "stack"
+      ],
+      "platform_exceptions": [
+        {
+          "tool_id": "ergoai",
+          "host_platform": "linux-aarch64",
+          "declared_platforms": [
+            "linux-x86_64",
+            "source"
+          ],
+          "basis": "deployment_contract.supported_platforms",
+          "classification": "unsupported_here",
+          "category": "capability",
+          "narrow_scope": true,
+          "complete": false,
+          "production_certified": false
+        },
+        {
+          "tool_id": "secpal",
+          "host_platform": "linux-aarch64",
+          "declared_platforms": [
+            "any",
+            "linux-x86_64"
+          ],
+          "basis": "deployment_contract.supported_platforms",
+          "classification": "unsupported_here",
+          "category": "capability",
+          "narrow_scope": true,
+          "complete": false,
+          "production_certified": false
+        }
+      ],
+      "capability_blockers": [
+        {
+          "tool_id": "apalache",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "bounded",
+          "evidence_class": "live",
+          "artifact_classes": [
+            "launcher_script"
+          ],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "autohyper",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "bounded",
+          "evidence_class": "unavailable",
+          "artifact_classes": [],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "coq",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "kernel",
+          "evidence_class": "external_prover_installation_pending",
+          "artifact_classes": [
+            "launcher_script",
+            "repository_source"
+          ],
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "cvc5",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "satisfiability",
+          "evidence_class": "live",
+          "artifact_classes": [
+            "launcher_script"
+          ],
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "eprover",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "reconstruction",
+          "evidence_class": "live",
+          "artifact_classes": [
+            "launcher_script"
+          ],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "hyperltl",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "bounded",
+          "evidence_class": "unavailable",
+          "artifact_classes": [],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "isabelle",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "kernel",
+          "evidence_class": "external_prover_installation_pending",
+          "artifact_classes": [
+            "launcher_script",
+            "repository_source"
+          ],
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "lean",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "kernel",
+          "evidence_class": "usable_pending_kernel_live_fanin",
+          "artifact_classes": [
+            "native_or_managed_binary",
+            "repository_source"
+          ],
+          "reasons": [
+            "semantic_evidence_below_authority_ceiling"
+          ]
+        },
+        {
+          "tool_id": "mchyper",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "bounded",
+          "evidence_class": "unavailable",
+          "artifact_classes": [],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "proverif",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "protocol",
+          "evidence_class": "live",
+          "artifact_classes": [
+            "launcher_script"
+          ],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "runtime-mtl-external",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "finite_trace",
+          "evidence_class": "unavailable",
+          "artifact_classes": [],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "souffle",
+          "category": "capability",
+          "role": "shadow",
+          "authority_ceiling": "none",
+          "evidence_class": "unavailable",
+          "artifact_classes": [],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "tamarin",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "protocol",
+          "evidence_class": "live",
+          "artifact_classes": [
+            "launcher_script"
+          ],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "tlc",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "bounded",
+          "evidence_class": "path_shim",
+          "artifact_classes": [
+            "launcher_script"
+          ],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "vampire",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "reconstruction",
+          "evidence_class": "live",
+          "artifact_classes": [
+            "launcher_script"
+          ],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "zkp-circuit",
+          "category": "capability",
+          "role": "authority",
+          "authority_ceiling": "attestation",
+          "evidence_class": "unavailable",
+          "artifact_classes": [],
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        }
+      ],
+      "dependency_blockers": [
+        {
+          "tool_id": "maude",
+          "category": "dependency",
+          "role": "support",
+          "authority_ceiling": "none",
+          "evidence_class": "live",
+          "artifact_classes": [
+            "launcher_script"
+          ],
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "opam",
+          "category": "dependency",
+          "role": "support",
+          "authority_ceiling": "none",
+          "evidence_class": "live",
+          "artifact_classes": [
+            "launcher_script"
+          ],
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "stack",
+          "category": "dependency",
+          "role": "unclassified",
+          "authority_ceiling": null,
+          "evidence_class": "live",
+          "artifact_classes": [
+            "launcher_script"
+          ],
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        }
+      ],
+      "all_blockers": [
+        {
+          "tool_id": "apalache",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "autohyper",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "coq",
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "cvc5",
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "eprover",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "hyperltl",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "isabelle",
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "lean",
+          "reasons": [
+            "semantic_evidence_below_authority_ceiling"
+          ]
+        },
+        {
+          "tool_id": "maude",
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "mchyper",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "opam",
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "proverif",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "runtime-mtl-external",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "souffle",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "stack",
+          "reasons": [
+            "launcher_target_artifact_unbound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "tamarin",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "tlc",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "vampire",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "launcher_target_artifact_unbound",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        },
+        {
+          "tool_id": "zkp-circuit",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ]
+        }
+      ],
+      "ready": false,
+      "status": "supported_managed_capabilities_blocked",
+      "platform_rows": [
+        {
+          "tool_id": "apalache",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "autohyper",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "coq",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "cvc5",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "datalog-authorization",
+          "managed": false,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "eprover",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "ergoai",
+          "managed": true,
+          "supported": false,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "hyperltl",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "isabelle",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "java",
+          "managed": false,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "lean",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "maude",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "mchyper",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "opam",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "proverif",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "runtime-mtl",
+          "managed": false,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "runtime-mtl-external",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "secpal",
+          "managed": true,
+          "supported": false,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "secpal-authorization",
+          "managed": false,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "souffle",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "stack",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "symbolicai",
+          "managed": false,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "tamarin",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "tlc",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "vampire",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "z3",
+          "managed": false,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        },
+        {
+          "tool_id": "zkp-circuit",
+          "managed": true,
+          "supported": true,
+          "installed": false,
+          "ready": false
+        }
+      ]
+    },
+    "tools": [
+      {
+        "tool_id": "apalache",
+        "evidence_class": "live",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:fcaec70743b22c912b3356464ec690c694d482f61e59a667da7ecbe251651560",
+        "checks_digest_sha256": "71d2e0f49fa58c3f378fa4d0e0db1220409bbe609d70fe66e1cc23c83565c2ca",
+        "artifact_digests": [
+          "sha256:fcaec70743b22c912b3356464ec690c694d482f61e59a667da7ecbe251651560"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "autohyper",
+        "evidence_class": "unavailable",
+        "production_certified": false,
+        "executable_artifact_class": "none",
+        "executable_sha256": null,
+        "checks_digest_sha256": "208f76bf07ffc9c0b80a3cb0ddd5415eb10c786f793362a244b81538e722013f",
+        "artifact_digests": [],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "coq",
+        "evidence_class": "external_prover_installation_pending",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:632f5be0def7ed93485d33df4716d88bc21cbb51215c582a01a25b70485e5a22",
+        "checks_digest_sha256": "e9abe7be67d5d87d93176476693e1903a9755e35a0d8016a8e2e8ee5c0aafa0a",
+        "artifact_digests": [
+          "sha256:200e02ae6308968ee401b8998f98b9d797c912a807d5d3a43037538a8e21e404",
+          "sha256:632f5be0def7ed93485d33df4716d88bc21cbb51215c582a01a25b70485e5a22"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "cvc5",
+        "evidence_class": "live",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:85827e46576d68570c520a2b2927fe1d260d0bfb2b93919f53f50ed29ee1e419",
+        "checks_digest_sha256": "851f7e7aa9455288a29ebc84d19eb2640cde2af0ad0e8af04d6c071baf663460",
+        "artifact_digests": [
+          "sha256:85827e46576d68570c520a2b2927fe1d260d0bfb2b93919f53f50ed29ee1e419"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "datalog-authorization",
+        "evidence_class": "usable_pending_authorization_vendor_fanin",
+        "production_certified": false,
+        "executable_artifact_class": "none",
+        "executable_sha256": null,
+        "checks_digest_sha256": "017b17fd14348ed4cb9a4fac7f263be1ae02b5823378c50e6a4c24a8effbc296",
+        "artifact_digests": [
+          "sha256:f8fd4ea76691172f4fbfb2deaca565be4920ebf56cd90e8350c87d0625d4cb6e"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "eprover",
+        "evidence_class": "live",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:da17ca834957a49def615b69bcf36f34f8e8a8417f9043191b15249fabe05748",
+        "checks_digest_sha256": "d801883123df92dc748303f8c3fec450a6ff6eb1ff9a1eadde04f1d6d991ef2d",
+        "artifact_digests": [
+          "sha256:da17ca834957a49def615b69bcf36f34f8e8a8417f9043191b15249fabe05748"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "ergoai",
+        "evidence_class": "proposal_only_semantics",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:7d2bbdbf49bb5d0f00c26d8d4b365fb81b9dbc0f508df2dd8256f3e03945dfec",
+        "checks_digest_sha256": "1fb32624d1f7c23cdca76da29205334cef043bb364448d2cb1004a216d783251",
+        "artifact_digests": [
+          "sha256:3b7bcf499f2f485071ca8f4ac2120ec61964eaa3418028d980619d20a554c0be",
+          "sha256:7d2bbdbf49bb5d0f00c26d8d4b365fb81b9dbc0f508df2dd8256f3e03945dfec"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "hyperltl",
+        "evidence_class": "unavailable",
+        "production_certified": false,
+        "executable_artifact_class": "none",
+        "executable_sha256": null,
+        "checks_digest_sha256": "3f59130a98b7a67b1463d64607d7e2b6e48856507b1f9fa839d18f74d85a8cbe",
+        "artifact_digests": [],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "isabelle",
+        "evidence_class": "external_prover_installation_pending",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:0ac87f15bb1b2c966e1818027be762fd5f1fbaaa7a54ac40ce4acc4010661734",
+        "checks_digest_sha256": "40a647919c7365c0e2564505a63dde40f40f0ab8d8d66ce1cd7af14d38f9d4eb",
+        "artifact_digests": [
+          "sha256:0ac87f15bb1b2c966e1818027be762fd5f1fbaaa7a54ac40ce4acc4010661734",
+          "sha256:e9880ebe203029cbaff5e446712a9407c922d4d4a29d3f3b6b304ea18ad2df61"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "java",
+        "evidence_class": "live",
+        "production_certified": false,
+        "executable_artifact_class": "native_or_managed_binary",
+        "executable_sha256": "sha256:29cd006b1db6557741e1c5c0a5d43370a25358a3b72780a2c9b1515833af89dc",
+        "checks_digest_sha256": "484f20e95d3ac53ef218025546333706701bbd707d84449859cf182a2f7d3278",
+        "artifact_digests": [
+          "sha256:29cd006b1db6557741e1c5c0a5d43370a25358a3b72780a2c9b1515833af89dc"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "lean",
+        "evidence_class": "usable_pending_kernel_live_fanin",
+        "production_certified": false,
+        "executable_artifact_class": "native_or_managed_binary",
+        "executable_sha256": "sha256:b480595a22661f4cb22b37602b0de664ab1aaf815e243c42b7e7eb51c6163b7d",
+        "checks_digest_sha256": "ee292794b1d1f11ec28a8f14f053d462377d631f6ce3142742aaf465dede5419",
+        "artifact_digests": [
+          "sha256:a8c016ce2b9add449f49d65d29744b9b9d9f87da1eb0796123ba6ad594e3296d",
+          "sha256:b480595a22661f4cb22b37602b0de664ab1aaf815e243c42b7e7eb51c6163b7d"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "maude",
+        "evidence_class": "live",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:08df9a4d71e80de3144964a5d8132c76f895da8d1afe9635e075ccb75ea09846",
+        "checks_digest_sha256": "fc25c82f7e7fe7ef174957f3bf08f8c29cffb7c0ec0895a1d2eb4762156a27f9",
+        "artifact_digests": [
+          "sha256:08df9a4d71e80de3144964a5d8132c76f895da8d1afe9635e075ccb75ea09846"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "mchyper",
+        "evidence_class": "unavailable",
+        "production_certified": false,
+        "executable_artifact_class": "none",
+        "executable_sha256": null,
+        "checks_digest_sha256": "4dcba5b93fcbe3761e307dae20ee95047650d2727b47c3ac6c4c53c39abe960a",
+        "artifact_digests": [],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "opam",
+        "evidence_class": "live",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:f7b235be8dabfdde7993ad679c8ab3a29ff89e64409ccb268d8147465e66a4b5",
+        "checks_digest_sha256": "495bfe1e48cd83beb5db3038ab8e0397be6a7088857f4e4d383639c1adb670f8",
+        "artifact_digests": [
+          "sha256:f7b235be8dabfdde7993ad679c8ab3a29ff89e64409ccb268d8147465e66a4b5"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "proverif",
+        "evidence_class": "live",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:3a2febf527ff9af3f3270b482d465729a8e6024fe01f2e53aa18aacaaa47dbf4",
+        "checks_digest_sha256": "c9ec566bcb011227b51076ab26eabc1f417f9f4aca7d46dc2cabbd546a703abb",
+        "artifact_digests": [
+          "sha256:3a2febf527ff9af3f3270b482d465729a8e6024fe01f2e53aa18aacaaa47dbf4"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "runtime-mtl",
+        "evidence_class": "usable_pending_external_runtime_mtl",
+        "production_certified": false,
+        "executable_artifact_class": "none",
+        "executable_sha256": null,
+        "checks_digest_sha256": "d0d3e74a078116cda28017fd3c81fb128cf2299fecf54fb119d09e4f376cdc6a",
+        "artifact_digests": [
+          "sha256:40f509d3bc712e3ded40d403dd8548ec0d9e03933deb985caf38ba56e044de40"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "runtime-mtl-external",
+        "evidence_class": "unavailable",
+        "production_certified": false,
+        "executable_artifact_class": "none",
+        "executable_sha256": null,
+        "checks_digest_sha256": "71ba74cf23aa2aa07e75d5fa1072c9c7ce4de3a7870a2be00ebc01db352c8360",
+        "artifact_digests": [],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "secpal",
+        "evidence_class": "unavailable",
+        "production_certified": false,
+        "executable_artifact_class": "none",
+        "executable_sha256": null,
+        "checks_digest_sha256": "45f8b49f35728085436d03eb4cea391619e23c32877fa7ebd08fc816b95fd367",
+        "artifact_digests": [],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "secpal-authorization",
+        "evidence_class": "usable_pending_authorization_vendor_fanin",
+        "production_certified": false,
+        "executable_artifact_class": "none",
+        "executable_sha256": null,
+        "checks_digest_sha256": "f81d07888f4e03b9fe7f70a7232fbf44de81d80049cd56f082fab6ca5e8023b8",
+        "artifact_digests": [
+          "sha256:f8fd4ea76691172f4fbfb2deaca565be4920ebf56cd90e8350c87d0625d4cb6e"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "souffle",
+        "evidence_class": "unavailable",
+        "production_certified": false,
+        "executable_artifact_class": "none",
+        "executable_sha256": null,
+        "checks_digest_sha256": "d8a8dee98b0cf7e9fd92b3f851b034918543e7d90febe72f5a42cdc820e33f3a",
+        "artifact_digests": [],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "stack",
+        "evidence_class": "live",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:5faddbcd8ef6257a1694b5100da377cd7cd9ec0d4956d5b87b262bb41b2784e3",
+        "checks_digest_sha256": "ded23cf85e28d394cc5fced540258b617819692fd9bd33b2a5d463122b601997",
+        "artifact_digests": [
+          "sha256:5faddbcd8ef6257a1694b5100da377cd7cd9ec0d4956d5b87b262bb41b2784e3"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "symbolicai",
+        "evidence_class": "proposal_only_semantics",
+        "production_certified": false,
+        "executable_artifact_class": "none",
+        "executable_sha256": null,
+        "checks_digest_sha256": "34be3ec0920e3246b05f2c9aac71b6b06debfa18a22d3053fd77ac00221c4f58",
+        "artifact_digests": [
+          "sha256:3b7bcf499f2f485071ca8f4ac2120ec61964eaa3418028d980619d20a554c0be"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "tamarin",
+        "evidence_class": "live",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:cdeb7d03815063d3ea6a8407fe2dcfde05a888c57ae25ab3a698472a953b537b",
+        "checks_digest_sha256": "297532f5fdcc740c89937afc88678afa292f96c7cf93ae907da95bcea9cf6d32",
+        "artifact_digests": [
+          "sha256:cdeb7d03815063d3ea6a8407fe2dcfde05a888c57ae25ab3a698472a953b537b"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "tlc",
+        "evidence_class": "path_shim",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:e162af5b1a4f161d6d672c78bc0e2b4aa6160151b9f558cd543cac3aa43434ac",
+        "checks_digest_sha256": "ead33bb994ac15f24828a43e85388ec79ae27ed73d682e4d2e5ee80993c5242d",
+        "artifact_digests": [
+          "sha256:e162af5b1a4f161d6d672c78bc0e2b4aa6160151b9f558cd543cac3aa43434ac"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "vampire",
+        "evidence_class": "live",
+        "production_certified": false,
+        "executable_artifact_class": "launcher_script",
+        "executable_sha256": "sha256:c526c9c1561024f7a297ef4acf3cc31238aaabd6bb4908c1a62ea9f7feced992",
+        "checks_digest_sha256": "1687f5280bcc68a9783e0cb17ed0b103c590c19d641ed79a96f01a4af588ba46",
+        "artifact_digests": [
+          "sha256:c526c9c1561024f7a297ef4acf3cc31238aaabd6bb4908c1a62ea9f7feced992"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "z3",
+        "evidence_class": "production_certified",
+        "production_certified": true,
+        "executable_artifact_class": "native_or_managed_binary",
+        "executable_sha256": "sha256:9496faf344fc64efa725b689ee6928f123da717d265a752d5929a59e267521e3",
+        "checks_digest_sha256": "1038d1271831b00768d7ed4dede12516d972c770fc43e5e4fd0ecc1424c84598",
+        "artifact_digests": [
+          "sha256:9496faf344fc64efa725b689ee6928f123da717d265a752d5929a59e267521e3"
+        ],
+        "role": null,
+        "assurance_ceiling": null
+      },
+      {
+        "tool_id": "zkp-circuit",
+        "evidence_class": "unavailable",
+        "production_certified": false,
+        "executable_artifact_class": "none",
+        "executable_sha256": null,
+        "checks_digest_sha256": "78d08201756cd02f5bd73deb58130b80f0a3b79158491d29cc3b063bcb6cc791",
+        "artifact_digests": [],
+        "role": null,
+        "assurance_ceiling": null
+      }
+    ],
+    "certification_policy": {
+      "offline_policy_satisfied": true,
+      "forbid_install": true,
+      "forbid_download": true,
+      "forbid_network": true
+    },
+    "public_evidence_policy": {
+      "satisfied": true
+    }
+  },
+  "elevations": {
+    "required": [
+      "lean",
+      "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
+      "coq",
+      "isabelle"
+    ],
+    "elevated_tool_ids": [],
+    "missing_required": [
+      "lean",
+      "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
+      "coq",
+      "isabelle"
+    ],
+    "merely_usable_tool_ids": [
+      "apalache",
+      "cvc5",
+      "datalog-authorization",
+      "eprover",
+      "ergoai",
+      "java",
+      "lean",
+      "maude",
+      "opam",
+      "proverif",
+      "runtime-mtl",
+      "secpal-authorization",
+      "stack",
+      "symbolicai",
+      "tamarin",
+      "vampire"
+    ],
+    "production_certified_tool_ids": [
+      "z3"
+    ],
+    "details": [
+      {
+        "tool_id": "lean",
+        "elevated": false,
+        "evidence_class": "usable_pending_kernel_live_fanin"
+      },
+      {
+        "tool_id": "coq",
+        "elevated": false,
+        "evidence_class": "external_prover_installation_pending"
+      },
+      {
+        "tool_id": "isabelle",
+        "elevated": false,
+        "evidence_class": "external_prover_installation_pending"
+      },
+      {
+        "tool_id": "runtime-mtl",
+        "elevated": false,
+        "evidence_class": "usable_pending_external_runtime_mtl"
+      },
+      {
+        "tool_id": "datalog-authorization",
+        "elevated": false,
+        "evidence_class": "usable_pending_authorization_vendor_fanin"
+      },
+      {
+        "tool_id": "secpal-authorization",
+        "elevated": false,
+        "evidence_class": "usable_pending_authorization_vendor_fanin"
+      },
+      {
+        "tool_id": "apalache",
+        "elevated": false,
+        "evidence_class": null
+      },
+      {
+        "tool_id": "tlc",
+        "elevated": false,
+        "evidence_class": null
+      },
+      {
+        "tool_id": "tamarin",
+        "elevated": false,
+        "evidence_class": null
+      },
+      {
+        "tool_id": "proverif",
+        "elevated": false,
+        "evidence_class": null
+      },
+      {
+        "tool_id": "vampire",
+        "elevated": false,
+        "evidence_class": null
+      },
+      {
+        "tool_id": "eprover",
+        "elevated": false,
+        "evidence_class": null
+      },
+      {
+        "tool_id": "runtime-mtl-external",
+        "elevated": false,
+        "evidence_class": null
+      },
+      {
+        "tool_id": "souffle",
+        "elevated": false,
+        "evidence_class": null
+      },
+      {
+        "tool_id": "secpal",
+        "elevated": false,
+        "evidence_class": null
+      },
+      {
+        "tool_id": "zkp-circuit",
+        "elevated": false,
+        "evidence_class": null
+      },
+      {
+        "tool_id": "symbolicai",
+        "elevated": false,
+        "evidence_class": "proposal_only_semantics"
+      },
+      {
+        "tool_id": "ergoai",
+        "elevated": false,
+        "evidence_class": "proposal_only_semantics"
+      }
+    ]
+  },
+  "platform_exceptions": [
+    {
+      "tool_id": "ergoai",
+      "host_platform": "linux-aarch64",
+      "declared_platforms": [
+        "linux-x86_64",
+        "source"
+      ],
+      "basis": "deployment_contract.supported_platforms",
+      "classification": "unsupported_here",
+      "category": "capability",
+      "narrow_scope": true,
+      "complete": false,
+      "production_certified": false
+    },
+    {
+      "tool_id": "secpal",
+      "host_platform": "linux-aarch64",
+      "declared_platforms": [
+        "any",
+        "linux-x86_64"
+      ],
+      "basis": "deployment_contract.supported_platforms",
+      "classification": "unsupported_here",
+      "category": "capability",
+      "narrow_scope": true,
+      "complete": false,
+      "production_certified": false
+    }
+  ],
+  "artifacts": {
+    "toolchain_certificate": {
+      "path": "docs/architecture/formal_verification_toolchain_certificate.json",
+      "present": true,
+      "content_identity": "sha256:1b82e6331ca55ae4050ff6c66b92e9dde72346d92e4b37a73e611d042f8eb7ab",
+      "role_aware_digest": "92307fb220edee7433e615fa079b96a8b6947a8b13c76317b2c822cdd8d95f6f"
+    },
+    "release_candidate": {
+      "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
+      "present_before_generation": true,
+      "content_identity_before_generation": "sha256:995952b2e00a2f41788f13642f106756e246a2d00f48c707fbfb091537b8515f",
+      "publication_identity": "self:candidate_identity"
+    },
+    "release_candidate_test": {
+      "path": "test/integration/test_formal_verification_role_aware_release_candidate.py",
+      "present": true,
+      "content_identity": "sha256:a7d18a152fe9048d45d357b8f024510784a975657ae23b4f016f9493faddda85"
+    },
+    "certifier": {
+      "path": "tools/logic/certify_formal_verification_toolchains.py",
+      "present": true,
+      "content_identity": "sha256:1e3deaedc2d72f11ca051e7ee5a0cb97828cc0d9021d30c062e9d3a893f8af9f"
+    },
+    "receipt_builder": {
+      "path": "tools/logic/build_formal_verification_tactician_receipt.py",
+      "present": true,
+      "content_identity": "sha256:be1f70f674f0e9472b3deda68e70bff8763cb9f7761f1b30ebf6dfd8c27ca154"
+    }
+  },
+  "claims": {
+    "merge": false,
+    "deployment": false,
+    "post_merge_attestation": false,
+    "self_referential_current_tree": false,
+    "max_stage": "release_candidate",
+    "merge_event_present": false
+  },
+  "disclosures": {
+    "unavailable_tools": [
+      "autohyper",
+      "coq",
+      "hyperltl",
+      "isabelle",
+      "mchyper",
+      "runtime-mtl-external",
+      "secpal",
+      "souffle",
+      "tlc",
+      "zkp-circuit"
+    ],
+    "merely_usable_tools": [
+      "apalache",
+      "cvc5",
+      "datalog-authorization",
+      "eprover",
+      "ergoai",
+      "java",
+      "lean",
+      "maude",
+      "opam",
+      "proverif",
+      "runtime-mtl",
+      "secpal-authorization",
+      "stack",
+      "symbolicai",
+      "tamarin",
+      "vampire"
+    ],
+    "missing_required_elevations": [
+      "lean",
+      "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
+      "coq",
+      "isabelle"
+    ],
+    "supported_managed_capability_blockers": [
+      {
+        "tool_id": "apalache",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "autohyper",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "coq",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "kernel",
+        "evidence_class": "external_prover_installation_pending",
+        "artifact_classes": [
+          "launcher_script",
+          "repository_source"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "cvc5",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "satisfiability",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "eprover",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "reconstruction",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "hyperltl",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "isabelle",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "kernel",
+        "evidence_class": "external_prover_installation_pending",
+        "artifact_classes": [
+          "launcher_script",
+          "repository_source"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "lean",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "kernel",
+        "evidence_class": "usable_pending_kernel_live_fanin",
+        "artifact_classes": [
+          "native_or_managed_binary",
+          "repository_source"
+        ],
+        "reasons": [
+          "semantic_evidence_below_authority_ceiling"
+        ]
+      },
+      {
+        "tool_id": "mchyper",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "proverif",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "protocol",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "runtime-mtl-external",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "finite_trace",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "souffle",
+        "category": "capability",
+        "role": "shadow",
+        "authority_ceiling": "none",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "tamarin",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "protocol",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "tlc",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "evidence_class": "path_shim",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "vampire",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "reconstruction",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "launcher_target_artifact_unbound",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "zkp-circuit",
+        "category": "capability",
+        "role": "authority",
+        "authority_ceiling": "attestation",
+        "evidence_class": "unavailable",
+        "artifact_classes": [],
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      }
+    ],
+    "supported_managed_dependency_blockers": [
+      {
+        "tool_id": "maude",
+        "category": "dependency",
+        "role": "support",
+        "authority_ceiling": "none",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "opam",
+        "category": "dependency",
+        "role": "support",
+        "authority_ceiling": "none",
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      },
+      {
+        "tool_id": "stack",
+        "category": "dependency",
+        "role": "unclassified",
+        "authority_ceiling": null,
+        "evidence_class": "live",
+        "artifact_classes": [
+          "launcher_script"
+        ],
+        "reasons": [
+          "launcher_target_artifact_unbound",
+          "supported_managed_installation_missing_or_shim_only"
+        ]
+      }
+    ],
+    "assurance_ceilings": {
+      "path_presence_is_not_usability": true,
+      "source_presence_is_not_usability": true,
+      "fixture_is_not_production_certified": true,
+      "synthetic_evidence_cannot_certify_production": true,
+      "advisor_support_shadow_cannot_certify": true,
+      "unavailable_cannot_count_as_complete": true,
+      "release_candidate_is_not_deployment_certificate": true,
+      "release_candidate_cannot_claim_own_merge": true
+    },
+    "remaining_bounds": [
+      "Maximum stage before a merge event exists is release_candidate.",
+      "Post-merge deployment attestation is FVT-G214 / RoleAwareFormalVerificationRelease@1 and is never claimed here.",
+      "Unsupported host platforms yield narrow exceptions; missing supported installations remain blockers.",
+      "Non-authoritative evidence classes cannot raise production or deployment ceilings."
+    ]
+  },
+  "notes": [
+    "RoleAwareFormalVerificationReleaseCandidate@1 owns central candidate fan-in for FVT-G213 without installing during offline certification or concealing blockers.",
+    "Every raw receipt, check, case, binding, executable, artifact, and dependency digest participates in the certificate digest and therefore in this candidate identity.",
+    "The checked-in candidate binds an explicit certified source commit/tree and excludes its own path from that tree identity.",
+    "Bulk formal artifacts are bound by digest; rebuild at load time from the live certificate rather than embedding full dumps."
+  ],
+  "public_evidence_policy": {
+    "satisfied": true,
+    "failures": [],
+    "host_private_paths_forbidden": true,
+    "raw_process_output_forbidden": true,
+    "raw_secret_or_witness_forbidden": true,
+    "max_public_string_bytes": 8192
+  },
+  "candidate_identity": "sha256:69f53dbc9b83e188741c744180bfe95568f98a0192d211a050528d019cf6d548"
+}
