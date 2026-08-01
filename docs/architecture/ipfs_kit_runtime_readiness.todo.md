@@ -675,7 +675,7 @@ or write authority.
 
 ## KITA-021 Cut over VFS, bucket, backend, cache, index, and replica transactions to the WAL
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
