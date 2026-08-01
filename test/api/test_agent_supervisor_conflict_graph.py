@@ -118,6 +118,58 @@ class CapabilityRouter:
     assert json.loads(json.dumps(surface.to_dict()))["task_cid"] == "cid-a"
 
 
+def test_conflict_surface_reads_legacy_markdown_metadata_aliases(
+    tmp_path: Path,
+) -> None:
+    tasks = [
+        {
+            "task_id": "UIR-011",
+            "task_cid": "cid-011",
+            "metadata": {
+                "goal id": "UIR-G020",
+                "predicted files": "external/ipfs_datasets/pkg/shared.py",
+                "allow concurrent with": "UIR-012",
+                "resource class": "cpu-small",
+                "token class": "medium",
+                "estimated tokens": "8000",
+                "estimated context tokens": "10000",
+                "estimated validation seconds": "120",
+                "merge fate": "objective/UIR-G020",
+            },
+        },
+        {
+            "task_id": "UIR-012",
+            "task_cid": "cid-012",
+            "metadata": {
+                "goal id": "UIR-G021",
+                "predicted files": "external/ipfs_datasets/pkg/shared.py",
+            },
+        },
+    ]
+
+    graph = materialize_task_conflict_graph(tasks, repo_root=tmp_path)
+    surface = graph.surfaces["cid-011"]
+
+    assert surface.goal_id == "UIR-G020"
+    assert surface.files == ["external/ipfs_datasets/pkg/shared.py"]
+    assert surface.predicted_paths == ["external/ipfs_datasets/pkg/shared.py"]
+    assert surface.allow_concurrent_with == ["UIR-012"]
+    assert surface.resource_class == "cpu-small"
+    assert surface.token_class == "medium"
+    assert surface.estimated_tokens == 8000
+    assert surface.estimated_context_tokens == 10000
+    assert surface.estimated_validation_seconds == 120
+    assert surface.merge_fate == "objective/UIR-G020"
+
+    allowed_edge = _edge(graph, "cid-011", "cid-012")
+    assert allowed_edge.explicitly_allowed is True
+    colors = {
+        assignment.task_cid: assignment.color
+        for assignment in graph.assignments
+    }
+    assert colors["cid-011"] == colors["cid-012"]
+
+
 def test_conflict_graph_covers_all_surface_types_and_colors_only_blocking_edges(tmp_path: Path) -> None:
     tasks = [
         {
@@ -247,6 +299,7 @@ def test_file_isolated_bundle_policy_scopes_generated_ast_terms(
             "tasks": [
                 {
                     "task_id": name.upper(),
+                    "canonical_task_cid": f"cid-{name}",
                     "outputs": [f"src/{name}.py"],
                     "ast_symbols": ["__init__", "datetime.datetime"],
                 }
@@ -283,6 +336,7 @@ def test_bundle_lane_prefers_canonical_files_over_broad_planning_paths(
             "tasks": [
                 {
                     "task_id": "ALPHA",
+                    "canonical_task_cid": "cid-alpha",
                     "files": ["src/alpha.py", "tests/test_alpha.py"],
                     "outputs": ["src/alpha.py", "tests/test_alpha.py"],
                     "predicted_files": [
@@ -332,6 +386,7 @@ def test_shared_bookkeeping_paths_do_not_block_disjoint_bundle_files(
             "tasks": [
                 {
                     "task_id": name.upper(),
+                    "canonical_task_cid": f"cid-{name}",
                     "files": [f"src/{name}.py"],
                     "outputs": [f"src/{name}.py"],
                     "predicted_files": [f"src/{name}.py", *shared],
@@ -373,6 +428,7 @@ def test_same_canonical_file_still_blocks_bundle_concurrency(
             "tasks": [
                 {
                     "task_id": name.upper(),
+                    "canonical_task_cid": f"cid-{name}",
                     "files": ["src/shared.py"],
                     "predicted_files": [
                         "src/shared.py",
@@ -419,6 +475,7 @@ def test_bundle_ast_symbols_are_file_local_unless_explicitly_global(
             "tasks": [
                 {
                     "task_id": name.upper(),
+                    "canonical_task_cid": f"cid-{name}",
                     "files": [f"src/{name}.py"],
                     "ast_symbols": ["__post_init__", "_digest"],
                     **(
@@ -594,26 +651,50 @@ def test_bundle_lane_planner_projects_blocking_edges_but_honors_overrides(
         {
             "bundle_key": "bundle/base",
             "todo_path": "base.md",
-            "tasks": [{"task_id": "BASE", "outputs": ["src/shared.py"]}],
+            "tasks": [
+                {
+                    "task_id": "BASE",
+                    "canonical_task_cid": "cid-base",
+                    "outputs": ["src/shared.py"],
+                }
+            ],
             "profile_g": {"task_cid": "cid-base"},
         },
         {
             "bundle_key": "bundle/blocked",
             "todo_path": "blocked.md",
-            "tasks": [{"task_id": "BLOCKED", "outputs": ["src/shared.py"]}],
+            "tasks": [
+                {
+                    "task_id": "BLOCKED",
+                    "canonical_task_cid": "cid-blocked",
+                    "outputs": ["src/shared.py"],
+                }
+            ],
             "profile_g": {"task_cid": "cid-blocked"},
         },
         {
             "bundle_key": "bundle/allowed",
             "todo_path": "allowed.md",
             "allow_concurrent_with": ["cid-base"],
-            "tasks": [{"task_id": "ALLOWED", "outputs": ["src/shared.py"]}],
+            "tasks": [
+                {
+                    "task_id": "ALLOWED",
+                    "canonical_task_cid": "cid-allowed",
+                    "outputs": ["src/shared.py"],
+                }
+            ],
             "profile_g": {"task_cid": "cid-allowed"},
         },
         {
             "bundle_key": "bundle/disjoint",
             "todo_path": "disjoint.md",
-            "tasks": [{"task_id": "DISJOINT", "outputs": ["docs/disjoint.md"]}],
+            "tasks": [
+                {
+                    "task_id": "DISJOINT",
+                    "canonical_task_cid": "cid-disjoint",
+                    "outputs": ["docs/disjoint.md"],
+                }
+            ],
             "profile_g": {"task_cid": "cid-disjoint"},
         },
     ]
@@ -673,11 +754,13 @@ def test_bundle_lane_planner_excludes_completed_members_from_conflict_surface(
             "tasks": [
                 {
                     "task_id": "REF-001",
+                    "canonical_task_cid": "cid-ref-001",
                     "status": "todo",
                     "outputs": ["src/shared.py"],
                 },
                 {
                     "task_id": "REF-002",
+                    "canonical_task_cid": "cid-ref-002",
                     "status": "todo",
                     "outputs": ["src/base.py"],
                 },
@@ -690,6 +773,7 @@ def test_bundle_lane_planner_excludes_completed_members_from_conflict_surface(
             "tasks": [
                 {
                     "task_id": "REF-003",
+                    "canonical_task_cid": "cid-ref-003",
                     "status": "todo",
                     "outputs": ["src/shared.py"],
                 }

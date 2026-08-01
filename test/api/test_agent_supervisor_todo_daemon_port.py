@@ -1241,6 +1241,10 @@ def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
         "codex",
     )
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     monkeypatch.setattr(
         implementation_daemon_module,
         "_grok_cli_available",
@@ -4294,6 +4298,826 @@ def _submodule_proposal_task(output: str | list[str]) -> PortalTask:
     )
 
 
+def _submodule_integration_preflight_daemon(
+    repo: Path,
+    tmp_path: Path,
+    *,
+    implement: bool = False,
+) -> TodoImplementationDaemon:
+    state_dir = tmp_path / "submodule-preflight-state"
+    return TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task-state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=implement,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "submodule-preflight-worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=["libs/child"],
+    )
+
+
+def _configure_child_main_in_root_target(repo: Path) -> None:
+    _git(
+        repo,
+        "config",
+        "-f",
+        ".gitmodules",
+        "submodule.libs/child.branch",
+        "main",
+    )
+    _git(repo, "add", ".gitmodules")
+    _git(repo, "commit", "-m", "configure child integration branch")
+
+
+def _create_preflight_bound_child_candidate(
+    repo: Path,
+    submodule: Path,
+    daemon: TodoImplementationDaemon,
+    task: PortalTask,
+    *,
+    branch_name: str,
+) -> tuple[dict[str, object], dict[str, dict[str, str]], str, str]:
+    preflight = daemon._preflight_task_owned_submodule_integration(task)
+    assert preflight["passed"] is True
+    approved_targets = (
+        daemon._approved_task_owned_submodule_integration_targets(
+            preflight
+        )
+    )
+    root_target_commit = str(preflight["root_target_commit"])
+    gitlink_baseline = str(
+        approved_targets["libs/child"]["gitlink_baseline"]
+    )
+    _git(repo, "checkout", "-b", branch_name, root_target_commit)
+    child_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(submodule, "checkout", "-b", child_branch, gitlink_baseline)
+    (submodule / "validated-candidate.txt").write_text(
+        "validated child candidate\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "validated-candidate.txt")
+    _git(submodule, "commit", "-m", f"{task.task_id}: child candidate")
+    child_candidate = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", f"{task.task_id}: bind child candidate")
+    root_candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    assert _git(repo, "status", "--porcelain") == ""
+    return (
+        preflight,
+        approved_targets,
+        root_candidate,
+        child_candidate,
+    )
+
+
+def _diverge_root_gitlink_from_child_main(
+    repo: Path,
+    submodule: Path,
+) -> tuple[str, str, str]:
+    common_base = _git(submodule, "rev-parse", "main")
+    _git(submodule, "checkout", "-b", "gitlink-side", common_base)
+    (submodule / "gitlink-side.txt").write_text(
+        "root target side\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "gitlink-side.txt")
+    _git(submodule, "commit", "-m", "root target child side")
+    gitlink_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance root child gitlink independently")
+
+    _git(submodule, "checkout", "main")
+    (submodule / "integration-side.txt").write_text(
+        "child integration side\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "integration-side.txt")
+    _git(submodule, "commit", "-m", "advance child integration independently")
+    integration_commit = _git(submodule, "rev-parse", "main")
+    return common_base, gitlink_commit, integration_commit
+
+
+@pytest.mark.parametrize(
+    ("topology", "expected_relation", "expected_merge_mode"),
+    [
+        ("equal", "equal", "ff-only"),
+        (
+            "integration-target-ancestor",
+            "integration_target_ancestor",
+            "ff-only",
+        ),
+    ],
+)
+def test_task_owned_submodule_integration_preflight_allows_linear_topology(
+    tmp_path,
+    topology,
+    expected_relation,
+    expected_merge_mode,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    common_base = _git(submodule, "rev-parse", "main")
+    if topology == "integration-target-ancestor":
+        _git(submodule, "checkout", "-b", "gitlink-ahead", common_base)
+        (submodule / "gitlink-ahead.txt").write_text("ahead\n", encoding="utf-8")
+        _git(submodule, "add", "gitlink-ahead.txt")
+        _git(submodule, "commit", "-m", "advance only the root gitlink side")
+        _git(repo, "add", "libs/child")
+        _git(repo, "commit", "-m", "record child commit ahead of main")
+        _git(submodule, "checkout", "main")
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    result = daemon._preflight_task_owned_submodule_integration(
+        _submodule_proposal_task("libs/child/child.txt")
+    )
+
+    assert result["passed"] is True
+    assert result["reason"] == "compatible"
+    assert result["blocked_paths"] == []
+    assert len(result["submodules"]) == 1
+    assert result["submodules"][0]["relation"] == expected_relation
+    assert result["submodules"][0]["expected_merge_mode"] == expected_merge_mode
+
+
+def test_task_owned_submodule_integration_preflight_blocks_stale_root_gitlink(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    (submodule / "main-ahead.txt").write_text("ahead\n", encoding="utf-8")
+    _git(submodule, "add", "main-ahead.txt")
+    _git(submodule, "commit", "-m", "advance child main beyond root gitlink")
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+
+    preflight = daemon._preflight_task_owned_submodule_integration(task)
+    implementation = daemon._run_implementation(task, TodoTaskState())
+
+    assert preflight["passed"] is False
+    assert preflight["reason"] == "gitlink_baseline_stale"
+    assert preflight["submodules"][0]["relation"] == (
+        "gitlink_baseline_ancestor"
+    )
+    assert preflight["submodules"][0]["reason"] == "gitlink_baseline_stale"
+    assert implementation["reason"] == (
+        "task_owned_submodule_gitlink_baseline_stale"
+    )
+    assert implementation["attempt_consumed"] is False
+
+
+def test_task_owned_submodule_integration_preflight_blocks_preexisting_divergence(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    common_base, gitlink_commit, integration_commit = (
+        _diverge_root_gitlink_from_child_main(repo, submodule)
+    )
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    daemon._build_implementation_prompt = lambda *_args, **_kwargs: pytest.fail(  # type: ignore[method-assign]
+        "pre-existing submodule divergence reached provider dispatch"
+    )
+    task = _submodule_proposal_task("libs/child/child.txt")
+
+    preflight = daemon._preflight_task_owned_submodule_integration(task)
+    implementation = daemon._run_implementation(task, TodoTaskState())
+
+    assert preflight["passed"] is False
+    assert preflight["reason"] == "preexisting_divergence"
+    assert preflight["blocked_paths"] == ["libs/child"]
+    assert preflight["submodules"][0]["gitlink_baseline"] == gitlink_commit
+    assert preflight["submodules"][0]["integration_target"] == integration_commit
+    assert preflight["submodules"][0]["merge_bases"] == [common_base]
+    assert implementation["reason"] == (
+        "task_owned_submodule_preexisting_divergence"
+    )
+    assert implementation["provider_call_allowed"] is False
+    assert implementation["attempt_consumed"] is False
+    assert implementation["retryable"] is True
+    assert implementation["submodule_integration_preflight"] == preflight
+    events = daemon.events_path.read_text(encoding="utf-8")
+    assert "implementation_submodule_integration_preflight_blocked" in events
+
+
+def test_submodule_preflight_rechecks_after_implementation_lock(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    checks = iter(
+        [
+            {
+                "passed": True,
+                "reason": "compatible",
+                "root_target_commit": "root-before",
+            },
+            {
+                "passed": False,
+                "reason": "preexisting_divergence",
+                "root_target_commit": "root-after",
+                "blocked_paths": ["libs/child"],
+            },
+        ]
+    )
+    daemon._preflight_task_owned_submodule_integration = (  # type: ignore[method-assign]
+        lambda _task: next(checks)
+    )
+    daemon._build_implementation_prompt = lambda *_args, **_kwargs: "prompt"  # type: ignore[method-assign]
+    daemon._run_implementation_in_ephemeral_worktree = lambda **_kwargs: pytest.fail(  # type: ignore[method-assign]
+        "provider worktree started after locked preflight failed"
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["reason"] == "task_owned_submodule_preexisting_divergence"
+    assert result["preflight_phase"] == "implementation_lock_acquired"
+    assert result["submodule_integration_preflight"]["root_target_commit"] == (
+        "root-after"
+    )
+    with pytest.raises(StopIteration):
+        next(checks)
+
+
+def test_locked_submodule_preflight_commit_is_forwarded_to_ephemeral_worktree(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    root_target_commit = _git(repo, "rev-parse", "main")
+    captured: dict[str, object] = {}
+
+    daemon._build_implementation_prompt = lambda *_args, **_kwargs: "prompt"  # type: ignore[method-assign]
+    daemon._persist_implementation_context_receipt = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: tmp_path / "context-receipt.json"
+    )
+
+    def capture_ephemeral(**kwargs):
+        captured.update(kwargs)
+        return {"returncode": 0}
+
+    daemon._run_implementation_in_ephemeral_worktree = capture_ephemeral  # type: ignore[method-assign]
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["returncode"] == 0
+    assert captured["approved_root_target_commit"] == root_target_commit
+    approved_targets = captured[
+        "approved_submodule_integration_targets"
+    ]
+    assert isinstance(approved_targets, dict)
+    assert approved_targets == {
+        "libs/child": {
+            "path": "libs/child",
+            "integration_branch": "main",
+            "integration_target": _git(submodule, "rev-parse", "main"),
+            "gitlink_baseline": _git(
+                repo,
+                "rev-parse",
+                f"{root_target_commit}:libs/child",
+            ),
+            "expected_merge_mode": "ff-only",
+            "relation": "equal",
+        }
+    }
+
+
+def test_seeded_worktree_uses_approved_preflight_commit_after_target_advances(
+    tmp_path,
+):
+    repo, _submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    daemon.worktree_pool = None
+    task = _submodule_proposal_task("libs/child/child.txt")
+    preflight = daemon._preflight_task_owned_submodule_integration(task)
+    approved_commit = preflight["root_target_commit"]
+
+    (repo / "concurrent-main-change.txt").write_text(
+        "advanced after locked preflight\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "concurrent-main-change.txt")
+    _git(repo, "commit", "-m", "advance target after preflight")
+    advanced_commit = _git(repo, "rev-parse", "main")
+    worktree_path = tmp_path / "approved-baseline-worktree"
+    branch_name = "implementation/approved-baseline"
+
+    baseline_ref = daemon._create_seeded_worktree(
+        worktree_path,
+        branch_name,
+        task=task,
+        base_ref=approved_commit,
+    )
+
+    assert preflight["passed"] is True
+    assert advanced_commit != approved_commit
+    assert baseline_ref == approved_commit
+    assert _git(worktree_path, "rev-parse", "HEAD") == approved_commit
+
+
+def test_validated_submodule_target_binding_is_durable_merge_metadata(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    branch_name = "implementation/auto-121-durable-binding"
+    (
+        preflight,
+        approved_targets,
+        root_candidate,
+        _child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+
+    request, _result = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=root_candidate,
+        baseline_ref=str(preflight["root_target_commit"]),
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        changed_submodule_paths=["libs/child"],
+        approved_submodule_integration_targets=approved_targets,
+        validation_result={
+            "passed": True,
+            "returncode": 0,
+            "selection": {"scope": "pre_merge"},
+            "results": [],
+        },
+    )
+
+    binding = request.metadata[
+        "task_owned_submodule_integration_binding"
+    ]
+    parsed, error = (
+        daemon._parse_task_owned_submodule_integration_binding(
+            binding,
+            baseline_ref=str(preflight["root_target_commit"]),
+            changed_submodule_paths={"libs/child"},
+        )
+    )
+    assert error == ""
+    assert parsed == approved_targets
+    assert binding["schema"] == (
+        implementation_daemon_module
+        .TASK_OWNED_SUBMODULE_INTEGRATION_BINDING_SCHEMA
+    )
+
+
+def test_submodule_binding_rejects_unbound_nested_repository_change(
+    tmp_path,
+):
+    repo, _submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task(
+        "libs/child/vendor/nested/file.py"
+    )
+    preflight = daemon._preflight_task_owned_submodule_integration(task)
+    approved_targets = (
+        daemon._approved_task_owned_submodule_integration_targets(
+            preflight
+        )
+    )
+    binding = daemon._task_owned_submodule_integration_binding_payload(
+        root_target_commit=str(preflight["root_target_commit"]),
+        approved_targets=approved_targets,
+    )
+
+    parsed, error = (
+        daemon._parse_task_owned_submodule_integration_binding(
+            binding,
+            baseline_ref=str(preflight["root_target_commit"]),
+            changed_submodule_paths={
+                "libs/child",
+                "libs/child/vendor/nested",
+            },
+        )
+    )
+
+    assert parsed == {}
+    assert error == (
+        "changed_submodule_path_missing_integration_binding"
+    )
+
+
+def test_merge_rejects_child_target_movement_after_locked_preflight(
+    tmp_path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    branch_name = "implementation/auto-121-target-race"
+    (
+        preflight,
+        approved_targets,
+        root_candidate,
+        child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+    root_main_before = _git(repo, "rev-parse", "main")
+    (submodule / "concurrent-main.txt").write_text(
+        "advanced after validation\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "concurrent-main.txt")
+    _git(submodule, "commit", "-m", "advance child target after validation")
+    moved_target = _git(submodule, "rev-parse", "main")
+    monkeypatch.setattr(
+        daemon,
+        "_invoke_llm_merge_resolver_for_failed_merge",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a stale validated topology reached merge repair"
+        ),
+    )
+
+    result = daemon._merge_branch_to_main(
+        branch_name,
+        task,
+        1,
+        baseline_ref=str(preflight["root_target_commit"]),
+        changed_submodule_paths={"libs/child"},
+        approved_submodule_integration_targets=approved_targets,
+    )
+
+    assert result["merged"] is False
+    assert result["attempted"] is False
+    assert result["reason"] == (
+        "task_owned_submodule_integration_binding_stale"
+    )
+    child_result = result["submodule_merge_results"][0]
+    assert child_result["reason"] == (
+        "submodule_integration_target_changed_since_validation"
+    )
+    assert child_result["integration_binding_check"][
+        "expected_integration_target"
+    ] == approved_targets["libs/child"]["integration_target"]
+    assert child_result["integration_binding_check"][
+        "actual_integration_target"
+    ] == moved_target
+    assert _git(repo, "rev-parse", "main") == root_main_before
+    assert _git(repo, "rev-parse", branch_name) == root_candidate
+    assert _git(submodule, "rev-parse", "main") == moved_target
+    assert _git(
+        submodule,
+        "rev-parse",
+        daemon._submodule_worktree_branch_name(
+            branch_name,
+            "libs/child",
+        ),
+    ) == child_candidate
+
+
+def test_preflight_bound_submodule_merge_never_falls_back_from_ff_only(
+    tmp_path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    branch_name = "implementation/auto-121-ff-only"
+    (
+        preflight,
+        approved_targets,
+        _root_candidate,
+        _child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+    approved_child_target = _git(submodule, "rev-parse", "main")
+    real_run = subprocess.run
+    observed_merge_commands: list[list[str]] = []
+
+    def force_ff_only_failure(command, *args, **kwargs):
+        rendered = [str(item) for item in command]
+        command_cwd = Path(kwargs.get("cwd") or ".").resolve()
+        if (
+            rendered[:3] == ["git", "merge", "--ff-only"]
+            and command_cwd == submodule.resolve()
+        ):
+            observed_merge_commands.append(rendered)
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                "",
+                "forced fast-forward race",
+            )
+        if (
+            rendered[:3] == ["git", "merge", "--no-ff"]
+            and command_cwd == submodule.resolve()
+        ):
+            pytest.fail("preflight-bound child merge used non-ff fallback")
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        force_ff_only_failure,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_invoke_llm_merge_resolver_for_failed_merge",
+        lambda *_args, **_kwargs: pytest.fail(
+            "preflight-bound child merge invoked LLM repair"
+        ),
+    )
+
+    results = daemon._merge_submodule_branches_to_main(
+        branch_name,
+        task=task,
+        attempt=1,
+        baseline_ref=str(preflight["root_target_commit"]),
+        changed_submodule_paths={"libs/child"},
+        approved_submodule_integration_targets=approved_targets,
+    )
+
+    assert len(results) == 1
+    assert results[0]["merged"] is False
+    assert results[0]["reason"] == (
+        "task_owned_submodule_ff_only_merge_required"
+    )
+    assert results[0]["command"][:3] == ["git", "merge", "--ff-only"]
+    assert observed_merge_commands == [
+        [
+            "git",
+            "merge",
+            "--ff-only",
+            daemon._submodule_worktree_branch_name(
+                branch_name,
+                "libs/child",
+            ),
+        ]
+    ]
+    assert _git(submodule, "rev-parse", "main") == approved_child_target
+
+
+def test_preflight_bound_submodule_merge_rechecks_exact_post_merge_commit(
+    tmp_path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    branch_name = "implementation/auto-121-post-merge-race"
+    (
+        preflight,
+        approved_targets,
+        _root_candidate,
+        child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+    approved_child_target = _git(submodule, "rev-parse", "main")
+    _git(
+        submodule,
+        "checkout",
+        "-b",
+        "concurrent-post-guard",
+        approved_child_target,
+    )
+    (submodule / "post-guard-race.txt").write_text(
+        "concurrent target movement\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "post-guard-race.txt")
+    _git(submodule, "commit", "-m", "concurrent target movement")
+    concurrent_target = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "main")
+    real_run = subprocess.run
+
+    def move_target_during_ff_only(command, *args, **kwargs):
+        rendered = [str(item) for item in command]
+        command_cwd = Path(kwargs.get("cwd") or ".").resolve()
+        if (
+            rendered[:3] == ["git", "merge", "--ff-only"]
+            and command_cwd == submodule.resolve()
+        ):
+            update = real_run(
+                [
+                    "git",
+                    "update-ref",
+                    "refs/heads/main",
+                    concurrent_target,
+                    approved_child_target,
+                ],
+                cwd=submodule,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            assert update.returncode == 0
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        move_target_during_ff_only,
+    )
+
+    results = daemon._merge_submodule_branches_to_main(
+        branch_name,
+        task=task,
+        attempt=1,
+        baseline_ref=str(preflight["root_target_commit"]),
+        changed_submodule_paths={"libs/child"},
+        approved_submodule_integration_targets=approved_targets,
+    )
+
+    assert len(results) == 1
+    assert results[0]["merged"] is False
+    assert results[0]["returncode"] == 2
+    assert results[0]["reason"] == (
+        "submodule_integration_target_changed_during_ff_only_merge"
+    )
+    assert results[0]["expected_candidate_commit"] == child_candidate
+    assert results[0]["actual_integration_commit"] == concurrent_target
+    assert results[0]["commit"] == ""
+
+
+def test_submodule_preflight_deferral_clears_active_task_and_preserves_attempt(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    _diverge_root_gitlink_from_child_main(repo, submodule)
+    (repo / "todo.md").write_text(
+        """# Todos
+
+## AUTO-121 Reconcile child behavior
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Outputs: libs/child/child.txt
+- Validation: test -f libs/child/child.txt
+- Acceptance: Update the task-owned child source.
+""",
+        encoding="utf-8",
+    )
+    daemon = _submodule_integration_preflight_daemon(
+        repo,
+        tmp_path,
+        implement=True,
+    )
+    daemon.task_header_prefix = "## AUTO-"
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(daemon.state_path)
+
+    assert result["implementation_result"]["reason"] == (
+        "task_owned_submodule_preexisting_divergence"
+    )
+    assert result["implementation_result"]["active_task_cleared"] is True
+    assert result["active_task_id"] == ""
+    assert state.active_task_id == ""
+    assert state.implementation_in_progress is False
+    assert state.implementation_attempts == {}
+    assert state.implementation_attempts_by_cid == {}
+    assert "task_selection_retry_at" in result
+
+
+def test_submodule_preflight_does_not_clear_revised_same_id_selection(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    _diverge_root_gitlink_from_child_main(repo, submodule)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    revised_state = TodoTaskState(
+        active_task_id=task.task_id,
+        active_task_cid="cid-revised-task",
+        active_task_title="Revised task",
+    )
+    revised_state.save(daemon.state_path)
+
+    result = daemon._run_implementation(task, revised_state)
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["active_task_cleared"] is False
+    assert persisted.active_task_id == task.task_id
+    assert persisted.active_task_cid == "cid-revised-task"
+
+
+def test_submodule_integration_preflight_ignores_unowned_configured_submodule(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    _diverge_root_gitlink_from_child_main(repo, submodule)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+
+    result = daemon._preflight_task_owned_submodule_integration(
+        _submodule_proposal_task("README.md")
+    )
+
+    assert result["passed"] is True
+    assert result["reason"] == "no_task_owned_managed_submodules"
+    assert result["checked_paths"] == []
+    assert result["submodules"] == []
+
+
+def test_submodule_integration_preflight_covers_exact_submodule_root_scope(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    _diverge_root_gitlink_from_child_main(repo, submodule)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+
+    result = daemon._preflight_task_owned_submodule_integration(
+        _submodule_proposal_task("libs/child")
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "preexisting_divergence"
+    assert result["checked_paths"] == ["libs/child"]
+
+
+def test_submodule_integration_preflight_resolves_same_branch_policy(tmp_path):
+    repo, _submodule = _seed_parent_with_submodule(tmp_path)
+    _git(
+        repo,
+        "config",
+        "-f",
+        ".gitmodules",
+        "submodule.libs/child.branch",
+        ".",
+    )
+    _git(repo, "add", ".gitmodules")
+    _git(repo, "commit", "-m", "inherit root target branch for child")
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+
+    result = daemon._preflight_task_owned_submodule_integration(
+        _submodule_proposal_task("libs/child/child.txt")
+    )
+
+    assert result["passed"] is True
+    assert result["submodules"][0]["integration_branch"] == "main"
+    assert result["submodules"][0]["relation"] == "equal"
+
+
+def test_task_owned_submodule_integration_preflight_blocks_missing_target_ref(
+    tmp_path,
+):
+    repo, _submodule = _seed_parent_with_submodule(tmp_path)
+    _git(
+        repo,
+        "config",
+        "-f",
+        ".gitmodules",
+        "submodule.libs/child.branch",
+        "missing-integration-target",
+    )
+    _git(repo, "add", ".gitmodules")
+    _git(repo, "commit", "-m", "configure a missing child target")
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+
+    result = daemon._preflight_task_owned_submodule_integration(
+        _submodule_proposal_task("libs/child/child.txt")
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "unverifiable_topology"
+    assert result["blocked_paths"] == ["libs/child"]
+    assert result["submodules"][0]["reason"] == (
+        "integration_target_commit_unavailable"
+    )
+
+
 def test_implementation_proposal_materializes_committed_submodule_change(tmp_path: Path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     baseline = _git(repo, "rev-parse", "HEAD")
@@ -5781,6 +6605,11 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": daemon.merge_target_repository_id,
             "target_branch": daemon.resolved_merge_target_branch,
+            "validation_proof": {
+                "passed": True,
+                "returncode": 0,
+                "selection": {"scope": "pre_merge"},
+            },
             "task": {
                 "task_id": "REF-040",
                 "title": "Recover merge handoff",
@@ -5798,7 +6627,8 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
     assert result["branch_rehydration"]["rehydrated"] is True
     assert observed == {"branch": branch_name, "commit": candidate}
     assert _git(repo, "rev-parse", branch_name) == candidate
-    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert result["completion_authoritative"] is False
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
 
     (repo / "later.txt").write_text("later\n", encoding="utf-8")
     _git(repo, "add", "later.txt")
@@ -5872,6 +6702,11 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": daemon.merge_target_repository_id,
             "target_branch": daemon.resolved_merge_target_branch,
+            "validation_proof": {
+                "passed": True,
+                "returncode": 0,
+                "selection": {"scope": "pre_merge"},
+            },
             "task": {
                 "task_id": "REF-041",
                 "title": "Accept resolver merge",
@@ -5892,7 +6727,8 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
         "merge_branch_missing_after_resolver"
     )
     assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
-    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert result["completion_authoritative"] is False
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
 
 
 def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
@@ -5954,6 +6790,11 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
             "target_repository_id": daemon.merge_target_repository_id,
             "target_branch": daemon.resolved_merge_target_branch,
             "changed_submodule_paths": ["libs/child"],
+            "validation_proof": {
+                "passed": True,
+                "returncode": 0,
+                "selection": {"scope": "pre_merge"},
+            },
             "task": {
                 "task_id": "REF-042",
                 "title": "Verify nested merge",
@@ -8542,7 +9383,7 @@ def test_shared_merge_receipts_do_not_grant_board_completion_across_lanes(tmp_pa
     assert state.task_statuses["ACCEL-003"] == "ready"
 
 
-def test_bundle_runtime_taskboard_preserves_reviewed_shard_digest_on_shared_completion(
+def test_bundle_runtime_taskboard_preserves_reviewed_shard_without_authoritative_completion(
     tmp_path,
 ):
     repo = tmp_path / "repo"
@@ -8637,12 +9478,16 @@ def test_bundle_runtime_taskboard_preserves_reviewed_shard_digest_on_shared_comp
     assert [
         task.status
         for task in parse_task_file(lane.runtime_todo_path, "## ACCEL-")
-    ] == ["completed", "todo"]
+    ] == ["todo", "blocked"]
     assert result["shared_completed_task_ids"] == ["ACCEL-001"]
-    assert result["merged_status_repair"]["updated_task_ids"] == ["ACCEL-001"]
+    assert result["merged_status_repair"] == {
+        "updated": False,
+        "reason": "authoritative_completion_evidence_required",
+        "pending_task_ids": ["ACCEL-001"],
+    }
     state = TodoTaskState.load(daemon.state_path)
-    assert state.task_statuses["ACCEL-001"] == "completed"
-    assert state.task_statuses["ACCEL-002"] == "ready"
+    assert state.task_statuses["ACCEL-001"] == "ready"
+    assert state.task_statuses["ACCEL-002"] == "blocked"
     runtime_after_completion = lane.runtime_todo_path.read_bytes()
 
     reused = materialize_bundle_lane_taskboard(lane, repo_root=repo)
@@ -8796,7 +9641,10 @@ def test_implementation_daemon_skips_repo_wide_task_claim_collision(tmp_path):
     assert result["lock_owner_state_dir"] == str((repo / "other-lane").resolve())
 
 
-def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(tmp_path):
+def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(
+    tmp_path,
+    monkeypatch,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -8807,6 +9655,10 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(t
         "printf \"You've reached your additional usage limit.\\n\"\n"
         "exit 1\n",
         encoding="utf-8",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
     )
     state_path = repo / "state" / "task_state.json"
     daemon = TodoImplementationDaemon(
@@ -8883,6 +9735,10 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
         "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS",
         "600",
     )
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
         state_path=state_path,
@@ -8919,7 +9775,10 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     assert events_path.read_bytes() == events_after_failure
 
 
-def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(tmp_path):
+def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
+    tmp_path,
+    monkeypatch,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -8934,6 +9793,10 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(tm
     )
     _git(repo, "add", "todo.md", "quota.sh")
     _git(repo, "commit", "-m", "seed")
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     state_path = repo / "state" / "task_state.json"
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
@@ -11095,7 +11958,10 @@ def test_implementation_daemon_records_unreadable_todo_text(tmp_path):
     assert events[-1]["reason"] == "todo_read_failed"
 
 
-def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
+def test_implementation_daemon_records_non_ephemeral_setup_exception(
+    tmp_path,
+    monkeypatch,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -11116,6 +11982,10 @@ def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
         encoding="utf-8",
     )
     state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
         state_path=state_dir / "task_state.json",
@@ -11146,6 +12016,10 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=state_dir / "task_state.json",
@@ -11276,6 +12150,10 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=state_dir / "task_state.json",
@@ -15417,6 +16295,10 @@ def test_task_llm_context_budget_caps_codex_window_without_widening_operator_lim
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
         "codex",
     )
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     monkeypatch.setattr(
         implementation_daemon_module.shutil,
         "which",
@@ -15768,6 +16650,396 @@ def test_implementation_daemon_prefers_ready_task_from_last_vector_cluster(tmp_p
 
     assert selected is not None
     assert selected.task_id == "ACCEL-011"
+
+
+@pytest.mark.parametrize(
+    "eligibility_line",
+    [
+        "- Is schedulable: false",
+        "- Review only: true",
+        "- Is schedulable: not-a-boolean",
+        "- Review only: not-a-boolean",
+    ],
+    ids=[
+        "not-schedulable",
+        "review-only",
+        "malformed-schedulable",
+        "malformed-review-only",
+    ],
+)
+def test_direct_implementation_daemon_rejects_ineligible_task_metadata(
+    tmp_path,
+    eligibility_line,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""# Todos
+
+## ACCEL-001 Policy-ineligible task
+
+- Status: todo
+- Priority: P0
+- Track: runtime
+- Outputs: src/ineligible.py
+- Validation: test -f src/ineligible.py
+{eligibility_line}
+- Acceptance: This task requires another execution path.
+
+## ACCEL-002 Legacy directly implementable task
+
+- Status: todo
+- Priority: P2
+- Track: runtime
+- Outputs: src/legacy.py
+- Validation: test -f src/legacy.py
+- Acceptance: Implement the legacy-compatible task.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    statuses = {task.task_id: "ready" for task in tasks}
+
+    selected = daemon._select_next_task(tasks, statuses, {}, {}, {})
+    scope = daemon._selection_scope(tasks, statuses, {})
+
+    assert selected is not None
+    assert selected.task_id == "ACCEL-002"
+    assert scope["selectable_ready_task_ids"] == ["ACCEL-001", "ACCEL-002"]
+    assert scope["eligible_ready_task_ids"] == ["ACCEL-002"]
+
+
+@pytest.mark.parametrize(
+    "eligibility_lines",
+    [
+        "",
+        "- Is schedulable: true\n- Review only: false",
+    ],
+    ids=["legacy-fields-absent", "explicitly-eligible"],
+)
+def test_direct_implementation_daemon_allows_compatible_task_metadata(
+    tmp_path,
+    eligibility_lines,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""# Todos
+
+## ACCEL-001 Directly implementable task
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/runtime.py
+- Validation: test -f src/runtime.py
+{eligibility_lines}
+- Acceptance: Implement the runtime task.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    statuses = {"ACCEL-001": "ready"}
+
+    selected = daemon._select_next_task(tasks, statuses, {}, {}, {})
+
+    assert selected is not None
+    assert selected.task_id == "ACCEL-001"
+
+
+@pytest.mark.parametrize(
+    ("eligibility_lines", "expected_blocker"),
+    [
+        ("- Is schedulable: false", "task_marked_unschedulable"),
+        ("- Review only: true", "task_marked_review_only"),
+        ("- Is schedulable: invalid", "invalid_is_schedulable"),
+        (
+            "- Is schedulable: false\n- IS SCHEDULABLE: true",
+            "ambiguous_is_schedulable",
+        ),
+    ],
+)
+def test_direct_implementation_daemon_projects_policy_ineligible_task_as_blocked(
+    tmp_path,
+    eligibility_lines,
+    expected_blocker,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""# Todos
+
+## ACCEL-001 Policy-ineligible task
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+{eligibility_lines}
+- Acceptance: Do not dispatch this task directly.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(daemon.state_path)
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result["ready_count"] == 0
+    assert result["selectable_ready_count"] == 0
+    assert result["eligible_ready_count"] == 0
+    assert result["blocked_count"] == 1
+    assert result["active_task_id"] == ""
+    assert result["selection_idle_reason"] == (
+        "all_selectable_ready_tasks_ineligible_by_task_metadata"
+    )
+    assert result["task_policy_blockers"] == {
+        "ACCEL-001": [expected_blocker]
+    }
+    assert state.task_statuses == {"ACCEL-001": "blocked"}
+    assert state.task_policy_blockers == result["task_policy_blockers"]
+    assert daemon._selectable_task_retry_schedule() == {}
+    daemon_pass = next(event for event in events if event["type"] == "daemon_pass")
+    assert daemon_pass["task_policy_blockers"] == result["task_policy_blockers"]
+
+
+def test_direct_implementation_daemon_preserves_task_source_policy_alias_ambiguity(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    source_task = SimpleNamespace(
+        task_id="ACCEL-001",
+        title="Ambiguous source task",
+        status="todo",
+        task_cid="cid-task",
+        goal_id="goal-1",
+        goal_cid="cid-goal",
+        dependency_task_ids=(),
+        board_namespace="test",
+        source_line=1,
+        body={"is_schedulable": False, "is-schedulable": True},
+    )
+
+    task = daemon._portal_task_from_source_task(source_task)
+
+    assert task.metadata["is schedulable"] == (
+        implementation_daemon_module.AMBIGUOUS_TASK_BOOLEAN_METADATA
+    )
+    assert daemon._task_direct_implementation_blockers(task) == (
+        "ambiguous_is_schedulable",
+    )
+
+    source_task.body = {
+        "is_schedulable": False,
+        "provenance": {"is schedulable": True},
+    }
+    fallback_task = daemon._portal_task_from_source_task(source_task)
+
+    assert fallback_task.metadata["is schedulable"] == "false"
+    assert daemon._task_direct_implementation_blockers(fallback_task) == (
+        "task_marked_unschedulable",
+    )
+
+
+def test_direct_implementation_boundary_rejects_policy_ineligible_task(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    daemon._build_implementation_prompt = lambda *_args, **_kwargs: pytest.fail(  # type: ignore[method-assign]
+        "policy-ineligible task reached provider prompt construction"
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Review-only task",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="runtime",
+        metadata={"review only": "true"},
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result == {
+        "skipped": True,
+        "reason": "task_direct_implementation_ineligible",
+        "task_id": "ACCEL-001",
+        "attempt": 1,
+        "policy_blockers": ["task_marked_review_only"],
+    }
+
+
+def test_direct_implementation_daemon_does_not_reopen_policy_blocked_task(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Completed prerequisite
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: runtime
+
+## ACCEL-002 Review-only dependent task
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on: ACCEL-001
+- Review only: true
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    before = todo_path.read_text(encoding="utf-8")
+
+    result = daemon.run_once()
+
+    assert todo_path.read_text(encoding="utf-8") == before
+    assert result["task_policy_blockers"] == {
+        "ACCEL-002": ["task_marked_review_only"]
+    }
+    assert TodoTaskState.load(daemon.state_path).task_statuses == {
+        "ACCEL-001": "completed",
+        "ACCEL-002": "blocked",
+    }
+
+
+def test_direct_implementation_daemon_borrows_when_local_shard_is_policy_blocked(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-000 Policy-blocked even task
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Is schedulable: false
+
+## ACCEL-001 Eligible odd task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        task_shard_count=2,
+        task_shard_index=0,
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(daemon.state_path)
+
+    assert result["active_task_id"] == "ACCEL-001"
+    assert state.ready_task_ids == ["ACCEL-001"]
+    assert state.blocked_task_ids == ["ACCEL-000"]
+    assert state.task_policy_blockers == {
+        "ACCEL-000": ["task_marked_unschedulable"]
+    }
+    assert "task_shard_ready_fallback" in daemon.events_path.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_direct_implementation_daemon_does_not_retry_policy_ineligible_ready_work(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    state = TodoTaskState(
+        ready_task_ids=["ACCEL-001"],
+        selectable_ready_task_ids=["ACCEL-001"],
+        eligible_ready_task_ids=[],
+        selection_idle_reason="all_selectable_ready_tasks_ineligible_by_task_metadata",
+    )
+    state.save(daemon.state_path)
+
+    assert daemon._selectable_task_retry_schedule() == {}
 
 
 def test_implementation_daemon_prefers_larger_goal_work_without_vector_index(tmp_path):
