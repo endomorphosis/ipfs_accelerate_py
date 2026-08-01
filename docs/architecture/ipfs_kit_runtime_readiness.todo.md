@@ -210,7 +210,7 @@ or write authority.
 
 ## KITA-006 Build the canonical VFS service and reference model
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
