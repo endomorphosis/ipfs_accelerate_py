@@ -1078,7 +1078,7 @@ or write authority.
 
 ## KITA-034 Build the versioned operation registry and canonical service router
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
