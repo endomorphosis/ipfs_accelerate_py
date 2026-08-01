@@ -24,6 +24,54 @@ from ..runtime.event_log import append_jsonl_event
 
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
+IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS = 300.0
+
+
+def daemon_pass_is_idle(result: Mapping[str, Any]) -> bool:
+    """Return whether a pass made no durable or implementation progress."""
+
+    return (
+        result.get("unchanged") is True
+        and int(result.get("write_count", 0) or 0) == 0
+        and not result.get("implementation_result")
+        and not result.get("merge_reconciliation")
+        and not result.get("completion_receipt_writes")
+        and not result.get("retry_budget_resets")
+    )
+
+
+def compact_daemon_pass_result(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Build the bounded operator heartbeat used for an idle daemon pass."""
+
+    keys = (
+        "task_count",
+        "completed_count",
+        "ready_count",
+        "blocked_count",
+        "active_task_id",
+        "selection_idle_reason",
+        "source_digest",
+        "wake_kinds",
+        "requirement_id",
+    )
+    return {key: result[key] for key in keys if key in result}
+
+
+def log_daemon_pass_result(
+    logger: logging.Logger,
+    pass_complete_message: str,
+    result: Mapping[str, Any],
+    *,
+    emit_idle_info: bool,
+) -> None:
+    """Log changed passes in full and throttle bounded summaries for idle passes."""
+
+    if not daemon_pass_is_idle(result):
+        logger.info(pass_complete_message, result)
+        return
+    logger.debug("Full idle daemon pass result: %s", result)
+    if emit_idle_info:
+        logger.info(pass_complete_message, compact_daemon_pass_result(result))
 
 
 def bounded_daemon_wait_timeout(
@@ -1255,6 +1303,7 @@ def run_portal_implementation_daemon_loop(
     )
     effective_hooks = () if authority_revalidation_only else hooks
     pass_index = 0
+    last_idle_info_at: float | None = None
     try:
         while True:
             pass_context = context.for_pass(pass_index)
@@ -1271,7 +1320,20 @@ def run_portal_implementation_daemon_loop(
                 context=pass_context,
                 logger=logger,
             )
-            logger.info(pass_complete_message, result)
+            now = time.monotonic()
+            emit_idle_info = (
+                bool(parsed.once)
+                or last_idle_info_at is None
+                or now - last_idle_info_at >= IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS
+            )
+            log_daemon_pass_result(
+                logger,
+                pass_complete_message,
+                result,
+                emit_idle_info=emit_idle_info,
+            )
+            if daemon_pass_is_idle(result) and emit_idle_info:
+                last_idle_info_at = now
             if parsed.once:
                 break
             pass_index += 1

@@ -165,6 +165,11 @@ from ..runtime.resource_scheduler import (
     admit_compiled_execution_assignments,
     evaluate_capacity_drift,
 )
+from .implementation_daemon_runner import (
+    IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS,
+    daemon_pass_is_idle,
+    log_daemon_pass_result,
+)
 from ..task_sources.taskboard_store import (
     ProjectionDeltaCheckpointStore,
     locked_taskboard,
@@ -50839,9 +50844,23 @@ def main(argv: list[str] | None = None) -> None:
             if not result.get("cleared") and not result.get("already_clear"):
                 raise SystemExit(2)
             return
+        last_idle_info_at: float | None = None
         while True:
             result = daemon.run_once()
-            logger.info("Portal implementation daemon pass complete: %s", result)
+            now = time.monotonic()
+            emit_idle_info = (
+                bool(args.once)
+                or last_idle_info_at is None
+                or now - last_idle_info_at >= IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS
+            )
+            log_daemon_pass_result(
+                logger,
+                "Portal implementation daemon pass complete: %s",
+                result,
+                emit_idle_info=emit_idle_info,
+            )
+            if daemon_pass_is_idle(result) and emit_idle_info:
+                last_idle_info_at = now
             if args.once:
                 break
             daemon.wait_for_wake(timeout=args.interval)
