@@ -3,6 +3,8 @@
   "interface": "LeanSemanticCertification@1",
   "goal_id": "FVT-G101",
   "task_id": "FVT-040",
+  "validation_task_id": "FVT-070",
+  "objective_evidence": "objective validation repair",
   "tool_id": "lean",
   "lane_id": "kernel",
   "locked_toolchain": "leanprover/lean4:v4.31.0",
@@ -16,7 +18,8 @@
     "elan_no_auto_install": true,
     "shim_mismatch_fails_closed": true,
     "sorry_admit_unsafe_fail_closed": true,
-    "authority_is_kernel_proof_checking_only": true
+    "authority_is_kernel_proof_checking_only": true,
+    "empty_elan_inventory_probes_path_pin": true
   },
   "cases": [
     {
