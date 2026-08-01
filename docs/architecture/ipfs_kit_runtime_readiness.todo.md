@@ -55,7 +55,7 @@ or write authority.
 
 ## KITA-001 Freeze the repository, capability, backend, and test-gate inventory
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
