@@ -644,7 +644,7 @@ or write authority.
 
 ## KITA-020 Implement replay, idempotency, checkpoint, compaction, archive, and corruption recovery
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
