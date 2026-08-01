@@ -478,6 +478,8 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
     if not ROLES_PATH.is_file():
         pytest.skip("roles certification surface missing")
 
+    assert CENTRAL_CERTIFIER.is_file()
+    central_before = CENTRAL_CERTIFIER.read_bytes()
     roles = _load_module(ROLES_PATH, "tools_logic_certification_roles")
     policy = roles.build_role_aware_policy(register_placeholders=True)
     bound = certifier.bind_runtime_mtl_lane(policy, replace=True)
@@ -488,14 +490,13 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
     assert result["handler_id"] == HANDLER_ID
     assert result["grants_theorem_authority"] is False
 
-    # Central multi-prover certifier must remain untouched by this lane.
-    assert CENTRAL_CERTIFIER.is_file()
+    # Calling this lane must not mutate the central multi-prover certifier.
+    # The central orchestrator now intentionally references this semantic
+    # interface as a fail-closed fan-in input.
+    assert CENTRAL_CERTIFIER.read_bytes() == central_before
     text = CENTRAL_CERTIFIER.read_text(encoding="utf-8")
-    # The central certifier may *reference* runtime-mtl as usable, but this
-    # semantic lane must not rewrite it. Guard: file is readable and still a
-    # multi-prover orchestrator (not replaced by the Runtime MTL certifier).
     assert "build_certificate" in text or "FormalVerification" in text
-    assert "RuntimeMTLSemanticCertification@1" not in text
+    assert "RuntimeMTLSemanticCertification@1" in text
 
 
 def test_policy_forbids_external_install_and_central_certificate_edit(

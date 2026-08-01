@@ -142,6 +142,7 @@
   "monitor_interface": "RuntimeMTLMonitor@1",
   "policy": {
     "clean_prefix_never_theorem": true,
+    "certification_never_builds_typescript": true,
     "finite_trace_authority_only": true,
     "in_process_only": true,
     "mutations_must_change_verdict": true,
@@ -149,6 +150,7 @@
     "no_external_parity_install": true,
     "python_typescript_golden_parity": true,
     "receipts_bind_formula_trace_clock_bounds_implementation_source_tree": true,
+    "requires_prebuilt_typescript_artifact": true,
     "shortest_violating_prefix_replay": true
   },
   "program": "formal-verification-tactician/runtime-mtl-certification",

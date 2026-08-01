@@ -476,6 +476,8 @@ def build_default_manifest() -> dict[str, Any]:
         "policy": {
             "in_process_only": True,
             "no_external_parity_install": True,
+            "requires_prebuilt_typescript_artifact": True,
+            "certification_never_builds_typescript": True,
             "no_central_certificate_edit": True,
             "receipts_bind_formula_trace_clock_bounds_implementation_source_tree": True,
             "finite_trace_authority_only": True,
@@ -778,34 +780,21 @@ def shortest_violating_prefix(
 
 
 def _ensure_typescript_built(repo_root: Path) -> Path | None:
-    """Build the co-located TypeScript package when node/npm are available."""
+    """Resolve an already-built TypeScript artifact without mutating it.
+
+    The legacy name is retained for callers, but semantic certification is an
+    offline read-only phase. Building or installing dependencies here would
+    contradict the receipt's ``no_external_parity_install`` policy and make
+    results depend on mutable network/package-manager state.
+    """
 
     package = repo_root / TS_PACKAGE_RELATIVE
     if not package.is_dir():
         return None
-    node = shutil.which("node")
-    npm = shutil.which("npm")
-    if node is None or npm is None:
+    if shutil.which("node") is None:
         return None
     index = package / "dist" / "src" / "index.js"
-    if not (package / "node_modules").is_dir():
-        install = subprocess.run(
-            [npm, "install", "--no-fund", "--no-audit"],
-            cwd=package,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if install.returncode != 0:
-            return None
-    build = subprocess.run(
-        [npm, "run", "build"],
-        cwd=package,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if build.returncode != 0 or not index.is_file():
+    if not index.is_file():
         return None
     return index
 
@@ -859,6 +848,8 @@ def run_python_typescript_parity(
     detail: dict[str, Any] = {
         "package_path": str(TS_PACKAGE_RELATIVE).replace("\\", "/"),
         "package_present": package.is_dir(),
+        "prebuilt_required": True,
+        "certification_builds_or_installs": False,
         "compared_cases": 0,
         "mismatches": [],
     }
@@ -874,18 +865,46 @@ def run_python_typescript_parity(
             ),
             detail,
         )
-    if shutil.which("node") is None or shutil.which("npm") is None:
+    node = shutil.which("node")
+    if node is None:
         return (
             CheckResult(
                 check_id="parity.python_typescript",
                 kind="parity",
                 status="skipped",
                 expected="parity",
-                observed="node_or_npm_missing",
-                detail="node/npm unavailable; parity skipped",
+                observed="node_missing",
+                detail="Node runtime unavailable; parity skipped without install",
             ),
             detail,
         )
+    prebuilt_index = _ensure_typescript_built(root)
+    if prebuilt_index is None:
+        return (
+            CheckResult(
+                check_id="parity.python_typescript",
+                kind="parity",
+                status="skipped",
+                expected="prebuilt_digest_bound_parity",
+                observed="typescript_prebuilt_unavailable",
+                detail=(
+                    "prebuilt TypeScript artifact unavailable; parity skipped "
+                    "without npm install/build"
+                ),
+            ),
+            detail,
+        )
+    package_json = package / "package.json"
+    package_lock = package / "package-lock.json"
+    source_index = package / "src" / "index.ts"
+    detail["prebuilt"] = {
+        "index_path": str(prebuilt_index.relative_to(root)).replace("\\", "/"),
+        "index_sha256": _file_digest(prebuilt_index) or "",
+        "package_json_sha256": _file_digest(package_json) or "",
+        "package_lock_sha256": _file_digest(package_lock) or "",
+        "source_index_sha256": _file_digest(source_index) or "",
+        "node_executable_sha256": _file_digest(Path(node)) or "",
+    }
 
     mismatches: list[str] = []
     compared = 0
@@ -906,8 +925,11 @@ def run_python_typescript_parity(
                     kind="parity",
                     status="skipped",
                     expected="parity",
-                    observed="typescript_build_unavailable",
-                    detail="TypeScript package could not be built",
+                    observed="typescript_prebuilt_unavailable",
+                    detail=(
+                        "prebuilt TypeScript package became unavailable; "
+                        "certification did not install or build it"
+                    ),
                 ),
                 detail,
             )
@@ -990,16 +1012,12 @@ def certify_runtime_mtl_semantics(
 
         if spec.recipe == "python_typescript_golden_parity" or spec.category == "parity":
             check, parity_detail = run_python_typescript_parity(repo_root=root)
-            if check.status == "skipped" and require_typescript_parity:
-                check = CheckResult(
-                    check_id=check.check_id,
-                    kind="parity",
-                    status="failed",
-                    expected="parity",
-                    observed=check.observed,
-                    detail=check.detail + "; required",
+            if check.status == "skipped":
+                block_reasons.append(
+                    "typescript_parity_required_but_unavailable"
+                    if require_typescript_parity
+                    else "typescript_parity_unavailable"
                 )
-                block_reasons.append("typescript_parity_required_but_unavailable")
             elif check.status == "failed":
                 block_reasons.append("typescript_parity_mismatch")
             checks.append(check)
@@ -1256,9 +1274,7 @@ def certify_runtime_mtl_semantics(
     if theorem_claims:
         block_reasons.append("theorem_authority_claimed")
 
-    all_hard_passed = all(
-        item.status == "passed" or item.status == "skipped" for item in checks
-    )
+    all_hard_passed = all(item.status == "passed" for item in checks)
     certified = all_hard_passed and not block_reasons and impl["exists"]
 
     payload: dict[str, Any] = {
@@ -1297,6 +1313,8 @@ def certify_runtime_mtl_semantics(
         "policy": {
             "in_process_only": True,
             "no_external_parity_install": True,
+            "requires_prebuilt_typescript_artifact": True,
+            "certification_never_builds_typescript": True,
             "no_central_certificate_edit": True,
             "receipts_bind_formula_trace_clock_bounds_implementation_source_tree": True,
             "finite_trace_authority_only": True,
