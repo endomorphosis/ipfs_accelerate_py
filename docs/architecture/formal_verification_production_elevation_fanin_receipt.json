@@ -6,7 +6,7 @@
   "goal_id": "FVT-G213",
   "task_id": "FVT-081",
   "program": "formal-verification-tactician/toolchain-release-candidate",
-  "observed_at": "2026-08-01T17:57:58Z",
+  "observed_at": "2026-08-01T18:11:46Z",
   "description": "Fail-closed production-semantic elevation fan-in. Each required tool is independently reconstructed from its canonical PNMR receipt and exact compact binding before production elevation.",
   "policy": {
     "required_check_kinds": [
@@ -42,7 +42,7 @@
       "evidence_class": "usable_pending_kernel_live_fanin",
       "production_elevation_allowed": false,
       "lane_status": "ran",
-      "lane_digest_sha256": "1ff101bcc6c1fd8d321f833bb602ac19c07fb9f4fd16f77535b343df20fca77c",
+      "lane_digest_sha256": "77b498737ea6f2fc014542759ccd9b170547069fb8fa954f754953372d9a372d",
       "compact_tool_certified": true,
       "independent_reconstruction": {
         "valid": true,
@@ -68,8 +68,8 @@
         "required_kinds_all_passed": true,
         "required_kinds_failed": [],
         "required_kinds_missing": [],
-        "check_set_digest_sha256": "0192a6b25a70a907cde867958a30ca4b6b71743bbf48bda12d3717892aab71ff",
-        "compact_check_set_digest_sha256": "0192a6b25a70a907cde867958a30ca4b6b71743bbf48bda12d3717892aab71ff",
+        "check_set_digest_sha256": "fdfc253f86d64e384b0c1d48be27b1e60fe4efd78b7efcb6528449c693663f1e",
+        "compact_check_set_digest_sha256": "fdfc253f86d64e384b0c1d48be27b1e60fe4efd78b7efcb6528449c693663f1e",
         "compact_binding_valid": true,
         "checks_total": 14,
         "checks_passed": 14,
@@ -285,7 +285,7 @@
       "evidence_class": "external_prover_installation_pending",
       "production_elevation_allowed": false,
       "lane_status": "ran",
-      "lane_digest_sha256": "27939a6d8c21325c9521a25f9f65daac7fbd8c56b13913c4bb8bc43ee2c08f54",
+      "lane_digest_sha256": "d5ed225b1bf42049f207ad6de1d2b3158465b75935e40b39c4413f9001ed22d7",
       "compact_tool_certified": true,
       "independent_reconstruction": {
         "valid": true,
@@ -313,8 +313,8 @@
         "required_kinds_all_passed": true,
         "required_kinds_failed": [],
         "required_kinds_missing": [],
-        "check_set_digest_sha256": "966d03aa114ed47c3c93ce80698363f8869edabf961602e9ed5c60134d145098",
-        "compact_check_set_digest_sha256": "966d03aa114ed47c3c93ce80698363f8869edabf961602e9ed5c60134d145098",
+        "check_set_digest_sha256": "e674c75ffd96a096fad424fb5d91b11b49136bc5c79b9ade4927063b6500342b",
+        "compact_check_set_digest_sha256": "e674c75ffd96a096fad424fb5d91b11b49136bc5c79b9ade4927063b6500342b",
         "compact_binding_valid": true,
         "checks_total": 16,
         "checks_passed": 16,
@@ -412,8 +412,8 @@
   "certificate_identity": {
     "valid": true,
     "digest_valid": true,
-    "stored_digest_sha256": "b6378fb87d1d779c5a43209bf187b0af17251e7f7c47c7ccde103bb91e27d8b3",
-    "computed_digest_sha256": "b6378fb87d1d779c5a43209bf187b0af17251e7f7c47c7ccde103bb91e27d8b3",
+    "stored_digest_sha256": "644e7d9fba26f94d7e5f75e7c20cb9c102bcb44d6ded70fb0d62758ac44892fb",
+    "computed_digest_sha256": "644e7d9fba26f94d7e5f75e7c20cb9c102bcb44d6ded70fb0d62758ac44892fb",
     "interface_valid": true,
     "role_aware_identity_valid": true,
     "public_evidence_valid": true,
@@ -518,7 +518,7 @@
     "failures": []
   },
   "role_aware_certificate": {
-    "digest_sha256": "b6378fb87d1d779c5a43209bf187b0af17251e7f7c47c7ccde103bb91e27d8b3",
+    "digest_sha256": "644e7d9fba26f94d7e5f75e7c20cb9c102bcb44d6ded70fb0d62758ac44892fb",
     "interface": "FormalVerificationToolchainCertificate@1",
     "projection_model": "digest_bound_compact_projection/v1",
     "raw_certificate_embedded": false
@@ -569,5 +569,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_digest_sha256": "sha256:e142efa763f0a546f72d058f3f6a9420568de41602f023992f75870afc0e63ab"
+  "receipt_digest_sha256": "sha256:85def0d4a31a7d583239474be471c779655712b5f3231f7c83e7fb7c1b6ea73b"
 }

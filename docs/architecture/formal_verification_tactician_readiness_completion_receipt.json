@@ -6,15 +6,15 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-01T17:57:58Z",
+  "observed_at": "2026-08-01T18:11:46Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "ae46774ecec10f62066a85178e73765138b6eeaf",
-    "parent_tree": "85369686ba145516632c922e54e6133a2a770a67",
+    "parent_commit": "ad8419c9474551b077e021ac95235727f22517e6",
+    "parent_tree": "24d0c7283204231173795d40ef4538b19b06abc0",
     "datasets_gitlink": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
     "datasets_embedded_head": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
-    "datasets_origin_main": "ab3de64df783e6d8fd9e342d00cafe807b418d44",
-    "parent_origin_main": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
+    "datasets_origin_main": "1cd68c2127a3e2d807d55a0e147b928c2f4c05dc",
+    "parent_origin_main": "805ad0abd6aa78b4ec5e85f72f8961c234f54da7",
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
@@ -205,10 +205,10 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "ae46774ecec10f62066a85178e73765138b6eeaf",
-        "tree": "85369686ba145516632c922e54e6133a2a770a67",
-        "origin_main": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
-        "clean": false,
+        "commit": "ad8419c9474551b077e021ac95235727f22517e6",
+        "tree": "24d0c7283204231173795d40ef4538b19b06abc0",
+        "origin_main": "805ad0abd6aa78b4ec5e85f72f8961c234f54da7",
+        "clean": true,
         "matches_origin_main": false
       },
       "gitlink": {
@@ -221,7 +221,7 @@
         "head": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
         "clean": true,
         "matches_gitlink": true,
-        "origin_main": "ab3de64df783e6d8fd9e342d00cafe807b418d44",
+        "origin_main": "1cd68c2127a3e2d807d55a0e147b928c2f4c05dc",
         "matches_origin_main": false
       },
       "publication_gates": {
@@ -230,9 +230,8 @@
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
       },
-      "aligned_for_implementation": false,
+      "aligned_for_implementation": true,
       "diagnostics": [
-        "parent_working_tree_dirty",
         "datasets_publication_lag_vs_origin_main",
         "parent_publication_lag_vs_origin_main"
       ]
@@ -3811,5 +3810,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:a349d491fe8e011dcf19bef7aac451f975ac41691ccf81ff07c42b2f1db1529d"
+  "receipt_identity": "sha256:cda1b763d6edd7e8c4e29fef5579d4078d4c34ea6dae36619b80ee3fd22ba61c"
 }
