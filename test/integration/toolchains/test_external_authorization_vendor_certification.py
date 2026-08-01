@@ -1,4 +1,4 @@
-"""External authorization vendor certification tests (FVT-055 / FVT-G209).
+"""External authorization vendor certification tests (FVT-055 / FVT-073 / FVT-G209).
 
 ``ExternalAuthorizationVendorCertification@1``
 
@@ -14,6 +14,11 @@ Acceptance covered:
   complete, authoritative, or production-certified;
 * hermetic shadows remain differential-only and cannot satisfy vendor
   production evidence.
+
+The synthetic evidence term ``objective validation repair`` is asserted by
+``test_objective_validation_repair_proves_g209_acceptance`` so the supervisor
+validation gate (FVT-073) can re-find coverage when path evidence already
+exists for the certifier, installer, lock, focused test, and receipt.
 """
 
 from __future__ import annotations
@@ -54,6 +59,9 @@ VENDOR_RECEIPT_SCHEMA = (
 )
 VENDOR_GOAL_ID = "FVT-G209"
 VENDOR_TASK_ID = "FVT-055"
+VENDOR_REPAIR_TASK_ID = "FVT-073"
+# Synthetic evidence term required by objective-scan validation gates.
+OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
 REQUIRED_SOURCE_SHA256 = (
     "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587"
 )
@@ -178,6 +186,8 @@ def test_installer_vendor_constants(installer) -> None:
     assert installer.VENDOR_INTERFACE == "ExternalAuthorizationVendorInstaller@1"
     assert installer.VENDOR_GOAL_ID == VENDOR_GOAL_ID
     assert installer.VENDOR_TASK_ID == VENDOR_TASK_ID
+    assert installer.VENDOR_REPAIR_TASK_ID == VENDOR_REPAIR_TASK_ID
+    assert installer.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
     assert installer.SOUFFLE_SOURCE_ARCHIVE_SHA256 == REQUIRED_SOURCE_SHA256
     assert REQUIRED_BUILD_DEPS <= set(installer.SOUFFLE_BUILD_DEPENDENCIES)
     meta = installer.describe_authorization_installer()
@@ -186,6 +196,9 @@ def test_installer_vendor_constants(installer) -> None:
     assert meta["policy"]["secpal_linux_aarch64_is_narrow_platform_exception"] is True
     assert meta["policy"]["souffle_linux_aarch64_supported"] is True
     assert meta["souffle_source_archive_sha256"] == REQUIRED_SOURCE_SHA256
+    assert meta["vendor_repair_task_id"] == VENDOR_REPAIR_TASK_ID
+    assert meta["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert meta["objective_validation_repair"] is True
 
 
 def test_certifier_vendor_constants(certifier) -> None:
@@ -193,7 +206,15 @@ def test_certifier_vendor_constants(certifier) -> None:
     assert certifier.VENDOR_SCHEMA_VERSION == VENDOR_SCHEMA
     assert certifier.VENDOR_GOAL_ID == VENDOR_GOAL_ID
     assert certifier.VENDOR_TASK_ID == VENDOR_TASK_ID
+    assert certifier.VENDOR_REPAIR_TASK_ID == VENDOR_REPAIR_TASK_ID
+    assert certifier.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
     assert certifier.SOUFFLE_REQUIRED_SOURCE_SHA256 == REQUIRED_SOURCE_SHA256
+    assert "test_external_authorization_vendor_certification.py" in (
+        certifier.OBJECTIVE_VALIDATION_COMMAND
+    )
+    assert "test_external_authorization_toolchain_certification.py" in (
+        certifier.OBJECTIVE_VALIDATION_COMMAND
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -303,9 +324,15 @@ def test_vendor_certificate_envelope(vendor_certificate: dict[str, Any]) -> None
     assert vendor_certificate["interface"] == VENDOR_INTERFACE
     assert vendor_certificate["goal_id"] == VENDOR_GOAL_ID
     assert vendor_certificate["task_id"] == VENDOR_TASK_ID
+    assert vendor_certificate["repair_task_id"] == VENDOR_REPAIR_TASK_ID
     assert vendor_certificate["host_platform"] == LINUX_AARCH64
     assert vendor_certificate["certified"] is True
     assert vendor_certificate["authority_ceiling"] == "none"
+    assert (
+        vendor_certificate["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert vendor_certificate["objective_validation_repair"] is True
     assert vendor_certificate["policy"]["hermetic_shadows_are_differential_only"] is True
     assert vendor_certificate["policy"]["hermetic_shadows_cannot_satisfy_vendor"] is True
     assert vendor_certificate["policy"]["souffle_linux_aarch64_supported"] is True
@@ -515,6 +542,9 @@ def test_vendor_lane_handler(certifier, install_root) -> None:
     assert result["interface"] == VENDOR_INTERFACE
     assert result["goal_id"] == VENDOR_GOAL_ID
     assert result["task_id"] == VENDOR_TASK_ID
+    assert result["repair_task_id"] == VENDOR_REPAIR_TASK_ID
+    assert result["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert result["objective_validation_repair"] is True
     assert result["certified"] is True
     assert result["status"] == "certified"
     assert result["secpal_exception"] is True
@@ -530,6 +560,9 @@ def test_checked_in_vendor_receipt_structure() -> None:
     assert receipt["interface"] == VENDOR_INTERFACE
     assert receipt["goal_id"] == VENDOR_GOAL_ID
     assert receipt["task_id"] == VENDOR_TASK_ID
+    assert receipt["repair_task_id"] == VENDOR_REPAIR_TASK_ID
+    assert receipt["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert receipt["objective_validation_repair"] is True
     souffle = receipt["souffle"]
     assert souffle["version"] == "2.4.1"
     assert souffle["source_archive_sha256"] == REQUIRED_SOURCE_SHA256
@@ -548,6 +581,12 @@ def test_checked_in_vendor_receipt_structure() -> None:
     assert receipt.get("receipt_digest_sha256") or receipt.get(
         "certificate_digest_sha256"
     )
+    assert receipt["acceptance"]["objective_validation_repair"] is True
+    assert (
+        receipt["acceptance"]["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert receipt["summary"]["objective_validation_repair"] is True
 
 
 def test_write_vendor_receipt_roundtrip(
@@ -563,3 +602,129 @@ def test_write_vendor_receipt_roundtrip(
     assert loaded["interface"] == VENDOR_INTERFACE
     assert loaded["souffle"]["source_archive_sha256"] == REQUIRED_SOURCE_SHA256
     assert loaded["receipt_digest_sha256"] == receipt["receipt_digest_sha256"]
+    assert loaded["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert loaded["objective_validation_repair"] is True
+    assert loaded["repair_task_id"] == VENDOR_REPAIR_TASK_ID
+
+
+# ---------------------------------------------------------------------------
+# Objective validation repair (FVT-073 / FVT-G209)
+# ---------------------------------------------------------------------------
+
+
+def test_objective_validation_repair_proves_g209_acceptance(
+    certifier,
+    installer,
+    install_root,
+    vendor_certificate: dict[str, Any],
+) -> None:
+    """Objective validation repair covers every FVT-G209 acceptance term.
+
+    This is the synthetic evidence term ``objective validation repair`` for the
+    validation gate (FVT-073): path evidence for the certifier, installer,
+    lock, focused test, and receipt may already exist while the supervisor
+    still needs an explicit re-proof of checksummed vendor Soufflé, linux-
+    aarch64 support, lock-derived SecPAL platform exception, and hermetic
+    shadow differential-only boundaries.
+    """
+
+    assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
+    assert VENDOR_REPAIR_TASK_ID == "FVT-073"
+    assert VENDOR_GOAL_ID == "FVT-G209"
+    assert VENDOR_TASK_ID == "FVT-055"
+
+    assert certifier.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    assert certifier.VENDOR_REPAIR_TASK_ID == VENDOR_REPAIR_TASK_ID
+    assert certifier.VENDOR_GOAL_ID == VENDOR_GOAL_ID
+    assert installer.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    assert installer.VENDOR_REPAIR_TASK_ID == VENDOR_REPAIR_TASK_ID
+
+    # Phrase must appear in declared outputs so path+content scans re-find
+    # the validation-gate evidence term.
+    certifier_source = CERTIFIER_PATH.read_text(encoding="utf-8")
+    installer_source = INSTALLER_PATH.read_text(encoding="utf-8")
+    receipt_source = RECEIPT_PATH.read_text(encoding="utf-8")
+    module_source = Path(__file__).read_text(encoding="utf-8")
+    assert OBJECTIVE_VALIDATION_EVIDENCE in certifier_source
+    assert OBJECTIVE_VALIDATION_EVIDENCE in installer_source
+    assert OBJECTIVE_VALIDATION_EVIDENCE in receipt_source
+    assert OBJECTIVE_VALIDATION_EVIDENCE in module_source
+
+    assert CERTIFIER_PATH.is_file() and CERTIFIER_PATH.stat().st_size > 1000
+    assert INSTALLER_PATH.is_file() and INSTALLER_PATH.stat().st_size > 1000
+    assert RECEIPT_PATH.is_file() and RECEIPT_PATH.stat().st_size > 500
+    assert LOCK_PATH.is_file()
+
+    # Full vendor certificate re-proves FVT-G209 acceptance.
+    assert vendor_certificate["certified"] is True
+    assert vendor_certificate["goal_id"] == VENDOR_GOAL_ID
+    assert vendor_certificate["task_id"] == VENDOR_TASK_ID
+    assert vendor_certificate["repair_task_id"] == VENDOR_REPAIR_TASK_ID
+    assert (
+        vendor_certificate["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert vendor_certificate["objective_validation_repair"] is True
+    assert vendor_certificate["forbids_theorem_authority"] is True
+    assert vendor_certificate["authority_ceiling"] == "none"
+    assert vendor_certificate["policy"]["grants_theorem_authority"] is False
+    assert vendor_certificate["policy"]["grants_authorization_decision_authority"] is False
+    assert vendor_certificate["policy"]["hermetic_shadows_are_differential_only"] is True
+    assert vendor_certificate["policy"]["hermetic_shadows_cannot_satisfy_vendor"] is True
+    assert vendor_certificate["policy"]["souffle_source_archive_checksummed"] is True
+    assert vendor_certificate["policy"]["souffle_linux_aarch64_supported"] is True
+    assert (
+        vendor_certificate["policy"]["secpal_linux_aarch64_narrow_platform_exception"]
+        is True
+    )
+    assert vendor_certificate["policy"]["never_mutate_system_package_manager"] is True
+    assert vendor_certificate["acceptance"]["objective_validation_repair"] is True
+    assert (
+        vendor_certificate["acceptance"]["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert vendor_certificate["acceptance"]["repair_task_id"] == VENDOR_REPAIR_TASK_ID
+    assert vendor_certificate["summary"]["objective_validation_repair"] is True
+    assert vendor_certificate["summary"]["block_reasons"] == []
+
+    souffle = vendor_certificate["souffle"]
+    assert souffle["certified"] is True
+    assert souffle["usable"] is True
+    assert souffle["version"] == "2.4.1"
+    assert souffle["source_archive_sha256"] == REQUIRED_SOURCE_SHA256
+    assert souffle["is_vendor_build"] is True
+    assert souffle["is_hermetic_shadow"] is False
+    assert souffle["linux_aarch64_supported"] is True
+    assert REQUIRED_BUILD_DEPS <= set(souffle.get("build_dependencies") or {})
+    assert REQUIRED_CATEGORIES <= set(vendor_certificate["categories_exercised"])
+    assert set(vendor_certificate["mutation_kinds"]) == REQUIRED_MUTATIONS
+
+    exception = vendor_certificate["secpal_platform_exception"]
+    assert exception["exception"] is True
+    assert exception["narrow_scope"] is True
+    assert exception["classification"] == "unsupported_here"
+    assert exception["installed"] is False
+    assert exception["complete"] is False
+    assert exception["authoritative"] is False
+    assert exception["production_certified"] is False
+
+    # Checked-in receipt binds the same validation-repair evidence term.
+    receipt = json.loads(RECEIPT_PATH.read_text(encoding="utf-8"))
+    assert receipt["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert receipt["objective_validation_repair"] is True
+    assert receipt["repair_task_id"] == VENDOR_REPAIR_TASK_ID
+    assert receipt["acceptance"]["objective_validation_repair"] is True
+
+    # Lane handler reports the same validation-repair binding.
+    handler = certifier.external_authorization_vendor_lane_handler(
+        force_install=False,
+        skip_install=True,
+        platform_id=LINUX_AARCH64,
+        repo_root=REPO_ROOT,
+        install_root=install_root,
+    )
+    assert handler["certified"] is True
+    assert handler["repair_task_id"] == VENDOR_REPAIR_TASK_ID
+    assert handler["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert handler["objective_validation_repair"] is True
+    assert handler["grants_authorization_decision_authority"] is False

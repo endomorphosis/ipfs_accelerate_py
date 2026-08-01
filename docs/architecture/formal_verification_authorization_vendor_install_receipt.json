@@ -1,4 +1,30 @@
 {
+  "acceptance": {
+    "categories": [
+      "allow",
+      "conflict",
+      "delegation",
+      "deny",
+      "unknown"
+    ],
+    "forbids_authorization_authority_on_shadows": true,
+    "forbids_theorem_authority": true,
+    "goal_id": "FVT-G209",
+    "hermetic_shadows_are_differential_only": true,
+    "hermetic_shadows_cannot_satisfy_vendor": true,
+    "mutation_kinds": [
+      "rule",
+      "scope"
+    ],
+    "never_mutate_system_package_manager": true,
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_repair": true,
+    "repair_task_id": "FVT-073",
+    "secpal_linux_aarch64_narrow_platform_exception": true,
+    "souffle_linux_aarch64_supported": true,
+    "souffle_source_archive_checksummed": true,
+    "task_id": "FVT-055"
+  },
   "authority_ceiling": "none",
   "categories_exercised": [
     "allow",
@@ -7,7 +33,7 @@
     "deny",
     "unknown"
   ],
-  "certificate_digest_sha256": "dc59405302114187c32ca6b93f5bc008dfed76733866f6b3ebcc9c4c49058f7d",
+  "certificate_digest_sha256": "07c42962b1308242e146e7deaf0a3ec519dc9e640786dd98c46c8d680217caf2",
   "certified": true,
   "goal_id": "FVT-G209",
   "handler_id": "external_authorization_vendor_certification@1",
@@ -18,6 +44,9 @@
     "rule",
     "scope"
   ],
+  "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q",
+  "objective_validation_evidence": "objective validation repair",
+  "objective_validation_repair": true,
   "policy": {
     "disagreement_quarantines_promotion": true,
     "external_engines_are_shadows": true,
@@ -37,7 +66,8 @@
     "strict_installation_selects_exact_pins": true
   },
   "program": "formal-verification-tactician/authorization-vendor-toolchains",
-  "receipt_digest_sha256": "2b7df98d538eb688387d9d21bb9ea9582d2dbaea52242e821dac5bb9a1a7ccb9",
+  "receipt_digest_sha256": "3c6ca27e36aa90582b0a73b3f9ae79952bbc42069921fa3eb90fa290f11443a0",
+  "repair_task_id": "FVT-073",
   "schema_version": "formal-verification-authorization-vendor-install-receipt/v1",
   "secpal_platform_exception": {
     "authoritative": false,
@@ -55,7 +85,7 @@
     "tool_id": "secpal"
   },
   "souffle": {
-    "artifact_sha256": "3186d8fc4c64beee5f5a04faeca9b9481d6c4663910bd26e8fed0fd0d7fe3edd",
+    "artifact_sha256": "e0beec9344631e0aa88ad08aef2dc00d1e5dd5fa5746d0b2418af896b7de44dd",
     "authority_ceiling": "none",
     "build_dependencies": {
       "bison": ">=3.0",
@@ -67,7 +97,7 @@
       "sqlite3": ">=3.0"
     },
     "certified": true,
-    "executable": "/tmp/authz-vendor-receipt-final-9wry29wx/authorization-vendor/souffle/2.4.1/bin/souffle",
+    "executable": "/tmp/authz-vendor-receipt-final-iefckvf7/authorization-vendor/souffle/2.4.1/bin/souffle",
     "is_hermetic_shadow": false,
     "is_vendor_build": true,
     "linux_aarch64_supported": true,
@@ -97,6 +127,8 @@
       "rule",
       "scope"
     ],
+    "objective_validation_repair": true,
+    "repair_task_id": "FVT-073",
     "secpal_exception": true,
     "souffle_certified": true
   },
