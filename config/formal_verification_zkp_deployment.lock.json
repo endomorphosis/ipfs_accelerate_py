@@ -170,6 +170,9 @@
     "interface": "ZKPLiveVerifierDeployment@1",
     "goal_id": "FVT-G211",
     "task_id": "FVT-059",
+    "repair_task_id": "FVT-080",
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_zkp_live_verifier_deployment.py test/integration/toolchains/test_zkp_deployment_certification.py -q",
     "predecessor_goal_id": "FVT-G190",
     "predecessor_task_id": "FVT-047",
     "receipt_path": "docs/architecture/formal_verification_zkp_live_deployment_receipt.json",
@@ -215,11 +218,11 @@
       "secret_safety",
       "authority"
     ],
-    "notes": "Distinguish schema-valid sample bindings (FVT-G190) from live verifier execution (FVT-G211). Operator-bound public digests missing from the lock remain deployment blockers, never platform exceptions."
+    "notes": "Distinguish schema-valid sample bindings (FVT-G190) from live verifier execution (FVT-G211). FVT-080 is the objective validation repair that re-proves FVT-G211 and binds the synthetic discovery term objective validation repair. Operator-bound public digests missing from the lock remain deployment blockers, never platform exceptions."
   },
   "review": {
     "status": "reviewed",
     "reviewed_at": "2026-07-31T00:00:00Z",
-    "review_notes": "Production deployment binding replaces the former circuit_witness install gap with digest-only secret-safe references. Live verifier deployment receipt is bound at docs/architecture/formal_verification_zkp_live_deployment_receipt.json (FVT-G211)."
+    "review_notes": "Production deployment binding replaces the former circuit_witness install gap with digest-only secret-safe references. Live verifier deployment receipt is bound at docs/architecture/formal_verification_zkp_live_deployment_receipt.json (FVT-G211; objective validation repair FVT-080)."
   }
 }
