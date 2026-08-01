@@ -2,24 +2,26 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import multiprocessing as mp
 import os
-import time
 from pathlib import Path
 
+import ipfs_accelerate_py.agent_supervisor.worktree_lifecycle as lifecycle_module
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
     DEFAULT_LEASE_SECONDS,
+    FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
     CleanupDisposition,
     DuplicateAttemptError,
-    FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
     FenceMismatchError,
     LifecycleFailureKind,
     OwnerLiveness,
+    OwnershipError,
     ProcessBirthIdentity,
     WorkspaceLifecycleState,
+    WorktreeLifecycleError,
     WorktreeLifecycleStore,
     current_process_birth,
     lifecycle_race_result,
@@ -27,7 +29,6 @@ from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
     proc_available,
     read_process_birth,
 )
-
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix",
@@ -209,6 +210,593 @@ def test_stale_reclamation_requires_expiry_and_advances_fence(tmp_path: Path) ->
     assert decision.record is not None
     assert decision.record.fence == record.fence + 1
     assert decision.record.state is WorkspaceLifecycleState.TERMINAL
+
+
+def test_exact_dead_owner_adoption_does_not_wait_for_lease_expiry(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=60.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    workspace = tmp_path / "orphan"
+    state_dir = tmp_path / "state"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 7,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    record = store.begin_preparing(
+        task_id="ORPHAN",
+        canonical_task_cid="cid:orphan",
+        attempt=2,
+        lane_id="dead-lane",
+        workspace_path=workspace,
+        branch="implementation/orphan-attempt-2",
+        merge_target="main",
+        state_dir=str(state_dir),
+        owner=dead_owner,
+    )
+    active = store.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+    assert clock.now < active.expires_at
+
+    adopted = store.adopt_dead_owner(
+        workspace,
+        expected_record_id=active.record_id,
+        expected_fence=active.fence,
+        expected_lease_id=active.lease_id,
+        expected_task_id=active.task_id,
+        expected_canonical_task_cid=active.canonical_task_cid,
+        expected_attempt=active.attempt,
+        expected_branch=active.branch,
+        expected_merge_target=active.merge_target,
+        expected_repo_root=active.repo_root,
+        expected_state_dir=active.state_dir,
+        lane_id="reconciliation-lane",
+    )
+
+    assert adopted.state is WorkspaceLifecycleState.ACTIVE
+    assert adopted.fence == active.fence + 1
+    assert adopted.lease_id != active.lease_id
+    assert adopted.lease_id
+    assert adopted.owner.pid == os.getpid()
+    assert adopted.owner.start_time_ticks > 0
+    assert adopted.owner.boot_id
+    assert adopted.lane_id == "reconciliation-lane"
+    assert adopted.expires_at == clock.now + store.lease_seconds
+    assert store.load_workspace(workspace) == adopted
+    assert (
+        store.load_task_attempt(
+            canonical_task_cid=adopted.canonical_task_cid,
+            task_id=adopted.task_id,
+            attempt=adopted.attempt,
+        )
+        == adopted
+    )
+
+
+@pytest.mark.parametrize(
+    ("owner_kind", "expected_error"),
+    [
+        ("alive", OwnershipError),
+        ("unknown", OwnershipError),
+        ("malformed", OwnershipError),
+        ("missing_stat", OwnershipError),
+        ("mismatched", OwnershipError),
+        ("index", WorktreeLifecycleError),
+    ],
+)
+def test_dead_owner_adoption_failures_preserve_durable_records(
+    tmp_path: Path,
+    owner_kind: str,
+    expected_error: type[Exception],
+) -> None:
+    proc_root = (
+        tmp_path / "missing-proc"
+        if owner_kind == "unknown"
+        else (
+            tmp_path / "malformed-proc"
+            if owner_kind in {"malformed", "missing_stat"}
+            else None
+        )
+    )
+    if owner_kind in {"malformed", "missing_stat"}:
+        assert proc_root is not None
+        malformed_pid = 42_424_242
+        (proc_root / str(malformed_pid)).mkdir(parents=True)
+        if owner_kind == "malformed":
+            (proc_root / str(malformed_pid) / "stat").write_text(
+                "readable but malformed",
+                encoding="utf-8",
+            )
+    store = _store(
+        tmp_path,
+        lease_seconds=60.0,
+        startup_grace_seconds=0.0,
+        proc_root=proc_root,
+    )
+    workspace = tmp_path / "orphan"
+    owner = (
+        ProcessBirthIdentity(
+            pid=1,
+            start_time_ticks=1,
+            boot_id="unknown",
+        )
+        if owner_kind == "unknown"
+        else (
+            ProcessBirthIdentity(
+                pid=malformed_pid,
+                start_time_ticks=1,
+                boot_id="malformed-boot",
+            )
+            if owner_kind in {"malformed", "missing_stat"}
+            else current_process_birth()
+            if owner_kind == "alive"
+            else ProcessBirthIdentity(
+                pid=2**30 - 7,
+                start_time_ticks=1,
+                boot_id="dead-boot",
+            )
+        )
+    )
+    record = store.begin_preparing(
+        task_id="ORPHAN",
+        canonical_task_cid="cid:orphan",
+        attempt=2,
+        lane_id="original-lane",
+        workspace_path=workspace,
+        branch="implementation/orphan-attempt-2",
+        merge_target="main",
+        state_dir=str(tmp_path / "state"),
+        owner=owner,
+    )
+    active = store.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=active.canonical_task_cid,
+        task_id=active.task_id,
+        attempt=active.attempt,
+    )
+    if owner_kind == "index":
+        index_payload = json.loads(index_path.read_text(encoding="utf-8"))
+        index_payload["schema"] = "invalid"
+        index_path.write_text(
+            json.dumps(index_payload),
+            encoding="utf-8",
+        )
+    before_record = record_path.read_bytes()
+    before_index = index_path.read_bytes()
+
+    with pytest.raises(expected_error):
+        store.adopt_dead_owner(
+            workspace,
+            expected_record_id=active.record_id,
+            expected_fence=active.fence,
+            expected_lease_id=active.lease_id,
+            expected_task_id=active.task_id,
+            expected_canonical_task_cid=(
+                "cid:mismatched"
+                if owner_kind == "mismatched"
+                else active.canonical_task_cid
+            ),
+            expected_attempt=active.attempt,
+            expected_branch=active.branch,
+            expected_merge_target=active.merge_target,
+            expected_repo_root=active.repo_root,
+            expected_state_dir=active.state_dir,
+            lane_id="reconciliation-lane",
+        )
+
+    assert record_path.read_bytes() == before_record
+    assert index_path.read_bytes() == before_index
+    assert store.load_workspace(workspace) == active
+
+
+def test_malformed_readable_proc_stat_is_unknown(tmp_path: Path) -> None:
+    proc_root = tmp_path / "proc"
+    pid = 1234
+    (proc_root / str(pid)).mkdir(parents=True)
+    (proc_root / str(pid) / "stat").write_text(
+        "1234 malformed",
+        encoding="utf-8",
+    )
+    owner = ProcessBirthIdentity(
+        pid=pid,
+        start_time_ticks=10,
+        boot_id="boot",
+    )
+
+    with pytest.raises(OSError):
+        read_process_birth(pid, proc_root=proc_root)
+    assert (
+        owner_liveness(owner, proc_root=proc_root)
+        is OwnerLiveness.UNKNOWN
+    )
+
+
+def test_present_pid_directory_with_missing_stat_is_unknown(
+    tmp_path: Path,
+) -> None:
+    proc_root = tmp_path / "proc"
+    pid = 1234
+    (proc_root / str(pid)).mkdir(parents=True)
+    owner = ProcessBirthIdentity(
+        pid=pid,
+        start_time_ticks=10,
+        boot_id="boot",
+    )
+
+    with pytest.raises(OSError):
+        read_process_birth(pid, proc_root=proc_root)
+    assert (
+        owner_liveness(owner, proc_root=proc_root)
+        is OwnerLiveness.UNKNOWN
+    )
+
+
+def test_dead_owner_adoption_has_no_replacement_identity_injection() -> None:
+    parameters = inspect.signature(
+        WorktreeLifecycleStore.adopt_dead_owner
+    ).parameters
+    assert "owner" not in parameters
+    assert "lease_id" not in parameters
+
+
+@pytest.mark.parametrize("failure", ["unprovable_owner", "reused_lease"])
+def test_dead_owner_adoption_requires_live_current_owner_and_fresh_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    store = _store(tmp_path, startup_grace_seconds=0.0)
+    workspace = tmp_path / "orphan"
+    record = store.begin_preparing(
+        task_id="ORPHAN",
+        canonical_task_cid="cid:orphan",
+        attempt=1,
+        lane_id="dead",
+        workspace_path=workspace,
+        branch="implementation/orphan",
+        merge_target="main",
+        state_dir=str(tmp_path / "state"),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    active = store.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+    if failure == "unprovable_owner":
+        monkeypatch.setattr(
+            lifecycle_module,
+            "current_process_birth",
+            lambda **_kwargs: ProcessBirthIdentity(
+                pid=os.getpid(),
+                start_time_ticks=0,
+                boot_id="",
+            ),
+        )
+    else:
+        monkeypatch.setattr(
+            lifecycle_module,
+            "new_lease_id",
+            lambda **_kwargs: active.lease_id,
+        )
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=active.canonical_task_cid,
+        task_id=active.task_id,
+        attempt=active.attempt,
+    )
+    before_record = record_path.read_bytes()
+    before_index = index_path.read_bytes()
+
+    with pytest.raises(OwnershipError):
+        store.adopt_dead_owner(
+            workspace,
+            expected_record_id=active.record_id,
+            expected_fence=active.fence,
+            expected_lease_id=active.lease_id,
+            expected_task_id=active.task_id,
+            expected_canonical_task_cid=active.canonical_task_cid,
+            expected_attempt=active.attempt,
+            expected_branch=active.branch,
+            expected_merge_target=active.merge_target,
+            expected_repo_root=active.repo_root,
+            expected_state_dir=active.state_dir,
+            lane_id="reconciliation",
+        )
+
+    assert record_path.read_bytes() == before_record
+    assert index_path.read_bytes() == before_index
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    ["owner", "record_id", "schema", "owner_boot_id"],
+)
+def test_dead_owner_adoption_rejects_noncanonical_persisted_record(
+    tmp_path: Path,
+    corruption: str,
+) -> None:
+    store = _store(tmp_path, startup_grace_seconds=0.0)
+    workspace = tmp_path / "orphan"
+    record = store.begin_preparing(
+        task_id="ORPHAN",
+        canonical_task_cid="cid:orphan",
+        attempt=2,
+        lane_id="dead",
+        workspace_path=workspace,
+        branch="implementation/orphan",
+        merge_target="main",
+        state_dir=str(tmp_path / "state"),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    active = store.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=active.canonical_task_cid,
+        task_id=active.task_id,
+        attempt=active.attempt,
+    )
+    payload = json.loads(record_path.read_text(encoding="utf-8"))
+    if corruption == "owner_boot_id":
+        payload["owner"]["boot_id"] = ""
+    else:
+        payload.pop(corruption)
+    record_path.write_text(json.dumps(payload), encoding="utf-8")
+    before_record = record_path.read_bytes()
+    before_index = index_path.read_bytes()
+
+    with pytest.raises(WorktreeLifecycleError):
+        store.adopt_dead_owner(
+            workspace,
+            expected_record_id=active.record_id,
+            expected_fence=active.fence,
+            expected_lease_id=active.lease_id,
+            expected_task_id=active.task_id,
+            expected_canonical_task_cid=active.canonical_task_cid,
+            expected_attempt=active.attempt,
+            expected_branch=active.branch,
+            expected_merge_target=active.merge_target,
+            expected_repo_root=active.repo_root,
+            expected_state_dir=active.state_dir,
+            lane_id="reconciliation",
+        )
+
+    assert record_path.read_bytes() == before_record
+    assert index_path.read_bytes() == before_index
+
+
+@pytest.mark.parametrize("stale_field", ["record_id", "fence", "lease", "terminal"])
+def test_dead_owner_adoption_rejects_stale_or_terminal_authority(
+    tmp_path: Path,
+    stale_field: str,
+) -> None:
+    store = _store(tmp_path, startup_grace_seconds=0.0)
+    workspace = tmp_path / "orphan"
+    record = store.begin_preparing(
+        task_id="ORPHAN",
+        canonical_task_cid="cid:orphan",
+        attempt=2,
+        lane_id="dead",
+        workspace_path=workspace,
+        branch="implementation/orphan",
+        merge_target="main",
+        state_dir=str(tmp_path / "state"),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    current = store.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+    if stale_field == "terminal":
+        current = store.mark_terminal(
+            workspace,
+            lease_id=current.lease_id,
+            expected_fence=current.fence,
+            reason="crash-window",
+        )
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=current.canonical_task_cid,
+        task_id=current.task_id,
+        attempt=current.attempt,
+    )
+    before_record = record_path.read_bytes()
+    before_index = index_path.read_bytes()
+
+    with pytest.raises(WorktreeLifecycleError):
+        store.adopt_dead_owner(
+            workspace,
+            expected_record_id=(
+                current.record_id + "-stale"
+                if stale_field == "record_id"
+                else current.record_id
+            ),
+            expected_fence=(
+                current.fence + 1
+                if stale_field == "fence"
+                else current.fence
+            ),
+            expected_lease_id=(
+                current.lease_id + "-stale"
+                if stale_field == "lease"
+                else current.lease_id
+            ),
+            expected_task_id=current.task_id,
+            expected_canonical_task_cid=current.canonical_task_cid,
+            expected_attempt=current.attempt,
+            expected_branch=current.branch,
+            expected_merge_target=current.merge_target,
+            expected_repo_root=current.repo_root,
+            expected_state_dir=current.state_dir,
+            lane_id="reconciliation",
+        )
+
+    assert record_path.read_bytes() == before_record
+    assert index_path.read_bytes() == before_index
+
+
+def test_dead_owner_adoption_rechecks_authority_under_locked_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path, startup_grace_seconds=0.0)
+    workspace = tmp_path / "orphan"
+    record = store.begin_preparing(
+        task_id="ORPHAN",
+        canonical_task_cid="cid:orphan",
+        attempt=2,
+        lane_id="dead",
+        workspace_path=workspace,
+        branch="implementation/orphan",
+        merge_target="main",
+        state_dir=str(tmp_path / "state"),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    active = store.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+    original_precheck = store.require_exact_dead_owner
+    raced: list = []
+
+    def race_after_precheck(*args, **kwargs):
+        checked = original_precheck(*args, **kwargs)
+        raced.append(
+            store.mark_settling(
+                workspace,
+                lease_id=checked.lease_id,
+                expected_fence=checked.fence,
+            )
+        )
+        return checked
+
+    monkeypatch.setattr(
+        store,
+        "require_exact_dead_owner",
+        race_after_precheck,
+    )
+
+    with pytest.raises(FenceMismatchError):
+        store.adopt_dead_owner(
+            workspace,
+            expected_record_id=active.record_id,
+            expected_fence=active.fence,
+            expected_lease_id=active.lease_id,
+            expected_task_id=active.task_id,
+            expected_canonical_task_cid=active.canonical_task_cid,
+            expected_attempt=active.attempt,
+            expected_branch=active.branch,
+            expected_merge_target=active.merge_target,
+            expected_repo_root=active.repo_root,
+            expected_state_dir=active.state_dir,
+            lane_id="reconciliation",
+        )
+
+    assert len(raced) == 1
+    assert store.load_workspace(workspace) == raced[0]
+
+
+def test_dead_owner_adoption_pins_owner_identity_under_locked_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path, startup_grace_seconds=0.0)
+    workspace = tmp_path / "orphan"
+    record = store.begin_preparing(
+        task_id="ORPHAN",
+        canonical_task_cid="cid:orphan",
+        attempt=2,
+        lane_id="dead",
+        workspace_path=workspace,
+        branch="implementation/orphan",
+        merge_target="main",
+        state_dir=str(tmp_path / "state"),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    active = store.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+    record_path = store.workspace_path_for(workspace)
+    original_precheck = store.require_exact_dead_owner
+    raced_bytes: list[bytes] = []
+
+    def replace_owner_after_precheck(*args, **kwargs):
+        checked = original_precheck(*args, **kwargs)
+        payload = json.loads(record_path.read_text(encoding="utf-8"))
+        payload["owner"] = ProcessBirthIdentity(
+            pid=2**30 - 9,
+            start_time_ticks=2,
+            boot_id="other-dead-boot",
+        ).to_dict()
+        record_path.write_text(json.dumps(payload), encoding="utf-8")
+        raced_bytes.append(record_path.read_bytes())
+        return checked
+
+    monkeypatch.setattr(
+        store,
+        "require_exact_dead_owner",
+        replace_owner_after_precheck,
+    )
+
+    with pytest.raises(OwnershipError):
+        store.adopt_dead_owner(
+            workspace,
+            expected_record_id=active.record_id,
+            expected_fence=active.fence,
+            expected_lease_id=active.lease_id,
+            expected_task_id=active.task_id,
+            expected_canonical_task_cid=active.canonical_task_cid,
+            expected_attempt=active.attempt,
+            expected_branch=active.branch,
+            expected_merge_target=active.merge_target,
+            expected_repo_root=active.repo_root,
+            expected_state_dir=active.state_dir,
+            lane_id="reconciliation",
+        )
+
+    assert record_path.read_bytes() == raced_bytes[0]
 
 
 def test_branch_fallback_reclaims_authoritative_provisional_workspace(

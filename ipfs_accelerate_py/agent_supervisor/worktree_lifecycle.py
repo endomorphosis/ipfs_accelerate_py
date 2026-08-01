@@ -14,7 +14,6 @@ checkout.
 
 from __future__ import annotations
 
-import errno
 import hashlib
 import json
 import os
@@ -25,11 +24,10 @@ import uuid
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping
 
 from .checkout_lock import git_common_dir, serialized_lock_update
 from .proof.formal_verification_contracts import content_identity
-
 
 WORKTREE_LIFECYCLE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-record@1"
@@ -317,30 +315,52 @@ def read_process_birth(
     *,
     proc_root: Path = Path("/proc"),
 ) -> ProcessBirthIdentity | None:
-    """Return process-birth identity for ``pid``, or None if the PID is gone."""
+    """Return process-birth identity for ``pid``, or ``None`` if it is gone.
+
+    A readable but malformed proc record is not evidence that a process is
+    dead.  Raise ``OSError`` for that inconclusive case so liveness callers
+    fail closed with ``UNKNOWN``.
+    """
 
     if pid <= 0:
         return None
     stat_path = proc_root / str(pid) / "stat"
     try:
         raw = stat_path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return None
+    except FileNotFoundError as exc:
+        # A missing PID directory proves absence.  A present PID directory
+        # whose stat entry cannot be read is an inspection race/anomaly, not
+        # proof of death.
+        try:
+            (proc_root / str(pid)).stat()
+        except FileNotFoundError:
+            return None
+        except OSError:
+            raise
+        raise OSError(f"process stat unavailable for pid {pid}") from exc
     except OSError:
         # Distinguishing "PID gone" from "inspection unavailable" is done by
         # callers that also probe ``proc_root`` itself.
         raise
     close = raw.rfind(")")
     if close < 0:
-        return None
+        raise OSError(f"malformed process stat for pid {pid}: missing comm")
     fields = raw[close + 2 :].split()
-    if len(fields) < 20 or fields[0] == "Z":
+    if fields and fields[0] == "Z":
         return None
+    if len(fields) < 20:
+        raise OSError(f"malformed process stat for pid {pid}: missing fields")
     try:
         parent_pid = int(fields[1])
         start_time_ticks = int(fields[19])
     except (TypeError, ValueError, IndexError):
-        return None
+        raise OSError(
+            f"malformed process stat for pid {pid}: invalid identity fields"
+        ) from None
+    if start_time_ticks <= 0:
+        raise OSError(
+            f"malformed process stat for pid {pid}: invalid start time"
+        )
     return ProcessBirthIdentity(
         pid=int(pid),
         start_time_ticks=start_time_ticks,
@@ -752,6 +772,526 @@ class WorktreeLifecycleStore:
                     },
                 )
                 return record
+
+    @staticmethod
+    def _normalized_binding(
+        *,
+        task_id: str,
+        canonical_task_cid: str,
+        attempt: int,
+        workspace_path: str | Path,
+        branch: str,
+        merge_target: str,
+        repo_root: str | Path,
+        state_dir: str | Path,
+    ) -> dict[str, Any]:
+        return {
+            "task_id": str(task_id or ""),
+            "canonical_task_cid": str(canonical_task_cid or ""),
+            "attempt": int(attempt),
+            "workspace_path": normalize_workspace_path(workspace_path),
+            "branch": str(branch or "").removeprefix("refs/heads/"),
+            "merge_target": str(merge_target or "").removeprefix("refs/heads/"),
+            "repo_root": (
+                str(Path(repo_root).resolve(strict=False)) if repo_root else ""
+            ),
+            "state_dir": (
+                str(Path(state_dir).resolve(strict=False)) if state_dir else ""
+            ),
+        }
+
+    def _require_exact_dead_owner(
+        self,
+        current: WorkspaceLifecycleRecord,
+        *,
+        expected_record_id: str,
+        expected_fence: int,
+        expected_lease_id: str,
+        expected_binding: Mapping[str, Any],
+        index_path: Path,
+        allow_terminal: bool = False,
+        expected_owner: ProcessBirthIdentity | None = None,
+    ) -> None:
+        """Validate one dead-owner claim without mutating durable state."""
+
+        if current.is_terminal and not allow_terminal:
+            raise WorktreeLifecycleError(
+                "terminal lifecycle record cannot be adopted"
+            )
+        if current.record_id != current.compute_record_id():
+            raise WorktreeLifecycleError(
+                "orphan lifecycle record identity is invalid"
+            )
+        if current.record_id != str(expected_record_id or ""):
+            raise FenceMismatchError("orphan lifecycle record id changed")
+        self._require_owner(
+            current,
+            lease_id=expected_lease_id,
+            expected_fence=expected_fence,
+        )
+        if expected_owner is not None and current.owner != expected_owner:
+            raise OwnershipError("orphan lifecycle owner identity changed")
+
+        actual_binding = self._normalized_binding(
+            task_id=current.task_id,
+            canonical_task_cid=current.canonical_task_cid,
+            attempt=current.attempt,
+            workspace_path=current.workspace_path,
+            branch=current.branch,
+            merge_target=current.merge_target,
+            repo_root=current.repo_root,
+            state_dir=current.state_dir,
+        )
+        mismatches = sorted(
+            key
+            for key, expected in expected_binding.items()
+            if actual_binding.get(key) != expected
+        )
+        if mismatches:
+            raise OwnershipError(
+                "orphan lifecycle binding mismatch: " + ", ".join(mismatches)
+            )
+
+        expected_index = {
+            "schema": WORKTREE_LIFECYCLE_SCHEMA,
+            "workspace_path": current.workspace_path,
+            "record_id": current.record_id,
+            "task_id": current.task_id,
+            "canonical_task_cid": current.canonical_task_cid,
+            "attempt": int(current.attempt),
+            "fence": int(current.fence),
+            "lease_id": current.lease_id,
+            "state": current.state.value,
+        }
+        index_payload = _load_json_dict(index_path)
+        if (
+            index_payload is None
+            or set(index_payload) != set(expected_index)
+            or type(index_payload.get("attempt")) is not int
+            or type(index_payload.get("fence")) is not int
+            or any(
+                type(index_payload.get(key)) is not str
+                for key in (
+                    "schema",
+                    "workspace_path",
+                    "record_id",
+                    "task_id",
+                    "canonical_task_cid",
+                    "lease_id",
+                    "state",
+                )
+            )
+            or index_payload != expected_index
+        ):
+            raise WorktreeLifecycleError(
+                "orphan lifecycle task index mismatch"
+            )
+
+        liveness = owner_liveness(current.owner, proc_root=self.proc_root)
+        if liveness is OwnerLiveness.ALIVE:
+            raise OwnershipError("orphan lifecycle owner is still alive")
+        if liveness is OwnerLiveness.UNKNOWN:
+            raise OwnershipError(
+                "orphan lifecycle owner liveness is unknown"
+            )
+
+    def _load_strict_workspace_record(
+        self,
+        workspace: str | Path,
+    ) -> WorkspaceLifecycleRecord:
+        """Load the exact persisted schema used for immediate dead adoption.
+
+        Normal lifecycle reads remain backward compatible.  Immediate
+        no-expiry adoption is intentionally stricter: no missing field may be
+        synthesized and no legacy flat owner identity may be trusted.
+        """
+
+        payload = _load_json_dict(self.workspace_path_for(workspace))
+        if payload is None:
+            raise WorktreeLifecycleError(
+                "orphan lifecycle record missing or malformed"
+            )
+        required_fields = {
+            "schema",
+            "record_id",
+            "task_id",
+            "canonical_task_cid",
+            "attempt",
+            "lane_id",
+            "state",
+            "owner",
+            "lease_id",
+            "fence",
+            "workspace_path",
+            "branch",
+            "merge_target",
+            "created_at",
+            "updated_at",
+            "expires_at",
+            "repo_root",
+            "state_dir",
+            "terminal_reason",
+        }
+        if set(payload) != required_fields:
+            raise WorktreeLifecycleError(
+                "orphan lifecycle persisted record shape is invalid"
+            )
+        if (
+            type(payload["schema"]) is not str
+            or payload["schema"] != WORKTREE_LIFECYCLE_SCHEMA
+        ):
+            raise WorktreeLifecycleError(
+                "orphan lifecycle persisted schema is invalid"
+            )
+        if (
+            type(payload["record_id"]) is not str
+            or not payload["record_id"]
+        ):
+            raise WorktreeLifecycleError(
+                "orphan lifecycle persisted record id is invalid"
+            )
+        for field_name in (
+            "task_id",
+            "canonical_task_cid",
+            "lane_id",
+            "state",
+            "lease_id",
+            "workspace_path",
+            "branch",
+            "merge_target",
+            "repo_root",
+            "state_dir",
+            "terminal_reason",
+        ):
+            if type(payload[field_name]) is not str:
+                raise WorktreeLifecycleError(
+                    "orphan lifecycle persisted field type is invalid: "
+                    f"{field_name}"
+                )
+        if not payload["lease_id"]:
+            raise WorktreeLifecycleError(
+                "orphan lifecycle persisted lease is invalid"
+            )
+        for field_name in ("attempt", "fence"):
+            if type(payload[field_name]) is not int:
+                raise WorktreeLifecycleError(
+                    "orphan lifecycle persisted field type is invalid: "
+                    f"{field_name}"
+                )
+        if payload["attempt"] < 0 or payload["fence"] < 1:
+            raise WorktreeLifecycleError(
+                "orphan lifecycle persisted attempt/fence is invalid"
+            )
+        for field_name in ("created_at", "updated_at", "expires_at"):
+            if type(payload[field_name]) is not float:
+                raise WorktreeLifecycleError(
+                    "orphan lifecycle persisted timestamp type is invalid: "
+                    f"{field_name}"
+                )
+
+        owner_payload = payload["owner"]
+        if not isinstance(owner_payload, dict) or set(owner_payload) != {
+            "pid",
+            "start_time_ticks",
+            "boot_id",
+            "parent_pid",
+        }:
+            raise WorktreeLifecycleError(
+                "orphan lifecycle persisted owner shape is invalid"
+            )
+        for field_name in ("pid", "start_time_ticks", "parent_pid"):
+            if type(owner_payload[field_name]) is not int:
+                raise WorktreeLifecycleError(
+                    "orphan lifecycle persisted owner type is invalid: "
+                    f"{field_name}"
+                )
+        if (
+            owner_payload["pid"] <= 0
+            or owner_payload["start_time_ticks"] <= 0
+            or owner_payload["parent_pid"] < 0
+            or type(owner_payload["boot_id"]) is not str
+            or not owner_payload["boot_id"]
+        ):
+            raise WorktreeLifecycleError(
+                "orphan lifecycle persisted owner identity is invalid"
+            )
+        try:
+            record = WorkspaceLifecycleRecord.from_dict(payload)
+        except (TypeError, ValueError, WorktreeLifecycleError) as exc:
+            raise WorktreeLifecycleError(
+                "orphan lifecycle persisted record is invalid"
+            ) from exc
+        if payload != record.to_dict():
+            raise WorktreeLifecycleError(
+                "orphan lifecycle persisted record is noncanonical"
+            )
+        return record
+
+    def require_exact_dead_owner(
+        self,
+        workspace: str | Path,
+        *,
+        expected_record_id: str,
+        expected_fence: int,
+        expected_lease_id: str,
+        expected_task_id: str,
+        expected_canonical_task_cid: str,
+        expected_attempt: int,
+        expected_branch: str,
+        expected_merge_target: str,
+        expected_repo_root: str,
+        expected_state_dir: str,
+        allow_terminal: bool = False,
+    ) -> WorkspaceLifecycleRecord:
+        """Read-only proof that an exact claim's owner is dead.
+
+        This is a precheck only.  A later mutation must repeat it while holding
+        the task-index and workspace-record guards.  Terminal claims are
+        accepted only for exact cleanup retries, never adoption.
+        """
+
+        current = self._load_strict_workspace_record(workspace)
+        expected_binding = self._normalized_binding(
+            task_id=expected_task_id,
+            canonical_task_cid=expected_canonical_task_cid,
+            attempt=expected_attempt,
+            workspace_path=workspace,
+            branch=expected_branch,
+            merge_target=expected_merge_target,
+            repo_root=expected_repo_root,
+            state_dir=expected_state_dir,
+        )
+        index_path = self.task_index_path_for(
+            canonical_task_cid=expected_binding["canonical_task_cid"],
+            task_id=expected_binding["task_id"],
+            attempt=expected_binding["attempt"],
+        )
+        self._require_exact_dead_owner(
+            current,
+            expected_record_id=expected_record_id,
+            expected_fence=expected_fence,
+            expected_lease_id=expected_lease_id,
+            expected_binding=expected_binding,
+            index_path=index_path,
+            allow_terminal=allow_terminal,
+        )
+        return current
+
+    def adopt_dead_owner(
+        self,
+        workspace: str | Path,
+        *,
+        expected_record_id: str,
+        expected_fence: int,
+        expected_lease_id: str,
+        expected_task_id: str,
+        expected_canonical_task_cid: str,
+        expected_attempt: int,
+        expected_branch: str,
+        expected_merge_target: str,
+        expected_repo_root: str,
+        expected_state_dir: str,
+        lane_id: str,
+    ) -> WorkspaceLifecycleRecord:
+        """Atomically adopt an exactly bound claim from a dead owner.
+
+        Lease expiry is intentionally not required.  The caller supplies the
+        immutable record/fence/lease tuple and every execution binding, while
+        this store independently proves the old process-birth identity dead
+        under the same record and task-index guards used for acquisition.
+        Alive or uninspectable owners and any identity/index mismatch leave
+        both durable records byte-for-byte untouched.
+        """
+
+        expected_binding = self._normalized_binding(
+            task_id=expected_task_id,
+            canonical_task_cid=expected_canonical_task_cid,
+            attempt=expected_attempt,
+            workspace_path=workspace,
+            branch=expected_branch,
+            merge_target=expected_merge_target,
+            repo_root=expected_repo_root,
+            state_dir=expected_state_dir,
+        )
+        # Avoid materializing a guard for a caller-supplied mismatched task
+        # identity.  The same proof is repeated under both authoritative locks.
+        prechecked = self.require_exact_dead_owner(
+            workspace,
+            expected_record_id=expected_record_id,
+            expected_fence=expected_fence,
+            expected_lease_id=expected_lease_id,
+            expected_task_id=expected_task_id,
+            expected_canonical_task_cid=expected_canonical_task_cid,
+            expected_attempt=expected_attempt,
+            expected_branch=expected_branch,
+            expected_merge_target=expected_merge_target,
+            expected_repo_root=expected_repo_root,
+            expected_state_dir=expected_state_dir,
+        )
+        normalized_workspace = expected_binding["workspace_path"]
+        record_path = self.workspace_path_for(normalized_workspace)
+        index_path = self.task_index_path_for(
+            canonical_task_cid=expected_binding["canonical_task_cid"],
+            task_id=expected_binding["task_id"],
+            attempt=expected_binding["attempt"],
+        )
+        new_owner = current_process_birth(proc_root=self.proc_root)
+        if (
+            new_owner.pid != os.getpid()
+            or new_owner.start_time_ticks <= 0
+            or not new_owner.boot_id
+            or owner_liveness(new_owner, proc_root=self.proc_root)
+            is not OwnerLiveness.ALIVE
+        ):
+            raise OwnershipError(
+                "replacement lifecycle owner identity is not provably alive"
+            )
+        new_lease = new_lease_id(
+            seed=(
+                f"adopt:{expected_task_id}:"
+                f"{expected_canonical_task_cid}:{expected_attempt}:"
+                f"{normalized_workspace}"
+            )
+        )
+        if not new_lease or new_lease == expected_lease_id:
+            raise OwnershipError(
+                "replacement lifecycle lease was not freshly rotated"
+            )
+
+        with serialized_lock_update(index_path):
+            with serialized_lock_update(record_path):
+                current = self._load_strict_workspace_record(
+                    normalized_workspace
+                )
+                self._require_exact_dead_owner(
+                    current,
+                    expected_record_id=expected_record_id,
+                    expected_fence=expected_fence,
+                    expected_lease_id=expected_lease_id,
+                    expected_binding=expected_binding,
+                    index_path=index_path,
+                    expected_owner=prechecked.owner,
+                )
+
+                now = float(self.clock())
+                adopted = replace(
+                    current,
+                    lane_id=str(lane_id or ""),
+                    state=WorkspaceLifecycleState.ACTIVE,
+                    owner=new_owner,
+                    lease_id=new_lease,
+                    fence=int(current.fence) + 1,
+                    updated_at=now,
+                    expires_at=now + self.lease_seconds,
+                    terminal_reason="",
+                )
+                _atomic_write_json(record_path, adopted.to_dict())
+                _atomic_write_json(
+                    index_path,
+                    {
+                        "schema": WORKTREE_LIFECYCLE_SCHEMA,
+                        "workspace_path": adopted.workspace_path,
+                        "record_id": adopted.record_id,
+                        "task_id": adopted.task_id,
+                        "canonical_task_cid": (
+                            adopted.canonical_task_cid
+                        ),
+                        "attempt": adopted.attempt,
+                        "fence": adopted.fence,
+                        "lease_id": adopted.lease_id,
+                        "state": adopted.state.value,
+                    },
+                )
+                return adopted
+
+    def finalize_exact_dead_owner(
+        self,
+        workspace: str | Path,
+        *,
+        expected_record_id: str,
+        expected_fence: int,
+        expected_lease_id: str,
+        expected_owner: ProcessBirthIdentity,
+        expected_task_id: str,
+        expected_canonical_task_cid: str,
+        expected_attempt: int,
+        expected_branch: str,
+        expected_merge_target: str,
+        expected_repo_root: str,
+        expected_state_dir: str,
+        reason: str,
+    ) -> WorkspaceLifecycleRecord:
+        """Terminalize and delete one phase-pinned dead-owner authority.
+
+        Both durable records are authenticated again while holding the
+        task-index and workspace guards.  Unlike generic owner transitions,
+        this operation also pins the process-birth identity captured by the
+        caller's earlier quiescence proof.
+        """
+
+        expected_binding = self._normalized_binding(
+            task_id=expected_task_id,
+            canonical_task_cid=expected_canonical_task_cid,
+            attempt=expected_attempt,
+            workspace_path=workspace,
+            branch=expected_branch,
+            merge_target=expected_merge_target,
+            repo_root=expected_repo_root,
+            state_dir=expected_state_dir,
+        )
+        normalized_workspace = expected_binding["workspace_path"]
+        record_path = self.workspace_path_for(normalized_workspace)
+        index_path = self.task_index_path_for(
+            canonical_task_cid=expected_binding["canonical_task_cid"],
+            task_id=expected_binding["task_id"],
+            attempt=expected_binding["attempt"],
+        )
+        with serialized_lock_update(index_path):
+            with serialized_lock_update(record_path):
+                current = self._load_strict_workspace_record(
+                    normalized_workspace
+                )
+                self._require_exact_dead_owner(
+                    current,
+                    expected_record_id=expected_record_id,
+                    expected_fence=expected_fence,
+                    expected_lease_id=expected_lease_id,
+                    expected_binding=expected_binding,
+                    index_path=index_path,
+                    allow_terminal=True,
+                    expected_owner=expected_owner,
+                )
+                terminal = current
+                if current.is_nonterminal:
+                    now = float(self.clock())
+                    terminal = replace(
+                        current,
+                        state=WorkspaceLifecycleState.TERMINAL,
+                        fence=int(current.fence) + 1,
+                        updated_at=now,
+                        expires_at=now,
+                        terminal_reason=str(reason or "finalized"),
+                    )
+                    _atomic_write_json(record_path, terminal.to_dict())
+                    _atomic_write_json(
+                        index_path,
+                        {
+                            "schema": WORKTREE_LIFECYCLE_SCHEMA,
+                            "workspace_path": terminal.workspace_path,
+                            "record_id": terminal.record_id,
+                            "task_id": terminal.task_id,
+                            "canonical_task_cid": (
+                                terminal.canonical_task_cid
+                            ),
+                            "attempt": terminal.attempt,
+                            "fence": terminal.fence,
+                            "lease_id": terminal.lease_id,
+                            "state": terminal.state.value,
+                        },
+                    )
+                record_path.unlink()
+                index_path.unlink()
+                return terminal
 
     # -------------------------------------------------------------- transitions
 

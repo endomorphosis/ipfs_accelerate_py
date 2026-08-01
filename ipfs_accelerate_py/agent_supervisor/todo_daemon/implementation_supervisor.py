@@ -66,6 +66,7 @@ from .implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
+    ReconciliationLifecycleBlockedError,
     consume_stale_active_attempt,
     load_json_dict,
     normalize_focus_tracks,
@@ -5426,6 +5427,16 @@ class PortalImplementationSupervisor:
                         ),
                     )
                 )
+                lifecycle_reconciliation = recovery_result.get(
+                    "worktree_lifecycle_reconciliation"
+                )
+                if (
+                    isinstance(lifecycle_reconciliation, Mapping)
+                    and lifecycle_reconciliation.get("blocked") is True
+                ):
+                    raise ReconciliationLifecycleBlockedError(
+                        lifecycle_reconciliation
+                    )
                 merge_result = dict(
                     recovery_result.get("merge_result") or {}
                 )
@@ -6834,6 +6845,17 @@ class PortalImplementationSupervisor:
                 and validation_reason
                 not in {
                     "reconciliation_validation_exception",
+                    "reconciliation_worktree_lifecycle_blocked",
+                    "reconciliation_worktree_lifecycle_finalize_failed",
+                    "reconciliation_worktree_lifecycle_handoff_failed",
+                    (
+                        "reconciliation_proposal_admission_"
+                        "receipt_unconfirmed"
+                    ),
+                    (
+                        "reconciliation_handoff_publication_failed_after_"
+                        "lifecycle_finalize"
+                    ),
                     "reconciled_candidate_handoff_failed",
                     "reconciled_candidate_task_revision_changed",
                     "merge_train_consumer_unavailable",

@@ -380,6 +380,14 @@ PLAYWRIGHT_BROWSER_MISSING_MARKER = (
 RECONCILIATION_ENVIRONMENT_RETRY_BINDINGS_ENV = (
     "IPFS_ACCELERATE_AGENT_RECONCILIATION_ENVIRONMENT_RETRY_BINDINGS"
 )
+RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "reconciliation-proposal-admission@1"
+)
+RECONCILIATION_LIFECYCLE_AUTHORITY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "reconciliation-lifecycle-authority@1"
+)
 PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY = "proposal artifact envelope"
 PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1"
@@ -1714,6 +1722,40 @@ class ValidationGeneratedArtifactRestoreError(RuntimeError):
     def __init__(self, receipt: Mapping[str, Any]) -> None:
         super().__init__("validation generated artifact restore failed")
         self.receipt = dict(receipt)
+
+
+class ReconciliationLifecycleBlockedError(RuntimeError):
+    """Fail closed when an orphan lifecycle claim cannot be adopted safely."""
+
+    def __init__(self, result: Mapping[str, Any]) -> None:
+        reason = str(result.get("reason") or "worktree_lifecycle_blocked")
+        super().__init__(reason)
+        self.result = dict(result)
+
+
+class ReconciliationHandoffPublishError(RuntimeError):
+    """The lifecycle handoff completed but queue publication did not."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        phase: str,
+        lifecycle_handoff: Mapping[str, Any],
+        pool_handoff: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.phase = str(phase)
+        self.lifecycle_handoff = dict(lifecycle_handoff)
+        self.pool_handoff = (
+            dict(pool_handoff)
+            if isinstance(pool_handoff, Mapping)
+            else {}
+        )
+
+
+class ReconciliationAdmissionReceiptError(RuntimeError):
+    """Proposal admission could not be durably bound to orphan recovery."""
 
 
 @dataclass(frozen=True)
@@ -5979,12 +6021,26 @@ class PortalImplementationDaemon:
         )
         return result
 
-    def _reconcile_implementation_protected_path_fence(self) -> dict[str, Any]:
+    def _reconcile_implementation_protected_path_fence(
+        self,
+        *,
+        commit: bool = True,
+    ) -> dict[str, Any]:
         """Reconcile a crash-surviving snapshot before any queue consumption."""
 
         incident_path = self._implementation_protected_incident_path()
         if incident_path.exists():
             incident = load_json_dict(incident_path)
+            if not commit:
+                return {
+                    "blocked": True,
+                    "reason": (
+                        "implementation_protected_path_incident_latched"
+                    ),
+                    "incident_path": str(incident_path),
+                    "incident": incident or {"state": "malformed"},
+                    "check_only": True,
+                }
             if isinstance(incident, Mapping):
                 recovered = (
                     self._recover_authorized_latched_protected_path_incident(
@@ -6028,6 +6084,15 @@ class PortalImplementationDaemon:
             return {"blocked": False, "reason": "no_active_snapshot"}
         active = load_json_dict(active_path)
         if active is None:
+            if not commit:
+                return {
+                    "blocked": True,
+                    "reason": (
+                        "implementation_protected_path_snapshot_malformed"
+                    ),
+                    "active_snapshot_path": str(active_path),
+                    "check_only": True,
+                }
             incident = self._latch_implementation_protected_incident(
                 {
                     "reason": "implementation_protected_path_snapshot_malformed",
@@ -6080,6 +6145,18 @@ class PortalImplementationDaemon:
             or not workspace_allowed
             or not isinstance(snapshot, Mapping)
         ):
+            if not commit:
+                return {
+                    "blocked": True,
+                    "reason": (
+                        "implementation_protected_path_snapshot_invalid"
+                    ),
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "workspace_path": workspace_value,
+                    "active_snapshot_path": str(active_path),
+                    "check_only": True,
+                }
             incident = self._latch_implementation_protected_incident(
                 {
                     "reason": "implementation_protected_path_snapshot_invalid",
@@ -6106,6 +6183,15 @@ class PortalImplementationDaemon:
             snapshot,
             current_snapshot,
         ):
+            if not commit:
+                return {
+                    "blocked": False,
+                    "reason": "crash_reconciliation_device_renumbered",
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "workspace_path": str(workspace_path),
+                    "check_only": True,
+                }
             self._clear_implementation_protected_snapshot(
                 task_id=task_id,
                 attempt=attempt,
@@ -6140,11 +6226,12 @@ class PortalImplementationDaemon:
             if missing_ephemeral_workspace
             else "crash_reconciliation_unchanged"
         )
-        self._clear_implementation_protected_snapshot(
-            task_id=task_id,
-            attempt=attempt,
-            reason=reconciliation_reason,
-        )
+        if commit:
+            self._clear_implementation_protected_snapshot(
+                task_id=task_id,
+                attempt=attempt,
+                reason=reconciliation_reason,
+            )
         result = {
             "blocked": False,
             "reason": reconciliation_reason,
@@ -6152,10 +6239,13 @@ class PortalImplementationDaemon:
             "attempt": attempt,
             "workspace_path": str(workspace_path),
         }
-        self._record_event(
-            "implementation_protected_path_snapshot_reconciled",
-            result,
-        )
+        if not commit:
+            result["check_only"] = True
+        if commit:
+            self._record_event(
+                "implementation_protected_path_snapshot_reconciled",
+                result,
+            )
         return result
 
     def reconcile_quiesced_active_attempt(self) -> dict[str, Any]:
@@ -6216,6 +6306,126 @@ class PortalImplementationDaemon:
             )
             return result
 
+        state = PortalTaskState.load(self.state_path)
+        task_id = state.active_task_id or state.last_implementation_task_id
+        attempt = int(state.active_attempt or 0)
+        no_lifecycle = {
+            "attempted": False,
+            "finalized": False,
+            "blocked": False,
+            "reason": "no_active_worktree_path",
+        }
+        worktree_lifecycle_precheck = no_lifecycle
+        worktree_lifecycle_reconciliation = no_lifecycle
+        lifecycle_authority: WorkspaceLifecycleRecord | None = None
+        lifecycle_args = (
+            {
+                "worktree_path": Path(state.active_worktree_path),
+                "task_id": state.active_task_id,
+                "canonical_task_cid": state.active_task_cid,
+                "branch_name": state.active_branch,
+                "expected_attempt": (
+                    int(state.active_attempt)
+                    if int(state.active_attempt or 0) > 0
+                    else self._implementation_branch_attempt(
+                        state.active_branch
+                    )
+                ),
+                "reason": "supervisor_shutdown_quiesced_attempt",
+            }
+            if state.active_worktree_path
+            else None
+        )
+
+        def lifecycle_blocked(
+            lifecycle: Mapping[str, Any],
+            **details: Any,
+        ) -> dict[str, Any]:
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "worktree_lifecycle_reconciliation_blocked",
+                "task_id": task_id,
+                "attempt": attempt,
+                "worktree_lifecycle_precheck": worktree_lifecycle_precheck,
+                "worktree_lifecycle_reconciliation": dict(lifecycle),
+                **details,
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
+
+        if lifecycle_args is not None:
+            lifecycle_authority = self.worktree_lifecycle.load_workspace(
+                lifecycle_args["worktree_path"]
+            )
+            try:
+                worktree_lifecycle_precheck = (
+                    self._reconcile_exact_quiesced_worktree_lifecycle(
+                        **lifecycle_args,
+                        expected_lifecycle_record=lifecycle_authority,
+                    )
+                )
+                if (
+                    worktree_lifecycle_precheck.get("attempted") is True
+                    and lifecycle_authority is None
+                ):
+                    raise WorktreeLifecycleError(
+                        "quiesced lifecycle authority was not captured"
+                    )
+            except ReconciliationLifecycleBlockedError as exc:
+                worktree_lifecycle_precheck = exc.result
+                return lifecycle_blocked(exc.result)
+            except (TypeError, ValueError, WorktreeLifecycleError) as exc:
+                return lifecycle_blocked(
+                    {
+                        **worktree_lifecycle_precheck,
+                        "blocked": True,
+                        "reason": (
+                            "worktree_lifecycle_authority_capture_failed"
+                        ),
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[-500:],
+                    }
+                )
+
+        protected_path_precheck = (
+            self._reconcile_implementation_protected_path_fence(
+                commit=False,
+            )
+        )
+        if protected_path_precheck.get("blocked", False):
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "protected_path_reconciliation_blocked",
+                "protected_path_reconciliation": protected_path_precheck,
+                "worktree_lifecycle_precheck": worktree_lifecycle_precheck,
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
+
+        if lifecycle_args is not None:
+            try:
+                worktree_lifecycle_reconciliation = (
+                    self._reconcile_exact_quiesced_worktree_lifecycle(
+                        **lifecycle_args,
+                        action="finalize",
+                        expected_lifecycle_record=lifecycle_authority,
+                    )
+                )
+            except ReconciliationLifecycleBlockedError as exc:
+                return lifecycle_blocked(
+                    exc.result,
+                    protected_path_reconciliation=(
+                        protected_path_precheck
+                    ),
+                )
         protected_path_reconciliation = (
             self._reconcile_implementation_protected_path_fence()
         )
@@ -6224,8 +6434,15 @@ class PortalImplementationDaemon:
                 "reconciled": False,
                 "blocked": True,
                 "reason": "protected_path_reconciliation_blocked",
+                "protected_path_precheck": protected_path_precheck,
                 "protected_path_reconciliation": (
                     protected_path_reconciliation
+                ),
+                "worktree_lifecycle_precheck": (
+                    worktree_lifecycle_precheck
+                ),
+                "worktree_lifecycle_reconciliation": (
+                    worktree_lifecycle_reconciliation
                 ),
             }
             self._record_event(
@@ -6233,10 +6450,6 @@ class PortalImplementationDaemon:
                 result,
             )
             return result
-
-        state = PortalTaskState.load(self.state_path)
-        task_id = state.active_task_id or state.last_implementation_task_id
-        attempt = int(state.active_attempt or 0)
         had_active_state = bool(
             state.implementation_in_progress
             or state.active_task_id
@@ -6278,6 +6491,12 @@ class PortalImplementationDaemon:
             "attempt_recovery": attempt_recovery,
             "protected_path_reconciliation": (
                 protected_path_reconciliation
+            ),
+            "worktree_lifecycle_precheck": (
+                worktree_lifecycle_precheck
+            ),
+            "worktree_lifecycle_reconciliation": (
+                worktree_lifecycle_reconciliation
             ),
             "stale_lock_cleared": stale_lock_cleared,
         }
@@ -14624,6 +14843,7 @@ class PortalImplementationDaemon:
         commit_result: Mapping[str, Any],
         validation_result: Mapping[str, Any],
         changed_submodule_paths: Sequence[str] | None = None,
+        recovery_key: str = "",
     ) -> dict[str, Any]:
         """Hand a validated implementation commit to the durable merge train."""
 
@@ -14651,34 +14871,21 @@ class PortalImplementationDaemon:
             branch_name=branch_name,
         )
         lifecycle_record = self._active_worktree_lifecycle
-        pool_handoff = self._release_pooled_worktree_lease(
-            worktree_path,
-            reason="merge_queue_handoff",
-            finalize_lifecycle=False,
+        try:
+            requested_pool_key = worktree_path.resolve()
+        except OSError:
+            requested_pool_key = worktree_path
+        effective_pool_key = self._worktree_pool_effective_paths.get(
+            requested_pool_key,
+            requested_pool_key,
+        )
+        pooled_handoff_expected = (
+            effective_pool_key in self._worktree_pool_leases
         )
         lifecycle_handoff_reason = (
             "pooled_merge_queue_handoff"
-            if pool_handoff.get("released", False)
+            if pooled_handoff_expected
             else "merge_queue_handoff"
-        )
-        request, merge_result = self._enqueue_merge_candidate(
-            branch_name=branch_name,
-            implementation_commit=implementation_commit,
-            baseline_ref=baseline_ref,
-            worktree_path=(
-                None if pool_handoff.get("released", False) else worktree_path
-            ),
-            task=task,
-            attempt=attempt,
-            changed_submodule_paths=(
-                list(changed_submodule_paths)
-                if changed_submodule_paths is not None
-                else self._committed_submodule_paths(
-                    commit_result.get("submodule_results") or []
-                )
-            ),
-            validation_result=dict(validation_result),
-            worktree_pool_handoff=bool(pool_handoff.get("released", False)),
         )
         if lifecycle_record is not None:
             lifecycle_handoff = self._finalize_exact_worktree_lifecycle(
@@ -14690,6 +14897,116 @@ class PortalImplementationDaemon:
                 "finalized": False,
                 "reason": "no_lifecycle_record",
             }
+        if (
+            lifecycle_record is not None
+            and lifecycle_handoff.get("finalized") is not True
+        ):
+            # No consumable queue request exists until exact ownership
+            # finalization succeeds, so peer consumers cannot race this
+            # failed handoff.
+            return {
+                "attempted": False,
+                "merged": False,
+                "queued": False,
+                "reason": "worktree_lifecycle_handoff_failed",
+                "branch": branch_name,
+                "implementation_commit": implementation_commit,
+                "worktree_lifecycle_handoff": lifecycle_handoff,
+            }
+        post_finalize_phase = "lifecycle_handoff_event"
+        pool_handoff: dict[str, Any] = {}
+        try:
+            if lifecycle_record is not None and recovery_key:
+                proposal_gate = validation_result.get("proposal_gate")
+                proposal_id = (
+                    str(proposal_gate.get("proposal_id") or "")
+                    if isinstance(proposal_gate, Mapping)
+                    else ""
+                )
+                self._record_event(
+                    "worktree_reconciliation_lifecycle_handoff_finalized",
+                    {
+                        "task_id": task.task_id,
+                        "recovery_key": recovery_key,
+                        "branch": branch_name,
+                        "implementation_commit": implementation_commit,
+                        "proposal_id": proposal_id,
+                        "record_id": lifecycle_record.record_id,
+                        "fence": lifecycle_record.fence,
+                        "provider_dispatched": False,
+                        "attempt_consumed": False,
+                    },
+                )
+            post_finalize_phase = "worktree_pool_release"
+            pool_handoff = self._release_pooled_worktree_lease(
+                worktree_path,
+                reason="merge_queue_handoff",
+                finalize_lifecycle=False,
+            )
+        except Exception as exc:
+            if lifecycle_record is not None:
+                raise ReconciliationHandoffPublishError(
+                    "handoff preparation failed after lifecycle finalization",
+                    phase=post_finalize_phase,
+                    lifecycle_handoff=lifecycle_handoff,
+                    pool_handoff=pool_handoff,
+                ) from exc
+            raise
+        if (
+            pool_handoff.get("attempted") is True
+            and pool_handoff.get("released") is not True
+        ):
+            if lifecycle_record is not None:
+                raise ReconciliationHandoffPublishError(
+                    "pooled worktree release failed after lifecycle finalization",
+                    phase="worktree_pool_release",
+                    lifecycle_handoff=lifecycle_handoff,
+                    pool_handoff=pool_handoff,
+                )
+            return {
+                "attempted": False,
+                "merged": False,
+                "queued": False,
+                "reason": "worktree_pool_handoff_failed",
+                "branch": branch_name,
+                "implementation_commit": implementation_commit,
+                "worktree_lifecycle_handoff": lifecycle_handoff,
+                "worktree_pool_handoff": pool_handoff,
+            }
+        post_finalize_phase = "merge_queue_publication"
+        try:
+            request, merge_result = self._enqueue_merge_candidate(
+                branch_name=branch_name,
+                implementation_commit=implementation_commit,
+                baseline_ref=baseline_ref,
+                worktree_path=(
+                    None
+                    if pool_handoff.get("released", False)
+                    else worktree_path
+                ),
+                task=task,
+                attempt=attempt,
+                changed_submodule_paths=(
+                    list(changed_submodule_paths)
+                    if changed_submodule_paths is not None
+                    else self._committed_submodule_paths(
+                        commit_result.get("submodule_results") or []
+                    )
+                ),
+                validation_result=dict(validation_result),
+                worktree_pool_handoff=bool(
+                    pool_handoff.get("released", False)
+                ),
+            )
+        except Exception as exc:
+            if lifecycle_record is not None:
+                raise ReconciliationHandoffPublishError(
+                    "merge queue publication failed after lifecycle handoff",
+                    phase=post_finalize_phase,
+                    lifecycle_handoff=lifecycle_handoff,
+                    pool_handoff=pool_handoff,
+                ) from exc
+            raise
         merge_result["worktree_lifecycle_handoff"] = lifecycle_handoff
         if pool_handoff.get("attempted", False):
             pool_handoff["lifecycle_finalize"] = lifecycle_handoff
@@ -14977,6 +15294,13 @@ class PortalImplementationDaemon:
         }
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
+        worktree_lifecycle_reconciliation: dict[str, Any] = {
+            "attempted": False,
+            "finalized": False,
+            "blocked": False,
+            "reason": "not_checked",
+        }
+        worktree_lifecycle_finalize_result: dict[str, Any] = {}
         try:
             state = PortalTaskState.load(self.state_path)
         except Exception as exc:
@@ -15031,6 +15355,12 @@ class PortalImplementationDaemon:
                 "merge_result": merge_result,
                 "validation_result": validation_result,
                 "protected_path_violation": protected_path_violation,
+                "worktree_lifecycle_reconciliation": (
+                    worktree_lifecycle_reconciliation
+                ),
+                "worktree_lifecycle_finalize_result": (
+                    worktree_lifecycle_finalize_result
+                ),
                 "recovery_key": recovery_key,
             }
 
@@ -15087,20 +15417,6 @@ class PortalImplementationDaemon:
                     "reconciled candidate identity or ancestry mismatch"
                 )
 
-            self._prepare_worktree_for_validation(
-                worktree_path,
-                task=task,
-                branch_name=branch_name,
-            )
-            pre_validation_status = self._run_git(
-                ["status", "--porcelain"],
-                cwd=worktree_path,
-            ).stdout.strip()
-            if pre_validation_status:
-                raise RuntimeError(
-                    "reconciled candidate worktree is not clean"
-                )
-
             protected_path_snapshot = (
                 self._require_implementation_protected_snapshot(
                     task=task,
@@ -15128,6 +15444,37 @@ class PortalImplementationDaemon:
             state.last_progress_at = started_at
             state.save(self.state_path)
             state_owned = True
+
+            worktree_lifecycle_reconciliation = (
+                self._reconcile_exact_quiesced_worktree_lifecycle(
+                    worktree_path=worktree_path,
+                    task_id=task.task_id,
+                    canonical_task_cid=identity.canonical_task_cid,
+                    branch_name=branch_name,
+                    expected_attempt=(
+                        self._implementation_branch_attempt(branch_name)
+                    ),
+                    reason="orphaned_candidate_reconciliation_adopted",
+                    action="adopt",
+                )
+            )
+
+            # Preparation rewrites generated/ephemeral roots and dependency
+            # links.  Never mutate an orphan checkout until its exact durable
+            # owner has been proven dead and adopted under the lifecycle CAS.
+            self._prepare_worktree_for_validation(
+                worktree_path,
+                task=task,
+                branch_name=branch_name,
+            )
+            pre_validation_status = self._run_git(
+                ["status", "--porcelain"],
+                cwd=worktree_path,
+            ).stdout.strip()
+            if pre_validation_status:
+                raise RuntimeError(
+                    "reconciled candidate worktree is not clean"
+                )
 
             log_path.parent.mkdir(parents=True, exist_ok=True)
             log_path.write_text(
@@ -15168,7 +15515,59 @@ class PortalImplementationDaemon:
                     self._retryable_reconciliation_proposal_ids(
                         task_id=task.task_id,
                         recovery_key=recovery_key,
+                        canonical_task_cid=(
+                            identity.canonical_task_cid
+                        ),
+                        branch_name=branch_name,
+                        baseline_ref=resolved_baseline,
+                        candidate_commit=resolved_candidate,
+                        worktree_path=worktree_path,
+                        lifecycle_reconciliation=(
+                            worktree_lifecycle_reconciliation
+                        ),
                     )
+                ),
+                reconciliation_admission_context=(
+                    {
+                        "schema": (
+                            RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA
+                        ),
+                        "recovery_key": recovery_key,
+                        "canonical_task_cid": (
+                            identity.canonical_task_cid
+                        ),
+                        "branch": branch_name,
+                        "baseline_ref": resolved_baseline,
+                        "candidate_commit": resolved_candidate,
+                        "workspace_path": normalize_workspace_path(
+                            worktree_path
+                        ),
+                        "lifecycle_record": (
+                            self._active_worktree_lifecycle
+                            if worktree_lifecycle_reconciliation.get(
+                                "adopted"
+                            )
+                            is True
+                            else None
+                        ),
+                        "lifecycle_reconciliation": dict(
+                            worktree_lifecycle_reconciliation
+                        ),
+                    }
+                    if (
+                        # Atomic hard-kill replay authority is scoped to
+                        # indexed positive-attempt pre-merge recovery. The
+                        # synthetic attempt-0 already-merged replay mode keeps
+                        # its established non-indexed semantics.
+                        int(
+                            worktree_lifecycle_reconciliation.get(
+                                "attempt"
+                            )
+                            or 0
+                        )
+                        > 0
+                    )
+                    else None
                 ),
             )
             validation_result = self._run_validation_commands(
@@ -15359,8 +15758,40 @@ class PortalImplementationDaemon:
                     changed_submodule_paths=(
                         effective_changed_submodule_paths
                     ),
+                    recovery_key=recovery_key,
                 )
-                if merge_result.get("merged"):
+                lifecycle_handoff = merge_result.get(
+                    "worktree_lifecycle_handoff"
+                )
+                if (
+                    worktree_lifecycle_reconciliation.get("adopted") is True
+                    and isinstance(lifecycle_handoff, Mapping)
+                    and lifecycle_handoff.get("finalized") is not True
+                ):
+                    worktree_lifecycle_reconciliation = {
+                        **worktree_lifecycle_reconciliation,
+                        "blocked": True,
+                        "finalized": False,
+                        "reason": (
+                            "reconciliation_worktree_lifecycle_handoff_failed"
+                        ),
+                        "handoff_result": dict(lifecycle_handoff),
+                    }
+                    validation_result = {
+                        **validation_result,
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": (
+                            "reconciliation_worktree_lifecycle_handoff_failed"
+                        ),
+                        "infrastructure_failure": True,
+                        "outcome": "infrastructure_failure",
+                        "classification": (
+                            "lifecycle_coordination_failure"
+                        ),
+                        "merge_result": merge_result,
+                    }
+                elif merge_result.get("merged"):
                     returncode = 0
                 elif merge_result.get("queued"):
                     merge_result["reason"] = (
@@ -15378,6 +15809,8 @@ class PortalImplementationDaemon:
                 returncode != 0
                 and worktree_path.exists()
                 and not protected_path_violation
+                and worktree_lifecycle_reconciliation.get("blocked")
+                is not True
             ):
                 self._restore_ephemeral_worktree_paths_for_commit(
                     worktree_path
@@ -15388,6 +15821,83 @@ class PortalImplementationDaemon:
                     exc.receipt
                 )
             )
+        except ReconciliationLifecycleBlockedError as exc:
+            worktree_lifecycle_reconciliation = exc.result
+            validation_result = {
+                **validation_result,
+                "passed": False,
+                "returncode": 1,
+                "reason": "reconciliation_worktree_lifecycle_blocked",
+                "infrastructure_failure": True,
+                "outcome": "infrastructure_failure",
+                "classification": "lifecycle_coordination_failure",
+                "worktree_lifecycle_reconciliation": exc.result,
+            }
+        except ReconciliationAdmissionReceiptError as exc:
+            worktree_lifecycle_reconciliation = {
+                **worktree_lifecycle_reconciliation,
+                "blocked": True,
+                "finalized": False,
+                "reason": (
+                    "reconciliation_proposal_admission_"
+                    "receipt_unconfirmed"
+                ),
+                "error_type": type(exc).__name__,
+            }
+            validation_result = {
+                **validation_result,
+                "passed": False,
+                "returncode": 1,
+                "reason": (
+                    "reconciliation_proposal_admission_"
+                    "receipt_unconfirmed"
+                ),
+                "infrastructure_failure": True,
+                "outcome": "infrastructure_failure",
+                "classification": "proposal_admission_failure",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+            }
+        except ReconciliationHandoffPublishError as exc:
+            merge_result = {
+                "attempted": False,
+                "merged": False,
+                "queued": False,
+                "reason": (
+                    "reconciliation_handoff_publication_failed_after_"
+                    "lifecycle_finalize"
+                ),
+                "handoff_phase": exc.phase,
+                "worktree_lifecycle_handoff": (
+                    exc.lifecycle_handoff
+                ),
+            }
+            if exc.pool_handoff:
+                merge_result["worktree_pool_handoff"] = (
+                    exc.pool_handoff
+                )
+            validation_result = {
+                **validation_result,
+                "passed": False,
+                "returncode": 1,
+                "reason": (
+                    "reconciliation_handoff_publication_failed_after_"
+                    "lifecycle_finalize"
+                ),
+                "infrastructure_failure": True,
+                "outcome": "infrastructure_failure",
+                "classification": "handoff_publication_failure",
+                "handoff_phase": exc.phase,
+                "worktree_lifecycle_handoff": (
+                    exc.lifecycle_handoff
+                ),
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+            }
+            if exc.pool_handoff:
+                validation_result["worktree_pool_handoff"] = (
+                    exc.pool_handoff
+                )
         except Exception as exc:
             validation_result = {
                 **validation_result,
@@ -15424,11 +15934,98 @@ class PortalImplementationDaemon:
                             ),
                         }
                         returncode = 1
+                worktree_lifecycle_finalize_result = (
+                    self._finalize_reconciled_worktree_lifecycle(
+                        worktree_path,
+                        worktree_lifecycle_reconciliation,
+                    )
+                )
+                lifecycle_safe = (
+                    worktree_lifecycle_finalize_result.get("finalized")
+                    is not False
+                    and worktree_lifecycle_reconciliation.get("blocked")
+                    is not True
+                )
+                if not lifecycle_safe:
+                    reconciliation_already_blocked = (
+                        worktree_lifecycle_reconciliation.get("blocked")
+                        is True
+                    )
+                    if reconciliation_already_blocked:
+                        blocked_reason = str(
+                            worktree_lifecycle_reconciliation.get(
+                                "reason"
+                            )
+                            or ""
+                        )
+                        if blocked_reason.startswith("reconciliation_"):
+                            lifecycle_failure_reason = blocked_reason
+                        else:
+                            lifecycle_failure_reason = (
+                                "reconciliation_worktree_lifecycle_"
+                                "handoff_failed"
+                                if worktree_lifecycle_reconciliation.get(
+                                    "adopted"
+                                )
+                                is True
+                                else (
+                                    "reconciliation_worktree_"
+                                    "lifecycle_blocked"
+                                )
+                            )
+                    else:
+                        lifecycle_failure_reason = (
+                            "reconciliation_worktree_lifecycle_"
+                            "finalize_failed"
+                        )
+                    reconciliation_reason = (
+                        str(
+                            worktree_lifecycle_reconciliation.get(
+                                "reason"
+                            )
+                            or ""
+                        )
+                        if (
+                            reconciliation_already_blocked
+                            and not str(
+                                worktree_lifecycle_reconciliation.get(
+                                    "reason"
+                                )
+                                or ""
+                            ).startswith("reconciliation_")
+                        )
+                        else lifecycle_failure_reason
+                    )
+                    worktree_lifecycle_reconciliation = {
+                        **worktree_lifecycle_reconciliation,
+                        "blocked": True,
+                        "finalized": False,
+                        "reason": reconciliation_reason,
+                        "finalize_result": dict(
+                            worktree_lifecycle_finalize_result
+                        ),
+                    }
+                    validation_result = {
+                        **validation_result,
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": lifecycle_failure_reason,
+                        "infrastructure_failure": True,
+                        "outcome": "infrastructure_failure",
+                        "classification": (
+                            "lifecycle_coordination_failure"
+                        ),
+                        "worktree_lifecycle_finalize_result": (
+                            worktree_lifecycle_finalize_result
+                        ),
+                    }
+                    returncode = 1
                 if state_owned:
                     current_state = PortalTaskState.load(self.state_path)
                     if (
                         current_state.active_task_cid
                         == identity.canonical_task_cid
+                        and lifecycle_safe
                     ):
                         self._mark_implementation_finished(
                             current_state,
@@ -15441,8 +16038,13 @@ class PortalImplementationDaemon:
                     )
                     terminal_event_recorded = True
             finally:
+                preserve_blocked_authority = (
+                    worktree_lifecycle_reconciliation.get("blocked")
+                    is True
+                )
                 if (
                     not borrowed_implementation_lock
+                    and not preserve_blocked_authority
                     and not self._release_implementation_lock(
                         implementation_lock_path,
                         implementation_lock_metadata,
@@ -15454,9 +16056,12 @@ class PortalImplementationDaemon:
                         "validation: %s",
                         implementation_lock_path,
                     )
-                if not self._release_implementation_task_claim(
-                    task_claim_path,
-                    task_claim_metadata,
+                if (
+                    not preserve_blocked_authority
+                    and not self._release_implementation_task_claim(
+                        task_claim_path,
+                        task_claim_metadata,
+                    )
                 ):
                     logger.warning(
                         "Refusing to remove reconciled-candidate task claim "
@@ -22263,6 +22868,39 @@ class PortalImplementationDaemon:
             validation_result
         ):
             return False
+        lifecycle_failure_reasons = {
+            "reconciliation_worktree_lifecycle_blocked",
+            "reconciliation_worktree_lifecycle_handoff_failed",
+            "reconciliation_worktree_lifecycle_finalize_failed",
+        }
+        validation_reason = str(
+            validation_result.get("reason") or ""
+        ).strip()
+        if validation_reason in lifecycle_failure_reasons:
+            lifecycle_reconciliation = event.get(
+                "worktree_lifecycle_reconciliation"
+            )
+            if not (
+                isinstance(lifecycle_reconciliation, Mapping)
+                and lifecycle_reconciliation.get("blocked") is True
+                and lifecycle_reconciliation.get("finalized") is False
+                and validation_result.get("infrastructure_failure") is True
+                and validation_result.get("outcome")
+                == "infrastructure_failure"
+                and validation_result.get("classification")
+                == "lifecycle_coordination_failure"
+            ):
+                return False
+            reconciliation_reason = str(
+                lifecycle_reconciliation.get("reason") or ""
+            ).strip()
+            if validation_reason == (
+                "reconciliation_worktree_lifecycle_blocked"
+            ):
+                return reconciliation_reason.startswith(
+                    "worktree_lifecycle_"
+                )
+            return reconciliation_reason == validation_reason
         if self._retryable_reconciliation_validation_failure(
             validation_result
         ):
@@ -22338,25 +22976,640 @@ class PortalImplementationDaemon:
             and PLAYWRIGHT_BROWSER_MISSING_MARKER in log_tail
         )
 
+    @staticmethod
+    def _worktree_lifecycle_record_authority_cid(
+        record: WorkspaceLifecycleRecord,
+    ) -> str:
+        """Commit to a lifecycle capability without exposing its lease."""
+
+        return content_identity(
+            {
+                "schema": RECONCILIATION_LIFECYCLE_AUTHORITY_SCHEMA,
+                "record": {
+                    "schema": record.schema,
+                    "record_id": record.record_id,
+                    "task_id": record.task_id,
+                    "canonical_task_cid": record.canonical_task_cid,
+                    "attempt": record.attempt,
+                    "lane_id": record.lane_id,
+                    "state": record.state.value,
+                    "owner": record.owner.to_dict(),
+                    "lease_id": record.lease_id,
+                    "fence": record.fence,
+                    "workspace_path": record.workspace_path,
+                    "branch": record.branch,
+                    "merge_target": record.merge_target,
+                    "created_at_hex": record.created_at.hex(),
+                    "updated_at_hex": record.updated_at.hex(),
+                    "expires_at_hex": record.expires_at.hex(),
+                    "repo_root": record.repo_root,
+                    "state_dir": record.state_dir,
+                    "terminal_reason": record.terminal_reason,
+                },
+            }
+        )
+
+    def _reconciliation_proposal_admission_projection(
+        self,
+        context: Mapping[str, Any],
+        *,
+        task: PortalTask,
+        workspace_path: Path,
+        baseline_ref: str,
+        proposal_id: str,
+        receipt_id: str,
+        candidate_fingerprint: str,
+    ) -> dict[str, Any]:
+        """Build the capability-free durable projection for proposal admission."""
+
+        expected_context_fields = {
+            "schema",
+            "recovery_key",
+            "canonical_task_cid",
+            "branch",
+            "baseline_ref",
+            "candidate_commit",
+            "workspace_path",
+            "lifecycle_record",
+            "lifecycle_reconciliation",
+        }
+        if type(context) is not dict or set(context) != expected_context_fields:
+            raise ValueError("reconciliation admission context is malformed")
+        if context.get("schema") != RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA:
+            raise ValueError("reconciliation admission schema is invalid")
+
+        identity = self._identity_for_task(task)
+        task_cid = str(context.get("canonical_task_cid") or "").strip()
+        recovery_key = str(context.get("recovery_key") or "").strip()
+        branch = str(context.get("branch") or "").strip()
+        baseline = str(context.get("baseline_ref") or "").strip()
+        candidate_commit = str(
+            context.get("candidate_commit") or ""
+        ).strip()
+        normalized_workspace = normalize_workspace_path(workspace_path)
+        if not (
+            recovery_key
+            and proposal_id
+            and receipt_id
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                candidate_fingerprint,
+            )
+            and task_cid == identity.canonical_task_cid
+            and branch
+            and baseline
+            and baseline == str(baseline_ref).strip()
+            and candidate_commit
+            and candidate_commit
+            == self._resolved_commit_ref(workspace_path, "HEAD")
+            and branch == self._git_current_branch(workspace_path)
+            and str(context.get("workspace_path") or "")
+            == normalized_workspace
+        ):
+            raise ValueError(
+                "reconciliation admission candidate binding is invalid"
+            )
+
+        reconciliation = context.get("lifecycle_reconciliation")
+        if not isinstance(reconciliation, Mapping):
+            raise ValueError(
+                "reconciliation admission lifecycle result is missing"
+            )
+        record = context.get("lifecycle_record")
+        lifecycle_present = record is not None
+        if lifecycle_present:
+            if not isinstance(record, WorkspaceLifecycleRecord):
+                raise ValueError(
+                    "reconciliation admission lifecycle record is invalid"
+                )
+            persisted = self.worktree_lifecycle.load_workspace(
+                workspace_path
+            )
+            if not (
+                reconciliation.get("attempted") is True
+                and reconciliation.get("adopted") is True
+                and reconciliation.get("blocked") is False
+                and str(reconciliation.get("record_id") or "")
+                == record.record_id
+                and int(reconciliation.get("attempt") or 0)
+                == record.attempt
+                and int(reconciliation.get("adopted_fence") or 0)
+                == record.fence
+                and persisted is not None
+                and persisted.record_id == record.record_id
+                and persisted.fence == record.fence
+                and persisted.lease_id == record.lease_id
+                and persisted.owner == record.owner
+                and persisted.task_id == task.task_id
+                and persisted.canonical_task_cid == task_cid
+                and normalize_workspace_path(persisted.workspace_path)
+                == normalized_workspace
+                and persisted.branch == branch
+                and not persisted.is_terminal
+            ):
+                raise ValueError(
+                    "reconciliation admission lifecycle authority changed"
+                )
+            lifecycle_projection = {
+                "present": True,
+                "authority_mode": "record_bound",
+                "record_id": record.record_id,
+                "fence": record.fence,
+                "attempt": record.attempt,
+                "record_authority_cid": (
+                    self._worktree_lifecycle_record_authority_cid(record)
+                ),
+            }
+            lifecycle_authority = dict(lifecycle_projection)
+        else:
+            record_path = self.worktree_lifecycle.workspace_path_for(
+                workspace_path
+            )
+            absence_attempt = int(
+                reconciliation.get("attempt") or 0
+            )
+            index_path = (
+                self.worktree_lifecycle.task_index_path_for(
+                    canonical_task_cid=task_cid,
+                    task_id=task.task_id,
+                    attempt=absence_attempt,
+                )
+                if absence_attempt > 0
+                else None
+            )
+            indexed_absence = bool(
+                absence_attempt > 0
+                and reconciliation.get("task_index_absence_verified")
+                is True
+                and index_path is not None
+                and not index_path.exists()
+            )
+            if not (
+                reconciliation.get("attempted") is False
+                and reconciliation.get("adopted") is not True
+                and reconciliation.get("blocked") is False
+                and reconciliation.get("reason") == "no_lifecycle_record"
+                and reconciliation.get("record_absence_verified") is True
+                and not record_path.exists()
+                and indexed_absence
+            ):
+                raise ValueError(
+                    "reconciliation admission lifecycle absence is unproven"
+                )
+            lifecycle_projection = {
+                "present": False,
+                "authority_mode": (
+                    "indexed_absence"
+                ),
+                "record_id": "",
+                "fence": 0,
+                "attempt": int(reconciliation.get("attempt") or 0),
+                "record_authority_cid": "",
+            }
+            lifecycle_authority = dict(lifecycle_projection)
+
+        binding = {
+            "schema": RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "recovery_key": recovery_key,
+            "proposal_id": proposal_id,
+            "receipt_id": receipt_id,
+            "candidate_fingerprint": candidate_fingerprint,
+            "baseline_ref": baseline,
+            "candidate_commit": candidate_commit,
+            "branch": branch,
+            "workspace_path": normalized_workspace,
+            "lifecycle_authority": lifecycle_authority,
+        }
+        # The CID commits to lease and owner birth identity, but neither
+        # mutation capability is persisted in the event.
+        lifecycle_projection["admission_authority_cid"] = (
+            content_identity(binding)
+        )
+        return {
+            "schema": RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "recovery_key": recovery_key,
+            "proposal_id": proposal_id,
+            "receipt_id": receipt_id,
+            "candidate_fingerprint": candidate_fingerprint,
+            "baseline_ref": baseline,
+            "candidate_commit": candidate_commit,
+            "branch": branch,
+            "workspace_path": normalized_workspace,
+            "lifecycle": lifecycle_projection,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+        }
+
+    def _reconciliation_admission_matches_candidate(
+        self,
+        event: Mapping[str, Any],
+        *,
+        task_id: str,
+        canonical_task_cid: str,
+        recovery_key: str,
+        branch_name: str,
+        baseline_ref: str,
+        candidate_commit: str,
+        worktree_path: Path,
+        lifecycle_reconciliation: Mapping[str, Any],
+    ) -> str:
+        """Return an admitted proposal only for this exact recovered candidate."""
+
+        admission = event.get("reconciliation_admission")
+        expected_fields = {
+            "schema",
+            "task_id",
+            "canonical_task_cid",
+            "recovery_key",
+            "proposal_id",
+            "receipt_id",
+            "candidate_fingerprint",
+            "baseline_ref",
+            "candidate_commit",
+            "branch",
+            "workspace_path",
+            "lifecycle",
+            "provider_dispatched",
+            "attempt_consumed",
+        }
+        if (
+            event.get("type") != "implementation_proposal_validated"
+            or event.get("accepted") is not True
+            or type(admission) is not dict
+            or set(admission) != expected_fields
+            or admission.get("schema")
+            != RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA
+            or admission.get("provider_dispatched") is not False
+            or admission.get("attempt_consumed") is not False
+        ):
+            return ""
+        proposal_id = str(admission.get("proposal_id") or "").strip()
+        receipt_id = str(admission.get("receipt_id") or "").strip()
+        candidate_fingerprint = str(
+            admission.get("candidate_fingerprint") or ""
+        ).strip()
+        if not (
+            proposal_id
+            and receipt_id
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                candidate_fingerprint,
+            )
+            and str(event.get("proposal_id") or "") == proposal_id
+            and str(event.get("receipt_id") or "") == receipt_id
+            and str(event.get("candidate_fingerprint") or "")
+            == candidate_fingerprint
+            and str(event.get("task_id") or "") == task_id
+            and str(event.get("canonical_task_cid") or "")
+            == canonical_task_cid
+            and str(event.get("recovery_key") or "") == recovery_key
+            and str(event.get("branch") or "") == branch_name
+            and str(event.get("baseline_ref") or "") == baseline_ref
+            and str(event.get("candidate_commit") or "")
+            == candidate_commit
+            and str(event.get("workspace_path") or "")
+            == normalize_workspace_path(worktree_path)
+            and str(admission.get("task_id") or "") == task_id
+            and str(admission.get("canonical_task_cid") or "")
+            == canonical_task_cid
+            and str(admission.get("recovery_key") or "") == recovery_key
+            and str(admission.get("branch") or "") == branch_name
+            and str(admission.get("baseline_ref") or "") == baseline_ref
+            and str(admission.get("candidate_commit") or "")
+            == candidate_commit
+            and str(admission.get("workspace_path") or "")
+            == normalize_workspace_path(worktree_path)
+        ):
+            return ""
+        lifecycle = admission.get("lifecycle")
+        if (
+            type(lifecycle) is not dict
+            or set(lifecycle)
+            != {
+                "present",
+                "authority_mode",
+                "record_id",
+                "fence",
+                "attempt",
+                "record_authority_cid",
+                "admission_authority_cid",
+            }
+            or type(lifecycle.get("present")) is not bool
+            or lifecycle.get("authority_mode")
+            not in {
+                "record_bound",
+                "indexed_absence",
+            }
+            or type(lifecycle.get("record_id")) is not str
+            or type(lifecycle.get("fence")) is not int
+            or type(lifecycle.get("attempt")) is not int
+            or not re.fullmatch(
+                r"b[a-z2-7]+",
+                str(lifecycle.get("admission_authority_cid") or ""),
+            )
+        ):
+            return ""
+        record_authority_cid = str(
+            lifecycle.get("record_authority_cid") or ""
+        )
+        if lifecycle["present"] and not re.fullmatch(
+            r"b[a-z2-7]+",
+            record_authority_cid,
+        ):
+            return ""
+        recomputed_admission_cid = content_identity(
+            {
+                "schema": RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA,
+                "task_id": task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "recovery_key": recovery_key,
+                "proposal_id": proposal_id,
+                "receipt_id": receipt_id,
+                "candidate_fingerprint": candidate_fingerprint,
+                "baseline_ref": baseline_ref,
+                "candidate_commit": candidate_commit,
+                "branch": branch_name,
+                "workspace_path": normalize_workspace_path(
+                    worktree_path
+                ),
+                "lifecycle_authority": {
+                    "present": lifecycle["present"],
+                    "authority_mode": lifecycle["authority_mode"],
+                    "record_id": lifecycle["record_id"],
+                    "fence": lifecycle["fence"],
+                    "attempt": lifecycle["attempt"],
+                    "record_authority_cid": (
+                        record_authority_cid
+                    ),
+                },
+            }
+        )
+        if (
+            recomputed_admission_cid
+            != lifecycle["admission_authority_cid"]
+        ):
+            return ""
+        if lifecycle_reconciliation.get("blocked") is True:
+            return ""
+        current_absent = (
+            lifecycle_reconciliation.get("attempted") is False
+            and lifecycle_reconciliation.get("adopted") is not True
+            and lifecycle_reconciliation.get("reason")
+            == "no_lifecycle_record"
+            and lifecycle_reconciliation.get("record_absence_verified")
+            is True
+        )
+        current_adopted = (
+            lifecycle_reconciliation.get("attempted") is True
+            and lifecycle_reconciliation.get("adopted") is True
+            and lifecycle_reconciliation.get("blocked") is False
+            and int(
+                lifecycle_reconciliation.get("adopted_fence") or 0
+            )
+            > 0
+            and bool(
+                str(
+                    lifecycle_reconciliation.get(
+                        "predecessor_authority_cid"
+                    )
+                    or ""
+                )
+            )
+        )
+        current_record = (
+            self.worktree_lifecycle.load_workspace(worktree_path)
+            if current_adopted
+            else None
+        )
+        if lifecycle["present"]:
+            if not (
+                lifecycle["record_id"]
+                and lifecycle["authority_mode"] == "record_bound"
+                and lifecycle["fence"] > 0
+                and lifecycle["attempt"] > 0
+                and (
+                    (
+                        current_absent
+                        and int(
+                            lifecycle_reconciliation.get("attempt") or 0
+                        )
+                        == lifecycle["attempt"]
+                        and lifecycle_reconciliation.get(
+                            "task_index_absence_verified"
+                        )
+                        is True
+                    )
+                    or (
+                        current_adopted
+                        and str(
+                            lifecycle_reconciliation.get("record_id")
+                            or ""
+                        )
+                        == lifecycle["record_id"]
+                        and int(
+                            lifecycle_reconciliation.get("attempt") or 0
+                        )
+                        == lifecycle["attempt"]
+                        and int(
+                            lifecycle_reconciliation.get("fence") or 0
+                        )
+                        == lifecycle["fence"]
+                        and str(
+                            lifecycle_reconciliation.get(
+                                "predecessor_authority_cid"
+                            )
+                            or ""
+                        )
+                        == record_authority_cid
+                        and current_record is not None
+                        and current_record.record_id
+                        == lifecycle["record_id"]
+                        and current_record.fence
+                        == int(
+                            lifecycle_reconciliation.get(
+                                "adopted_fence"
+                            )
+                            or 0
+                        )
+                        and current_record.attempt
+                        == lifecycle["attempt"]
+                        and current_record.task_id == task_id
+                        and current_record.canonical_task_cid
+                        == canonical_task_cid
+                        and current_record.branch == branch_name
+                        and normalize_workspace_path(
+                            current_record.workspace_path
+                        )
+                        == normalize_workspace_path(worktree_path)
+                        and not current_record.is_terminal
+                    )
+                )
+            ):
+                return ""
+        elif not (
+            lifecycle["record_id"] == ""
+            and lifecycle["authority_mode"]
+            in {
+                "indexed_absence",
+            }
+            and lifecycle["fence"] == 0
+            and lifecycle["record_authority_cid"] == ""
+            and current_absent
+            and int(lifecycle_reconciliation.get("attempt") or 0)
+            == lifecycle["attempt"]
+            and (
+                (
+                    lifecycle["authority_mode"] == "indexed_absence"
+                    and lifecycle["attempt"] > 0
+                    and lifecycle_reconciliation.get(
+                        "task_index_absence_verified"
+                    )
+                    is True
+                )
+            )
+        ):
+            return ""
+        if current_absent:
+            record_path = self.worktree_lifecycle.workspace_path_for(
+                worktree_path
+            )
+            index_path = (
+                self.worktree_lifecycle.task_index_path_for(
+                    canonical_task_cid=canonical_task_cid,
+                    task_id=task_id,
+                    attempt=lifecycle["attempt"],
+                )
+                if lifecycle["attempt"] > 0
+                else None
+            )
+            if (
+                record_path.exists()
+                or (
+                    lifecycle["authority_mode"]
+                    in {"record_bound", "indexed_absence"}
+                    and (
+                        index_path is None
+                        or index_path.exists()
+                    )
+                )
+            ):
+                return ""
+        return proposal_id
+
     def _retryable_reconciliation_proposal_ids(
         self,
         *,
         task_id: str,
         recovery_key: str,
+        canonical_task_cid: str = "",
+        branch_name: str = "",
+        baseline_ref: str = "",
+        candidate_commit: str = "",
+        worktree_path: Path | None = None,
+        lifecycle_reconciliation: Mapping[str, Any] | None = None,
     ) -> tuple[str, ...]:
         """Return exact proposal IDs left reusable by an environment failure."""
 
         if not task_id or not recovery_key:
             return ()
+        try:
+            lifecycle_attempt = int(
+                lifecycle_reconciliation.get("attempt") or 0
+            )
+        except (AttributeError, TypeError, ValueError):
+            lifecycle_attempt = 0
+        exact_context = bool(
+            canonical_task_cid
+            and branch_name
+            and baseline_ref
+            and candidate_commit
+            and worktree_path is not None
+            and isinstance(lifecycle_reconciliation, Mapping)
+            and lifecycle_attempt > 0
+        )
         retryable: set[str] = set()
         for event in self._iter_events():
+            if exact_context:
+                admitted_proposal_id = (
+                    self._reconciliation_admission_matches_candidate(
+                        event,
+                        task_id=task_id,
+                        canonical_task_cid=canonical_task_cid,
+                        recovery_key=recovery_key,
+                        branch_name=branch_name,
+                        baseline_ref=baseline_ref,
+                        candidate_commit=candidate_commit,
+                        worktree_path=worktree_path,
+                        lifecycle_reconciliation=(
+                            lifecycle_reconciliation
+                        ),
+                    )
+                )
+                if admitted_proposal_id:
+                    retryable.add(admitted_proposal_id)
+                    continue
             if (
-                event.get("type")
-                != "worktree_reconciliation_validation_finished"
-                or str(event.get("task_id") or "") != task_id
+                str(event.get("task_id") or "") != task_id
                 or str(event.get("recovery_key") or "") != recovery_key
                 or event.get("provider_dispatched") is not False
                 or event.get("attempt_consumed") is not False
+            ):
+                continue
+            if exact_context and not (
+                str(
+                    event.get("task_cid")
+                    or event.get("canonical_task_cid")
+                    or ""
+                )
+                == canonical_task_cid
+                and str(event.get("branch") or "") == branch_name
+                and str(event.get("baseline_ref") or "") == baseline_ref
+                and str(
+                    event.get("implementation_commit")
+                    or event.get("candidate_commit")
+                    or ""
+                )
+                == candidate_commit
+                and str(
+                    event.get("worktree_path")
+                    or event.get("workspace_path")
+                    or ""
+                )
+                == normalize_workspace_path(worktree_path)
+            ):
+                continue
+            if (
+                event.get("type")
+                == "worktree_reconciliation_lifecycle_handoff_finalized"
+            ):
+                # Audit-only. Replay authority comes from the exact atomic
+                # proposal-admission event or a structured terminal retry.
+                continue
+            if event.get("type") in {
+                "implementation_finished",
+                "worktree_reconciliation_candidate_queued",
+            }:
+                validation_result = event.get("validation_result")
+                proposal_gate = (
+                    validation_result.get("proposal_gate")
+                    if isinstance(validation_result, Mapping)
+                    else None
+                )
+                proposal_id = (
+                    str(proposal_gate.get("proposal_id") or "").strip()
+                    if isinstance(proposal_gate, Mapping)
+                    else ""
+                )
+                if proposal_id:
+                    retryable.discard(proposal_id)
+                continue
+            if (
+                event.get("type")
+                != "worktree_reconciliation_validation_finished"
             ):
                 continue
             validation_result = event.get("validation_result")
@@ -22510,6 +23763,7 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str,
         replayable_consumed_proposal_ids: Sequence[str] = (),
+        reconciliation_admission_context: Mapping[str, Any] | None = None,
         record_event: bool = True,
         allow_scope_adjudication: bool = True,
     ) -> Any:
@@ -22881,16 +24135,86 @@ class PortalImplementationDaemon:
                 else ""
             ),
         )
+        reconciliation_admission: dict[str, Any] | None = None
+        if result.accepted and reconciliation_admission_context is not None:
+            try:
+                reconciliation_admission = (
+                    self._reconciliation_proposal_admission_projection(
+                        reconciliation_admission_context,
+                        task=task,
+                        workspace_path=workspace_path,
+                        baseline_ref=baseline_ref,
+                        proposal_id=proposal.proposal_id,
+                        receipt_id=str(
+                            compact.get("receipt_id") or ""
+                        ),
+                        candidate_fingerprint=(
+                            self._proposal_candidate_fingerprint(
+                                entries
+                            )
+                        ),
+                    )
+                )
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                raise ReconciliationAdmissionReceiptError(
+                    "reconciliation proposal admission binding failed"
+                ) from exc
         if record_event:
-            self._record_event(
-                "implementation_proposal_validated"
-                if result.accepted
-                else "implementation_proposal_rejected",
-                {
-                    "task_id": task.task_id,
-                    **compact,
-                },
-            )
+            event_payload = {
+                "task_id": task.task_id,
+                **compact,
+            }
+            if reconciliation_admission is not None:
+                event_payload.update(
+                    {
+                        "canonical_task_cid": (
+                            reconciliation_admission[
+                                "canonical_task_cid"
+                            ]
+                        ),
+                        "recovery_key": (
+                            reconciliation_admission["recovery_key"]
+                        ),
+                        "branch": reconciliation_admission["branch"],
+                        "baseline_ref": (
+                            reconciliation_admission["baseline_ref"]
+                        ),
+                        "candidate_commit": (
+                            reconciliation_admission[
+                                "candidate_commit"
+                            ]
+                        ),
+                        "workspace_path": (
+                            reconciliation_admission[
+                                "workspace_path"
+                            ]
+                        ),
+                        "candidate_fingerprint": (
+                            reconciliation_admission[
+                                "candidate_fingerprint"
+                            ]
+                        ),
+                        "provider_dispatched": False,
+                        "attempt_consumed": False,
+                        "reconciliation_admission": (
+                            reconciliation_admission
+                        ),
+                    }
+                )
+            try:
+                self._record_event(
+                    "implementation_proposal_validated"
+                    if result.accepted
+                    else "implementation_proposal_rejected",
+                    event_payload,
+                )
+            except Exception as exc:
+                if reconciliation_admission is not None:
+                    raise ReconciliationAdmissionReceiptError(
+                        "reconciliation proposal admission append "
+                        "was not acknowledged"
+                    ) from exc
+                raise
         return result
 
     @staticmethod
@@ -28574,6 +29898,237 @@ class PortalImplementationDaemon:
         shard = f"{self.task_shard_index}/{self.task_shard_count}"
         return f"{state_dir}:{shard}:{os.getpid()}"
 
+    @staticmethod
+    def _implementation_branch_attempt(branch_name: str) -> int | None:
+        """Return the attempt encoded by a managed implementation branch."""
+
+        match = re.search(
+            r"(?:^|[-/])attempt-([1-9][0-9]*)(?:-|$)",
+            str(branch_name or "").removeprefix("refs/heads/"),
+        )
+        return int(match.group(1)) if match is not None else None
+
+    def _reconcile_exact_quiesced_worktree_lifecycle(
+        self,
+        *,
+        worktree_path: Path,
+        task_id: str,
+        canonical_task_cid: str,
+        branch_name: str,
+        expected_attempt: int | None,
+        reason: str,
+        action: str = "verify",
+        expected_lifecycle_record: WorkspaceLifecycleRecord | None = None,
+    ) -> dict[str, Any]:
+        """Verify, adopt, or finalize one exactly bound dead-owner claim."""
+
+        record = self.worktree_lifecycle.load_workspace(worktree_path)
+        record_path = self.worktree_lifecycle.workspace_path_for(
+            worktree_path
+        )
+        if record is None:
+            index_path = (
+                self.worktree_lifecycle.task_index_path_for(
+                    canonical_task_cid=canonical_task_cid,
+                    task_id=task_id,
+                    attempt=expected_attempt,
+                )
+                if expected_attempt is not None and expected_attempt > 0
+                else None
+            )
+            if expected_lifecycle_record is not None or record_path.exists() or (
+                index_path is not None and index_path.exists()
+            ):
+                blocked = {
+                    "attempted": True,
+                    "finalized": False,
+                    "blocked": True,
+                    "reason": (
+                        "worktree_lifecycle_authority_disappeared"
+                        if expected_lifecycle_record is not None
+                        else "worktree_lifecycle_record_malformed"
+                    ),
+                    "worktree_path": str(worktree_path),
+                }
+                self._record_event(
+                    "quiesced_worktree_lifecycle_rejected",
+                    blocked,
+                )
+                raise ReconciliationLifecycleBlockedError(blocked)
+            return {
+                "attempted": False,
+                "finalized": False,
+                "blocked": False,
+                "reason": "no_lifecycle_record",
+                "attempt": int(expected_attempt or 0),
+                "record_absence_verified": not record_path.exists(),
+                "task_index_absence_verified": bool(
+                    index_path is not None and not index_path.exists()
+                ),
+            }
+
+        authority = expected_lifecycle_record or record
+        normalized_workspace = normalize_workspace_path(worktree_path)
+        base = {
+            "attempted": True,
+            "adopted": False,
+            "finalized": False,
+            "blocked": False,
+            "record_id": authority.record_id,
+            "attempt": int(authority.attempt),
+            "fence": int(authority.fence),
+        }
+
+        def reject(rejection_reason: str, **details: Any) -> None:
+            blocked = {
+                **base,
+                "blocked": True,
+                "reason": rejection_reason,
+                **details,
+            }
+            self._record_event(
+                "quiesced_worktree_lifecycle_rejected",
+                blocked,
+            )
+            raise ReconciliationLifecycleBlockedError(blocked)
+
+        if expected_attempt is None or int(expected_attempt) <= 0:
+            reject(
+                "worktree_lifecycle_identity_mismatch",
+                mismatched_fields=["attempt"],
+            )
+
+        expected = {
+            "expected_record_id": authority.record_id,
+            "expected_fence": authority.fence,
+            "expected_lease_id": authority.lease_id,
+            "expected_task_id": task_id,
+            "expected_canonical_task_cid": canonical_task_cid,
+            "expected_attempt": expected_attempt,
+            "expected_branch": branch_name,
+            "expected_merge_target": self.resolved_merge_target_branch,
+            "expected_repo_root": str(self.repo_root.resolve(strict=False)),
+            "expected_state_dir": str(
+                self.state_path.parent.resolve(strict=False)
+            ),
+        }
+        stage = "identity"
+        try:
+            verified = self.worktree_lifecycle.require_exact_dead_owner(
+                normalized_workspace,
+                allow_terminal=action != "adopt",
+                **expected,
+            )
+            if action == "adopt":
+                stage = "adoption"
+                predecessor_authority_cid = (
+                    self._worktree_lifecycle_record_authority_cid(
+                        verified
+                    )
+                )
+                adopted = self.worktree_lifecycle.adopt_dead_owner(
+                    normalized_workspace,
+                    lane_id=self._worktree_lifecycle_lane_id(),
+                    **expected,
+                )
+                self._active_worktree_lifecycle = adopted
+                outcome = {
+                    "adopted": True,
+                    "adopted_fence": int(adopted.fence),
+                    "predecessor_authority_cid": (
+                        predecessor_authority_cid
+                    ),
+                }
+            elif action == "finalize":
+                stage = "finalization"
+                if expected_lifecycle_record is None:
+                    raise WorktreeLifecycleError(
+                        "phase-pinned lifecycle authority is required"
+                    )
+                terminal = (
+                    self.worktree_lifecycle.finalize_exact_dead_owner(
+                        normalized_workspace,
+                        expected_owner=authority.owner,
+                        reason=reason,
+                        **expected,
+                    )
+                )
+                outcome = {
+                    "finalized": True,
+                    "reason": reason,
+                    "fence": int(terminal.fence),
+                    "state": terminal.state.value,
+                }
+            elif action == "verify":
+                outcome = {
+                    "reason": "worktree_lifecycle_quiescence_verified",
+                }
+            else:
+                raise ValueError(
+                    f"unknown lifecycle reconciliation action: {action}"
+                )
+        except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
+            error = str(exc)
+            rejection_reason = {
+                "adoption": "worktree_lifecycle_adoption_failed",
+                "finalization": "worktree_lifecycle_finalize_failed",
+                "identity": "worktree_lifecycle_identity_mismatch",
+            }[stage]
+            if "still alive" in error:
+                rejection_reason = "worktree_lifecycle_owner_alive"
+            elif "liveness is unknown" in error:
+                rejection_reason = (
+                    "worktree_lifecycle_owner_liveness_unknown"
+                )
+            reject(
+                rejection_reason,
+                error_type=type(exc).__name__,
+                error=error[-500:],
+            )
+
+        reconciled = {**base, **outcome}
+        if action != "verify":
+            reconciled["reason"] = reason
+        self._record_event(
+            "quiesced_worktree_lifecycle_"
+            + {
+                "verify": "verified",
+                "adopt": "adopted",
+                "finalize": "finalized",
+            }[action],
+            reconciled,
+        )
+        return reconciled
+
+    def _finalize_reconciled_worktree_lifecycle(
+        self,
+        worktree_path: Path,
+        reconciliation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Release an adopted orphan claim after validation or queue handoff."""
+
+        if reconciliation.get("adopted") is not True:
+            return {"finalized": None, "reason": "lifecycle_not_adopted"}
+        if reconciliation.get("blocked") is True:
+            return {
+                "finalized": False,
+                "reason": "lifecycle_reconciliation_blocked",
+                "failure_kind": (
+                    LifecycleFailureKind.LIFECYCLE_RACE.value
+                ),
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+            }
+        if self._active_worktree_lifecycle is None:
+            return {
+                "finalized": True,
+                "reason": "lifecycle_already_finalized_or_handed_off",
+            }
+        return self._finalize_worktree_lifecycle(
+            worktree_path,
+            reason="orphaned_candidate_reconciliation_finished",
+        )
+
     def _active_worktree_lifecycle_lease_id(self) -> str:
         record = self._active_worktree_lifecycle
         if record is None:
@@ -28691,6 +30246,7 @@ class PortalImplementationDaemon:
         record: WorkspaceLifecycleRecord,
         *,
         reason: str,
+        delete_terminal_record: bool = False,
     ) -> dict[str, Any]:
         """Terminalize only the captured lease/fence for a released workspace.
 
@@ -28713,6 +30269,22 @@ class PortalImplementationDaemon:
                 self._active_worktree_lifecycle = None
 
         if record.is_terminal:
+            if delete_terminal_record:
+                deleted = self.worktree_lifecycle.compare_and_delete(
+                    record.workspace_path,
+                    expected_fence=record.fence,
+                    lease_id=record.lease_id,
+                )
+                _clear_captured_active()
+                return {
+                    "finalized": deleted,
+                    "reason": (
+                        "already_terminal"
+                        if deleted
+                        else "lifecycle_compare_delete_race"
+                    ),
+                    "fence": record.fence,
+                }
             _clear_captured_active()
             return {
                 "finalized": True,
