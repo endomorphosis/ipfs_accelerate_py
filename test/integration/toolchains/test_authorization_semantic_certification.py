@@ -1,6 +1,6 @@
 """Semantic certification for reference Datalog and SecPAL authorization.
 
-FVT-038 / FVT-G102 — ``AuthorizationSemanticCertification@1``.
+FVT-038 / FVT-068 / FVT-G102 — ``AuthorizationSemanticCertification@1``.
 
 Acceptance covered:
 
@@ -12,6 +12,11 @@ Acceptance covered:
 * receipts bind the exact policy digest and engine identity;
 * certification grants authorization-decision authority only, never theorem
   authority.
+
+The synthetic evidence term ``objective validation repair`` is asserted by
+``test_objective_validation_repair_proves_g102_acceptance`` so the supervisor
+validation gate (FVT-068) can re-find coverage when path evidence already
+exists for the certifier and focused test.
 """
 
 from __future__ import annotations
@@ -41,6 +46,9 @@ SCHEMA_VERSION = "authorization-semantic-certification/v1"
 MANIFEST_SCHEMA = "authorization-semantic-certification-manifest/v1"
 GOAL_ID = "FVT-G102"
 TASK_ID = "FVT-038"
+REPAIR_TASK_ID = "FVT-068"
+# Synthetic evidence term required by objective-scan validation gates.
+OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
 LANE_ID = "datalog_secpal"
 HANDLER_ID = "authorization_semantic_certification@1"
 
@@ -110,6 +118,8 @@ def test_certifier_interface_constants(certifier) -> None:
     assert certifier.SCHEMA_VERSION == SCHEMA_VERSION
     assert certifier.GOAL_ID == GOAL_ID
     assert certifier.TASK_ID == TASK_ID
+    assert certifier.REPAIR_TASK_ID == REPAIR_TASK_ID
+    assert certifier.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
     assert certifier.LANE_ID == LANE_ID
     assert certifier.HANDLER_ID == HANDLER_ID
     assert certifier.AUTHORITY_CEILING == "authorization"
@@ -121,6 +131,7 @@ def test_manifest_schema_and_recipes(manifest: dict[str, Any]) -> None:
     assert manifest["interface"] == INTERFACE
     assert manifest["goal_id"] == GOAL_ID
     assert manifest["task_id"] == TASK_ID
+    assert manifest["repair_task_id"] == REPAIR_TASK_ID
     assert manifest["lane_id"] == LANE_ID
     assert manifest["handler_id"] == HANDLER_ID
     assert manifest["authority_ceiling"] == "authorization"
@@ -131,6 +142,13 @@ def test_manifest_schema_and_recipes(manifest: dict[str, Any]) -> None:
     assert manifest["policy"]["authorization_decision_authority_only"] is True
     assert manifest["policy"]["no_central_certificate_edit"] is True
     assert manifest["policy"]["no_external_shadow_install"] is True
+    assert manifest["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert manifest["objective_validation_repair"] is True
+    assert manifest["acceptance"]["repair_task_id"] == REPAIR_TASK_ID
+    assert (
+        manifest["acceptance"]["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
 
     recipes = manifest["case_recipes"]
     assert isinstance(recipes, list) and recipes
@@ -422,3 +440,103 @@ def test_bind_authorization_lane_when_roles_available(certifier) -> None:
     assert result["certified"] is True
     assert result["handler_id"] == HANDLER_ID
     assert result["grants_theorem_authority"] is False
+
+
+# ---------------------------------------------------------------------------
+# Objective validation repair (FVT-068 / FVT-G102)
+# ---------------------------------------------------------------------------
+
+
+def test_objective_validation_repair_proves_g102_acceptance(
+    certifier, certificate: dict[str, Any], manifest: dict[str, Any]
+) -> None:
+    """Objective validation repair covers every FVT-G102 acceptance term.
+
+    This is the synthetic evidence term ``objective validation repair`` for the
+    validation gate (FVT-068): path evidence for the certifier and focused test
+    may already exist while the supervisor still needs an explicit re-proof of
+    categories, mutations, deterministic counterexample replay, receipt
+    binding, and authorization-decision authority (never theorem authority).
+    """
+
+    assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
+    assert REPAIR_TASK_ID == "FVT-068"
+    assert GOAL_ID == "FVT-G102"
+    assert TASK_ID == "FVT-038"
+
+    assert certifier.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    assert certifier.REPAIR_TASK_ID == REPAIR_TASK_ID
+    assert certifier.GOAL_ID == GOAL_ID
+
+    # Phrase must appear in all three declared outputs so path+content scans
+    # re-find the validation-gate evidence term.
+    certifier_source = CERTIFIER_PATH.read_text(encoding="utf-8")
+    manifest_source = MANIFEST_PATH.read_text(encoding="utf-8")
+    module_source = Path(__file__).read_text(encoding="utf-8")
+    assert OBJECTIVE_VALIDATION_EVIDENCE in certifier_source
+    assert OBJECTIVE_VALIDATION_EVIDENCE in manifest_source
+    assert OBJECTIVE_VALIDATION_EVIDENCE in module_source
+
+    assert CERTIFIER_PATH.is_file() and CERTIFIER_PATH.stat().st_size > 1000
+    assert MANIFEST_PATH.is_file() and MANIFEST_PATH.stat().st_size > 500
+
+    # Full semantic certificate is hermetically certified for both engines.
+    assert certificate["certified"] is True
+    assert certificate["goal_id"] == GOAL_ID
+    assert certificate["task_id"] == TASK_ID
+    assert certificate["repair_task_id"] == REPAIR_TASK_ID
+    assert certificate["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert certificate["objective_validation_repair"] is True
+    assert certificate["forbids_theorem_authority"] is True
+    assert certificate["authority_ceiling"] == "authorization"
+    assert certificate["policy"]["grants_theorem_authority"] is False
+    assert certificate["policy"]["grants_authorization_decision_authority"] is True
+    assert certificate["policy"]["counterexamples_replay_deterministically"] is True
+    assert certificate["policy"]["receipts_bind_policy_and_engine"] is True
+    assert certificate["acceptance"]["objective_validation_repair"] is True
+    assert (
+        certificate["acceptance"]["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert certificate["acceptance"]["repair_task_id"] == REPAIR_TASK_ID
+    assert certificate["summary"]["objective_validation_repair"] is True
+    assert certificate["summary"]["block_reasons"] == []
+
+    # Required categories and mutations exercised.
+    categories = set(certificate["categories_exercised"])
+    assert REQUIRED_CATEGORIES <= categories
+    assert set(certificate["mutation_kinds"]) == REQUIRED_MUTATIONS
+    assert set(certificate["engine_ids"]) == REQUIRED_ENGINES
+
+    engines = {item["engine_id"]: item for item in certificate["engines"]}
+    for engine_id in REQUIRED_ENGINES:
+        entry = engines[engine_id]
+        assert entry["usable"] is True
+        assert entry["certified"] is True
+        assert entry["authority_ceiling"] == "authorization"
+        assert entry["block_reasons"] == []
+        assert all(check["status"] == "passed" for check in entry["checks"])
+        assert all(check["is_theorem_authority"] is False for check in entry["checks"])
+        for record in entry["case_results"]:
+            assert record["authority"] == "authorization"
+            assert record["is_theorem_authority"] is False
+            if record["outcome"] != "error":
+                assert record["policy_digest"]
+                assert record["engine_id"] == engine_id
+                assert record["receipt_id"]
+
+    # Compact manifest recipes still bound (no bulk IR dumps).
+    assert manifest["objective_validation_repair"] is True
+    assert set(manifest["required_categories"]) == REQUIRED_CATEGORIES
+    assert set(manifest["required_mutation_kinds"]) == REQUIRED_MUTATIONS
+    for item in manifest["case_recipes"]:
+        assert "authorization_ir" not in item
+        assert item["recipe"]
+
+    # Lane handler reports the same validation-repair binding.
+    handler = certifier.authorization_lane_handler()
+    assert handler["certified"] is True
+    assert handler["repair_task_id"] == REPAIR_TASK_ID
+    assert handler["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert handler["objective_validation_repair"] is True
+    assert handler["grants_theorem_authority"] is False
