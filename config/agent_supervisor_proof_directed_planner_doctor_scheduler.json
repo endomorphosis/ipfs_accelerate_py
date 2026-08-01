@@ -1,0 +1,129 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.proof_directed_planner_doctor.scheduler_config@1",
+  "audited_baseline_commit": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
+  "taskboard_path": "docs/architecture/agent_supervisor_proof_directed_planner_doctor.todo.md",
+  "objectives_path": "docs/architecture/agent_supervisor_proof_directed_planner_doctor.objectives.md",
+  "plan_path": "docs/architecture/AGENT_SUPERVISOR_PROOF_DIRECTED_PLANNER_DOCTOR_PLAN.md",
+  "task_prefix": "## PDR-",
+  "goal_prefix": "PDR-G",
+  "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+  "merge_target_branch": "main",
+  "max_lanes": 6,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 60,
+  "check_interval_seconds": 30,
+  "stale_seconds": 1800,
+  "max_restarts": 3,
+  "max_task_attempts": 4,
+  "implementation_timeout_seconds": 10800,
+  "validation_max_workers": 4,
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py"
+  ],
+  "protected_paths": [
+    "docs/architecture/AGENT_SUPERVISOR_PROOF_DIRECTED_PLANNER_DOCTOR_PLAN.md",
+    "docs/architecture/agent_supervisor_proof_directed_planner_doctor.objectives.md",
+    "docs/architecture/agent_supervisor_proof_directed_planner_doctor.todo.md",
+    "config/agent_supervisor_proof_directed_planner_doctor_scheduler.json",
+    "config/agent_supervisor_planner_doctor_benchmark.json",
+    "docs/architecture/agent_supervisor_planner_doctor_threat_model.md",
+    "test/fixtures/agent_supervisor/planner_doctor_holdout"
+  ],
+  "derived_refill": {
+    "enabled_at_bootstrap": false,
+    "enabled_after_task": "PDR-081",
+    "task_source_kind": "duckdb",
+    "task_source_path": "data/agent_supervisor/proof_directed_planner_doctor/live/refill.duckdb",
+    "artifact_root": "data/agent_supervisor/proof_directed_planner_doctor/live/artifacts",
+    "max_goals_per_epoch": 8,
+    "max_tasks_per_epoch": 24,
+    "max_open_tasks": 48,
+    "max_depth": 3,
+    "max_retries": 2,
+    "unchanged_failure_cooldown_seconds": 3600,
+    "mutate_seed_board": false
+  },
+  "doctor": {
+    "default_mode": "report_only",
+    "enabled_at_bootstrap": false,
+    "mutation_authorized": false,
+    "narrow_autonomous_mutation_enabled": false,
+    "allow_llm": false,
+    "allow_remote_model_provider": false,
+    "allow_remote_embeddings": false,
+    "allow_network": false,
+    "require_real_byte_change_for_commit": true,
+    "require_live_fixed_point": true,
+    "require_kernel_reconstruction_for_authoritative_proof": true
+  },
+  "planner": {
+    "default_mode": "shadow",
+    "max_candidates": 4,
+    "max_query_rounds": 3,
+    "max_model_calls": 2,
+    "max_repair_rounds": 2,
+    "max_context_tokens": 12000,
+    "max_goals": 64,
+    "max_tasks": 256,
+    "max_graph_depth": 12,
+    "minimum_requested_ready_width": 2
+  },
+  "benchmark": {
+    "live_evidence_required": true,
+    "synthetic_evidence_may_promote": false,
+    "skipped_checks_may_promote": false,
+    "concurrency_sweep": [
+      1,
+      2,
+      4,
+      6
+    ],
+    "cache_strata": [
+      "cold",
+      "exact",
+      "delta",
+      "restart"
+    ],
+    "max_epochs": 8,
+    "quality_non_compensable": true,
+    "safety_floor_maximum": 0,
+    "missing_telemetry": "unavailable"
+  },
+  "rollout": {
+    "initial_mode": "shadow",
+    "automatic_enabled": false,
+    "stages": [
+      "off",
+      "observe",
+      "shadow",
+      "assist",
+      "canary",
+      "automatic"
+    ],
+    "require_fresh_current_tree_evaluation": true,
+    "require_independent_holdout": true,
+    "require_exact_rollback": true
+  },
+  "proof_cache": {
+    "enabled": true,
+    "module": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache",
+    "prefer_cache_before_provider": true,
+    "single_flight": true,
+    "rederive_assurance_on_hit": true,
+    "allow_simulated_zk_attested": false
+  },
+  "resource_hints": {
+    "pdr-foundation": "cpu-small",
+    "pdr-evidence": "cpu-medium",
+    "pdr-planner": "cpu-medium",
+    "pdr-proof": "cpu-proof-solver",
+    "pdr-control": "cpu-medium",
+    "pdr-doctor": "cpu-large",
+    "pdr-repair": "cpu-large",
+    "pdr-attestation": "cpu-proof-solver",
+    "pdr-benchmark": "cpu-large",
+    "pdr-telemetry": "cpu-medium",
+    "pdr-self-improvement": "cpu-medium",
+    "pdr-release": "cpu-large"
+  }
+}
