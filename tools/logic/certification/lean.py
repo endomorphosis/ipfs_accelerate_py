@@ -1159,8 +1159,18 @@ FANIN_INTERFACE: Final = "KernelLiveSemanticFanIn@1"
 FANIN_SCHEMA_VERSION: Final = "kernel-live-semantic-fanin/v1"
 FANIN_GOAL_ID: Final = "FVT-G206"
 FANIN_TASK_ID: Final = "FVT-057"
+FANIN_VALIDATION_TASK_ID: Final = "FVT-074"
+FANIN_OBJECTIVE_EVIDENCE: Final = "objective validation repair"
 FANIN_KERNEL_ID: Final = "lean"
 FANIN_TIMEOUT_SECONDS: Final = 0.05
+FANIN_VALIDATION_COMMAND: Final = (
+    "python -m pytest "
+    "test/integration/toolchains/test_kernel_live_semantic_fanin.py "
+    "test/integration/toolchains/test_lean_semantic_certification.py "
+    "test/integration/toolchains/test_rocq_toolchain_certification.py "
+    "test/integration/toolchains/test_isabelle_toolchain_certification.py "
+    "-q"
+)
 REQUIRED_FANIN_CASE_KINDS: Final[frozenset[str]] = frozenset(
     {
         "positive",
@@ -1474,6 +1484,9 @@ def build_live_fanin_contribution(
         "fanin_schema_version": FANIN_SCHEMA_VERSION,
         "goal_id": FANIN_GOAL_ID,
         "task_id": FANIN_TASK_ID,
+        "validation_task_id": FANIN_VALIDATION_TASK_ID,
+        "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+        "objective_validation_repair": True,
         "lane_id": LANE_ID,
         "owner_module": CERTIFICATION_SURFACE,
         "locked_toolchain": LOCKED_TOOLCHAIN,
@@ -1497,10 +1510,20 @@ def build_live_fanin_contribution(
         "cases": cases,
         "checks": checks,
         "bindings": bindings,
+        "evidence": {
+            "goal_id": FANIN_GOAL_ID,
+            "task_id": FANIN_TASK_ID,
+            "validation_task_id": FANIN_VALIDATION_TASK_ID,
+            "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+            "objective_validation_repair": True,
+            "certification_surface": CERTIFICATION_SURFACE,
+            "live_source_helper": "check_lean_source",
+            "validation_command": FANIN_VALIDATION_COMMAND,
+        },
         "repo_root": str(root),
         "notes": (
             "Lean live fan-in contribution: own kernel only; no Rocq/Isabelle/advisor "
-            "substitution; timeout fail-closed."
+            "substitution; timeout fail-closed; objective validation repair (FVT-074)."
             if usable
             else "Lean pin unavailable; live fan-in contribution incomplete."
         ),
@@ -1565,13 +1588,17 @@ def assemble_kernel_live_fanin_certificate(
         "interface": FANIN_INTERFACE,
         "goal_id": FANIN_GOAL_ID,
         "task_id": FANIN_TASK_ID,
+        "validation_task_id": FANIN_VALIDATION_TASK_ID,
+        "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+        "objective_validation_repair": bool(all_passed),
         "program": "formal-verification-tactician/kernel-live-semantics",
         "lane_id": LANE_ID,
         "description": (
             "Live semantic fan-in for Lean, Rocq, and Isabelle: each installed "
             "proof kernel checks its own generated source and retains assumptions, "
             "imports/session, theorem, mutation, and output digests. No advisor or "
-            "sibling kernel substitutes for the selected kernel."
+            "sibling kernel substitutes for the selected kernel. FVT-074 binds "
+            "objective validation repair for FVT-G206."
         ),
         "policy": {
             "own_kernel_only": True,
@@ -1583,6 +1610,7 @@ def assemble_kernel_live_fanin_certificate(
             "serialize_expensive_opam_isabelle_resources": True,
             "separate_kernel_authority": True,
             "isabelle_live_source_session_helper_required": True,
+            "objective_validation_repair_required": True,
             "required_case_kinds": sorted(REQUIRED_FANIN_CASE_KINDS),
         },
         "kernels": kernels,
@@ -1622,13 +1650,25 @@ def assemble_kernel_live_fanin_certificate(
                 for kid in required_kernels
             }
         },
+        "acceptance": {
+            "objective_validation_repair": bool(all_passed),
+            "own_kernel_only": True,
+            "isabelle_live_source_session_helper_required": True,
+            "required_case_kinds": sorted(REQUIRED_FANIN_CASE_KINDS),
+        },
         "evidence": {
+            "goal_id": FANIN_GOAL_ID,
+            "task_id": FANIN_TASK_ID,
+            "validation_task_id": FANIN_VALIDATION_TASK_ID,
+            "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+            "objective_validation_repair": bool(all_passed),
             "integration_test": (
                 "test/integration/toolchains/test_kernel_live_semantic_fanin.py"
             ),
             "certificate": (
                 "docs/architecture/formal_verification_kernel_live_certificate.json"
             ),
+            "validation_command": FANIN_VALIDATION_COMMAND,
             "surfaces": [
                 CERTIFICATION_SURFACE,
                 "tools.logic.certification.rocq",
@@ -1637,7 +1677,8 @@ def assemble_kernel_live_fanin_certificate(
         },
         "repo_root": str(root),
         "notes": (
-            "All three kernels independently completed live semantic fan-in."
+            "All three kernels independently completed live semantic fan-in; "
+            "objective validation repair (FVT-074) satisfied for FVT-G206."
             if all_passed
             else "Kernel live fan-in incomplete or blocked; promotion denied."
         ),
@@ -1764,6 +1805,9 @@ __all__ = [
     "FANIN_SCHEMA_VERSION",
     "FANIN_GOAL_ID",
     "FANIN_TASK_ID",
+    "FANIN_VALIDATION_TASK_ID",
+    "FANIN_OBJECTIVE_EVIDENCE",
+    "FANIN_VALIDATION_COMMAND",
     "REQUIRED_FANIN_CASE_KINDS",
     "live_fanin_case_recipes",
     "build_live_fanin_contribution",

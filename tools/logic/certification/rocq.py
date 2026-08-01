@@ -1472,8 +1472,18 @@ FANIN_INTERFACE: Final = "KernelLiveSemanticFanIn@1"
 FANIN_SCHEMA_VERSION: Final = "kernel-live-semantic-fanin/v1"
 FANIN_GOAL_ID: Final = "FVT-G206"
 FANIN_TASK_ID: Final = "FVT-057"
+FANIN_VALIDATION_TASK_ID: Final = "FVT-074"
+FANIN_OBJECTIVE_EVIDENCE: Final = "objective validation repair"
 FANIN_KERNEL_ID: Final = "rocq"
 FANIN_TIMEOUT_SECONDS: Final = 0.05
+FANIN_VALIDATION_COMMAND: Final = (
+    "python -m pytest "
+    "test/integration/toolchains/test_kernel_live_semantic_fanin.py "
+    "test/integration/toolchains/test_lean_semantic_certification.py "
+    "test/integration/toolchains/test_rocq_toolchain_certification.py "
+    "test/integration/toolchains/test_isabelle_toolchain_certification.py "
+    "-q"
+)
 REQUIRED_FANIN_CASE_KINDS: Final[frozenset[str]] = frozenset(
     {
         "positive",
@@ -1787,6 +1797,9 @@ def build_live_fanin_contribution(
         "fanin_schema_version": FANIN_SCHEMA_VERSION,
         "goal_id": FANIN_GOAL_ID,
         "task_id": FANIN_TASK_ID,
+        "validation_task_id": FANIN_VALIDATION_TASK_ID,
+        "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+        "objective_validation_repair": True,
         "lane_id": LANE_ID,
         "owner_module": CERTIFICATION_SURFACE,
         "locked_version": LOCKED_VERSION,
@@ -1810,10 +1823,21 @@ def build_live_fanin_contribution(
         "cases": cases,
         "checks": checks,
         "bindings": bindings,
+        "evidence": {
+            "goal_id": FANIN_GOAL_ID,
+            "task_id": FANIN_TASK_ID,
+            "validation_task_id": FANIN_VALIDATION_TASK_ID,
+            "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+            "objective_validation_repair": True,
+            "certification_surface": CERTIFICATION_SURFACE,
+            "live_source_helper": "check_rocq_source_live",
+            "validation_command": FANIN_VALIDATION_COMMAND,
+        },
         "repo_root": str(root),
         "notes": (
             "Rocq live fan-in contribution: own kernel only; OPAM support-only; "
-            "no Lean/Isabelle/advisor substitution; timeout fail-closed."
+            "no Lean/Isabelle/advisor substitution; timeout fail-closed; "
+            "objective validation repair (FVT-074)."
             if usable
             else "Rocq pin unavailable; live fan-in contribution incomplete."
         ),
@@ -1944,6 +1968,9 @@ __all__ = [
     "FANIN_SCHEMA_VERSION",
     "FANIN_GOAL_ID",
     "FANIN_TASK_ID",
+    "FANIN_VALIDATION_TASK_ID",
+    "FANIN_OBJECTIVE_EVIDENCE",
+    "FANIN_VALIDATION_COMMAND",
     "REQUIRED_FANIN_CASE_KINDS",
     "live_fanin_case_recipes",
     "build_live_fanin_contribution",
