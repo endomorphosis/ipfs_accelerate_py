@@ -226,6 +226,10 @@ setup(
             "ipfs-accelerate-agent-merge-resolver=ipfs_accelerate_py.agent_supervisor.merge.merge_resolver:main",
             "ipfs-accelerate-agent-llm-merge-resolver-fallback=ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main",
             "ipfs-accelerate-llama-cpp-serve=ipfs_accelerate_py.utils.llama_cpp:main",
-        ]
+        ],
+        # Shared proof-reuse plugin (mirrors [project.entry-points.pytest11] in pyproject.toml).
+        "pytest11": [
+            "ipfs-proof-reuse=ipfs_accelerate_py.testing.proof_reuse.plugin",
+        ],
     },
 )

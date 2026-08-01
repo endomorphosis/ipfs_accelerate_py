@@ -1,9 +1,50 @@
+import importlib
 import os
 import sys
 import warnings
 from pathlib import Path
 
 import pytest
+
+# ---------------------------------------------------------------------------
+# Optional proof-reuse bootstrap (PTR-061)
+#
+# Normal pytest startup discovers the shared plugin through the ``pytest11``
+# entry point declared in packaging metadata.  Hermetic / supervisor runs often
+# disable entry-point autoload, so this root loader supplies the same plugin in
+# that case.  Missing optional proof-reuse packages leave pytest unchanged;
+# errors raised from inside an available plugin remain visible.
+#
+# Importing the plugin performs no network access, daemon startup, cache
+# creation, or ZK probe.  Both the packaging entry point and this root loader
+# are idempotent: they resolve to the same module name and never maintain a
+# test-path registry.
+# ---------------------------------------------------------------------------
+_PROOF_REUSE_PLUGIN = "ipfs_accelerate_py.testing.proof_reuse.plugin"
+
+
+def _optional_proof_reuse_plugin() -> tuple[str, ...]:
+    try:
+        importlib.import_module(_PROOF_REUSE_PLUGIN)
+    except ModuleNotFoundError as exc:
+        missing = exc.name or ""
+        if missing and (
+            missing == _PROOF_REUSE_PLUGIN
+            or _PROOF_REUSE_PLUGIN.startswith(f"{missing}.")
+        ):
+            return ()
+        raise
+    return (_PROOF_REUSE_PLUGIN,)
+
+
+# Avoid registering the same module under both its entry-point name and module
+# name when autoload is enabled.  With autoload disabled, pytest processes this
+# tuple early enough for the plugin's CLI and ini options to remain available.
+pytest_plugins = (
+    _optional_proof_reuse_plugin()
+    if os.environ.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD")
+    else ()
+)
 
 # Ensure integration/long tests are enabled before module imports during collection.
 os.environ.setdefault("TEST_MODE", "development")
