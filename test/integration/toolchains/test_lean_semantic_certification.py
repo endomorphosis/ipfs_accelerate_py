@@ -1,6 +1,9 @@
-"""Semantic certification of the pinned Lean kernel (FVT-040 / FVT-G101).
+"""Semantic certification of the pinned Lean kernel (FVT-040 / FVT-070 / FVT-G101).
 
 Exercises ``tools/logic/certification/lean.py`` and the Lean corpus fixture.
+
+FVT-070 is the objective validation repair for the same goal: path evidence
+already exists; this suite re-proves semantic acceptance under offline bounds.
 
 Acceptance covered:
 
@@ -12,6 +15,7 @@ Acceptance covered:
   output;
 * sorry, admit, unsafe escape, shim mismatch, install, download, and network
   use fail closed;
+* empty elan inventory still probes a PATH/digest-bound pin (no download);
 * resulting authority is kernel proof checking only.
 """
 
@@ -45,6 +49,8 @@ SCHEMA_VERSION = "lean-semantic-certification/v1"
 CORPUS_SCHEMA = "lean-semantic-corpus/v1"
 GOAL_ID = "FVT-G101"
 TASK_ID = "FVT-040"
+VALIDATION_TASK_ID = "FVT-070"
+OBJECTIVE_EVIDENCE = "objective validation repair"
 LOCKED_TOOLCHAIN = "leanprover/lean4:v4.31.0"
 LOCKED_VERSION = "v4.31.0"
 LOCKED_VERSION_NUMERIC = "4.31.0"
@@ -117,6 +123,8 @@ def test_manifest_schema_and_corpus(manifest: dict[str, Any]) -> None:
     assert manifest["interface"] == INTERFACE
     assert manifest["goal_id"] == GOAL_ID
     assert manifest["task_id"] == TASK_ID
+    assert manifest["validation_task_id"] == VALIDATION_TASK_ID
+    assert manifest["objective_evidence"] == OBJECTIVE_EVIDENCE
     assert manifest["tool_id"] == "lean"
     assert manifest["lane_id"] == "kernel"
     assert manifest["locked_toolchain"] == LOCKED_TOOLCHAIN
@@ -132,6 +140,7 @@ def test_manifest_schema_and_corpus(manifest: dict[str, Any]) -> None:
     assert policy["shim_mismatch_fails_closed"] is True
     assert policy["sorry_admit_unsafe_fail_closed"] is True
     assert policy["authority_is_kernel_proof_checking_only"] is True
+    assert policy["empty_elan_inventory_probes_path_pin"] is True
 
     cases = manifest["cases"]
     assert isinstance(cases, list) and cases
@@ -158,6 +167,8 @@ def test_module_constants(lean_cert) -> None:
     assert lean_cert.SCHEMA_VERSION == SCHEMA_VERSION
     assert lean_cert.GOAL_ID == GOAL_ID
     assert lean_cert.TASK_ID == TASK_ID
+    assert lean_cert.VALIDATION_TASK_ID == VALIDATION_TASK_ID
+    assert lean_cert.OBJECTIVE_EVIDENCE == OBJECTIVE_EVIDENCE
     assert lean_cert.LOCKED_TOOLCHAIN == LOCKED_TOOLCHAIN
     assert lean_cert.LOCKED_VERSION == LOCKED_VERSION
     assert lean_cert.AUTHORITY_SCOPE == "kernel_proof_checking_only"
@@ -189,6 +200,7 @@ def test_source_scan_rejects_sorry_admit_unsafe(lean_cert) -> None:
 
 
 def test_shim_mismatch_detector(lean_cert) -> None:
+    # Other offline pins present without the lock pin => shim mismatch.
     assert lean_cert.detect_lean_shim_toolchain_mismatch(
         LOCKED_TOOLCHAIN,
         ["leanprover/lean4:v4.32.2"],
@@ -197,6 +209,9 @@ def test_shim_mismatch_detector(lean_cert) -> None:
         LOCKED_TOOLCHAIN,
         [LOCKED_TOOLCHAIN, "leanprover/lean4:v4.32.2"],
     )
+    # Empty elan inventory is not a shim mismatch: sealed homes may lack
+    # ~/.elan/toolchains while still exposing a digest-bound lean on PATH.
+    assert not lean_cert.detect_lean_shim_toolchain_mismatch(LOCKED_TOOLCHAIN, [])
 
 
 # ---------------------------------------------------------------------------
@@ -348,12 +363,19 @@ def test_production_certified_when_pin_usable(receipt: dict[str, Any]) -> None:
     assert receipt["schema_version"] == SCHEMA_VERSION
     assert receipt["goal_id"] == GOAL_ID
     assert receipt["task_id"] == TASK_ID
+    assert receipt["validation_task_id"] == VALIDATION_TASK_ID
+    assert receipt["objective_evidence"] == OBJECTIVE_EVIDENCE
     assert receipt["authority_scope"] == "kernel_proof_checking_only"
     assert receipt["production_certified"] is True
     assert receipt["promotion_blocked"] is False
     assert receipt["block_reasons"] == []
     assert receipt["receipt_digest_sha256"]
     assert len(receipt["receipt_digest_sha256"]) == 64
+    evidence = receipt["evidence"]
+    assert evidence["validation_task_id"] == VALIDATION_TASK_ID
+    assert evidence["objective_evidence"] == OBJECTIVE_EVIDENCE
+    assert evidence["goal_id"] == GOAL_ID
+    assert "test_lean_semantic_certification.py" in evidence["integration_test"]
     # Every corpus case check must pass under a certified receipt.
     for check in receipt["checks"]:
         if check["kind"] in REQUIRED_CASE_KINDS or check["check_id"] in {
@@ -468,3 +490,114 @@ def test_offline_env_pins_locked_toolchain(lean_cert) -> None:
     assert env["FORMAL_VERIFICATION_FORBID_INSTALL"] == "1"
     assert env["FORMAL_VERIFICATION_FORBID_NETWORK"] == "1"
     assert env["FORMAL_VERIFICATION_FORBID_DOWNLOAD"] == "1"
+
+
+def test_empty_elan_inventory_still_probes_exact_path_pin(
+    lean_cert, manifest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sealed validation HOME may have no elan toolchains inventory.
+
+    Objective validation repair (FVT-070): do not treat empty inventory as
+    shim mismatch; probe the PATH pin under ELAN_NO_AUTO_INSTALL and accept
+    only the exact locked version. Never install/download/network.
+    """
+
+    monkeypatch.setattr(
+        lean_cert,
+        "list_elan_installed_toolchains",
+        lambda _env=None: [],
+    )
+    monkeypatch.setattr(
+        lean_cert,
+        "resolve_lean_executable",
+        lambda _candidates=None: "/fixture/lean",
+    )
+
+    def fake_run(argv, *, timeout, env, **_kwargs):
+        assert env.get("ELAN_NO_AUTO_INSTALL") == "1"
+        assert env.get("ELAN_TOOLCHAIN") == LOCKED_TOOLCHAIN
+        # Identity probe only for this synthetic path.
+        if "--version" in argv:
+            return lean_cert.subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout=f"Lean (version {LOCKED_VERSION_NUMERIC}, fixture)\n",
+                stderr="",
+            )
+        # Corpus compile: accept only the true theorem source.
+        source_path = Path(argv[-1]) if argv else None
+        source = source_path.read_text(encoding="utf-8") if source_path else ""
+        if "theorem from_eq (n m : Nat) (h : n = m) : n = m := h" in source and (
+            "False" not in source and "sorry" not in source and "admit" not in source
+            and "unsafe" not in source and "axiom" not in source and "exact 0" not in source
+        ):
+            return lean_cert.subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return lean_cert.subprocess.CompletedProcess(
+            argv, 1, stdout="", stderr="error: fixture reject\n"
+        )
+
+    monkeypatch.setattr(lean_cert, "bounded_run", fake_run)
+    cert = lean_cert.run_semantic_suite(
+        repo_root=REPO_ROOT,
+        manifest=manifest,
+        env=lean_cert.offline_env(),
+        executable="/fixture/lean",
+    )
+    assert cert.shim_toolchain_mismatch is False
+    assert cert.elan_inventory_empty is True
+    assert cert.identity_probed is True
+    assert cert.usable is True
+    assert cert.locked_version_mismatch is False
+    assert cert.install_attempted is False
+    assert cert.download_attempted is False
+    assert cert.network_used is False
+    assert cert.production_certified is True
+    assert cert.promotion_blocked is False
+    assert cert.validation_task_id == VALIDATION_TASK_ID
+    assert cert.objective_evidence == OBJECTIVE_EVIDENCE
+
+    receipt = lean_cert.build_certification_receipt(
+        repo_root=REPO_ROOT,
+        manifest=manifest,
+        env=lean_cert.offline_env(),
+    )
+    # build_certification_receipt re-runs the suite; keep monkeypatches active.
+    assert receipt["validation_task_id"] == VALIDATION_TASK_ID
+    assert receipt["objective_evidence"] == OBJECTIVE_EVIDENCE
+    assert receipt["evidence"]["objective_evidence"] == OBJECTIVE_EVIDENCE
+    assert receipt["policy"]["empty_elan_inventory_probes_path_pin"] is True
+    assert receipt["production_certified"] is True
+
+
+def test_objective_validation_repair_evidence_always_present(
+    lean_cert, manifest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Even when the pin is unavailable, receipts bind FVT-070 validation evidence."""
+
+    monkeypatch.setattr(
+        lean_cert,
+        "list_elan_installed_toolchains",
+        lambda _env=None: [],
+    )
+    monkeypatch.setattr(
+        lean_cert,
+        "resolve_lean_executable",
+        lambda _candidates=None: None,
+    )
+    receipt = lean_cert.build_certification_receipt(
+        repo_root=REPO_ROOT,
+        manifest=manifest,
+        env=lean_cert.offline_env(),
+    )
+    assert receipt["goal_id"] == GOAL_ID
+    assert receipt["task_id"] == TASK_ID
+    assert receipt["validation_task_id"] == VALIDATION_TASK_ID
+    assert receipt["objective_evidence"] == OBJECTIVE_EVIDENCE
+    assert receipt["usable"] is False
+    assert receipt["production_certified"] is False
+    assert receipt["promotion_blocked"] is True
+    assert receipt["install_attempted"] is False
+    assert receipt["download_attempted"] is False
+    assert receipt["network_used"] is False
+    assert receipt["evidence"]["validation_task_id"] == VALIDATION_TASK_ID
+    assert "ELAN_NO_AUTO_INSTALL=1" in receipt["evidence"]["validation_command"]

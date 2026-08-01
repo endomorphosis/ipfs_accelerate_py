@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Semantic certification for the pinned Lean 4 kernel.
 
-``LeanSemanticCertification@1`` / FVT-G101 (FVT-040).
+``LeanSemanticCertification@1`` / FVT-G101 (FVT-040; validation repair FVT-070).
 
 Owns the Lean lane handler, hermetic corpus, and focused certification surface
 for the already-usable offline pin ``leanprover/lean4:v4.31.0``. Promotion is
@@ -42,11 +42,13 @@ SCHEMA_VERSION: Final = "lean-semantic-certification/v1"
 CORPUS_SCHEMA: Final = "lean-semantic-corpus/v1"
 GOAL_ID: Final = "FVT-G101"
 TASK_ID: Final = "FVT-040"
+VALIDATION_TASK_ID: Final = "FVT-070"
 PROGRAM: Final = "formal-verification-tactician/lean-certification"
 LANE_ID: Final = "kernel"
 TOOL_ID: Final = "lean"
 CERTIFICATION_SURFACE: Final = "tools.logic.certification.lean"
 HANDLER_ID: Final = "lean_semantic_certifier"
+OBJECTIVE_EVIDENCE: Final = "objective validation repair"
 
 LOCKED_TOOLCHAIN: Final = "leanprover/lean4:v4.31.0"
 LOCKED_VERSION: Final = "v4.31.0"
@@ -318,13 +320,23 @@ def detect_lean_shim_toolchain_mismatch(
     selected_toolchain: str | None,
     installed_toolchains: Sequence[str],
 ) -> bool:
-    """True when the selected Lean toolchain is not offline-installed."""
+    """True when elan has offline installs but the selected pin is absent.
+
+    An empty inventory is not a shim mismatch. Sealed validation homes often
+    have no ``~/.elan/toolchains`` listing even when a digest-bound Lean binary
+    is on ``PATH``. In that case the certifier must still probe ``lean
+    --version`` under ``ELAN_NO_AUTO_INSTALL=1`` and accept only an exact pin
+    match. Shim mismatch applies when *other* toolchains are offline-installed
+    and the lock pin is not among them (elan would otherwise network-fetch).
+    """
 
     if not selected_toolchain or not str(selected_toolchain).strip():
         return False
     installed = {
         item.strip() for item in installed_toolchains if item and str(item).strip()
     }
+    if not installed:
+        return False
     return selected_toolchain.strip() not in installed
 
 
@@ -414,8 +426,10 @@ class LeanSemanticCertification:
     schema_version: str = SCHEMA_VERSION
     goal_id: str = GOAL_ID
     task_id: str = TASK_ID
+    validation_task_id: str = VALIDATION_TASK_ID
     program: str = PROGRAM
     certification_surface: str = CERTIFICATION_SURFACE
+    objective_evidence: str = OBJECTIVE_EVIDENCE
     locked_toolchain: str = LOCKED_TOOLCHAIN
     locked_version: str = LOCKED_VERSION
     authority_ceiling: str = AUTHORITY_CEILING
@@ -429,6 +443,7 @@ class LeanSemanticCertification:
     usable: bool = False
     shim_toolchain_mismatch: bool = False
     locked_version_mismatch: bool = False
+    elan_inventory_empty: bool = False
     network_used: bool = False
     install_attempted: bool = False
     download_attempted: bool = False
@@ -465,12 +480,14 @@ def default_corpus_manifest() -> dict[str, Any]:
         "interface": INTERFACE,
         "goal_id": GOAL_ID,
         "task_id": TASK_ID,
+        "validation_task_id": VALIDATION_TASK_ID,
         "tool_id": TOOL_ID,
         "lane_id": LANE_ID,
         "locked_toolchain": LOCKED_TOOLCHAIN,
         "locked_version": LOCKED_VERSION,
         "authority_ceiling": AUTHORITY_CEILING,
         "authority_scope": AUTHORITY_SCOPE,
+        "objective_evidence": OBJECTIVE_EVIDENCE,
         "policy": {
             "no_install": True,
             "no_download": True,
@@ -479,6 +496,7 @@ def default_corpus_manifest() -> dict[str, Any]:
             "shim_mismatch_fails_closed": True,
             "sorry_admit_unsafe_fail_closed": True,
             "authority_is_kernel_proof_checking_only": True,
+            "empty_elan_inventory_probes_path_pin": True,
         },
         "cases": [dict(case) for case in _DEFAULT_CORPUS_CASES],
     }
@@ -523,6 +541,7 @@ def probe_lean_identity(
 
     probe_env = offline_env(env)
     installed = list_elan_installed_toolchains(probe_env)
+    shim_mismatch = detect_lean_shim_toolchain_mismatch(LOCKED_TOOLCHAIN, installed)
     result: dict[str, Any] = {
         "tool_id": TOOL_ID,
         "path_present": False,
@@ -532,17 +551,18 @@ def probe_lean_identity(
         "installed": False,
         "selected_toolchain": LOCKED_TOOLCHAIN,
         "installed_toolchains": installed,
-        "shim_toolchain_mismatch": detect_lean_shim_toolchain_mismatch(
-            LOCKED_TOOLCHAIN, installed
-        ),
+        "shim_toolchain_mismatch": shim_mismatch,
         "locked_version_mismatch": False,
         "network_used": False,
         "install_attempted": False,
         "download_attempted": False,
         "probe_error": None,
+        "elan_inventory_empty": not bool(installed),
     }
 
-    if result["shim_toolchain_mismatch"]:
+    # True shim mismatch: elan knows other pins but not the lock pin. Fail
+    # closed without probing so we never trigger an opportunistic download.
+    if shim_mismatch:
         result["probe_error"] = "shim_toolchain_mismatch"
         return result
 
@@ -560,7 +580,15 @@ def probe_lean_identity(
         env=probe_env,
     )
     if completed is None:
+        # With ELAN_NO_AUTO_INSTALL, a missing offline pin often surfaces as
+        # spawn/timeout rather than a clean version banner.
         result["probe_error"] = "probe_timeout_or_spawn_failure"
+        return result
+
+    if completed.returncode not in (0, None) and not (
+        first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
+    ):
+        result["probe_error"] = f"version_probe_exit_{completed.returncode}"
         return result
 
     banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
@@ -723,6 +751,7 @@ def run_semantic_suite(
     cert.installed = bool(identity.get("installed"))
     cert.shim_toolchain_mismatch = bool(identity.get("shim_toolchain_mismatch"))
     cert.locked_version_mismatch = bool(identity.get("locked_version_mismatch"))
+    cert.elan_inventory_empty = bool(identity.get("elan_inventory_empty"))
     cert.network_used = bool(identity.get("network_used"))
     cert.install_attempted = bool(identity.get("install_attempted"))
     cert.download_attempted = bool(identity.get("download_attempted"))
@@ -1057,6 +1086,27 @@ def build_certification_receipt(
         "authority_is_kernel_proof_checking_only": True,
         "does_not_edit_central_certificate": True,
         "does_not_select_alternate_elan_toolchain": True,
+        "empty_elan_inventory_probes_path_pin": True,
+    }
+    payload["validation_task_id"] = VALIDATION_TASK_ID
+    payload["objective_evidence"] = OBJECTIVE_EVIDENCE
+    payload["evidence"] = {
+        "goal_id": GOAL_ID,
+        "task_id": TASK_ID,
+        "validation_task_id": VALIDATION_TASK_ID,
+        "objective_evidence": OBJECTIVE_EVIDENCE,
+        "certification_surface": CERTIFICATION_SURFACE,
+        "integration_test": (
+            "test/integration/toolchains/test_lean_semantic_certification.py"
+        ),
+        "corpus_manifest": str(DEFAULT_MANIFEST_RELATIVE).replace("\\", "/"),
+        "validation_command": (
+            "ELAN_TOOLCHAIN=leanprover/lean4:v4.31.0 ELAN_NO_AUTO_INSTALL=1 "
+            "python -m pytest "
+            "test/integration/toolchains/test_lean_semantic_certification.py "
+            "test/integration/test_formal_verification_real_tool_matrix.py "
+            "-k lean -q"
+        ),
     }
     payload["receipt_digest_sha256"] = content_digest(
         {
@@ -1676,11 +1726,13 @@ __all__ = [
     "CORPUS_SCHEMA",
     "GOAL_ID",
     "TASK_ID",
+    "VALIDATION_TASK_ID",
     "PROGRAM",
     "LANE_ID",
     "TOOL_ID",
     "CERTIFICATION_SURFACE",
     "HANDLER_ID",
+    "OBJECTIVE_EVIDENCE",
     "LOCKED_TOOLCHAIN",
     "LOCKED_VERSION",
     "LOCKED_VERSION_NUMERIC",
