@@ -39,6 +39,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     ValidationRuntimeError,
     build_validation_environment,
     build_hermetic_validation_runtime,
+    canonical_validation_environment_contract,
     sealed_validation_python_runner,
     validation_argv_command,
     validation_environment_for_runner,
@@ -73,6 +74,40 @@ def _sealed_daemon_environment() -> dict[str, str]:
         build_validation_environment(),
         TodoImplementationDaemon._validation_command_runner,
     )
+
+
+def test_canonical_validation_environment_contract_ignores_provider_path() -> None:
+    provider_only_path = (
+        "/home/test/.elan/bin:/home/test/.local/theorem-provers/bin"
+    )
+
+    contract = canonical_validation_environment_contract(
+        {"PATH": provider_only_path}
+    )
+    expected = build_validation_environment({"PATH": provider_only_path})
+
+    assert contract["path"] == expected["PATH"]
+    assert provider_only_path not in str(contract["path"])
+    assert contract["path_entries"] == tuple(
+        expected["PATH"].split(os.pathsep)
+    )
+    assert contract["inherited_path_ignored"] is True
+    assert contract["writable_toolchain_paths_rejected"] is True
+    assert contract["path_override_active"] is False
+    assert contract["path_override_environment_variable"] == (
+        VALIDATION_PATH_ENV
+    )
+    assert contract["python_interpreter"] == expected["PYTHON"]
+    assert contract["base_home"] == expected["HOME"]
+    assert contract["base_xdg"] == {
+        key: expected[key]
+        for key in (
+            "XDG_CACHE_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+        )
+    }
 
 
 def _git(cwd: Path, *args: str) -> str:

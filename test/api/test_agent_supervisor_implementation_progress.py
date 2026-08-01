@@ -373,6 +373,11 @@ def test_checkpoint_manifest_is_cid_bound_and_propagated_to_retry(
     assert str(checkpoint_dir) in first_prompt
     assert str(checkpoint_dir) in retry_prompt
     assert manifest["manifest_cid"] in retry_prompt
+    for prompt in (first_prompt, retry_prompt):
+        assert "Authoritative validation environment" in prompt
+        assert "inherited `PATH` is ignored" in prompt
+        assert "ipfs-accelerate-validation-home-" in prompt
+        assert "$HOME/.config" in prompt
     environment = restarted._implementation_process_environment(
         task,
         attempt=2,

@@ -158,6 +158,7 @@ from ..validation.validation_runtime import (
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
     ValidationPythonLauncherReceipt,
     ValidationRuntimeError,
+    canonical_validation_environment_contract,
     sealed_validation_python_runner,
     validation_python_launcher_environment,
     validation_shell_command,
@@ -27256,6 +27257,9 @@ class PortalImplementationDaemon:
             scope_adjudication=(
                 scope_payload if isinstance(scope_payload, Mapping) else None
             ),
+            validation_environment_guidance=(
+                self._authoritative_validation_environment_guidance()
+            ),
         )
         projection = compact_failure_review(review)
         result["failure_review"] = review.to_record()
@@ -39993,6 +39997,7 @@ class PortalImplementationDaemon:
             "checkpoint_manifest",
             "failure_review",
             "next_attempt_prompt_addendum",
+            "validation_environment_guidance",
         ):
             value = failure.get(key)
             if value not in (None, "", (), [], {}):
@@ -40258,6 +40263,9 @@ class PortalImplementationDaemon:
             ),
             "returncode": int(returncode),
             "validation_result": validation,
+            "validation_environment_guidance": (
+                self._authoritative_validation_environment_guidance()
+            ),
         }
         review = validation.get("failure_review")
         if isinstance(review, Mapping):
@@ -40850,6 +40858,57 @@ class PortalImplementationDaemon:
             )
         return path
 
+    @staticmethod
+    def _authoritative_validation_environment_guidance() -> str:
+        """Render the exact final validation PATH and private-home contract.
+
+        This is prompt guidance only. It delegates PATH/Python calculation to
+        the same fail-closed builder used by :class:`ValidationScheduler` and
+        does not add executable directories or relax writable-path checks.
+        """
+
+        try:
+            contract = canonical_validation_environment_contract()
+        except ValidationRuntimeError as exc:
+            return (
+                "## Authoritative validation environment (fail-closed)\n"
+                "- The canonical validation environment is currently invalid: "
+                f"{type(exc).__name__}: {exc}\n"
+                "- Authoritative validation will reject this configuration. "
+                "Do not weaken product assertions or tests to hide it."
+            )
+        path = json.dumps(str(contract["path"]), ensure_ascii=True)
+        python = json.dumps(
+            str(contract["python_interpreter"]), ensure_ascii=True
+        )
+        override = json.dumps(
+            str(contract["path_override_environment_variable"]),
+            ensure_ascii=True,
+        )
+        return (
+            "## Authoritative validation environment (fail-closed)\n"
+            f"- `PATH` is exactly {path}. The provider/implementer process's "
+            "inherited `PATH` is ignored.\n"
+            f"- The canonical Python interpreter target is exactly {python}; "
+            "the validation runner may expose it through a sealed launcher.\n"
+            "- Each validation command receives a fresh private `HOME` whose "
+            "directory name starts with "
+            "`ipfs-accelerate-validation-home-`. Its XDG paths are exactly "
+            "`$HOME/.cache`, `$HOME/.config`, `$HOME/.local/share`, and "
+            "`$HOME/.local/state`. Operator profile state such as "
+            "`~/.elan`, shell startup files, and provider-only managed "
+            "toolchains is unavailable.\n"
+            "- An operator can replace the complete validation `PATH` only "
+            f"through {override} before supervisor dispatch. Every entry and "
+            "ancestor must pass the existing non-writable toolchain check; "
+            "user-writable tool directories are rejected.\n"
+            "- Judge external-tool availability and write semantic assertions "
+            "against this exact environment, not a successful provider-side "
+            "probe. If a required prover is absent, report a dependency/"
+            "capability gap or add an approved digest-bound deployment; never "
+            "claim usability or weaken mandatory tests."
+        )
+
     def _implementation_prompt_policy_appendix(self, task: PortalTask) -> str:
         """Admission and output-ownership policy bound into implementer prompts.
 
@@ -40873,6 +40932,8 @@ class PortalImplementationDaemon:
             "generators over bulk golden dumps that re-emit full envelopes per "
             "case.\n"
             f"- Declared Outputs for this task: {outputs}\n"
+            "\n"
+            f"{self._authoritative_validation_environment_guidance()}\n"
         )
 
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
