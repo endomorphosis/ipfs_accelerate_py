@@ -6,8 +6,10 @@ Acceptance covered:
 
 * Soufflé 2.4.1 source/archive and build dependencies are immutable and
   checksummed; user-local executable and artifact digests are exact;
-* allow/deny/unknown/conflict/delegation plus rule/scope mutation, replay,
-  malformed, timeout, and disagreement cases execute through vendor Soufflé;
+* allow/deny/unknown/conflict/delegation plus rule/scope mutation and replay
+  execute through vendor Soufflé;
+* malformed-output, timeout, and disagreement behavior is injected by the
+  bounded runner harness without vendor-prover fault-control variables;
 * linux-aarch64 is supported for Soufflé;
 * external SecPAL is a narrow unsupported-platform exception on
   linux-aarch64 under the current contract and never counts as installed,
@@ -25,6 +27,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -77,6 +80,12 @@ REQUIRED_BUILD_DEPS = {
     "python3",
 }
 LINUX_AARCH64 = "linux-aarch64"
+DEFAULT_MANAGED_PROVER_ROOT = (
+    Path.home() / ".local/share/ipfs_datasets_py/theorem-provers"
+)
+DEPENDENCY_PREFIX_SUFFIX = Path(
+    "build-dependencies/souffle/ubuntu-noble-arm64/root"
+)
 
 
 def _ensure_datasets_on_path() -> None:
@@ -109,27 +118,57 @@ def certifier():
 
 
 @pytest.fixture(scope="module")
-def install_root(tmp_path_factory) -> Path:
-    return tmp_path_factory.mktemp("authz-vendor")
+def managed_prover_root() -> Path:
+    root = Path(
+        os.environ.get(
+            "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+            str(DEFAULT_MANAGED_PROVER_ROOT),
+        )
+    ).expanduser().resolve()
+    assert root.is_dir(), f"managed theorem-prover root is unavailable: {root}"
+    return root
 
 
 @pytest.fixture(scope="module")
-def vendor_bundle(installer, install_root):
+def install_root(managed_prover_root: Path) -> Path:
+    root = managed_prover_root / "souffle-vendor"
+    assert root.is_dir(), f"managed Soufflé vendor root is unavailable: {root}"
+    return root
+
+
+@pytest.fixture(scope="module")
+def dependency_prefix(managed_prover_root: Path) -> Path:
+    prefix = managed_prover_root / DEPENDENCY_PREFIX_SUFFIX
+    assert prefix.is_dir(), f"managed Soufflé dependency prefix is unavailable: {prefix}"
+    return prefix
+
+
+@pytest.fixture(scope="module")
+def vendor_bundle(installer, install_root, dependency_prefix):
     return installer.ensure_authorization_vendor(
         yes=True,
         strict=True,
-        force=True,
+        force=False,
         install_root=install_root,
+        dependency_prefix=dependency_prefix,
+        repo_root=REPO_ROOT,
+        lock_path=LOCK_PATH,
         platform_id=LINUX_AARCH64,
         checksum_verified=True,
     )
 
 
 @pytest.fixture(scope="module")
-def vendor_certificate(certifier, install_root) -> dict[str, Any]:
+def vendor_certificate(
+    certifier,
+    install_root,
+    dependency_prefix,
+) -> dict[str, Any]:
     return certifier.certify_external_authorization_vendor(
         install_root=install_root,
-        force_install=True,
+        dependency_prefix=dependency_prefix,
+        force_install=False,
+        skip_install=True,
         platform_id=LINUX_AARCH64,
         repo_root=REPO_ROOT,
         lock_path=LOCK_PATH,
@@ -195,6 +234,14 @@ def test_installer_vendor_constants(installer) -> None:
     assert meta["policy"]["never_promote_hermetic_shadow_as_vendor"] is True
     assert meta["policy"]["secpal_linux_aarch64_is_narrow_platform_exception"] is True
     assert meta["policy"]["souffle_linux_aarch64_supported"] is True
+    assert (
+        meta["policy"]["souffle_relocation_requires_explicit_known_layout"]
+        is True
+    )
+    assert (
+        meta["policy"]["souffle_relocation_preserves_provenance_manifest"]
+        is True
+    )
     assert meta["souffle_source_archive_sha256"] == REQUIRED_SOURCE_SHA256
     assert meta["vendor_repair_task_id"] == VENDOR_REPAIR_TASK_ID
     assert meta["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
@@ -209,6 +256,11 @@ def test_certifier_vendor_constants(certifier) -> None:
     assert certifier.VENDOR_REPAIR_TASK_ID == VENDOR_REPAIR_TASK_ID
     assert certifier.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
     assert certifier.SOUFFLE_REQUIRED_SOURCE_SHA256 == REQUIRED_SOURCE_SHA256
+    assert certifier.AUTHORIZATION_FAULT_MODES == {
+        "malformed_output",
+        "timeout",
+        "disagreement",
+    }
     assert "test_external_authorization_vendor_certification.py" in (
         certifier.OBJECTIVE_VALIDATION_COMMAND
     )
@@ -238,6 +290,18 @@ def test_vendor_souffle_install_on_linux_aarch64(installer, vendor_bundle) -> No
     assert identity.source_archive_sha256 == REQUIRED_SOURCE_SHA256
     assert identity.artifact_sha256
     assert len(identity.artifact_sha256) == 64
+    assert identity.identity_manifest_sha256
+    assert len(identity.identity_manifest_sha256) == 64
+    assert identity.native_binary_format == "elf"
+    assert identity.native_machine == "aarch64"
+    assert identity.artifact_size_bytes > 0
+    assert identity.build_contract_sha256
+    assert identity.deployment_lock_sha256
+    assert identity.pin_contract_sha256
+    assert identity.dependency_package_set_sha256
+    assert identity.dependency_packages
+    if identity.is_relocated_install:
+        assert identity.relocation_binding_sha256
     assert Path(identity.executable).is_file()
     assert identity.platform_id == LINUX_AARCH64
     assert REQUIRED_BUILD_DEPS <= {name for name, _ in identity.build_dependencies}
@@ -252,10 +316,12 @@ def test_vendor_souffle_install_on_linux_aarch64(installer, vendor_bundle) -> No
         text=True,
         timeout=5,
         check=False,
+        env=installer._dependency_prefix_environment(
+            Path(identity.dependency_prefix)
+        ),
     )
     banner = (completed.stdout or "") + (completed.stderr or "")
     assert "2.4.1" in banner
-    assert "vendor" in banner.casefold()
     assert "hermetic-authorization-shadow" not in banner.casefold()
 
 
@@ -280,12 +346,17 @@ def test_secpal_platform_exception_on_linux_aarch64(installer, vendor_bundle) ->
     assert installer.tool_supported_on_platform("souffle", LINUX_AARCH64)
 
 
-def test_hermetic_shadow_cannot_satisfy_vendor(installer, install_root) -> None:
+def test_hermetic_shadow_cannot_satisfy_vendor(
+    certifier,
+    installer,
+    vendor_bundle,
+    tmp_path: Path,
+) -> None:
     hermetic = installer.ensure_souffle(
         yes=True,
         strict=True,
         force=True,
-        install_root=install_root / "hermetic-only",
+        install_root=tmp_path / "hermetic-only",
         hermetic_shadow=True,
         vendor=False,
         checksum_verified=True,
@@ -294,24 +365,45 @@ def test_hermetic_shadow_cannot_satisfy_vendor(installer, install_root) -> None:
     assert hermetic.identity is not None
     assert hermetic.identity.is_hermetic_shadow is True
     assert hermetic.identity.is_vendor_build is False
-    # Vendor path under a fresh root must not reuse the hermetic shadow lane.
-    vendor = installer.ensure_souffle(
-        yes=True,
-        strict=True,
-        force=True,
-        install_root=install_root / "vendor-only",
-        hermetic_shadow=False,
-        vendor=True,
-        checksum_verified=True,
-        platform_id=LINUX_AARCH64,
-    )
-    assert vendor.ok
+    vendor = {item.tool_id: item for item in vendor_bundle.receipts}["souffle"]
     assert vendor.identity is not None
-    assert vendor.identity.is_hermetic_shadow is False
-    assert vendor.identity.is_vendor_build is True
     assert vendor.identity.executable != hermetic.identity.executable
-    assert "authorization-vendor" in vendor.identity.executable
+    with pytest.raises(
+        certifier.ExternalAuthorizationCertificationError,
+        match="hermetic shadows cannot satisfy",
+    ):
+        certifier._certify_vendor_souffle(
+            hermetic.identity,
+            install_status=hermetic.status,
+        )
     assert "authorization-shadows" in hermetic.identity.executable
+
+
+def test_vendor_skip_install_requires_matching_dependency_prefix(
+    certifier,
+    install_root: Path,
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        certifier.ExternalAuthorizationCertificationError,
+        match="vendor Soufflé is missing",
+    ):
+        certifier.certify_external_authorization_vendor(
+            install_root=install_root,
+            dependency_prefix=tmp_path / "wrong-prefix",
+            skip_install=True,
+            platform_id=LINUX_AARCH64,
+            repo_root=REPO_ROOT,
+            lock_path=LOCK_PATH,
+        )
+
+
+def test_fault_harness_rejects_unknown_mode(certifier) -> None:
+    with pytest.raises(
+        certifier.ExternalAuthorizationCertificationError,
+        match="unsupported authorization fault mode",
+    ):
+        certifier.AuthorizationFaultHarness("prover_environment_switch")
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +434,19 @@ def test_vendor_certificate_envelope(vendor_certificate: dict[str, Any]) -> None
     )
     assert vendor_certificate["policy"]["grants_authorization_decision_authority"] is False
     assert vendor_certificate["policy"]["never_mutate_system_package_manager"] is True
+    assert vendor_certificate["policy"]["runner_owned_fault_injection"] is True
+    assert (
+        vendor_certificate["policy"]["vendor_prover_fault_environment_required"]
+        is False
+    )
+    assert (
+        vendor_certificate["policy"]["native_install_manifest_identity_verified"]
+        is True
+    )
+    assert (
+        vendor_certificate["policy"]["native_dependency_packages_rehashed"]
+        is True
+    )
 
 
 def test_vendor_souffle_digests_and_deps(vendor_certificate: dict[str, Any]) -> None:
@@ -352,6 +457,28 @@ def test_vendor_souffle_digests_and_deps(vendor_certificate: dict[str, Any]) -> 
     assert souffle["source_archive_sha256"] == REQUIRED_SOURCE_SHA256
     assert souffle["artifact_sha256"]
     assert len(souffle["artifact_sha256"]) == 64
+    assert souffle["artifact_kind"] == "native_compiled_executable"
+    assert souffle["artifact_size_bytes"] > 0
+    assert souffle["native_binary_format"] == "elf"
+    assert souffle["native_machine"] == "aarch64"
+    for key in (
+        "identity_manifest_sha256",
+        "identity_manifest_file_sha256",
+        "deployment_lock_sha256",
+        "pin_contract_sha256",
+        "build_contract_sha256",
+        "dependency_package_set_sha256",
+    ):
+        assert len(souffle[key]) == 64
+    assert REQUIRED_BUILD_DEPS <= set(souffle["build_dependency_identities"])
+    assert len(souffle["dependency_packages"]) == 6
+    assert souffle["managed_dependency_prefix"] is True
+    if souffle["is_relocated_install"]:
+        assert len(souffle["relocation_binding_sha256"]) == 64
+        assert (
+            souffle["identity_manifest_sha256"]
+            != souffle["relocation_binding_sha256"]
+        )
     assert souffle["is_vendor_build"] is True
     assert souffle["is_hermetic_shadow"] is False
     assert souffle["linux_aarch64_supported"] is True
@@ -371,6 +498,9 @@ def test_vendor_category_outcomes(
     souffle = vendor_certificate["souffle"]
     executable = souffle["executable"]
     version = souffle["version"]
+    runtime_env = certifier.native_souffle_runtime_environment(
+        souffle["dependency_prefix"]
+    )
     specs = [
         spec for spec in certifier.default_case_specs() if spec.category == category
     ]
@@ -384,6 +514,7 @@ def test_vendor_category_outcomes(
             query,
             executable=executable,
             engine_version=version,
+            env=runtime_env,
         )
         assert record.outcome == expected, (spec.case_id, record)
         assert record.agreed is True
@@ -400,6 +531,9 @@ def test_vendor_rule_scope_mutations(
     souffle = vendor_certificate["souffle"]
     executable = souffle["executable"]
     version = souffle["version"]
+    runtime_env = certifier.native_souffle_runtime_environment(
+        souffle["dependency_prefix"]
+    )
     specs = [
         spec
         for spec in certifier.default_case_specs()
@@ -415,6 +549,7 @@ def test_vendor_rule_scope_mutations(
             base.query,
             executable=executable,
             engine_version=version,
+            env=runtime_env,
         )
         document, query, expected = certifier.materialize_case(spec)
         mutated = certifier.run_shadow_case(
@@ -424,6 +559,7 @@ def test_vendor_rule_scope_mutations(
             query,
             executable=executable,
             engine_version=version,
+            env=runtime_env,
         )
         assert mutated.outcome != baseline.outcome
         assert mutated.outcome == expected
@@ -432,7 +568,8 @@ def test_vendor_rule_scope_mutations(
 
 
 def test_vendor_replay_malformed_timeout_disagreement(
-    certifier, installer, vendor_certificate: dict[str, Any]
+    certifier,
+    vendor_certificate: dict[str, Any],
 ) -> None:
     from ipfs_datasets_py.logic.backends.datalog.adapters import (
         DEFAULT_AUTHORIZATION_FIXTURES,
@@ -441,6 +578,9 @@ def test_vendor_replay_malformed_timeout_disagreement(
     souffle = vendor_certificate["souffle"]
     executable = souffle["executable"]
     version = souffle["version"]
+    runtime_env = certifier.native_souffle_runtime_environment(
+        souffle["dependency_prefix"]
+    )
 
     # Replay
     specs = [
@@ -458,6 +598,7 @@ def test_vendor_replay_malformed_timeout_disagreement(
             query,
             executable=executable,
             engine_version=version,
+            env=runtime_env,
         )
         second = certifier.run_shadow_case(
             "souffle",
@@ -466,11 +607,15 @@ def test_vendor_replay_malformed_timeout_disagreement(
             query,
             executable=executable,
             engine_version=version,
+            env=runtime_env,
         )
         assert first.outcome == second.outcome
         assert first.policy_digest == second.policy_digest
 
     # Malformed
+    malformed_harness = certifier.AuthorizationFaultHarness(
+        certifier.FAULT_MALFORMED_OUTPUT
+    )
     malformed = certifier.run_shadow_case(
         "souffle",
         "case:malformed",
@@ -479,6 +624,8 @@ def test_vendor_replay_malformed_timeout_disagreement(
         executable=executable,
         engine_version=version,
         expect_error=True,
+        env=runtime_env,
+        runner=malformed_harness,
     )
     assert malformed.outcome != "allow"
     assert malformed.malformed is True
@@ -488,6 +635,9 @@ def test_vendor_replay_malformed_timeout_disagreement(
     fixture = next(
         item for item in DEFAULT_AUTHORIZATION_FIXTURES if item.category == "allow"
     )
+    timeout_harness = certifier.AuthorizationFaultHarness(
+        certifier.FAULT_TIMEOUT
+    )
     timed = certifier.run_shadow_case(
         "souffle",
         "case:timeout",
@@ -496,13 +646,17 @@ def test_vendor_replay_malformed_timeout_disagreement(
         executable=executable,
         engine_version=version,
         timeout_seconds=0.25,
-        env={installer.ENV_SLEEP_SECONDS: "2.0"},
+        env=runtime_env,
+        runner=timeout_harness,
     )
     assert timed.timed_out is True
     assert timed.quarantined is True
     assert timed.outcome == "timeout"
 
     # Disagreement
+    disagreement_harness = certifier.AuthorizationFaultHarness(
+        certifier.FAULT_DISAGREEMENT
+    )
     disagree = certifier.run_shadow_case(
         "souffle",
         "case:disagreement",
@@ -510,11 +664,23 @@ def test_vendor_replay_malformed_timeout_disagreement(
         fixture.query,
         executable=executable,
         engine_version=version,
-        env={installer.ENV_DISAGREE: "1"},
+        env=runtime_env,
+        runner=disagreement_harness,
     )
     assert disagree.agreed is False
     assert disagree.quarantined is True
     assert disagree.outcome != disagree.reference_outcome
+
+    for harness in (
+        malformed_harness,
+        timeout_harness,
+        disagreement_harness,
+    ):
+        assert len(harness.requests) == 1
+        assert not any(
+            name.startswith("AUTHZ_SHADOW_")
+            for name in harness.requests[0].environment
+        )
 
 
 def test_secpal_exception_in_certificate(vendor_certificate: dict[str, Any]) -> None:
@@ -531,13 +697,15 @@ def test_secpal_exception_in_certificate(vendor_certificate: dict[str, Any]) -> 
     assert LINUX_AARCH64 not in (exception.get("supported_platforms") or [])
 
 
-def test_vendor_lane_handler(certifier, install_root) -> None:
+def test_vendor_lane_handler(certifier, install_root, dependency_prefix) -> None:
     result = certifier.external_authorization_vendor_lane_handler(
         install_root=install_root,
+        dependency_prefix=dependency_prefix,
         force_install=False,
         skip_install=True,
         platform_id=LINUX_AARCH64,
         repo_root=REPO_ROOT,
+        lock_path=LOCK_PATH,
     )
     assert result["interface"] == VENDOR_INTERFACE
     assert result["goal_id"] == VENDOR_GOAL_ID
@@ -566,6 +734,12 @@ def test_checked_in_vendor_receipt_structure() -> None:
     souffle = receipt["souffle"]
     assert souffle["version"] == "2.4.1"
     assert souffle["source_archive_sha256"] == REQUIRED_SOURCE_SHA256
+    assert souffle["artifact_kind"] == "native_compiled_executable"
+    assert souffle["native_binary_format"] == "elf"
+    assert souffle["native_machine"] == "aarch64"
+    assert len(souffle["identity_manifest_sha256"]) == 64
+    assert len(souffle["dependency_package_set_sha256"]) == 64
+    assert len(souffle["dependency_packages"]) == 6
     assert souffle["is_vendor_build"] is True
     assert souffle["is_hermetic_shadow"] is False
     assert souffle["linux_aarch64_supported"] is True
@@ -601,6 +775,12 @@ def test_write_vendor_receipt_roundtrip(
     loaded = json.loads(path.read_text(encoding="utf-8"))
     assert loaded["interface"] == VENDOR_INTERFACE
     assert loaded["souffle"]["source_archive_sha256"] == REQUIRED_SOURCE_SHA256
+    assert (
+        loaded["souffle"]["artifact_kind"]
+        == "native_compiled_executable"
+    )
+    assert len(loaded["souffle"]["identity_manifest_sha256"]) == 64
+    assert len(loaded["souffle"]["dependency_package_set_sha256"]) == 64
     assert loaded["receipt_digest_sha256"] == receipt["receipt_digest_sha256"]
     assert loaded["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert loaded["objective_validation_repair"] is True
@@ -608,7 +788,10 @@ def test_write_vendor_receipt_roundtrip(
 
 
 def test_public_vendor_receipt_is_portable_and_self_digesting(
-    certifier, vendor_certificate: dict[str, Any], install_root: Path
+    certifier,
+    vendor_certificate: dict[str, Any],
+    install_root: Path,
+    dependency_prefix: Path,
 ) -> None:
     receipt = certifier.build_vendor_install_receipt(
         vendor_certificate,
@@ -620,6 +803,7 @@ def test_public_vendor_receipt_is_portable_and_self_digesting(
     assert receipt["souffle"]["executable_basename"] == "souffle"
     assert receipt["souffle"]["managed_executable"] is True
     assert str(install_root) not in encoded
+    assert str(dependency_prefix) not in encoded
     assert str(REPO_ROOT) not in encoded
     assert certifier.public_evidence_audit(
         receipt, repo_root=REPO_ROOT
@@ -669,6 +853,7 @@ def test_objective_validation_repair_proves_g209_acceptance(
     certifier,
     installer,
     install_root,
+    dependency_prefix,
     vendor_certificate: dict[str, Any],
 ) -> None:
     """Objective validation repair covers every FVT-G209 acceptance term.
@@ -745,6 +930,12 @@ def test_objective_validation_repair_proves_g209_acceptance(
     assert souffle["usable"] is True
     assert souffle["version"] == "2.4.1"
     assert souffle["source_archive_sha256"] == REQUIRED_SOURCE_SHA256
+    assert souffle["artifact_kind"] == "native_compiled_executable"
+    assert souffle["native_binary_format"] == "elf"
+    assert souffle["native_machine"] == "aarch64"
+    assert len(souffle["identity_manifest_sha256"]) == 64
+    assert len(souffle["dependency_package_set_sha256"]) == 64
+    assert len(souffle["dependency_packages"]) == 6
     assert souffle["is_vendor_build"] is True
     assert souffle["is_hermetic_shadow"] is False
     assert souffle["linux_aarch64_supported"] is True
@@ -775,6 +966,8 @@ def test_objective_validation_repair_proves_g209_acceptance(
         platform_id=LINUX_AARCH64,
         repo_root=REPO_ROOT,
         install_root=install_root,
+        dependency_prefix=dependency_prefix,
+        lock_path=LOCK_PATH,
     )
     assert handler["certified"] is True
     assert handler["repair_task_id"] == VENDOR_REPAIR_TASK_ID
