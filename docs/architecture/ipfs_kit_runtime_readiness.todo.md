@@ -241,7 +241,7 @@ or write authority.
 
 ## KITA-007 Migrate legacy VFS managers and journals through the canonical service
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
