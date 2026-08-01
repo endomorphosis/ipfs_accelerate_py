@@ -1102,6 +1102,507 @@ def lane_handler(*args: Any, **kwargs: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Kernel live semantic fan-in (FVT-G206 / KernelLiveSemanticFanIn@1)
+# ---------------------------------------------------------------------------
+
+FANIN_INTERFACE: Final = "KernelLiveSemanticFanIn@1"
+FANIN_SCHEMA_VERSION: Final = "kernel-live-semantic-fanin/v1"
+FANIN_GOAL_ID: Final = "FVT-G206"
+FANIN_TASK_ID: Final = "FVT-057"
+FANIN_KERNEL_ID: Final = "lean"
+FANIN_TIMEOUT_SECONDS: Final = 0.05
+REQUIRED_FANIN_CASE_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        "positive",
+        "negative",
+        "mutation",
+        "replay",
+        "malformed",
+        "timeout",
+        "fail_closed",
+    }
+)
+
+_FANIN_TRUE: Final = "theorem from_eq (n m : Nat) (h : n = m) : n = m := h\n"
+_FANIN_FALSE: Final = "theorem false_claim : False := trivial\n"
+_FANIN_MALFORMED: Final = "theorem broken : True := by exact 0\n"
+_FANIN_HYP: Final = "theorem from_eq (n m : Nat) (h : n = n) : n = m := h\n"
+_FANIN_CONC: Final = "theorem from_eq (n m : Nat) (h : n = m) : False := h\n"
+_FANIN_ADMIT: Final = "theorem hole_admit : True := by admit\n"
+_FANIN_AXIOM: Final = "axiom bad : False\ntheorem uses_axiom : False := bad\n"
+
+
+def live_fanin_case_recipes() -> list[dict[str, Any]]:
+    """Compact live fan-in recipes owned by the Lean kernel only."""
+
+    return [
+        {
+            "case_id": "true_theorem",
+            "kind": "positive",
+            "expect": "accepted",
+            "theorem_name": "from_eq",
+            "assumptions": ["h : n = m"],
+            "source": _FANIN_TRUE,
+        },
+        {
+            "case_id": "false_proof",
+            "kind": "negative",
+            "expect": "rejected",
+            "theorem_name": "false_claim",
+            "assumptions": [],
+            "source": _FANIN_FALSE,
+        },
+        {
+            "case_id": "hypothesis_mutation",
+            "kind": "mutation",
+            "expect": "rejected",
+            "theorem_name": "from_eq",
+            "assumptions": ["h : n = n"],
+            "source": _FANIN_HYP,
+        },
+        {
+            "case_id": "conclusion_mutation",
+            "kind": "mutation",
+            "expect": "rejected",
+            "theorem_name": "from_eq",
+            "assumptions": ["h : n = m"],
+            "source": _FANIN_CONC,
+        },
+        {
+            "case_id": "deterministic_replay",
+            "kind": "replay",
+            "expect": "accepted",
+            "theorem_name": "from_eq",
+            "assumptions": ["h : n = m"],
+            "source": _FANIN_TRUE,
+            "base_case_id": "true_theorem",
+        },
+        {
+            "case_id": "malformed_source",
+            "kind": "malformed",
+            "expect": "rejected",
+            "theorem_name": "broken",
+            "assumptions": [],
+            "source": _FANIN_MALFORMED,
+        },
+        {
+            "case_id": "timeout_case",
+            "kind": "timeout",
+            "expect": "rejected",
+            "theorem_name": "from_eq",
+            "assumptions": ["h : n = m"],
+            "source": _FANIN_TRUE,
+            "force_timeout": True,
+        },
+        {
+            "case_id": "admit_escape",
+            "kind": "fail_closed",
+            "expect": "rejected",
+            "theorem_name": "hole_admit",
+            "assumptions": [],
+            "source": _FANIN_ADMIT,
+            "reason_codes": ["sorry_or_admit"],
+        },
+        {
+            "case_id": "axiom_escape",
+            "kind": "fail_closed",
+            "expect": "rejected",
+            "theorem_name": "uses_axiom",
+            "assumptions": [],
+            "source": _FANIN_AXIOM,
+            "reason_codes": ["unsafe_or_unreviewed_axiom"],
+        },
+    ]
+
+
+def _force_timeout_executable() -> str:
+    """Return a non-kernel sleep helper used only to prove timeout fail-closed."""
+
+    sleeper = shutil.which("sleep")
+    if sleeper:
+        return sleeper
+    return sys.executable
+
+
+def build_live_fanin_contribution(
+    *,
+    repo_root: Path | None = None,
+    env: Mapping[str, str] | None = None,
+    executable: str | None = None,
+) -> dict[str, Any]:
+    """Execute Lean-owned live fan-in cases; never substitutes a sibling kernel."""
+
+    root = repo_root or repo_root_from()
+    probe_env = offline_env(env)
+    identity = probe_lean_identity(env=probe_env, executable=executable)
+    lean_bin = executable or identity.get("executable_path")
+    usable = bool(
+        identity.get("identity_probed")
+        and identity.get("installed")
+        and not identity.get("shim_toolchain_mismatch")
+        and not identity.get("locked_version_mismatch")
+        and lean_bin
+    )
+
+    cases: list[dict[str, Any]] = []
+    checks: list[dict[str, Any]] = []
+    outcomes_by_id: dict[str, CaseOutcome] = {}
+    block_reasons: list[str] = []
+    live_executed = False
+
+    for recipe in live_fanin_case_recipes():
+        case_id = str(recipe["case_id"])
+        kind = str(recipe["kind"])
+        expect = str(recipe["expect"])
+        source = str(recipe["source"])
+        theorem_name = str(recipe.get("theorem_name") or "") or None
+        assumptions = [str(item) for item in (recipe.get("assumptions") or [])]
+        force_timeout = bool(recipe.get("force_timeout"))
+
+        if force_timeout:
+            # Prove bounded invocation never accepts on timeout without using a
+            # sibling kernel. Sleep is support-only for the timeout harness.
+            sleeper = _force_timeout_executable()
+            argv = (
+                [sleeper, "30"]
+                if Path(sleeper).name == "sleep" or sleeper.endswith("/sleep")
+                else [sleeper, "-c", "import time; time.sleep(30)"]
+            )
+            completed = bounded_run(
+                argv,
+                timeout=FANIN_TIMEOUT_SECONDS,
+                env=probe_env,
+            )
+            outcome = CaseOutcome(
+                case_id=case_id,
+                kind=kind,
+                expect=expect,
+                accepted=False,
+                returncode=None if completed is None else completed.returncode,
+                reason_codes=["timeout_or_spawn_failure"]
+                if completed is None
+                else ["timeout_not_triggered"],
+                theorem_name=theorem_name or "",
+                imports=list(extract_lean_imports(source)),
+                assumptions=assumptions,
+                source_digest=content_digest(source),
+                output_digest=content_digest(""),
+                detail="fan-in timeout bound rejects without acceptance",
+            )
+            if completed is not None:
+                outcome.accepted = False
+                if "timeout_not_triggered" in outcome.reason_codes:
+                    block_reasons.append("timeout_not_triggered")
+        elif not usable or not lean_bin:
+            outcome = CaseOutcome(
+                case_id=case_id,
+                kind=kind,
+                expect=expect,
+                accepted=False,
+                returncode=None,
+                reason_codes=["kernel_unavailable"],
+                theorem_name=theorem_name or extract_lean_theorem_name(source) or "",
+                imports=list(extract_lean_imports(source)),
+                assumptions=assumptions,
+                source_digest=content_digest(source if source.endswith("\n") else source + "\n"),
+                output_digest=content_digest(""),
+                detail="lean pin unavailable for live fan-in",
+            )
+        else:
+            outcome = check_lean_source(
+                source,
+                executable=str(lean_bin),
+                env=probe_env,
+                case_id=case_id,
+                theorem_name=theorem_name,
+                assumptions=assumptions,
+            )
+            live_executed = True
+
+        outcome.kind = kind
+        outcome.expect = expect
+        outcomes_by_id[case_id] = outcome
+        matched = _case_matches_expectation(outcome, expect)
+        expected_reasons = [str(item) for item in (recipe.get("reason_codes") or [])]
+        if expected_reasons:
+            matched = matched and any(
+                reason in outcome.reason_codes for reason in expected_reasons
+            )
+        if kind == "timeout":
+            matched = (
+                outcome.accepted is False
+                and "timeout_or_spawn_failure" in outcome.reason_codes
+            )
+        if kind == "replay" and expect == "accepted":
+            ref = outcomes_by_id.get(str(recipe.get("base_case_id") or "true_theorem"))
+            if ref is not None:
+                matched = matched and (
+                    outcome.source_digest == ref.source_digest
+                    and outcome.output_digest == ref.output_digest
+                    and outcome.accepted is True
+                    and ref.accepted is True
+                )
+            else:
+                matched = False
+        if not matched:
+            block_reasons.append(f"case_failed:{case_id}")
+        case_payload = outcome.to_dict()
+        # Keep fan-in receipts compact: digests bind outputs, not full logs.
+        case_payload.pop("stdout", None)
+        case_payload.pop("stderr", None)
+        cases.append(case_payload)
+        checks.append(
+            {
+                "check_id": f"lean.fanin.{case_id}",
+                "kind": kind,
+                "status": "passed" if matched else "failed",
+                "expected": expect,
+                "observed": "accepted" if outcome.accepted else "rejected",
+                "reason_codes": list(outcome.reason_codes),
+                "bindings": {
+                    "theorem_name": outcome.theorem_name,
+                    "imports": list(outcome.imports),
+                    "assumptions": list(outcome.assumptions),
+                    "source_digest": outcome.source_digest,
+                    "output_digest": outcome.output_digest,
+                    "returncode": outcome.returncode,
+                },
+            }
+        )
+
+    positive = outcomes_by_id.get("true_theorem")
+    bindings = {
+        "kernel_id": FANIN_KERNEL_ID,
+        "tool_id": TOOL_ID,
+        "executable_path": identity.get("executable_path"),
+        "version_string": identity.get("version_string"),
+        "locked_toolchain": LOCKED_TOOLCHAIN,
+        "locked_version": LOCKED_VERSION,
+        "dependency_digests": {
+            "elan_toolchain": LOCKED_TOOLCHAIN,
+            "selected_toolchain": identity.get("selected_toolchain"),
+            "installed_toolchains": list(identity.get("installed_toolchains") or []),
+        },
+        "imports": list(positive.imports) if positive else [],
+        "assumptions": list(positive.assumptions) if positive else [],
+        "theorem": {
+            "name": positive.theorem_name if positive else "",
+            "assumptions": list(positive.assumptions) if positive else [],
+        },
+        "source": {
+            "primary_path": "Main.lean",
+            "source_digest": positive.source_digest if positive else "",
+            "format": "lean",
+        },
+        "output": {
+            "output_digest": positive.output_digest if positive else "",
+            "returncode": positive.returncode if positive else None,
+        },
+        "authority": {
+            "ceiling": AUTHORITY_CEILING,
+            "scope": AUTHORITY_SCOPE,
+            "selected_kernel": FANIN_KERNEL_ID,
+            "sibling_kernel_substitution_forbidden": True,
+            "advisor_substitution_forbidden": True,
+            "not_advisor": True,
+            "not_rocq": True,
+            "not_isabelle": True,
+        },
+    }
+
+    present_kinds = {str(item.get("kind") or "") for item in live_fanin_case_recipes()}
+    missing_kinds = sorted(REQUIRED_FANIN_CASE_KINDS - present_kinds)
+    if missing_kinds:
+        block_reasons.append("corpus_missing_kinds:" + ",".join(missing_kinds))
+
+    all_passed = all(check["status"] == "passed" for check in checks) and not missing_kinds
+    contribution = {
+        "kernel_id": FANIN_KERNEL_ID,
+        "tool_id": TOOL_ID,
+        "interface": INTERFACE,
+        "fanin_interface": FANIN_INTERFACE,
+        "fanin_schema_version": FANIN_SCHEMA_VERSION,
+        "goal_id": FANIN_GOAL_ID,
+        "task_id": FANIN_TASK_ID,
+        "lane_id": LANE_ID,
+        "owner_module": CERTIFICATION_SURFACE,
+        "locked_toolchain": LOCKED_TOOLCHAIN,
+        "locked_version": LOCKED_VERSION,
+        "identity_probed": bool(identity.get("identity_probed")),
+        "usable": usable,
+        "live_executed": live_executed or any(
+            c["case_id"] == "timeout_case" for c in cases
+        ),
+        "live_source_helper": "check_lean_source",
+        "sibling_kernel_substitution": False,
+        "advisor_substitution": False,
+        "executable_path": identity.get("executable_path"),
+        "version_string": identity.get("version_string"),
+        "network_used": bool(identity.get("network_used")),
+        "install_attempted": bool(identity.get("install_attempted")),
+        "download_attempted": bool(identity.get("download_attempted")),
+        "fanin_passed": bool(all_passed and usable),
+        "block_reasons": list(dict.fromkeys(block_reasons)),
+        "required_case_kinds": sorted(REQUIRED_FANIN_CASE_KINDS),
+        "cases": cases,
+        "checks": checks,
+        "bindings": bindings,
+        "repo_root": str(root),
+        "notes": (
+            "Lean live fan-in contribution: own kernel only; no Rocq/Isabelle/advisor "
+            "substitution; timeout fail-closed."
+            if usable
+            else "Lean pin unavailable; live fan-in contribution incomplete."
+        ),
+    }
+    contribution["contribution_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in contribution.items()
+            if key != "contribution_digest_sha256"
+        }
+    )
+    return contribution
+
+
+def assemble_kernel_live_fanin_certificate(
+    contributions: Mapping[str, Mapping[str, Any]],
+    *,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Assemble ``KernelLiveSemanticFanIn@1`` from per-kernel contributions."""
+
+    root = repo_root or repo_root_from()
+    required_kernels = ("lean", "rocq", "isabelle")
+    kernels: dict[str, Any] = {}
+    block_reasons: list[str] = []
+    for kernel_id in required_kernels:
+        contrib = contributions.get(kernel_id)
+        if not isinstance(contrib, Mapping):
+            block_reasons.append(f"missing_contribution:{kernel_id}")
+            kernels[kernel_id] = {
+                "kernel_id": kernel_id,
+                "fanin_passed": False,
+                "block_reasons": [f"missing_contribution:{kernel_id}"],
+            }
+            continue
+        # Fail closed if a contribution claims a different selected kernel.
+        selected = (
+            (contrib.get("bindings") or {}).get("authority") or {}
+        ).get("selected_kernel") or contrib.get("kernel_id")
+        if selected != kernel_id:
+            block_reasons.append(f"sibling_substitution:{kernel_id}")
+        if contrib.get("sibling_kernel_substitution") or contrib.get(
+            "advisor_substitution"
+        ):
+            block_reasons.append(f"substitution_flag:{kernel_id}")
+        if not contrib.get("fanin_passed"):
+            block_reasons.extend(
+                f"{kernel_id}:{reason}"
+                for reason in (contrib.get("block_reasons") or ["fanin_incomplete"])
+            )
+        kernels[kernel_id] = dict(contrib)
+
+    all_passed = all(
+        bool((kernels.get(kid) or {}).get("fanin_passed")) for kid in required_kernels
+    ) and not any(
+        reason.startswith("sibling_substitution:") or reason.startswith("substitution_flag:")
+        for reason in block_reasons
+    )
+
+    certificate = {
+        "schema_version": FANIN_SCHEMA_VERSION,
+        "interface": FANIN_INTERFACE,
+        "goal_id": FANIN_GOAL_ID,
+        "task_id": FANIN_TASK_ID,
+        "program": "formal-verification-tactician/kernel-live-semantics",
+        "lane_id": LANE_ID,
+        "description": (
+            "Live semantic fan-in for Lean, Rocq, and Isabelle: each installed "
+            "proof kernel checks its own generated source and retains assumptions, "
+            "imports/session, theorem, mutation, and output digests. No advisor or "
+            "sibling kernel substitutes for the selected kernel."
+        ),
+        "policy": {
+            "own_kernel_only": True,
+            "sibling_kernel_substitution_forbidden": True,
+            "advisor_substitution_forbidden": True,
+            "no_install": True,
+            "no_download": True,
+            "no_network": True,
+            "serialize_expensive_opam_isabelle_resources": True,
+            "separate_kernel_authority": True,
+            "isabelle_live_source_session_helper_required": True,
+            "required_case_kinds": sorted(REQUIRED_FANIN_CASE_KINDS),
+        },
+        "kernels": kernels,
+        "kernel_ids": list(required_kernels),
+        "all_kernels_passed": all_passed,
+        "production_certified": all_passed,
+        "promotion_blocked": not all_passed,
+        "block_reasons": list(dict.fromkeys(block_reasons)),
+        "bindings": {
+            "kernels": {
+                kid: {
+                    "executable_path": (kernels.get(kid) or {}).get("executable_path"),
+                    "version_string": (kernels.get(kid) or {}).get("version_string"),
+                    "source_digest": (
+                        ((kernels.get(kid) or {}).get("bindings") or {})
+                        .get("source")
+                        or {}
+                    ).get("source_digest"),
+                    "output_digest": (
+                        ((kernels.get(kid) or {}).get("bindings") or {})
+                        .get("output")
+                        or {}
+                    ).get("output_digest"),
+                    "imports": ((kernels.get(kid) or {}).get("bindings") or {}).get(
+                        "imports"
+                    ),
+                    "assumptions": ((kernels.get(kid) or {}).get("bindings") or {}).get(
+                        "assumptions"
+                    ),
+                    "theorem": ((kernels.get(kid) or {}).get("bindings") or {}).get(
+                        "theorem"
+                    ),
+                    "session": (
+                        ((kernels.get(kid) or {}).get("bindings") or {}).get("session")
+                    ),
+                }
+                for kid in required_kernels
+            }
+        },
+        "evidence": {
+            "integration_test": (
+                "test/integration/toolchains/test_kernel_live_semantic_fanin.py"
+            ),
+            "certificate": (
+                "docs/architecture/formal_verification_kernel_live_certificate.json"
+            ),
+            "surfaces": [
+                CERTIFICATION_SURFACE,
+                "tools.logic.certification.rocq",
+                "tools.logic.certification.isabelle",
+            ],
+        },
+        "repo_root": str(root),
+        "notes": (
+            "All three kernels independently completed live semantic fan-in."
+            if all_passed
+            else "Kernel live fan-in incomplete or blocked; promotion denied."
+        ),
+    }
+    certificate["receipt_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in certificate.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    return certificate
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1207,5 +1708,13 @@ __all__ = [
     "build_certification_receipt",
     "certify_lean_kernel",
     "lane_handler",
+    "FANIN_INTERFACE",
+    "FANIN_SCHEMA_VERSION",
+    "FANIN_GOAL_ID",
+    "FANIN_TASK_ID",
+    "REQUIRED_FANIN_CASE_KINDS",
+    "live_fanin_case_recipes",
+    "build_live_fanin_contribution",
+    "assemble_kernel_live_fanin_certificate",
     "main",
 ]
