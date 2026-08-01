@@ -125,6 +125,7 @@ def test_expected_outputs_exist_and_candidate_is_tracked_evidence() -> None:
 
 def test_candidate_is_compact_not_bulk_certificate_dump(
     candidate: dict[str, Any],
+    certificate: dict[str, Any],
 ) -> None:
     """Proposal gate: never embed multi-MB formal certificate bodies."""
 
@@ -133,15 +134,74 @@ def test_candidate_is_compact_not_bulk_certificate_dump(
         "release candidate body must stay compact (digest-bound fan-in)"
     )
     bound = candidate["role_aware_certificate"]
+    assert bound["projection_model"] == "digest_bound_compact_projection/v1"
+    assert bound["raw_certificate_embedded"] is False
+    lanes_by_id = {
+        str(row.get("lane_id")): row
+        for row in certificate.get("semantic_lane_results") or []
+    }
     for lane in bound.get("semantic_lane_results") or []:
         assert "receipt" not in lane
         assert "per_tool" not in lane
+        assert lane["digest_sha256"] == lanes_by_id[lane["lane_id"]].get(
+            "digest_sha256"
+        )
+        assert set(lane["per_tool_bindings"]) == set(
+            (lanes_by_id[lane["lane_id"]].get("per_tool") or {}).keys()
+        )
     assert "specialized_by_handler" not in bound.get(
         "specialized_receipt_aggregation", {}
     )
     for tool in bound.get("tools") or []:
         assert "checks" not in tool
         assert tool.get("checks_digest_sha256")
+
+
+def test_compact_projection_retains_lane_tool_and_handler_digest_bindings(
+    certifier,
+    candidate: dict[str, Any],
+    certificate: dict[str, Any],
+) -> None:
+    """Every compact row remains independently tied to its full evidence."""
+
+    bound = candidate["role_aware_certificate"]
+    compact_lanes = {
+        str(row["lane_id"]): row
+        for row in bound["semantic_lane_results"]
+    }
+    for lane in certificate.get("semantic_lane_results") or []:
+        lane_id = str(lane["lane_id"])
+        compact = compact_lanes[lane_id]
+        assert compact["digest_sha256"] == lane.get("digest_sha256")
+        for tool_id, per_tool in (lane.get("per_tool") or {}).items():
+            tool_binding = compact["per_tool_bindings"][tool_id]
+            assert tool_binding["check_set_digest_sha256"] == per_tool.get(
+                "check_set_digest_sha256"
+            )
+            assert tool_binding["tool_evidence_digest_sha256"] == (
+                certifier.content_digest(per_tool)
+            )
+
+    full_specialized = certificate["specialized_receipt_aggregation"]
+    compact_specialized = bound["specialized_receipt_aggregation"]
+    assert compact_specialized["aggregation_digest_sha256"] == (
+        full_specialized["aggregation_digest_sha256"]
+    )
+    assert compact_specialized["aggregation_digest_valid"] is True
+    full_handlers = full_specialized["specialized_by_handler"]
+    assert set(compact_specialized["handlers"]) == set(full_handlers)
+    for handler_key, handler in full_handlers.items():
+        compact_handler = compact_specialized["handlers"][handler_key]
+        assert compact_handler["tool_evidence_digest_sha256"] == handler[
+            "tool_evidence_digest_sha256"
+        ]
+        assert compact_handler["tool_evidence_digest_valid"] is True
+        assert compact_handler["check_set_digest_sha256"] == handler[
+            "check_set_digest_sha256"
+        ]
+        assert compact_handler["raw_receipt_digest"] == handler[
+            "raw_receipt_digest"
+        ]
 
 
 def test_candidate_interface_and_stage_ceiling(
@@ -326,6 +386,99 @@ def test_public_surfaces_are_safe(
     assert candidate["acceptance"]["public_surfaces_bound"] is True
 
 
+def test_digest_valid_certificate_cannot_forge_public_evidence_safety(
+    certifier,
+    builder,
+    certificate: dict[str, Any],
+) -> None:
+    """The candidate must audit the full certificate, not trust its flag."""
+
+    malicious = copy.deepcopy(certificate)
+    malicious["forged_public_evidence"] = {
+        "witness_path": "/home/private/secret-witness"
+    }
+    malicious["public_evidence_policy"] = {
+        **malicious["public_evidence_policy"],
+        "satisfied": True,
+        "failures": [],
+    }
+    malicious["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in malicious.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+
+    checked = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=malicious,
+    )
+
+    assert checked["acceptance"]["role_aware_certificate_bound"] is True
+    assert checked["public_surfaces"]["certificate_public_evidence_policy"][
+        "declared"
+    ]["satisfied"] is True
+    recomputed = checked["public_surfaces"][
+        "certificate_public_evidence_policy"
+    ]["recomputed"]
+    assert recomputed["satisfied"] is False
+    assert "host_private_path" in recomputed["failures"]
+    assert checked["acceptance"]["public_surfaces_bound"] is False
+    assert checked["readiness_requirements"]["public_surfaces_bound"] is False
+    assert checked["status"] == "role_aware_release_candidate_blocked"
+    assert "public_surfaces_bound" in checked["blockers"]
+    assert "/home/private/secret-witness" not in json.dumps(checked)
+
+
+def test_candidate_identity_does_not_read_previous_candidate_content(
+    builder,
+    certificate: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regeneration is independent of whatever candidate was published before."""
+
+    original_sha256_file = builder.sha256_file
+    candidate_reads: list[Path] = []
+    previous_digest = "sha256:" + ("1" * 64)
+
+    def first_sha256_file(path: Path) -> str | None:
+        resolved = Path(path).resolve()
+        if resolved == CANDIDATE_PATH.resolve():
+            candidate_reads.append(resolved)
+            return previous_digest
+        return original_sha256_file(path)
+
+    monkeypatch.setattr(builder, "sha256_file", first_sha256_file)
+    first = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=certificate,
+    )
+
+    def second_sha256_file(path: Path) -> str | None:
+        resolved = Path(path).resolve()
+        if resolved == CANDIDATE_PATH.resolve():
+            candidate_reads.append(resolved)
+            return "sha256:" + ("2" * 64)
+        return original_sha256_file(path)
+
+    monkeypatch.setattr(builder, "sha256_file", second_sha256_file)
+    second = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=certificate,
+    )
+
+    assert candidate_reads == []
+    assert first["candidate_identity"] == second["candidate_identity"]
+    artifact = first["artifacts"]["release_candidate"]
+    assert "content_identity_before_generation" not in artifact
+    assert "present_before_generation" not in artifact
+    assert artifact["previous_candidate_content_not_read"] is True
+
+
 def test_synthetic_fixture_hermetic_advisor_shadow_cannot_promote(
     certificate: dict[str, Any],
     candidate: dict[str, Any],
@@ -487,7 +640,36 @@ def test_certified_source_commit_and_tree_are_bound(
 ) -> None:
     source = candidate["source"]
     assert source["model"] == "pre_merge_release_candidate_source/v1"
-    assert source["candidate_excluded_from_source_tree"] is True
+    candidate_in_source = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(REPO_ROOT),
+            "cat-file",
+            "-e",
+            (
+                f"{source['certified_source_commit']}:"
+                f"{CANDIDATE_PATH.relative_to(REPO_ROOT).as_posix()}"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    ).returncode == 0
+    assert source["candidate_path_present_in_source_tree"] is (
+        candidate_in_source
+    )
+    assert source["candidate_excluded_from_source_tree"] is (
+        not candidate_in_source
+    )
+    assert (
+        source["generated_candidate_identity_excluded_from_source_identity"]
+        is True
+    )
+    assert (
+        source["source_binding_uses_committed_tree_not_candidate_identity"]
+        is True
+    )
     assert source["self_referential_current_tree_claim_forbidden"] is True
     assert source["merge_event_required_to_exceed_release_candidate"] is True
     assert source["merge_event_present"] is False
@@ -501,6 +683,54 @@ def test_certified_source_commit_and_tree_are_bound(
         "docs/architecture/formal_verification_role_aware_release_candidate.json"
         in source["attestation_paths"]
     )
+
+
+def test_source_validity_allows_only_declared_generated_artifact_dirtiness(
+    builder,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = {
+        "certified_source_commit": "a" * 40,
+        "certified_source_tree": "b" * 40,
+        "datasets_gitlink": "c" * 40,
+        "datasets_embedded_head": "c" * 40,
+        "source_commit_bound": True,
+        "tree_alignment": {},
+    }
+    candidate_relative = CANDIDATE_PATH.relative_to(REPO_ROOT).as_posix()
+
+    monkeypatch.setattr(
+        builder,
+        "build_source_attestation",
+        lambda _repo_root: {
+            **base,
+            "dirty_paths_at_certification": [candidate_relative],
+        },
+    )
+    generated_only = builder.build_release_candidate_source_attestation(
+        REPO_ROOT
+    )
+    assert generated_only["non_candidate_dirty_paths"] == []
+    assert generated_only["valid_for_release_candidate"] is True
+
+    monkeypatch.setattr(
+        builder,
+        "build_source_attestation",
+        lambda _repo_root: {
+            **base,
+            "dirty_paths_at_certification": [
+                candidate_relative,
+                BUILDER_PATH.relative_to(REPO_ROOT).as_posix(),
+            ],
+        },
+    )
+    source_dirty = builder.build_release_candidate_source_attestation(
+        REPO_ROOT
+    )
+    assert source_dirty["non_candidate_dirty_paths"] == [
+        BUILDER_PATH.relative_to(REPO_ROOT).as_posix()
+    ]
+    assert source_dirty["valid_for_release_candidate"] is False
 
 
 def test_checked_in_candidate_is_content_addressed_and_not_false_ready(
