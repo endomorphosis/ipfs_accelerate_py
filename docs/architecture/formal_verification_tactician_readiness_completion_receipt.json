@@ -6,15 +6,15 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-01T06:42:51Z",
+  "observed_at": "2026-08-01T09:39:14Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "e736c6b95436cb95b11c901288bb291feccfee31",
-    "parent_tree": "504dafbeacae7308cfca0eb1b5c81bbf311de91b",
-    "datasets_gitlink": "7415adc5100192ee35676778f1018f6b072378f9",
-    "datasets_embedded_head": "7415adc5100192ee35676778f1018f6b072378f9",
+    "parent_commit": "c3b9f9176a5007181f5c74e29b1f5c11db9e7478",
+    "parent_tree": "2409d7a57e487a4fa6b88b69e87a565e6fa31ba1",
+    "datasets_gitlink": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
+    "datasets_embedded_head": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
     "datasets_origin_main": "7415adc5100192ee35676778f1018f6b072378f9",
-    "parent_origin_main": "0ae5f590e858cfe2618b9a24aa4479e9e8ca619e",
+    "parent_origin_main": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
@@ -207,34 +207,34 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "e736c6b95436cb95b11c901288bb291feccfee31",
-        "tree": "504dafbeacae7308cfca0eb1b5c81bbf311de91b",
-        "origin_main": "0ae5f590e858cfe2618b9a24aa4479e9e8ca619e",
-        "clean": false,
+        "commit": "c3b9f9176a5007181f5c74e29b1f5c11db9e7478",
+        "tree": "2409d7a57e487a4fa6b88b69e87a565e6fa31ba1",
+        "origin_main": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
+        "clean": true,
         "matches_origin_main": false
       },
       "gitlink": {
         "path": "ipfs_datasets_py",
         "mode": "160000",
-        "commit": "7415adc5100192ee35676778f1018f6b072378f9"
+        "commit": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc"
       },
       "embedded_checkout": {
         "path": "ipfs_datasets_py",
-        "head": "7415adc5100192ee35676778f1018f6b072378f9",
+        "head": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
         "clean": true,
         "matches_gitlink": true,
         "origin_main": "7415adc5100192ee35676778f1018f6b072378f9",
-        "matches_origin_main": true
+        "matches_origin_main": false
       },
       "publication_gates": {
         "parent_publication_lag": true,
-        "datasets_publication_lag": false,
+        "datasets_publication_lag": true,
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
       },
-      "aligned_for_implementation": false,
+      "aligned_for_implementation": true,
       "diagnostics": [
-        "parent_working_tree_dirty",
+        "datasets_publication_lag_vs_origin_main",
         "parent_publication_lag_vs_origin_main"
       ]
     },
@@ -338,7 +338,7 @@
           "unsupported": false,
           "unavailable": false
         },
-        "executable_path": "<host-path-redacted>",
+        "executable_path": "<host-path-redacted>/lake",
         "version_string": "Lake version 5.0.0-src+f3b06c7 (Lean version 4.32.2)",
         "package_or_toolchain": "lake-5.0.0+lean-4.32.2",
         "certification": null
@@ -1160,7 +1160,7 @@
     "unsupported_semantics": [],
     "publication_gates": {
       "parent_publication_lag": true,
-      "datasets_publication_lag": false,
+      "datasets_publication_lag": true,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
     },
@@ -1183,7 +1183,7 @@
     "objectives_heap": {
       "path": "docs/architecture/formal_verification_tactician_readiness.objectives.md",
       "present": true,
-      "content_identity": "sha256:96e0b2e1c9e272a76ebf7b2932aa44db456809aaa42e21ec34431ee7971cd814"
+      "content_identity": "sha256:1eaf6bf2078035f197dd528de9f8e776a25ded922acd7628d28eb8fc5f95bed0"
     },
     "readiness_baseline": {
       "path": "docs/architecture/formal_verification_readiness_baseline.json",
@@ -1198,7 +1198,7 @@
     "toolchain_lock": {
       "path": "config/formal_verification_toolchains.lock.json",
       "present": true,
-      "content_identity": "sha256:4cc3b41ea0071d10ac4a845d073ab2edd0a7605f886e41c79d57988d8b0ff00b"
+      "content_identity": "sha256:4bfe464b0dfa7d67403debd683a9aba5bb81ebe4a48a017c2ecda79461f06999"
     },
     "benchmark_report": {
       "path": "docs/architecture/formal_verification_tactician_benchmark.json",
@@ -1258,7 +1258,7 @@
     "receipt_builder": {
       "path": "tools/logic/build_formal_verification_tactician_receipt.py",
       "present": true,
-      "content_identity": "sha256:275005bee48e24d29a360f872c507b54a1487014fc50cf0a67426213bfd5a179"
+      "content_identity": "sha256:a99494776665740ba3688d33df0af8c44f7ab3cb7e2d8ad3e111dc037ec480a9"
     },
     "completion_test": {
       "path": "test/api/test_formal_verification_tactician_readiness_completion.py",
@@ -1268,12 +1268,12 @@
     "role_aware_certifier": {
       "path": "tools/logic/certify_formal_verification_toolchains.py",
       "present": true,
-      "content_identity": "sha256:23d55ebafba5a46d6f5f539bf671210093bbeeabbeac48f2d956cf40a413de26"
+      "content_identity": "sha256:9368cfe77ebe8e804ce285657c0d8a437ee7781933b5f6929863c85ed457e99c"
     },
     "role_aware_completion_test": {
       "path": "test/integration/test_formal_verification_role_aware_completion.py",
       "present": true,
-      "content_identity": "sha256:e5f81fd756470de9b436d89059e4aa97c2ff669aaed5dc3881e3f84e8b369fc4"
+      "content_identity": "sha256:804cd5bea127859c4bd1d4e3300a2f7f6f170a0277f09de91421dce1e5360b78"
     },
     "completion_receipt": {
       "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
@@ -3612,26 +3612,28 @@
         "test/integration/test_formal_verification_role_aware_release_candidate.py",
         "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
         "docs/architecture/formal_verification_role_aware_release_candidate.json",
-        "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
+        "docs/architecture/formal_verification_production_elevation_fanin_receipt.json",
+        "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_production_elevation_fanin.py test/integration/test_formal_verification_role_aware_release_candidate.py test/integration/test_formal_verification_real_tool_matrix.py -q",
       "track": "completion",
       "evidence_present": [
         "test/integration/test_formal_verification_role_aware_release_candidate.py",
+        "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
         "docs/architecture/formal_verification_role_aware_release_candidate.json"
       ],
       "evidence_missing": [
-        "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
         "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
       ],
       "outputs_present": [
         "tools/logic/certify_formal_verification_toolchains.py",
         "tools/logic/build_formal_verification_tactician_receipt.py",
         "test/integration/test_formal_verification_role_aware_release_candidate.py",
-        "docs/architecture/formal_verification_role_aware_release_candidate.json"
+        "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
+        "docs/architecture/formal_verification_role_aware_release_candidate.json",
+        "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
       ],
       "outputs_missing": [
-        "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
         "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
       ],
       "bound": false
@@ -3754,7 +3756,7 @@
     ],
     "publication_gates": {
       "parent_publication_lag": true,
-      "datasets_publication_lag": false,
+      "datasets_publication_lag": true,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
     },
@@ -3802,11 +3804,15 @@
   ],
   "public_evidence_policy": {
     "satisfied": true,
+    "safe": true,
     "failures": [],
+    "violations": [],
+    "violation_count": 0,
     "host_private_paths_forbidden": true,
+    "repo_root_paths_forbidden": true,
     "raw_process_output_forbidden": true,
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:fd04cb159b6637a22fa685643965d071905fca452804379460f323c0e4659bf1"
+  "receipt_identity": "sha256:a9b43dbd5556551899a0796bf51467ea2342186b6bfbf01e24c88bde7ae98315"
 }
