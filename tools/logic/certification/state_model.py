@@ -39,9 +39,10 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Final, Mapping, Sequence
+from typing import Any, Final
 
 # Allow running as a script from a worktree without an installed package.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -52,14 +53,11 @@ for candidate in (_REPO_ROOT, _DATASETS_ROOT):
         sys.path.insert(0, text)
 
 from ipfs_datasets_py.logic.backends.installers import state_model as installer  # noqa: E402
-from ipfs_datasets_py.logic.backends.results import ResultStatus  # noqa: E402
 from ipfs_datasets_py.logic.backends.tla.runners import (  # noqa: E402
     APALACHE_BACKEND_VERSION,
     APALACHE_CAPABILITY,
     TLC_BACKEND_VERSION,
     TLC_CAPABILITY,
-    ModelCheckerTool,
-    ModelCheckOutcomeStatus,
     parse_counterexample_trace,
 )
 from ipfs_datasets_py.logic.backends.toolchain_roles import (  # noqa: E402
@@ -73,6 +71,8 @@ from ipfs_datasets_py.logic.backends.toolchain_roles import (  # noqa: E402
 try:  # pragma: no cover - worktree packaging varies
     from tools.logic.certification.roles import (  # type: ignore
         bind_lane_handler as _bind_lane_handler,
+    )
+    from tools.logic.certification.roles import (
         build_role_aware_policy as _build_role_aware_policy,
     )
 except Exception:  # pragma: no cover
@@ -115,6 +115,14 @@ LOCKED_APALACHE_SHA256: Final = installer.APALACHE_SHA256
 LOCKED_TLC_EXECUTABLE: Final = "tlc"
 LOCKED_APALACHE_EXECUTABLE: Final = "apalache-mc"
 LOCKED_JAVA_EXECUTABLE: Final = "java"
+MANAGED_PROVER_ROOT_ENV: Final = "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT"
+JAVA_OPTION_ENV_VARS: Final = tuple(
+    getattr(
+        installer,
+        "JAVA_OPTION_ENV_VARS",
+        ("JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS"),
+    )
+)
 
 PROBE_TIMEOUT_SECONDS: Final = 5.0
 CHECK_TIMEOUT_SECONDS: Final = 30.0
@@ -371,6 +379,111 @@ def offline_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
     return env
 
 
+def _managed_install_root(env: Mapping[str, str]) -> Path:
+    """Resolve the managed prover root from the supplied environment.
+
+    The certifier must not silently consult a different process environment
+    when a caller supplied an isolated environment.
+    """
+
+    override = str(env.get(MANAGED_PROVER_ROOT_ENV) or "").strip()
+    if override:
+        return Path(os.path.expanduser(override)).resolve()
+    return installer.expand_user_local_root()
+
+
+def _bound_managed_java(root: Path) -> str | None:
+    """Return the JVM jointly bound by the exact TLC and Apalache manifests."""
+
+    expected = {
+        TOOL_ID_TLC: (LOCKED_TLC_VERSION, LOCKED_TLC_SHA256),
+        TOOL_ID_APALACHE: (
+            LOCKED_APALACHE_VERSION,
+            LOCKED_APALACHE_SHA256,
+        ),
+    }
+    candidates: list[Path] = []
+    for tool_id, (version, artifact_digest) in expected.items():
+        manifest_path = root / "manifests" / f"{tool_id}.json"
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            return None
+        if not isinstance(payload, Mapping):
+            return None
+        if (
+            str(payload.get("tool_id") or "") != tool_id
+            or str(payload.get("version") or "") != version
+            or str(payload.get("artifact_sha256") or "").lower()
+            != artifact_digest
+        ):
+            return None
+        raw_java = str(payload.get("java_executable") or "").strip()
+        if not raw_java:
+            return None
+        java = Path(os.path.expanduser(raw_java)).resolve()
+        try:
+            java.relative_to(root.resolve())
+        except ValueError:
+            return None
+        if not java.is_file() or not os.access(java, os.X_OK):
+            return None
+        candidates.append(java)
+    if len(candidates) != len(expected) or len(set(candidates)) != 1:
+        return None
+    return str(candidates[0])
+
+
+def _prepend_path(env: dict[str, str], *directories: Path) -> None:
+    existing = [
+        part for part in str(env.get("PATH") or "").split(os.pathsep) if part
+    ]
+    prefixes = [
+        str(directory.resolve())
+        for directory in directories
+        if directory.is_dir()
+    ]
+    env["PATH"] = os.pathsep.join(
+        [*prefixes, *(part for part in existing if part not in prefixes)]
+    )
+
+
+def managed_execution_env(
+    base: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Build the offline environment used by live state-model certification.
+
+    Managed launchers are preferred without installing anything.  A JVM is
+    selected only when both exact pinned manifests bind the same executable.
+    An explicit ``IPFS_DATASETS_PY_JAVA_EXECUTABLE`` remains authoritative and
+    therefore fails closed when invalid.  Ambient ``JAVA_HOME`` and Java option
+    injection cannot override a valid jointly-bound managed JDK.
+    """
+
+    env = offline_env(base)
+    for variable in JAVA_OPTION_ENV_VARS:
+        env.pop(variable, None)
+
+    root = _managed_install_root(env)
+    managed_bin = root / "bin"
+    explicit_java = str(
+        env.get(installer.JAVA_EXECUTABLE_ENV) or ""
+    ).strip()
+    bound_java = None if explicit_java else _bound_managed_java(root)
+    java_bin: Path | None = None
+    if bound_java:
+        java_path = Path(bound_java)
+        java_bin = java_path.parent
+        env[installer.JAVA_EXECUTABLE_ENV] = bound_java
+        env["JAVA_HOME"] = str(java_bin.parent)
+
+    path_directories = [managed_bin]
+    if java_bin is not None:
+        path_directories.append(java_bin)
+    _prepend_path(env, *path_directories)
+    return env
+
+
 def bounded_run(
     argv: Sequence[str],
     *,
@@ -395,14 +508,21 @@ def bounded_run(
         return None
 
 
-def resolve_executable(candidates: Sequence[str] | None = None) -> str | None:
+def resolve_executable(
+    candidates: Sequence[str] | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
     for name in candidates or ():
         if not name:
             continue
-        path = Path(name)
-        if path.is_file() and os.access(path, os.X_OK):
-            return str(path.resolve())
-        found = shutil.which(name)
+        if os.path.isabs(name) or os.sep in name:
+            path = Path(name)
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path.resolve())
+            continue
+        search_path = None if env is None else str(env.get("PATH") or "")
+        found = shutil.which(name, path=search_path)
         if found:
             return found
     return None
@@ -683,7 +803,8 @@ def probe_tlc_identity(
         "probe_error": None,
     }
     binary = executable or resolve_executable(
-        [LOCKED_TLC_EXECUTABLE, "tlc2", "tla2tools"]
+        [LOCKED_TLC_EXECUTABLE, "tlc2", "tla2tools"],
+        env=probe_env,
     )
     if binary is None:
         result["probe_error"] = "executable_not_on_path"
@@ -758,7 +879,8 @@ def probe_apalache_identity(
         "probe_error": None,
     }
     binary = executable or resolve_executable(
-        [LOCKED_APALACHE_EXECUTABLE, "apalache"]
+        [LOCKED_APALACHE_EXECUTABLE, "apalache"],
+        env=probe_env,
     )
     if binary is None:
         result["probe_error"] = "executable_not_on_path"
@@ -2138,7 +2260,8 @@ def probe_tlc_live_identity(
         "evidence_class": EVIDENCE_CLASS_LIVE,
     }
     binary = executable or resolve_executable(
-        [LOCKED_TLC_EXECUTABLE, "tlc2", "tla2tools"]
+        [LOCKED_TLC_EXECUTABLE, "tlc2", "tla2tools"],
+        env=probe_env,
     )
     if binary is None:
         result["probe_error"] = "executable_not_on_path"
@@ -2583,7 +2706,7 @@ def run_live_semantic_suite(
     )
     cases = live_corpus_cases(corpus)
     cert = StateModelLiveSemanticCertification()
-    probe_env = offline_env(env)
+    probe_env = managed_execution_env(env)
     _ = root
 
     cert.checks.append(
