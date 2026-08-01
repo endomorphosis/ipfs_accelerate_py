@@ -1904,6 +1904,108 @@ OperationSpec = AnalysisOperationSpec
 ProducerDeclaration = AnalysisProducer
 
 
+# ---------------------------------------------------------------------------
+# Property-to-strategy routing bridge (PDR-012)
+# ---------------------------------------------------------------------------
+#
+# Strategy selection lives in :mod:`analysis_strategy_registry`.  These helpers
+# keep the operation registry as the transport policy boundary while exposing
+# closed property-class routing without importing optional providers or
+# inferring support from importability.
+
+
+def operation_property_classes(operation: Any) -> tuple[str, ...]:
+    """Return property-class ids linked to a transport operation."""
+
+    from .analysis_strategy_registry import property_class_for_operation
+
+    return tuple(item.value for item in property_class_for_operation(operation))
+
+
+def route_operation_strategies(
+    operation: Any,
+    *,
+    required_assurance: Any | None = None,
+    available_capabilities: Mapping[str, Any] | None = None,
+    strategy_registry: Any | None = None,
+) -> tuple[Any, ...]:
+    """Select least-cost strategies for each property class of ``operation``.
+
+    Returns a tuple of :class:`~analysis_strategy_registry.StrategySelection`
+    objects.  Discovery remains cold/lazy: optional providers are not imported.
+    """
+
+    from .analysis_strategy_registry import (
+        create_default_analysis_strategy_registry,
+        property_class_for_operation,
+    )
+
+    registry = strategy_registry or create_default_analysis_strategy_registry()
+    selections = []
+    for property_class in property_class_for_operation(operation):
+        selections.append(
+            registry.select(
+                property_class,
+                required_assurance=required_assurance,
+                available_capabilities=available_capabilities,
+            )
+        )
+    return tuple(selections)
+
+
+def attach_strategy_routing(
+    operation_registry: AnalysisOperationRegistry,
+    *,
+    strategy_registry: Any | None = None,
+) -> Any:
+    """Bind a strategy registry onto an operation registry for joint queries.
+
+    The returned object is the strategy registry.  The operation registry is
+    left unchanged for transport dispatch; callers use the strategy registry
+    for property-class routing and the operation registry for request dispatch.
+    """
+
+    from .analysis_strategy_registry import (
+        AnalysisStrategyRegistry,
+        create_default_analysis_strategy_registry,
+    )
+
+    if strategy_registry is None:
+        strategy_registry = create_default_analysis_strategy_registry()
+    if not isinstance(strategy_registry, AnalysisStrategyRegistry):
+        raise AnalysisOperationRegistryError(
+            "strategy_registry must be an AnalysisStrategyRegistry"
+        )
+    # Validate that every strategy-linked operation is registered when the
+    # operation registry already has declarations.
+    known = {item.operation for item in operation_registry.operations()}
+    if known:
+        for spec in strategy_registry.strategies():
+            for operation_id in spec.analysis_operations:
+                try:
+                    op = normalize_analysis_operation(operation_id)
+                except AnalysisOperationRegistryError:
+                    continue
+                if op not in known:
+                    raise AnalysisOperationRegistryError(
+                        f"strategy {spec.property_class.value} references "
+                        f"unregistered operation {operation_id}"
+                    )
+    return strategy_registry
+
+
+# Preserve attribute access for callers that monkey-patch routing on the class.
+AnalysisOperationRegistry.operation_property_classes = staticmethod(  # type: ignore[attr-defined]
+    operation_property_classes
+)
+AnalysisOperationRegistry.route_operation_strategies = staticmethod(  # type: ignore[attr-defined]
+    route_operation_strategies
+)
+AnalysisOperationRegistry.attach_strategy_routing = staticmethod(  # type: ignore[attr-defined]
+    attach_strategy_routing
+)
+
+
 __all__ = [
     "ANALYSIS_OPERATION_REGISTRY_VERSION",
     "ANALYSIS_OPERATION_SCHEMA",
@@ -1928,6 +2030,7 @@ __all__ = [
     "OperationSpec",
     "ProducerDeclaration",
     "ProvenanceRequirement",
+    "attach_strategy_routing",
     "build_default_analysis_operation_registry",
     "create_default_analysis_operation_registry",
     "default_operation_specs",
@@ -1935,5 +2038,7 @@ __all__ = [
     "normalize_analysis_reference",
     "normalize_logic_family",
     "normalized_reference_payload",
+    "operation_property_classes",
+    "route_operation_strategies",
     "to_canonical_logic_family_id",
 ]
