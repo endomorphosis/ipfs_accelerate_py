@@ -261,7 +261,9 @@ def test_checked_in_receipt_schema_and_identity(builder) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_fanin_interface_and_structural_validity(fanin: dict[str, Any]) -> None:
+def test_interface_identity_and_derived_acceptance(
+    fanin: dict[str, Any],
+) -> None:
     assert fanin["interface"] == INTERFACE
     assert fanin["schema_version"] == SCHEMA
     assert fanin["goal_id"] == GOAL_ID
