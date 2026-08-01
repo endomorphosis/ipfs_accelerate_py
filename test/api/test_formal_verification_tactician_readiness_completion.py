@@ -264,41 +264,28 @@ def test_hard_zero_gates_are_present_and_non_negative() -> None:
     assert acceptance["deployment_section_present"] is True
 
 
-def test_hard_zero_gates_clear_when_child_certificates_pass() -> None:
-    """Hard-zero must reflect child certificates, not invented counters.
+def test_fixture_benchmark_and_open_p0s_do_not_clear_hard_zero_gates() -> None:
+    """Passing fixture metrics cannot overrule unresolved P0 findings."""
 
-    When the benchmark hard gates pass and the toolchain certificate has no
-    disagreement quarantines, every hard-zero counter must be zero.
-    """
-
-    receipt = _load_receipt()
+    module = _load_builder_module()
     certificate = json.loads(TOOLCHAIN_CERT_PATH.read_text(encoding="utf-8"))
     benchmark = json.loads(BENCHMARK_PATH.read_text(encoding="utf-8"))
+    baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    hard_zero = module.derive_hard_zero_gates(
+        certificate=certificate,
+        benchmark=benchmark,
+        baseline=baseline,
+    )
 
-    quarantines = certificate.get("disagreement_quarantines") or []
-    hard = (
-        (benchmark.get("report") or {}).get("gates") or benchmark.get("gates") or {}
-    ).get("hard") or {}
-
-    def _passed(name: str) -> bool:
-        status = hard.get(name) or {}
-        if str(status.get("status") or "").lower() == "pass":
-            return True
-        actual = status.get("actual_bps")
-        required = status.get("required_bps")
-        return isinstance(actual, int) and isinstance(required, int) and actual >= required
-
-    if (
-        isinstance(quarantines, list)
-        and len(quarantines) == 0
-        and _passed("correctness")
-        and _passed("privacy")
-        and _passed("authority")
-    ):
-        hard_zero = receipt["hard_zero_gates"]
-        for gate in HARD_ZERO_GATES:
-            assert hard_zero[gate] == 0, gate
-        assert receipt["acceptance"]["hard_zero_gates_clear"] is True
+    assert hard_zero["derivation"]["complete"] is False
+    assert (
+        hard_zero["derivation"]["benchmark_evidence"]["authoritative"] is False
+    )
+    assert hard_zero["derivation"]["open_p0_findings"]
+    assert hard_zero["false_proof_count"] > 0
+    assert hard_zero["false_closure_count"] > 0
+    assert hard_zero["secret_or_witness_leakage_count"] > 0
+    assert hard_zero["authority_boundary_violations"] > 0
 
 
 def test_artifacts_bound_with_content_identities() -> None:
@@ -485,9 +472,6 @@ def test_builder_recomputes_equivalent_receipt(tmp_path: Path) -> None:
     ]
     assert rebuilt["implementation"]["status"] == committed["implementation"]["status"]
     assert set(rebuilt["hard_zero_gates"]) >= set(HARD_ZERO_GATES)
-    for gate in HARD_ZERO_GATES:
-        assert rebuilt["hard_zero_gates"][gate] == committed["hard_zero_gates"][gate]
-
     current_head = subprocess.check_output(
         ["git", "rev-parse", "HEAD"],
         cwd=REPO_ROOT,
@@ -495,10 +479,23 @@ def test_builder_recomputes_equivalent_receipt(tmp_path: Path) -> None:
     ).strip()
     receipt_source_head = str(committed["source"]["parent_commit"])
     if receipt_source_head == current_head:
+        for gate in HARD_ZERO_GATES:
+            assert (
+                rebuilt["hard_zero_gates"][gate]
+                == committed["hard_zero_gates"][gate]
+            )
         # Identity must match while rebuilding the same uncommitted evidence
         # tree from which the historical receipt was issued.
         assert rebuilt["receipt_identity"] == committed["receipt_identity"]
     else:
+        # A historical predecessor receipt can retain the prior gate policy,
+        # but a current rebuild must apply the fail-closed live/P0 policy.
+        assert rebuilt["hard_zero_gates"]["false_proof_count"] > 0
+        assert rebuilt["hard_zero_gates"]["false_closure_count"] > 0
+        assert (
+            rebuilt["hard_zero_gates"]["secret_or_witness_leakage_count"] > 0
+        )
+        assert rebuilt["hard_zero_gates"]["authority_boundary_violations"] > 0
         # A checked-in receipt necessarily describes its parent evidence
         # commit: the receipt cannot contain the hash of the commit that in
         # turn contains the receipt.  Preserve that historical identity and

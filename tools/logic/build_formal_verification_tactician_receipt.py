@@ -63,6 +63,28 @@ DEFAULT_TOOLCHAIN_LOCK_RELATIVE: Final = Path(
 SUPERVISOR_COMPLETION_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
 )
+SUPERVISOR_RELEASE_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.release_evidence@1"
+)
+SUPERVISOR_RELEASE_EVIDENCE_INTERFACE: Final = "AgentSupervisorReleaseEvidence@1"
+SUPERVISOR_RELEASE_EVIDENCE_GOAL_ID: Final = "FVT-G212"
+SUPERVISOR_RELEASE_EVIDENCE_EXPORTER_RELATIVE: Final = Path(
+    "ipfs_accelerate_py/agent_supervisor/release_evidence.py"
+)
+BENCHMARK_AUTHORITY_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "goal_tactician_authoritative_benchmark_evidence@1"
+)
+BENCHMARK_AUTHORITY_INTERFACE: Final = (
+    "GoalTacticianAuthoritativeBenchmarkEvidence@1"
+)
+BENCHMARK_AUTHORITY_GOAL_ID: Final = "FVT-G063"
+BENCHMARK_AUTHORITY_VERIFIER_RELATIVE: Final = Path(
+    "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py"
+)
+BENCHMARK_AUTHORITY_VERIFIER_FUNCTION: Final = (
+    "verify_authoritative_benchmark_evidence"
+)
 ROLE_AWARE_ATTESTATION_PATHS: Final[frozenset[str]] = frozenset(
     {
         DEFAULT_RECEIPT_RELATIVE.as_posix(),
@@ -160,6 +182,46 @@ REQUIRED_SEMANTIC_ELEVATIONS: Final[tuple[str, ...]] = (
     "coq",
     "isabelle",
 )
+
+# A benchmark can measure a hard-zero gate only when its cohort is explicitly
+# live.  Fixture, simulated, synthetic, offline, parser, and canned cohorts are
+# useful regression evidence, but they cannot establish a deployment claim.
+AUTHORITATIVE_BENCHMARK_EVIDENCE_CLASSES: Final[frozenset[str]] = frozenset(
+    {
+        "live",
+        "calibrated",
+    }
+)
+NON_AUTHORITATIVE_BENCHMARK_EVIDENCE_CLASSES: Final[frozenset[str]] = frozenset(
+    {
+        "fixture",
+        "simulated",
+        "synthetic",
+        "offline",
+        "parser",
+        "canned",
+        "shadow",
+    }
+)
+
+# Known open P0 findings apply pressure to the hard-zero dimensions they
+# invalidate. Unknown P0 findings conservatively affect every local hard-zero
+# dimension until they are classified and resolved.
+P0_FINDING_GATE_MAP: Final[dict[str, tuple[str, ...]]] = {
+    "receipt_verification_fail_open": (
+        "false_proof_count",
+        "false_closure_count",
+        "authority_boundary_violations",
+    ),
+    "public_counterexample_raw_leak": (
+        "secret_or_witness_leakage_count",
+    ),
+    "structural_repair_as_closure": (
+        "false_proof_count",
+        "false_closure_count",
+        "authority_boundary_violations",
+    ),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -501,87 +563,441 @@ def _safe_dict(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
 
 
+def _nonnegative_int(value: Any, *, default: int = -1) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return default
+    return value
+
+
+def _declared_mapping_identity_valid(
+    payload: Mapping[str, Any],
+    *,
+    field: str,
+    prefix: str = "",
+) -> bool:
+    """Recompute a canonical identity instead of trusting a claimed digest."""
+
+    stored = str(payload.get(field) or "")
+    body = {key: value for key, value in payload.items() if key != field}
+    computed = content_digest(body)
+    if prefix:
+        computed = prefix + computed.removeprefix("sha256:")
+    candidates = {computed, computed.removeprefix("sha256:")}
+    return bool(stored) and stored in candidates
+
+
+def _benchmark_authority_anchor(
+    benchmark: Mapping[str, Any],
+    *,
+    report_id: str,
+    repo_root: Path | None,
+) -> dict[str, Any]:
+    """Require the repository-owned verifier for a live benchmark claim."""
+
+    authority = _safe_dict(benchmark.get("authoritative_measurement"))
+    failures: list[str] = []
+    result: dict[str, Any] = {
+        "present": bool(authority),
+        "bound": False,
+        "schema": authority.get("schema"),
+        "interface": authority.get("interface"),
+        "goal_id": authority.get("goal_id"),
+        "content_id": authority.get("content_id"),
+        "report_id": authority.get("report_id"),
+        "verifier": {},
+        "failures": failures,
+    }
+    if not authority:
+        failures.append("benchmark_authoritative_measurement_anchor_missing")
+        return result
+    if authority.get("schema") != BENCHMARK_AUTHORITY_SCHEMA:
+        failures.append("benchmark_authority_schema_mismatch")
+    if authority.get("interface") != BENCHMARK_AUTHORITY_INTERFACE:
+        failures.append("benchmark_authority_interface_mismatch")
+    if authority.get("goal_id") != BENCHMARK_AUTHORITY_GOAL_ID:
+        failures.append("benchmark_authority_goal_mismatch")
+    if not report_id or authority.get("report_id") != report_id:
+        failures.append("benchmark_authority_report_id_mismatch")
+    if not _declared_mapping_identity_valid(authority, field="content_id"):
+        failures.append("benchmark_authority_content_id_mismatch")
+    if repo_root is None:
+        failures.append("benchmark_authority_repository_missing")
+        return result
+
+    root = repo_root.resolve()
+    verifier_path = root / BENCHMARK_AUTHORITY_VERIFIER_RELATIVE
+    verifier_claim = _safe_dict(authority.get("verifier"))
+    expected_verifier_sha256 = sha256_file(verifier_path)
+    verifier_bound = bool(
+        verifier_claim.get("path")
+        == BENCHMARK_AUTHORITY_VERIFIER_RELATIVE.as_posix()
+        and expected_verifier_sha256
+        and verifier_claim.get("sha256") == expected_verifier_sha256
+    )
+    result["verifier"] = {
+        "path": BENCHMARK_AUTHORITY_VERIFIER_RELATIVE.as_posix(),
+        "function": BENCHMARK_AUTHORITY_VERIFIER_FUNCTION,
+        "present": verifier_path.is_file(),
+        "sha256": expected_verifier_sha256,
+        "bound": verifier_bound,
+    }
+    if not verifier_path.is_file():
+        failures.append("benchmark_authority_verifier_missing")
+        return result
+    if not verifier_bound:
+        failures.append("benchmark_authority_verifier_identity_mismatch")
+        return result
+    if failures:
+        return result
+
+    try:
+        import importlib.util
+
+        module_spec = importlib.util.spec_from_file_location(
+            "formal_verification_goal_tactician_benchmark_authority",
+            verifier_path,
+        )
+        if module_spec is None or module_spec.loader is None:
+            raise ImportError("cannot load benchmark authority verifier")
+        module = importlib.util.module_from_spec(module_spec)
+        sys.modules[module_spec.name] = module
+        module_spec.loader.exec_module(module)
+        verifier = getattr(
+            module,
+            BENCHMARK_AUTHORITY_VERIFIER_FUNCTION,
+            None,
+        )
+        if not callable(verifier):
+            failures.append("benchmark_authority_verifier_not_callable")
+            return result
+        verified = verifier(dict(benchmark), repo_root=root)
+    except Exception as exc:  # noqa: BLE001 - benchmark evidence fails closed
+        failures.append(f"benchmark_authority_verifier_error:{type(exc).__name__}")
+        return result
+
+    verified_mapping = _safe_dict(verified)
+    if (
+        verified_mapping.get("valid") is not True
+        or verified_mapping.get("report_id") != report_id
+        or verified_mapping.get("authority_content_id")
+        != authority.get("content_id")
+    ):
+        failures.append("benchmark_authority_verifier_rejected")
+        return result
+
+    result["bound"] = True
+    return result
+
+
+def _benchmark_hard_gate_evidence(
+    benchmark: Mapping[str, Any] | None,
+    *,
+    repo_root: Path | None,
+) -> dict[str, Any]:
+    """Classify whether benchmark hard gates are live and content-bound."""
+
+    failures: list[str] = []
+    if benchmark is None:
+        return {
+            "authoritative": False,
+            "failures": ["benchmark_missing"],
+            "hard_gates": {},
+            "evidence_classes": [],
+            "report_id": None,
+            "report_id_valid": False,
+            "authority_anchor": {
+                "present": False,
+                "bound": False,
+                "failures": ["benchmark_missing"],
+            },
+        }
+
+    report = _safe_dict(benchmark.get("report"))
+    metrics = _safe_dict(report.get("metrics"))
+    hard_gates = _safe_dict(_safe_dict(report.get("gates")).get("hard"))
+    metric_hard_gates = _safe_dict(metrics.get("hard_gates"))
+    evidence_classes = sorted(
+        {
+            str(item).strip().lower()
+            for item in _safe_list(metrics.get("evidence_classes"))
+            if str(item).strip()
+        }
+    )
+    evidence_class_set = set(evidence_classes)
+    report_id = str(report.get("report_id") or "")
+    report_id_valid = _declared_mapping_identity_valid(
+        report,
+        field="report_id",
+        prefix="goal-tactician-bench-",
+    )
+
+    if benchmark.get("schema") != (
+        "ipfs_accelerate_py/agent-supervisor/goal-tactician-benchmark@1"
+    ):
+        failures.append("benchmark_schema_mismatch")
+    if benchmark.get("interface") != "GoalTacticianBenchmark@1":
+        failures.append("benchmark_interface_mismatch")
+    if report.get("schema") != (
+        "ipfs_accelerate_py/agent-supervisor/goal-tactician-benchmark-report@1"
+    ):
+        failures.append("benchmark_report_schema_mismatch")
+    if report.get("interface") != "GoalTacticianBenchmark@1":
+        failures.append("benchmark_report_interface_mismatch")
+    if report.get("source") != "cohort_receipts":
+        failures.append("benchmark_report_source_not_cohort_receipts")
+    if metrics.get("source") != "cohort_receipts":
+        failures.append("benchmark_metrics_source_not_cohort_receipts")
+    if not report_id_valid:
+        failures.append("benchmark_report_id_mismatch")
+    authority_anchor = _benchmark_authority_anchor(
+        benchmark,
+        report_id=report_id,
+        repo_root=repo_root,
+    )
+    failures.extend(authority_anchor.get("failures") or [])
+
+    synthetic_markers = (
+        benchmark.get("synthetic_distributions"),
+        report.get("synthetic_distributions"),
+        metrics.get("synthetic_distributions"),
+    )
+    if any(marker is not False for marker in synthetic_markers):
+        failures.append("benchmark_synthetic_status_missing_or_true")
+    if not evidence_classes:
+        failures.append("benchmark_evidence_classes_missing")
+    if evidence_class_set & NON_AUTHORITATIVE_BENCHMARK_EVIDENCE_CLASSES:
+        failures.append("benchmark_fixture_or_synthetic_evidence")
+    if not evidence_class_set <= AUTHORITATIVE_BENCHMARK_EVIDENCE_CLASSES:
+        failures.append("benchmark_evidence_class_not_authoritative")
+
+    receipt_ids = [
+        str(item) for item in _safe_list(report.get("receipt_ids")) if str(item)
+    ]
+    if (
+        not receipt_ids
+        or len(receipt_ids) != len(set(receipt_ids))
+        or _nonnegative_int(report.get("receipt_count")) != len(receipt_ids)
+    ):
+        failures.append("benchmark_receipt_population_invalid")
+    if any(
+        any(marker in receipt_id.lower() for marker in ("fixture", "synthetic", "simulated"))
+        for receipt_id in receipt_ids
+    ):
+        failures.append("benchmark_receipt_population_non_authoritative")
+
+    observed_passes: list[bool] = []
+    for gate_name in ("correctness", "privacy", "authority"):
+        gate = _safe_dict(hard_gates.get(gate_name))
+        actual = gate.get("actual_bps")
+        required = gate.get("required_bps")
+        status = str(gate.get("status") or "").strip().lower()
+        if (
+            not isinstance(actual, int)
+            or isinstance(actual, bool)
+            or not isinstance(required, int)
+            or isinstance(required, bool)
+            or required != 10000
+            or actual < 0
+            or actual > required
+            or status not in {"pass", "fail"}
+            or (status == "pass") != (actual >= required)
+        ):
+            failures.append(f"benchmark_hard_gate_{gate_name}_invalid")
+            continue
+        if metric_hard_gates.get(f"{gate_name}_bps") != actual:
+            failures.append(f"benchmark_metric_{gate_name}_mismatch")
+        observed_passes.append(actual >= required)
+    if (
+        len(observed_passes) != 3
+        or metric_hard_gates.get("passed") is not all(observed_passes)
+    ):
+        failures.append("benchmark_aggregate_hard_gate_mismatch")
+
+    return {
+        "authoritative": not failures,
+        "failures": sorted(set(failures)),
+        "hard_gates": hard_gates,
+        "evidence_classes": evidence_classes,
+        "report_id": report_id or None,
+        "report_id_valid": report_id_valid,
+        "authority_anchor": authority_anchor,
+    }
+
+
+def _baseline_p0_gate_pressure(
+    baseline: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Map unresolved P0 findings to the hard-zero dimensions they invalidate."""
+
+    gate_pressure = {
+        gate: 0
+        for gate in HARD_ZERO_GATE_KEYS
+        if gate != "unresolved_cross_provider_disagreement_count"
+    }
+    open_findings: list[dict[str, Any]] = []
+    open_p0_findings: list[dict[str, Any]] = []
+    failures: list[str] = []
+
+    if baseline is None:
+        failures.append("baseline_missing")
+        for gate in gate_pressure:
+            gate_pressure[gate] = 1
+        return {
+            "gate_pressure": gate_pressure,
+            "open_findings": open_findings,
+            "open_p0_findings": open_p0_findings,
+            "failures": failures,
+        }
+
+    findings = baseline.get("known_findings")
+    if not isinstance(findings, list):
+        failures.append("baseline_known_findings_missing_or_invalid")
+        for gate in gate_pressure:
+            gate_pressure[gate] = 1
+        return {
+            "gate_pressure": gate_pressure,
+            "open_findings": open_findings,
+            "open_p0_findings": open_p0_findings,
+            "failures": failures,
+        }
+
+    all_local_gates = tuple(gate_pressure)
+    for finding in findings:
+        if not isinstance(finding, Mapping):
+            failures.append("baseline_finding_not_mapping")
+            for gate in gate_pressure:
+                gate_pressure[gate] = max(gate_pressure[gate], 1)
+            continue
+        if str(finding.get("status") or "").strip().lower() != "open":
+            continue
+        finding_id = str(finding.get("id") or "").strip()
+        severity = str(finding.get("severity") or "").strip().lower()
+        projected = {
+            "id": finding_id or None,
+            "severity": severity or None,
+            "summary": finding.get("summary"),
+        }
+        open_findings.append(projected)
+        if severity != "p0":
+            continue
+        gates = P0_FINDING_GATE_MAP.get(finding_id, all_local_gates)
+        mapped = {**projected, "mapped_hard_zero_gates": list(gates)}
+        open_p0_findings.append(mapped)
+        for gate in gates:
+            gate_pressure[gate] = gate_pressure.get(gate, 0) + 1
+
+    return {
+        "gate_pressure": gate_pressure,
+        "open_findings": open_findings,
+        "open_p0_findings": open_p0_findings,
+        "failures": sorted(set(failures)),
+    }
+
+
 def derive_hard_zero_gates(
     *,
     certificate: Mapping[str, Any] | None,
     benchmark: Mapping[str, Any] | None,
     baseline: Mapping[str, Any] | None,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Derive hard-zero counters from child receipts — never invent success.
+    """Derive hard-zero counters from bound, authoritative child evidence.
 
-    Unresolved cross-provider disagreement is the quarantine list length from
-    the toolchain certificate. Correctness / privacy / authority gates use the
-    benchmark hard-gate basis points when present (10000 bps == 0 violations).
-    Baseline open findings are disclosed separately and never rewritten.
+    Content-addressed certificate disagreement evidence and a live benchmark
+    cohort are required. Fixture/synthetic cohorts never clear deployment
+    gates. Open P0 baseline findings apply nonzero pressure until explicitly
+    resolved; an unknown P0 conservatively affects every local hard-zero gate.
     """
 
     missing_measurements: list[str] = []
     disagreement = 1
-    if certificate is not None:
-        quarantines = certificate.get("disagreement_quarantines") or []
+    certificate_identity_valid = bool(
+        certificate is not None
+        and certificate.get("interface") == "FormalVerificationToolchainCertificate@1"
+        and _declared_mapping_identity_valid(
+            certificate,
+            field="certificate_digest_sha256",
+        )
+    )
+    if certificate_identity_valid and certificate is not None:
+        quarantines = certificate.get("disagreement_quarantines")
         if isinstance(quarantines, list):
             disagreement = len(quarantines)
         else:
             missing_measurements.append("certificate.disagreement_quarantines")
     else:
-        missing_measurements.append("certificate")
+        if certificate is None:
+            missing_measurements.append("certificate")
+        missing_measurements.append("certificate.content_identity")
 
     def _violations_from_bps(status: Mapping[str, Any] | None) -> int:
         if not status:
             return 1
-        # Prefer explicit status; fall back to basis-point shortfall.
-        if str(status.get("status") or "").lower() == "pass":
-            return 0
         actual = status.get("actual_bps")
         required = status.get("required_bps")
-        if isinstance(actual, int) and isinstance(required, int):
+        if (
+            isinstance(actual, int)
+            and not isinstance(actual, bool)
+            and isinstance(required, int)
+            and not isinstance(required, bool)
+        ):
             return max(0, required - actual)
-        # Missing measurement is not a synthetic pass; report as unresolved (1).
         return 1
 
     false_proof = 1
     false_closure = 1
     leakage = 1
     authority = 1
-    gate_source = "child_certificate_and_benchmark_hard_gates"
+    gate_source = (
+        "content_bound_certificate_live_benchmark_and_open_p0_baseline_findings"
+    )
 
-    if benchmark is not None:
-        report = _safe_dict(benchmark.get("report"))
-        gates = _safe_dict(report.get("gates") or benchmark.get("gates"))
-        hard = _safe_dict(gates.get("hard"))
-        for gate_name in ("correctness", "authority", "privacy"):
-            if not _safe_dict(hard.get(gate_name)):
-                missing_measurements.append(f"benchmark.hard.{gate_name}")
-        # Correctness failures map to false-proof pressure; authority is direct.
-        false_proof = _violations_from_bps(_safe_dict(hard.get("correctness")) or None)
+    benchmark_evidence = _benchmark_hard_gate_evidence(
+        benchmark,
+        repo_root=repo_root,
+    )
+    if benchmark_evidence["authoritative"]:
+        hard = _safe_dict(benchmark_evidence.get("hard_gates"))
+        false_proof = _violations_from_bps(
+            _safe_dict(hard.get("correctness")) or None
+        )
         authority = _violations_from_bps(_safe_dict(hard.get("authority")) or None)
         privacy = _violations_from_bps(_safe_dict(hard.get("privacy")) or None)
         leakage = privacy
-        # Closure integrity is owned by verifier-backed repair + adversarial
-        # gates; when hard gates pass and disagreement is empty, closure is 0.
         if false_proof == 0 and authority == 0 and disagreement == 0:
             false_closure = 0
         else:
             false_closure = max(false_proof, authority, 1 if disagreement else 0)
     else:
-        missing_measurements.append("benchmark")
+        if benchmark is None:
+            missing_measurements.append("benchmark")
+        missing_measurements.extend(
+            f"benchmark.{failure}"
+            for failure in benchmark_evidence.get("failures") or []
+        )
 
-    # Baseline may record historical open findings. Those are disclosures, not
-    # silent success counters. They do not rewrite hard-zero when child
-    # certificates already measure the gates.
-    open_findings = []
-    if baseline is not None:
-        for finding in _safe_list(baseline.get("known_findings")):
-            if not isinstance(finding, Mapping):
-                continue
-            if str(finding.get("status") or "").lower() == "open":
-                open_findings.append(
-                    {
-                        "id": finding.get("id"),
-                        "severity": finding.get("severity"),
-                        "summary": finding.get("summary"),
-                    }
-                )
+    baseline_pressure = _baseline_p0_gate_pressure(baseline)
+    missing_measurements.extend(
+        f"baseline.{failure}"
+        for failure in baseline_pressure.get("failures") or []
+    )
+    pressure = _safe_dict(baseline_pressure.get("gate_pressure"))
+    false_proof = max(false_proof, int(pressure.get("false_proof_count") or 0))
+    false_closure = max(
+        false_closure,
+        int(pressure.get("false_closure_count") or 0),
+    )
+    leakage = max(
+        leakage,
+        int(pressure.get("secret_or_witness_leakage_count") or 0),
+    )
+    authority = max(
+        authority,
+        int(pressure.get("authority_boundary_violations") or 0),
+    )
+    open_p0_findings = _safe_list(baseline_pressure.get("open_p0_findings"))
+    if open_p0_findings:
+        missing_measurements.append("baseline.unresolved_open_p0_findings")
 
     return {
         "false_proof_count": int(false_proof),
@@ -594,9 +1010,17 @@ def derive_hard_zero_gates(
             "hardcoded_success_counters_forbidden": True,
             "complete": not missing_measurements,
             "missing_measurements": sorted(set(missing_measurements)),
+            "certificate_identity_valid": certificate_identity_valid,
+            "benchmark_evidence": benchmark_evidence,
             "benchmark_hard_gates_required_bps": 10000,
-            "open_baseline_findings_disclosed": len(open_findings),
-            "open_baseline_findings": open_findings,
+            "fixture_or_synthetic_benchmark_cannot_clear": True,
+            "open_p0_findings_block_clearance": True,
+            "open_baseline_findings_disclosed": len(
+                baseline_pressure.get("open_findings") or []
+            ),
+            "open_baseline_findings": baseline_pressure.get("open_findings") or [],
+            "open_p0_findings": open_p0_findings,
+            "p0_gate_pressure": pressure,
         },
     }
 
@@ -1348,46 +1772,138 @@ def _derive_git_commit_binding(
     return result
 
 
+def _trusted_release_evidence_snapshot(
+    evidence: Mapping[str, Any] | None,
+    *,
+    repo_root: Path | None,
+) -> dict[str, Any]:
+    """Verify a canonical G212 export before exposing its projected snapshot.
+
+    Raw task-state/event JSON is operational state, not release authority. Only
+    the repository-bound G212 exporter may turn those mutable files into a
+    content-addressed release-evidence object, and its verifier must approve the
+    complete object. Until that exporter exists, this gate remains closed.
+    """
+
+    payload = dict(evidence) if isinstance(evidence, Mapping) else {}
+    failures: list[str] = []
+    result: dict[str, Any] = {
+        "present": bool(payload),
+        "bound": False,
+        "schema": payload.get("schema"),
+        "interface": payload.get("interface"),
+        "goal_id": payload.get("goal_id"),
+        "content_id": payload.get("content_id"),
+        "exporter": {},
+        "snapshot": {},
+        "failures": failures,
+    }
+    if not payload:
+        failures.append("trusted_release_evidence_missing")
+        return result
+    if payload.get("schema") != SUPERVISOR_RELEASE_EVIDENCE_SCHEMA:
+        failures.append("trusted_release_evidence_schema_mismatch")
+    if payload.get("interface") != SUPERVISOR_RELEASE_EVIDENCE_INTERFACE:
+        failures.append("trusted_release_evidence_interface_mismatch")
+    if payload.get("goal_id") != SUPERVISOR_RELEASE_EVIDENCE_GOAL_ID:
+        failures.append("trusted_release_evidence_goal_mismatch")
+    if any(
+        key in payload
+        for key in ("task_state_source", "event_log_source", "task_state", "events")
+    ):
+        failures.append("raw_supervisor_state_is_not_release_evidence")
+    if not _declared_mapping_identity_valid(payload, field="content_id"):
+        failures.append("trusted_release_evidence_content_id_mismatch")
+    if repo_root is None:
+        failures.append("trusted_release_evidence_repository_missing")
+        return result
+
+    root = repo_root.resolve()
+    exporter_path = root / SUPERVISOR_RELEASE_EVIDENCE_EXPORTER_RELATIVE
+    exporter = _safe_dict(payload.get("exporter"))
+    expected_exporter_sha256 = sha256_file(exporter_path)
+    exporter_bound = bool(
+        exporter.get("path")
+        == SUPERVISOR_RELEASE_EVIDENCE_EXPORTER_RELATIVE.as_posix()
+        and expected_exporter_sha256
+        and exporter.get("sha256") == expected_exporter_sha256
+    )
+    result["exporter"] = {
+        "path": SUPERVISOR_RELEASE_EVIDENCE_EXPORTER_RELATIVE.as_posix(),
+        "present": exporter_path.is_file(),
+        "sha256": expected_exporter_sha256,
+        "bound": exporter_bound,
+    }
+    if not exporter_path.is_file():
+        failures.append("trusted_release_evidence_exporter_missing")
+        return result
+    if not exporter_bound:
+        failures.append("trusted_release_evidence_exporter_identity_mismatch")
+        return result
+
+    try:
+        import importlib.util
+
+        module_spec = importlib.util.spec_from_file_location(
+            "formal_verification_g212_release_evidence",
+            exporter_path,
+        )
+        if module_spec is None or module_spec.loader is None:
+            raise ImportError("cannot load G212 release-evidence exporter")
+        module = importlib.util.module_from_spec(module_spec)
+        sys.modules[module_spec.name] = module
+        module_spec.loader.exec_module(module)
+        verifier = getattr(module, "verify_release_evidence", None)
+        if not callable(verifier):
+            raise AttributeError("verify_release_evidence is not callable")
+        verified = verifier(dict(payload), repo_root=root)
+    except Exception as exc:  # noqa: BLE001 - release evidence fails closed
+        failures.append(
+            f"trusted_release_evidence_verifier_error:{type(exc).__name__}"
+        )
+        return result
+
+    if isinstance(verified, Mapping):
+        verifier_valid = verified.get("valid") is True
+        verified_snapshot = verified.get("snapshot")
+    else:
+        verifier_valid = verified is True
+        verified_snapshot = payload.get("snapshot")
+    snapshot = (
+        dict(verified_snapshot)
+        if isinstance(verified_snapshot, Mapping)
+        else {}
+    )
+    if not verifier_valid:
+        failures.append("trusted_release_evidence_verifier_rejected")
+    if not snapshot:
+        failures.append("trusted_release_evidence_snapshot_missing")
+    if failures:
+        return result
+
+    result["bound"] = True
+    result["snapshot"] = snapshot
+    return result
+
+
 def derive_supervisor_binding(
     evidence: Mapping[str, Any] | None,
     *,
     repo_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Validate task/CID, completion receipt, validation, and merge evidence."""
+    """Validate a G212 export's task/CID, validation, and merge evidence."""
 
-    snapshot = dict(evidence) if isinstance(evidence, Mapping) else {}
+    trusted_release = _trusted_release_evidence_snapshot(
+        evidence,
+        repo_root=repo_root,
+    )
+    snapshot = _safe_dict(trusted_release.get("snapshot"))
     task_state = _safe_dict(snapshot.get("task_state"))
     identity = _safe_dict(task_state.get("canonical_identity"))
     expected_cid = str(identity.get("canonical_task_cid") or "")
     expected_key = str(identity.get("canonical_task_key") or "")
-    task_state_source = _safe_dict(snapshot.get("task_state_source"))
-    event_log_source = _safe_dict(snapshot.get("event_log_source"))
-    state_path = Path(str(task_state_source.get("path") or ""))
-    event_path = Path(str(event_log_source.get("path") or ""))
-    source_paths_well_formed = bool(
-        str(state_path)
-        and str(event_path)
-        and state_path.name.endswith("_task_state.json")
-        and event_path.name.endswith("_events.jsonl")
-        and state_path.parent == event_path.parent
-    )
-    source_files_bound = bool(
-        source_paths_well_formed
-        and state_path.is_file()
-        and event_path.is_file()
-        and sha256_file(state_path) == task_state_source.get("sha256")
-        and sha256_file(event_path) == event_log_source.get("sha256")
-    )
-    durable_snapshot_matches = False
-    if source_files_bound:
-        durable_snapshot = load_supervisor_evidence_snapshot(
-            task_state_path=state_path,
-            event_log_path=event_path,
-            task_id=ROLE_AWARE_TASK_ID,
-        )
-        durable_snapshot_matches = content_digest(durable_snapshot) == content_digest(
-            snapshot
-        )
+    source_files_bound = trusted_release.get("bound") is True
+    durable_snapshot_matches = trusted_release.get("bound") is True
 
     chain = _safe_dict(snapshot.get("event_chain"))
     event_chain_bound = bool(
@@ -1506,8 +2022,14 @@ def derive_supervisor_binding(
         and terminal_events
     )
     return {
-        "present": bool(snapshot),
+        "present": bool(evidence),
         "bound": bound,
+        "trusted_release_evidence_bound": trusted_release.get("bound") is True,
+        "trusted_release_evidence": {
+            key: value
+            for key, value in trusted_release.items()
+            if key != "snapshot"
+        },
         "source_files_bound": source_files_bound,
         "durable_snapshot_matches": durable_snapshot_matches,
         "event_chain_bound": event_chain_bound,
@@ -1530,6 +2052,10 @@ def derive_supervisor_binding(
             reason
             for reason, condition in (
                 ("supervisor_snapshot_missing", bool(snapshot)),
+                (
+                    "trusted_g212_release_evidence_not_bound",
+                    trusted_release.get("bound") is True,
+                ),
                 ("durable_supervisor_sources_not_bound", source_files_bound),
                 ("supervisor_snapshot_not_durable", durable_snapshot_matches),
                 ("canonical_event_chain_not_bound", event_chain_bound),
@@ -1608,6 +2134,52 @@ def build_role_aware_deployment_receipt(
         completion,
         "receipt_identity",
         prefixed=True,
+    )
+    completion_implementation = _safe_dict(completion.get("implementation"))
+    completion_acceptance = _safe_dict(completion.get("acceptance"))
+    completion_children = [
+        child
+        for child in _safe_list(completion.get("child_goals"))
+        if isinstance(child, Mapping)
+    ]
+    try:
+        objective_child_ids = [
+            str(goal.get("goal_id") or "")
+            for goal in parse_objective_goals(
+                (repo_root / DEFAULT_OBJECTIVES_RELATIVE).read_text(
+                    encoding="utf-8"
+                )
+            )
+            if str(goal.get("goal_id") or "") != PROGRAM_GOAL_ID
+        ]
+    except (OSError, ValueError):
+        objective_child_ids = []
+    objective_child_count = len(objective_child_ids)
+    completion_child_ids = [
+        str(child.get("goal_id") or "")
+        for child in completion_children
+    ]
+    exact_objective_children_bound = bool(
+        objective_child_ids
+        and len(completion_child_ids) == len(set(completion_child_ids))
+        and set(completion_child_ids) == set(objective_child_ids)
+    )
+    declared_child_count = _nonnegative_int(
+        completion_implementation.get("child_goal_count")
+    )
+    declared_bound_count = _nonnegative_int(
+        completion_implementation.get("child_goals_bound")
+    )
+    implementation_complete_and_all_child_goals_bound = bool(
+        completion_acceptance.get("implementation_complete") is True
+        and completion_implementation.get("status") == "complete"
+        and objective_child_count > 0
+        and declared_child_count == objective_child_count
+        and declared_bound_count == objective_child_count
+        and len(completion_children) == objective_child_count
+        and exact_objective_children_bound
+        and all(child.get("bound") is True for child in completion_children)
+        and not _safe_list(completion_implementation.get("child_goals_unbound"))
     )
 
     semantic_results = [
@@ -1845,6 +2417,9 @@ def build_role_aware_deployment_receipt(
     acceptance = {
         "role_aware_certificate_bound": certificate_digest_valid,
         "completion_receipt_bound": completion_identity_valid,
+        "implementation_complete_and_all_child_goals_bound": (
+            implementation_complete_and_all_child_goals_bound
+        ),
         "checked_in_certificate_matches": checked_certificate_matches,
         "checked_in_completion_matches": checked_completion_matches,
         "certified_source_bound": bool(source_attestation["source_commit_bound"]),
@@ -1893,6 +2468,7 @@ def build_role_aware_deployment_receipt(
         for key in (
             "role_aware_certificate_bound",
             "completion_receipt_bound",
+            "implementation_complete_and_all_child_goals_bound",
             "checked_in_certificate_matches",
             "checked_in_completion_matches",
             "source_candidate_valid_for_attestation",
@@ -2000,6 +2576,13 @@ def build_role_aware_deployment_receipt(
             ),
             "child_goal_count": (completion.get("implementation") or {}).get(
                 "child_goal_count"
+            ),
+            "child_goals_unbound": (
+                completion.get("implementation") or {}
+            ).get("child_goals_unbound"),
+            "objective_child_count": objective_child_count,
+            "exact_objective_child_population_bound": (
+                exact_objective_children_bound
             ),
         },
         "elevations": {
@@ -2145,6 +2728,7 @@ def build_receipt(
         certificate=certificate,
         benchmark=benchmark,
         baseline=baseline,
+        repo_root=repo_root,
     )
     implementation = build_implementation_section(
         child_goals=child_goals,

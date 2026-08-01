@@ -383,6 +383,17 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
     assert receipt["status"] == "role_aware_deployment_blocked"
     assert receipt["deployment_blockers"]
     assert (
+        receipt["acceptance"][
+            "implementation_complete_and_all_child_goals_bound"
+        ]
+        is False
+    )
+    assert "implementation_complete_and_all_child_goals_bound" in receipt[
+        "deployment_blockers"
+    ]
+    assert receipt["completion"]["objective_child_count"] == 67
+    assert receipt["completion"]["child_goals_bound"] < 67
+    assert (
         receipt["acceptance"]["supported_managed_capabilities_ready"] is False
     )
     assert receipt["acceptance"]["supervisor_evidence_bound"] is False
@@ -398,6 +409,40 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
     assert receipt["platform_exceptions"] == receipt["role_aware_certificate"][
         "managed_deployment_readiness"
     ]["platform_exceptions"]
+
+
+def test_duplicate_child_goal_population_cannot_fake_implementation_completion(
+    builder,
+    certificate: dict[str, Any],
+    completion: dict[str, Any],
+) -> None:
+    forged = copy.deepcopy(completion)
+    duplicate = copy.deepcopy(forged["child_goals"][0])
+    duplicate["bound"] = True
+    forged["child_goals"] = [copy.deepcopy(duplicate) for _ in range(67)]
+    forged["implementation"]["status"] = "complete"
+    forged["implementation"]["child_goal_count"] = 67
+    forged["implementation"]["child_goals_bound"] = 67
+    forged["implementation"]["child_goals_unbound"] = []
+    forged["acceptance"]["implementation_complete"] = True
+    forged.pop("receipt_identity", None)
+    forged["receipt_identity"] = builder.content_digest(forged)
+
+    role_receipt = builder.build_role_aware_deployment_receipt(
+        repo_root=REPO_ROOT,
+        completion_receipt=forged,
+        role_aware_certificate=certificate,
+    )
+    assert (
+        role_receipt["acceptance"][
+            "implementation_complete_and_all_child_goals_bound"
+        ]
+        is False
+    )
+    assert (
+        role_receipt["completion"]["exact_objective_child_population_bound"]
+        is False
+    )
 
 
 def test_checked_in_receipt_is_content_addressed_and_not_false_ready(
@@ -512,7 +557,7 @@ def test_platform_mutation_moves_tool_between_exception_and_blocker(
     assert certifier.content_digest(row) != certifier.content_digest(changed)
 
 
-def test_supervisor_binding_requires_canonical_cid_completion_validation_and_merge(
+def test_raw_supervisor_files_cannot_replace_trusted_g212_release_evidence(
     builder,
     tmp_path: Path,
 ) -> None:
@@ -618,21 +663,32 @@ def test_supervisor_binding_requires_canonical_cid_completion_validation_and_mer
         task_state_path=state_path,
         event_log_path=event_path,
     )
-    assert builder.derive_supervisor_binding(
-        snapshot,
-        repo_root=REPO_ROOT,
-    )["bound"] is True
-    mutated = copy.deepcopy(snapshot)
-    mutated["events"][0]["canonical_task_cid"] = "wrong"
     binding = builder.derive_supervisor_binding(
-        mutated,
+        snapshot,
         repo_root=REPO_ROOT,
     )
     assert binding["bound"] is False
-    assert "canonical_task_cid_not_bound" in binding["block_reasons"]
+    assert binding["trusted_release_evidence_bound"] is False
+    assert "trusted_g212_release_evidence_not_bound" in binding["block_reasons"]
+    assert (
+        "raw_supervisor_state_is_not_release_evidence"
+        in binding["trusted_release_evidence"]["failures"]
+    )
+
+    # Even a forged snapshot that names real, published commits and contains a
+    # coherent event chain cannot acquire release authority from temporary raw
+    # task-state/event files.
+    mutated = copy.deepcopy(snapshot)
+    mutated["events"][0]["canonical_task_cid"] = "wrong"
+    mutated_binding = builder.derive_supervisor_binding(
+        mutated,
+        repo_root=REPO_ROOT,
+    )
+    assert mutated_binding["bound"] is False
+    assert mutated_binding["trusted_release_evidence_bound"] is False
 
 
-def test_receipt_identity_changes_with_supervisor_snapshot(
+def test_untrusted_raw_supervisor_snapshot_cannot_affect_release_identity(
     builder, certificate, completion
 ) -> None:
     first = builder.build_role_aware_deployment_receipt(
@@ -653,4 +709,6 @@ def test_receipt_identity_changes_with_supervisor_snapshot(
             "events": [{"event_id": "changed"}],
         },
     )
-    assert first["receipt_identity"] != second["receipt_identity"]
+    assert first["receipt_identity"] == second["receipt_identity"]
+    assert first["acceptance"]["supervisor_evidence_bound"] is False
+    assert second["acceptance"]["supervisor_evidence_bound"] is False

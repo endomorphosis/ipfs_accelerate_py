@@ -55,6 +55,71 @@ def _passed_checks(tool_id: str) -> list[dict[str, Any]]:
     ]
 
 
+def _bound_certificate(builder) -> dict[str, Any]:
+    certificate = {
+        "interface": "FormalVerificationToolchainCertificate@1",
+        "disagreement_quarantines": [],
+    }
+    certificate["certificate_digest_sha256"] = builder.content_digest(
+        certificate
+    ).removeprefix("sha256:")
+    return certificate
+
+
+def _bound_benchmark(
+    builder,
+    *,
+    evidence_class: str,
+    gate_bps: int = 10000,
+) -> dict[str, Any]:
+    passed = gate_bps == 10000
+    report = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "goal-tactician-benchmark-report@1"
+        ),
+        "interface": "GoalTacticianBenchmark@1",
+        "source": "cohort_receipts",
+        "synthetic_distributions": False,
+        "receipt_ids": [f"receipt:test:{evidence_class}:1"],
+        "receipt_count": 1,
+        "metrics": {
+            "source": "cohort_receipts",
+            "synthetic_distributions": False,
+            "evidence_classes": [evidence_class],
+            "hard_gates": {
+                "correctness_bps": gate_bps,
+                "privacy_bps": gate_bps,
+                "authority_bps": gate_bps,
+                "passed": passed,
+            },
+        },
+        "gates": {
+            "hard": {
+                name: {
+                    "actual_bps": gate_bps,
+                    "required_bps": 10000,
+                    "status": "pass" if passed else "fail",
+                }
+                for name in ("correctness", "privacy", "authority")
+            }
+        },
+    }
+    report["report_id"] = (
+        "goal-tactician-bench-"
+        + builder.content_digest(report).removeprefix("sha256:")
+    )
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "goal-tactician-benchmark@1"
+        ),
+        "interface": "GoalTacticianBenchmark@1",
+        "synthetic_distributions": False,
+        "report": report,
+    }
+
+
 def test_missing_hard_zero_inputs_are_unresolved_not_zero(builder) -> None:
     missing = builder.derive_hard_zero_gates(
         certificate=None,
@@ -76,6 +141,102 @@ def test_missing_hard_zero_inputs_are_unresolved_not_zero(builder) -> None:
     assert partial["false_proof_count"] > 0
     assert partial["secret_or_witness_leakage_count"] > 0
     assert partial["authority_boundary_violations"] > 0
+
+
+def test_fixture_benchmark_cannot_clear_deployment_hard_zero(builder) -> None:
+    result = builder.derive_hard_zero_gates(
+        certificate=_bound_certificate(builder),
+        benchmark=_bound_benchmark(builder, evidence_class="fixture"),
+        baseline={"known_findings": []},
+    )
+    assert result["derivation"]["complete"] is False
+    assert "benchmark.benchmark_fixture_or_synthetic_evidence" in result[
+        "derivation"
+    ]["missing_measurements"]
+    assert result["derivation"]["benchmark_evidence"]["authoritative"] is False
+    assert all(result[key] > 0 for key in builder.HARD_ZERO_GATE_KEYS[:-1])
+
+
+def test_self_declared_live_benchmark_cannot_clear_without_authority_anchor(
+    builder,
+) -> None:
+    result = builder.derive_hard_zero_gates(
+        certificate=_bound_certificate(builder),
+        benchmark=_bound_benchmark(builder, evidence_class="live"),
+        baseline={"known_findings": []},
+        repo_root=REPO_ROOT,
+    )
+    evidence = result["derivation"]["benchmark_evidence"]
+    assert result["derivation"]["complete"] is False
+    assert evidence["authoritative"] is False
+    assert evidence["authority_anchor"]["bound"] is False
+    assert (
+        "benchmark_authoritative_measurement_anchor_missing"
+        in evidence["authority_anchor"]["failures"]
+    )
+    assert all(result[key] > 0 for key in builder.HARD_ZERO_GATE_KEYS[:-1])
+
+
+def test_malformed_live_benchmark_population_fails_closed(builder) -> None:
+    benchmark = _bound_benchmark(builder, evidence_class="live")
+    report = benchmark["report"]
+    report["receipt_count"] = "1"
+    report.pop("report_id")
+    report["report_id"] = (
+        "goal-tactician-bench-"
+        + builder.content_digest(report).removeprefix("sha256:")
+    )
+
+    result = builder.derive_hard_zero_gates(
+        certificate=_bound_certificate(builder),
+        benchmark=benchmark,
+        baseline={"known_findings": []},
+    )
+    assert result["derivation"]["complete"] is False
+    assert result["derivation"]["benchmark_evidence"]["authoritative"] is False
+    assert "benchmark.benchmark_receipt_population_invalid" in result[
+        "derivation"
+    ]["missing_measurements"]
+
+
+def test_open_and_unknown_p0_findings_apply_nonzero_gate_pressure(builder) -> None:
+    result = builder.derive_hard_zero_gates(
+        certificate=_bound_certificate(builder),
+        benchmark=_bound_benchmark(builder, evidence_class="live"),
+        baseline={
+            "known_findings": [
+                {
+                    "id": "receipt_verification_fail_open",
+                    "severity": "p0",
+                    "status": "open",
+                },
+                {
+                    "id": "public_counterexample_raw_leak",
+                    "severity": "p0",
+                    "status": "open",
+                },
+                {
+                    "id": "structural_repair_as_closure",
+                    "severity": "p0",
+                    "status": "open",
+                },
+                {
+                    "id": "unclassified_p0",
+                    "severity": "p0",
+                    "status": "open",
+                },
+            ]
+        },
+    )
+    assert result["derivation"]["complete"] is False
+    assert "baseline.unresolved_open_p0_findings" in result["derivation"][
+        "missing_measurements"
+    ]
+    assert len(result["derivation"]["open_p0_findings"]) == 4
+    assert result["false_proof_count"] > 0
+    assert result["false_closure_count"] > 0
+    assert result["secret_or_witness_leakage_count"] > 0
+    assert result["authority_boundary_violations"] > 0
 
 
 def test_unanchored_or_split_supervisor_json_never_binds(builder) -> None:
@@ -124,6 +285,37 @@ def test_unanchored_or_split_supervisor_json_never_binds(builder) -> None:
     assert binding["bound"] is False
     assert binding["source_files_bound"] is False
     assert binding["event_chain_bound"] is False
+
+
+def test_forged_g212_envelope_without_bound_exporter_never_binds(builder) -> None:
+    forged = {
+        "schema": builder.SUPERVISOR_RELEASE_EVIDENCE_SCHEMA,
+        "interface": builder.SUPERVISOR_RELEASE_EVIDENCE_INTERFACE,
+        "goal_id": builder.SUPERVISOR_RELEASE_EVIDENCE_GOAL_ID,
+        "exporter": {
+            "path": (
+                builder.SUPERVISOR_RELEASE_EVIDENCE_EXPORTER_RELATIVE.as_posix()
+            ),
+            "sha256": "0" * 64,
+        },
+        "snapshot": {
+            "task_id": "FVT-053",
+            "task_state": {"task_status": "completed"},
+        },
+    }
+    forged["content_id"] = builder.content_digest(forged)
+
+    binding = builder.derive_supervisor_binding(
+        forged,
+        repo_root=REPO_ROOT,
+    )
+    failures = set(binding["trusted_release_evidence"]["failures"])
+    assert binding["bound"] is False
+    assert binding["trusted_release_evidence_bound"] is False
+    assert {
+        "trusted_release_evidence_exporter_missing",
+        "trusted_release_evidence_exporter_identity_mismatch",
+    } & failures
 
 
 def test_fake_unreachable_commits_never_bind_supervisor_merge(builder) -> None:
