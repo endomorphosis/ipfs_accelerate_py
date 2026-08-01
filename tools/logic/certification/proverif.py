@@ -107,19 +107,24 @@ DEFAULT_PROTOCOL_LIVE_CERTIFICATE_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_protocol_live_certificate.json"
 )
 
-# Live semantic surface (FVT-G205 / FVT-058). Distinct from offline toolchain
-# certification so parser fixtures remain non-production evidence.
+# Live semantic surface (FVT-G205 / FVT-058; objective validation repair FVT-075).
+# Distinct from offline toolchain certification so parser fixtures remain
+# non-production evidence.
 LIVE_INTERFACE: Final = "ProtocolLiveSemanticCertification@1"
 LIVE_SCHEMA_VERSION: Final = "protocol-live-semantic-certification/v1"
 LIVE_CORPUS_SCHEMA: Final = "protocol-live-semantic-corpus/v1"
 LIVE_GOAL_ID: Final = "FVT-G205"
 LIVE_TASK_ID: Final = "FVT-058"
+LIVE_REPAIR_TASK_ID: Final = "FVT-075"
 LIVE_PROGRAM: Final = "formal-verification-tactician/protocol-live-semantics"
 LIVE_TOOL_SURFACE: Final = "proverif-live-semantic"
 EVIDENCE_CLASS_LIVE: Final = "live"
 EVIDENCE_CLASS_PARSER_FIXTURE: Final = "parser_fixture"
 
 _RAW_OUTPUT_CAP: Final = 8_192
+CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE: Final = (
+    "pinned_protocol_binary_unavailable_on_validation_path"
+)
 
 # Accept 2.05 and 2.5.2 style versions.
 _VERSION_IN_BANNER = re.compile(r"(\d+\.\d+(?:\.\d+)?)")
@@ -2353,12 +2358,18 @@ def run_live_semantic_suite(
         )
     )
 
+    capability_gap = (
+        None
+        if proverif_usable
+        else CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE
+    )
     receipt = {
         "interface": LIVE_INTERFACE,
         "schema_version": LIVE_SCHEMA_VERSION,
         "tool_surface": LIVE_TOOL_SURFACE,
         "goal_id": LIVE_GOAL_ID,
         "task_id": LIVE_TASK_ID,
+        "repair_task_id": LIVE_REPAIR_TASK_ID,
         "program": LIVE_PROGRAM,
         "tool_id": TOOL_ID,
         "support_tool_id": SUPPORT_TOOL_ID,
@@ -2378,21 +2389,32 @@ def run_live_semantic_suite(
         "install_attempted": False,
         "download_attempted": False,
         "global_opam_mutation_attempted": False,
+        "live_execution": bool(proverif_usable and live_cases),
         "live_semantic_certified": live_semantic_certified,
         "production_certified": live_semantic_certified and opam_usable,
         "promotion_blocked": not live_semantic_certified,
         "parser_fixtures_are_non_production": True,
         "cannot_substitute_tamarin": True,
+        "fixture_or_parser_cannot_satisfy_live_goal": True,
+        "capability_gap": capability_gap,
         "block_reasons": [] if live_semantic_certified else list(block_reasons),
         "checks": checks,
         "cases": [case.to_dict() for case in live_cases],
         "bindings": bindings,
-        "policy": dict(corpus.get("policy") or {}),
+        "policy": {
+            **dict(corpus.get("policy") or {}),
+            "fixture_or_parser_cannot_satisfy_live_goal": True,
+            "live_binary_required_for_semantic_proof": True,
+        },
         "repo_root": str(root),
         "notes": (
             "Pinned ProVerif live semantic corpus certified."
             if live_semantic_certified
-            else "ProVerif live semantic certification incomplete or unavailable."
+            else (
+                "ProVerif live semantic certification incomplete or unavailable; "
+                "parser fixtures remain non-production and cannot satisfy "
+                f"{LIVE_GOAL_ID}."
+            )
         ),
     }
     receipt["receipt_digest_sha256"] = content_digest(
@@ -2521,9 +2543,11 @@ __all__ = [
     "LIVE_CORPUS_SCHEMA",
     "LIVE_GOAL_ID",
     "LIVE_TASK_ID",
+    "LIVE_REPAIR_TASK_ID",
     "LIVE_PROGRAM",
     "EVIDENCE_CLASS_LIVE",
     "EVIDENCE_CLASS_PARSER_FIXTURE",
+    "CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE",
     "DEFAULT_PROTOCOL_LIVE_CERTIFICATE_RELATIVE",
     "CheckResult",
     "CaseOutcome",
