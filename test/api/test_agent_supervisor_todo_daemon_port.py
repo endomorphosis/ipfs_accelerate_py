@@ -7837,6 +7837,70 @@ def test_restart_retains_exact_acceptance_pending_binding_after_review_failure(
     assert len(review_calls) == 2
 
 
+def test_newer_acceptance_pending_supersedes_legacy_resolved_merge(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-049A Reconcile newer acceptance receipt\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed task")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=[],
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "REF-049A",
+            "implementation_commit": implementation_commit,
+            "resolved": True,
+            "reason": "legacy_merge_only_resolution",
+        },
+    )
+    pending = daemon._record_event(
+        "merge_acceptance_pending",
+        {
+            "task_id": "REF-049A",
+            "implementation_commit": implementation_commit,
+            "merge_integrated": True,
+            "authoritatively_completed": False,
+        },
+    )
+
+    assert daemon._failed_merge_candidates() == [pending]
+
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "REF-049A",
+            "implementation_commit": implementation_commit,
+            "merge_integrated": True,
+            "authoritatively_completed": True,
+            "resolved": True,
+            "reason": "authoritative_acceptance_completed",
+        },
+    )
+
+    assert daemon._failed_merge_candidates() == []
+
+
 def test_post_merge_validation_fails_closed_on_submodule_init_failure(
     tmp_path,
     monkeypatch,
@@ -7902,6 +7966,50 @@ def test_post_merge_validation_fails_closed_on_submodule_init_failure(
     assert receipt_id == implementation_daemon_module.content_identity(
         receipt_material
     )
+
+
+def test_post_merge_validation_resolves_gitlink_without_parent_commit_object(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    child_commit = _git(submodule, "rev-parse", "HEAD")
+    merge_commit = _git(repo, "rev-parse", "HEAD")
+    assert (
+        subprocess.run(
+            ["git", "cat-file", "-e", f"{child_commit}^{{commit}}"],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        ).returncode
+        != 0
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    evidence = daemon._run_post_merge_validation_evidence(
+        task=PortalTask(
+            task_id="REF-044A",
+            title="Validate exact detached gitlink",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+            validation=("test -f libs/child/child.txt",),
+        ),
+        attempt=1,
+        merge_commit=merge_commit,
+    )
+
+    assert evidence["passed"] is True
+    assert evidence["reason"] == "post_merge_validation_passed"
+    assert evidence["validated_commit"] == merge_commit
+    assert evidence.get("submodule_alignment_failures", []) == []
 
 
 def test_post_merge_validation_rejects_validation_workspace_mutation(

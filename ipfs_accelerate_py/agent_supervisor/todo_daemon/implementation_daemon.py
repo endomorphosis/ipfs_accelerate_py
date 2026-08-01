@@ -10082,9 +10082,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             for relative in self.worktree_submodule_paths:
                 if not self._worktree_declares_submodule(workspace, relative):
                     continue
-                expected_gitlink = self._resolve_git_commit_in_repo(
+                expected_gitlink = self._submodule_gitlink_ref(
                     workspace,
-                    f"HEAD:{relative}",
+                    relative,
                 )
                 actual_gitlink = self._resolve_git_commit_in_repo(
                     workspace / relative,
@@ -25362,6 +25362,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         or task_id in current_task_ids
                     )
                 ):
+                    # A newer acceptance receipt supersedes any legacy
+                    # merge-only reconciliation for the same implementation.
+                    reconciled_commits.discard(implementation_commit)
+                    abandoned_commits.discard(implementation_commit)
                     candidates[(task_id, implementation_commit)] = event
                 continue
             if str(event.get("type") or "") == "merge_reconciled":
@@ -25370,6 +25374,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 merge_reason = merge_result.get("reason") if isinstance(merge_result, dict) else ""
                 reconcile_reason = str(event.get("reason") or "")
                 if implementation_commit and event.get("resolved"):
+                    abandoned_commits.discard(implementation_commit)
                     reconciled_commits.add(implementation_commit)
                 elif (
                     implementation_commit
@@ -25385,14 +25390,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             or task_id in current_task_ids
                         )
                     ):
+                        reconciled_commits.discard(
+                            implementation_commit
+                        )
+                        abandoned_commits.discard(
+                            implementation_commit
+                        )
                         key = (task_id, implementation_commit)
                         candidates[key] = {
                             **candidates.get(key, {}),
                             **event,
                         }
                 elif implementation_commit and merge_reason == "baseline_not_ancestor_of_target":
+                    reconciled_commits.discard(implementation_commit)
                     abandoned_commits.add(implementation_commit)
                 elif implementation_commit and reconcile_reason == "stale_failed_merge_candidate":
+                    reconciled_commits.discard(implementation_commit)
                     abandoned_commits.add(implementation_commit)
                 continue
             if str(event.get("type") or "") != "implementation_finished":
