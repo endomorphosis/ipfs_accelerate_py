@@ -31941,3 +31941,370 @@ def test_reconciliation_guardrail_recurrence_preserves_completed_history(tmp_pat
         task_prefix="ACCEL-",
     ) == []
     assert "ACCEL-003" not in todo_path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "eligibility_line",
+    [
+        "- Is schedulable: false",
+        "- Review only: true",
+        "- Is schedulable: not-a-boolean",
+        "- Review only: not-a-boolean",
+    ],
+)
+def test_direct_implementation_daemon_rejects_ineligible_task_metadata(
+    tmp_path,
+    eligibility_line,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""# Todos
+
+## ACCEL-001 Policy-ineligible task
+
+- Status: todo
+- Priority: P0
+- Track: runtime
+- Outputs: src/ineligible.py
+{eligibility_line}
+- Acceptance: This task requires another execution path.
+
+## ACCEL-002 Legacy directly implementable task
+
+- Status: todo
+- Priority: P2
+- Track: runtime
+- Outputs: src/legacy.py
+- Acceptance: Implement the legacy-compatible task.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    statuses = {task.task_id: "ready" for task in tasks}
+
+    selected = daemon._select_next_task(tasks, statuses, {}, {}, {})
+    scope = daemon._selection_scope(tasks, statuses, {})
+
+    assert selected is not None
+    assert selected.task_id == "ACCEL-002"
+    assert scope["selectable_ready_task_ids"] == ["ACCEL-001", "ACCEL-002"]
+    assert scope["eligible_ready_task_ids"] == ["ACCEL-002"]
+
+
+@pytest.mark.parametrize(
+    "eligibility_lines",
+    [
+        "",
+        "- Is schedulable: true\n- Review only: false",
+    ],
+)
+def test_direct_implementation_daemon_allows_compatible_task_metadata(
+    tmp_path,
+    eligibility_lines,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""# Todos
+
+## ACCEL-001 Directly implementable task
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/runtime.py
+{eligibility_lines}
+- Acceptance: Implement the runtime task.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    task = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )[0]
+
+    assert daemon._select_next_task(
+        [task],
+        {"ACCEL-001": "ready"},
+        {},
+        {},
+        {},
+    ) is task
+
+
+@pytest.mark.parametrize(
+    ("eligibility_lines", "expected_blocker"),
+    [
+        ("- Is schedulable: false", "task_marked_unschedulable"),
+        ("- Review only: true", "task_marked_review_only"),
+        ("- Is schedulable: invalid", "invalid_is_schedulable"),
+        (
+            "- Is schedulable: false\n- IS SCHEDULABLE: true",
+            "ambiguous_is_schedulable",
+        ),
+    ],
+)
+def test_direct_implementation_daemon_projects_policy_ineligible_task_as_blocked(
+    tmp_path,
+    eligibility_lines,
+    expected_blocker,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""# Todos
+
+## ACCEL-001 Policy-ineligible task
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+{eligibility_lines}
+- Acceptance: Do not dispatch this task directly.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(daemon.state_path)
+
+    assert result["ready_count"] == 0
+    assert result["blocked_count"] == 1
+    assert result["active_task_id"] == ""
+    assert result["selection_idle_reason"] == (
+        "all_selectable_ready_tasks_ineligible_by_task_metadata"
+    )
+    assert result["task_policy_blockers"] == {
+        "ACCEL-001": [expected_blocker]
+    }
+    assert state.task_policy_blockers == result["task_policy_blockers"]
+    assert daemon._selectable_task_retry_schedule() == {}
+
+
+def test_direct_implementation_daemon_preserves_task_source_policy_alias_ambiguity(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    source_task = SimpleNamespace(
+        task_id="ACCEL-001",
+        title="Ambiguous source task",
+        status="todo",
+        task_cid="cid-task",
+        goal_id="goal-1",
+        goal_cid="cid-goal",
+        dependency_task_ids=(),
+        board_namespace="test",
+        source_line=1,
+        body={"is_schedulable": False, "is-schedulable": True},
+    )
+
+    task = daemon._portal_task_from_source_task(source_task)
+
+    assert task.metadata["is schedulable"] == (
+        implementation_daemon_module.AMBIGUOUS_TASK_BOOLEAN_METADATA
+    )
+    assert daemon._task_direct_implementation_blockers(task) == (
+        "ambiguous_is_schedulable",
+    )
+
+    source_task.body = {
+        "is_schedulable": False,
+        "provenance": {"is schedulable": True},
+    }
+    fallback_task = daemon._portal_task_from_source_task(source_task)
+
+    assert fallback_task.metadata["is schedulable"] == "false"
+    assert daemon._task_direct_implementation_blockers(fallback_task) == (
+        "task_marked_unschedulable",
+    )
+
+
+def test_direct_implementation_boundary_rejects_policy_ineligible_task(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    daemon._build_implementation_prompt = lambda *_args, **_kwargs: pytest.fail(
+        "policy-ineligible task reached provider prompt construction"
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Review-only task",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="runtime",
+        metadata={"review only": "true"},
+    )
+
+    assert daemon._run_implementation(task, TodoTaskState()) == {
+        "skipped": True,
+        "reason": "task_direct_implementation_ineligible",
+        "task_id": "ACCEL-001",
+        "attempt": 1,
+        "policy_blockers": ["task_marked_review_only"],
+    }
+
+
+def test_direct_implementation_daemon_does_not_reopen_policy_blocked_task(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Completed prerequisite
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: runtime
+
+## ACCEL-002 Review-only dependent task
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on: ACCEL-001
+- Review only: true
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    before = todo_path.read_text(encoding="utf-8")
+
+    result = daemon.run_once()
+
+    assert todo_path.read_text(encoding="utf-8") == before
+    assert result["task_policy_blockers"] == {
+        "ACCEL-002": ["task_marked_review_only"]
+    }
+
+
+def test_direct_implementation_daemon_borrows_when_local_shard_is_policy_blocked(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-000 Policy-blocked even task
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Is schedulable: false
+
+## ACCEL-001 Eligible odd task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        task_shard_count=2,
+        task_shard_index=0,
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(daemon.state_path)
+
+    assert result["active_task_id"] == "ACCEL-001"
+    assert state.ready_task_ids == ["ACCEL-001"]
+    assert state.blocked_task_ids == ["ACCEL-000"]
+
+
+def test_direct_implementation_daemon_does_not_retry_policy_ineligible_ready_work(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    TodoTaskState(
+        ready_task_ids=["ACCEL-001"],
+        selectable_ready_task_ids=["ACCEL-001"],
+        eligible_ready_task_ids=[],
+        selection_idle_reason=(
+            "all_selectable_ready_tasks_ineligible_by_task_metadata"
+        ),
+    ).save(daemon.state_path)
+
+    assert daemon._selectable_task_retry_schedule() == {}

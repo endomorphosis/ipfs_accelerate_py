@@ -946,3 +946,57 @@ def test_bundle_lane_planner_excludes_completed_members_from_conflict_surface(
 
     assert "bundle/other" not in by_key["bundle/base"].conflicting_task_ids
     assert by_key["bundle/base"].conflict_surface["files"] == ["src/base.py"]
+
+
+def test_conflict_surface_reads_legacy_markdown_metadata_aliases(
+    tmp_path: Path,
+) -> None:
+    tasks = [
+        {
+            "task_id": "UIR-011",
+            "task_cid": "cid-011",
+            "metadata": {
+                "goal id": "UIR-G020",
+                "predicted files": "external/ipfs_datasets/pkg/shared.py",
+                "allow concurrent with": "UIR-012",
+                "resource class": "cpu-small",
+                "token class": "medium",
+                "estimated tokens": "8000",
+                "estimated context tokens": "10000",
+                "estimated validation seconds": "120",
+                "merge fate": "objective/UIR-G020",
+            },
+        },
+        {
+            "task_id": "UIR-012",
+            "task_cid": "cid-012",
+            "metadata": {
+                "goal id": "UIR-G021",
+                "predicted files": "external/ipfs_datasets/pkg/shared.py",
+            },
+        },
+    ]
+
+    graph = materialize_task_conflict_graph(tasks, repo_root=tmp_path)
+    surface = graph.surfaces["cid-011"]
+
+    assert surface.goal_id == "UIR-G020"
+    assert surface.files == ["external/ipfs_datasets/pkg/shared.py"]
+    assert surface.predicted_paths == [
+        "external/ipfs_datasets/pkg/shared.py"
+    ]
+    assert surface.allow_concurrent_with == ["UIR-012"]
+    assert surface.resource_class == "cpu-small"
+    assert surface.token_class == "medium"
+    assert surface.estimated_tokens == 8000
+    assert surface.estimated_context_tokens == 10000
+    assert surface.estimated_validation_seconds == 120
+    assert surface.merge_fate == "objective/UIR-G020"
+
+    allowed_edge = _edge(graph, "cid-011", "cid-012")
+    assert allowed_edge.explicitly_allowed is True
+    colors = {
+        assignment.task_cid: assignment.color
+        for assignment in graph.assignments
+    }
+    assert colors["cid-011"] == colors["cid-012"]

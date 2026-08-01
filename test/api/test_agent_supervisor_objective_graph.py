@@ -5699,6 +5699,111 @@ def test_task_dependency_dag_handles_long_generated_chains_without_recursion():
     assert graph.schedule[0].critical_path_length == 1_250
 
 
+def test_task_dependency_dag_promotes_nested_markdown_metadata() -> None:
+    graph = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": "UIR-001",
+                "task_cid": "cid-001",
+                "status": "todo",
+                "metadata": {
+                    "goal id": "UIR-G010",
+                    "is schedulable": "false",
+                    "review only": "true",
+                },
+            }
+        ],
+        now=0,
+    )
+
+    node = graph.nodes["cid-001"]
+    assert node.goal_id == "UIR-G010"
+    assert node.metadata["goal_id"] == "UIR-G010"
+    assert node.metadata["is_schedulable"] == "false"
+    assert node.metadata["review_only"] == "true"
+    assert graph.schedule[0].claimable is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("Is schedulable", "invalid"),
+        ("Review only", "invalid"),
+    ],
+)
+def test_task_dependency_dag_rejects_malformed_scheduling_policy(
+    field,
+    value,
+) -> None:
+    graph = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": "UIR-001",
+                "task_cid": "cid-001",
+                "status": "todo",
+                "metadata": {field: value},
+            }
+        ],
+        now=0,
+    )
+
+    assert graph.schedule[0].claimable is False
+
+
+@pytest.mark.parametrize(
+    "aliases",
+    [
+        [
+            ("Is schedulable", "false"),
+            ("is_schedulable", "true"),
+        ],
+        [
+            ("is_schedulable", "true"),
+            ("Is schedulable", "false"),
+        ],
+        [
+            ("Review only", "false"),
+            ("review_only", "true"),
+        ],
+        [
+            ("review_only", "true"),
+            ("Review only", "false"),
+        ],
+    ],
+)
+def test_task_dependency_dag_rejects_conflicting_policy_aliases(
+    aliases,
+) -> None:
+    graph = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": "UIR-001",
+                "task_cid": "cid-001",
+                "status": "todo",
+                "metadata": dict(aliases),
+            }
+        ],
+        now=0,
+    )
+
+    assert graph.schedule[0].claimable is False
+
+
+def test_task_dependency_dag_preserves_absent_policy_defaults() -> None:
+    graph = materialize_task_dependency_dag(
+        [
+            {
+                "task_id": "UIR-001",
+                "task_cid": "cid-001",
+                "status": "todo",
+            }
+        ],
+        now=0,
+    )
+
+    assert graph.schedule[0].claimable is True
+
+
 def test_objective_findings_preserve_complete_conflict_surface_metadata(tmp_path):
     repo, objective_path, _todo_path = _seed_repo(tmp_path)
     objective_path.write_text(
