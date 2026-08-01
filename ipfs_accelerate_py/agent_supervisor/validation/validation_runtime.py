@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import resource
 import shlex
 import shutil
@@ -37,6 +38,19 @@ VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
 )
 VALIDATION_SUPERVISOR_STATE_ROOT_ENV = "LPR_STATE_ROOT"
+FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV = (
+    "IPFS_ACCELERATE_AGENT_FORMAL_TOOLCHAIN_CONTRACT_SHA256"
+)
+FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV = (
+    "IPFS_ACCELERATE_AGENT_REQUIRED_COMMANDS"
+)
+FORMAL_TOOLCHAIN_PATH_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_FORMAL_TOOLCHAIN_PATH"
+)
+FORMAL_TOOLCHAIN_ROOT_ENV_NAMES = (
+    "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+    "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+)
 VALIDATION_PYTHON_LAUNCHER_SHA256_ENV = (
     "IPFS_ACCELERATE_VALIDATION_PYTHON_LAUNCHER_SHA256"
 )
@@ -61,6 +75,10 @@ HERMETIC_VALIDATION_RUNTIME_SCHEMA = (
 VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/validation-environment-contract@1"
 )
+FORMAL_TOOLCHAIN_DEPLOYMENT_MANIFEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "formal-toolchain-deployment-manifest@1"
+)
 _RUNTIME_ID_ENV = "IPFS_ACCELERATE_VALIDATION_RUNTIME_ID"
 _CANCELLATION_ID_ENV = "IPFS_ACCELERATE_VALIDATION_CANCELLATION_ID"
 _VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
@@ -74,6 +92,10 @@ _VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
 _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE = (
     "__ipfs_accelerate_sealed_validation_python__"
 )
+_FORMAL_TOOL_COMMAND_RE = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}"
+)
+_MAX_FORMAL_TOOL_COMMANDS = 64
 
 # These values affect deterministic/offline validation without carrying the
 # provider, wallet, registry, signing, or cloud credentials commonly present
@@ -533,6 +555,129 @@ def validation_executable_path(
     return os.pathsep.join(entries)
 
 
+def _formal_toolchain_required_commands(
+    source: Mapping[str, object],
+) -> tuple[str, ...]:
+    raw = str(
+        source.get(FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV) or ""
+    ).strip()
+    if not raw:
+        return ()
+    commands: list[str] = []
+    for item in raw.split(","):
+        command = item.strip()
+        if not command or not _FORMAL_TOOL_COMMAND_RE.fullmatch(command):
+            raise ValidationRuntimeError(
+                f"{FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV} must contain "
+                "comma-separated bare executable names"
+            )
+        if command not in commands:
+            commands.append(command)
+        if len(commands) > _MAX_FORMAL_TOOL_COMMANDS:
+            raise ValidationRuntimeError(
+                f"{FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV} contains too "
+                "many commands"
+            )
+    return tuple(commands)
+
+
+def _formal_toolchain_root(
+    source: Mapping[str, object],
+    variable: str,
+) -> str | None:
+    raw = str(source.get(variable) or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        raise ValidationRuntimeError(
+            f"{variable} must be an absolute deployed toolchain root"
+        )
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            f"{variable} deployed toolchain root is unavailable"
+        ) from exc
+    if not resolved.is_dir():
+        raise ValidationRuntimeError(
+            f"{variable} deployed toolchain root is not a directory"
+        )
+    try:
+        _reject_writable_path(
+            resolved,
+            source=f"{variable} deployed toolchain root",
+        )
+    except ValidationRuntimeError as exc:
+        raise ValidationRuntimeError(
+            f"{variable} is not an immutable formal-toolchain deployment; "
+            "stage reviewed assets under a root-owned/read-only root before "
+            "supervisor dispatch"
+        ) from exc
+    return str(resolved)
+
+
+def formal_toolchain_deployment_manifest(
+    environment: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Build and verify the cross-boundary formal-toolchain manifest.
+
+    The manifest is derived only from the already fail-closed validation PATH,
+    explicitly allowlisted managed roots, and explicitly required bare command
+    names.  Every required executable is content hashed after writable-path
+    rejection.  A caller-supplied expected identity is a fence: mismatch fails
+    before provider dispatch or validation child creation.
+    """
+
+    source = os.environ if environment is None else environment
+    bound_path = str(source.get(FORMAL_TOOLCHAIN_PATH_ENV) or "").strip()
+    path = (
+        os.pathsep.join(
+            _validated_path_entries(
+                bound_path,
+                source=FORMAL_TOOLCHAIN_PATH_ENV,
+            )
+        )
+        if bound_path
+        else validation_executable_path(source)
+    )
+    roots = {
+        variable: resolved
+        for variable in FORMAL_TOOLCHAIN_ROOT_ENV_NAMES
+        if (resolved := _formal_toolchain_root(source, variable)) is not None
+    }
+    commands = _formal_toolchain_required_commands(source)
+    executable_identities: dict[str, dict[str, object]] = {}
+    for command in commands:
+        found = shutil.which(command, path=path)
+        if not found:
+            raise ValidationRuntimeError(
+                f"required formal toolchain command is unavailable: {command}"
+            )
+        executable_identities[command] = _file_identity(Path(found))
+    manifest: dict[str, object] = {
+        "schema": FORMAL_TOOLCHAIN_DEPLOYMENT_MANIFEST_SCHEMA,
+        "path_entries": path.split(os.pathsep),
+        "managed_roots": roots,
+        "required_executables": executable_identities,
+        "writable_sources_rejected": True,
+    }
+    identity = _sha256(_canonical_json(manifest).encode("utf-8"))
+    expected = str(
+        source.get(FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV) or ""
+    ).strip()
+    if expected:
+        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise ValidationRuntimeError(
+                f"{FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV} is malformed"
+            )
+        if expected != identity:
+            raise ValidationRuntimeError(
+                "formal toolchain deployment contract identity mismatch"
+            )
+    return {**manifest, "manifest_sha256": identity}
+
+
 def validation_python_executable(
     environment: Mapping[str, object] | None = None,
 ) -> str:
@@ -823,6 +968,7 @@ def build_validation_environment(
 
     source = os.environ if environment is None else environment
     python_executable = validation_python_executable(source)
+    formal_toolchain = formal_toolchain_deployment_manifest(source)
     result = {
         key: str(source[key])
         for key in sorted(VALIDATION_ENVIRONMENT_ALLOWLIST)
@@ -843,7 +989,9 @@ def build_validation_environment(
             # to remain unavailable, so neither scope can import host settings.
             "NPM_CONFIG_USERCONFIG": _NPM_DISABLED_USER_CONFIG,
             "PAGER": "cat",
-            "PATH": validation_executable_path(source),
+            "PATH": os.pathsep.join(
+                str(item) for item in formal_toolchain["path_entries"]
+            ),
             "PIP_CONFIG_FILE": "/dev/null",
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",
             "PIP_NO_INPUT": "1",
@@ -898,6 +1046,23 @@ def build_validation_environment(
     result.setdefault("LC_ALL", "C")
     result.setdefault("PYTHONHASHSEED", "0")
     result.setdefault("TZ", "UTC")
+    result[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = str(
+        formal_toolchain["manifest_sha256"]
+    )
+    result[FORMAL_TOOLCHAIN_PATH_ENV] = os.pathsep.join(
+        str(item) for item in formal_toolchain["path_entries"]
+    )
+    required_commands = tuple(
+        dict(formal_toolchain["required_executables"])
+    )
+    if required_commands:
+        result[FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV] = ",".join(
+            required_commands
+        )
+    for variable, root in dict(
+        formal_toolchain["managed_roots"]
+    ).items():
+        result[str(variable)] = str(root)
     return result
 
 
@@ -922,6 +1087,7 @@ def canonical_validation_environment_contract(
     source = os.environ if environment is None else environment
     child = build_validation_environment(source)
     path = child["PATH"]
+    formal_toolchain = formal_toolchain_deployment_manifest(source)
     return {
         "schema": VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA,
         "path": path,
@@ -938,6 +1104,18 @@ def canonical_validation_environment_contract(
         "inherited_path_ignored": True,
         "writable_toolchain_paths_rejected": True,
         "python_interpreter": child["PYTHON"],
+        "formal_toolchain_contract_sha256": formal_toolchain[
+            "manifest_sha256"
+        ],
+        "formal_toolchain_required_executables": {
+            command: identity["sha256"]
+            for command, identity in dict(
+                formal_toolchain["required_executables"]
+            ).items()
+        },
+        "formal_toolchain_managed_roots": dict(
+            formal_toolchain["managed_roots"]
+        ),
         "base_home": child["HOME"],
         "base_xdg": {
             key: child[key]

@@ -117,6 +117,12 @@ from ..runtime.event_log import (
     repair_jsonl_event_log,
     unique_backup_path,
 )
+from ..provider_command_environment import (
+    PROVIDER_COMMAND_ENV_DIGEST_ENV,
+    PROVIDER_COMMAND_ENV_WRAPPER_ENV,
+    project_provider_command_environment,
+    provider_command_environment_sha256,
+)
 from ..control.control_contracts import CursorReplayError
 from ..evidence_output_scope import (
     EVIDENCE_OUTPUTS_METADATA_KEY,
@@ -165,10 +171,12 @@ from ..validation.validation_commands import (
     split_validation_commands,
 )
 from ..validation.validation_runtime import (
+    FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
     ValidationPythonLauncherReceipt,
     ValidationRuntimeError,
     canonical_validation_environment_contract,
+    formal_toolchain_deployment_manifest,
     sealed_validation_python_runner,
     validation_python_launcher_environment,
     validation_shell_command,
@@ -40081,12 +40089,23 @@ class PortalImplementationDaemon:
         attempt: int,
         checkpoint_dir: Path,
     ) -> dict[str, str]:
-        return {
-            IMPLEMENTATION_CHECKPOINT_DIR_ENV: str(checkpoint_dir),
-            IMPLEMENTATION_TASK_ID_ENV: task.task_id,
-            IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
-            IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
-        }
+        formal_toolchain = formal_toolchain_deployment_manifest()
+        command_environment = project_provider_command_environment()
+        command_environment[PROVIDER_COMMAND_ENV_DIGEST_ENV] = (
+            provider_command_environment_sha256(command_environment)
+        )
+        command_environment[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = str(
+            formal_toolchain["manifest_sha256"]
+        )
+        command_environment.update(
+            {
+                IMPLEMENTATION_CHECKPOINT_DIR_ENV: str(checkpoint_dir),
+                IMPLEMENTATION_TASK_ID_ENV: task.task_id,
+                IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
+                IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
+            }
+        )
+        return command_environment
 
     def _implementation_progress_observer(
         self,
@@ -41341,6 +41360,10 @@ class PortalImplementationDaemon:
             str(contract["path_override_environment_variable"]),
             ensure_ascii=True,
         )
+        formal_toolchain_identity = json.dumps(
+            str(contract["formal_toolchain_contract_sha256"]),
+            ensure_ascii=True,
+        )
         return (
             "## Authoritative validation environment (fail-closed)\n"
             f"- `PATH` is exactly {path}. The provider/implementer process's "
@@ -41358,11 +41381,25 @@ class PortalImplementationDaemon:
             f"through {override} before supervisor dispatch. Every entry and "
             "ancestor must pass the existing non-writable toolchain check; "
             "user-writable tool directories are rejected.\n"
+            "- The provider preflight and authoritative validation formal-"
+            "toolchain deployment identity must both equal "
+            f"{formal_toolchain_identity}. A mismatch, missing required "
+            "executable, or writable managed root blocks before evidence "
+            "generation; stage reviewed toolchains under a root-owned/read-"
+            "only root rather than using a profile-home installation.\n"
             "- Judge external-tool availability and write semantic assertions "
             "against this exact environment, not a successful provider-side "
             "probe. If a required prover is absent, report a dependency/"
             "capability gap or add an approved digest-bound deployment; never "
-            "claim usability or weaken mandatory tests."
+            "claim usability or weaken mandatory tests.\n"
+            "- Grok shell tools may seal their own `PATH`. When "
+            f"`${PROVIDER_COMMAND_ENV_WRAPPER_ENV}` is present, first run "
+            f"`\"${PROVIDER_COMMAND_ENV_WRAPPER_ENV}\" --preflight "
+            "<bare-command>`, then run provider-side discovery or evidence "
+            f"generation as `\"${PROVIDER_COMMAND_ENV_WRAPPER_ENV}\" -- "
+            "<command> ...`. The digest-bound wrapper restores only the "
+            "declared non-secret provider command environment; it does not "
+            "bypass or replace authoritative validation."
         )
 
     def _implementation_prompt_policy_appendix(self, task: PortalTask) -> str:

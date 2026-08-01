@@ -21,6 +21,18 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
 
+from ipfs_accelerate_py.agent_supervisor.provider_command_environment import (
+    PROVIDER_COMMAND_ENV_DIGEST_ENV,
+    PROVIDER_COMMAND_ENV_WRAPPER_ENV,
+    PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV,
+    ProviderCommandEnvironmentError,
+    sealed_provider_command_environment,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+    FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV,
+    ValidationRuntimeError,
+)
+
 
 DEFAULT_GROK_MODEL = "grok-4.5"
 # Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
@@ -96,6 +108,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         choices=("agent", "chat"),
         help="agent enables tool approvals for implementation work",
     )
+    parser.add_argument(
+        "--require-command",
+        action="append",
+        default=[],
+        help=(
+            "bare command that must be identity-bound on the declared task "
+            "PATH before Grok starts (repeatable)"
+        ),
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     from ipfs_accelerate_py.llm_router import (
@@ -158,24 +179,44 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             handle.write(prompt)
             prompt_path = handle.name
 
+        required_commands = [
+            str(os.environ.get(PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV) or ""),
+            *(str(item) for item in args.require_command),
+        ]
         try:
-            cmd = build_grok_cli_command(
-                mode=str(args.mode),
-                workspace=workspace,
-                model_name=model,
-                max_turns=max_turns,
-                grok_bin=grok_bin,
-                prompt_file=prompt_path,
-                permission_mode=permission_mode,
-            )
-            env = build_grok_cli_env()
-        except LLMRouterError as exc:
+            with sealed_provider_command_environment(
+                os.environ,
+                required_commands=required_commands,
+            ) as command_environment:
+                cmd = build_grok_cli_command(
+                    mode=str(args.mode),
+                    workspace=workspace,
+                    model_name=model,
+                    max_turns=max_turns,
+                    grok_bin=grok_bin,
+                    prompt_file=prompt_path,
+                    permission_mode=permission_mode,
+                )
+                env = build_grok_cli_env(base_env=os.environ)
+                env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = (
+                    command_environment.wrapper_path
+                )
+                env[PROVIDER_COMMAND_ENV_DIGEST_ENV] = (
+                    command_environment.contract_sha256
+                )
+                env[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = (
+                    command_environment.formal_toolchain_contract_sha256
+                )
+                os.chdir(workspace)
+                completed = subprocess.run(cmd, env=env, check=False)
+                return int(completed.returncode)
+        except (
+            LLMRouterError,
+            ProviderCommandEnvironmentError,
+            ValidationRuntimeError,
+        ) as exc:
             print(str(exc), file=sys.stderr)
             return 2
-
-        os.chdir(workspace)
-        completed = subprocess.run(cmd, env=env, check=False)
-        return int(completed.returncode)
     finally:
         if prompt_path:
             try:
