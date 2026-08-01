@@ -16,6 +16,7 @@ Acceptance covered:
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -26,9 +27,9 @@ from typing import Any
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+DATASET_ROOT = REPO_ROOT / "ipfs_datasets_py"
 INSTALLER_PATH = (
-    REPO_ROOT
-    / "ipfs_datasets_py"
+    DATASET_ROOT
     / "ipfs_datasets_py"
     / "logic"
     / "backends"
@@ -143,8 +144,10 @@ def test_expected_outputs_exist() -> None:
 
 
 def test_typescript_package_identity_and_lock() -> None:
-    package = json.loads((TS_PACKAGE / "package.json").read_text(encoding="utf-8"))
-    lock = json.loads((TS_PACKAGE / "package-lock.json").read_text(encoding="utf-8"))
+    package_path = TS_PACKAGE / "package.json"
+    lock_path = TS_PACKAGE / "package-lock.json"
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
     assert package["name"] == PACKAGE_IDENTITY
     assert package["version"] == PIN_VERSION
     assert "runtime-mtl-external" in (package.get("bin") or {})
@@ -156,6 +159,27 @@ def test_typescript_package_identity_and_lock() -> None:
     assert "" in packages
     assert "node_modules/typescript" in packages
     assert packages["node_modules/typescript"]["version"] == "5.6.3"
+
+    tracked = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(DATASET_ROOT),
+            "ls-files",
+            "--error-unmatch",
+            "typescript/logic-runtime-mtl/package-lock.json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert tracked.returncode == 0, tracked.stderr
+    receipt = json.loads(RECEIPT_PATH.read_text(encoding="utf-8"))
+    lock_digest = hashlib.sha256(lock_path.read_bytes()).hexdigest()
+    assert (
+        receipt["runtime_mtl_external"]["lockfile_digest_sha256"]
+        == lock_digest
+    )
 
 
 def test_installer_vendor_constants(installer) -> None:
