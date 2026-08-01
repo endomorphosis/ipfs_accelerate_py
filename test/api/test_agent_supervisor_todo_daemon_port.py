@@ -2038,10 +2038,13 @@ def test_supervisor_loop_adopts_existing_child_before_launch(tmp_path, monkeypat
         ensure_status_path=state_dir / "ensure_status.json",
         ensure_check_path=state_dir / "ensure_check.json",
     )
+    state_dir.mkdir(parents=True, exist_ok=True)
+    adopted_log = state_dir / "child.log"
+    adopted_log.write_text("adopted child output\n", encoding="utf-8")
     adopted = SupervisedChild(
         pid=2468,
         command=("python", "worker.py"),
-        log_path=state_dir / "child.log",
+        log_path=adopted_log,
         child_pid_path=state_dir / "child.pid",
     )
 
@@ -4713,6 +4716,96 @@ def test_validated_submodule_target_binding_is_durable_merge_metadata(
     )
 
 
+def test_operator_submodule_recovery_binds_one_exact_queue_postimage(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    (
+        _preflight,
+        approved_targets,
+        root_candidate,
+        child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name="implementation/auto-121-operator-recovery",
+    )
+    request_id = "request-operator-recovery"
+    repository_id = "repository:test"
+    target_branch = "main"
+    recovery = {
+        "schema": (
+            implementation_daemon_module
+            .SUBMODULE_INTEGRATION_RECOVERY_SCHEMA
+        ),
+        "approved_at": 10.0,
+        "reason": "reviewed combined child tree",
+        "request_id": request_id,
+        "implementation_commit": root_candidate,
+        "target_repository_id": repository_id,
+        "target_branch": target_branch,
+        "quarantine_generation": 4,
+        "revival_generation": 5,
+        "claim_generation": 6,
+        "targets": [
+            {
+                "path": "libs/child",
+                "integrated_target": child_candidate,
+            }
+        ],
+    }
+
+    recovered, error = (
+        daemon._apply_operator_submodule_integration_recovery(
+            approved_targets,
+            recovery,
+            request_id=request_id,
+            implementation_commit=root_candidate,
+            target_repository_id=repository_id,
+            target_branch=target_branch,
+            claim_generation=6,
+        )
+    )
+
+    assert error == ""
+    assert recovered["libs/child"][
+        "operator_approved_integrated_target"
+    ] == child_candidate
+
+    rejected, error = (
+        daemon._apply_operator_submodule_integration_recovery(
+            approved_targets,
+            recovery,
+            request_id="different-request",
+            implementation_commit=root_candidate,
+            target_repository_id=repository_id,
+            target_branch=target_branch,
+            claim_generation=6,
+        )
+    )
+    assert rejected == {}
+    assert error == "submodule_recovery_authority_mismatch"
+
+    rejected, error = (
+        daemon._apply_operator_submodule_integration_recovery(
+            approved_targets,
+            recovery,
+            request_id=request_id,
+            implementation_commit=root_candidate,
+            target_repository_id=repository_id,
+            target_branch=target_branch,
+            claim_generation=7,
+        )
+    )
+    assert rejected == {}
+    assert error == "submodule_recovery_generation_mismatch"
+
+
 def test_submodule_binding_rejects_unbound_nested_repository_change(
     tmp_path,
 ):
@@ -5100,7 +5193,7 @@ def test_preflight_bound_submodule_merge_accepts_cleaned_candidate_branch(
     ] is True
 
 
-def test_preflight_bound_submodule_merge_rejects_candidate_descendant(
+def test_preflight_bound_submodule_merge_rejects_unapproved_candidate_descendant(
     tmp_path,
 ):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
@@ -5123,6 +5216,11 @@ def test_preflight_bound_submodule_merge_rejects_candidate_descendant(
     _git(submodule, "merge", "--no-ff", "--no-edit", child_candidate)
     descendant = _git(submodule, "rev-parse", "main")
     assert descendant != child_candidate
+    child_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(submodule, "branch", "-D", child_branch)
 
     results = daemon._merge_submodule_branches_to_main(
         branch_name,
@@ -5134,16 +5232,74 @@ def test_preflight_bound_submodule_merge_rejects_candidate_descendant(
     )
 
     assert len(results) == 1
-    assert results[0]["merged"] is False
-    assert results[0]["reason"] == (
-        "submodule_integration_target_changed_since_validation"
+    result = results[0]
+    assert result["merged"] is False
+    assert result["reason"] == (
+        "submodule_integrated_descendant_not_operator_approved"
     )
-    assert results[0]["integration_binding_check"][
-        "actual_integration_target"
-    ] == descendant
+    binding = result["integration_binding_check"]
+    assert binding["actual_integration_target"] == descendant
+    assert binding["candidate_branch_target"] == ""
+    assert binding["candidate_is_actual_target_ancestor"] is True
+    assert binding["target_already_contains_candidate"] is True
+    assert binding["target_already_integrated_authorized"] is False
+    assert binding["candidate_branch_cleaned_after_integration"] is False
+    assert binding["integrated_target_commit"] == child_candidate
 
 
-def test_preflight_bound_submodule_merge_revalidates_stale_checkpoint(
+def test_preflight_bound_submodule_merge_accepts_exact_operator_postimage(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    branch_name = "implementation/auto-121-approved-descendant"
+    (
+        preflight,
+        approved_targets,
+        _root_candidate,
+        child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+    _git(submodule, "merge", "--no-ff", "--no-edit", child_candidate)
+    descendant = _git(submodule, "rev-parse", "main")
+    child_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(submodule, "branch", "-D", child_branch)
+    approved_targets["libs/child"][
+        "operator_approved_integrated_target"
+    ] = descendant
+
+    results = daemon._merge_submodule_branches_to_main(
+        branch_name,
+        task=task,
+        attempt=1,
+        baseline_ref=str(preflight["root_target_commit"]),
+        changed_submodule_paths={"libs/child"},
+        approved_submodule_integration_targets=approved_targets,
+    )
+
+    assert len(results) == 1
+    result = results[0]
+    assert result["merged"] is True
+    assert result["reason"] == "already_merged"
+    assert result["commit"] == descendant
+    binding = result["integration_binding_check"]
+    assert binding["operator_approved_target_matches_actual"] is True
+    assert binding["target_already_integrated_authorized"] is True
+    assert binding["candidate_branch_cleaned_after_integration"] is True
+    assert binding["integrated_target_commit"] == descendant
+
+
+def test_preflight_bound_submodule_merge_revalidates_integrated_checkpoint_descendant(
     tmp_path,
 ):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
@@ -5179,6 +5335,9 @@ def test_preflight_bound_submodule_merge_revalidates_stale_checkpoint(
     )
     _git(submodule, "merge", "--no-ff", "--no-edit", child_candidate)
     descendant = _git(submodule, "rev-parse", "main")
+    approved_targets["libs/child"][
+        "operator_approved_integrated_target"
+    ] = descendant
 
     results = daemon._merge_submodule_branches_to_main_in_repo(
         repo_path=repo,
@@ -5194,13 +5353,16 @@ def test_preflight_bound_submodule_merge_revalidates_stale_checkpoint(
 
     assert len(results) == 1
     result = results[0]
-    assert result["merged"] is False
-    assert result["reason"] == "submodule_merge_checkpoint_binding_stale"
+    assert result["merged"] is True
+    assert result["commit"] == descendant
     assert result["integration_binding_check"][
-        "actual_integration_target"
-    ] == descendant
-    assert "libs/child" not in checkpoint.merged_submodules
-    assert "libs/child" in checkpoint.failed_submodules
+        "target_already_contains_candidate"
+    ] is True
+    assert result["integration_binding_check"][
+        "target_already_integrated_authorized"
+    ] is True
+    assert "libs/child" in checkpoint.merged_submodules
+    assert "libs/child" not in checkpoint.failed_submodules
 
 
 def test_preflight_bound_submodule_merge_rechecks_exact_post_merge_commit(
@@ -7909,6 +8071,171 @@ def test_newer_acceptance_pending_supersedes_legacy_resolved_merge(
     assert daemon._failed_merge_candidates() == []
 
 
+def test_lossy_reconciliation_cannot_erase_pending_acceptance_binding(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-049B Preserve stronger pending evidence\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed task")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=[],
+    )
+    binding = {
+        "schema": (
+            implementation_daemon_module
+            .TASK_OWNED_SUBMODULE_INTEGRATION_BINDING_SCHEMA
+        ),
+        "root_target_commit": implementation_commit,
+        "targets": [],
+    }
+    operator_recovery = {
+        "schema": "operator-recovery-test",
+        "request_id": "request-1",
+    }
+    pending = daemon._record_event(
+        "merge_acceptance_pending",
+        {
+            "task_id": "REF-049B",
+            "implementation_commit": implementation_commit,
+            "merge_integrated": True,
+            "authoritatively_completed": False,
+            "branch": "implementation/ref-049b",
+            "canonical_task_key": "task-key-1",
+            "canonical_task_cid": "task-cid-1",
+            "merge_request_id": "request-1",
+            "merge_request_claim_generation": 6,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "queue_attempt": 2,
+            "implementation_attempt": 1,
+            "implementation_provider": "grok_cli",
+            "implementation_state_path": "state/task_state.json",
+            "implementation_events_path": "state/events.jsonl",
+            "model_invocation_observed": True,
+            "baseline_ref": implementation_commit,
+            "validation_commands": ["test -f artifact.txt"],
+            "queued_validation_plan_id": "plan-1",
+            "expected_changed_paths": ["artifact.txt"],
+            "expected_changed_paths_id": "paths-1",
+            "changed_submodule_paths": ["external/ipfs_datasets"],
+            "task_owned_submodule_integration_binding": binding,
+            "operator_submodule_integration_recovery": None,
+        },
+    )
+    authorized_pending = daemon._record_event(
+        "merge_acceptance_pending",
+        {
+            "task_id": "REF-049B",
+            "implementation_commit": implementation_commit,
+            "merge_integrated": True,
+            "authoritatively_completed": False,
+            "operator_submodule_integration_recovery": (
+                operator_recovery
+            ),
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "REF-049B",
+            "implementation_commit": implementation_commit,
+            "merge_integrated": True,
+            "authoritatively_completed": False,
+            "resolved": False,
+            "reason": "authoritative_acceptance_pending",
+            "branch": "implementation/other",
+            "canonical_task_key": "",
+            "canonical_task_cid": "task-cid-other",
+            "merge_request_id": "request-other",
+            "merge_request_claim_generation": 99,
+            "target_repository_id": "repository-other",
+            "target_branch": "branch-other",
+            "queue_attempt": 0,
+            "implementation_attempt": 0,
+            "implementation_provider": "other_provider",
+            "model_invocation_observed": False,
+            "baseline_ref": "other-baseline",
+            "validation_commands": ["test weaker-artifact"],
+            "queued_validation_plan_id": "plan-other",
+            "expected_changed_paths": ["weaker-artifact"],
+            "task_owned_submodule_integration_binding": {
+                "schema": "other-binding",
+            },
+            "operator_submodule_integration_recovery": {
+                "schema": "other-recovery",
+            },
+        },
+    )
+
+    candidates = daemon._failed_merge_candidates()
+
+    assert len(candidates) == 1
+    recovered = candidates[0]
+    assert authorized_pending["sequence"] > pending["sequence"]
+    assert recovered["sequence"] > authorized_pending["sequence"]
+    assert recovered["branch"] == "implementation/ref-049b"
+    assert recovered["canonical_task_key"] == "task-key-1"
+    assert recovered["canonical_task_cid"] == "task-cid-1"
+    assert recovered["merge_request_id"] == "request-1"
+    assert recovered["merge_request_claim_generation"] == 6
+    assert (
+        recovered["target_repository_id"]
+        == daemon.merge_target_repository_id
+    )
+    assert (
+        recovered["target_branch"]
+        == daemon.resolved_merge_target_branch
+    )
+    assert recovered["queue_attempt"] == 2
+    assert recovered["implementation_attempt"] == 1
+    assert recovered["implementation_provider"] == "grok_cli"
+    assert recovered["model_invocation_observed"] is True
+    assert recovered["baseline_ref"] == implementation_commit
+    assert recovered["validation_commands"] == [
+        "test -f artifact.txt"
+    ]
+    assert recovered["queued_validation_plan_id"] == "plan-1"
+    assert recovered["expected_changed_paths"] == ["artifact.txt"]
+    assert recovered["task_owned_submodule_integration_binding"] == binding
+    assert "operator_submodule_integration_recovery" not in recovered
+    assert {
+        "baseline_ref",
+        "branch",
+        "canonical_task_cid",
+        "canonical_task_key",
+        "implementation_attempt",
+        "implementation_provider",
+        "merge_request_id",
+        "merge_request_claim_generation",
+        "model_invocation_observed",
+        "queue_attempt",
+        "queued_validation_plan_id",
+        "task_owned_submodule_integration_binding",
+        "target_branch",
+        "target_repository_id",
+        "validation_commands",
+    }.issubset(recovered["acceptance_authority_conflicts"])
+
+
 def test_post_merge_validation_fails_closed_on_submodule_init_failure(
     tmp_path,
     monkeypatch,
@@ -8387,6 +8714,213 @@ def test_implementation_daemon_submodule_gitlink_reconciliation_uses_verified_re
     assert diagnostic["latest"]["repaired"] is True
     assert diagnostic["latest"]["retryable"] is False
     assert diagnostic["latest"]["conflicts"][0]["selected_commit"] == selected
+
+
+def test_operator_approved_exact_postimage_wins_over_same_tree_gitlink_recovery(
+    tmp_path,
+):
+    """Model the UIR-002/UIR-010 sibling graph and exact 18cac-style review."""
+
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _configure_child_main_in_root_target(repo)
+    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
+    task = _submodule_proposal_task("libs/child/child.txt")
+    branch_name = "implementation/auto-121-exact-root-gitlink"
+    (
+        preflight,
+        approved_targets,
+        root_candidate,
+        child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+    child_baseline = approved_targets["libs/child"][
+        "integration_target"
+    ]
+
+    # The target root lands an independent child sibling first (82eda-style).
+    _git(
+        submodule,
+        "checkout",
+        "-b",
+        "already-landed-child-sibling",
+        child_baseline,
+    )
+    (submodule / "already-landed.txt").write_text(
+        "independent landed child work\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "already-landed.txt")
+    _git(submodule, "commit", "-m", "land independent child sibling")
+    landed_sibling = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record independently landed child")
+
+    # Operator review approves the exact merge with candidate-first parents
+    # (18cac-style). A reverse-parent commit has the same tree but a different
+    # identity (fac44a-style) and is already present at the recovery ref.
+    _git(
+        submodule,
+        "checkout",
+        "-b",
+        "operator-reviewed-exact",
+        child_candidate,
+    )
+    _git(
+        submodule,
+        "merge",
+        "--no-ff",
+        "--no-edit",
+        landed_sibling,
+    )
+    approved_exact = _git(submodule, "rev-parse", "HEAD")
+    approved_tree = _git(
+        submodule,
+        "rev-parse",
+        f"{approved_exact}^{{tree}}",
+    )
+    same_tree_alternative = _git(
+        submodule,
+        "commit-tree",
+        approved_tree,
+        "-p",
+        landed_sibling,
+        "-p",
+        child_candidate,
+        "-m",
+        "same-tree deterministic alternative",
+    )
+    assert approved_exact != same_tree_alternative
+    assert _git(
+        submodule,
+        "rev-parse",
+        f"{same_tree_alternative}^{{tree}}",
+    ) == approved_tree
+    assert _git(
+        submodule,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        approved_exact,
+    ).split()[1:] == [child_candidate, landed_sibling]
+    assert _git(
+        submodule,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        same_tree_alternative,
+    ).split()[1:] == [landed_sibling, child_candidate]
+
+    _git(
+        submodule,
+        "update-ref",
+        "refs/heads/main",
+        approved_exact,
+        child_baseline,
+    )
+    recovery_ref = daemon._submodule_recovery_ref(
+        "libs/child",
+        landed_sibling,
+        child_candidate,
+    )
+    _git(
+        submodule,
+        "update-ref",
+        recovery_ref,
+        same_tree_alternative,
+    )
+    approved_targets["libs/child"][
+        "operator_approved_integrated_target"
+    ] = approved_exact
+    _git(submodule, "checkout", "--detach", landed_sibling)
+    assert _git(repo, "status", "--porcelain") == ""
+
+    result = daemon._merge_branch_to_main(
+        branch_name,
+        task,
+        1,
+        baseline_ref=str(preflight["root_target_commit"]),
+        changed_submodule_paths={"libs/child"},
+        approved_submodule_integration_targets=approved_targets,
+        immutable_candidate_commit=root_candidate,
+    )
+
+    assert result["merged"] is True
+    repair = result["submodule_conflict_repair"]["repairs"][0]
+    assert repair["ours_candidate"] == landed_sibling
+    assert repair["theirs_candidate"] == child_candidate
+    assert repair["selected_commit"] == approved_exact
+    assert repair["selected_commit"] != same_tree_alternative
+    assert repair["selection_reason"] == (
+        "operator_approved_exact_integrated_postimage"
+    )
+    assert repair["operator_approved_postimage_check"]["passed"] is True
+    assert result["merged_gitlink_recording"][
+        "operator_postimage_checks"
+    ]["libs/child"]["passed"] is True
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == approved_exact
+    assert _git(submodule, "rev-parse", "HEAD") == approved_exact
+    assert _git(repo, "status", "--porcelain") == ""
+
+
+def test_operator_approved_gitlink_resolution_fails_closed_when_live_ref_differs(
+    tmp_path,
+    monkeypatch,
+):
+    repo, submodule, _base, ours, theirs = (
+        _seed_parent_with_divergent_gitlinks(tmp_path)
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    _git(submodule, "checkout", "-b", "reviewed-but-not-live", ours)
+    _git(submodule, "merge", "--no-ff", "--no-edit", theirs)
+    reviewed = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "main")
+    monkeypatch.setattr(
+        daemon,
+        "_create_submodule_recovery_ref",
+        lambda **_kwargs: pytest.fail(
+            "invalid exact authority fell through to deterministic recovery"
+        ),
+    )
+
+    resolution = daemon._submodule_gitlink_resolution(
+        "libs/child",
+        {"2": ours, "3": theirs},
+        task=PortalTask(
+            task_id="AUTO-116",
+            title="Reject stale exact postimage",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        approved_target={
+            "path": "libs/child",
+            "integration_branch": "main",
+            "operator_approved_integrated_target": reviewed,
+        },
+    )
+
+    assert resolution["selected_commit"] == ""
+    assert resolution["reason"] == (
+        "operator_approved_gitlink_live_target_mismatch"
+    )
+    assert resolution["operator_approved_postimage_check"][
+        "passed"
+    ] is False
 
 
 def test_implementation_daemon_anchors_relative_recovery_worktrees_to_repo_root(tmp_path):
@@ -9173,6 +9707,449 @@ def test_implementation_daemon_failed_merge_reconciliation_remains_retryable(tmp
 
     assert len(candidates) == 1
     assert candidates[0]["implementation_commit"] == implementation_commit
+
+
+def _queued_merge_ownership_test_daemon(
+    tmp_path,
+) -> tuple[TodoImplementationDaemon, str]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## AUTO-116Q Keep queued merge single-owner\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed queued task")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="AUTO-",
+        worktree_submodule_paths=[],
+    )
+    return daemon, _git(repo, "rev-parse", "HEAD")
+
+
+def _queued_merge_ownership_request(
+    daemon,
+    implementation_commit,
+    expected_request_id,
+    status,
+    **overrides,
+):
+    values = {
+        "request_id": expected_request_id,
+        "task_id": "AUTO-116Q",
+        "commit_sha": implementation_commit,
+        "target_repository_id": daemon.merge_target_repository_id,
+        "target_branch": daemon.resolved_merge_target_branch,
+        "status": status,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _record_queued_merge_handoff(
+    daemon,
+    implementation_commit,
+    request_id,
+    **merge_result_overrides,
+):
+    merge_result = {
+        "attempted": False,
+        "merged": False,
+        "queued": True,
+        "reason": "merge_queued",
+        "request_id": request_id,
+    }
+    merge_result.update(merge_result_overrides)
+    return daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "AUTO-116Q",
+            "attempt": 1,
+            "branch": "implementation/auto-116q",
+            "implementation_commit": implementation_commit,
+            "merge_result": merge_result,
+            "cleanup_result": {
+                "cleaned": False,
+                "reason": "not_attempted",
+            },
+        },
+    )
+
+
+def _record_queued_acceptance_pending(
+    daemon,
+    implementation_commit,
+):
+    return daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "AUTO-116Q",
+            "attempt": 1,
+            "branch": "implementation/auto-116q",
+            "implementation_commit": implementation_commit,
+            "merge_integrated": True,
+            "authoritatively_completed": False,
+            "resolved": False,
+            "reason": "authoritative_acceptance_pending",
+        },
+    )
+
+
+@pytest.mark.parametrize("queue_status", ("pending", "processing", "quarantined"))
+def test_queued_merge_remains_exclusively_owned_by_shared_train(
+    tmp_path,
+    queue_status,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## AUTO-116Q Keep queued merge single-owner\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed queued task")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="AUTO-",
+        worktree_submodule_paths=[],
+    )
+    daemon.merge_queue = SimpleNamespace(
+        get=lambda request_id: (
+            _queued_merge_ownership_request(
+                daemon,
+                implementation_commit,
+                request_id,
+                queue_status,
+            )
+            if request_id == "request-1"
+            else None
+        )
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "AUTO-116Q",
+            "attempt": 1,
+            "branch": "implementation/auto-116q",
+            "implementation_commit": implementation_commit,
+            "merge_result": {
+                "attempted": False,
+                "merged": False,
+                "queued": True,
+                "reason": "merge_queued",
+                "request_id": "request-1",
+            },
+            "cleanup_result": {
+                "cleaned": False,
+                "reason": "not_attempted",
+            },
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "AUTO-116Q",
+            "attempt": 1,
+            "branch": "implementation/auto-116q",
+            "implementation_commit": implementation_commit,
+            "merge_integrated": True,
+            "authoritatively_completed": False,
+            "resolved": False,
+            "reason": "authoritative_acceptance_pending",
+        },
+    )
+
+    assert daemon._failed_merge_candidates() == []
+
+
+@pytest.mark.parametrize(
+    "request_order",
+    (
+        ("request-active", "request-completed"),
+        ("request-completed", "request-active"),
+    ),
+)
+def test_duplicate_queue_ownership_is_event_order_independent(
+    tmp_path,
+    request_order,
+):
+    daemon, implementation_commit = (
+        _queued_merge_ownership_test_daemon(tmp_path)
+    )
+    statuses = {
+        "request-active": "processing",
+        "request-completed": "completed",
+    }
+    daemon.merge_queue = SimpleNamespace(
+        get=lambda request_id: _queued_merge_ownership_request(
+            daemon,
+            implementation_commit,
+            request_id,
+            statuses[request_id],
+        )
+    )
+    for request_id in request_order:
+        _record_queued_merge_handoff(
+            daemon,
+            implementation_commit,
+            request_id,
+        )
+    _record_queued_acceptance_pending(
+        daemon,
+        implementation_commit,
+    )
+
+    assert daemon._failed_merge_candidates() == []
+
+
+def test_completed_queue_ownership_releases_acceptance_reconciliation(
+    tmp_path,
+):
+    daemon, implementation_commit = (
+        _queued_merge_ownership_test_daemon(tmp_path)
+    )
+    daemon.merge_queue = SimpleNamespace(
+        get=lambda request_id: _queued_merge_ownership_request(
+            daemon,
+            implementation_commit,
+            request_id,
+            "completed",
+        )
+    )
+    _record_queued_merge_handoff(
+        daemon,
+        implementation_commit,
+        "request-completed",
+    )
+    pending = _record_queued_acceptance_pending(
+        daemon,
+        implementation_commit,
+    )
+
+    assert daemon._failed_merge_candidates() == [pending]
+
+
+@pytest.mark.parametrize(
+    ("override_field", "override_value", "mismatch_field"),
+    (
+        ("request_id", "request-other", "request_id"),
+        ("task_id", "AUTO-OTHER", "task_id"),
+        ("commit_sha", "commit-other", "implementation_commit"),
+        (
+            "target_repository_id",
+            "repository-other",
+            "target_repository_id",
+        ),
+        ("target_branch", "branch-other", "target_branch"),
+    ),
+)
+def test_queue_status_is_trusted_only_after_handoff_identity_matches(
+    tmp_path,
+    override_field,
+    override_value,
+    mismatch_field,
+):
+    daemon, implementation_commit = (
+        _queued_merge_ownership_test_daemon(tmp_path)
+    )
+    request_id = "request-completed"
+    daemon.merge_queue = SimpleNamespace(
+        get=lambda _request_id: _queued_merge_ownership_request(
+            daemon,
+            implementation_commit,
+            request_id,
+            "completed",
+            **{override_field: override_value},
+        )
+    )
+    _record_queued_merge_handoff(
+        daemon,
+        implementation_commit,
+        request_id,
+    )
+    _record_queued_acceptance_pending(
+        daemon,
+        implementation_commit,
+    )
+
+    reconciliation = daemon._reconcile_failed_merges()
+
+    assert len(reconciliation) == 1
+    diagnostic = reconciliation[0]
+    assert diagnostic["reason"] == (
+        "merge_queue_ownership_state_unavailable"
+    )
+    assert diagnostic["queue_state_reason"] == (
+        "merge_queue_request_identity_mismatch"
+    )
+    assert diagnostic["identity_mismatches"] == [mismatch_field]
+    assert diagnostic["queue_authority_preserved"] is True
+    assert diagnostic["local_reconciliation_suppressed"] is True
+    assert diagnostic["recovery_action"] == (
+        "repair_or_restore_exact_merge_queue_request"
+    )
+
+
+def test_conflicting_optional_handoff_binding_fails_before_queue_lookup(
+    tmp_path,
+):
+    daemon, implementation_commit = (
+        _queued_merge_ownership_test_daemon(tmp_path)
+    )
+    daemon.merge_queue = SimpleNamespace(
+        get=lambda _request_id: pytest.fail(
+            "conflicting handoff metadata reached queue lookup"
+        )
+    )
+    _record_queued_merge_handoff(
+        daemon,
+        implementation_commit,
+        "request-completed",
+        target_branch="branch-other",
+    )
+    _record_queued_acceptance_pending(
+        daemon,
+        implementation_commit,
+    )
+
+    reconciliation = daemon._reconcile_failed_merges()
+
+    assert len(reconciliation) == 1
+    diagnostic = reconciliation[0]
+    assert diagnostic["queue_state_reason"] == (
+        "merge_queue_handoff_identity_mismatch"
+    )
+    assert diagnostic["identity_mismatches"] == [
+        "merge_result.target_branch"
+    ]
+    assert diagnostic["recovery_action"] == (
+        "repair_queue_handoff_identity_binding"
+    )
+
+
+@pytest.mark.parametrize(
+    ("queue_get", "queue_state_reason", "recovery_action"),
+    (
+        (
+            lambda _request_id: None,
+            "merge_queue_request_missing",
+            "restore_or_reenqueue_exact_merge_request",
+        ),
+        (
+            lambda _request_id: (_ for _ in ()).throw(
+                RuntimeError("queue backend unavailable")
+            ),
+            "merge_queue_lookup_failed",
+            "retry_merge_queue_lookup",
+        ),
+    ),
+)
+def test_unavailable_queue_ownership_fails_closed_with_durable_diagnostic(
+    tmp_path,
+    queue_get,
+    queue_state_reason,
+    recovery_action,
+):
+    daemon, implementation_commit = (
+        _queued_merge_ownership_test_daemon(tmp_path)
+    )
+    daemon.merge_queue = SimpleNamespace(get=queue_get)
+    _record_queued_merge_handoff(
+        daemon,
+        implementation_commit,
+        "request-unavailable",
+    )
+    _record_queued_acceptance_pending(
+        daemon,
+        implementation_commit,
+    )
+
+    first = daemon._reconcile_failed_merges()
+    second = daemon._reconcile_failed_merges()
+
+    assert len(first) == 1
+    diagnostic = first[0]
+    assert diagnostic["reason"] == (
+        "merge_queue_ownership_state_unavailable"
+    )
+    assert diagnostic["queue_state_reason"] == queue_state_reason
+    assert diagnostic["queue_authority_preserved"] is True
+    assert diagnostic["local_reconciliation_suppressed"] is True
+    assert diagnostic["recovery_required"] is True
+    assert diagnostic["recovery_action"] == recovery_action
+    assert second == first
+    durable = [
+        event
+        for event in daemon._iter_events()
+        if event.get("type") == "merge_queue_ownership_deferred"
+    ]
+    assert len(durable) == 1
+    assert durable[0]["diagnostic_id"] == diagnostic["diagnostic_id"]
+
+
+def test_queue_lookup_failure_does_not_break_queue_state_projection(
+    tmp_path,
+    monkeypatch,
+):
+    daemon, implementation_commit = (
+        _queued_merge_ownership_test_daemon(tmp_path)
+    )
+    monkeypatch.setattr(
+        daemon.merge_queue,
+        "get",
+        lambda _request_id: (_ for _ in ()).throw(
+            RuntimeError("queue backend unavailable")
+        ),
+    )
+    handoff = _record_queued_merge_handoff(
+        daemon,
+        implementation_commit,
+        "request-unavailable",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_git_ref_is_ancestor",
+        lambda *_args, **_kwargs: False,
+    )
+
+    latest = {"AUTO-116Q": handoff}
+    assert daemon._pending_queued_merge_task_ids(latest) == {
+        "AUTO-116Q"
+    }
+    assert daemon._quarantined_queued_merge_task_ids(latest) == set()
+    result = daemon.run_once()
+    assert result["merge_reconciliation"][0]["reason"] == (
+        "merge_queue_ownership_state_unavailable"
+    )
+    assert result["merge_reconciliation"][0]["queue_state_reason"] == (
+        "merge_queue_lookup_failed"
+    )
 
 
 def test_implementation_daemon_retries_submodule_after_parent_commit_already_landed(

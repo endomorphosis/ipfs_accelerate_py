@@ -7,6 +7,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Sequence
 
@@ -141,6 +142,7 @@ class SupervisorLoop:
         self.last_recycle_reason = ""
         self.last_run_id = ""
         self.last_log_path = ""
+        self._last_liveness_status: dict[str, Any] = {}
         self._last_worker_status: dict[str, Any] = {}
         self._worker_tracking_phase = ""
         self._last_worker_seen_monotonic: Optional[float] = None
@@ -174,6 +176,8 @@ class SupervisorLoop:
             "last_recycle_reason": self.last_recycle_reason,
             **dict(self.config.status_extra_fields),
         }
+        if self._last_liveness_status:
+            payload_extra["watchdog_liveness"] = dict(self._last_liveness_status)
         if self._last_worker_status:
             worker_pids = (
                 list(self._last_worker_status.get("active_worker_pids") or [])
@@ -241,15 +245,130 @@ class SupervisorLoop:
         except Exception:
             return False
 
-    def default_watchdog(self, child: SupervisedChild, current_status: Mapping[str, Any]) -> SupervisorLoopDecision:
-        heartbeat = heartbeat_snapshot(
+    @staticmethod
+    def _child_log_activity(
+        child: SupervisedChild,
+        *,
+        now_at: datetime,
+        stale_after_seconds: float,
+    ) -> dict[str, Any]:
+        """Return activity for the child's immutable, run-specific log path."""
+
+        try:
+            activity_at = datetime.fromtimestamp(
+                child.log_path.stat().st_mtime,
+                tz=timezone.utc,
+            )
+        except OSError:
+            return {
+                "path": str(child.log_path),
+                "activity_at": None,
+                "age_seconds": None,
+                "fresh": False,
+                "stale": False,
+                "missing": True,
+            }
+
+        age_seconds = max(0.0, (now_at - activity_at).total_seconds())
+        return {
+            "path": str(child.log_path),
+            "activity_at": activity_at.isoformat(),
+            "age_seconds": age_seconds,
+            "fresh": age_seconds <= stale_after_seconds,
+            "stale": age_seconds > stale_after_seconds,
+            "missing": False,
+        }
+
+    def _watchdog_liveness(
+        self,
+        child: SupervisedChild,
+        current_status: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Combine durable task heartbeat and zero-write child-log activity."""
+
+        stale_after_seconds = max(0.0, float(self.config.watchdog_stale_after_seconds))
+        now_at = datetime.now(timezone.utc)
+        canonical = heartbeat_snapshot(
             current_status,
-            stale_after_seconds=self.config.watchdog_stale_after_seconds,
+            stale_after_seconds=stale_after_seconds,
+            now=now_at,
         )
-        if heartbeat.stale or (heartbeat.heartbeat_at is None and self.config.watchdog_stale_after_seconds <= 0):
+        child_log = self._child_log_activity(
+            child,
+            now_at=now_at,
+            stale_after_seconds=stale_after_seconds,
+        )
+
+        candidates: list[tuple[float, str, str | None]] = []
+        if canonical.age_seconds is not None:
+            candidates.append(
+                (
+                    canonical.age_seconds,
+                    "canonical_state",
+                    None
+                    if canonical.heartbeat_at is None
+                    else canonical.heartbeat_at.isoformat(),
+                )
+            )
+        child_log_age = child_log.get("age_seconds")
+        if child_log_age is not None:
+            candidates.append(
+                (
+                    float(child_log_age),
+                    "child_log",
+                    str(child_log.get("activity_at") or "") or None,
+                )
+            )
+
+        if candidates:
+            effective_age, effective_source, effective_at = min(
+                candidates,
+                key=lambda item: item[0],
+            )
+        else:
+            effective_age, effective_source, effective_at = None, "missing", None
+        effective_fresh = bool(
+            effective_age is not None and effective_age <= stale_after_seconds
+        )
+        effective_stale = not effective_fresh
+        return {
+            "schema": "ipfs_accelerate_py/agent-supervisor/watchdog-liveness@1",
+            "stale_after_seconds": stale_after_seconds,
+            "canonical_state": {
+                "heartbeat_at": (
+                    None
+                    if canonical.heartbeat_at is None
+                    else canonical.heartbeat_at.isoformat()
+                ),
+                "age_seconds": (
+                    None
+                    if canonical.age_seconds is None
+                    else round(canonical.age_seconds, 3)
+                ),
+                "fresh": canonical.fresh,
+                "stale": canonical.stale,
+                "missing": canonical.age_seconds is None,
+            },
+            "child_log": child_log,
+            "effective_heartbeat_at": effective_at,
+            "effective_heartbeat_age_seconds": (
+                None if effective_age is None else round(effective_age, 3)
+            ),
+            "effective_heartbeat_source": effective_source,
+            "effective_heartbeat_fresh": effective_fresh,
+            "effective_heartbeat_stale": effective_stale,
+            "all_signals_stale_or_missing": effective_stale,
+            "daemon_pid": child.pid,
+            "daemon_pid_alive": pid_alive(child.pid),
+        }
+
+    def default_watchdog(self, child: SupervisedChild, current_status: Mapping[str, Any]) -> SupervisorLoopDecision:
+        liveness = self._watchdog_liveness(child, current_status)
+        self._last_liveness_status = dict(liveness)
+        if liveness["effective_heartbeat_stale"]:
             return SupervisorLoopDecision.recycle(
                 "stale_heartbeat",
-                detail=heartbeat.to_payload(),
+                detail=liveness,
             )
         try:
             threshold = float(
@@ -353,6 +472,8 @@ class SupervisorLoop:
                 )
                 self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason, run_duration=0.0))
                 continue
+            log_path = self.config.spec.repo_relative(child.log_path)
+            self.last_log_path = log_path
             child_started_at = self.monotonic()
             self._worker_tracking_phase = ""
             self._last_worker_seen_monotonic = None

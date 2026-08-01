@@ -50,6 +50,9 @@ MERGE_QUEUE_THROUGHPUT_SCHEMA = (
 MERGE_TARGET_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
 )
+SUBMODULE_INTEGRATION_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/submodule-integration-recovery@1"
+)
 
 
 class MergeQueueFullError(RuntimeError):
@@ -1138,12 +1141,77 @@ class MergeQueue:
         receipt_path = self._write_stage_receipt(cancelled)
         return replace(cancelled, file_path=receipt_path)
 
+    @staticmethod
+    def _normalized_submodule_recovery_targets(
+        request_metadata: Mapping[str, Any],
+        approved_submodule_integrations: Mapping[str, str],
+    ) -> list[dict[str, str]]:
+        """Return exact task-bound child postimages or reject the whole grant."""
+
+        raw_task_binding = request_metadata.get(
+            "task_owned_submodule_integration_binding"
+        )
+        raw_targets = (
+            raw_task_binding.get("targets")
+            if isinstance(raw_task_binding, Mapping)
+            else None
+        )
+        bound_paths = {
+            str(target.get("path") or "").strip("/")
+            for target in raw_targets or ()
+            if isinstance(target, Mapping)
+        }
+        if (
+            not isinstance(approved_submodule_integrations, Mapping)
+            or not approved_submodule_integrations
+            or len(approved_submodule_integrations) > 256
+        ):
+            raise ValueError(
+                "approved submodule integrations must be a non-empty mapping"
+            )
+        normalized_targets: list[dict[str, str]] = []
+        for raw_path, raw_commit in sorted(
+            approved_submodule_integrations.items(),
+            key=lambda item: str(item[0]),
+        ):
+            path = str(raw_path or "").strip("/")
+            commit = str(raw_commit or "").strip()
+            path_parts = Path(path).parts
+            if (
+                not path
+                or path != str(raw_path or "")
+                or path not in bound_paths
+                or Path(path).is_absolute()
+                or any(part in {"", ".", ".."} for part in path_parts)
+            ):
+                raise ValueError(
+                    f"submodule recovery path is not task-bound: {raw_path!r}"
+                )
+            if (
+                len(commit) not in {40, 64}
+                or any(
+                    character not in "0123456789abcdefABCDEF"
+                    for character in commit
+                )
+            ):
+                raise ValueError(
+                    f"submodule recovery commit is invalid for {path}"
+                )
+            normalized_targets.append(
+                {
+                    "path": path,
+                    "integrated_target": commit.lower(),
+                }
+            )
+        return normalized_targets
+
     def revive_quarantined(
         self,
         request: MergeRequest | str,
         reason: str = "",
         *,
         reset_failures: bool = False,
+        approved_submodule_integrations: Mapping[str, str] | None = None,
     ) -> MergeRequest | None:
         """Return a quarantined request to pending after operator review.
 
@@ -1151,6 +1219,8 @@ class MergeQueue:
         in request metadata so administrative recovery does not erase why the
         candidate was quarantined.  ``reset_failures`` is intended for false
         positives such as a host suspension while a request was still pending.
+        ``approved_submodule_integrations`` binds recovery to exact reviewed
+        child postimages; it never authorizes an arbitrary descendant.
         """
 
         request_id = request.request_id if isinstance(request, MergeRequest) else str(request)
@@ -1168,20 +1238,124 @@ class MergeQueue:
                 operation="revive",
                 request_id=request_id,
             )
-            if str(row["status"]) != "quarantined":
+            status = str(row["status"])
+            request_metadata = json.loads(row["metadata_json"] or "{}")
+            if status != "quarantined":
+                if (
+                    status in _ACTIVE_STATES
+                    and approved_submodule_integrations is not None
+                ):
+                    if not str(reason or "").strip():
+                        connection.rollback()
+                        raise ValueError(
+                            "submodule integration recovery requires an operator reason"
+                        )
+                    normalized_targets = (
+                        self._normalized_submodule_recovery_targets(
+                            request_metadata,
+                            approved_submodule_integrations,
+                        )
+                    )
+                    existing = request_metadata.get(
+                        "operator_submodule_integration_recovery"
+                    )
+                    row_generation = int(row["claim_generation"] or 0)
+                    existing_generation = (
+                        existing.get(
+                            "revival_generation"
+                            if status == "pending"
+                            else "claim_generation"
+                        )
+                        if isinstance(existing, Mapping)
+                        else None
+                    )
+                    same_active_grant = bool(
+                        isinstance(existing, Mapping)
+                        and existing.get("schema")
+                        == SUBMODULE_INTEGRATION_RECOVERY_SCHEMA
+                        and existing.get("request_id") == request_id
+                        and existing.get("implementation_commit")
+                        == str(row["commit_sha"] or "")
+                        and existing.get("target_repository_id")
+                        == str(
+                            request_metadata.get("target_repository_id")
+                            or ""
+                        ).strip()
+                        and existing.get("target_branch")
+                        == str(
+                            request_metadata.get("target_branch") or ""
+                        ).strip()
+                        and existing.get("targets") == normalized_targets
+                        and not isinstance(existing_generation, bool)
+                        and isinstance(existing_generation, int)
+                        and existing_generation == row_generation
+                    )
+                    if not same_active_grant:
+                        connection.rollback()
+                        raise MergeQueueFenceError(
+                            f"revive rejected for active request {request_id}: "
+                            "submodule recovery approval differs from the "
+                            "current generation-bound grant"
+                        )
                 connection.commit()
                 return self._request_from_row(row)
 
-            request_metadata = json.loads(row["metadata_json"] or "{}")
-            request_metadata.setdefault("revivals", []).append(
-                {
-                    "at": now,
-                    "reason": str(reason),
-                    "previous_enqueued_at": float(row["enqueued_at"]),
-                    "previous_failure_count": int(row["failure_count"]),
-                    "previous_failure_reason": str(row["failure_reason"]),
-                }
+            # Recovery is a single-revival capability. Preserve its audit copy
+            # in ``revivals`` but never carry the live top-level grant into a
+            # later quarantine/revival cycle.
+            request_metadata.pop(
+                "operator_submodule_integration_recovery",
+                None,
             )
+            recovery_binding: dict[str, Any] | None = None
+            if approved_submodule_integrations is not None:
+                if not str(reason or "").strip():
+                    connection.rollback()
+                    raise ValueError(
+                        "submodule integration recovery requires an operator reason"
+                    )
+                try:
+                    normalized_targets = (
+                        self._normalized_submodule_recovery_targets(
+                            request_metadata,
+                            approved_submodule_integrations,
+                        )
+                    )
+                except ValueError:
+                    connection.rollback()
+                    raise
+                quarantine_generation = int(row["claim_generation"] or 0)
+                revival_generation = quarantine_generation + 1
+                recovery_binding = {
+                    "schema": SUBMODULE_INTEGRATION_RECOVERY_SCHEMA,
+                    "approved_at": now,
+                    "reason": str(reason).strip(),
+                    "request_id": request_id,
+                    "implementation_commit": str(row["commit_sha"] or ""),
+                    "target_repository_id": str(
+                        request_metadata.get("target_repository_id") or ""
+                    ).strip(),
+                    "target_branch": str(
+                        request_metadata.get("target_branch") or ""
+                    ).strip(),
+                    "quarantine_generation": quarantine_generation,
+                    "revival_generation": revival_generation,
+                    "claim_generation": revival_generation + 1,
+                    "targets": normalized_targets,
+                }
+                request_metadata[
+                    "operator_submodule_integration_recovery"
+                ] = recovery_binding
+            revival = {
+                "at": now,
+                "reason": str(reason),
+                "previous_enqueued_at": float(row["enqueued_at"]),
+                "previous_failure_count": int(row["failure_count"]),
+                "previous_failure_reason": str(row["failure_reason"]),
+            }
+            if recovery_binding is not None:
+                revival["submodule_integration_recovery"] = recovery_binding
+            request_metadata.setdefault("revivals", []).append(revival)
             failure_count = 0 if reset_failures else int(row["failure_count"])
             attempt = 1 if reset_failures else int(row["attempt"])
             connection.execute(

@@ -1404,6 +1404,37 @@ def supervised_child_command_matches(command_line: str, command: Sequence[str]) 
     return all(fragment in command_line for fragment in required_fragments)
 
 
+def _resolved_supervised_log_path(
+    path: Path,
+    *,
+    log_directory: Path,
+) -> Path | None:
+    """Resolve one existing regular log without escaping its configured directory."""
+
+    try:
+        resolved_directory = log_directory.resolve(strict=True)
+        resolved_path = path.resolve(strict=True)
+        resolved_path.relative_to(resolved_directory)
+        if not resolved_path.is_file():
+            return None
+    except (OSError, ValueError):
+        return None
+    return resolved_path
+
+
+def _process_stdout_log_path(
+    pid: int,
+    *,
+    log_directory: Path,
+) -> Path | None:
+    """Return a process' concrete stdout log when safely discoverable via procfs."""
+
+    return _resolved_supervised_log_path(
+        Path("/proc") / str(int(pid)) / "fd" / "1",
+        log_directory=log_directory,
+    )
+
+
 def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     """Return a live matching child from the PID marker instead of launching a duplicate."""
 
@@ -1414,9 +1445,20 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     command_line = process_args(pid)
     if not supervised_child_command_matches(command_line, spec.command):
         return None
-    log_path = spec.resolve(spec.log_path)
+    configured_log_path = spec.resolve(spec.log_path)
     latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    configured_log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path = _process_stdout_log_path(
+        pid,
+        log_directory=configured_log_path.parent,
+    )
+    if log_path is None and latest_log_path is not None and latest_log_path.is_symlink():
+        log_path = _resolved_supervised_log_path(
+            latest_log_path,
+            log_directory=configured_log_path.parent,
+        )
+    if log_path is None:
+        log_path = configured_log_path
     return SupervisedChild(
         pid=int(pid),
         command=tuple(spec.command),

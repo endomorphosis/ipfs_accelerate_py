@@ -118,7 +118,11 @@ from ..task_sources.taskboard_store import (
 from ..merge.git_gc import GitGarbageCollector
 from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge.merge_checkpoint import MergeCheckpoint
-from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
+from ..merge.merge_queue import (
+    MERGE_TARGET_BINDING_SCHEMA,
+    SUBMODULE_INTEGRATION_RECOVERY_SCHEMA,
+    MergeQueue,
+)
 from ..validation.validation_commands import (
     build_validation_commands,
     infer_validation_impact_paths,
@@ -10593,6 +10597,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             request.commit_sha or metadata.get("implementation_commit") or ""
         )
         queue_attempt = int(getattr(request, "attempt", 0) or 0)
+        merge_request_claim_generation = int(
+            getattr(request, "claim_generation", 0) or 0
+        )
         raw_implementation_attempt = int(
             metadata.get("implementation_attempt") or 0
         )
@@ -10929,6 +10936,33 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "binding_error": submodule_integration_binding_error,
                 "branch": branch_name,
             }
+        (
+            approved_submodule_integration_targets,
+            submodule_recovery_binding_error,
+        ) = self._apply_operator_submodule_integration_recovery(
+            approved_submodule_integration_targets,
+            metadata.get(
+                "operator_submodule_integration_recovery"
+            ),
+            request_id=str(getattr(request, "request_id", "") or ""),
+            implementation_commit=implementation_commit,
+            target_repository_id=str(
+                metadata.get("target_repository_id") or ""
+            ).strip(),
+            target_branch=str(
+                metadata.get("target_branch") or ""
+            ).strip(),
+            claim_generation=merge_request_claim_generation,
+        )
+        if submodule_recovery_binding_error:
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "submodule_recovery_binding_invalid",
+                "binding_error": submodule_recovery_binding_error,
+                "branch": branch_name,
+            }
         merge_kwargs: dict[str, Any] = {
             "baseline_ref": baseline_ref,
             "changed_submodule_paths": changed_submodule_paths,
@@ -11121,6 +11155,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 implementation_events_path_record
                             ),
                             "branch": branch_name,
+                            "merge_request_id": str(
+                                getattr(request, "request_id", "") or ""
+                            ),
+                            "merge_request_claim_generation": (
+                                merge_request_claim_generation
+                            ),
+                            "target_repository_id": str(
+                                metadata.get("target_repository_id") or ""
+                            ),
+                            "target_branch": str(
+                                metadata.get("target_branch") or ""
+                            ),
                             "baseline_ref": baseline_ref,
                             "implementation_commit": (
                                 implementation_commit
@@ -11244,6 +11290,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 implementation_events_path_record
                             ),
                             "branch": branch_name,
+                            "merge_request_id": str(
+                                getattr(request, "request_id", "") or ""
+                            ),
+                            "merge_request_claim_generation": (
+                                merge_request_claim_generation
+                            ),
+                            "target_repository_id": str(
+                                metadata.get("target_repository_id") or ""
+                            ),
+                            "target_branch": str(
+                                metadata.get("target_branch") or ""
+                            ),
                             "baseline_ref": baseline_ref,
                             "implementation_commit": (
                                 implementation_commit
@@ -16589,6 +16647,103 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 return {}, "changed_submodule_path_missing_integration_binding"
         return approved, ""
 
+    def _apply_operator_submodule_integration_recovery(
+        self,
+        approved_targets: Mapping[str, Mapping[str, str]],
+        raw_recovery: Any,
+        *,
+        request_id: str,
+        implementation_commit: str,
+        target_repository_id: str,
+        target_branch: str,
+        claim_generation: int,
+    ) -> tuple[dict[str, dict[str, str]], str]:
+        """Bind a revived request to exact operator-reviewed child postimages."""
+
+        normalized_targets = {
+            str(path): dict(target)
+            for path, target in approved_targets.items()
+        }
+        if raw_recovery is None:
+            return normalized_targets, ""
+        if not isinstance(raw_recovery, Mapping):
+            return {}, "submodule_recovery_binding_malformed"
+        if (
+            str(raw_recovery.get("schema") or "")
+            != SUBMODULE_INTEGRATION_RECOVERY_SCHEMA
+        ):
+            return {}, "submodule_recovery_binding_schema_mismatch"
+        if (
+            str(raw_recovery.get("request_id") or "") != request_id
+            or str(raw_recovery.get("implementation_commit") or "")
+            != implementation_commit
+            or str(raw_recovery.get("target_repository_id") or "")
+            != target_repository_id
+            or str(raw_recovery.get("target_branch") or "")
+            != target_branch
+            or not str(raw_recovery.get("reason") or "").strip()
+        ):
+            return {}, "submodule_recovery_authority_mismatch"
+        quarantine_generation = raw_recovery.get(
+            "quarantine_generation"
+        )
+        revival_generation = raw_recovery.get("revival_generation")
+        approved_claim_generation = raw_recovery.get(
+            "claim_generation"
+        )
+        if (
+            isinstance(quarantine_generation, bool)
+            or not isinstance(quarantine_generation, int)
+            or quarantine_generation < 0
+            or isinstance(revival_generation, bool)
+            or not isinstance(revival_generation, int)
+            or revival_generation != quarantine_generation + 1
+            or isinstance(approved_claim_generation, bool)
+            or not isinstance(approved_claim_generation, int)
+            or approved_claim_generation != revival_generation + 1
+            or isinstance(claim_generation, bool)
+            or not isinstance(claim_generation, int)
+            or claim_generation != approved_claim_generation
+        ):
+            return {}, "submodule_recovery_generation_mismatch"
+        approved_at = raw_recovery.get("approved_at")
+        if (
+            isinstance(approved_at, bool)
+            or not isinstance(approved_at, (int, float))
+            or float(approved_at) <= 0
+        ):
+            return {}, "submodule_recovery_approval_time_invalid"
+        raw_targets = raw_recovery.get("targets")
+        if (
+            not isinstance(raw_targets, Sequence)
+            or isinstance(raw_targets, (str, bytes, bytearray))
+            or not raw_targets
+            or len(raw_targets) > MAX_MERGE_PROOF_METADATA_ITEMS
+        ):
+            return {}, "submodule_recovery_targets_malformed"
+        recovered_paths: set[str] = set()
+        for raw_target in raw_targets:
+            if not isinstance(raw_target, Mapping):
+                return {}, "submodule_recovery_target_malformed"
+            path = str(raw_target.get("path") or "").strip("/")
+            integrated_target = str(
+                raw_target.get("integrated_target") or ""
+            ).strip()
+            if (
+                path not in normalized_targets
+                or path in recovered_paths
+                or not re.fullmatch(
+                    r"[0-9a-fA-F]{40,64}",
+                    integrated_target,
+                )
+            ):
+                return {}, "submodule_recovery_target_malformed"
+            recovered_paths.add(path)
+            normalized_targets[path][
+                "operator_approved_integrated_target"
+            ] = integrated_target.lower()
+        return normalized_targets, ""
+
     @staticmethod
     def _proposal_index_gitlink_ref(
         workspace_path: Path,
@@ -19772,16 +19927,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "submodule_candidate_branch_changed_since_validation"
             )
             return result
-        if (
-            not candidate_branch_target
-            and actual_target != candidate_gitlink
-        ):
-            result["reason"] = (
-                "submodule_candidate_branch_unavailable_before_integration"
-            )
-            return result
         candidate_commit = candidate_branch_target or candidate_gitlink
         result["candidate_commit"] = candidate_commit
+        candidate_is_actual_target_ancestor = (
+            self._git_ref_ancestor_check_in_repo(
+                source,
+                candidate_commit,
+                actual_target,
+            )
+        )
+        target_already_contains_candidate = (
+            candidate_is_actual_target_ancestor is True
+        )
+        operator_approved_integrated_target = str(
+            approved_target.get(
+                "operator_approved_integrated_target"
+            )
+            or ""
+        ).strip()
+        operator_approved_target_matches_actual = bool(
+            operator_approved_integrated_target
+            and operator_approved_integrated_target == actual_target
+            and target_already_contains_candidate
+        )
         result["candidate_branch_cleaned_after_exact_integration"] = bool(
             not candidate_branch_target
             and actual_target == candidate_gitlink
@@ -19789,12 +19957,57 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         target_already_exact_candidate = (
             actual_target == candidate_commit
         )
+        target_already_integrated_authorized = bool(
+            target_already_exact_candidate
+            or operator_approved_target_matches_actual
+        )
+        result["candidate_branch_cleaned_after_integration"] = bool(
+            not candidate_branch_target
+            and target_already_integrated_authorized
+        )
         result["target_already_exact_candidate"] = (
             target_already_exact_candidate
         )
+        result["candidate_is_actual_target_ancestor"] = (
+            candidate_is_actual_target_ancestor
+        )
+        result["target_already_contains_candidate"] = (
+            target_already_contains_candidate
+        )
+        result["operator_approved_integrated_target"] = (
+            operator_approved_integrated_target
+        )
+        result["operator_approved_target_matches_actual"] = (
+            operator_approved_target_matches_actual
+        )
+        result["target_already_integrated_authorized"] = (
+            target_already_integrated_authorized
+        )
+        result["integrated_target_commit"] = (
+            actual_target
+            if target_already_integrated_authorized
+            else candidate_commit
+        )
+        if (
+            target_already_contains_candidate
+            and not target_already_integrated_authorized
+            and actual_target != expected_target
+        ):
+            result["reason"] = (
+                "submodule_integrated_descendant_not_operator_approved"
+            )
+            return result
+        if (
+            not candidate_branch_target
+            and not target_already_integrated_authorized
+        ):
+            result["reason"] = (
+                "submodule_candidate_branch_unavailable_before_integration"
+            )
+            return result
         if (
             actual_target != expected_target
-            and not target_already_exact_candidate
+            and not target_already_integrated_authorized
         ):
             result["reason"] = (
                 "submodule_integration_target_changed_since_validation"
@@ -19836,6 +20049,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "reason": (
                     "already_integrated_exact_candidate"
                     if target_already_exact_candidate
+                    else "already_integrated_operator_approved_postimage"
+                    if operator_approved_target_matches_actual
                     else "compatible"
                 ),
             }
@@ -20428,6 +20643,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         merge_workspace,
                         task=task,
                         attempt=attempt,
+                        approved_submodule_integration_targets=(
+                            approved_submodule_integration_targets
+                        ),
                     )
                 if merge_returncode != 0 and submodule_conflict_repair.get("repaired", False):
                     merge_returncode = 0
@@ -20502,6 +20720,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     merge_workspace,
                     submodule_merge_results,
                     task=task,
+                    approved_submodule_integration_targets=(
+                        approved_submodule_integration_targets
+                    ),
                 )
                 if merged_gitlink_recording.get("committed", False):
                     merge_commit = str(merged_gitlink_recording["commit"])
@@ -20656,6 +20877,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         submodule_merge_results: Sequence[dict[str, Any]],
         *,
         task: PortalTask,
+        approved_submodule_integration_targets: (
+            Mapping[str, Mapping[str, str]] | None
+        ) = None,
     ) -> dict[str, Any]:
         """Record verified merged revisions through every parent gitlink.
 
@@ -20671,10 +20895,26 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             for path in self.worktree_submodule_paths
             if path.strip().strip("/")
         )
+        workspace = workspace.resolve()
+        operator_approved_targets = {
+            str(path).strip("/"): target
+            for path, target in (
+                approved_submodule_integration_targets or {}
+            ).items()
+            if str(
+                target.get("operator_approved_integrated_target") or ""
+            ).strip()
+        }
         expected_commits: dict[str, str] = {}
+        operator_postimage_checks: dict[str, dict[str, Any]] = {}
+        operator_result_paths: set[str] = set()
+        failures: list[dict[str, Any]] = []
         for item in submodule_merge_results:
             relative = str(item.get("path") or "").strip().strip("/")
             commit = str(item.get("commit") or "").strip()
+            approved_target = operator_approved_targets.get(relative)
+            if approved_target is not None:
+                operator_result_paths.add(relative)
             if (
                 not item.get("merged", False)
                 or not relative
@@ -20685,13 +20925,190 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     for root in managed_roots
                 )
             ):
+                if approved_target is not None:
+                    failures.append(
+                        {
+                            "path": relative,
+                            "reason": (
+                                "operator_approved_gitlink_result_invalid"
+                            ),
+                            "merged": bool(item.get("merged", False)),
+                            "commit": commit,
+                        }
+                    )
                 continue
-            checkout = workspace / relative
+            checkout = (workspace / relative).resolve()
             if not self._is_git_worktree(checkout):
+                if approved_target is not None:
+                    failures.append(
+                        {
+                            "path": relative,
+                            "reason": (
+                                "operator_approved_gitlink_checkout_unavailable"
+                            ),
+                        }
+                    )
                 continue
             current = self._run_git(["rev-parse", "HEAD"], cwd=checkout).stdout.strip()
+            if approved_target is not None:
+                approved_commit = str(
+                    approved_target.get(
+                        "operator_approved_integrated_target"
+                    )
+                    or ""
+                ).strip().lower()
+                binding_check = item.get("integration_binding_check")
+                candidate_commit = str(
+                    (
+                        binding_check.get("candidate_commit")
+                        if isinstance(binding_check, Mapping)
+                        else ""
+                    )
+                    or ""
+                ).strip()
+                parent_repo = checkout.parent
+                while (
+                    parent_repo != workspace
+                    and not self._is_git_worktree(parent_repo)
+                ):
+                    parent_repo = parent_repo.parent
+                recorded_commit = ""
+                child_relative = ""
+                if self._is_git_worktree(parent_repo):
+                    try:
+                        child_relative = checkout.relative_to(
+                            parent_repo
+                        ).as_posix()
+                    except ValueError:
+                        child_relative = ""
+                    if child_relative:
+                        recorded_commit = self._submodule_gitlink_ref(
+                            parent_repo,
+                            child_relative,
+                        )
+                approval_check = (
+                    self._operator_approved_submodule_postimage_check(
+                        path=relative,
+                        approved_target=approved_target,
+                        required_ancestors=(
+                            candidate_commit,
+                            recorded_commit,
+                        ),
+                    )
+                )
+                approval_check.update(
+                    {
+                        "reported_integrated_commit": commit,
+                        "recorded_parent_gitlink": recorded_commit,
+                        "checkout_commit_before_alignment": current,
+                    }
+                )
+                operator_postimage_checks[relative] = approval_check
+                if (
+                    approval_check.get("passed") is not True
+                    or commit.lower() != approved_commit
+                    or not isinstance(binding_check, Mapping)
+                    or binding_check.get("passed") is not True
+                    or binding_check.get(
+                        "operator_approved_target_matches_actual"
+                    )
+                    is not True
+                ):
+                    failures.append(
+                        {
+                            "path": relative,
+                            "reason": str(
+                                approval_check.get("reason")
+                                or (
+                                    "operator_approved_gitlink_result_"
+                                    "mismatch"
+                                )
+                            ),
+                            "expected_commit": approved_commit,
+                            "reported_commit": commit,
+                            "operator_postimage_check": approval_check,
+                        }
+                    )
+                    continue
+                if current != approved_commit:
+                    status = subprocess.run(
+                        [
+                            "git",
+                            "status",
+                            "--porcelain",
+                            "--untracked-files=all",
+                        ],
+                        cwd=checkout,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    if status.returncode != 0 or status.stdout.strip():
+                        failures.append(
+                            {
+                                "path": relative,
+                                "reason": (
+                                    "operator_approved_gitlink_checkout_"
+                                    "not_clean"
+                                ),
+                                "status": status.stdout[-4000:],
+                                "stderr": status.stderr[-4000:],
+                            }
+                        )
+                        continue
+                    alignment = subprocess.run(
+                        ["git", "checkout", "--detach", approved_commit],
+                        cwd=checkout,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    current = self._run_git(
+                        ["rev-parse", "HEAD"],
+                        cwd=checkout,
+                    ).stdout.strip()
+                    approval_check["checkout_alignment"] = {
+                        "aligned": (
+                            alignment.returncode == 0
+                            and current == approved_commit
+                        ),
+                        "returncode": alignment.returncode,
+                        "stdout": alignment.stdout[-4000:],
+                        "stderr": alignment.stderr[-4000:],
+                        "commit": current,
+                    }
+                    if (
+                        alignment.returncode != 0
+                        or current != approved_commit
+                    ):
+                        failures.append(
+                            {
+                                "path": relative,
+                                "reason": (
+                                    "operator_approved_gitlink_checkout_"
+                                    "alignment_failed"
+                                ),
+                                "expected_commit": approved_commit,
+                                "current_commit": current,
+                            }
+                        )
+                        continue
+                expected_commits[relative] = approved_commit
+                continue
             if current == commit:
                 expected_commits[relative] = commit
+
+        for missing_path in sorted(
+            set(operator_approved_targets) - operator_result_paths
+        ):
+            failures.append(
+                {
+                    "path": missing_path,
+                    "reason": (
+                        "operator_approved_gitlink_result_missing"
+                    ),
+                }
+            )
 
         # A descendant chain records every containing gitlink up to the root.
         # Its parent result therefore names the pre-propagation commit and must
@@ -20706,6 +21123,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         }
 
+        if failures:
+            return {
+                "attempted": True,
+                "ok": False,
+                "committed": False,
+                "reason": "operator_approved_gitlink_recording_failed",
+                "operator_postimage_checks": operator_postimage_checks,
+                "failures": failures,
+            }
+
         if not expected_commits:
             return {
                 "attempted": False,
@@ -20714,9 +21141,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "reason": "no_matching_merged_root_gitlinks",
             }
 
-        workspace = workspace.resolve()
         chain: list[dict[str, Any]] = []
-        failures: list[dict[str, Any]] = []
         committed = False
 
         for relative, leaf_commit in sorted(
@@ -20889,6 +21314,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "chain": chain,
             "failures": failures,
         }
+        if operator_postimage_checks:
+            result["operator_postimage_checks"] = (
+                operator_postimage_checks
+            )
         if failures:
             result["reason"] = "parent_gitlink_chain_failed"
         else:
@@ -21210,6 +21639,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         task: PortalTask,
         attempt: int = 0,
         parent_relative: str = "",
+        approved_submodule_integration_targets: (
+            Mapping[str, Mapping[str, str]] | None
+        ) = None,
     ) -> dict[str, Any]:
         conflicts = self._unmerged_gitlink_conflicts(workspace)
         if not conflicts:
@@ -21222,6 +21654,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 stages,
                 task=task,
                 attempt=attempt,
+                approved_target=(
+                    approved_submodule_integration_targets.get(full_relative)
+                    if approved_submodule_integration_targets
+                    else None
+                ),
             )
             selected_commit = str(resolution.get("selected_commit") or "")
             if not selected_commit:
@@ -21495,6 +21932,126 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             conflicts.setdefault(relative, {})[stage] = object_id
         return conflicts
 
+    def _operator_approved_submodule_postimage_check(
+        self,
+        *,
+        path: str,
+        approved_target: Mapping[str, str],
+        required_ancestors: Sequence[str],
+    ) -> dict[str, Any]:
+        """Prove one exact operator postimage against live child authority.
+
+        Recovery authority names one commit, not an arbitrary descendant.
+        Before that commit can resolve or replace a parent gitlink, it must be
+        the live configured integration-branch tip and contain every relevant
+        merge-side child revision.
+        """
+
+        normalized_path = str(path or "").strip("/")
+        expected_branch = str(
+            approved_target.get("integration_branch") or ""
+        ).strip()
+        approved_commit = str(
+            approved_target.get(
+                "operator_approved_integrated_target"
+            )
+            or ""
+        ).strip().lower()
+        ancestors = tuple(
+            dict.fromkeys(
+                str(candidate or "").strip().lower()
+                for candidate in required_ancestors
+                if str(candidate or "").strip()
+            )
+        )
+        result: dict[str, Any] = {
+            "passed": False,
+            "path": normalized_path,
+            "expected_integration_branch": expected_branch,
+            "operator_approved_integrated_target": approved_commit,
+            "required_ancestors": list(ancestors),
+            "ancestor_checks": {},
+        }
+        if (
+            not normalized_path
+            or not self._repo_relative_path_safe(normalized_path)
+            or normalized_path
+            != str(approved_target.get("path") or "").strip("/")
+            or not re.fullmatch(r"[0-9a-f]{40,64}", approved_commit)
+            or not expected_branch
+        ):
+            result["reason"] = (
+                "operator_approved_gitlink_postimage_malformed"
+            )
+            return result
+        source = (self.repo_root / normalized_path).resolve()
+        result["source"] = str(source)
+        if not self._is_git_worktree(source):
+            result["reason"] = (
+                "operator_approved_gitlink_checkout_unavailable"
+            )
+            return result
+        configured_branch = self._submodule_default_branch(
+            normalized_path,
+            source,
+        )
+        live_target = self._resolve_git_commit_in_repo(
+            source,
+            expected_branch,
+        )
+        resolved_approved = self._resolve_git_commit_in_repo(
+            source,
+            approved_commit,
+        )
+        result.update(
+            {
+                "actual_integration_branch": configured_branch,
+                "actual_integration_target": live_target,
+                "resolved_operator_approved_target": resolved_approved,
+            }
+        )
+        if configured_branch != expected_branch:
+            result["reason"] = (
+                "operator_approved_gitlink_branch_mismatch"
+            )
+            return result
+        if not resolved_approved or resolved_approved.lower() != approved_commit:
+            result["reason"] = (
+                "operator_approved_gitlink_target_unavailable"
+            )
+            return result
+        if live_target.lower() != approved_commit:
+            result["reason"] = (
+                "operator_approved_gitlink_live_target_mismatch"
+            )
+            return result
+        if not ancestors:
+            result["reason"] = (
+                "operator_approved_gitlink_ancestors_missing"
+            )
+            return result
+        ancestor_checks = {
+            candidate: self._git_ref_ancestor_check_in_repo(
+                source,
+                candidate,
+                approved_commit,
+            )
+            for candidate in ancestors
+        }
+        result["ancestor_checks"] = ancestor_checks
+        if any(check is not True for check in ancestor_checks.values()):
+            result["reason"] = (
+                "operator_approved_gitlink_not_descendant_of_merge_sides"
+            )
+            return result
+        result.update(
+            {
+                "passed": True,
+                "reason": "operator_approved_exact_postimage_verified",
+            }
+        )
+        return result
+
     def _select_submodule_gitlink_resolution(
         self,
         relative: str,
@@ -21514,6 +22071,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         task: PortalTask,
         attempt: int = 0,
+        approved_target: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         """Select only a commit proven to contain both gitlink candidates.
 
@@ -21544,6 +22102,43 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return diagnostic
         if not ours or not theirs:
             diagnostic["reason"] = "missing_gitlink_candidate"
+            return diagnostic
+        operator_approved_target = str(
+            (approved_target or {}).get(
+                "operator_approved_integrated_target"
+            )
+            or ""
+        ).strip()
+        if operator_approved_target:
+            approval_check = (
+                self._operator_approved_submodule_postimage_check(
+                    path=relative,
+                    approved_target=approved_target or {},
+                    required_ancestors=(ours, theirs),
+                )
+            )
+            diagnostic["operator_approved_postimage_check"] = (
+                approval_check
+            )
+            if approval_check.get("passed") is not True:
+                diagnostic["reason"] = str(
+                    approval_check.get("reason")
+                    or "operator_approved_gitlink_postimage_invalid"
+                )
+                return diagnostic
+            selected = str(
+                approval_check.get("operator_approved_integrated_target")
+                or ""
+            )
+            diagnostic.update(
+                {
+                    "selected_commit": selected,
+                    "selection_reason": (
+                        "operator_approved_exact_integrated_postimage"
+                    ),
+                    "reason": "selected_operator_approved_exact_postimage",
+                }
+            )
             return diagnostic
         missing_candidates = [
             candidate
@@ -21991,7 +22586,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     if not (
                         checkpoint_binding_check.get("passed") is True
                         and checkpoint_binding_check.get(
-                            "target_already_exact_candidate"
+                            "target_already_integrated_authorized"
                         )
                         is True
                     ):
@@ -22027,7 +22622,30 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         )
                         results.append(stale_checkpoint_result)
                         continue
-                results.append(checkpoint.merged_submodules[full_relative])
+                    refreshed_checkpoint_result = {
+                        **checkpoint.merged_submodules[full_relative],
+                        "commit": str(
+                            checkpoint_binding_check.get(
+                                "integrated_target_commit"
+                            )
+                            or checkpoint_binding_check.get(
+                                "candidate_commit"
+                            )
+                            or ""
+                        ),
+                        "integration_binding_check": (
+                            checkpoint_binding_check
+                        ),
+                    }
+                    checkpoint.record_submodule(
+                        full_relative,
+                        refreshed_checkpoint_result,
+                    )
+                    results.append(refreshed_checkpoint_result)
+                else:
+                    results.append(
+                        checkpoint.merged_submodules[full_relative]
+                    )
                 if self._is_git_worktree(source):
                     results.extend(
                         self._merge_submodule_branches_to_main_in_repo(
@@ -22132,12 +22750,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if (
                 approved_target is not None
                 and integration_binding_check.get(
-                    "target_already_exact_candidate"
+                    "target_already_integrated_authorized"
                 )
                 is True
             ):
                 integrated_commit = str(
-                    integration_binding_check.get("candidate_commit") or ""
+                    integration_binding_check.get(
+                        "integrated_target_commit"
+                    )
+                    or integration_binding_check.get(
+                        "candidate_commit"
+                    )
+                    or ""
                 )
                 result = {
                     "path": full_relative,
@@ -24554,6 +25178,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         target_branch = self._main_branch_name()
         deprioritized_task_ids = {str(task_id) for task_id in (deprioritized_task_ids or set()) if str(task_id)}
         candidates = self._failed_merge_candidates(skip_task_ids=skip_task_ids)
+        queue_ownership_diagnostics = list(
+            getattr(
+                self,
+                "_last_merge_queue_ownership_diagnostics",
+                (),
+            )
+        )
+        for diagnostic in queue_ownership_diagnostics:
+            payload = {
+                key: value
+                for key, value in diagnostic.items()
+                if key != "event_already_recorded"
+            }
+            if diagnostic.get("event_already_recorded") is not True:
+                self._record_event(
+                    "merge_queue_ownership_deferred",
+                    payload,
+                )
+            results.append(payload)
         fresh_candidates, stale_candidates = self._partition_stale_failed_merge_candidates(candidates)
         for event in stale_candidates:
             result = self._stale_failed_merge_candidate_result(event)
@@ -24932,6 +25575,73 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 results.append(result)
                 continue
+            durable_operator_recovery = event.get(
+                "operator_submodule_integration_recovery"
+            )
+            if durable_operator_recovery is not None:
+                # Recovery authorizes exactly one live queue claim. An event-log
+                # projection is audit evidence, not a capability which may be
+                # replayed after that claim has completed or been fenced.
+                result = {
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "queue_attempt": queue_attempt,
+                    "implementation_attempt": implementation_attempt,
+                    "branch": branch,
+                    "implementation_commit": implementation_commit,
+                    "resolved": False,
+                    "reason": (
+                        "reconciliation_submodule_recovery_replay_forbidden"
+                    ),
+                }
+                self._record_event(
+                    "merge_reconciliation_deferred",
+                    result,
+                )
+                results.append(result)
+                continue
+            (
+                approved_submodule_integration_targets,
+                recovery_binding_error,
+            ) = self._apply_operator_submodule_integration_recovery(
+                approved_submodule_integration_targets,
+                event.get(
+                    "operator_submodule_integration_recovery"
+                ),
+                request_id=str(
+                    event.get("merge_request_id") or ""
+                ),
+                implementation_commit=implementation_commit,
+                target_repository_id=str(
+                    event.get("target_repository_id") or ""
+                ),
+                target_branch=str(
+                    event.get("target_branch") or ""
+                ),
+                claim_generation=int(
+                    event.get("merge_request_claim_generation") or 0
+                ),
+            )
+            if recovery_binding_error:
+                result = {
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "queue_attempt": queue_attempt,
+                    "implementation_attempt": implementation_attempt,
+                    "branch": branch,
+                    "implementation_commit": implementation_commit,
+                    "resolved": False,
+                    "reason": (
+                        "reconciliation_submodule_recovery_binding_invalid"
+                    ),
+                    "binding_error": recovery_binding_error,
+                }
+                self._record_event(
+                    "merge_reconciliation_deferred",
+                    result,
+                )
+                results.append(result)
+                continue
             pending_validation_commands = event.get(
                 "validation_commands"
             )
@@ -24964,6 +25674,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ),
                 "task_owned_submodule_integration_binding": event.get(
                     "task_owned_submodule_integration_binding"
+                ),
+                "merge_request_id": str(
+                    event.get("merge_request_id") or ""
+                ),
+                "merge_request_claim_generation": int(
+                    event.get("merge_request_claim_generation") or 0
+                ),
+                "target_repository_id": str(
+                    event.get("target_repository_id") or ""
+                ),
+                "target_branch": str(
+                    event.get("target_branch") or ""
                 ),
             }
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
@@ -25368,6 +26090,208 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 break
         return selected
 
+    def _merge_queue_request_ownership_state(
+        self,
+        request_id: str,
+        *,
+        expected_task_id: str = "",
+        expected_commit: str = "",
+        handoff_commit: str = "",
+        handoff_target_repository_id: str = "",
+        handoff_target_branch: str = "",
+    ) -> dict[str, Any]:
+        """Read one durable queue owner without weakening fail-closed semantics."""
+
+        normalized_request_id = str(request_id or "").strip()
+        expected_task_id = str(expected_task_id or "").strip()
+        expected_commit = str(expected_commit or "").strip()
+        handoff_commit = str(handoff_commit or "").strip()
+        handoff_target_repository_id = str(
+            handoff_target_repository_id or ""
+        ).strip()
+        handoff_target_branch = str(
+            handoff_target_branch or ""
+        ).strip()
+        expected_target_repository_id = str(
+            getattr(self, "merge_target_repository_id", "") or ""
+        ).strip()
+        expected_target_branch = str(
+            getattr(self, "resolved_merge_target_branch", "") or ""
+        ).strip()
+
+        def unavailable(
+            reason: str,
+            recovery_action: str,
+            **details: Any,
+        ) -> dict[str, Any]:
+            return {
+                "available": False,
+                "request_id": normalized_request_id,
+                "status": "queue_state_unavailable",
+                "reason": reason,
+                "recovery_action": recovery_action,
+                **details,
+            }
+
+        if not normalized_request_id:
+            return unavailable(
+                "merge_queue_request_id_missing",
+                "restore_queue_handoff_request_id",
+            )
+        if expected_task_id or expected_commit:
+            handoff_mismatches: list[str] = []
+            if not expected_task_id:
+                handoff_mismatches.append("task_id")
+            if not expected_commit:
+                handoff_mismatches.append("implementation_commit")
+            if handoff_commit and handoff_commit != expected_commit:
+                handoff_mismatches.append(
+                    "merge_result.implementation_commit"
+                )
+            if (
+                handoff_target_repository_id
+                and handoff_target_repository_id
+                != expected_target_repository_id
+            ):
+                handoff_mismatches.append(
+                    "merge_result.target_repository_id"
+                )
+            if (
+                handoff_target_branch
+                and handoff_target_branch != expected_target_branch
+            ):
+                handoff_mismatches.append(
+                    "merge_result.target_branch"
+                )
+            if handoff_mismatches:
+                return unavailable(
+                    "merge_queue_handoff_identity_mismatch",
+                    "repair_queue_handoff_identity_binding",
+                    identity_mismatches=sorted(
+                        set(handoff_mismatches)
+                    ),
+                    expected_identity={
+                        "task_id": expected_task_id,
+                        "implementation_commit": expected_commit,
+                        "target_repository_id": (
+                            expected_target_repository_id
+                        ),
+                        "target_branch": expected_target_branch,
+                    },
+                    actual_identity={
+                        "task_id": expected_task_id,
+                        "implementation_commit": handoff_commit,
+                        "target_repository_id": (
+                            handoff_target_repository_id
+                        ),
+                        "target_branch": handoff_target_branch,
+                    },
+                )
+        get_request = getattr(self.merge_queue, "get", None)
+        if not callable(get_request):
+            return unavailable(
+                "merge_queue_lookup_unsupported",
+                "restore_merge_queue_lookup_backend",
+            )
+        try:
+            request = get_request(normalized_request_id)
+        except Exception as exc:
+            return unavailable(
+                "merge_queue_lookup_failed",
+                "retry_merge_queue_lookup",
+                exception_type=type(exc).__name__,
+                error=str(exc)[-4000:],
+            )
+        if request is None:
+            return unavailable(
+                "merge_queue_request_missing",
+                "restore_or_reenqueue_exact_merge_request",
+            )
+        request_metadata_value = (
+            request.get("metadata")
+            if isinstance(request, Mapping)
+            else getattr(request, "metadata", None)
+        )
+        request_metadata = (
+            dict(request_metadata_value)
+            if isinstance(request_metadata_value, Mapping)
+            else {}
+        )
+
+        def request_value(
+            field_name: str,
+            *metadata_names: str,
+        ) -> str:
+            raw_value = (
+                request.get(field_name)
+                if isinstance(request, Mapping)
+                else getattr(request, field_name, "")
+            )
+            if raw_value:
+                return str(raw_value).strip()
+            for metadata_name in metadata_names:
+                metadata_value = request_metadata.get(metadata_name)
+                if metadata_value:
+                    return str(metadata_value).strip()
+            return ""
+
+        actual_identity = {
+            "request_id": request_value("request_id"),
+            "task_id": request_value("task_id"),
+            "implementation_commit": request_value(
+                "commit_sha",
+                "implementation_commit",
+                "source_commit",
+            ),
+            "target_repository_id": request_value(
+                "target_repository_id",
+                "target_repository_id",
+            ),
+            "target_branch": request_value(
+                "target_branch",
+                "target_branch",
+            ),
+        }
+        expected_identity = {
+            "request_id": normalized_request_id,
+            "task_id": expected_task_id,
+            "implementation_commit": expected_commit,
+            "target_repository_id": expected_target_repository_id,
+            "target_branch": expected_target_branch,
+        }
+        identity_mismatches = [
+            field_name
+            for field_name, expected_value in expected_identity.items()
+            if expected_value
+            and actual_identity.get(field_name) != expected_value
+        ]
+        if identity_mismatches:
+            return unavailable(
+                "merge_queue_request_identity_mismatch",
+                "repair_or_restore_exact_merge_queue_request",
+                identity_mismatches=identity_mismatches,
+                expected_identity=expected_identity,
+                actual_identity=actual_identity,
+            )
+        raw_status = (
+            request.get("status")
+            if isinstance(request, Mapping)
+            else getattr(request, "status", "")
+        )
+        status = str(raw_status or "").strip().lower()
+        if not status:
+            return unavailable(
+                "merge_queue_request_status_unavailable",
+                "repair_merge_queue_request_status",
+            )
+        return {
+            "available": True,
+            "request_id": normalized_request_id,
+            "status": status,
+            "reason": "",
+            "recovery_action": "",
+        }
+
     def _failed_merge_candidates(self, *, skip_task_ids: set[str] | None = None) -> list[dict[str, Any]]:
         skip_task_ids = skip_task_ids or set()
         current_task_ids = self._current_todo_task_ids_for_reconciliation()
@@ -25375,16 +26299,259 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         reconciled_commits: set[str] = set()
         abandoned_commits: set[str] = set()
         target_branch = self._main_branch_name()
-        for event in self._iter_events():
+        events = self._iter_events()
+        recorded_queue_diagnostic_ids = {
+            str(event.get("diagnostic_id") or "")
+            for event in events
+            if str(event.get("type") or "")
+            == "merge_queue_ownership_deferred"
+            and str(event.get("diagnostic_id") or "")
+        }
+        queue_owned_candidate_statuses: dict[
+            tuple[str, str],
+            set[str],
+        ] = {}
+        queue_request_state_cache: dict[
+            tuple[str, str, str, str, str, str],
+            dict[str, Any],
+        ] = {}
+        queue_ownership_diagnostics: dict[str, dict[str, Any]] = {}
+        for source_event in events:
+            if str(source_event.get("type") or "") != "implementation_finished":
+                continue
+            source_merge_result = source_event.get("merge_result") or {}
+            if (
+                not isinstance(source_merge_result, dict)
+                or source_merge_result.get("queued") is not True
+            ):
+                continue
+            source_task_id = str(source_event.get("task_id") or "")
+            source_commit = str(
+                source_event.get("implementation_commit") or ""
+            )
+            if not source_task_id or not source_commit:
+                continue
+            request_id = str(
+                source_merge_result.get("request_id") or ""
+            ).strip()
+            handoff_commit = str(
+                source_merge_result.get("implementation_commit") or ""
+            ).strip()
+            handoff_target_repository_id = str(
+                source_merge_result.get("target_repository_id") or ""
+            ).strip()
+            handoff_target_branch = str(
+                source_merge_result.get("target_branch") or ""
+            ).strip()
+            request_state_key = (
+                request_id,
+                source_task_id,
+                source_commit,
+                handoff_commit,
+                handoff_target_repository_id,
+                handoff_target_branch,
+            )
+            if request_state_key not in queue_request_state_cache:
+                queue_request_state_cache[request_state_key] = (
+                    self._merge_queue_request_ownership_state(
+                        request_id,
+                        expected_task_id=source_task_id,
+                        expected_commit=source_commit,
+                        handoff_commit=handoff_commit,
+                        handoff_target_repository_id=(
+                            handoff_target_repository_id
+                        ),
+                        handoff_target_branch=handoff_target_branch,
+                    )
+                )
+            queue_state = queue_request_state_cache[request_state_key]
+            candidate_key = (source_task_id, source_commit)
+            queue_owned_candidate_statuses.setdefault(
+                candidate_key,
+                set(),
+            ).add(str(queue_state.get("status") or "queue_state_unavailable"))
+            if queue_state.get("available") is not True:
+                diagnostic_identity = {
+                    "task_id": source_task_id,
+                    "implementation_commit": source_commit,
+                    "request_id": request_id,
+                    "queue_state_reason": str(
+                        queue_state.get("reason") or ""
+                    ),
+                    "exception_type": str(
+                        queue_state.get("exception_type") or ""
+                    ),
+                    "identity_mismatches": list(
+                        queue_state.get("identity_mismatches") or []
+                    ),
+                }
+                diagnostic_id = content_identity(diagnostic_identity)
+                diagnostic = {
+                    **diagnostic_identity,
+                    "diagnostic_id": diagnostic_id,
+                    "resolved": False,
+                    "reason": "merge_queue_ownership_state_unavailable",
+                    "queue_status": str(
+                        queue_state.get("status")
+                        or "queue_state_unavailable"
+                    ),
+                    "queue_authority_preserved": True,
+                    "local_reconciliation_suppressed": True,
+                    "recovery_required": True,
+                    "recovery_action": str(
+                        queue_state.get("recovery_action")
+                        or "restore_merge_queue_ownership_state"
+                    ),
+                    "retryable": True,
+                    "event_already_recorded": (
+                        diagnostic_id in recorded_queue_diagnostic_ids
+                    ),
+                }
+                if queue_state.get("error"):
+                    diagnostic["error"] = str(
+                        queue_state.get("error") or ""
+                    )
+                for identity_field in (
+                    "expected_identity",
+                    "actual_identity",
+                ):
+                    if queue_state.get(identity_field):
+                        diagnostic[identity_field] = dict(
+                            queue_state[identity_field]
+                        )
+                queue_ownership_diagnostics[diagnostic_id] = diagnostic
+        self._last_merge_queue_ownership_diagnostics = list(
+            queue_ownership_diagnostics.values()
+        )
+
+        authority_binding_fields = (
+            "attempt",
+            "queue_attempt",
+            "implementation_attempt",
+            "branch",
+            "worktree_path",
+            "canonical_task_key",
+            "canonical_task_id",
+            "canonical_task_cid",
+            "board_namespace",
+            "task_source_identity",
+            "merge_request_id",
+            "merge_request_claim_generation",
+            "target_repository_id",
+            "target_branch",
+            "implementation_provider",
+            "implementation_state_path",
+            "implementation_events_path",
+            "model_invocation_observed",
+            "baseline_ref",
+            "validation_commands",
+            "queued_validation_plan_id",
+            "expected_changed_paths",
+            "expected_changed_paths_id",
+            "changed_submodule_paths",
+            "task_owned_submodule_integration_binding",
+        )
+        acceptance_authority: dict[
+            tuple[str, str],
+            dict[str, Any],
+        ] = {}
+        acceptance_authority_source: dict[
+            tuple[str, str],
+            str,
+        ] = {}
+
+        def binding_value_present(value: Any) -> bool:
+            if value is None:
+                return False
+            if isinstance(value, str):
+                return bool(value.strip())
+            if isinstance(value, (list, tuple, set, dict)):
+                return bool(value)
+            return True
+
+        def queue_released_candidate(
+            key: tuple[str, str],
+        ) -> bool:
+            statuses = queue_owned_candidate_statuses.get(key, set())
+            return not statuses or statuses == {"completed"}
+
+        def acceptance_authority_snapshot(
+            event: dict[str, Any],
+        ) -> dict[str, Any]:
+            authority = dict(event)
+            # A generation-bound operator grant is consumed only by the live
+            # queue callback. Durable event projections retain ordinary merge
+            # evidence but can never become a second capability carrier.
+            authority.pop(
+                "operator_submodule_integration_recovery",
+                None,
+            )
+            return authority
+
+        def merge_with_acceptance_authority(
+            key: tuple[str, str],
+            event: dict[str, Any],
+        ) -> dict[str, Any]:
+            previous_candidate = candidates.get(key, {})
+            merged_candidate = {
+                **previous_candidate,
+                **event,
+            }
+            merged_candidate.pop(
+                "operator_submodule_integration_recovery",
+                None,
+            )
+            authority = acceptance_authority.get(key)
+            if authority is None:
+                for field_name in authority_binding_fields:
+                    if (
+                        not binding_value_present(
+                            event.get(field_name)
+                        )
+                        and binding_value_present(
+                            previous_candidate.get(field_name)
+                        )
+                    ):
+                        merged_candidate[field_name] = (
+                            previous_candidate[field_name]
+                        )
+                return merged_candidate
+
+            conflicting_fields = set(
+                str(field_name)
+                for field_name in previous_candidate.get(
+                    "acceptance_authority_conflicts",
+                    [],
+                )
+                if str(field_name)
+            )
+            for field_name in authority_binding_fields:
+                if field_name not in authority:
+                    continue
+                if (
+                    field_name in event
+                    and event[field_name] != authority[field_name]
+                ):
+                    conflicting_fields.add(field_name)
+                merged_candidate[field_name] = authority[field_name]
+            if conflicting_fields:
+                merged_candidate["acceptance_authority_conflicts"] = (
+                    sorted(conflicting_fields)
+                )
+            return merged_candidate
+
+        for event in events:
             if str(event.get("type") or "") == "merge_acceptance_pending":
                 task_id = str(event.get("task_id") or "")
                 implementation_commit = str(
                     event.get("implementation_commit") or ""
                 )
+                key = (task_id, implementation_commit)
                 if (
                     task_id
                     and implementation_commit
                     and task_id not in skip_task_ids
+                    and queue_released_candidate(key)
                     and (
                         current_task_ids is None
                         or task_id in current_task_ids
@@ -25394,7 +26561,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     # merge-only reconciliation for the same implementation.
                     reconciled_commits.discard(implementation_commit)
                     abandoned_commits.discard(implementation_commit)
-                    candidates[(task_id, implementation_commit)] = event
+                    if (
+                        acceptance_authority_source.get(key)
+                        != "merge_acceptance_pending"
+                    ):
+                        acceptance_authority[key] = (
+                            acceptance_authority_snapshot(event)
+                        )
+                        acceptance_authority_source[key] = (
+                            "merge_acceptance_pending"
+                        )
+                    candidates[key] = merge_with_acceptance_authority(
+                        key,
+                        event,
+                    )
                 continue
             if str(event.get("type") or "") == "merge_reconciled":
                 implementation_commit = str(event.get("implementation_commit") or "")
@@ -25410,9 +26590,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     and event.get("authoritatively_completed") is not True
                 ):
                     task_id = str(event.get("task_id") or "")
+                    key = (task_id, implementation_commit)
                     if (
                         task_id
                         and task_id not in skip_task_ids
+                        and queue_released_candidate(key)
                         and (
                             current_task_ids is None
                             or task_id in current_task_ids
@@ -25424,11 +26606,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         abandoned_commits.discard(
                             implementation_commit
                         )
-                        key = (task_id, implementation_commit)
-                        candidates[key] = {
-                            **candidates.get(key, {}),
-                            **event,
-                        }
+                        if key not in acceptance_authority:
+                            acceptance_authority[key] = (
+                                acceptance_authority_snapshot(event)
+                            )
+                            acceptance_authority_source[key] = (
+                                "merge_reconciled"
+                            )
+                        candidates[key] = merge_with_acceptance_authority(
+                            key,
+                            event,
+                        )
                 elif implementation_commit and merge_reason == "baseline_not_ancestor_of_target":
                     reconciled_commits.discard(implementation_commit)
                     abandoned_commits.add(implementation_commit)
@@ -25455,6 +26643,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 continue
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict):
+                continue
+            # Once a candidate is handed to the durable shared train, that
+            # queue is the sole merge authority.  The producer intentionally
+            # leaves cleanup as ``not_attempted`` while the request is queued;
+            # treating that handoff as a local cleanup failure races another
+            # lane's consumer and can corrupt a shared MERGE_HEAD.
+            if merge_result.get("queued") is True:
                 continue
             cleanup = event.get("cleanup_result") or {}
             cleanup_failed = isinstance(cleanup, dict) and bool(cleanup) and not cleanup.get("cleaned", False)
@@ -26168,10 +27363,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if not isinstance(merge_result, dict) or not merge_result.get("queued"):
                 continue
             request_id = str(merge_result.get("request_id") or "")
-            request = self.merge_queue.get(request_id) if request_id and hasattr(self.merge_queue, "get") else None
-            if request is not None and str(getattr(request, "status", "")) == "quarantined":
+            implementation_commit = str(
+                event.get("implementation_commit") or ""
+            )
+            queue_state = self._merge_queue_request_ownership_state(
+                request_id,
+                expected_task_id=task_id,
+                expected_commit=implementation_commit,
+                handoff_commit=str(
+                    merge_result.get("implementation_commit") or ""
+                ),
+                handoff_target_repository_id=str(
+                    merge_result.get("target_repository_id") or ""
+                ),
+                handoff_target_branch=str(
+                    merge_result.get("target_branch") or ""
+                ),
+            )
+            if queue_state.get("status") == "quarantined":
                 continue
-            implementation_commit = str(event.get("implementation_commit") or "")
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
                 pending.add(task_id)
         return pending
@@ -26183,15 +27393,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """Return queued tasks whose bounded train attempts are exhausted."""
 
         quarantined: set[str] = set()
-        if not hasattr(self.merge_queue, "get"):
-            return quarantined
         for task_id, event in (latest_results or self._latest_implementation_finished_by_task()).items():
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict) or not merge_result.get("queued"):
                 continue
             request_id = str(merge_result.get("request_id") or "")
-            request = self.merge_queue.get(request_id) if request_id else None
-            if request is not None and str(getattr(request, "status", "")) == "quarantined":
+            implementation_commit = str(
+                event.get("implementation_commit") or ""
+            )
+            queue_state = self._merge_queue_request_ownership_state(
+                request_id,
+                expected_task_id=task_id,
+                expected_commit=implementation_commit,
+                handoff_commit=str(
+                    merge_result.get("implementation_commit") or ""
+                ),
+                handoff_target_repository_id=str(
+                    merge_result.get("target_repository_id") or ""
+                ),
+                handoff_target_branch=str(
+                    merge_result.get("target_branch") or ""
+                ),
+            )
+            if queue_state.get("status") == "quarantined":
                 quarantined.add(task_id)
         return quarantined
 

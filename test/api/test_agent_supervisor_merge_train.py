@@ -9,7 +9,11 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_repository_id,
 )
-from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue, MergeRequest
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
+    MergeQueue,
+    MergeQueueFenceError,
+    MergeRequest,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     MergeResolverRegistry,
     conflict_fingerprint,
@@ -167,6 +171,222 @@ def test_queue_can_revive_false_positive_quarantine(tmp_path: Path) -> None:
             "previous_failure_reason": "pending request exceeded max age",
         }
     ]
+
+
+def test_queue_revival_binds_exact_operator_reviewed_submodule_postimage(
+    tmp_path: Path,
+) -> None:
+    now = [10.0]
+    queue = MergeQueue(tmp_path / "queue", clock=lambda: now[0])
+    request = queue.enqueue(
+        branch_name="implementation/recoverable-submodule",
+        task_id="RECOVERABLE-SUBMODULE",
+        commit_sha="b" * 40,
+        metadata={
+            "target_repository_id": "repository:test",
+            "target_branch": "main",
+            "task_owned_submodule_integration_binding": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "task-owned-submodule-integration@1"
+                ),
+                "root_target_commit": "a" * 40,
+                "targets": [
+                    {
+                        "path": "external/child",
+                        "integration_branch": "main",
+                        "integration_target": "c" * 40,
+                        "gitlink_baseline": "c" * 40,
+                        "expected_merge_mode": "ff-only",
+                    }
+                ],
+            },
+        },
+    )
+    queue.quarantine(request, reason="review exact integrated child")
+
+    now[0] = 20.0
+    revived = queue.revive_quarantined(
+        request.request_id,
+        reason="operator reviewed the combined child tree",
+        reset_failures=True,
+        approved_submodule_integrations={
+            "external/child": "D" * 40,
+        },
+    )
+
+    assert revived is not None
+    recovery = revived.metadata["operator_submodule_integration_recovery"]
+    assert recovery == {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "submodule-integration-recovery@1"
+        ),
+        "approved_at": 20.0,
+        "reason": "operator reviewed the combined child tree",
+        "request_id": request.request_id,
+        "implementation_commit": "b" * 40,
+        "target_repository_id": "repository:test",
+        "target_branch": "main",
+        "quarantine_generation": 1,
+        "revival_generation": 2,
+        "claim_generation": 3,
+        "targets": [
+            {
+                "path": "external/child",
+                "integrated_target": "d" * 40,
+            }
+        ],
+    }
+    assert (
+        revived.metadata["revivals"][-1]["submodule_integration_recovery"]
+        == recovery
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None
+    assert claimed.claim_generation == recovery["claim_generation"]
+
+
+def test_queue_revival_drops_consumed_recovery_from_later_generation(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/recoverable-submodule",
+        task_id="RECOVERABLE-SUBMODULE",
+        commit_sha="b" * 40,
+        metadata={
+            "task_owned_submodule_integration_binding": {
+                "targets": [{"path": "external/child"}],
+            },
+        },
+    )
+    queue.quarantine(request, reason="review exact integrated child")
+    first_revival = queue.revive_quarantined(
+        request.request_id,
+        reason="operator reviewed first-generation child tree",
+        approved_submodule_integrations={
+            "external/child": "d" * 40,
+        },
+    )
+    assert first_revival is not None
+    first_recovery = first_revival.metadata[
+        "operator_submodule_integration_recovery"
+    ]
+
+    queue.quarantine(
+        first_revival,
+        reason="later independent quarantine",
+    )
+    second_revival = queue.revive_quarantined(
+        request.request_id,
+        reason="revive without child-postimage authority",
+    )
+
+    assert second_revival is not None
+    assert (
+        "operator_submodule_integration_recovery"
+        not in second_revival.metadata
+    )
+    assert (
+        second_revival.metadata["revivals"][0][
+            "submodule_integration_recovery"
+        ]
+        == first_recovery
+    )
+    assert (
+        "submodule_integration_recovery"
+        not in second_revival.metadata["revivals"][-1]
+    )
+
+
+def test_active_queue_revival_rejects_conflicting_recovery_grant(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/recoverable-submodule",
+        task_id="RECOVERABLE-SUBMODULE",
+        commit_sha="b" * 40,
+        metadata={
+            "task_owned_submodule_integration_binding": {
+                "targets": [{"path": "external/child"}],
+            },
+        },
+    )
+    queue.quarantine(request, reason="review exact integrated child")
+    revived = queue.revive_quarantined(
+        request.request_id,
+        reason="operator reviewed exact child tree",
+        approved_submodule_integrations={
+            "external/child": "d" * 40,
+        },
+    )
+    assert revived is not None
+
+    idempotent = queue.revive_quarantined(
+        request.request_id,
+        reason="repeat exact approval",
+        approved_submodule_integrations={
+            "external/child": "D" * 40,
+        },
+    )
+    assert idempotent is not None
+    assert idempotent.metadata == revived.metadata
+
+    with pytest.raises(
+        MergeQueueFenceError,
+        match="differs from the current generation-bound grant",
+    ):
+        queue.revive_quarantined(
+            request.request_id,
+            reason="conflicting active approval",
+            approved_submodule_integrations={
+                "external/child": "e" * 40,
+            },
+        )
+    unchanged = queue.get(request.request_id)
+    assert unchanged is not None
+    assert (
+        unchanged.metadata["operator_submodule_integration_recovery"][
+            "targets"
+        ]
+        == [
+            {
+                "path": "external/child",
+                "integrated_target": "d" * 40,
+            }
+        ]
+    )
+
+
+def test_queue_revival_rejects_unbound_submodule_postimage(tmp_path: Path) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/recoverable-submodule",
+        task_id="RECOVERABLE-SUBMODULE",
+        commit_sha="b" * 40,
+        metadata={
+            "task_owned_submodule_integration_binding": {
+                "targets": [{"path": "external/child"}],
+            },
+        },
+    )
+    queue.quarantine(request, reason="review exact integrated child")
+
+    with pytest.raises(ValueError, match="not task-bound"):
+        queue.revive_quarantined(
+            request.request_id,
+            reason="wrong child",
+            approved_submodule_integrations={
+                "external/other": "d" * 40,
+            },
+        )
+
+    unchanged = queue.get(request.request_id)
+    assert unchanged is not None
+    assert unchanged.status == "quarantined"
+    assert "operator_submodule_integration_recovery" not in unchanged.metadata
 
 
 def test_expired_processing_claim_is_recovered(tmp_path: Path) -> None:

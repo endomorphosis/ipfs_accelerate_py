@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import math
 import os
-import signal
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Sequence
-
 
 # Recursion depth guard: prevents infinite loops when Codex/Copilot
 # invokes this resolver which in turn re-invokes Codex/Copilot.
@@ -23,7 +23,12 @@ _LOCK_TIMEOUT_ENV = "AGENT_RESOLVER_LOCK_TIMEOUT_SECONDS"
 _DEFAULT_LOCK_TIMEOUT_SECONDS = 120.0
 _DEFAULT_CODEX_TIMEOUT_SECONDS = 900.0
 _DEFAULT_COPILOT_TIMEOUT_SECONDS = 600.0
+_LOCK_FAILURE_EXIT_CODE = 75
 _ACTIVE_TOOL_PROCESS: subprocess.Popen[str] | None = None
+
+
+class _ResolverLockAcquisitionError(RuntimeError):
+    """Raised when resolver serialization cannot be guaranteed."""
 
 
 def _terminate_active_tool(_signum: int, _frame: object) -> None:
@@ -70,37 +75,61 @@ def _acquire_git_lock(workspace: Path):
     """Acquire an exclusive git lock with a timeout to prevent deadlocks."""
     if os.environ.get("AGENT_RESOLVER_LOCK_BYPASS", "0") == "1":
         return None
-    common_dir = _git_common_dir(workspace)
+    try:
+        common_dir = _git_common_dir(workspace)
+    except OSError as exc:
+        raise _ResolverLockAcquisitionError(
+            "could not determine the git common directory"
+        ) from exc
     if common_dir is None:
-        return None
+        raise _ResolverLockAcquisitionError(
+            "could not determine the git common directory"
+        )
     try:
         import fcntl
-    except ImportError:
-        return None
+    except ImportError as exc:
+        raise _ResolverLockAcquisitionError(
+            "file locking is unavailable on this platform"
+        ) from exc
     try:
         common_dir.mkdir(parents=True, exist_ok=True)
         lock_path = common_dir / "agent-llm-resolver.lock"
         lock_handle = lock_path.open("w", encoding="utf-8")
     except OSError as exc:
-        print(f"warning: could not open lock file: {exc}", file=sys.stderr)
-        return None
+        raise _ResolverLockAcquisitionError("could not open the git lock file") from exc
 
     # Use non-blocking flock with a polling timeout
-    timeout = float(os.environ.get(_LOCK_TIMEOUT_ENV, str(_DEFAULT_LOCK_TIMEOUT_SECONDS)))
+    raw_timeout = os.environ.get(_LOCK_TIMEOUT_ENV, str(_DEFAULT_LOCK_TIMEOUT_SECONDS))
+    try:
+        timeout = float(raw_timeout)
+    except ValueError as exc:
+        lock_handle.close()
+        raise _ResolverLockAcquisitionError(
+            f"{_LOCK_TIMEOUT_ENV} must be a non-negative number"
+        ) from exc
+    if not math.isfinite(timeout) or timeout < 0:
+        lock_handle.close()
+        raise _ResolverLockAcquisitionError(
+            f"{_LOCK_TIMEOUT_ENV} must be a non-negative number"
+        )
     deadline = time.monotonic() + timeout
     while True:
         try:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             return lock_handle
-        except (IOError, OSError):
-            if time.monotonic() >= deadline:
-                print(
-                    f"warning: lock acquisition timed out after {timeout}s; proceeding without lock",
-                    file=sys.stderr,
-                )
+        except BlockingIOError as exc:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 lock_handle.close()
-                return None
-            time.sleep(0.5)
+                raise _ResolverLockAcquisitionError(
+                    f"acquisition timed out after {timeout:g}s"
+                ) from exc
+            time.sleep(min(0.05, remaining))
+        except OSError as exc:
+            lock_handle.close()
+            raise _ResolverLockAcquisitionError(
+                "the git lock operation failed"
+            ) from exc
 
 
 def _timeout_seconds(env_var: str, default: float) -> float | None:
@@ -277,7 +306,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         else os.environ.get("IPFS_ACCELERATE_AGENT_MERGE_WORKSPACE", os.getcwd())
     )
     prompt = sys.stdin.read()
-    lock_handle = _acquire_git_lock(workspace)
+    try:
+        lock_handle = _acquire_git_lock(workspace)
+    except _ResolverLockAcquisitionError as exc:
+        print(f"error: merge resolver lock unavailable: {exc}", file=sys.stderr)
+        return _LOCK_FAILURE_EXIT_CODE
     try:
         codex_result = _run_codex(prompt, workspace)
         if codex_result == 0:
