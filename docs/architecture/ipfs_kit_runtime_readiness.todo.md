@@ -861,7 +861,7 @@ or write authority.
 
 ## KITA-027 Implement idempotent replica reconciliation and anti-entropy
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
