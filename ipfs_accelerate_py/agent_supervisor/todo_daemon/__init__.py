@@ -1,5 +1,7 @@
 """Reusable lifecycle helpers for unattended optimizer todo daemons."""
 
+import importlib
+
 from .core import (
     DaemonHealth,
     EnsureResult,
@@ -322,20 +324,6 @@ from .plans import (
     select_blocked_plan_task,
     select_next_plan_task,
     strip_daemon_task_board,
-)
-from .implementation_daemon import (
-    DEFAULT_WORKTREE_SUBMODULE_PATHS,
-    TodoImplementationDaemon,
-    TodoTask,
-    TodoTaskState,
-    WORKTREE_SUBMODULE_PATHS,
-    normalize_relative_path_list,
-    parse_task_file,
-)
-from .implementation_supervisor import (
-    TodoImplementationSupervisor,
-    TodoSupervisorConfig,
-    supervisor_config_from_args,
 )
 from .runner import PreTaskBlock, TodoDaemonHooks, TodoDaemonRunner
 from .status import (
@@ -851,8 +839,45 @@ _LOGIC_PORT_EXPORTS = {
     "run_logic_port_daemon_runtime",
 }
 
+_IMPLEMENTATION_DAEMON_EXPORTS = {
+    "DEFAULT_WORKTREE_SUBMODULE_PATHS",
+    "TodoImplementationDaemon",
+    "TodoTask",
+    "TodoTaskState",
+    "WORKTREE_SUBMODULE_PATHS",
+    "normalize_relative_path_list",
+    "parse_task_file",
+}
+
+_IMPLEMENTATION_SUPERVISOR_EXPORTS = {
+    "TodoImplementationSupervisor",
+    "TodoSupervisorConfig",
+    "supervisor_config_from_args",
+}
+
+_LAZY_IMPLEMENTATION_MODULES = {
+    "implementation_daemon": _IMPLEMENTATION_DAEMON_EXPORTS,
+    "implementation_supervisor": _IMPLEMENTATION_SUPERVISOR_EXPORTS,
+}
+
+
+def _load_implementation_module(module_name):
+    """Load and cache one implementation surface on explicit access."""
+
+    module = importlib.import_module(f"{__name__}.{module_name}")
+    globals()[module_name] = module
+    for export_name in _LAZY_IMPLEMENTATION_MODULES[module_name]:
+        globals()[export_name] = getattr(module, export_name)
+    return module
+
 
 def __getattr__(name):
+    if name in _LAZY_IMPLEMENTATION_MODULES:
+        return _load_implementation_module(name)
+    for module_name, export_names in _LAZY_IMPLEMENTATION_MODULES.items():
+        if name in export_names:
+            module = _load_implementation_module(module_name)
+            return getattr(module, name)
     if name in _LEGAL_PARSER_EXPORTS:
         from . import legal_parser
 
@@ -862,3 +887,11 @@ def __getattr__(name):
 
         return getattr(logic_port, name)
     raise AttributeError(name)
+
+
+def __dir__():
+    return sorted(
+        set(globals())
+        .union(__all__)
+        .union(_LAZY_IMPLEMENTATION_MODULES)
+    )
