@@ -2322,6 +2322,18 @@ class ImplementationRetryDeferred(RuntimeError):
         self.backoff_seconds = backoff_seconds
 
 
+class WorktreeSubmoduleInitializationDeferred(ImplementationRetryDeferred):
+    """Fail closed when a configured implementation dependency is unavailable."""
+
+    def __init__(self, failures: Sequence[Mapping[str, Any]]) -> None:
+        normalized_failures = tuple(dict(failure) for failure in failures)
+        super().__init__(
+            "worktree submodule initialization failed",
+            backoff_seconds=30,
+        )
+        self.failures = normalized_failures
+
+
 class ValidationGeneratedArtifactRestoreError(RuntimeError):
     """A typed pre-validation stop that preserves the candidate worktree."""
 
@@ -9137,7 +9149,7 @@ class PortalImplementationDaemon:
         """
 
         now = _provider_capacity_now()
-        current_labels = self._current_implementation_provider_labels()
+        current_labels: set[str] | None = None
         for event in reversed(self._iter_events()):
             event_type = str(event.get("type") or "")
             if event_type == "implementation_provider_exhausted":
@@ -9150,8 +9162,13 @@ class PortalImplementationDaemon:
                     if str(item).strip()
                 }
                 # A codex quota latch must not block goose/grok (and vice versa).
-                if exhausted and not (exhausted & current_labels):
-                    continue
+                if exhausted:
+                    if current_labels is None:
+                        current_labels = (
+                            self._current_implementation_provider_labels()
+                        )
+                    if not (exhausted & current_labels):
+                        continue
                 return {
                     "active": retry_at > now,
                     "retry_at": retry_at.isoformat(),
@@ -9699,14 +9716,27 @@ class PortalImplementationDaemon:
                     log_path=log_path,
                     prompt=prompt,
                 )
-                if ephemeral_result.get("lifecycle_race"):
+                pre_dispatch_setup_deferral = bool(
+                    ephemeral_result.get("lifecycle_race")
+                    or (
+                        ephemeral_result.get("attempt_consumed") is False
+                        and ephemeral_result.get("provider_dispatched") is False
+                        and ephemeral_result.get("failure_kind")
+                        == LifecycleFailureKind.LIFECYCLE_SETUP.value
+                    )
+                )
+                if pre_dispatch_setup_deferral:
                     canonical_task_cid = self._canonical_ref(task)
+                    backoff_seconds = int(
+                        ephemeral_result.get("backoff_seconds")
+                        or WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS
+                    )
                     self.task_queue.defer(
                         canonical_task_cid,
-                        WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS,
+                        backoff_seconds,
                         reason=str(
                             ephemeral_result.get("reason")
-                            or "worktree_lifecycle_race"
+                            or "worktree_setup_deferred"
                         ),
                     )
                     self.task_queue.save()
@@ -9724,9 +9754,7 @@ class PortalImplementationDaemon:
                     ephemeral_result.update(
                         {
                             "deferred": True,
-                            "backoff_seconds": (
-                                WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS
-                            ),
+                            "backoff_seconds": backoff_seconds,
                         }
                     )
                     self._record_event(
@@ -9735,10 +9763,11 @@ class PortalImplementationDaemon:
                             "task_id": task.task_id,
                             "attempt": attempt,
                             "reason": str(ephemeral_result.get("reason") or ""),
-                            "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
-                            "backoff_seconds": (
-                                WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS
+                            "failure_kind": str(
+                                ephemeral_result.get("failure_kind")
+                                or LifecycleFailureKind.LIFECYCLE_RACE.value
                             ),
+                            "backoff_seconds": backoff_seconds,
                             "provider_call_allowed": False,
                             "attempt_consumed": False,
                         },
@@ -16898,6 +16927,7 @@ class PortalImplementationDaemon:
         lifecycle_record: WorkspaceLifecycleRecord | None = None
         implementation_started = False
         lifecycle_race_exception = False
+        submodule_setup_deferral = False
 
         try:
             # Publish a preparing lifecycle claim *before* the cleanup-visible
@@ -17902,6 +17932,11 @@ class PortalImplementationDaemon:
                 isinstance(exc, WorktreeLifecycleError)
                 and not implementation_started
             )
+            submodule_setup_deferral = (
+                isinstance(exc, WorktreeSubmoduleInitializationDeferred)
+                and not implementation_started
+                and not provider_dispatched
+            )
             if protected_path_snapshot is not None and not protected_path_violation:
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -17919,6 +17954,22 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "phase": state.active_phase or "worktree_setup",
             }
+            if submodule_setup_deferral:
+                exception_result.update(
+                    {
+                        "reason": "worktree_submodule_initialization_failed",
+                        "infrastructure_failure": True,
+                        "failure_kind": (
+                            LifecycleFailureKind.LIFECYCLE_SETUP.value
+                        ),
+                        "provider_call_allowed": False,
+                        "attempt_consumed": False,
+                        "backoff_seconds": int(exc.backoff_seconds),
+                        "failures": [
+                            dict(failure) for failure in exc.failures
+                        ],
+                    }
+                )
             if protected_path_violation:
                 exception_result["reason"] = "implementation_protected_path_mutated"
                 exception_result["protected_path_violation"] = (
@@ -17956,6 +18007,16 @@ class PortalImplementationDaemon:
                         attempt=attempt,
                         exception_result=exception_result,
                     )
+                    if submodule_setup_deferral:
+                        cleanup_result.update(
+                            {
+                                "failure_kind": (
+                                    LifecycleFailureKind.LIFECYCLE_SETUP.value
+                                ),
+                                "provider_call_allowed": False,
+                                "attempt_consumed": False,
+                            }
+                        )
                 exception_result["cleanup_result"] = cleanup_result
                 if lifecycle_race_exception and lifecycle_record is not None:
                     lifecycle_finalize_result = (
@@ -18017,7 +18078,10 @@ class PortalImplementationDaemon:
             and cleanup_result.get("attempt_consumed") is False
             and cleanup_result.get("provider_call_allowed") is False
             and cleanup_result.get("failure_kind")
-            == LifecycleFailureKind.LIFECYCLE_RACE.value
+            in {
+                LifecycleFailureKind.LIFECYCLE_RACE.value,
+                LifecycleFailureKind.LIFECYCLE_SETUP.value,
+            }
         )
         if lifecycle_setup_deferral:
             active_lifecycle = self._active_worktree_lifecycle
@@ -18041,6 +18105,7 @@ class PortalImplementationDaemon:
             protected_path_external_deferral
             or lifecycle_setup_deferral
             or lifecycle_race_exception
+            or submodule_setup_deferral
         )
         if attempt_consumed:
             self._record_task_attempt(state, task, attempt)
@@ -18403,6 +18468,25 @@ class PortalImplementationDaemon:
                         "branch": branch_name,
                     },
                 )
+            )
+        if submodule_setup_deferral:
+            result.update(
+                {
+                    "reason": "worktree_submodule_initialization_failed",
+                    "deferred": True,
+                    "infrastructure_failure": True,
+                    "failure_kind": (
+                        LifecycleFailureKind.LIFECYCLE_SETUP.value
+                    ),
+                    "provider_call_allowed": False,
+                    "backoff_seconds": int(
+                        exception_result.get("backoff_seconds") or 30
+                    ),
+                    "submodule_init_failures": [
+                        dict(failure)
+                        for failure in exception_result.get("failures", ())
+                    ],
+                }
             )
         result["cache_hit"] = result["workspace_setup"]["cache_hit"]
         result["setup_duration_seconds"] = result["workspace_setup"]["setup_duration_seconds"]
@@ -20068,6 +20152,14 @@ class PortalImplementationDaemon:
                     validation = self._validate_submodule_init(target, relative)
                     if not validation.get("valid"):
                         init_failures.append(validation)
+                else:
+                    init_failures.append(
+                        {
+                            "valid": False,
+                            "path": relative,
+                            "reason": "local_submodule_worktree_invalid",
+                        }
+                    )
                 continue
             target = worktree_path / relative
             if self._is_git_worktree(target):
@@ -20079,8 +20171,37 @@ class PortalImplementationDaemon:
                 # Initialize exactly the configured dependency. Recursing here
                 # can follow repository cycles (datasets -> kit -> accelerate
                 # -> datasets) and fail on unrelated, deeply nested gitlinks.
-                result = self._run_git(["submodule", "update", "--init", "--", relative], cwd=worktree_path)
-                if self._is_git_worktree(target):
+                # A failed dependency fetch is an expected, retryable setup
+                # outcome.  Do not route it through ``_run_git``, whose
+                # contract raises before we can persist bounded evidence and
+                # classify the failure as pre-provider infrastructure.
+                result = subprocess.run(
+                    [
+                        "git",
+                        "submodule",
+                        "update",
+                        "--init",
+                        "--",
+                        relative,
+                    ],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if result.returncode != 0:
+                    init_failures.append(
+                        {
+                            "valid": False,
+                            "path": relative,
+                            "reason": "submodule_update_failed",
+                            "returncode": int(result.returncode),
+                            "stderr_sha256": hashlib.sha256(
+                                str(result.stderr or "").encode("utf-8")
+                            ).hexdigest(),
+                        }
+                    )
+                elif self._is_git_worktree(target):
                     self._initialize_nested_worktree_submodules(
                         target,
                         branch_name=branch_name,
@@ -20090,13 +20211,26 @@ class PortalImplementationDaemon:
                     validation = self._validate_submodule_init(target, relative)
                     if not validation.get("valid"):
                         init_failures.append(validation)
-                elif result.returncode != 0:
-                    init_failures.append({
-                        "valid": False,
-                        "path": relative,
-                        "reason": "submodule_update_failed",
-                        "stderr": result.stderr[-1000:] if hasattr(result, "stderr") else "",
-                    })
+                else:
+                    init_failures.append(
+                        {
+                            "valid": False,
+                            "path": relative,
+                            "reason": "submodule_update_target_invalid",
+                            "returncode": int(result.returncode),
+                            "stderr_sha256": hashlib.sha256(
+                                str(result.stderr or "").encode("utf-8")
+                            ).hexdigest(),
+                        }
+                    )
+                continue
+            init_failures.append(
+                {
+                    "valid": False,
+                    "path": relative,
+                    "reason": "configured_submodule_not_declared",
+                }
+            )
         if init_failures:
             self._record_event("worktree_submodule_init_failures", {
                 "worktree_path": str(worktree_path),
@@ -20104,6 +20238,7 @@ class PortalImplementationDaemon:
                 "failures": init_failures,
                 "failure_count": len(init_failures),
             })
+            raise WorktreeSubmoduleInitializationDeferred(init_failures)
 
     def _validate_submodule_init(self, target: Path, relative: str) -> dict[str, Any]:
         """Validate that a submodule was properly initialized in a worktree."""

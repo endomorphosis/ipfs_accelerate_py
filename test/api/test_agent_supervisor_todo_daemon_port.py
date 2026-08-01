@@ -171,6 +171,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     TodoTaskState,
     TodoImplementationDaemon,
+    WorktreeSubmoduleInitializationDeferred,
     implied_validation_test_output_paths,
     dependency_satisfied_references,
     normalize_implementation_protected_paths,
@@ -13106,6 +13107,86 @@ def test_provider_retry_reset_absent_or_invalid_uses_configured_fallback(
     assert result["providers"] == ["codex"]
     assert result["retry_at"] == "2026-07-30T09:05:00+00:00"
     assert result["retry_at_source"] == "configured_backoff"
+
+
+def test_provider_capacity_schedule_skips_provider_probe_without_exhaustion(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_current_implementation_provider_labels",
+        lambda: pytest.fail(
+            "provider discovery must stay lazy without a capacity event"
+        ),
+    )
+
+    assert daemon._provider_capacity_backoff_schedule() == {}
+
+
+def test_provider_capacity_schedule_probes_provider_for_exhaustion(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 7, 30, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=False,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["codex"],
+            "retry_at": "2026-07-30T09:05:00+00:00",
+        },
+    )
+    probes = []
+
+    def provider_labels():
+        probes.append(True)
+        return {"codex", "provider"}
+
+    monkeypatch.setattr(
+        daemon,
+        "_current_implementation_provider_labels",
+        provider_labels,
+    )
+
+    assert daemon._provider_capacity_backoff_schedule() == {
+        "active": True,
+        "retry_at": "2026-07-30T09:05:00+00:00",
+        "retry_after_seconds": 300.0,
+        "providers": ["codex"],
+    }
+    assert probes == [True]
 
 
 def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
@@ -29510,6 +29591,7 @@ def test_implementation_daemon_repairs_stale_submodule_source_before_setup(
 
 def test_implementation_daemon_fallback_initializes_only_configured_submodule(
     tmp_path,
+    monkeypatch,
 ):
     repo = tmp_path / "repo"
     worktree = tmp_path / "worktree"
@@ -29532,12 +29614,44 @@ def test_implementation_daemon_fallback_initializes_only_configured_submodule(
         worktree_submodule_paths=["external/dependency"],
     )
     calls: list[list[str]] = []
+    initialized = False
+    target = worktree / "external" / "dependency"
+    real_run = subprocess.run
 
-    def fake_run_git(args: list[str], *, cwd: Path):
-        calls.append(list(args))
-        return subprocess.CompletedProcess(["git", *args], 0, "", "")
+    def fake_run(command, *args, **kwargs):
+        nonlocal initialized
+        normalized = [str(part) for part in command]
+        if normalized[:4] == ["git", "submodule", "update", "--init"]:
+            calls.append(normalized[1:])
+            initialized = True
+            return subprocess.CompletedProcess(normalized, 0, "", "")
+        return real_run(command, *args, **kwargs)
 
-    daemon._run_git = fake_run_git  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fake_run,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_is_git_worktree",
+        lambda path: initialized and path == target,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_initialize_nested_worktree_submodules",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validate_submodule_init",
+        lambda _target, relative: {
+            "valid": True,
+            "path": relative,
+            "head": "a" * 12,
+            "branch": "(detached)",
+        },
+    )
     daemon._initialize_worktree_submodules(worktree)
 
     assert calls == [
@@ -29549,6 +29663,206 @@ def test_implementation_daemon_fallback_initializes_only_configured_submodule(
             "external/dependency",
         ]
     ]
+
+
+@pytest.mark.parametrize(
+    ("returncode", "expected_reason"),
+    (
+        (1, "submodule_update_failed"),
+        (0, "submodule_update_target_invalid"),
+    ),
+)
+def test_implementation_daemon_fails_closed_when_configured_submodule_update_is_invalid(
+    tmp_path,
+    monkeypatch,
+    returncode,
+    expected_reason,
+):
+    repo = tmp_path / "repo"
+    worktree = tmp_path / "worktree"
+    repo.mkdir()
+    worktree.mkdir()
+    (worktree / ".gitmodules").write_text(
+        (
+            '[submodule "external/dependency"]\n'
+            "    path = external/dependency\n"
+            "    url = ../dependency\n"
+        ),
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["external/dependency"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(daemon, "_is_git_worktree", lambda _path: False)
+    monkeypatch.setattr(
+        daemon,
+        "_repair_stale_submodule_worktree_configs",
+        lambda _path: {"repairs": []},
+    )
+    real_run = subprocess.run
+
+    def fake_run(command, *args, **kwargs):
+        normalized = [str(part) for part in command]
+        if normalized[:4] == ["git", "submodule", "update", "--init"]:
+            return subprocess.CompletedProcess(
+                normalized,
+                returncode,
+                "",
+                "simulated update failure" if returncode else "",
+            )
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fake_run,
+    )
+
+    with pytest.raises(
+        WorktreeSubmoduleInitializationDeferred,
+        match="worktree submodule initialization failed",
+    ) as raised:
+        daemon._initialize_worktree_submodules(
+            worktree,
+            branch_name="implementation/accel-001",
+        )
+
+    assert raised.value.failures == (
+        {
+            "valid": False,
+            "path": "external/dependency",
+            "reason": expected_reason,
+            "returncode": returncode,
+            "stderr_sha256": hashlib.sha256(
+                (
+                    "simulated update failure" if returncode else ""
+                ).encode("utf-8")
+            ).hexdigest(),
+        },
+    )
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    failure_event = next(
+        event
+        for event in events
+        if event["type"] == "worktree_submodule_init_failures"
+    )
+    assert failure_event["failure_count"] == 1
+    assert failure_event["failures"][0]["reason"] == expected_reason
+
+
+def test_implementation_daemon_defers_failed_submodule_setup_before_provider_without_attempt_charge(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=["libs/missing"],
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Require configured dependency",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["libs/missing/result.py"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_seed_untracked_worktree_context",
+        lambda *_args, **_kwargs: pytest.fail(
+            "context must not be seeded after submodule setup fails"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["reason"] == "worktree_submodule_initialization_failed"
+    assert result["deferred"] is True
+    assert result["infrastructure_failure"] is True
+    assert result["failure_kind"] == "lifecycle_setup"
+    assert result["provider_call_allowed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["submodule_init_failures"] == [
+        {
+            "valid": False,
+            "path": "libs/missing",
+            "reason": "configured_submodule_not_declared",
+        }
+    ]
+    assert persisted.implementation_attempts == {}
+    assert persisted.implementation_attempts_by_cid == {}
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task))
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        event["type"] == "worktree_submodule_init_failures"
+        for event in events
+    )
+    retry_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_retry_deferred"
+    )
+    assert retry_event["failure_kind"] == "lifecycle_setup"
+    assert retry_event["attempt_consumed"] is False
 
 
 def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
