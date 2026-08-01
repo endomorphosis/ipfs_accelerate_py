@@ -172,9 +172,9 @@
     "ergoai": "3.0",
     "opam": "2.5.2",
     "souffle": "2.4.1",
-    "hyperltl": "0.1.0-reviewed",
-    "autohyper": "0.1.0-reviewed",
-    "mchyper": "0.1.0-reviewed",
+    "hyperltl": "e3a41290",
+    "autohyper": "c94722d1",
+    "mchyper": "87f0f857",
     "secpal": "1.0.0-reviewed",
     "runtime-mtl-external": "1.0.0-reviewed",
     "symbolicai": ">=1.14.0,<2.0.0",
@@ -355,6 +355,68 @@
       "sha256": "",
       "identity_kind": "immutable_release_tag",
       "release_tag": "v3.0_release"
+    },
+    "hyperltl": {
+      "version": "e3a41290",
+      "url": "https://github.com/reactive-systems/eahyper/archive/e3a412909cc767fe3bc5afd91cc718da5e3c649a.tar.gz",
+      "sha256": "1c5a41a650a887e40adc9338cac46b6f432dd7d06588c66a44c4b8b672e8444a",
+      "identity_kind": "immutable_git_commit",
+      "release_tag": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
+      "git_commit": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
+      "is_checksummed": true,
+      "upstream_product": "eahyper",
+      "source": "https://github.com/reactive-systems/eahyper",
+      "build_dependencies": {
+        "ocaml": ">=4.08",
+        "dune": ">=2.0",
+        "menhir": ">=20201216",
+        "opam": ">=2.0"
+      },
+      "runtime_dependencies": {},
+      "decidable_fragment_ceiling": "EAHyper decidable HyperLTL fragment (exists*/forall* and forall*/exists* quantifier shapes; not full HyperLTL)"
+    },
+    "autohyper": {
+      "version": "c94722d1",
+      "url": "https://github.com/AutoHyper/AutoHyper/archive/c94722d1f3c6d6f38a0967fcc580e26146c26109.tar.gz",
+      "sha256": "cebb08063fcfde162039273ed91c0f2df618bc0df26c8561fc388fe92c192837",
+      "identity_kind": "immutable_git_commit",
+      "release_tag": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
+      "git_commit": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
+      "is_checksummed": true,
+      "upstream_product": "autohyper",
+      "source": "https://github.com/AutoHyper/AutoHyper",
+      "build_dependencies": {
+        "dotnet-sdk": "8.0.300",
+        "spot": ">=2.12",
+        "spot-tools": "ltl2tgba,autfilt,dstar2tgba"
+      },
+      "runtime_dependencies": {
+        "dotnet-runtime": "8.0",
+        "spot": ">=2.12"
+      }
+    },
+    "mchyper": {
+      "version": "87f0f857",
+      "url": "https://github.com/reactive-systems/MCHyper/archive/87f0f857f5cb19782b79d99b11ef78c723852bb9.tar.gz",
+      "sha256": "4c49f369ab04f48d93a4612a0b3259b361a7c3e3b22b3f99b240d0fdc46a7815",
+      "identity_kind": "immutable_git_commit",
+      "release_tag": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
+      "git_commit": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
+      "is_checksummed": true,
+      "upstream_product": "mchyper",
+      "source": "https://github.com/reactive-systems/MCHyper",
+      "build_dependencies": {
+        "ghc": ">=8.4",
+        "cabal": ">=2.4",
+        "python": ">=2.7",
+        "abc": "1.01",
+        "aiger-tools": "1.9.4"
+      },
+      "runtime_dependencies": {
+        "abc": "1.01",
+        "aiger-tools": "1.9.4"
+      },
+      "supported_fragment": "HyperLTL model checking over AIGER hardware circuits via ABC (PDR/BMC); live witness/counterexample paths"
     }
   },
   "tools": [
@@ -1100,7 +1162,7 @@
     },
     {
       "tool_id": "hyperltl",
-      "display_name": "HyperLTL external engine",
+      "display_name": "EAHyper HyperLTL satisfiability engine",
       "availability": "managed_pin",
       "runtime": "native",
       "resource_class": "hyperproperty",
@@ -1114,20 +1176,21 @@
       "installer_entry": "ensure_hyperltl",
       "installer_plugin": "hyperproperty",
       "license": "MIT",
-      "source": "https://github.com/reactive-systems/hyperltl",
-      "identity_kind": "immutable_source_tag",
+      "source": "https://github.com/reactive-systems/eahyper",
+      "identity_kind": "immutable_git_commit",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
           "tool_id": "hyperltl",
-          "version": "0.1.0-reviewed",
-          "artifact_url": "",
-          "sha256": "",
+          "version": "e3a41290",
+          "artifact_url": "https://github.com/reactive-systems/eahyper/archive/e3a412909cc767fe3bc5afd91cc718da5e3c649a.tar.gz",
+          "sha256": "1c5a41a650a887e40adc9338cac46b6f432dd7d06588c66a44c4b8b672e8444a",
           "platform": "any",
-          "notes": "Reviewed source-tag deployment identity; binary digest verified at explicit install",
-          "is_checksummed": false,
+          "notes": "Official EAHyper commit pin for HyperLTL satisfiability; binds source archive digest and decidable-fragment ceiling",
+          "is_checksummed": true,
           "license": "MIT",
-          "source": "https://github.com/reactive-systems/hyperltl"
+          "source": "https://github.com/reactive-systems/eahyper",
+          "git_commit": "e3a412909cc767fe3bc5afd91cc718da5e3c649a"
         }
       ],
       "gap_id": null,
@@ -1148,19 +1211,39 @@
         "schema_version": "formal-verification-deployment-contract/v1",
         "status": "reviewed",
         "replaces_gap_id": "hyper_tools",
-        "artifact_kind": "source_tag",
-        "release_tag": "reviewed-deployment-0.1.0",
+        "artifact_kind": "git_commit_source_archive",
+        "release_tag": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
         "requires_checksum_at_install": true,
         "unsupported_platforms_fail_closed": true,
         "supported_platforms": [
           "linux-x86_64",
           "linux-aarch64"
-        ]
+        ],
+        "git_commit": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
+        "build_dependencies": {
+          "ocaml": ">=4.08",
+          "dune": ">=2.0",
+          "menhir": ">=20201216",
+          "opam": ">=2.0"
+        },
+        "decidable_fragment_ceiling": "EAHyper decidable HyperLTL fragment (exists*/forall* and forall*/exists* quantifier shapes; not full HyperLTL)",
+        "upstream_product": "eahyper",
+        "vendor_install": {
+          "mode": "checksummed_source_archive",
+          "source_archive_sha256": "1c5a41a650a887e40adc9338cac46b6f432dd7d06588c66a44c4b8b672e8444a",
+          "source_archive_url": "https://github.com/reactive-systems/eahyper/archive/e3a412909cc767fe3bc5afd91cc718da5e3c649a.tar.gz",
+          "git_commit": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
+          "hermetic_engines_are_differential_only": true,
+          "never_promote_hermetic_engine_as_vendor": true,
+          "case_oracle_cannot_satisfy_vendor": true,
+          "linux_aarch64_supported": true,
+          "decidable_fragment_ceiling": "EAHyper decidable HyperLTL fragment (exists*/forall* and forall*/exists* quantifier shapes; not full HyperLTL)"
+        }
       }
     },
     {
       "tool_id": "autohyper",
-      "display_name": "AutoHyper external engine",
+      "display_name": "AutoHyper HyperLTL model checker",
       "availability": "managed_pin",
       "runtime": "native",
       "resource_class": "hyperproperty",
@@ -1174,20 +1257,21 @@
       "installer_entry": "ensure_autohyper",
       "installer_plugin": "hyperproperty",
       "license": "MIT",
-      "source": "https://github.com/reactive-systems/hyperltl",
-      "identity_kind": "immutable_source_tag",
+      "source": "https://github.com/AutoHyper/AutoHyper",
+      "identity_kind": "immutable_git_commit",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
           "tool_id": "autohyper",
-          "version": "0.1.0-reviewed",
-          "artifact_url": "",
-          "sha256": "",
+          "version": "c94722d1",
+          "artifact_url": "https://github.com/AutoHyper/AutoHyper/archive/c94722d1f3c6d6f38a0967fcc580e26146c26109.tar.gz",
+          "sha256": "cebb08063fcfde162039273ed91c0f2df618bc0df26c8561fc388fe92c192837",
           "platform": "any",
-          "notes": "Reviewed source-tag deployment identity; binary digest verified at explicit install",
-          "is_checksummed": false,
+          "notes": "Official AutoHyper commit pin; binds .NET 8 runtime, Spot tools, build inputs, and executable digest",
+          "is_checksummed": true,
           "license": "MIT",
-          "source": "https://github.com/reactive-systems/hyperltl"
+          "source": "https://github.com/AutoHyper/AutoHyper",
+          "git_commit": "c94722d1f3c6d6f38a0967fcc580e26146c26109"
         }
       ],
       "gap_id": null,
@@ -1208,19 +1292,48 @@
         "schema_version": "formal-verification-deployment-contract/v1",
         "status": "reviewed",
         "replaces_gap_id": "hyper_tools",
-        "artifact_kind": "source_tag",
-        "release_tag": "reviewed-deployment-0.1.0",
+        "artifact_kind": "git_commit_source_archive",
+        "release_tag": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
         "requires_checksum_at_install": true,
         "unsupported_platforms_fail_closed": true,
         "supported_platforms": [
           "linux-x86_64",
           "linux-aarch64"
-        ]
+        ],
+        "git_commit": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
+        "build_dependencies": {
+          "dotnet-sdk": "8.0.300",
+          "spot": ">=2.12",
+          "spot-tools": "ltl2tgba,autfilt,dstar2tgba"
+        },
+        "runtime_dependencies": {
+          "dotnet-runtime": "8.0",
+          "spot": ">=2.12"
+        },
+        "upstream_product": "autohyper",
+        "vendor_install": {
+          "mode": "checksummed_source_archive",
+          "source_archive_sha256": "cebb08063fcfde162039273ed91c0f2df618bc0df26c8561fc388fe92c192837",
+          "source_archive_url": "https://github.com/AutoHyper/AutoHyper/archive/c94722d1f3c6d6f38a0967fcc580e26146c26109.tar.gz",
+          "git_commit": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
+          "hermetic_engines_are_differential_only": true,
+          "never_promote_hermetic_engine_as_vendor": true,
+          "case_oracle_cannot_satisfy_vendor": true,
+          "linux_aarch64_supported": true,
+          "dotnet_runtime": "8.0",
+          "dotnet_sdk": "8.0.300",
+          "spot_version": ">=2.12",
+          "spot_tools": [
+            "ltl2tgba",
+            "autfilt",
+            "dstar2tgba"
+          ]
+        }
       }
     },
     {
       "tool_id": "mchyper",
-      "display_name": "MCHyper external engine",
+      "display_name": "MCHyper hardware HyperLTL model checker",
       "availability": "managed_pin",
       "runtime": "native",
       "resource_class": "hyperproperty",
@@ -1234,20 +1347,21 @@
       "installer_entry": "ensure_mchyper",
       "installer_plugin": "hyperproperty",
       "license": "MIT",
-      "source": "https://github.com/reactive-systems/hyperltl",
-      "identity_kind": "immutable_source_tag",
+      "source": "https://github.com/reactive-systems/MCHyper",
+      "identity_kind": "immutable_git_commit",
       "pins": [
         {
           "schema_version": "verification-toolchain-pin/v1",
           "tool_id": "mchyper",
-          "version": "0.1.0-reviewed",
-          "artifact_url": "",
-          "sha256": "",
+          "version": "87f0f857",
+          "artifact_url": "https://github.com/reactive-systems/MCHyper/archive/87f0f857f5cb19782b79d99b11ef78c723852bb9.tar.gz",
+          "sha256": "4c49f369ab04f48d93a4612a0b3259b361a7c3e3b22b3f99b240d0fdc46a7815",
           "platform": "any",
-          "notes": "Reviewed source-tag deployment identity; binary digest verified at explicit install",
-          "is_checksummed": false,
+          "notes": "Official MCHyper commit pin; binds ABC/AIGER dependencies, supported fragment, and live witness/counterexample cases",
+          "is_checksummed": true,
           "license": "MIT",
-          "source": "https://github.com/reactive-systems/hyperltl"
+          "source": "https://github.com/reactive-systems/MCHyper",
+          "git_commit": "87f0f857f5cb19782b79d99b11ef78c723852bb9"
         }
       ],
       "gap_id": null,
@@ -1268,14 +1382,40 @@
         "schema_version": "formal-verification-deployment-contract/v1",
         "status": "reviewed",
         "replaces_gap_id": "hyper_tools",
-        "artifact_kind": "source_tag",
-        "release_tag": "reviewed-deployment-0.1.0",
+        "artifact_kind": "git_commit_source_archive",
+        "release_tag": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
         "requires_checksum_at_install": true,
         "unsupported_platforms_fail_closed": true,
         "supported_platforms": [
           "linux-x86_64",
           "linux-aarch64"
-        ]
+        ],
+        "git_commit": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
+        "build_dependencies": {
+          "ghc": ">=8.4",
+          "cabal": ">=2.4",
+          "python": ">=2.7",
+          "abc": "1.01",
+          "aiger-tools": "1.9.4"
+        },
+        "runtime_dependencies": {
+          "abc": "1.01",
+          "aiger-tools": "1.9.4"
+        },
+        "supported_fragment": "HyperLTL model checking over AIGER hardware circuits via ABC (PDR/BMC); live witness/counterexample paths",
+        "upstream_product": "mchyper",
+        "vendor_install": {
+          "mode": "checksummed_source_archive",
+          "source_archive_sha256": "4c49f369ab04f48d93a4612a0b3259b361a7c3e3b22b3f99b240d0fdc46a7815",
+          "source_archive_url": "https://github.com/reactive-systems/MCHyper/archive/87f0f857f5cb19782b79d99b11ef78c723852bb9.tar.gz",
+          "git_commit": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
+          "hermetic_engines_are_differential_only": true,
+          "never_promote_hermetic_engine_as_vendor": true,
+          "case_oracle_cannot_satisfy_vendor": true,
+          "linux_aarch64_supported": true,
+          "abc_version": "1.01",
+          "aiger_tools_version": "1.9.4"
+        }
       }
     },
     {

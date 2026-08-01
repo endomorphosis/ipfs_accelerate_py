@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Bounded hyperproperty toolchain certification.
 
-``HyperpropertyToolchainCertification@1`` / FVT-G170 (FVT-046).
+``HyperpropertyToolchainCertification@1`` / FVT-G170 (FVT-046) and vendor path
+``HyperpropertyVendorToolchainCertification@1`` / FVT-G208 (FVT-061).
 
-Explicit strict installation selects reviewed HyperLTL, AutoHyper, and MCHyper
-artifacts.  The certification corpus covers:
+Explicit strict installation selects reviewed HyperLTL (EAHyper), AutoHyper,
+and MCHyper artifacts.  The certification corpus covers:
 
 * quantifier order and observation projections preserved through translation;
 * satisfaction under the pin-bound engines;
@@ -15,6 +16,13 @@ artifacts.  The certification corpus covers:
 * exact self-composition bounds disclosure;
 * results retain declared **bounded** hyperproperty authority and never
   authorize universal claims beyond bounds.
+
+Vendor certification (FVT-G208) additionally binds official upstream
+revisions, digests, and build/runtime dependencies (.NET/Spot for AutoHyper,
+ABC/AIGER for MCHyper, decidable-fragment ceiling for EAHyper).  Hermetic
+engines, case-oracles, fixtures, parsers, and canned output cannot satisfy
+the vendor goal.  linux-aarch64 remains supported only when that complete
+chain is real.
 
 This lane never edits the central multi-prover certificate.
 """
@@ -83,13 +91,29 @@ from ipfs_datasets_py.logic.software_verification.hyperproperties import (  # no
 )
 
 INTERFACE: Final = "HyperpropertyToolchainCertification@1"
+VENDOR_INTERFACE: Final = "HyperpropertyVendorToolchainCertification@1"
 SCHEMA_VERSION: Final = "hyperproperty-toolchain-certification/v1"
+VENDOR_SCHEMA_VERSION: Final = "hyperproperty-vendor-toolchain-certification/v1"
+VENDOR_INSTALL_RECEIPT_SCHEMA: Final = (
+    "formal-verification-hyperproperty-vendor-install-receipt/v1"
+)
 GOAL_ID: Final = "FVT-G170"
 TASK_ID: Final = "FVT-046"
+VENDOR_GOAL_ID: Final = "FVT-G208"
+VENDOR_TASK_ID: Final = "FVT-061"
 PROGRAM: Final = "formal-verification-tactician/hyperproperty-toolchains"
+VENDOR_PROGRAM: Final = (
+    "formal-verification-tactician/hyperproperty-vendor-toolchains"
+)
 LANE_ID: Final = "hyperltl"
+VENDOR_LANE_ID: Final = "hyperproperty_vendor"
 HANDLER_ID: Final = "hyperproperty_toolchain_certification@1"
+VENDOR_HANDLER_ID: Final = "hyperproperty_vendor_toolchain_certification@1"
 CERTIFICATION_SURFACE: Final = "tools.logic.certification.hyperproperty"
+DEFAULT_VENDOR_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json"
+)
+LINUX_AARCH64: Final = "linux-aarch64"
 
 AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.BOUNDED.value
 AUTHORITY_ROLE: Final = ToolRole.AUTHORITY.value
@@ -1215,6 +1239,19 @@ def certify_engine(
     )
 
 
+
+def _stable_json_digest(payload: Mapping[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
 def certify_hyperproperty_toolchains(
     *,
     install_root: Path | str | None = None,
@@ -1383,7 +1420,15 @@ def hyperproperty_lane_handler(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Certify HyperLTL / AutoHyper / MCHyper toolchains (FVT-G170)"
+        description=(
+            "Certify HyperLTL / AutoHyper / MCHyper toolchains "
+            "(FVT-G170 hermetic / FVT-G208 vendor)"
+        )
+    )
+    parser.add_argument(
+        "--vendor",
+        action="store_true",
+        help="Run vendor toolchain certification (FVT-G208)",
     )
     parser.add_argument(
         "--install-root",
@@ -1407,11 +1452,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        receipt = certify_hyperproperty_toolchains(
-            install_root=args.install_root,
-            force_install=args.force_install,
-            skip_install=args.skip_install,
-        )
+        if args.vendor:
+            receipt = certify_hyperproperty_vendor_toolchains(
+                install_root=args.install_root,
+                force_install=args.force_install,
+                skip_install=args.skip_install,
+            )
+            interface = VENDOR_INTERFACE
+        else:
+            receipt = certify_hyperproperty_toolchains(
+                install_root=args.install_root,
+                force_install=args.force_install,
+                skip_install=args.skip_install,
+            )
+            interface = INTERFACE
     except Exception as exc:
         print(f"hyperproperty certification failed: {exc}", file=sys.stderr)
         return 2
@@ -1420,7 +1474,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         status = "CERTIFIED" if receipt["certified"] else "FAILED"
         print(
-            f"[{status}] {INTERFACE} engines={receipt['engine_ids']} "
+            f"[{status}] {interface} engines={receipt['engine_ids']} "
             f"authority={receipt['authority_ceiling']}"
         )
     return 0 if receipt["certified"] else 1
@@ -1430,30 +1484,617 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
+
+# ---------------------------------------------------------------------------
+# Vendor certification (FVT-G208 / HyperpropertyVendorToolchainCertification@1)
+# ---------------------------------------------------------------------------
+
+
+def _install_vendor_engines(
+    *,
+    install_root: Path | str | None = None,
+    force: bool = False,
+    platform_id: str | None = None,
+    repo_root: Path | str | None = None,
+    lock_path: Path | str | None = None,
+) -> hyper_installer.HyperpropertyInstallBundle:
+    return hyper_installer.ensure_hyperproperty_vendor(
+        yes=True,
+        strict=True,
+        force=force,
+        install_root=install_root,
+        platform_id=platform_id,
+        repo_root=repo_root,
+        lock_path=lock_path,
+        checksum_verified=True,
+    )
+
+
+def certify_vendor_engine(
+    engine_id: str,
+    *,
+    identity: hyper_installer.EngineIdentity,
+    install_status: str = "installed",
+    repo_root: Path | str | None = None,
+    lock_path: Path | str | None = None,
+) -> EngineCertification:
+    """Certify one vendor hyperproperty engine for live semantic cases."""
+
+    if identity.is_hermetic_engine or not identity.is_vendor_build:
+        raise HyperpropertyCertificationError(
+            f"hermetic engines cannot satisfy vendor certification for {engine_id}"
+        )
+    if not identity.source_archive_sha256 or not identity.artifact_sha256:
+        raise HyperpropertyCertificationError(
+            f"vendor {engine_id} missing source/artifact digests"
+        )
+
+    pin = hyper_installer.pin_for_tool(
+        engine_id, repo_root=repo_root, lock_path=lock_path
+    )
+    expected_sha = (
+        pin.get("sha256")
+        or {
+            TOOL_HYPERLTL: hyper_installer.HYPERLTL_SOURCE_ARCHIVE_SHA256,
+            TOOL_AUTOHYPER: hyper_installer.AUTOHYPER_SOURCE_ARCHIVE_SHA256,
+            TOOL_MCHYPER: hyper_installer.MCHYPER_SOURCE_ARCHIVE_SHA256,
+        }[engine_id]
+    ).lower()
+
+    # Reuse the hermetic corpus on the vendor executable (live binary path).
+    base = certify_engine(
+        engine_id,
+        identity=identity,
+        install_status=install_status,
+    )
+    checks = list(base.checks)
+    block_reasons = list(base.block_reasons)
+
+    digest_ok = identity.source_archive_sha256 == expected_sha
+    checks.append(
+        CheckResult(
+            check_id=f"{engine_id}.vendor.source_digest",
+            kind="install",
+            status="passed" if digest_ok else "failed",
+            expected=expected_sha,
+            observed=identity.source_archive_sha256,
+            detail="official source archive digest must match lock pin",
+            engine_id=engine_id,
+        )
+    )
+    if not digest_ok:
+        block_reasons.append("source_digest_mismatch")
+
+    not_hermetic = (not identity.is_hermetic_engine) and identity.is_vendor_build
+    checks.append(
+        CheckResult(
+            check_id=f"{engine_id}.vendor.not_hermetic",
+            kind="install",
+            status="passed" if not_hermetic else "failed",
+            expected="is_vendor_build=true; is_hermetic_engine=false",
+            observed=(
+                f"is_vendor_build={identity.is_vendor_build};"
+                f"is_hermetic_engine={identity.is_hermetic_engine}"
+            ),
+            detail="case-oracle/hermetic shim cannot satisfy vendor goal",
+            engine_id=engine_id,
+        )
+    )
+    if not not_hermetic:
+        block_reasons.append("hermetic_used_for_vendor")
+
+    artifact_ok = bool(identity.artifact_sha256) and len(identity.artifact_sha256) == 64
+    checks.append(
+        CheckResult(
+            check_id=f"{engine_id}.vendor.executable_digest",
+            kind="install",
+            status="passed" if artifact_ok else "failed",
+            expected="64-char executable artifact sha256",
+            observed=identity.artifact_sha256 or "",
+            detail="vendor executable digest must be exact",
+            engine_id=engine_id,
+        )
+    )
+    if not artifact_ok:
+        block_reasons.append("missing_executable_digest")
+
+    build_deps = {name for name, _ in identity.build_dependencies}
+    expected_deps = set(
+        hyper_installer.build_dependencies_for_tool(
+            engine_id, repo_root=repo_root, lock_path=lock_path
+        )
+    )
+    deps_ok = expected_deps <= build_deps
+    checks.append(
+        CheckResult(
+            check_id=f"{engine_id}.vendor.build_dependencies",
+            kind="install",
+            status="passed" if deps_ok else "failed",
+            expected=",".join(sorted(expected_deps)),
+            observed=",".join(sorted(build_deps)),
+            detail="vendor build inputs must bind lock pins",
+            engine_id=engine_id,
+        )
+    )
+    if not deps_ok:
+        block_reasons.append("build_dependencies_incomplete")
+
+    if engine_id == TOOL_AUTOHYPER:
+        runtime_ok = bool(identity.dotnet_runtime) and bool(identity.spot_version)
+        checks.append(
+            CheckResult(
+                check_id=f"{engine_id}.vendor.dotnet_spot",
+                kind="install",
+                status="passed" if runtime_ok else "failed",
+                expected="dotnet-runtime + spot tools bound",
+                observed=(
+                    f"dotnet={identity.dotnet_runtime};spot={identity.spot_version}"
+                ),
+                detail="AutoHyper binds .NET runtime and Spot tools",
+                engine_id=engine_id,
+            )
+        )
+        if not runtime_ok:
+            block_reasons.append("autohyper_runtime_unbound")
+    if engine_id == TOOL_MCHYPER:
+        fragment_ok = bool(identity.supported_fragment) and bool(
+            identity.abc_version
+        ) and bool(identity.aiger_tools_version)
+        checks.append(
+            CheckResult(
+                check_id=f"{engine_id}.vendor.abc_aiger_fragment",
+                kind="install",
+                status="passed" if fragment_ok else "failed",
+                expected="ABC/AIGER + supported fragment",
+                observed=(
+                    f"abc={identity.abc_version};aiger={identity.aiger_tools_version};"
+                    f"fragment={bool(identity.supported_fragment)}"
+                ),
+                detail="MCHyper binds ABC/AIGER and supported fragment",
+                engine_id=engine_id,
+            )
+        )
+        if not fragment_ok:
+            block_reasons.append("mchyper_fragment_unbound")
+    if engine_id == TOOL_HYPERLTL:
+        ceiling_ok = bool(identity.decidable_fragment_ceiling)
+        checks.append(
+            CheckResult(
+                check_id=f"{engine_id}.vendor.decidable_fragment",
+                kind="bounds",
+                status="passed" if ceiling_ok else "failed",
+                expected="decidable HyperLTL fragment ceiling",
+                observed=identity.decidable_fragment_ceiling or "",
+                detail="EAHyper declares its own decidable-fragment ceiling",
+                engine_id=engine_id,
+            )
+        )
+        if not ceiling_ok:
+            block_reasons.append("decidable_fragment_unbound")
+
+    linux_ok = hyper_installer.tool_supported_on_platform(
+        engine_id,
+        LINUX_AARCH64,
+        repo_root=repo_root,
+        lock_path=lock_path,
+    )
+    checks.append(
+        CheckResult(
+            check_id=f"{engine_id}.vendor.linux_aarch64",
+            kind="role",
+            status="passed" if linux_ok else "failed",
+            expected="linux-aarch64 supported",
+            observed=str(linux_ok),
+            detail="linux-aarch64 remains supported only if the complete chain is real",
+            engine_id=engine_id,
+        )
+    )
+    if not linux_ok:
+        block_reasons.append("linux_aarch64_unsupported")
+
+    certified = all(item.passed for item in checks) and not block_reasons and base.usable
+    return EngineCertification(
+        engine_id=engine_id,
+        version=identity.version,
+        executable=identity.executable,
+        usable=base.usable and not_hermetic,
+        certified=certified,
+        role=AUTHORITY_ROLE,
+        authority_ceiling=AUTHORITY_CEILING,
+        checks=checks,
+        case_results=list(base.case_results),
+        block_reasons=sorted(set(block_reasons)),
+        install_status=install_status,
+        authorizes_universal_proof=False,
+    )
+
+
+def certify_hyperproperty_vendor_toolchains(
+    *,
+    install_root: Path | str | None = None,
+    engines: Sequence[str] | None = None,
+    force_install: bool = False,
+    skip_install: bool = False,
+    platform_id: str | None = None,
+    repo_root: Path | str | None = None,
+    lock_path: Path | str | None = None,
+    write_receipt_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Run full vendor hyperproperty toolchain certification for FVT-G208.
+
+    Acceptance:
+
+    * AutoHyper binds official revision, .NET runtime, Spot tools, build
+      inputs, executable digest, and live semantic cases.
+    * MCHyper binds official revision, ABC/AIGER dependencies, executable
+      digest, supported fragment, and live witness/counterexample cases.
+    * HyperLTL satisfiability (EAHyper) has its own correct upstream identity
+      and decidable-fragment ceiling.
+    * Satisfaction, violation, observation/quantifier mutation, replay,
+      malformed, timeout, disagreement, and exact bounds execute through real
+      vendor binaries.
+    * linux-aarch64 remains supported only if that complete chain is real.
+    * Case-oracle, hermetic shim, fixture, parser, or canned output cannot
+      satisfy this goal.
+    """
+
+    selected = tuple(engines or EXTERNAL_ENGINES)
+    host = platform_id or hyper_installer._detect_platform()
+    root = hyper_installer._expand_install_root(install_root)
+    install_bundle: hyper_installer.HyperpropertyInstallBundle | None = None
+    resolved: dict[str, hyper_installer.EngineIdentity] = {}
+    install_statuses: dict[str, str] = {}
+
+    if skip_install:
+        for tool_id in selected:
+            pin = hyper_installer.pin_for_tool(
+                tool_id, repo_root=repo_root, lock_path=lock_path
+            )
+            identity = hyper_installer._identity_from_disk(
+                tool_id, root, pin, vendor=True
+            )
+            if identity is None:
+                raise HyperpropertyCertificationError(
+                    f"skip_install requested but vendor {tool_id} missing under {root}"
+                )
+            resolved[tool_id] = identity
+            install_statuses[tool_id] = "already_present"
+    else:
+        install_bundle = _install_vendor_engines(
+            install_root=root,
+            force=force_install,
+            platform_id=host,
+            repo_root=repo_root,
+            lock_path=lock_path,
+        )
+        if not install_bundle.ok:
+            raise HyperpropertyCertificationError(
+                "vendor installation failed: "
+                + "; ".join(
+                    f"{r.tool_id}:{r.status}:{r.detail}" for r in install_bundle.receipts
+                )
+            )
+        for receipt in install_bundle.receipts:
+            if receipt.identity is None:
+                continue
+            resolved[receipt.tool_id] = receipt.identity
+            install_statuses[receipt.tool_id] = receipt.status
+
+    engine_results: list[EngineCertification] = []
+    for engine_id in selected:
+        identity = resolved.get(engine_id)
+        if identity is None:
+            raise HyperpropertyCertificationError(
+                f"no vendor identity for {engine_id!r}"
+            )
+        if identity.is_hermetic_engine or not identity.is_vendor_build:
+            raise HyperpropertyCertificationError(
+                f"hermetic identity cannot satisfy vendor certification for {engine_id}"
+            )
+        engine_results.append(
+            certify_vendor_engine(
+                engine_id,
+                identity=identity,
+                install_status=install_statuses.get(engine_id, "installed"),
+                repo_root=repo_root,
+                lock_path=lock_path,
+            )
+        )
+
+    all_certified = bool(engine_results) and all(
+        item.certified for item in engine_results
+    )
+    hermetic_cannot_satisfy = all(
+        (not item.is_hermetic_engine) and item.is_vendor_build
+        for item in resolved.values()
+    )
+    if not hermetic_cannot_satisfy:
+        all_certified = False
+
+    engines_payload = []
+    for engine in engine_results:
+        identity = resolved[engine.engine_id]
+        engines_payload.append(
+            {
+                **engine.to_dict(),
+                "is_vendor_build": True,
+                "is_hermetic_engine": False,
+                "source_archive_sha256": identity.source_archive_sha256,
+                "source_archive_url": identity.source_archive_url,
+                "artifact_sha256": identity.artifact_sha256,
+                "git_commit": identity.git_commit,
+                "build_dependencies": {
+                    k: v for k, v in identity.build_dependencies
+                },
+                "runtime_dependencies": {
+                    k: v for k, v in identity.runtime_dependencies
+                },
+                "decidable_fragment_ceiling": identity.decidable_fragment_ceiling,
+                "supported_fragment": identity.supported_fragment,
+                "upstream_product": identity.upstream_product,
+                "dotnet_runtime": identity.dotnet_runtime,
+                "spot_version": identity.spot_version,
+                "abc_version": identity.abc_version,
+                "aiger_tools_version": identity.aiger_tools_version,
+                "platform_id": identity.platform_id or host,
+                "linux_aarch64_supported": hyper_installer.tool_supported_on_platform(
+                    engine.engine_id,
+                    LINUX_AARCH64,
+                    repo_root=repo_root,
+                    lock_path=lock_path,
+                ),
+            }
+        )
+
+    by_id = {item["engine_id"]: item for item in engines_payload}
+    payload: dict[str, Any] = {
+        "schema_version": VENDOR_SCHEMA_VERSION,
+        "interface": VENDOR_INTERFACE,
+        "goal_id": VENDOR_GOAL_ID,
+        "task_id": VENDOR_TASK_ID,
+        "program": VENDOR_PROGRAM,
+        "lane_id": VENDOR_LANE_ID,
+        "handler_id": VENDOR_HANDLER_ID,
+        "certification_surface": CERTIFICATION_SURFACE,
+        "host_platform": host,
+        "authority_ceiling": AUTHORITY_CEILING,
+        "forbids_theorem_authority": True,
+        "forbids_universal_claims_beyond_bounds": True,
+        "certified": all_certified,
+        "hyperltl": by_id.get(TOOL_HYPERLTL),
+        "autohyper": by_id.get(TOOL_AUTOHYPER),
+        "mchyper": by_id.get(TOOL_MCHYPER),
+        "engines": engines_payload,
+        "engine_ids": [item.engine_id for item in engine_results],
+        "categories_exercised": sorted(REQUIRED_CATEGORIES),
+        "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
+        "install": None if install_bundle is None else install_bundle.to_dict(),
+        "policy": {
+            "strict_installation_selects_reviewed_pins": True,
+            "quantifiers_and_observation_projections_preserved": True,
+            "disagreement_quarantines_promotion": True,
+            "never_grants_theorem_authority": True,
+            "never_authorizes_universal_proof": True,
+            "cannot_make_universal_claims_beyond_bounds": True,
+            "authority_ceiling": AUTHORITY_CEILING,
+            "no_central_certificate_edit": True,
+            "grants_theorem_authority": False,
+            "authorizes_universal_proof": False,
+            "hermetic_engines_are_differential_only": True,
+            "hermetic_engines_cannot_satisfy_vendor": True,
+            "never_promote_hermetic_engine_as_vendor": True,
+            "case_oracle_cannot_satisfy_vendor": True,
+            "official_upstream_identities_bound": True,
+            "autohyper_binds_dotnet_and_spot": True,
+            "mchyper_binds_abc_aiger_and_fragment": True,
+            "hyperltl_sat_binds_decidable_fragment_ceiling": True,
+            "linux_aarch64_supported_only_if_complete_chain_real": True,
+        },
+        "summary": {
+            "vendor_certified": all_certified,
+            "checks_passed": sum(
+                1 for engine in engine_results for check in engine.checks if check.passed
+            ),
+            "checks_total": sum(len(engine.checks) for engine in engine_results),
+            "categories_exercised": sorted(REQUIRED_CATEGORIES),
+            "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
+            "block_reasons": sorted(
+                {
+                    reason
+                    for engine in engine_results
+                    for reason in engine.block_reasons
+                }
+            ),
+            "hermetic_engines_cannot_satisfy_vendor": hermetic_cannot_satisfy,
+        },
+    }
+    payload["certificate_digest_sha256"] = _stable_json_digest(
+        {k: v for k, v in payload.items() if k != "certificate_digest_sha256"}
+    )
+    receipt = build_vendor_install_receipt(payload)
+    if write_receipt_path is not None:
+        path = Path(write_receipt_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        payload["receipt_path"] = str(path)
+    payload["install_receipt"] = receipt
+    return payload
+
+
+def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, Any]:
+    """Build the checked-in vendor install receipt envelope."""
+
+    def _engine_receipt(key: str) -> dict[str, Any]:
+        item = certificate.get(key) or {}
+        return {
+            "tool_id": item.get("engine_id") or key,
+            "version": item.get("version"),
+            "executable": item.get("executable"),
+            "usable": item.get("usable"),
+            "certified": item.get("certified"),
+            "is_vendor_build": True,
+            "is_hermetic_engine": False,
+            "source_archive_sha256": item.get("source_archive_sha256"),
+            "source_archive_url": item.get("source_archive_url"),
+            "artifact_sha256": item.get("artifact_sha256"),
+            "git_commit": item.get("git_commit"),
+            "build_dependencies": item.get("build_dependencies") or {},
+            "runtime_dependencies": item.get("runtime_dependencies") or {},
+            "decidable_fragment_ceiling": item.get("decidable_fragment_ceiling") or "",
+            "supported_fragment": item.get("supported_fragment") or "",
+            "upstream_product": item.get("upstream_product") or "",
+            "dotnet_runtime": item.get("dotnet_runtime") or "",
+            "spot_version": item.get("spot_version") or "",
+            "abc_version": item.get("abc_version") or "",
+            "aiger_tools_version": item.get("aiger_tools_version") or "",
+            "platform_id": item.get("platform_id"),
+            "linux_aarch64_supported": item.get("linux_aarch64_supported"),
+            "role": AUTHORITY_ROLE,
+            "authority_ceiling": AUTHORITY_CEILING,
+            "never_authorizes_universal_proof": True,
+            "never_grants_theorem_authority": True,
+        }
+
+    receipt = {
+        "schema_version": VENDOR_INSTALL_RECEIPT_SCHEMA,
+        "interface": VENDOR_INTERFACE,
+        "goal_id": VENDOR_GOAL_ID,
+        "task_id": VENDOR_TASK_ID,
+        "program": VENDOR_PROGRAM,
+        "lane_id": VENDOR_LANE_ID,
+        "handler_id": VENDOR_HANDLER_ID,
+        "host_platform": certificate.get("host_platform"),
+        "certified": bool(certificate.get("certified")),
+        "authority_ceiling": AUTHORITY_CEILING,
+        "hyperltl": _engine_receipt("hyperltl"),
+        "autohyper": _engine_receipt("autohyper"),
+        "mchyper": _engine_receipt("mchyper"),
+        "categories_exercised": list(certificate.get("categories_exercised") or []),
+        "mutation_kinds": list(certificate.get("mutation_kinds") or []),
+        "policy": dict(certificate.get("policy") or {}),
+        "summary": dict(certificate.get("summary") or {}),
+        "certificate_digest_sha256": certificate.get("certificate_digest_sha256"),
+    }
+    receipt["receipt_digest_sha256"] = _stable_json_digest(
+        {k: v for k, v in receipt.items() if k != "receipt_digest_sha256"}
+    )
+    return receipt
+
+
+def write_vendor_install_receipt(
+    certificate: Mapping[str, Any] | None = None,
+    *,
+    repo_root: Path | str | None = None,
+    install_root: Path | str | None = None,
+    platform_id: str | None = None,
+    receipt_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Certify (if needed) and write the vendor install receipt artifact."""
+
+    root = Path(repo_root) if repo_root is not None else _repo_root()
+    path = (
+        Path(receipt_path)
+        if receipt_path is not None
+        else root / DEFAULT_VENDOR_RECEIPT_RELATIVE
+    )
+    if certificate is None:
+        certificate = certify_hyperproperty_vendor_toolchains(
+            install_root=install_root,
+            force_install=True,
+            platform_id=platform_id,
+            repo_root=root,
+            write_receipt_path=path,
+        )
+        return dict(certificate.get("install_receipt") or {})
+    receipt = build_vendor_install_receipt(certificate)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return receipt
+
+
+def hyperproperty_vendor_lane_handler(
+    *,
+    install_root: Path | str | None = None,
+    skip_install: bool = False,
+    force_install: bool = False,
+    platform_id: str | None = None,
+    repo_root: Path | str | None = None,
+    lock_path: Path | str | None = None,
+    **_kwargs: Any,
+) -> dict[str, Any]:
+    """Lane handler for ``hyperproperty_vendor_toolchain_certification@1``."""
+
+    certificate = certify_hyperproperty_vendor_toolchains(
+        install_root=install_root,
+        skip_install=skip_install,
+        force_install=force_install,
+        platform_id=platform_id,
+        repo_root=repo_root,
+        lock_path=lock_path,
+    )
+    return {
+        "lane_id": VENDOR_LANE_ID,
+        "handler_id": VENDOR_HANDLER_ID,
+        "status": "certified" if certificate["certified"] else "failed",
+        "certified": certificate["certified"],
+        "authority_ceiling": AUTHORITY_CEILING,
+        "grants_theorem_authority": False,
+        "authorizes_universal_proof": False,
+        "interface": VENDOR_INTERFACE,
+        "goal_id": VENDOR_GOAL_ID,
+        "task_id": VENDOR_TASK_ID,
+        "engine_ids": certificate["engine_ids"],
+        "hermetic_engines_cannot_satisfy_vendor": certificate["summary"][
+            "hermetic_engines_cannot_satisfy_vendor"
+        ],
+        "certificate_digest_sha256": certificate["certificate_digest_sha256"],
+        "certificate": certificate,
+    }
+
+
+
 __all__ = [
     "INTERFACE",
+    "VENDOR_INTERFACE",
     "SCHEMA_VERSION",
+    "VENDOR_SCHEMA_VERSION",
+    "VENDOR_INSTALL_RECEIPT_SCHEMA",
     "GOAL_ID",
     "TASK_ID",
+    "VENDOR_GOAL_ID",
+    "VENDOR_TASK_ID",
     "PROGRAM",
+    "VENDOR_PROGRAM",
     "LANE_ID",
+    "VENDOR_LANE_ID",
     "HANDLER_ID",
+    "VENDOR_HANDLER_ID",
     "CERTIFICATION_SURFACE",
+    "DEFAULT_VENDOR_RECEIPT_RELATIVE",
     "AUTHORITY_CEILING",
     "EXTERNAL_ENGINES",
     "REQUIRED_CATEGORIES",
     "REQUIRED_MUTATION_KINDS",
+    "LINUX_AARCH64",
     "CaseSpec",
     "CheckResult",
     "EngineCertification",
     "EngineRunRecord",
     "HyperpropertyCertificationError",
     "backend_for",
+    "build_vendor_install_receipt",
     "certify_engine",
     "certify_hyperproperty_toolchains",
+    "certify_hyperproperty_vendor_toolchains",
+    "certify_vendor_engine",
     "default_case_specs",
     "hyperproperty_lane_handler",
+    "hyperproperty_vendor_lane_handler",
     "main",
     "materialize_document",
     "run_engine_case",
+    "write_vendor_install_receipt",
 ]
