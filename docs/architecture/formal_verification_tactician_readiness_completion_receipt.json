@@ -6,14 +6,14 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-01T00:00:00Z",
+  "observed_at": "2026-08-01T17:57:58Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "af0de7ebee343b74c596f56d8b48d0de58e6b641",
-    "parent_tree": "8a076ceee5688d3744d4dd941494a60f62e0f94f",
+    "parent_commit": "ae46774ecec10f62066a85178e73765138b6eeaf",
+    "parent_tree": "85369686ba145516632c922e54e6133a2a770a67",
     "datasets_gitlink": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
     "datasets_embedded_head": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
-    "datasets_origin_main": "7415adc5100192ee35676778f1018f6b072378f9",
+    "datasets_origin_main": "ab3de64df783e6d8fd9e342d00cafe807b418d44",
     "parent_origin_main": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
     "binding_mode": "current_tree_content_identity"
   },
@@ -205,8 +205,8 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "af0de7ebee343b74c596f56d8b48d0de58e6b641",
-        "tree": "8a076ceee5688d3744d4dd941494a60f62e0f94f",
+        "commit": "ae46774ecec10f62066a85178e73765138b6eeaf",
+        "tree": "85369686ba145516632c922e54e6133a2a770a67",
         "origin_main": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
         "clean": false,
         "matches_origin_main": false
@@ -221,7 +221,7 @@
         "head": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
         "clean": true,
         "matches_gitlink": true,
-        "origin_main": "7415adc5100192ee35676778f1018f6b072378f9",
+        "origin_main": "ab3de64df783e6d8fd9e342d00cafe807b418d44",
         "matches_origin_main": false
       },
       "publication_gates": {
@@ -3811,5 +3811,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:02428ad3223759aa8f15b4ed8f19747349193e88b5f05d31e349f18587836065"
+  "receipt_identity": "sha256:a349d491fe8e011dcf19bef7aac451f975ac41691ccf81ff07c42b2f1db1529d"
 }
