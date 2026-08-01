@@ -6,7 +6,7 @@
   "goal_id": "FVT-G213",
   "task_id": "FVT-081",
   "program": "formal-verification-tactician/toolchain-release-candidate",
-  "observed_at": "2026-08-01T18:11:46Z",
+  "observed_at": "2026-08-01T18:17:18Z",
   "description": "Fail-closed production-semantic elevation fan-in. Each required tool is independently reconstructed from its canonical PNMR receipt and exact compact binding before production elevation.",
   "policy": {
     "required_check_kinds": [
@@ -42,7 +42,7 @@
       "evidence_class": "usable_pending_kernel_live_fanin",
       "production_elevation_allowed": false,
       "lane_status": "ran",
-      "lane_digest_sha256": "77b498737ea6f2fc014542759ccd9b170547069fb8fa954f754953372d9a372d",
+      "lane_digest_sha256": "3557dc4ec20023d930838a606d3f713854a24087270aabec3765ea91ea4b4528",
       "compact_tool_certified": true,
       "independent_reconstruction": {
         "valid": true,
@@ -68,8 +68,8 @@
         "required_kinds_all_passed": true,
         "required_kinds_failed": [],
         "required_kinds_missing": [],
-        "check_set_digest_sha256": "fdfc253f86d64e384b0c1d48be27b1e60fe4efd78b7efcb6528449c693663f1e",
-        "compact_check_set_digest_sha256": "fdfc253f86d64e384b0c1d48be27b1e60fe4efd78b7efcb6528449c693663f1e",
+        "check_set_digest_sha256": "9c53af42121fdb09796722ddd37a2dad132d615273c64f1f1c349dcf75836227",
+        "compact_check_set_digest_sha256": "9c53af42121fdb09796722ddd37a2dad132d615273c64f1f1c349dcf75836227",
         "compact_binding_valid": true,
         "checks_total": 14,
         "checks_passed": 14,
@@ -412,8 +412,8 @@
   "certificate_identity": {
     "valid": true,
     "digest_valid": true,
-    "stored_digest_sha256": "644e7d9fba26f94d7e5f75e7c20cb9c102bcb44d6ded70fb0d62758ac44892fb",
-    "computed_digest_sha256": "644e7d9fba26f94d7e5f75e7c20cb9c102bcb44d6ded70fb0d62758ac44892fb",
+    "stored_digest_sha256": "12c534fcd47c0a391d66e9d6ba9a92b622831c0528b75749e3376d5d082907fb",
+    "computed_digest_sha256": "12c534fcd47c0a391d66e9d6ba9a92b622831c0528b75749e3376d5d082907fb",
     "interface_valid": true,
     "role_aware_identity_valid": true,
     "public_evidence_valid": true,
@@ -518,7 +518,7 @@
     "failures": []
   },
   "role_aware_certificate": {
-    "digest_sha256": "644e7d9fba26f94d7e5f75e7c20cb9c102bcb44d6ded70fb0d62758ac44892fb",
+    "digest_sha256": "12c534fcd47c0a391d66e9d6ba9a92b622831c0528b75749e3376d5d082907fb",
     "interface": "FormalVerificationToolchainCertificate@1",
     "projection_model": "digest_bound_compact_projection/v1",
     "raw_certificate_embedded": false
@@ -569,5 +569,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_digest_sha256": "sha256:85def0d4a31a7d583239474be471c779655712b5f3231f7c83e7fb7c1b6ea73b"
+  "receipt_digest_sha256": "sha256:f9956c0aeb9fe5e57636e426d148351646cd7af2d80aa367052d56a9adb30a62"
 }
