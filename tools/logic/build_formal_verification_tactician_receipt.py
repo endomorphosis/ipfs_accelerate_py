@@ -36,6 +36,19 @@ ROLE_AWARE_SCHEMA_VERSION: Final = "formal-verification-role-aware-deployment-re
 ROLE_AWARE_GOAL_ID: Final = "FVT-G200"
 ROLE_AWARE_TASK_ID: Final = "FVT-053"
 
+# Role-aware release candidate (FVT-G213 / FVT-066). Pre-merge fan-in only;
+# never claims its own future merge or deployment attestation.
+RELEASE_CANDIDATE_INTERFACE: Final = "RoleAwareFormalVerificationReleaseCandidate@1"
+RELEASE_CANDIDATE_SCHEMA_VERSION: Final = (
+    "formal-verification-role-aware-release-candidate/v1"
+)
+RELEASE_CANDIDATE_GOAL_ID: Final = "FVT-G213"
+RELEASE_CANDIDATE_TASK_ID: Final = "FVT-066"
+RELEASE_CANDIDATE_MAX_STAGE: Final = "release_candidate"
+RELEASE_CANDIDATE_PROGRAM: Final = (
+    "formal-verification-tactician/toolchain-release-candidate"
+)
+
 DEFAULT_OBJECTIVES_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_tactician_readiness.objectives.md"
 )
@@ -45,6 +58,9 @@ DEFAULT_RECEIPT_RELATIVE: Final = Path(
 DEFAULT_ROLE_AWARE_RECEIPT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_role_aware_deployment_receipt.json"
 )
+DEFAULT_RELEASE_CANDIDATE_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_role_aware_release_candidate.json"
+)
 DEFAULT_BUILDER_RELATIVE: Final = Path(
     "tools/logic/build_formal_verification_tactician_receipt.py"
 )
@@ -53,6 +69,9 @@ DEFAULT_COMPLETION_TEST_RELATIVE: Final = Path(
 )
 DEFAULT_ROLE_AWARE_TEST_RELATIVE: Final = Path(
     "test/integration/test_formal_verification_role_aware_completion.py"
+)
+DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE: Final = Path(
+    "test/integration/test_formal_verification_role_aware_release_candidate.py"
 )
 DEFAULT_CERTIFIER_RELATIVE: Final = Path(
     "tools/logic/certify_formal_verification_toolchains.py"
@@ -89,7 +108,38 @@ ROLE_AWARE_ATTESTATION_PATHS: Final[frozenset[str]] = frozenset(
     {
         DEFAULT_RECEIPT_RELATIVE.as_posix(),
         DEFAULT_ROLE_AWARE_RECEIPT_RELATIVE.as_posix(),
+        DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix(),
         "docs/architecture/formal_verification_toolchain_certificate.json",
+    }
+)
+RELEASE_CANDIDATE_ATTESTATION_PATHS: Final[frozenset[str]] = frozenset(
+    {
+        DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix(),
+        "docs/architecture/formal_verification_toolchain_certificate.json",
+    }
+)
+
+# Evidence classes that cannot raise readiness past their declared ceiling.
+# When present as the sole evidence for a supported managed capability they
+# block candidate readiness rather than silently promote.
+NON_AUTHORITATIVE_EVIDENCE_CLASSES: Final[frozenset[str]] = frozenset(
+    {
+        "identity_plus_fixture_parser",
+        "hermetic_adapter_shim",
+        "hermetic_shadow_shim",
+        "proposal_only_semantics",
+        "fixture",
+        "canned",
+        "parser_only",
+        "identity_only",
+        "advisor",
+        "shadow",
+        "ambiguous",
+        "stale",
+        "incomplete",
+        "external_prover_installation_pending",
+        "quarantined_disagreement",
+        "unavailable",
     }
 )
 
@@ -2868,6 +2918,825 @@ def build_receipt(
     return receipt
 
 
+def build_release_candidate_source_attestation(repo_root: Path) -> dict[str, Any]:
+    """Bind an explicit certified source commit/tree for the release candidate.
+
+    The candidate path itself is excluded from the certified source tree so the
+    artifact never makes a self-referential current-tree claim. Merge and
+    deployment remain unclaimed until FVT-G214 post-merge attestation.
+    """
+
+    base = build_source_attestation(repo_root)
+    dirty = list(base.get("dirty_paths_at_certification") or [])
+    non_candidate_dirty = sorted(
+        set(dirty) - set(RELEASE_CANDIDATE_ATTESTATION_PATHS)
+    )
+    source_commit = base.get("certified_source_commit")
+    source_tree = base.get("certified_source_tree")
+    source_commit_bound = bool(
+        source_commit
+        and source_tree
+        and COMMIT_RE.fullmatch(str(source_commit))
+        and COMMIT_RE.fullmatch(str(source_tree))
+        and base.get("source_commit_bound")
+    )
+    return {
+        "model": "pre_merge_release_candidate_source/v1",
+        "certified_source_commit": source_commit,
+        "certified_source_tree": source_tree,
+        "datasets_gitlink": base.get("datasets_gitlink"),
+        "datasets_embedded_head": base.get("datasets_embedded_head"),
+        "source_commit_bound": source_commit_bound,
+        "source_candidate_clean": not dirty,
+        "dirty_paths_at_certification": dirty,
+        "non_candidate_dirty_paths": non_candidate_dirty,
+        "attestation_paths": sorted(RELEASE_CANDIDATE_ATTESTATION_PATHS),
+        "candidate_excluded_from_source_tree": True,
+        "self_referential_current_tree_claim_forbidden": True,
+        "merge_event_required_to_exceed_release_candidate": True,
+        "merge_event_present": False,
+        "deployment_attestation_present": False,
+        "claims_own_future_merge": False,
+        "claims_own_future_deployment": False,
+        "valid_for_release_candidate": bool(
+            source_commit_bound and (not dirty or not non_candidate_dirty)
+        ),
+        "tree_alignment": base.get("tree_alignment"),
+    }
+
+
+def _compact_tool_binding(
+    tool: Mapping[str, Any],
+    *,
+    checks_digest: str,
+    artifact_digests: Sequence[str],
+) -> dict[str, Any]:
+    """Project a tool row into digest-bound release-candidate form."""
+
+    return {
+        "tool_id": tool.get("tool_id"),
+        "evidence_class": tool.get("evidence_class"),
+        "production_certified": bool(tool.get("production_certified")),
+        "executable_artifact_class": tool.get("executable_artifact_class"),
+        "executable_sha256": tool.get("executable_sha256"),
+        "checks_digest_sha256": checks_digest,
+        "artifact_digests": list(artifact_digests),
+        "role": tool.get("role"),
+        "assurance_ceiling": tool.get("assurance_ceiling"),
+    }
+
+
+def _compact_semantic_lane(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep lane identity and digests without bulk raw receipts."""
+
+    integrity = _safe_dict(result.get("receipt_integrity"))
+    return {
+        "lane_id": result.get("lane_id"),
+        "status": result.get("status"),
+        "digest_sha256": result.get("digest_sha256"),
+        "block_reasons": list(_safe_list(result.get("block_reasons"))),
+        "receipt_integrity_valid": integrity.get("valid"),
+        "check_set_digests": {
+            str(tool_id): _safe_dict(per_tool).get("check_set_digest_sha256")
+            for tool_id, per_tool in _safe_dict(result.get("per_tool")).items()
+        },
+    }
+
+
+def _compact_specialized_aggregation(
+    specialized: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind specialized aggregation by digest, not full receipt bodies."""
+
+    return {
+        "schema_version": specialized.get("schema_version"),
+        "interface": specialized.get("interface"),
+        "goal_id": specialized.get("goal_id"),
+        "task_id": specialized.get("task_id"),
+        "enabled": specialized.get("enabled"),
+        "aggregation_digest_sha256": specialized.get("aggregation_digest_sha256")
+        or specialized.get("digest_sha256"),
+        "all_required_certifiers_represented": specialized.get(
+            "all_required_certifiers_represented"
+        ),
+        "missing_certifier_families": list(
+            _safe_list(specialized.get("missing_certifier_families"))
+        ),
+        "certifier_families_required": list(
+            _safe_list(specialized.get("certifier_families_required"))
+        ),
+        "certifier_families_represented": list(
+            _safe_list(specialized.get("certifier_families_represented"))
+        ),
+    }
+
+
+def _compact_managed_readiness(managed: Mapping[str, Any]) -> dict[str, Any]:
+    """Retain platform exceptions and blockers without bulk platform rows."""
+
+    return {
+        "host_platform": managed.get("host_platform"),
+        "global_supported_platforms": managed.get("global_supported_platforms"),
+        "host_globally_supported": managed.get("host_globally_supported"),
+        "supported_managed_capability_tool_ids": list(
+            _safe_list(managed.get("supported_managed_capability_tool_ids"))
+        ),
+        "supported_managed_dependency_tool_ids": list(
+            _safe_list(managed.get("supported_managed_dependency_tool_ids"))
+        ),
+        "platform_exceptions": [
+            dict(item)
+            for item in _safe_list(managed.get("platform_exceptions"))
+            if isinstance(item, Mapping)
+        ],
+        "capability_blockers": list(_safe_list(managed.get("capability_blockers"))),
+        "dependency_blockers": list(_safe_list(managed.get("dependency_blockers"))),
+        "all_blockers": [
+            {
+                "tool_id": item.get("tool_id"),
+                "reasons": list(_safe_list(item.get("reasons"))),
+            }
+            for item in _safe_list(managed.get("all_blockers"))
+            if isinstance(item, Mapping)
+        ],
+        "ready": bool(managed.get("ready")),
+        "status": managed.get("status"),
+        # Compact platform_rows to identity + support flags only.
+        "platform_rows": [
+            {
+                "tool_id": row.get("tool_id"),
+                "managed": bool(row.get("managed")),
+                "supported": bool(row.get("supported")),
+                "installed": bool(row.get("installed")),
+                "ready": bool(row.get("ready")),
+            }
+            for row in _safe_list(managed.get("platform_rows"))
+            if isinstance(row, Mapping)
+        ],
+    }
+
+
+def build_role_aware_release_candidate(
+    *,
+    repo_root: Path,
+    observed_at: str | None = None,
+    role_aware_certificate: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build fail-closed RoleAwareFormalVerificationReleaseCandidate@1.
+
+    Fans in the complete supported matrix into a pre-merge release candidate.
+    Success booleans, blockers, platform exceptions, offline policy, quarantine
+    state, and public-surface bindings are derived from bound evidence. Bulk
+    certificate bodies are bound by digest only so the checked-in artifact
+    stays under proposal size budgets. The candidate never claims merge or
+    deployment and cannot exceed ``release_candidate`` before a merge event.
+    """
+
+    repo_root = repo_root.resolve()
+    timestamp = observed_at or datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+    certifier = _load_certifier_module(repo_root)
+    certificate = (
+        dict(role_aware_certificate)
+        if role_aware_certificate is not None
+        else certifier.build_certificate(repo_root=repo_root, role_aware=True)
+    )
+
+    promotion = _safe_dict(certificate.get("promotion"))
+    role_aware = _safe_dict(certificate.get("role_aware"))
+    authority_roles = _safe_dict(certificate.get("authority_roles"))
+    managed = _safe_dict(certificate.get("managed_deployment_readiness"))
+    certification_policy = _safe_dict(certificate.get("certification_policy"))
+    public_certificate_policy = _safe_dict(
+        certificate.get("public_evidence_policy")
+    )
+    tools = {
+        str(tool.get("tool_id") or ""): tool
+        for tool in _safe_list(certificate.get("tools"))
+        if isinstance(tool, Mapping) and str(tool.get("tool_id") or "")
+    }
+
+    certificate_digest_valid = bool(
+        certificate.get("certificate_digest_sha256")
+        and certificate.get("certificate_digest_sha256")
+        == certifier.content_digest(
+            {
+                key: value
+                for key, value in certificate.items()
+                if key != "certificate_digest_sha256"
+            }
+        )
+    )
+
+    tool_check_digests: dict[str, str] = {}
+    tool_artifact_digests: dict[str, list[str]] = {}
+    for tool_id, tool in tools.items():
+        checks = _safe_list(tool.get("checks"))
+        tool_check_digests[tool_id] = certifier.content_digest(checks)
+        artifact_ids: list[str] = []
+        for artifact in _safe_list(tool.get("artifact_identities")):
+            if isinstance(artifact, Mapping):
+                digest = str(
+                    artifact.get("sha256")
+                    or artifact.get("digest_sha256")
+                    or artifact.get("content_digest")
+                    or ""
+                )
+                if digest:
+                    artifact_ids.append(digest)
+            elif isinstance(artifact, str) and artifact:
+                artifact_ids.append(artifact)
+        executable = str(tool.get("executable_sha256") or "")
+        if executable:
+            artifact_ids.append(executable)
+        tool_artifact_digests[tool_id] = sorted(set(artifact_ids))
+
+    semantic_results = [
+        result
+        for result in _safe_list(certificate.get("semantic_lane_results"))
+        if isinstance(result, Mapping)
+    ]
+    semantic_receipts_full_and_bound = bool(semantic_results) or not bool(
+        role_aware.get("enabled")
+    )
+    semantic_binding_failures: list[str] = []
+    semantic_receipt_digests: dict[str, str] = {}
+    for result in semantic_results:
+        lane_id = str(result.get("lane_id") or "unknown")
+        raw_receipt = result.get("receipt")
+        if not isinstance(raw_receipt, Mapping):
+            if result.get("status") == "ran":
+                semantic_receipts_full_and_bound = False
+                semantic_binding_failures.append(f"{lane_id}:raw_receipt_missing")
+            continue
+        lane_digest = str(result.get("digest_sha256") or "")
+        semantic_receipt_digests[lane_id] = lane_digest
+        if lane_digest != certifier.content_digest(raw_receipt):
+            semantic_receipts_full_and_bound = False
+            semantic_binding_failures.append(f"{lane_id}:receipt_digest_mismatch")
+        receipt_integrity = _safe_dict(result.get("receipt_integrity"))
+        if (
+            result.get("status") == "ran"
+            and receipt_integrity.get("valid") is not True
+        ):
+            semantic_receipts_full_and_bound = False
+            semantic_binding_failures.append(
+                f"{lane_id}:declared_receipt_integrity_invalid"
+            )
+        for tool_id, per_tool in _safe_dict(result.get("per_tool")).items():
+            projected_checks = _safe_list(_safe_dict(per_tool).get("checks"))
+            projected_digest = certifier.content_digest(projected_checks)
+            if projected_digest != _safe_dict(per_tool).get(
+                "check_set_digest_sha256"
+            ):
+                semantic_receipts_full_and_bound = False
+                semantic_binding_failures.append(
+                    f"{lane_id}:{tool_id}:check_set_digest_mismatch"
+                )
+
+    digest_material = {
+        "certificate_digest_sha256": certificate.get("certificate_digest_sha256"),
+        "tool_check_digests": tool_check_digests,
+        "tool_artifact_digests": tool_artifact_digests,
+        "semantic_receipt_digests": semantic_receipt_digests,
+        "specialized_aggregation_digest": _safe_dict(
+            certificate.get("specialized_receipt_aggregation")
+        ).get("aggregation_digest_sha256")
+        or _safe_dict(certificate.get("specialized_receipt_aggregation")).get(
+            "digest_sha256"
+        ),
+        "authority_roles_policy_digest": authority_roles.get(
+            "policy_digest_sha256"
+        ),
+        "lock_digest": _safe_dict(certificate.get("lock")).get("digest_sha256"),
+        "quarantine_digest": certifier.content_digest(
+            _safe_list(certificate.get("disagreement_quarantines"))
+        ),
+    }
+
+    elevated = sorted(set(role_aware.get("elevated_tool_ids") or []))
+    missing_required = [
+        tid
+        for tid in REQUIRED_SEMANTIC_ELEVATIONS
+        if not tools.get(tid, {}).get("production_certified")
+    ]
+
+    source = build_release_candidate_source_attestation(repo_root)
+
+    platform_exceptions = [
+        dict(item)
+        for item in _safe_list(managed.get("platform_exceptions"))
+        if isinstance(item, Mapping)
+    ]
+    platform_exceptions_valid = all(
+        item.get("narrow_scope") is True
+        and item.get("complete") is False
+        and item.get("production_certified") is False
+        and item.get("classification") == "unsupported_here"
+        and bool(
+            set(str(item.get("basis") or "").split("+"))
+            <= {
+                "deployment_contract.supported_platforms",
+                "tool.pins.platform",
+            }
+        )
+        for item in platform_exceptions
+    )
+    exception_tool_ids = {
+        str(item.get("tool_id") or "") for item in platform_exceptions
+    }
+    supported_managed_ids = set(
+        str(tid)
+        for tid in _safe_list(managed.get("supported_managed_capability_tool_ids"))
+    ) | set(
+        str(tid)
+        for tid in _safe_list(managed.get("supported_managed_dependency_tool_ids"))
+    )
+    exceptions_disjoint_from_supported = exception_tool_ids.isdisjoint(
+        supported_managed_ids
+    )
+
+    non_authoritative_promotions: list[str] = []
+    for tool_id, tool in tools.items():
+        evidence_class = str(tool.get("evidence_class") or "")
+        artifact_class = str(tool.get("executable_artifact_class") or "")
+        if tool.get("production_certified") and (
+            evidence_class in NON_AUTHORITATIVE_EVIDENCE_CLASSES
+            or artifact_class == "generated_hermetic_shim"
+            or evidence_class
+            in {
+                "identity_plus_fixture_parser",
+                "hermetic_adapter_shim",
+                "hermetic_shadow_shim",
+                "proposal_only_semantics",
+            }
+        ):
+            non_authoritative_promotions.append(tool_id)
+    synthetic_evidence_cannot_certify = not non_authoritative_promotions
+
+    role_tools = _safe_dict(authority_roles.get("tools"))
+    authority_ceiling_respected = all(
+        not (
+            tools.get(tool_id, {}).get("production_certified")
+            and not _safe_dict(meta).get("can_satisfy_certified_authority")
+        )
+        for tool_id, meta in role_tools.items()
+    )
+
+    offline_policy_satisfied = bool(
+        certification_policy.get("offline_policy_satisfied")
+    )
+    public_evidence_safe = bool(public_certificate_policy.get("satisfied"))
+    quarantines = _safe_list(certificate.get("disagreement_quarantines"))
+    quarantines_bound = certificate_digest_valid and isinstance(
+        certificate.get("disagreement_quarantines"), list
+    )
+
+    host_support = {
+        "host_platform": managed.get("host_platform"),
+        "global_supported_platforms": managed.get("global_supported_platforms"),
+        "host_globally_supported": managed.get("host_globally_supported"),
+        "derived_from": "managed_deployment_readiness",
+    }
+
+    roles_summary = {
+        "present": bool(authority_roles.get("present")),
+        "interface": authority_roles.get("interface"),
+        "role_interface": authority_roles.get("role_interface"),
+        "policy_digest_sha256": authority_roles.get("policy_digest_sha256"),
+        "boundary": authority_roles.get("boundary"),
+        "tool_count": len(role_tools),
+    }
+
+    ceilings = {
+        "max_stage": RELEASE_CANDIDATE_MAX_STAGE,
+        "merge_event_present": False,
+        "deployment_claimed": False,
+        "post_merge_attestation_claimed": False,
+        "cannot_exceed_release_candidate_without_merge_event": True,
+        "authority_ceiling_respected": authority_ceiling_respected,
+        "non_authoritative_promotions": sorted(non_authoritative_promotions),
+    }
+
+    evidence_classes = sorted(
+        {str(tool.get("evidence_class") or "unknown") for tool in tools.values()}
+    )
+
+    public_surfaces = {
+        "certificate_public_evidence_policy": {
+            "satisfied": public_certificate_policy.get("satisfied"),
+            "host_private_paths_forbidden": public_certificate_policy.get(
+                "host_private_paths_forbidden"
+            ),
+            "raw_process_output_forbidden": public_certificate_policy.get(
+                "raw_process_output_forbidden"
+            ),
+            "raw_secret_or_witness_forbidden": public_certificate_policy.get(
+                "raw_secret_or_witness_forbidden"
+            ),
+        },
+        "host_private_paths_forbidden": bool(
+            public_certificate_policy.get("host_private_paths_forbidden")
+        ),
+        "raw_process_output_forbidden": bool(
+            public_certificate_policy.get("raw_process_output_forbidden")
+        ),
+        "raw_secret_or_witness_forbidden": bool(
+            public_certificate_policy.get("raw_secret_or_witness_forbidden")
+        ),
+        "bound": public_evidence_safe,
+    }
+
+    artifacts = {
+        "toolchain_certificate": {
+            "path": TOOLCHAIN_CERT_RELATIVE.as_posix(),
+            "present": (repo_root / TOOLCHAIN_CERT_RELATIVE).is_file(),
+            "content_identity": sha256_file(repo_root / TOOLCHAIN_CERT_RELATIVE),
+            "role_aware_digest": certificate.get("certificate_digest_sha256"),
+        },
+        "release_candidate": {
+            "path": DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix(),
+            "present_before_generation": (
+                repo_root / DEFAULT_RELEASE_CANDIDATE_RELATIVE
+            ).is_file(),
+            "content_identity_before_generation": sha256_file(
+                repo_root / DEFAULT_RELEASE_CANDIDATE_RELATIVE
+            ),
+            "publication_identity": "self:candidate_identity",
+        },
+        "release_candidate_test": {
+            "path": DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE.as_posix(),
+            "present": (repo_root / DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE).is_file(),
+            "content_identity": sha256_file(
+                repo_root / DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE
+            ),
+        },
+        "certifier": {
+            "path": DEFAULT_CERTIFIER_RELATIVE.as_posix(),
+            "present": (repo_root / DEFAULT_CERTIFIER_RELATIVE).is_file(),
+            "content_identity": sha256_file(
+                repo_root / DEFAULT_CERTIFIER_RELATIVE
+            ),
+        },
+        "receipt_builder": {
+            "path": DEFAULT_BUILDER_RELATIVE.as_posix(),
+            "present": (repo_root / DEFAULT_BUILDER_RELATIVE).is_file(),
+            "content_identity": sha256_file(repo_root / DEFAULT_BUILDER_RELATIVE),
+        },
+    }
+    artifacts_present = all(
+        bool(item.get("present"))
+        for key, item in artifacts.items()
+        if key != "release_candidate"
+    )
+
+    specialized = _safe_dict(certificate.get("specialized_receipt_aggregation"))
+    specialized_bound = bool(
+        specialized.get("enabled") is True
+        or specialized.get("interface")
+        == "FormalVerificationSpecializedReceiptAggregation@1"
+    )
+
+    acceptance = {
+        "role_aware_certificate_bound": certificate_digest_valid,
+        "certificate_digest_participates_in_identity": certificate_digest_valid,
+        "raw_receipt_check_case_binding_digests_bound": bool(tool_check_digests)
+        and certificate_digest_valid,
+        "executable_artifact_dependency_digests_bound": certificate_digest_valid,
+        "specialized_receipt_aggregation_bound": specialized_bound
+        or not bool(role_aware.get("enabled")),
+        "certified_source_bound": bool(source.get("source_commit_bound")),
+        "source_valid_for_release_candidate": bool(
+            source.get("valid_for_release_candidate")
+        ),
+        "self_referential_current_tree_claim_absent": bool(
+            source.get("self_referential_current_tree_claim_forbidden")
+        )
+        and bool(source.get("candidate_excluded_from_source_tree")),
+        "host_support_derived": bool(host_support.get("host_platform")),
+        "roles_bound": bool(
+            roles_summary.get("present")
+            and roles_summary.get("policy_digest_sha256")
+        ),
+        "ceilings_derived": True,
+        "evidence_classes_derived": bool(evidence_classes),
+        "platform_exceptions_derived_and_narrow": platform_exceptions_valid,
+        "unsupported_only_as_narrow_exceptions": (
+            platform_exceptions_valid and exceptions_disjoint_from_supported
+        ),
+        "blockers_derived_not_concealed": True,
+        "offline_policy_satisfied": offline_policy_satisfied,
+        "quarantine_state_bound": quarantines_bound,
+        "public_surfaces_bound": public_evidence_safe,
+        "authority_ceiling_respected": authority_ceiling_respected,
+        "synthetic_evidence_cannot_certify_production": (
+            synthetic_evidence_cannot_certify
+        ),
+        "no_install_during_offline_certification": offline_policy_satisfied,
+        "semantic_receipts_full_and_bound": semantic_receipts_full_and_bound,
+        "required_semantic_elevations_present": not missing_required,
+        "supported_managed_capabilities_ready": bool(managed.get("ready")),
+        "supported_managed_capability_blockers": _safe_list(
+            managed.get("capability_blockers")
+        ),
+        "supported_managed_dependency_blockers": _safe_list(
+            managed.get("dependency_blockers")
+        ),
+        "merge_not_claimed": True,
+        "deployment_not_claimed": True,
+        "stage_at_most_release_candidate": True,
+        "artifacts_present": artifacts_present,
+    }
+
+    readiness_requirements = {
+        key: bool(acceptance[key])
+        for key in (
+            "role_aware_certificate_bound",
+            "raw_receipt_check_case_binding_digests_bound",
+            "executable_artifact_dependency_digests_bound",
+            "certified_source_bound",
+            "source_valid_for_release_candidate",
+            "self_referential_current_tree_claim_absent",
+            "host_support_derived",
+            "roles_bound",
+            "platform_exceptions_derived_and_narrow",
+            "unsupported_only_as_narrow_exceptions",
+            "offline_policy_satisfied",
+            "quarantine_state_bound",
+            "public_surfaces_bound",
+            "authority_ceiling_respected",
+            "synthetic_evidence_cannot_certify_production",
+            "no_install_during_offline_certification",
+            "semantic_receipts_full_and_bound",
+            "supported_managed_capabilities_ready",
+            "merge_not_claimed",
+            "deployment_not_claimed",
+            "stage_at_most_release_candidate",
+            "artifacts_present",
+        )
+    }
+
+    candidate_ready = all(readiness_requirements.values())
+    readiness_stage = (
+        RELEASE_CANDIDATE_MAX_STAGE if candidate_ready else "blocked"
+    )
+    if readiness_stage not in {"blocked", RELEASE_CANDIDATE_MAX_STAGE}:
+        readiness_stage = "blocked"
+    status = (
+        "role_aware_release_candidate_ready"
+        if candidate_ready
+        else "role_aware_release_candidate_blocked"
+    )
+
+    blockers = sorted(
+        [
+            key
+            for key, satisfied in readiness_requirements.items()
+            if not satisfied
+        ]
+        + semantic_binding_failures
+        + [
+            f"managed:{item.get('tool_id')}:{reason}"
+            for item in _safe_list(managed.get("all_blockers"))
+            if isinstance(item, Mapping)
+            for reason in _safe_list(item.get("reasons"))
+        ]
+        + [
+            f"non_authoritative_promotion:{tool_id}"
+            for tool_id in non_authoritative_promotions
+        ]
+        + [
+            f"required_elevation_missing:{tool_id}"
+            for tool_id in missing_required
+        ]
+    )
+
+    # Compact blockers in acceptance: keep counts, not full nested dumps.
+    acceptance["supported_managed_capability_blockers"] = list(
+        _safe_list(managed.get("capability_blockers"))
+    )
+    acceptance["supported_managed_dependency_blockers"] = list(
+        _safe_list(managed.get("dependency_blockers"))
+    )
+
+    compact_role_aware = {
+        "enabled": bool(role_aware.get("enabled")),
+        "goal_id": role_aware.get("goal_id"),
+        "task_id": role_aware.get("task_id"),
+        "interface": role_aware.get("interface"),
+        "elevated_tool_ids": elevated,
+        "required_baseline_elevations": list(
+            role_aware.get("required_baseline_elevations")
+            or list(REQUIRED_SEMANTIC_ELEVATIONS)
+        ),
+        "elevation_count": len(_safe_list(role_aware.get("elevations"))),
+        "demotion_count": len(_safe_list(role_aware.get("demotions"))),
+        "release_candidate": _safe_dict(role_aware.get("release_candidate")),
+    }
+
+    candidate: dict[str, Any] = {
+        "schema_version": RELEASE_CANDIDATE_SCHEMA_VERSION,
+        "interface": RELEASE_CANDIDATE_INTERFACE,
+        "program_interface": PROGRAM_INTERFACE,
+        "program_goal_id": PROGRAM_GOAL_ID,
+        "goal_id": RELEASE_CANDIDATE_GOAL_ID,
+        "task_id": RELEASE_CANDIDATE_TASK_ID,
+        "program": RELEASE_CANDIDATE_PROGRAM,
+        "observed_at": timestamp,
+        "binding_mode": "pre_merge_role_aware_release_candidate",
+        "status": status,
+        "readiness_stage": readiness_stage,
+        "description": (
+            "Fail-closed role-aware release candidate. Fans in host support, "
+            "roles, ceilings, evidence classes, platform exceptions, blockers, "
+            "offline policy, quarantine state, and public surfaces from bound "
+            "matrix evidence without claiming merge or deployment. Maximum "
+            "stage before a merge event exists is release_candidate. Bulk "
+            "certificate bodies are bound by digest only."
+        ),
+        "source": source,
+        "host_support": host_support,
+        "roles": roles_summary,
+        "ceilings": ceilings,
+        "evidence_classes": evidence_classes,
+        "offline_policy": {
+            "satisfied": offline_policy_satisfied,
+            "forbid_install": bool(certification_policy.get("forbid_install")),
+            "forbid_download": bool(certification_policy.get("forbid_download")),
+            "forbid_network": bool(certification_policy.get("forbid_network")),
+            "lock_offline_verification_policy": certification_policy.get(
+                "lock_offline_verification_policy"
+            ),
+            "offline_observation_count": len(
+                _safe_list(certification_policy.get("offline_observations"))
+            ),
+        },
+        "quarantine_state": {
+            "bound": quarantines_bound,
+            "disagreement_quarantines": quarantines,
+            "count": len(quarantines),
+        },
+        "public_surfaces": public_surfaces,
+        "acceptance": acceptance,
+        "readiness_requirements": readiness_requirements,
+        "blockers": blockers,
+        "digest_material": digest_material,
+        "role_aware_certificate": {
+            "interface": certificate.get("interface"),
+            "schema_version": certificate.get("schema_version"),
+            "goal_id": certificate.get("goal_id"),
+            "task_id": certificate.get("task_id"),
+            "binding_mode": certificate.get("binding_mode"),
+            "certificate_digest_sha256": certificate.get(
+                "certificate_digest_sha256"
+            ),
+            "role_aware": compact_role_aware,
+            "promotion": {
+                "production_certified_tool_ids": list(
+                    promotion.get("production_certified_tool_ids") or []
+                ),
+                "merely_usable_tool_ids": list(
+                    promotion.get("merely_usable_tool_ids") or []
+                ),
+                "unavailable_tool_ids": list(
+                    promotion.get("unavailable_tool_ids") or []
+                ),
+            },
+            "property_lanes": certificate.get("property_lanes"),
+            "disagreement_quarantines": quarantines,
+            "authority_roles": {
+                key: authority_roles.get(key)
+                for key in (
+                    "present",
+                    "interface",
+                    "role_interface",
+                    "boundary",
+                    "policy_digest_sha256",
+                )
+            },
+            "semantic_lane_results": [
+                _compact_semantic_lane(result) for result in semantic_results
+            ],
+            "specialized_receipt_aggregation": _compact_specialized_aggregation(
+                specialized
+            ),
+            "managed_deployment_readiness": _compact_managed_readiness(managed),
+            "tools": [
+                _compact_tool_binding(
+                    tools[tool_id],
+                    checks_digest=tool_check_digests[tool_id],
+                    artifact_digests=tool_artifact_digests[tool_id],
+                )
+                for tool_id in sorted(tools)
+            ],
+            "certification_policy": {
+                "offline_policy_satisfied": certification_policy.get(
+                    "offline_policy_satisfied"
+                ),
+                "forbid_install": certification_policy.get("forbid_install"),
+                "forbid_download": certification_policy.get("forbid_download"),
+                "forbid_network": certification_policy.get("forbid_network"),
+            },
+            "public_evidence_policy": {
+                "satisfied": public_certificate_policy.get("satisfied"),
+            },
+        },
+        "elevations": {
+            "required": list(REQUIRED_SEMANTIC_ELEVATIONS),
+            "elevated_tool_ids": elevated,
+            "missing_required": missing_required,
+            "merely_usable_tool_ids": list(
+                promotion.get("merely_usable_tool_ids") or []
+            ),
+            "production_certified_tool_ids": list(
+                promotion.get("production_certified_tool_ids") or []
+            ),
+            # Compact elevation details: tool_id + elevated flag only.
+            "details": [
+                {
+                    "tool_id": item.get("tool_id"),
+                    "elevated": bool(item.get("elevated")),
+                    "evidence_class": item.get("evidence_class"),
+                }
+                for item in _safe_list(role_aware.get("elevations"))
+                if isinstance(item, Mapping)
+            ],
+        },
+        "platform_exceptions": platform_exceptions,
+        "artifacts": artifacts,
+        "claims": {
+            "merge": False,
+            "deployment": False,
+            "post_merge_attestation": False,
+            "self_referential_current_tree": False,
+            "max_stage": RELEASE_CANDIDATE_MAX_STAGE,
+            "merge_event_present": False,
+        },
+        "disclosures": {
+            "unavailable_tools": list(promotion.get("unavailable_tool_ids") or []),
+            "merely_usable_tools": list(
+                promotion.get("merely_usable_tool_ids") or []
+            ),
+            "missing_required_elevations": missing_required,
+            "supported_managed_capability_blockers": list(
+                _safe_list(managed.get("capability_blockers"))
+            ),
+            "supported_managed_dependency_blockers": list(
+                _safe_list(managed.get("dependency_blockers"))
+            ),
+            "assurance_ceilings": {
+                "path_presence_is_not_usability": True,
+                "source_presence_is_not_usability": True,
+                "fixture_is_not_production_certified": True,
+                "synthetic_evidence_cannot_certify_production": True,
+                "advisor_support_shadow_cannot_certify": True,
+                "unavailable_cannot_count_as_complete": True,
+                "release_candidate_is_not_deployment_certificate": True,
+                "release_candidate_cannot_claim_own_merge": True,
+            },
+            "remaining_bounds": [
+                "Maximum stage before a merge event exists is release_candidate.",
+                "Post-merge deployment attestation is FVT-G214 / "
+                "RoleAwareFormalVerificationRelease@1 and is never claimed here.",
+                "Unsupported host platforms yield narrow exceptions; missing "
+                "supported installations remain blockers.",
+                "Non-authoritative evidence classes cannot raise production "
+                "or deployment ceilings.",
+            ],
+        },
+        "notes": [
+            "RoleAwareFormalVerificationReleaseCandidate@1 owns central "
+            "candidate fan-in for FVT-G213 without installing during offline "
+            "certification or concealing blockers.",
+            "Every raw receipt, check, case, binding, executable, artifact, "
+            "and dependency digest participates in the certificate digest "
+            "and therefore in this candidate identity.",
+            "The checked-in candidate binds an explicit certified source "
+            "commit/tree and excludes its own path from that tree identity.",
+            "Bulk formal artifacts are bound by digest; rebuild at load time "
+            "from the live certificate rather than embedding full dumps.",
+        ],
+    }
+    candidate = certifier.public_evidence_projection(
+        candidate, repo_root=repo_root
+    )
+    public_evidence_policy = certifier.public_evidence_audit(candidate)
+    candidate["public_evidence_policy"] = public_evidence_policy
+    if not public_evidence_policy["satisfied"]:
+        candidate["acceptance"]["public_surfaces_bound"] = False
+        candidate["readiness_requirements"]["public_surfaces_bound"] = False
+        candidate["status"] = "role_aware_release_candidate_blocked"
+        candidate["readiness_stage"] = "blocked"
+        blockers_list = candidate["blockers"]
+        if "public_surfaces_bound" not in blockers_list:
+            blockers_list.append("public_surfaces_bound")
+        candidate["public_surfaces"]["bound"] = False
+    candidate["candidate_identity"] = content_digest(candidate)
+    return candidate
+
+
 def write_receipt(receipt: Mapping[str, Any], output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(receipt, indent=2, ensure_ascii=False) + "\n"
@@ -2881,8 +3750,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Build the formal verification tactician completion receipt "
-            f"({INTERFACE}) and optional role-aware deployment receipt "
-            f"({ROLE_AWARE_INTERFACE})."
+            f"({INTERFACE}), optional role-aware deployment receipt "
+            f"({ROLE_AWARE_INTERFACE}), and optional role-aware release "
+            f"candidate ({RELEASE_CANDIDATE_INTERFACE})."
         )
     )
     parser.add_argument(
@@ -2912,6 +3782,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=(
             "Build and write RoleAwareFormalVerificationRelease@1 after the "
             "completion receipt (FVT-G200 reissue)"
+        ),
+    )
+    parser.add_argument(
+        "--release-candidate-output",
+        type=Path,
+        default=None,
+        help=(
+            "Also write the role-aware release candidate "
+            f"(default when --release-candidate: "
+            f"{DEFAULT_RELEASE_CANDIDATE_RELATIVE})"
+        ),
+    )
+    parser.add_argument(
+        "--release-candidate",
+        action="store_true",
+        help=(
+            "Build and write RoleAwareFormalVerificationReleaseCandidate@1 "
+            "from the complete role-aware matrix (FVT-G213)"
         ),
     )
     parser.add_argument(
@@ -2949,9 +3837,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     root = (args.repo_root or repo_root_from()).resolve()
+    want_release_candidate = bool(
+        args.release_candidate or args.release_candidate_output is not None
+    )
+    want_role_aware = bool(args.role_aware or args.role_aware_output is not None)
     receipt = build_receipt(repo_root=root, observed_at=args.observed_at)
 
-    if args.stdout and not args.role_aware:
+    if args.stdout and not want_role_aware and not want_release_candidate:
         json.dump(receipt, sys.stdout, indent=2, ensure_ascii=False)
         sys.stdout.write("\n")
     else:
@@ -2965,29 +3857,38 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"wrote {output}", file=sys.stderr)
 
     role_aware_receipt: dict[str, Any] | None = None
-    if args.role_aware or args.role_aware_output is not None:
+    release_candidate: dict[str, Any] | None = None
+    role_certificate: dict[str, Any] | None = None
+    if want_role_aware or want_release_candidate:
         certifier = _load_certifier_module(root)
         role_certificate = certifier.build_certificate(
             repo_root=root,
             observed_at=args.observed_at or receipt.get("observed_at"),
             role_aware=True,
         )
-        certifier.write_certificate(
-            role_certificate,
-            root / TOOLCHAIN_CERT_RELATIVE,
-        )
-        # Rebuild completion after the role-aware certificate is durable so
-        # its artifact binding cannot silently refer to the predecessor cert.
-        receipt = build_receipt(
-            repo_root=root,
-            observed_at=args.observed_at or receipt.get("observed_at"),
-        )
-        completion_output = (
-            args.output.resolve()
-            if args.output
-            else (root / DEFAULT_RECEIPT_RELATIVE)
-        )
-        write_receipt(receipt, completion_output)
+        # Only rewrite the durable certificate when reissuing role-aware
+        # deployment attestation. Release-candidate mode reads live evidence
+        # without mutating the checked-in certificate artifact.
+        if want_role_aware:
+            certifier.write_certificate(
+                role_certificate,
+                root / TOOLCHAIN_CERT_RELATIVE,
+            )
+            # Rebuild completion after the role-aware certificate is durable so
+            # its artifact binding cannot silently refer to the predecessor cert.
+            receipt = build_receipt(
+                repo_root=root,
+                observed_at=args.observed_at or receipt.get("observed_at"),
+            )
+            completion_output = (
+                args.output.resolve()
+                if args.output
+                else (root / DEFAULT_RECEIPT_RELATIVE)
+            )
+            write_receipt(receipt, completion_output)
+
+    if want_role_aware:
+        assert role_certificate is not None
         supervisor_snapshot = None
         if args.supervisor_task_state and args.supervisor_event_log:
             supervisor_snapshot = load_supervisor_evidence_snapshot(
@@ -3001,7 +3902,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             role_aware_certificate=role_certificate,
             supervisor_evidence=supervisor_snapshot,
         )
-        if args.stdout and args.role_aware and args.output is None:
+        if args.stdout and args.role_aware and args.output is None and not (
+            args.release_candidate and args.release_candidate_output is None
+        ):
             json.dump(role_aware_receipt, sys.stdout, indent=2, ensure_ascii=False)
             sys.stdout.write("\n")
         else:
@@ -3013,6 +3916,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             write_receipt(role_aware_receipt, role_output)
             if not args.quiet:
                 print(f"wrote {role_output}", file=sys.stderr)
+
+    if want_release_candidate:
+        assert role_certificate is not None
+        release_candidate = build_role_aware_release_candidate(
+            repo_root=root,
+            observed_at=args.observed_at or receipt.get("observed_at"),
+            role_aware_certificate=role_certificate,
+        )
+        if (
+            args.stdout
+            and args.release_candidate
+            and args.output is None
+            and args.release_candidate_output is None
+        ):
+            json.dump(release_candidate, sys.stdout, indent=2, ensure_ascii=False)
+            sys.stdout.write("\n")
+        else:
+            candidate_output = (
+                args.release_candidate_output.resolve()
+                if args.release_candidate_output
+                else (root / DEFAULT_RELEASE_CANDIDATE_RELATIVE)
+            )
+            write_receipt(release_candidate, candidate_output)
+            if not args.quiet:
+                print(f"wrote {candidate_output}", file=sys.stderr)
 
     if not args.quiet:
         implementation = receipt["implementation"]
@@ -3043,6 +3971,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(
                 f"role_aware_identity={role_aware_receipt['receipt_identity']}",
+                file=sys.stderr,
+            )
+        if release_candidate is not None:
+            print(
+                f"release_candidate_status={release_candidate['status']} "
+                f"stage={release_candidate['readiness_stage']} "
+                f"blockers={len(release_candidate['blockers'])}",
+                file=sys.stderr,
+            )
+            print(
+                f"release_candidate_identity="
+                f"{release_candidate['candidate_identity']}",
                 file=sys.stderr,
             )
 
