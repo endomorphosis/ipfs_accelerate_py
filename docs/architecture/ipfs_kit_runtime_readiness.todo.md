@@ -86,7 +86,7 @@ or write authority.
 
 ## KITA-002 Define canonical operation, result, error, state, and evidence contracts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
