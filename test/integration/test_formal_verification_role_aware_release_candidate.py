@@ -491,6 +491,10 @@ def test_certified_source_commit_and_tree_are_bound(
 def test_checked_in_candidate_is_content_addressed_and_not_false_ready(
     builder,
 ) -> None:
+    # The candidate is a digest-bound review artifact, not a multi-megabyte
+    # duplicate of the authoritative certificate. Keep it within the
+    # supervisor's single-file proposal budget.
+    assert CANDIDATE_PATH.stat().st_size < 1_000_000
     checked = json.loads(CANDIDATE_PATH.read_text(encoding="utf-8"))
     assert checked["interface"] == INTERFACE
     assert checked["goal_id"] == GOAL_ID
@@ -507,6 +511,17 @@ def test_checked_in_candidate_is_content_addressed_and_not_false_ready(
     else:
         assert checked["status"] == "role_aware_release_candidate_blocked"
         assert checked["blockers"]
+    certificate_projection = checked["role_aware_certificate"]
+    assert certificate_projection["projection_model"] == (
+        "digest_bound_compact_projection/v1"
+    )
+    assert certificate_projection["raw_certificate_embedded"] is False
+    assert "digest_components" not in certificate_projection[
+        "specialized_receipt_aggregation"
+    ]
+    assert "content_identity_before_generation" not in checked["artifacts"][
+        "release_candidate"
+    ]
 
 
 def test_required_elevations_are_disclosed(

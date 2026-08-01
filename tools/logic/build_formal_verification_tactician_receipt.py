@@ -2824,6 +2824,9 @@ def build_role_aware_release_candidate(
     public_certificate_policy = _safe_dict(
         certificate.get("public_evidence_policy")
     )
+    recomputed_public_certificate_policy = certifier.public_evidence_audit(
+        certificate
+    )
     tools = {
         str(tool.get("tool_id") or ""): tool
         for tool in _safe_list(certificate.get("tools"))
@@ -3008,7 +3011,10 @@ def build_role_aware_release_candidate(
     offline_policy_satisfied = bool(
         certification_policy.get("offline_policy_satisfied")
     )
-    public_evidence_safe = bool(public_certificate_policy.get("satisfied"))
+    public_evidence_safe = bool(
+        public_certificate_policy.get("satisfied")
+        and recomputed_public_certificate_policy.get("satisfied")
+    )
     quarantines = _safe_list(certificate.get("disagreement_quarantines"))
     quarantines_bound = certificate_digest_valid and isinstance(
         certificate.get("disagreement_quarantines"), list
@@ -3070,12 +3076,7 @@ def build_role_aware_release_candidate(
         },
         "release_candidate": {
             "path": DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix(),
-            "present_before_generation": (
-                repo_root / DEFAULT_RELEASE_CANDIDATE_RELATIVE
-            ).is_file(),
-            "content_identity_before_generation": sha256_file(
-                repo_root / DEFAULT_RELEASE_CANDIDATE_RELATIVE
-            ),
+            "excluded_from_source_identity": True,
             "publication_identity": "self:candidate_identity",
         },
         "release_candidate_test": {
@@ -3233,6 +3234,89 @@ def build_role_aware_release_candidate(
         ]
     )
 
+    # The release candidate is a compact, content-addressed index over the
+    # authoritative certificate, not a second copy of that certificate.  The
+    # certificate digest commits to every raw receipt/check/case/binding and
+    # the explicit projections below make the evidence needed by a release
+    # reviewer directly inspectable.  Keeping raw receipts out of this
+    # pre-merge artifact also keeps the checked-in proposal reviewable and
+    # below the supervisor's admission budget.
+    semantic_lane_bindings = []
+    for result in semantic_results:
+        per_tool_bindings = {
+            str(tool_id): {
+                "check_set_digest_sha256": _safe_dict(per_tool).get(
+                    "check_set_digest_sha256"
+                ),
+                "check_count": len(
+                    _safe_list(_safe_dict(per_tool).get("checks"))
+                ),
+            }
+            for tool_id, per_tool in sorted(
+                _safe_dict(result.get("per_tool")).items()
+            )
+        }
+        semantic_lane_bindings.append(
+            {
+                "lane_id": result.get("lane_id"),
+                "status": result.get("status"),
+                "digest_sha256": result.get("digest_sha256"),
+                "certified": result.get("certified"),
+                "block_reasons": _safe_list(result.get("block_reasons")),
+                "tool_ids": _safe_list(result.get("tool_ids")),
+                "elevated_tool_ids": _safe_list(
+                    result.get("elevated_tool_ids")
+                ),
+                "semantically_usable_tool_ids": _safe_list(
+                    result.get("semantically_usable_tool_ids")
+                ),
+                "receipt_integrity_valid": _safe_dict(
+                    result.get("receipt_integrity")
+                ).get("valid"),
+                "per_tool": per_tool_bindings,
+            }
+        )
+
+    specialized_handler_bindings = {
+        str(handler_key): {
+            "tool_id": handler.get("tool_id"),
+            "handler_key": handler.get("handler_key"),
+            "certifier_family": handler.get("certifier_family"),
+            "semantic_lane_id": handler.get("semantic_lane_id"),
+            "property_lane_id": handler.get("property_lane_id"),
+            "tool_evidence_digest_sha256": handler.get(
+                "tool_evidence_digest_sha256"
+            ),
+            "check_set_digest_sha256": handler.get(
+                "check_set_digest_sha256"
+            ),
+            "raw_receipt_digest": handler.get("raw_receipt_digest"),
+            "certified": handler.get("certified"),
+            "promotion_blocked": handler.get("promotion_blocked"),
+            "block_reasons": _safe_list(handler.get("block_reasons")),
+        }
+        for handler_key, handler_value in sorted(
+            _safe_dict(specialized.get("specialized_by_handler")).items()
+        )
+        if (handler := _safe_dict(handler_value))
+    }
+
+    tool_bindings = [
+        {
+            "tool_id": tool_id,
+            "availability": tool.get("availability"),
+            "usable": tool.get("usable"),
+            "production_certified": tool.get("production_certified"),
+            "evidence_class": tool.get("evidence_class"),
+            "executable_artifact_class": tool.get(
+                "executable_artifact_class"
+            ),
+            "check_set_digest_sha256": tool_check_digests.get(tool_id),
+            "artifact_digests": tool_artifact_digests.get(tool_id, []),
+        }
+        for tool_id, tool in sorted(tools.items())
+    ]
+
     candidate: dict[str, Any] = {
         "schema_version": RELEASE_CANDIDATE_SCHEMA_VERSION,
         "interface": RELEASE_CANDIDATE_INTERFACE,
@@ -3291,10 +3375,34 @@ def build_role_aware_release_candidate(
             "certificate_digest_sha256": certificate.get(
                 "certificate_digest_sha256"
             ),
-            "role_aware": role_aware,
-            "promotion": promotion,
-            "property_lanes": certificate.get("property_lanes"),
-            "disagreement_quarantines": quarantines,
+            "projection_model": "digest_bound_compact_projection/v1",
+            "raw_certificate_embedded": False,
+            "role_aware": {
+                "enabled": role_aware.get("enabled"),
+                "interface": role_aware.get("interface"),
+                "elevated_tool_ids": elevated,
+                "digest_sha256": certifier.content_digest(role_aware),
+            },
+            "promotion": {
+                "ready": promotion.get("ready"),
+                "stage": promotion.get("stage"),
+                "production_certified_tool_ids": list(
+                    promotion.get("production_certified_tool_ids") or []
+                ),
+                "merely_usable_tool_ids": list(
+                    promotion.get("merely_usable_tool_ids") or []
+                ),
+                "unavailable_tool_ids": list(
+                    promotion.get("unavailable_tool_ids") or []
+                ),
+                "digest_sha256": certifier.content_digest(promotion),
+            },
+            "property_lanes_digest_sha256": certifier.content_digest(
+                certificate.get("property_lanes")
+            ),
+            "disagreement_quarantines_digest_sha256": certifier.content_digest(
+                quarantines
+            ),
             "authority_roles": {
                 key: authority_roles.get(key)
                 for key in (
@@ -3305,13 +3413,45 @@ def build_role_aware_release_candidate(
                     "policy_digest_sha256",
                 )
             },
-            "semantic_lane_results": certificate.get("semantic_lane_results")
-            or [],
-            "specialized_receipt_aggregation": specialized,
-            "managed_deployment_readiness": managed,
-            "tools": [tools[tool_id] for tool_id in sorted(tools)],
+            "semantic_lane_results": semantic_lane_bindings,
+            "specialized_receipt_aggregation": {
+                "enabled": specialized.get("enabled"),
+                "interface": specialized.get("interface"),
+                "aggregation_digest_sha256": specialized.get(
+                    "aggregation_digest_sha256"
+                )
+                or specialized.get("digest_sha256"),
+                "all_required_certifiers_represented": specialized.get(
+                    "all_required_certifiers_represented"
+                ),
+                "missing_certifier_families": _safe_list(
+                    specialized.get("missing_certifier_families")
+                ),
+                "handlers": specialized_handler_bindings,
+            },
+            "managed_deployment_readiness": {
+                "ready": managed.get("ready"),
+                "host_platform": managed.get("host_platform"),
+                "supported_managed_capability_tool_ids": _safe_list(
+                    managed.get("supported_managed_capability_tool_ids")
+                ),
+                "supported_managed_dependency_tool_ids": _safe_list(
+                    managed.get("supported_managed_dependency_tool_ids")
+                ),
+                "capability_blockers": _safe_list(
+                    managed.get("capability_blockers")
+                ),
+                "dependency_blockers": _safe_list(
+                    managed.get("dependency_blockers")
+                ),
+                "digest_sha256": certifier.content_digest(managed),
+            },
+            "tools": tool_bindings,
             "certification_policy": certification_policy,
-            "public_evidence_policy": public_certificate_policy,
+            "public_evidence_policy": {
+                "declared": public_certificate_policy,
+                "recomputed": recomputed_public_certificate_policy,
+            },
         },
         "elevations": {
             "required": list(REQUIRED_SEMANTIC_ELEVATIONS),
@@ -3323,7 +3463,12 @@ def build_role_aware_release_candidate(
             "production_certified_tool_ids": list(
                 promotion.get("production_certified_tool_ids") or []
             ),
-            "details": role_aware.get("elevations") or [],
+            "detail_count": len(
+                _safe_list(role_aware.get("elevations"))
+            ),
+            "details_digest_sha256": certifier.content_digest(
+                _safe_list(role_aware.get("elevations"))
+            ),
         },
         "platform_exceptions": platform_exceptions,
         "artifacts": artifacts,
