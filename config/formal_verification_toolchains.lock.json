@@ -329,7 +329,8 @@
       "url": "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar",
       "sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
       "identity_kind": "immutable_release_tag",
-      "release_tag": "v1.8.0"
+      "release_tag": "v1.8.0",
+      "revision": "30cc360"
     },
     "souffle": {
       "version": "2.4.1",
@@ -685,7 +686,9 @@
           "notes": "Reviewed TLA+ tools 1.8.0 release artifact; installer requires this immutable jar digest before staging or publication",
           "is_checksummed": true,
           "license": "MIT",
-          "source": "https://github.com/tlaplus/tlaplus"
+          "source": "https://github.com/tlaplus/tlaplus",
+          "revision": "30cc360",
+          "release_tag": "v1.8.0"
         }
       ],
       "gap_id": null,
@@ -705,7 +708,9 @@
           "SYNOPSIS",
           "DESCRIPTION"
         ],
-        "artifact_sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
+        "artifact_sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+        "release_tag": "v1.8.0",
+        "revision": "30cc360"
       },
       "network_during_verification": false,
       "install_during_verification": false,
@@ -719,7 +724,8 @@
         "artifact_kind": "jvm_jar",
         "release_tag": "v1.8.0",
         "requires_checksum_at_install": true,
-        "unsupported_platforms_fail_closed": true
+        "unsupported_platforms_fail_closed": true,
+        "revision": "30cc360"
       }
     },
     {
@@ -873,7 +879,7 @@
       "offline_probe": {
         "method": "bounded_version_argv",
         "argv": [
-          "--version"
+          "-help"
         ],
         "timeout_seconds": 5,
         "network": false
@@ -1071,7 +1077,7 @@
       "offline_probe": {
         "method": "bounded_version_argv",
         "argv": [
-          "--version"
+          "version"
         ],
         "timeout_seconds": 5,
         "network": false
