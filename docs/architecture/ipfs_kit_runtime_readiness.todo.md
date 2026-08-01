@@ -179,7 +179,7 @@ or write authority.
 
 ## KITA-005 Specify VFS namespace, path, mount, and operation semantics
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
