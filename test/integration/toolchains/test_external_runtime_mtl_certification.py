@@ -256,6 +256,30 @@ def test_required_categories_and_mutations(certificate: dict[str, Any]) -> None:
     assert set(certificate["mutation_kinds"]) == REQUIRED_MUTATIONS
 
 
+def test_required_central_check_kinds_are_explicit_and_passed(
+    certificate: dict[str, Any],
+) -> None:
+    checks = [
+        check
+        for engine in certificate["engines"]
+        for check in engine["checks"]
+    ]
+    passed_kinds = {
+        check["kind"] for check in checks if check["status"] == "passed"
+    }
+    assert {"positive", "negative", "mutation", "replay"} <= passed_kinds
+    negative_checks = [
+        check for check in checks if check["kind"] == "negative"
+    ]
+    assert negative_checks
+    assert all(check["status"] == "passed" for check in negative_checks)
+    assert all(
+        check["expected"].startswith("violated/")
+        or check["expected"].endswith("/false")
+        for check in negative_checks
+    )
+
+
 @pytest.mark.parametrize(
     "category",
     sorted(

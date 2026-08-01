@@ -138,6 +138,7 @@ REQUIRED_MUTATION_KINDS: Final = frozenset({"interval", "event"})
 CHECK_KINDS: Final = frozenset(
     {
         "positive",
+        "negative",
         "mutation",
         "replay",
         "malformed",
@@ -749,6 +750,11 @@ def certify_engine(
 
         expected_status = spec.expected_status or record.reference_status
         expected_verdict = spec.expected_verdict or record.reference_verdict
+        case_kind = (
+            "negative"
+            if expected_status == "violated" or expected_verdict == "false"
+            else "positive"
+        )
         ok = (
             record.agreed
             and record.status == expected_status
@@ -758,18 +764,18 @@ def certify_engine(
         )
         checks.append(
             CheckResult(
-                check_id=f"{engine_id}.{spec.case_id}.positive",
-                kind="positive",
+                check_id=f"{engine_id}.{spec.case_id}.{case_kind}",
+                kind=case_kind,
                 status="passed" if ok else "failed",
                 expected=f"{expected_status}/{expected_verdict}",
                 observed=f"{record.status}/{record.verdict}",
-                detail=spec.notes or "cross-runtime positive case",
+                detail=spec.notes or f"cross-runtime {case_kind} case",
                 engine_id=engine_id,
                 quarantined=record.quarantined,
             )
         )
         if not ok:
-            block_reasons.append(f"positive_failed:{spec.case_id}")
+            block_reasons.append(f"{case_kind}_failed:{spec.case_id}")
 
         # Explicit parity kind (Python / external [/ TS when available]).
         parity_ok = record.agreed and not record.quarantined

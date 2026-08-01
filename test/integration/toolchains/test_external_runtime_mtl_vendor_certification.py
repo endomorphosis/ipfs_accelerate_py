@@ -462,6 +462,29 @@ def test_vendor_categories_and_mutations(vendor_certificate: dict[str, Any]) -> 
     assert set(vendor_certificate["mutation_kinds"]) == REQUIRED_MUTATIONS
 
 
+def test_vendor_receipt_retains_all_central_check_kinds(
+    vendor_certificate: dict[str, Any],
+) -> None:
+    checks = [
+        check
+        for engine in vendor_certificate["engines"]
+        for check in engine["checks"]
+    ]
+    passed_kinds = {
+        check["kind"] for check in checks if check["status"] == "passed"
+    }
+    assert {"positive", "negative", "mutation", "replay"} <= passed_kinds
+    assert any(
+        check["kind"] == "negative"
+        and check["status"] == "passed"
+        and (
+            check["expected"].startswith("violated/")
+            or check["expected"].endswith("/false")
+        )
+        for check in checks
+    )
+
+
 @pytest.mark.parametrize("category", sorted(REQUIRED_CATEGORIES - {"malformed"}))
 def test_vendor_category_outcomes(
     certifier, vendor_certificate: dict[str, Any], category: str
