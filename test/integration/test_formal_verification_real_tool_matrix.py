@@ -16,6 +16,7 @@ Acceptance covered:
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import os
@@ -306,6 +307,233 @@ def test_lean_probe_selects_already_installed_locked_toolchain(
     assert result["version_string"].startswith("Lean (version 4.31.0")
     assert result["selected_toolchain"] == locked
     assert result["shim_toolchain_mismatch"] is False
+
+
+def test_lean_probe_accepts_only_exact_direct_native_pin_with_neutral_home(
+    certifier,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    locked = "leanprover/lean4:v4.31.0"
+    deployment_root = tmp_path / "immutable"
+    executable = deployment_root / "lean-v4.31.0" / "bin" / "lean"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"\x7fELFfixture-native-lean")
+    executable.chmod(0o555)
+    neutral_home = tmp_path / "neutral-home"
+    neutral_home.mkdir()
+
+    monkeypatch.setattr(
+        certifier,
+        "APPROVED_IMMUTABLE_DEPLOYMENT_ROOTS",
+        (deployment_root,),
+    )
+    monkeypatch.setattr(
+        certifier,
+        "resolve_executable",
+        lambda _candidates, **_kwargs: str(executable),
+    )
+    monkeypatch.setattr(
+        certifier,
+        "list_elan_installed_toolchains",
+        lambda _env=None: [],
+    )
+
+    observed_envs: list[dict[str, str]] = []
+
+    def exact_run(argv, *, timeout, env, **_kwargs):
+        observed_envs.append(dict(env))
+        return certifier.subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout="Lean (version 4.31.0, direct immutable fixture)\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(certifier, "bounded_run", exact_run)
+    entry = {
+        "tool_id": "lean",
+        "availability": "managed_pin",
+        "runtime": "native",
+        "executable_candidates": ["lean"],
+        "offline_probe": {
+            "argv": ["--version"],
+            "locked_toolchain": locked,
+        },
+    }
+    result = certifier.probe_tool_identity(
+        entry,
+        env=certifier.offline_env(
+            {"PATH": str(executable.parent), "HOME": str(neutral_home)}
+        ),
+    )
+
+    assert observed_envs[0]["HOME"] == str(neutral_home)
+    assert observed_envs[0]["ELAN_TOOLCHAIN"] == locked
+    assert result["installed_toolchains"] == []
+    assert result["lean_identity_mode"] == "direct_native_immutable_pin"
+    assert result["direct_native_lean_identity"]["valid"] is True
+    assert result["shim_toolchain_mismatch"] is False
+    assert result["identity_probed"] is True
+
+    def wrong_version_run(argv, *, timeout, env, **_kwargs):
+        return certifier.subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout="Lean (version 4.32.0, wrong direct fixture)\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(certifier, "bounded_run", wrong_version_run)
+    mismatch = certifier.probe_tool_identity(
+        entry,
+        env=certifier.offline_env(
+            {"PATH": str(executable.parent), "HOME": str(neutral_home)}
+        ),
+    )
+    assert mismatch["direct_native_lean_identity"]["valid"] is False
+    assert mismatch["shim_toolchain_mismatch"] is True
+
+
+def test_relocated_state_manifest_rebinds_only_exact_suffixes_and_hashes(
+    certifier,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    deployment_root = tmp_path / "immutable"
+    root = deployment_root / "release-1" / "provers"
+    artifact = root / "downloads" / "apalache-0.58.3.tgz"
+    payload = (
+        root
+        / "apalache-0.58.3"
+        / "apalache-0.58.3"
+        / "bin"
+        / "apalache-mc"
+    )
+    java = root / "jdk-21" / "bin" / "java"
+    launchers = {
+        name: root / "bin" / name
+        for name in ("apalache", "apalache-mc")
+    }
+    for path, body in (
+        (artifact, b"reviewed archive"),
+        (payload, b"\x7fELFapalache payload"),
+        (java, b"\x7fELFjava runtime"),
+        *(
+            (path, f"launcher:{name}".encode("utf-8"))
+            for name, path in launchers.items()
+        ),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+        path.chmod(0o555)
+
+    old_root = Path("/home/legacy/theorem-provers")
+    manifest = {
+        "schema_version": "state-model-managed-runtime/v1",
+        "tool_id": "apalache",
+        "version": "0.58.3",
+        "artifact_path": str(
+            old_root / artifact.relative_to(root)
+        ),
+        "artifact_sha256": certifier._bare_sha256(
+            certifier.file_digest(artifact)
+        ),
+        "payload_path": str(old_root / payload.relative_to(root)),
+        "payload_sha256": certifier._bare_sha256(
+            certifier.file_digest(payload)
+        ),
+        "java_executable": str(
+            old_root / "legacy-jdk" / "bin" / "java"
+        ),
+        "launchers": {
+            name: {
+                "path": str(old_root / path.relative_to(root)),
+                "sha256": "a" * 64,
+            }
+            for name, path in launchers.items()
+        },
+        "distribution_tree_sha256": "b" * 64,
+    }
+    manifest_path = root / "manifests" / "apalache.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    managed = {
+        "tool_id": "apalache",
+        "version": "0.58.3",
+        "artifact_path": str(artifact),
+        "artifact_sha256": manifest["artifact_sha256"],
+        "artifact_digest_verified": True,
+        "payload_path": str(payload),
+        "payload_sha256": manifest["payload_sha256"],
+        "payload_digest_verified": True,
+        "payload_executable": True,
+        "expected_distribution_tree_sha256": "b" * 64,
+        "observed_distribution_tree_sha256": "b" * 64,
+        "distribution_tree_verified": True,
+        "java_executable": str(java),
+        "java_executable_present": True,
+        "launchers": {
+            name: {
+                "path": str(path),
+                "present": True,
+                "executable": True,
+                "structural_match": True,
+                "expected_sha256": certifier._bare_sha256(
+                    certifier.file_digest(path)
+                ),
+                "observed_sha256": certifier._bare_sha256(
+                    certifier.file_digest(path)
+                ),
+            }
+            for name, path in launchers.items()
+        },
+        "launchers_structurally_valid": True,
+    }
+    monkeypatch.setattr(
+        certifier,
+        "APPROVED_IMMUTABLE_DEPLOYMENT_ROOTS",
+        (deployment_root,),
+    )
+
+    rebound = certifier._relocated_state_manifest_binding(
+        root=root,
+        managed=managed,
+    )
+    assert rebound["valid"] is True
+    assert rebound["previous_root"] == str(old_root)
+    assert rebound["manifest_sha256"] == certifier.file_digest(
+        manifest_path
+    )
+    assert rebound["java_sha256"] == certifier.file_digest(java)
+
+    wrong_suffix = copy.deepcopy(manifest)
+    wrong_suffix["payload_path"] = str(
+        old_root / "other" / payload.name
+    )
+    manifest_path.write_text(json.dumps(wrong_suffix), encoding="utf-8")
+    rejected_suffix = certifier._relocated_state_manifest_binding(
+        root=root,
+        managed=managed,
+    )
+    assert rejected_suffix["valid"] is False
+    assert "relocated_state_payload_suffix_mismatch" in rejected_suffix[
+        "failures"
+    ]
+
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    launchers["apalache"].chmod(0o755)
+    launchers["apalache"].write_bytes(b"mutated launcher")
+    launchers["apalache"].chmod(0o555)
+    rejected_hash = certifier._relocated_state_manifest_binding(
+        root=root,
+        managed=managed,
+    )
+    assert rejected_hash["valid"] is False
+    assert (
+        "relocated_state_launcher_identity_invalid:apalache"
+        in rejected_hash["failures"]
+    )
 
 
 def test_tlc_lock_and_probe_use_real_help_semantics_and_managed_digest(
@@ -631,10 +859,18 @@ def test_available_smt_tools_pass_live_matrix(certificate: dict[str, Any]) -> No
         assert entry["identity_probed"] is True
         assert entry["version_string"]
         if entry["executable_artifact_class"] == "launcher_script":
-            assert entry["production_certified"] is False
-            assert entry["promotion_blocked"] is True
-            assert "launcher_target_artifact_unbound" in entry["block_reasons"]
-            continue
+            binding = entry["launcher_binding"]
+            if binding["valid"] is not True:
+                assert entry["production_certified"] is False
+                assert entry["promotion_blocked"] is True
+                assert "launcher_target_artifact_unbound" in entry["block_reasons"]
+                continue
+            assert binding["target_sha256"]
+            assert any(
+                artifact["artifact_class"]
+                in {"native_or_managed_binary", "managed_release_archive"}
+                for artifact in binding["artifacts"]
+            )
         assert entry["production_certified"] is True
         assert entry["promotion_blocked"] is False
         certified_smt.append(tool_id)

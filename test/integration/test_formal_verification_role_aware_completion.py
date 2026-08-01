@@ -391,25 +391,12 @@ def test_usable_pending_capabilities_keep_every_check_without_premature_promotio
 ) -> None:
     tools = _tools(certificate)
     expected_minimums = {
-        "lean": 14,
         "runtime-mtl": 12,
         "datalog-authorization": 24,
         "secpal-authorization": 24,
     }
     for tool_id, minimum in expected_minimums.items():
         tool = tools[tool_id]
-        if tool_id == "lean" and not tool["usable"]:
-            # The supervisor's authoritative validation runtime deliberately
-            # removes user-managed tool directories from PATH and redirects
-            # ELAN_HOME.  A Lean installation visible to the managed audit
-            # shell may therefore be genuinely absent here.  That state must
-            # stay explicit and fail closed rather than becoming a portable
-            # usability requirement.
-            assert tool["unavailable"] is True
-            assert tool["production_certified"] is False
-            assert tool["promotion_blocked"] is True
-            assert tool["block_reasons"]
-            continue
         assert tool["usable"] is True, tool_id
         assert tool["production_certified"] is False, tool_id
         assert tool["promotion_blocked"] is True, tool_id
@@ -426,29 +413,34 @@ def test_usable_pending_capabilities_keep_every_check_without_premature_promotio
             artifact.get("sha256") for artifact in tool["artifact_identities"]
         )
 
-    for tool_id in ("coq", "isabelle"):
+    for tool_id in ("lean", "coq", "isabelle"):
         tool = tools[tool_id]
-        assert tool["usable"] is False
-        assert tool["unavailable"] is True
-        assert tool["production_certified"] is False
-        assert tool["promotion_blocked"] is True
-        assert len(tool["checks"]) >= 4
-        assert REQUIRED_CHECK_KINDS <= {
-            check["kind"] for check in tool["checks"]
-        }
-        assert (
-            "external_prover_installation_and_live_fanin_pending"
-            in tool["block_reasons"]
-        )
-        assert tool["evidence_class"] == "external_prover_installation_pending"
-        lane_id = "kernel_rocq" if tool_id == "coq" else "kernel_isabelle"
+        lane_id = {
+            "lean": "kernel",
+            "coq": "kernel_rocq",
+            "isabelle": "kernel_isabelle",
+        }[tool_id]
         lane = next(
             row
             for row in certificate["semantic_lane_results"]
             if row["lane_id"] == lane_id
         )
-        assert lane["usable_elevation_allowed"] is False
-        assert lane["per_tool"][tool_id]["checks_total"] >= 12
+        live = lane["live_specialized_receipt"]
+        if tool_id in set(live["eligible_tool_ids"]):
+            assert lane["production_elevation_allowed"] is True
+            assert tool["usable"] is True
+            assert tool["unavailable"] is False
+            assert tool["production_certified"] is True
+            assert tool["promotion_blocked"] is False
+            assert tool["evidence_class"] == "live_specialized_semantic_receipt"
+            assert tool_id in certificate["role_aware"]["elevated_tool_ids"]
+        else:
+            assert tool["production_certified"] is False
+            assert tool["promotion_blocked"] is True
+            assert live["per_tool_failures"].get(tool_id) or tool["block_reasons"]
+        assert REQUIRED_CHECK_KINDS <= {
+            check["kind"] for check in tool["checks"]
+        }
         assert len(
             lane["per_tool"][tool_id]["check_set_digest_sha256"]
         ) == 64
@@ -560,9 +552,15 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
     assert "lean_runtime_mtl_authorization_elevated" in receipt[
         "deployment_blockers"
     ]
-    assert set(receipt["acceptance"]["required_elevations_missing"]) == (
-        REQUIRED_ELEVATIONS
+    present_elevations = set(
+        receipt["acceptance"]["required_elevations_present"]
     )
+    missing_elevations = set(
+        receipt["acceptance"]["required_elevations_missing"]
+    )
+    required_present = present_elevations & REQUIRED_ELEVATIONS
+    assert missing_elevations == REQUIRED_ELEVATIONS - required_present
+    assert not required_present & missing_elevations
     assert receipt["acceptance"]["hard_zero_gates_clear"] is False
     assert "hard_zero_gates_clear" in receipt["deployment_blockers"]
     assert receipt["source"]["attestation_excluded_from_source_tree"] is True
@@ -690,7 +688,7 @@ def test_missing_artifact_identity_blocks_managed_readiness(
     ]
 
 
-def test_launcher_script_cannot_stand_in_for_the_managed_prover_artifact(
+def test_launcher_script_requires_a_bound_managed_prover_artifact(
     certificate: dict[str, Any],
 ) -> None:
     cvc5 = _tools(certificate)["cvc5"]
@@ -703,9 +701,205 @@ def test_launcher_script_cannot_stand_in_for_the_managed_prover_artifact(
         assert cvc5["block_reasons"]
         return
     assert cvc5["executable_artifact_class"] == "launcher_script"
-    assert cvc5["production_certified"] is False
-    assert cvc5["promotion_blocked"] is True
-    assert "launcher_target_artifact_unbound" in cvc5["block_reasons"]
+    binding = cvc5["launcher_binding"]
+    if binding["valid"] is True:
+        assert binding["launcher_sha256"] == cvc5["executable_sha256"]
+        assert binding["target_sha256"]
+        assert cvc5["production_certified"] is True
+        assert cvc5["promotion_blocked"] is False
+        assert "launcher_target_artifact_unbound" not in cvc5["block_reasons"]
+    else:
+        assert cvc5["production_certified"] is False
+        assert cvc5["promotion_blocked"] is True
+        assert "launcher_target_artifact_unbound" in cvc5["block_reasons"]
+
+
+def test_launcher_binding_is_structural_and_rejects_extra_shell_logic(
+    certifier,
+    tmp_path: Path,
+) -> None:
+    managed = tmp_path / "managed"
+    launcher_dir = managed / "bin"
+    target_dir = managed / "payload"
+    launcher_dir.mkdir(parents=True)
+    target_dir.mkdir(parents=True)
+    target = target_dir / "prover"
+    target.write_bytes(b"\x7fELF-current-prover-payload")
+    target.chmod(0o755)
+    launcher = launcher_dir / "prover"
+    launcher.write_text(
+        "#!/bin/sh\n"
+        "set -eu\n"
+        f'exec {target} "$@"\n',
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    entry = {
+        "tool_id": "prover",
+        "runtime": "native",
+        "pins": [],
+    }
+    identity = {"executable_path": str(launcher)}
+
+    bound = certifier.bind_launcher_target_identity(entry, identity)
+    assert bound["valid"] is True
+    assert bound["target_sha256"] == certifier.file_digest(target)
+    assert bound["target_artifact_class"] == "native_or_managed_binary"
+
+    launcher.write_text(
+        "#!/bin/sh\n"
+        "set -eu\n"
+        "echo unreviewed-side-effect\n"
+        f'exec {target} "$@"\n',
+        encoding="utf-8",
+    )
+    rejected = certifier.bind_launcher_target_identity(entry, identity)
+    assert rejected["valid"] is False
+    assert "launcher_unreviewed_statement" in rejected["failures"]
+
+
+def test_live_specialized_receipt_requires_self_digest_semantics_and_sources(
+    certifier,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_path = (
+        REPO_ROOT
+        / "docs"
+        / "architecture"
+        / "formal_verification_kernel_live_certificate.json"
+    )
+    live_receipt = json.loads(source_path.read_text(encoding="utf-8"))
+    receipt_path = tmp_path / "kernel-live.json"
+    receipt_path.write_text(json.dumps(live_receipt), encoding="utf-8")
+    configured = dict(certifier.LIVE_SPECIALIZED_RECEIPT_SPECS["kernel"])
+    configured["path"] = Path("kernel-live.json")
+    for source_relative in configured["source_modules"]:
+        copied_source = tmp_path / source_relative
+        copied_source.parent.mkdir(parents=True, exist_ok=True)
+        copied_source.write_bytes((REPO_ROOT / source_relative).read_bytes())
+    monkeypatch.setitem(
+        certifier.LIVE_SPECIALIZED_RECEIPT_SPECS,
+        "kernel",
+        configured,
+    )
+
+    native = tmp_path / "lean"
+    native.write_bytes(b"\x7fELF-lean-kernel")
+    native.chmod(0o755)
+    native_digest = certifier.file_digest(native)
+    lean = certifier.ToolCertification(
+        tool_id="lean",
+        executable_path=str(native),
+        executable_sha256=native_digest,
+        executable_artifact_class="native_or_managed_binary",
+        version_string=live_receipt["kernels"]["lean"]["version_string"],
+        locked_version="v4.31.0",
+        path_present=True,
+        identity_probed=True,
+        installed=True,
+        usable=True,
+        artifact_identities=[
+            {
+                "kind": "executable",
+                "path": str(native),
+                "sha256": native_digest,
+                "artifact_class": "native_or_managed_binary",
+            }
+        ],
+    )
+    spec = next(
+        row
+        for row in certifier.SEMANTIC_CERTIFIER_SPECS
+        if row["lane_id"] == "kernel"
+    )
+    module = certifier._load_module_from_path(
+        REPO_ROOT / spec["module_relative"],
+        "fvt_live_adapter_integrity_test",
+    )
+    valid = certifier._build_live_specialized_adapter(
+        repo_root=tmp_path,
+        spec=spec,
+        module=module,
+        tool_certs={"lean": lean},
+    )
+    assert valid["valid"] is True
+    assert valid["eligible_tool_ids"] == ["lean"]
+    assert certifier._validate_artifact_identities(
+        valid["source_artifacts"],
+        repo_root=tmp_path,
+    )["valid"] is True
+
+    tampered = copy.deepcopy(live_receipt)
+    tampered["kernels"]["lean"]["checks"][0]["status"] = "failed"
+    receipt_path.write_text(json.dumps(tampered), encoding="utf-8")
+    bad_digest = certifier._build_live_specialized_adapter(
+        repo_root=tmp_path,
+        spec=spec,
+        module=module,
+        tool_certs={"lean": lean},
+    )
+    assert bad_digest["valid"] is False
+    assert "live_receipt_self_digest_mismatch" in bad_digest["failures"]
+
+    tampered["receipt_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in tampered.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    receipt_path.write_text(json.dumps(tampered), encoding="utf-8")
+    bad_semantics = certifier._build_live_specialized_adapter(
+        repo_root=tmp_path,
+        spec=spec,
+        module=module,
+        tool_certs={"lean": lean},
+    )
+    assert bad_semantics["eligible_tool_ids"] == []
+    assert "live_tool_checks_incomplete_or_failed" in bad_semantics[
+        "per_tool_failures"
+    ]["lean"]
+
+    forged_sources = copy.deepcopy(valid["source_artifacts"])
+    forged_sources[0]["sha256"] = "sha256:" + ("0" * 64)
+    source_validation = certifier._validate_artifact_identities(
+        forged_sources,
+        repo_root=tmp_path,
+    )
+    assert source_validation["valid"] is False
+    assert "artifact_0_sha256_mismatch" in source_validation["failures"]
+
+
+def test_builder_independently_rejects_forged_live_specialized_policy(
+    certifier,
+    builder,
+    certificate: dict[str, Any],
+) -> None:
+    semantic_results = copy.deepcopy(
+        certificate["semantic_lane_results"]
+    )
+    kernel = next(
+        lane for lane in semantic_results if lane["lane_id"] == "kernel"
+    )
+    assert kernel["live_specialized_receipt"]["valid"] is True
+    kernel["live_specialized_receipt"]["file_sha256"] = (
+        "sha256:" + ("0" * 64)
+    )
+
+    audit = builder._audit_semantic_lane_results(
+        certifier=certifier,
+        repo_root=REPO_ROOT,
+        semantic_results=semantic_results,
+    )
+    assert audit["structurally_valid"] is False
+    assert any(
+        failure.endswith(
+            "live_specialized:"
+            "live_specialized_summary_file_sha256_mismatch"
+        )
+        for failure in audit["failures"]
+    )
 
 
 def test_platform_mutation_moves_tool_between_exception_and_blocker(

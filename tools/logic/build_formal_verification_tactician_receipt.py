@@ -3413,6 +3413,473 @@ def _matching_approved_redacted_executables(
     )
 
 
+def _matching_approved_redacted_artifacts(
+    *,
+    certifier,
+    lock_entry: Mapping[str, Any],
+    artifact: Mapping[str, Any],
+) -> tuple[Path, ...]:
+    """Resolve a redacted managed artifact only inside reviewed root shapes."""
+
+    raw_path = str(artifact.get("path") or "")
+    basename = _redacted_host_basename(raw_path)
+    if basename is None:
+        return ()
+    kind = str(artifact.get("kind") or "")
+    artifact_class = str(artifact.get("artifact_class") or "")
+    candidates: list[Path] = []
+    if kind in {"semantic_executable", "executable"}:
+        candidates.extend(
+            _matching_approved_redacted_executables(
+                certifier=certifier,
+                lock_entry=lock_entry,
+                artifact=artifact,
+            )
+        )
+
+    allowed_parents = {
+        "managed_release_archive": {
+            "downloads",
+            *(
+                ("tlc",)
+                if str(lock_entry.get("tool_id") or "") == "tlc"
+                else ()
+            ),
+        },
+        "managed_runtime_manifest": {"manifests"},
+    }.get(kind, set())
+    recursive_kinds = {
+        "launcher_target",
+        "launcher_runtime",
+        "managed_release_archive",
+        "managed_runtime_manifest",
+    }
+    if kind in recursive_kinds:
+        for root in _approved_managed_prover_roots(lock_entry):
+            try:
+                root = root.resolve()
+            except OSError:
+                continue
+            direct_candidates: list[Path] = []
+            for allowed_parent in sorted(allowed_parents):
+                direct_candidates.append(root / allowed_parent / basename)
+            else:
+                direct_candidates.append(root / "bin" / basename)
+            try:
+                direct_candidates.extend(root.rglob(basename))
+            except OSError:
+                pass
+            for candidate in direct_candidates:
+                try:
+                    resolved = candidate.resolve()
+                    relative = resolved.relative_to(root)
+                except (OSError, RuntimeError, ValueError):
+                    continue
+                if allowed_parents and (
+                    not relative.parts
+                    or relative.parts[0] not in allowed_parents
+                ):
+                    continue
+                if kind == "launcher_runtime" and resolved.name != "java":
+                    continue
+                if kind == "launcher_target" and relative.parts[:1] in {
+                    ("downloads",),
+                    ("manifests",),
+                }:
+                    continue
+                if not resolved.is_file():
+                    continue
+                if certifier.file_digest(resolved) != artifact.get("sha256"):
+                    continue
+                if artifact_class in {
+                    "native_or_managed_binary",
+                    "launcher_script",
+                    "generated_hermetic_shim",
+                } and (
+                    certifier.classify_executable_artifact(resolved)
+                    != artifact_class
+                ):
+                    continue
+                candidates.append(resolved)
+
+    unique: dict[str, Path] = {}
+    for candidate in candidates:
+        unique.setdefault(str(candidate), candidate)
+    return tuple(unique.values())
+
+
+def _audited_semantic_elevation_policy(
+    *,
+    certifier,
+    repo_root: Path,
+    spec: Mapping[str, Any],
+    semantic_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Independently derive static or live-specialized elevation authority."""
+
+    failures: list[str] = []
+    expected_tool_ids = [
+        str(value) for value in _safe_list(spec.get("tool_ids"))
+    ]
+    static_allowed = bool(spec.get("production_elevation_allowed"))
+    live_summary = _safe_dict(
+        semantic_result.get("live_specialized_receipt")
+    )
+    receipt = _safe_dict(semantic_result.get("receipt"))
+    adapter_meta = _safe_dict(receipt.get("live_specialized_receipt"))
+    configured = _safe_dict(
+        getattr(certifier, "LIVE_SPECIALIZED_RECEIPT_SPECS", {}).get(
+            str(spec.get("lane_id") or "")
+        )
+    )
+    summary_eligible = [
+        str(value)
+        for value in _safe_list(live_summary.get("eligible_tool_ids"))
+    ]
+    adapter_eligible = [
+        str(value)
+        for value in _safe_list(adapter_meta.get("eligible_tool_ids"))
+    ]
+    live_claimed = bool(
+        live_summary.get("valid") is True
+        or adapter_meta
+        or summary_eligible
+        or semantic_result.get("evidence_class")
+        == "live_specialized_semantic_receipt"
+        or (
+            semantic_result.get("production_elevation_allowed") is True
+            and not static_allowed
+        )
+    )
+    if not live_claimed:
+        return {
+            "valid": True,
+            "failures": [],
+            "live_claimed": False,
+            "eligible_tool_ids": [],
+            "production_allowed_tool_ids": (
+                expected_tool_ids if static_allowed else []
+            ),
+            "lane_production_elevation_allowed": static_allowed,
+            "evidence_class": str(spec.get("evidence_class") or ""),
+        }
+
+    if not configured:
+        failures.append("live_specialized_policy_not_configured")
+        return {
+            "valid": False,
+            "failures": failures,
+            "live_claimed": True,
+            "eligible_tool_ids": [],
+            "production_allowed_tool_ids": (
+                expected_tool_ids if static_allowed else []
+            ),
+            "lane_production_elevation_allowed": static_allowed,
+            "evidence_class": str(spec.get("evidence_class") or ""),
+        }
+
+    live_relative = Path(str(configured.get("path") or ""))
+    live_path = repo_root / live_relative
+    try:
+        live_receipt = json.loads(live_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        live_receipt = None
+    if not isinstance(live_receipt, Mapping):
+        failures.append("live_specialized_source_receipt_unreadable")
+        live_receipt = {}
+
+    for field_name in ("schema_version", "interface", "goal_id", "task_id"):
+        if str(live_receipt.get(field_name) or "") != str(
+            configured.get(field_name) or ""
+        ):
+            failures.append(
+                f"live_specialized_source_{field_name}_mismatch"
+            )
+    digest_valid, self_digest, digest_failures = (
+        certifier._live_receipt_digest_validation(live_receipt)
+    )
+    failures.extend(str(value) for value in digest_failures)
+    if digest_valid is not True or not self_digest:
+        failures.append("live_specialized_source_self_digest_invalid")
+    if certifier.public_evidence_audit(
+        live_receipt,
+        repo_root=repo_root,
+    ).get("satisfied") is not True:
+        failures.append("live_specialized_source_public_evidence_invalid")
+
+    declared_surfaces = certifier._live_receipt_surface_names(
+        live_receipt
+    )
+    source_artifacts: list[dict[str, Any]] = []
+    for raw_relative in _safe_list(configured.get("source_modules")):
+        relative = Path(str(raw_relative))
+        source_path = repo_root / relative
+        digest = certifier.file_digest(source_path)
+        dotted = relative.with_suffix("").as_posix().replace("/", ".")
+        if not digest:
+            failures.append(
+                f"live_specialized_source_missing:{relative.as_posix()}"
+            )
+            continue
+        if dotted not in declared_surfaces:
+            failures.append(
+                f"live_specialized_source_surface_unbound:{relative.as_posix()}"
+            )
+        source_artifacts.append(
+            {
+                "kind": "live_semantic_certifier_module",
+                "path": relative.as_posix(),
+                "sha256": digest,
+                "artifact_class": "repository_source",
+            }
+        )
+    source_artifacts.append(
+        {
+            "kind": "live_specialized_receipt",
+            "path": live_relative.as_posix(),
+            "sha256": certifier.file_digest(live_path),
+            "artifact_class": "repository_source",
+        }
+    )
+    source_validation = certifier._validate_artifact_identities(
+        source_artifacts,
+        repo_root=repo_root,
+    )
+    if source_validation.get("valid") is not True:
+        failures.extend(
+            f"live_specialized_source:{value}"
+            for value in _safe_list(source_validation.get("failures"))
+        )
+    source_set_digest = certifier.content_digest(source_artifacts)
+    expected_metadata = {
+        "path": live_relative.as_posix(),
+        "file_sha256": certifier.file_digest(live_path),
+        "self_digest_sha256": self_digest,
+        "interface": live_receipt.get("interface"),
+        "schema_version": live_receipt.get("schema_version"),
+        "goal_id": live_receipt.get("goal_id"),
+        "task_id": live_receipt.get("task_id"),
+        "source_set_digest_sha256": source_set_digest,
+    }
+    for field_name, expected in expected_metadata.items():
+        if adapter_meta.get(field_name) != expected:
+            failures.append(
+                f"live_specialized_adapter_{field_name}_mismatch"
+            )
+        if field_name in {
+            "path",
+            "file_sha256",
+            "self_digest_sha256",
+            "source_set_digest_sha256",
+        } and live_summary.get(field_name) != expected:
+            failures.append(
+                f"live_specialized_summary_{field_name}_mismatch"
+            )
+    if (
+        live_summary.get("available") is not True
+        or live_summary.get("valid") is not True
+        or list(_safe_list(live_summary.get("failures")))
+    ):
+        failures.append("live_specialized_summary_not_valid")
+    if list(_safe_list(live_summary.get("source_artifacts"))) != source_artifacts:
+        failures.append("live_specialized_source_artifact_set_mismatch")
+    if (
+        summary_eligible != adapter_eligible
+        or len(summary_eligible) != len(set(summary_eligible))
+        or not set(summary_eligible) <= set(expected_tool_ids)
+    ):
+        failures.append("live_specialized_eligible_population_mismatch")
+
+    family = str(configured.get("family") or "")
+    adapter_checks = [
+        _safe_dict(check)
+        for check in _safe_list(receipt.get("checks"))
+        if isinstance(check, Mapping)
+    ]
+    compact_tools = _safe_dict(semantic_result.get("per_tool"))
+    summary_tool_failures = _safe_dict(
+        live_summary.get("per_tool_failures")
+    )
+    for tool_id in summary_eligible:
+        original_tool = certifier._live_tool_payload(
+            live_receipt,
+            family=family,
+            tool_id=tool_id,
+        )
+        nested_digest_field = (
+            "contribution_digest_sha256"
+            if family == "kernel"
+            else "receipt_digest_sha256"
+            if family == "protocol"
+            else None
+        )
+        if nested_digest_field:
+            nested_computed = certifier.content_digest(
+                {
+                    key: value
+                    for key, value in original_tool.items()
+                    if key != nested_digest_field
+                }
+            )
+            if not certifier._digest_matches(
+                original_tool.get(nested_digest_field),
+                nested_computed,
+            ):
+                failures.append(
+                    f"{tool_id}:live_specialized_nested_digest_mismatch"
+                )
+        original_checks = certifier._live_tool_checks(
+            live_receipt,
+            original_tool,
+            family=family,
+            tool_id=tool_id,
+        )
+        if not certifier._live_tool_claims_production(
+            live_receipt,
+            original_tool,
+            family=family,
+            tool_id=tool_id,
+        ):
+            failures.append(
+                f"{tool_id}:live_specialized_production_claim_invalid"
+            )
+        if not original_checks or any(
+            str(check.get("status") or "") != "passed"
+            for check in original_checks
+        ):
+            failures.append(
+                f"{tool_id}:live_specialized_checks_incomplete"
+            )
+        for canonical_kind, aliases in (
+            certifier._LIVE_SEMANTIC_KIND_ALIASES.items()
+        ):
+            if not any(
+                str(check.get("status") or "") == "passed"
+                and str(check.get("kind") or "").lower() in aliases
+                for check in original_checks
+            ):
+                failures.append(
+                    f"{tool_id}:live_specialized_kind_missing:"
+                    f"{canonical_kind}"
+                )
+
+        tool_checks = [
+            check
+            for check in adapter_checks
+            if str(check.get("tool_id") or "") == tool_id
+        ]
+        canonical_passes = {
+            str(check.get("kind") or "")
+            for check in tool_checks
+            if check.get("status") == "passed"
+            and str(check.get("kind") or "")
+            in set(PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS)
+        }
+        binding_passed = any(
+            check.get("status") == "passed"
+            and str(check.get("check_id") or "").endswith(
+                ".live_specialized.current_binding"
+            )
+            for check in tool_checks
+        )
+        if (
+            set(PRODUCTION_ELEVATION_REQUIRED_CHECK_KINDS)
+            - canonical_passes
+            or not binding_passed
+            or any(check.get("status") != "passed" for check in tool_checks)
+        ):
+            failures.append(
+                f"{tool_id}:live_specialized_adapter_checks_invalid"
+            )
+        source_check_digests = {
+            certifier.content_digest(check) for check in original_checks
+        }
+        if not source_check_digests <= {
+            str(check.get("source_check_digest_sha256") or "")
+            for check in tool_checks
+        }:
+            failures.append(
+                f"{tool_id}:live_specialized_source_check_binding_missing"
+            )
+        if list(_safe_list(summary_tool_failures.get(tool_id))):
+            failures.append(
+                f"{tool_id}:live_specialized_summary_tool_failures"
+            )
+
+        compact_identity = _safe_dict(
+            _safe_dict(compact_tools.get(tool_id)).get("identity")
+        )
+        compact_artifacts = [
+            dict(item)
+            for item in _safe_list(compact_identity.get("artifacts"))
+            if isinstance(item, Mapping)
+        ]
+        if not all(item in compact_artifacts for item in source_artifacts):
+            failures.append(
+                f"{tool_id}:live_specialized_source_binding_missing"
+            )
+        if not any(
+            artifact.get("artifact_class")
+            in {
+                "native_or_managed_binary",
+                "managed_release_archive",
+                "public_deployment_binding",
+            }
+            for artifact in compact_artifacts
+        ):
+            failures.append(
+                f"{tool_id}:live_specialized_production_binding_missing"
+            )
+        declared_binary = certifier._live_receipt_binary_digest(
+            live_receipt,
+            original_tool,
+            tool_id=tool_id,
+        )
+        if declared_binary and declared_binary not in {
+            str(artifact.get("sha256") or "").removeprefix("sha256:")
+            for artifact in compact_artifacts
+            if artifact.get("kind")
+            in {"semantic_executable", "executable"}
+        }:
+            failures.append(
+                f"{tool_id}:live_specialized_binary_binding_mismatch"
+            )
+
+    eligible = summary_eligible if not failures else []
+    production_allowed_ids = sorted(
+        set(expected_tool_ids if static_allowed else ()) | set(eligible)
+    )
+    lane_allowed = bool(production_allowed_ids)
+    expected_evidence_class = (
+        "live_specialized_semantic_receipt"
+        if eligible
+        else str(spec.get("evidence_class") or "")
+    )
+    if (
+        semantic_result.get("production_elevation_allowed") is not lane_allowed
+    ):
+        failures.append("live_specialized_lane_policy_flag_mismatch")
+    if semantic_result.get("evidence_class") != expected_evidence_class:
+        failures.append("live_specialized_lane_evidence_class_mismatch")
+    if failures:
+        eligible = []
+        production_allowed_ids = (
+            expected_tool_ids if static_allowed else []
+        )
+        lane_allowed = static_allowed
+        expected_evidence_class = str(spec.get("evidence_class") or "")
+    return {
+        "valid": not failures,
+        "failures": sorted(set(failures)),
+        "live_claimed": True,
+        "eligible_tool_ids": eligible,
+        "production_allowed_tool_ids": production_allowed_ids,
+        "lane_production_elevation_allowed": lane_allowed,
+        "evidence_class": expected_evidence_class,
+        "source_set_digest_sha256": source_set_digest,
+    }
+
+
 def _recompute_semantic_tool_payload(
     *,
     certifier,
@@ -3423,6 +3890,7 @@ def _recompute_semantic_tool_payload(
     compact_tool: Mapping[str, Any],
     receipt_integrity: Mapping[str, Any],
     offline_observation: Mapping[str, Any],
+    production_elevation_allowed: bool,
 ) -> dict[str, Any]:
     """Re-run semantic derivation and live artifact validation for one tool."""
 
@@ -3463,6 +3931,19 @@ def _recompute_semantic_tool_payload(
         resolved_path = repo_root / relative_path
         artifact["path"] = Path(relative_path).as_posix()
         artifact["sha256"] = certifier.file_digest(resolved_path)
+    # A public ``<repo-root>/...`` scalar binding and the explicit portable
+    # artifact row can normalize to the same identity.  Canonicalize only
+    # exact-equal rows after recomputing the repository path and digest; a
+    # differing kind, hash, class, or declared digest remains a population
+    # mismatch.
+    normalized_derived_artifacts: list[dict[str, Any]] = []
+    for raw_artifact in _safe_list(derived_identity.get("artifacts")):
+        if not isinstance(raw_artifact, Mapping):
+            continue
+        artifact = dict(raw_artifact)
+        if artifact not in normalized_derived_artifacts:
+            normalized_derived_artifacts.append(artifact)
+    derived_identity["artifacts"] = normalized_derived_artifacts
     compact_identity = _safe_dict(compact_tool.get("identity"))
     compact_artifacts = [
         dict(item)
@@ -3568,15 +4049,14 @@ def _recompute_semantic_tool_payload(
                 candidate_paths.append(
                     path if path.is_absolute() else repo_root / path
                 )
-        if kind == "semantic_executable":
-            if redacted_host_path:
-                candidate_paths.extend(
-                    _matching_approved_redacted_executables(
-                        certifier=certifier,
-                        lock_entry=lock_entry,
-                        artifact=artifact,
-                    )
+        if redacted_host_path:
+            candidate_paths.extend(
+                _matching_approved_redacted_artifacts(
+                    certifier=certifier,
+                    lock_entry=lock_entry,
+                    artifact=artifact,
                 )
+            )
         unique_candidates: list[Path] = []
         seen_candidates: set[str] = set()
         for candidate_path in candidate_paths:
@@ -3594,7 +4074,12 @@ def _recompute_semantic_tool_payload(
             if certifier.file_digest(candidate_path)
             == artifact.get("sha256")
             and (
-                kind != "semantic_executable"
+                artifact.get("artifact_class")
+                not in {
+                    "native_or_managed_binary",
+                    "launcher_script",
+                    "generated_hermetic_shim",
+                }
                 or certifier.classify_executable_artifact(
                     candidate_path
                 )
@@ -3605,7 +4090,7 @@ def _recompute_semantic_tool_payload(
             not matching_paths
             and artifact.get("artifact_class")
             == "generated_hermetic_shim"
-            and spec.get("production_elevation_allowed") is not True
+            and not production_elevation_allowed
         ):
             # Focused shadow certifiers use deleted temporary executables.
             # Their digest-bound row may remain regression evidence, but this
@@ -3675,6 +4160,7 @@ def _recompute_semantic_tool_payload(
         if item.get("artifact_class")
         in {
             "native_or_managed_binary",
+            "managed_release_archive",
             "public_deployment_binding",
         }
     ]
@@ -3693,7 +4179,7 @@ def _recompute_semantic_tool_payload(
         "has_production_binding": bool(production_bindings),
     }
     if (
-        spec.get("production_elevation_allowed") is True
+        production_elevation_allowed
         and not production_bindings
     ):
         failures.append(
@@ -3822,6 +4308,25 @@ def _audit_semantic_lane_results(
         result = _safe_dict(lanes.get(lane_id))
         status_ran = result.get("status") == "ran"
         lane_failures: list[str] = []
+        elevation_policy = _audited_semantic_elevation_policy(
+            certifier=certifier,
+            repo_root=repo_root,
+            spec=spec,
+            semantic_result=result,
+        )
+        if elevation_policy.get("valid") is not True:
+            lane_failures.extend(
+                f"live_specialized:{failure}"
+                for failure in _safe_list(
+                    elevation_policy.get("failures")
+                )
+            )
+        production_allowed_tool_ids = {
+            str(value)
+            for value in _safe_list(
+                elevation_policy.get("production_allowed_tool_ids")
+            )
+        }
         expected_tool_id_list = [
             str(value) for value in _safe_list(spec.get("tool_ids"))
         ]
@@ -3873,9 +4378,11 @@ def _audit_semantic_lane_results(
             "certifier_family": spec.get("certifier_family") or lane_id,
             "interface": spec.get("interface"),
             "module": module_relative,
-            "evidence_class": spec.get("evidence_class"),
+            "evidence_class": elevation_policy.get("evidence_class"),
             "production_elevation_allowed": bool(
-                spec.get("production_elevation_allowed")
+                elevation_policy.get(
+                    "lane_production_elevation_allowed"
+                )
             ),
             "usable_elevation_allowed": bool(
                 spec.get("usable_elevation_allowed", True)
@@ -3993,7 +4500,9 @@ def _audit_semantic_lane_results(
                 independent_offline = certifier._offline_observation(
                     receipt_mapping,
                     production_elevation_allowed=bool(
-                        spec.get("production_elevation_allowed")
+                        elevation_policy.get(
+                            "lane_production_elevation_allowed"
+                        )
                     ),
                 )
                 if (
@@ -4016,6 +4525,9 @@ def _audit_semantic_lane_results(
                     compact_tool=per_tool,
                     receipt_integrity=independent_integrity,
                     offline_observation=independent_offline,
+                    production_elevation_allowed=(
+                        tool_id in production_allowed_tool_ids
+                    ),
                 )
                 reconstructed_tool = _safe_dict(
                     recomputed_tool.get("full_tool")
@@ -4081,11 +4593,11 @@ def _audit_semantic_lane_results(
                 ).get("certified")
                 is True
             ]
-            expected_elevated = (
-                list(expected_usable)
-                if spec.get("production_elevation_allowed") is True
-                else []
-            )
+            expected_elevated = [
+                tool_id
+                for tool_id in expected_usable
+                if tool_id in production_allowed_tool_ids
+            ]
             expected_lane_certified = bool(
                 receipt_mapping.get(str(spec["certified_key"]))
                 or receipt_mapping.get("certified")
@@ -4129,6 +4641,7 @@ def _audit_semantic_lane_results(
             ],
             "status_ran": status_ran,
             "expected_tool_ids": sorted(expected_tool_ids),
+            "elevation_policy": elevation_policy,
             "failures": lane_failures,
             "tools": tool_verification,
         }
@@ -4577,7 +5090,7 @@ def _audit_platform_support(
             )
             if redacted_host_path:
                 matches = list(
-                    _matching_approved_redacted_executables(
+                    _matching_approved_redacted_artifacts(
                         certifier=certifier,
                         lock_entry=entry,
                         artifact=artifact,
@@ -4995,7 +5508,22 @@ def _audit_required_elevations(
     canonical_role_tools = _safe_dict(canonical_roles.get("tools"))
     expected_semantic_production_ids: list[str] = []
     for tool_id, (spec, lane_id) in specs_by_tool.items():
-        if spec.get("production_elevation_allowed") is not True:
+        lane_audit = _safe_dict(lane_audits.get(lane_id))
+        elevation_policy = _safe_dict(
+            lane_audit.get("elevation_policy")
+        )
+        if (
+            elevation_policy.get("valid") is not True
+            or tool_id
+            not in {
+                str(value)
+                for value in _safe_list(
+                    elevation_policy.get(
+                        "production_allowed_tool_ids"
+                    )
+                )
+            }
+        ):
             continue
         lane = _safe_dict(semantic_results.get(lane_id))
         compact_tool = _safe_dict(
@@ -5008,7 +5536,7 @@ def _audit_required_elevations(
         )
         role = _safe_dict(canonical_role_tools.get(tool_id))
         independently_elevatable = bool(
-            _safe_dict(lane_audits.get(lane_id)).get("valid")
+            lane_audit.get("valid")
             and lane.get("status") == "ran"
             and compact_tool.get("certified") is True
             and tool_audit.get("checks_match_canonical_receipt") is True
@@ -5117,8 +5645,22 @@ def _audit_required_elevations(
             and int(decision.get("checks_count") or 0)
             == int(compact_tool.get("checks_total") or 0)
         )
+        elevation_policy = _safe_dict(
+            _safe_dict(lane_audits.get(lane_id)).get(
+                "elevation_policy"
+            )
+        )
         can_elevate = bool(
-            spec.get("production_elevation_allowed")
+            elevation_policy.get("valid") is True
+            and tool_id
+            in {
+                str(value)
+                for value in _safe_list(
+                    elevation_policy.get(
+                        "production_allowed_tool_ids"
+                    )
+                )
+            }
         )
         actually_present = bool(
             surfaces_consistent
@@ -5299,6 +5841,20 @@ def _reconstruct_specialized_source(
         compact_per_tool = _safe_dict(result.get("per_tool"))
         full_per_tool: dict[str, dict[str, Any]] = {}
         if result.get("status") == "ran":
+            elevation_policy = _audited_semantic_elevation_policy(
+                certifier=certifier,
+                repo_root=repo_root,
+                spec=spec,
+                semantic_result=result,
+            )
+            production_allowed_tool_ids = {
+                str(value)
+                for value in _safe_list(
+                    elevation_policy.get(
+                        "production_allowed_tool_ids"
+                    )
+                )
+            }
             receipt_integrity = _safe_dict(
                 result.get("receipt_integrity")
             )
@@ -5319,6 +5875,9 @@ def _reconstruct_specialized_source(
                     compact_tool=compact_tool,
                     receipt_integrity=receipt_integrity,
                     offline_observation=offline_observation,
+                    production_elevation_allowed=(
+                        tool_id in production_allowed_tool_ids
+                    ),
                 )
                 if recomputed_tool.get("valid") is not True:
                     failures.append(
@@ -7055,7 +7614,19 @@ def build_production_semantic_elevation_fanin(
             required_elevation_tools.get(tool_id)
         )
         production_allowed = bool(
-            spec.get("production_elevation_allowed")
+            _safe_dict(lane_audit.get("elevation_policy")).get(
+                "valid"
+            )
+            is True
+            and tool_id
+            in {
+                str(value)
+                for value in _safe_list(
+                    _safe_dict(
+                        lane_audit.get("elevation_policy")
+                    ).get("production_allowed_tool_ids")
+                )
+            }
         )
         authority_role = _safe_dict(canonical_roles.get(tool_id))
         decision = _safe_dict(elevation_decisions.get(tool_id))
