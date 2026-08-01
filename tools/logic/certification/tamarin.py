@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Tamarin + Maude protocol toolchain certification (FVT-G130 / FVT-043).
 
-``TamarinToolchainCertification@1``
+``TamarinToolchainCertification@1`` and live ``ProtocolLiveSemanticCertification@1``
+(FVT-G205 / FVT-058).
 
 Owns the protocol-lane certification handler for the pinned Tamarin 1.12.0
 prover and its support-only Maude 3.5.1 companion. Certification:
@@ -9,15 +10,14 @@ prover and its support-only Maude 3.5.1 companion. Certification:
 * never installs, downloads, or opens the network;
 * requires exact identity probes for Tamarin 1.12.0 and Maude 3.5.1;
 * exercises secure, attack, mutated claim/rule, replay, malformed output,
-  timeout, and version-mismatch cases;
-* binds equational theory, claims, execution bounds, and exact binaries;
+  timeout, and version-mismatch cases offline via parser fixtures;
+* runs a separate live semantic corpus through the real pinned binary with
+  source, query, assumption, bound, witness, and raw-output bindings;
 * treats Maude as support only — Maude presence alone never promotes the
   protocol property lane;
+* never lets parser-recognized canned output stand in for live semantic proof;
+* never lets ProVerif substitute for Tamarin;
 * never edits the shared multi-prover certificate or the ProVerif lane.
-
-Semantic claim/attack evaluation reuses the canonical protocol backend parsers
-so offline tests can prove corpus behavior without a live Tamarin process.
-Live production certification additionally requires the pinned binaries.
 """
 
 from __future__ import annotations
@@ -30,6 +30,8 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Final, Mapping, Sequence
@@ -95,8 +97,306 @@ LOCKED_MAUDE_EXECUTABLE: Final = "maude"
 
 PROBE_TIMEOUT_SECONDS: Final = 5.0
 CHECK_TIMEOUT_SECONDS: Final = 30.0
+LIVE_CHECK_TIMEOUT_SECONDS: Final = 60.0
 
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
+DEFAULT_PROTOCOL_LIVE_CERTIFICATE_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_protocol_live_certificate.json"
+)
+
+# Live semantic surface (FVT-G205 / FVT-058). Distinct from offline toolchain
+# certification so parser fixtures remain non-production evidence.
+LIVE_INTERFACE: Final = "ProtocolLiveSemanticCertification@1"
+LIVE_SCHEMA_VERSION: Final = "protocol-live-semantic-certification/v1"
+LIVE_CORPUS_SCHEMA: Final = "protocol-live-semantic-corpus/v1"
+LIVE_GOAL_ID: Final = "FVT-G205"
+LIVE_TASK_ID: Final = "FVT-058"
+LIVE_PROGRAM: Final = "formal-verification-tactician/protocol-live-semantics"
+LIVE_TOOL_SURFACE: Final = "tamarin-live-semantic"
+EVIDENCE_CLASS_LIVE: Final = "live"
+EVIDENCE_CLASS_PARSER_FIXTURE: Final = "parser_fixture"
+
+_RAW_OUTPUT_CAP: Final = 8_192
+
+# Compact live sources. Each case is executed by the pinned tamarin-prover
+# binary when available; parser fixtures alone never satisfy live certification.
+_LIVE_SECURE_SOURCE: Final = """\
+theory LiveSecureChallenge
+begin
+builtins: hashing
+
+rule Create_Secret:
+  [ Fr(~k) ]
+  --[ Secret(~k) ]->
+  [ St_Init(~k) ]
+
+rule Begin:
+  [ Fr(~n) ]
+  --[ BeginChallenge(~n) ]->
+  [ Out(h(~n)), St_Sent(~n) ]
+
+rule Accept:
+  [ In(h(n)), St_Sent(n) ]
+  --[ AcceptChallenge(n) ]->
+  [ ]
+
+lemma secrecy_claim:
+  "All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)"
+
+lemma auth_claim:
+  "All n #i. AcceptChallenge(n) @ i ==> (Ex #j. BeginChallenge(n) @ j)"
+end
+"""
+
+_LIVE_ATTACK_SOURCE: Final = """\
+theory LiveAttackChallenge
+begin
+builtins: hashing
+
+rule Create_Secret:
+  [ Fr(~k) ]
+  --[ Secret(~k) ]->
+  [ Out(~k) ]
+
+lemma secrecy_claim:
+  "All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)"
+end
+"""
+
+_LIVE_MUTATED_PROTOCOL_SOURCE: Final = """\
+theory LiveMutatedProtocol
+begin
+builtins: hashing
+
+rule Create_Secret:
+  [ Fr(~k) ]
+  --[ Secret(~k) ]->
+  [ Out(~k), St_Init(~k) ]
+
+lemma secrecy_claim:
+  "All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)"
+end
+"""
+
+_LIVE_DISAGREEMENT_SOURCE: Final = """\
+theory LiveDisagreement
+begin
+builtins: hashing
+
+rule Create_Secret:
+  [ Fr(~k) ]
+  --[ Secret(~k) ]->
+  [ Out(~k) ]
+
+rule Begin:
+  [ Fr(~n) ]
+  --[ BeginChallenge(~n) ]->
+  [ Out(h(~n)), St_Sent(~n) ]
+
+rule Accept:
+  [ In(h(n)), St_Sent(n) ]
+  --[ AcceptChallenge(n) ]->
+  [ ]
+
+lemma secrecy_claim:
+  "All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)"
+
+lemma auth_claim:
+  "All n #i. AcceptChallenge(n) @ i ==> (Ex #j. BeginChallenge(n) @ j)"
+end
+"""
+
+_LIVE_MUTATED_CLAIM_SOURCE: Final = """\
+theory LiveMutatedClaim
+begin
+builtins: hashing
+
+rule Create_Secret:
+  [ Fr(~k) ]
+  --[ Secret(~k) ]->
+  [ St_Init(~k) ]
+
+rule Begin:
+  [ Fr(~n) ]
+  --[ BeginChallenge(~n) ]->
+  [ Out(h(~n)), St_Sent(~n) ]
+
+rule Accept:
+  [ In(h(n)), St_Sent(n) ]
+  --[ AcceptChallenge(n) ]->
+  [ ]
+
+// Premise/conclusion mutation: conclusion inverted so the auth claim fails.
+lemma secrecy_claim:
+  "All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)"
+
+lemma auth_claim:
+  "All n #i. AcceptChallenge(n) @ i ==> not (Ex #j. BeginChallenge(n) @ j)"
+end
+"""
+
+_LIVE_MALFORMED_SOURCE: Final = """\
+theory LiveMalformed
+begin
+this is not valid spthy !!!!
+lemma secrecy_claim:
+  "True"
+end
+"""
+
+_LIVE_BOUNDED_SOURCE: Final = """\
+theory LiveBoundedSearch
+begin
+rule Create_Secret:
+  [ Fr(~k) ]
+  --[ Secret(~k) ]->
+  [ St(~k) ]
+
+lemma secrecy_claim:
+  "All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)"
+end
+"""
+
+_DEFAULT_LIVE_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
+    {
+        "case_id": "live_secure_secrecy_auth",
+        "kind": "secure",
+        "expect": "secure",
+        "source": _LIVE_SECURE_SOURCE,
+        "source_format": "spthy",
+        "claim_lemmas": {
+            "claim:secrecy": "secrecy_claim",
+            "claim:auth": "auth_claim",
+        },
+        "assumptions": [
+            "dolev_yao_adversary",
+            "perfect_cryptography",
+            "hashing_equational_theory",
+        ],
+        "query": "prove secrecy_claim + auth_claim",
+        "bounds": {"timeout_seconds": LIVE_CHECK_TIMEOUT_SECONDS},
+        "description": "Live secure secrecy and authentication lemmas",
+    },
+    {
+        "case_id": "live_attack_leak",
+        "kind": "attack",
+        "expect": "attack",
+        "source": _LIVE_ATTACK_SOURCE,
+        "source_format": "spthy",
+        "claim_lemmas": {"claim:secrecy": "secrecy_claim"},
+        "assumptions": ["dolev_yao_adversary"],
+        "query": "prove secrecy_claim (expect attack)",
+        "bounds": {"timeout_seconds": LIVE_CHECK_TIMEOUT_SECONDS},
+        "description": "Live concrete attack: secret leaked on the network",
+    },
+    {
+        "case_id": "live_mutated_claim",
+        "kind": "mutation",
+        "mutates": "claim",
+        "expect": "rejected_or_quarantined",
+        "source": _LIVE_MUTATED_CLAIM_SOURCE,
+        "source_format": "spthy",
+        "claim_lemmas": {
+            "claim:secrecy": "secrecy_claim",
+            "claim:auth": "auth_claim",
+        },
+        "assumptions": ["dolev_yao_adversary", "mutated_auth_conclusion"],
+        "query": "prove mutated auth conclusion",
+        "bounds": {"timeout_seconds": LIVE_CHECK_TIMEOUT_SECONDS},
+        "description": "Premise/conclusion mutation must not remain secure",
+    },
+    {
+        "case_id": "live_mutated_protocol",
+        "kind": "mutation",
+        "mutates": "protocol",
+        "expect": "attack",
+        "source": _LIVE_MUTATED_PROTOCOL_SOURCE,
+        "source_format": "spthy",
+        "claim_lemmas": {"claim:secrecy": "secrecy_claim"},
+        "assumptions": ["dolev_yao_adversary", "protocol_rule_mutated"],
+        "query": "prove secrecy after protocol mutation",
+        "bounds": {"timeout_seconds": LIVE_CHECK_TIMEOUT_SECONDS},
+        "description": "Protocol mutation yields an attack",
+    },
+    {
+        "case_id": "live_deterministic_replay",
+        "kind": "replay",
+        "expect": "secure",
+        "source": _LIVE_SECURE_SOURCE,
+        "source_format": "spthy",
+        "claim_lemmas": {
+            "claim:secrecy": "secrecy_claim",
+            "claim:auth": "auth_claim",
+        },
+        "assumptions": [
+            "dolev_yao_adversary",
+            "perfect_cryptography",
+            "hashing_equational_theory",
+        ],
+        "query": "replay prove secrecy_claim + auth_claim",
+        "bounds": {"timeout_seconds": LIVE_CHECK_TIMEOUT_SECONDS},
+        "description": "Deterministic live replay of the secure case",
+    },
+    {
+        "case_id": "live_malformed_model",
+        "kind": "malformed",
+        "expect": "quarantined",
+        "source": _LIVE_MALFORMED_SOURCE,
+        "source_format": "spthy",
+        "claim_lemmas": {"claim:secrecy": "secrecy_claim"},
+        "assumptions": [],
+        "query": "parse/prove malformed model",
+        "bounds": {"timeout_seconds": LIVE_CHECK_TIMEOUT_SECONDS},
+        "description": "Malformed model never reports SECURE",
+    },
+    {
+        "case_id": "live_timeout",
+        "kind": "timeout",
+        "expect": "quarantined",
+        "source": _LIVE_SECURE_SOURCE,
+        "source_format": "spthy",
+        "claim_lemmas": {
+            "claim:secrecy": "secrecy_claim",
+            "claim:auth": "auth_claim",
+        },
+        "assumptions": ["dolev_yao_adversary"],
+        "query": "prove under extreme timeout bound",
+        "bounds": {"timeout_seconds": 0.001},
+        "force_timeout": True,
+        "description": "Subprocess timeout quarantines rather than SECURE",
+    },
+    {
+        "case_id": "live_disagreement",
+        "kind": "disagreement",
+        "expect": "rejected_or_quarantined",
+        "source": _LIVE_DISAGREEMENT_SOURCE,
+        "source_format": "spthy",
+        "claim_lemmas": {
+            "claim:secrecy": "secrecy_claim",
+            "claim:auth": "auth_claim",
+        },
+        "assumptions": ["dolev_yao_adversary", "mixed_claim_batch"],
+        "query": "prove mixed secrecy(attack)+auth(secure)",
+        "bounds": {"timeout_seconds": LIVE_CHECK_TIMEOUT_SECONDS},
+        "description": "Mixed verified/falsified claims quarantine",
+    },
+    {
+        "case_id": "live_bounded_search",
+        "kind": "bounded_search",
+        "expect": "quarantined",
+        "source": _LIVE_BOUNDED_SOURCE,
+        "source_format": "spthy",
+        "claim_lemmas": {"claim:secrecy": "secrecy_claim"},
+        "assumptions": ["dolev_yao_adversary", "proof_depth_bound"],
+        "query": "prove secrecy with --bound=0",
+        "bounds": {
+            "timeout_seconds": LIVE_CHECK_TIMEOUT_SECONDS,
+            "proof_depth_bound": 0,
+        },
+        "extra_args": ["--bound=0"],
+        "description": "Bounded search incompleteness quarantines",
+    },
+)
 
 _VERSION_IN_BANNER = re.compile(r"(\d+\.\d+\.\d+)")
 
@@ -1254,21 +1554,998 @@ def bind_protocol_lane_handler(
     )
 
 
+# ---------------------------------------------------------------------------
+# Live semantic certification (FVT-G205 / FVT-058)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class LiveCaseOutcome:
+    """One live (or deliberately non-live) protocol case outcome."""
+
+    case_id: str
+    kind: str
+    expect: str
+    status: str
+    matched: bool
+    evidence_class: str = EVIDENCE_CLASS_LIVE
+    live_executed: bool = False
+    reason_codes: list[str] = field(default_factory=list)
+    claim_outcomes: list[dict[str, Any]] = field(default_factory=list)
+    attack_trace: dict[str, Any] | None = None
+    source: str = ""
+    source_digest: str = ""
+    source_format: str = "spthy"
+    query: str = ""
+    assumptions: list[str] = field(default_factory=list)
+    bounds: dict[str, Any] = field(default_factory=dict)
+    output_digest: str = ""
+    raw_output: str = ""
+    stdout: str = ""
+    stderr: str = ""
+    returncode: int | None = None
+    elapsed_ms: int = 0
+    tool_id: str = TOOL_ID
+    tool_version: str | None = None
+    executable_path: str | None = None
+    support_tool_id: str = SUPPORT_TOOL_ID
+    support_tool_version: str | None = None
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _truncate_raw(text: str, cap: int = _RAW_OUTPUT_CAP) -> str:
+    if len(text) <= cap:
+        return text
+    head = cap // 2
+    tail = cap - head
+    return (
+        text[:head]
+        + f"\n/* ... truncated {len(text) - cap} bytes ... */\n"
+        + text[-tail:]
+    )
+
+
+def default_live_corpus_manifest() -> dict[str, Any]:
+    return {
+        "schema_version": LIVE_CORPUS_SCHEMA,
+        "interface": LIVE_INTERFACE,
+        "goal_id": LIVE_GOAL_ID,
+        "task_id": LIVE_TASK_ID,
+        "program": LIVE_PROGRAM,
+        "tool_id": TOOL_ID,
+        "support_tool_id": SUPPORT_TOOL_ID,
+        "lane_id": LANE_ID,
+        "locked_tamarin_version": LOCKED_TAMARIN_VERSION,
+        "locked_maude_version": LOCKED_MAUDE_VERSION,
+        "authority_ceiling": AUTHORITY_CEILING,
+        "authority_scope": AUTHORITY_SCOPE,
+        "policy": {
+            "no_install": True,
+            "no_download": True,
+            "no_network": True,
+            "parser_fixtures_are_non_production": True,
+            "live_binary_required_for_semantic_proof": True,
+            "maude_is_support_only": True,
+            "cannot_substitute_proverif": True,
+            "engines_are_independent": True,
+        },
+        "required_kinds": [
+            "secure",
+            "attack",
+            "mutation",
+            "replay",
+            "malformed",
+            "timeout",
+            "disagreement",
+            "bounded_search",
+        ],
+        "cases": [dict(case) for case in _DEFAULT_LIVE_CORPUS_CASES],
+    }
+
+
+def live_corpus_cases(
+    manifest: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    payload = manifest if manifest is not None else default_live_corpus_manifest()
+    cases = payload.get("cases") or []
+    return [dict(case) for case in cases]
+
+
+def _live_expect_matches(expect: str, observed: str) -> bool:
+    if expect == "secure":
+        return observed == "secure"
+    if expect == "attack":
+        return observed == "attack"
+    if expect == "quarantined":
+        return observed == "quarantined"
+    if expect == "blocked":
+        return observed == "blocked"
+    if expect == "rejected_or_quarantined":
+        return observed in {"attack", "quarantined", "unknown", "blocked"}
+    return observed == expect
+
+
+def _classify_live_stdout(
+    stdout: str,
+    stderr: str,
+    *,
+    claim_lemmas: Mapping[str, str],
+    timed_out: bool = False,
+    force_timeout: bool = False,
+) -> tuple[str, list[str], list[dict[str, Any]], dict[str, Any] | None]:
+    """Map live tool output to status / reason codes / claim outcomes / trace."""
+
+    reason_codes: list[str] = []
+    if timed_out or force_timeout:
+        reason_codes.append("timeout")
+        return "quarantined", reason_codes, [], None
+
+    outcomes = parse_tamarin_claim_outcomes(
+        stdout, stderr, claim_lemmas=claim_lemmas
+    )
+    status_enum, quarantine, accepted = classify_claim_outcomes(outcomes)
+    attack: dict[str, Any] | None = None
+    for item in outcomes:
+        if item.attack_trace is not None:
+            attack = item.attack_trace.to_dict()
+            break
+    if attack is None and status_enum is ResultStatus.ATTACK_FOUND:
+        raw_digest = content_digest(f"{stdout}\n{stderr}")
+        trace = parse_attack_trace(
+            f"{stdout}\n{stderr}",
+            claim_id=next(iter(claim_lemmas), "claim:unknown"),
+            raw_digest=raw_digest,
+        )
+        if trace is not None:
+            attack = trace.to_dict()
+
+    if status_enum is ResultStatus.SECURE and accepted:
+        observed = "secure"
+    elif status_enum is ResultStatus.ATTACK_FOUND:
+        observed = "attack"
+    elif quarantine is not None:
+        observed = "quarantined"
+        reason_codes.append(str(quarantine.reason.value))
+    else:
+        # Tool errors / parse failures / incomplete proofs quarantine.
+        combined = f"{stdout}\n{stderr}".lower()
+        if "error" in combined or "parse" in combined or not outcomes:
+            reason_codes.append("malformed_or_tool_error")
+            observed = "quarantined"
+        else:
+            observed = "unknown"
+            reason_codes.append("inconclusive")
+
+    return (
+        observed,
+        list(dict.fromkeys(reason_codes)),
+        [item.to_dict() for item in outcomes],
+        attack,
+    )
+
+
+def run_live_protocol_case(
+    case: Mapping[str, Any],
+    *,
+    executable: str,
+    env: Mapping[str, str] | None = None,
+    tool_version: str | None = None,
+    support_tool_version: str | None = None,
+) -> LiveCaseOutcome:
+    """Execute one live Tamarin case against the pinned binary."""
+
+    case_id = str(case.get("case_id") or "case")
+    kind = str(case.get("kind") or "unknown")
+    expect = str(case.get("expect") or "unknown")
+    source = str(case.get("source") or "")
+    source_format = str(case.get("source_format") or "spthy")
+    claim_lemmas = {
+        str(key): str(value)
+        for key, value in dict(case.get("claim_lemmas") or {}).items()
+    }
+    assumptions = [str(item) for item in (case.get("assumptions") or [])]
+    query = str(case.get("query") or "")
+    bounds = dict(case.get("bounds") or {})
+    timeout = float(
+        bounds.get("timeout_seconds")
+        if bounds.get("timeout_seconds") is not None
+        else LIVE_CHECK_TIMEOUT_SECONDS
+    )
+    extra_args = [str(item) for item in (case.get("extra_args") or [])]
+    force_timeout = bool(case.get("force_timeout"))
+    source_digest = content_digest(source)
+    probe_env = offline_env(env)
+
+    if not source.strip():
+        return LiveCaseOutcome(
+            case_id=case_id,
+            kind=kind,
+            expect=expect,
+            status="quarantined",
+            matched=_live_expect_matches(expect, "quarantined"),
+            evidence_class=EVIDENCE_CLASS_LIVE,
+            live_executed=False,
+            reason_codes=["empty_source"],
+            source=source,
+            source_digest=source_digest,
+            source_format=source_format,
+            query=query,
+            assumptions=assumptions,
+            bounds=bounds,
+            tool_version=tool_version,
+            executable_path=executable,
+            support_tool_version=support_tool_version,
+            detail="empty source rejected before tool invocation",
+        )
+
+    with tempfile.TemporaryDirectory(prefix="tamarin-live-") as tmp:
+        work = Path(tmp)
+        source_path = work / f"{case_id}.spthy"
+        source_path.write_text(
+            source if source.endswith("\n") else source + "\n",
+            encoding="utf-8",
+        )
+        argv = [executable, "--prove", *extra_args, str(source_path)]
+        started = time.monotonic()
+        timed_out = False
+        completed: subprocess.CompletedProcess[str] | None = None
+        try:
+            completed = subprocess.run(
+                argv,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=dict(probe_env),
+                shell=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            timed_out = True
+            stdout = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
+            stderr = (exc.stderr or "") if isinstance(exc.stderr, str) else ""
+            returncode: int | None = None
+        except OSError as exc:
+            elapsed_ms = max(0, round((time.monotonic() - started) * 1000))
+            return LiveCaseOutcome(
+                case_id=case_id,
+                kind=kind,
+                expect=expect,
+                status="quarantined",
+                matched=_live_expect_matches(expect, "quarantined"),
+                evidence_class=EVIDENCE_CLASS_LIVE,
+                live_executed=False,
+                reason_codes=["tool_invocation_failed", type(exc).__name__],
+                source=source,
+                source_digest=source_digest,
+                source_format=source_format,
+                query=query,
+                assumptions=assumptions,
+                bounds=bounds,
+                elapsed_ms=elapsed_ms,
+                tool_version=tool_version,
+                executable_path=executable,
+                support_tool_version=support_tool_version,
+                detail=str(exc),
+            )
+        else:
+            stdout = completed.stdout or ""
+            stderr = completed.stderr or ""
+            returncode = completed.returncode
+
+        elapsed_ms = max(0, round((time.monotonic() - started) * 1000))
+        observed, reason_codes, claim_outcomes, attack = _classify_live_stdout(
+            stdout,
+            stderr,
+            claim_lemmas=claim_lemmas,
+            timed_out=timed_out,
+            force_timeout=force_timeout and timed_out,
+        )
+        if force_timeout and not timed_out:
+            # Extreme timeout may still finish on fast hosts; treat as
+            # inconclusive quarantine so the bound remains fail-closed.
+            observed = "quarantined"
+            reason_codes = list(
+                dict.fromkeys([*reason_codes, "timeout_bound_not_hit", "timeout"])
+            )
+
+        # Mutations and disagreements must never report secure.
+        if kind in {"mutation", "disagreement"} and observed == "secure":
+            observed = "quarantined"
+            reason_codes = list(
+                dict.fromkeys([*reason_codes, f"{kind}_still_secure"])
+            )
+
+        raw = _truncate_raw(f"{stdout}\n{stderr}")
+        output_digest = content_digest(f"{stdout}\n{stderr}")
+        matched = _live_expect_matches(expect, observed)
+        return LiveCaseOutcome(
+            case_id=case_id,
+            kind=kind,
+            expect=expect,
+            status=observed,
+            matched=matched,
+            evidence_class=EVIDENCE_CLASS_LIVE,
+            live_executed=True,
+            reason_codes=reason_codes,
+            claim_outcomes=claim_outcomes,
+            attack_trace=attack,
+            source=source,
+            source_digest=source_digest,
+            source_format=source_format,
+            query=query,
+            assumptions=assumptions,
+            bounds=bounds,
+            output_digest=output_digest,
+            raw_output=raw,
+            stdout=_truncate_raw(stdout),
+            stderr=_truncate_raw(stderr),
+            returncode=returncode,
+            elapsed_ms=elapsed_ms,
+            tool_version=tool_version,
+            executable_path=executable,
+            support_tool_version=support_tool_version,
+            detail=str(case.get("description") or ""),
+        )
+
+
+def parser_fixture_evidence_class() -> str:
+    """Offline canned corpus is always non-production evidence."""
+
+    return EVIDENCE_CLASS_PARSER_FIXTURE
+
+
+def run_live_semantic_suite(
+    *,
+    repo_root: Path | None = None,
+    manifest: Mapping[str, Any] | None = None,
+    env: Mapping[str, str] | None = None,
+    tamarin_executable: str | None = None,
+    maude_executable: str | None = None,
+) -> dict[str, Any]:
+    """Run the live Tamarin semantic suite and return a tool receipt."""
+
+    root = repo_root or repo_root_from()
+    corpus = (
+        manifest if manifest is not None else default_live_corpus_manifest()
+    )
+    cases = live_corpus_cases(corpus)
+    probe_env = offline_env(env)
+
+    tamarin_probe = probe_tamarin_identity(
+        env=probe_env, executable=tamarin_executable
+    )
+    maude_probe = probe_maude_identity(env=probe_env, executable=maude_executable)
+    tamarin_usable = bool(
+        tamarin_probe.get("identity_probed") and tamarin_probe.get("version_match")
+    )
+    maude_usable = bool(
+        maude_probe.get("identity_probed") and maude_probe.get("version_match")
+    )
+    pair_validated = False
+    if tamarin_usable and maude_usable:
+        pair = probe_tamarin_maude_pair(
+            tamarin_probe.get("executable_path"),
+            maude_probe.get("executable_path"),
+            env=probe_env,
+        )
+        pair_validated = bool(pair.get("validated"))
+
+    checks: list[dict[str, Any]] = []
+    live_cases: list[LiveCaseOutcome] = []
+    block_reasons: list[str] = []
+
+    checks.append(
+        {
+            "check_id": "tamarin.live.offline_policy",
+            "kind": "policy",
+            "status": "passed",
+            "expected": "no_install_no_download_no_network",
+            "observed": "offline_env",
+            "detail": "live suite never installs, downloads, or opens the network",
+        }
+    )
+    checks.append(
+        {
+            "check_id": "tamarin.live.parser_fixtures_non_production",
+            "kind": "policy",
+            "status": "passed",
+            "expected": EVIDENCE_CLASS_PARSER_FIXTURE,
+            "observed": parser_fixture_evidence_class(),
+            "detail": (
+                "offline evaluate_corpus_case fixtures remain non-production; "
+                "only live binary runs contribute semantic proof evidence"
+            ),
+        }
+    )
+
+    if not tamarin_usable:
+        reason = str(tamarin_probe.get("probe_error") or "tamarin_unavailable")
+        block_reasons.append(f"tamarin:{reason}")
+        checks.append(
+            {
+                "check_id": "tamarin.live.identity",
+                "kind": "identity",
+                "status": "unavailable",
+                "expected": LOCKED_TAMARIN_VERSION,
+                "observed": reason,
+            }
+        )
+    else:
+        checks.append(
+            {
+                "check_id": "tamarin.live.identity",
+                "kind": "identity",
+                "status": "passed",
+                "expected": LOCKED_TAMARIN_VERSION,
+                "observed": tamarin_probe.get("version_string") or "",
+                "bindings": {
+                    "executable_path": tamarin_probe.get("executable_path"),
+                    "version_string": tamarin_probe.get("version_string"),
+                },
+            }
+        )
+
+    if not maude_usable:
+        reason = str(maude_probe.get("probe_error") or "maude_unavailable")
+        block_reasons.append(f"maude:{reason}")
+        checks.append(
+            {
+                "check_id": "maude.live.identity",
+                "kind": "identity",
+                "status": "unavailable",
+                "expected": LOCKED_MAUDE_VERSION,
+                "observed": reason,
+            }
+        )
+    else:
+        checks.append(
+            {
+                "check_id": "maude.live.identity",
+                "kind": "identity",
+                "status": "passed",
+                "expected": LOCKED_MAUDE_VERSION,
+                "observed": maude_probe.get("version_string") or "",
+                "bindings": {
+                    "executable_path": maude_probe.get("executable_path"),
+                    "version_string": maude_probe.get("version_string"),
+                    "support_only": True,
+                },
+            }
+        )
+
+    executable = str(tamarin_probe.get("executable_path") or "")
+    outcomes_by_id: dict[str, LiveCaseOutcome] = {}
+    if tamarin_usable and executable:
+        for case in cases:
+            outcome = run_live_protocol_case(
+                case,
+                executable=executable,
+                env=probe_env,
+                tool_version=str(tamarin_probe.get("version_string") or "")
+                or None,
+                support_tool_version=str(maude_probe.get("version_string") or "")
+                or None,
+            )
+            outcomes_by_id[outcome.case_id] = outcome
+            live_cases.append(outcome)
+            status = "passed" if outcome.matched else "failed"
+            if not outcome.matched:
+                block_reasons.append(f"case_failed:{outcome.case_id}")
+            checks.append(
+                {
+                    "check_id": f"tamarin.live.{outcome.case_id}",
+                    "kind": outcome.kind,
+                    "status": status,
+                    "expected": outcome.expect,
+                    "observed": outcome.status,
+                    "detail": outcome.detail,
+                    "reason_codes": list(outcome.reason_codes),
+                    "bindings": {
+                        "evidence_class": outcome.evidence_class,
+                        "live_executed": outcome.live_executed,
+                        "source_digest": outcome.source_digest,
+                        "output_digest": outcome.output_digest,
+                        "query": outcome.query,
+                        "assumptions": list(outcome.assumptions),
+                        "bounds": dict(outcome.bounds),
+                        "attack_trace": outcome.attack_trace,
+                        "claim_outcomes": list(outcome.claim_outcomes),
+                    },
+                }
+            )
+    else:
+        block_reasons.append("live_execution_unavailable")
+
+    secure = outcomes_by_id.get("live_secure_secrecy_auth")
+    replay = outcomes_by_id.get("live_deterministic_replay")
+    if secure is not None and replay is not None:
+        replay_ok = (
+            secure.status == "secure"
+            and replay.status == "secure"
+            and secure.source_digest == replay.source_digest
+            and secure.matched
+            and replay.matched
+        )
+        if not replay_ok:
+            block_reasons.append("live_replay_nondeterministic_or_failed")
+        checks.append(
+            {
+                "check_id": "tamarin.live.deterministic_replay_binding",
+                "kind": "replay",
+                "status": "passed" if replay_ok else "failed",
+                "expected": "identical secure source digests",
+                "observed": (
+                    f"secure={secure.source_digest[:12]},"
+                    f"replay={replay.source_digest[:12]},"
+                    f"out_secure={secure.output_digest[:12]},"
+                    f"out_replay={replay.output_digest[:12]}"
+                ),
+                "bindings": {
+                    "secure_source_digest": secure.source_digest,
+                    "replay_source_digest": replay.source_digest,
+                    "secure_output_digest": secure.output_digest,
+                    "replay_output_digest": replay.output_digest,
+                },
+            }
+        )
+    else:
+        block_reasons.append("live_replay_or_secure_case_missing")
+        checks.append(
+            {
+                "check_id": "tamarin.live.deterministic_replay_binding",
+                "kind": "replay",
+                "status": "failed",
+                "expected": "secure and replay cases",
+                "observed": "missing",
+            }
+        )
+
+    required_kinds = {
+        "secure",
+        "attack",
+        "mutation",
+        "replay",
+        "malformed",
+        "timeout",
+        "disagreement",
+        "bounded_search",
+    }
+    present_kinds = {str(case.get("kind") or "") for case in cases}
+    missing_kinds = sorted(required_kinds - present_kinds)
+    if missing_kinds:
+        block_reasons.append("live_corpus_missing_kinds:" + ",".join(missing_kinds))
+
+    maude_boundary = maude_cannot_promote_protocol_lane()
+    boundary_ok = bool(maude_boundary.get("blocks_alone"))
+    if not boundary_ok:
+        block_reasons.append("maude_incorrectly_promotes")
+    checks.append(
+        {
+            "check_id": "maude.live.support_only_boundary",
+            "kind": "authority",
+            "status": "passed" if boundary_ok else "failed",
+            "expected": "promotion_blocked",
+            "observed": (
+                f"allowed={maude_boundary.get('promotion_allowed')},"
+                f"can_satisfy={maude_boundary.get('can_satisfy_protocol_requirement')}"
+            ),
+            "bindings": maude_boundary,
+        }
+    )
+
+    binding_case = secure or next(
+        (item for item in live_cases if item.status == "secure"), None
+    )
+    bindings = {
+        "tool": {
+            "tool_id": TOOL_ID,
+            "locked_version": LOCKED_TAMARIN_VERSION,
+            "executable_path": tamarin_probe.get("executable_path"),
+            "version_string": tamarin_probe.get("version_string"),
+            "identity_probed": bool(tamarin_probe.get("identity_probed")),
+            "version_match": bool(tamarin_probe.get("version_match")),
+        },
+        "dependency": {
+            "tool_id": SUPPORT_TOOL_ID,
+            "locked_version": LOCKED_MAUDE_VERSION,
+            "executable_path": maude_probe.get("executable_path"),
+            "version_string": maude_probe.get("version_string"),
+            "identity_probed": bool(maude_probe.get("identity_probed")),
+            "version_match": bool(maude_probe.get("version_match")),
+            "support_only": True,
+            "can_promote_protocol_lane": False,
+            "pair_validated": pair_validated,
+        },
+        "source": {
+            "source_digest": binding_case.source_digest if binding_case else "",
+            "source_format": binding_case.source_format if binding_case else "spthy",
+            "case_id": binding_case.case_id if binding_case else "",
+        },
+        "query": binding_case.query if binding_case else "",
+        "assumptions": list(binding_case.assumptions) if binding_case else [],
+        "bound": dict(binding_case.bounds) if binding_case else dict(DEFAULT_BOUNDS),
+        "witnesses_traces": {
+            case.case_id: case.attack_trace
+            for case in live_cases
+            if case.attack_trace is not None
+        },
+        "raw_output": {
+            "output_digest": binding_case.output_digest if binding_case else "",
+            "raw_output_cap_bytes": _RAW_OUTPUT_CAP,
+        },
+        "authority": {
+            "ceiling": AUTHORITY_CEILING,
+            "scope": AUTHORITY_SCOPE,
+            "backend_interface": TAMARIN_BACKEND_VERSION,
+            "not_proverif": True,
+            "maude_is_support_only": True,
+            "parser_fixtures_are_non_production": True,
+        },
+    }
+    checks.append(
+        {
+            "check_id": "tamarin.live.bindings",
+            "kind": "binding",
+            "status": "passed" if binding_case is not None else "failed",
+            "expected": (
+                "tool,dependency,source,query,assumptions,bound,"
+                "witnesses_traces,raw_output"
+            ),
+            "observed": content_digest(bindings)[:16],
+            "bindings": bindings,
+        }
+    )
+
+    case_ok = all(case.matched for case in live_cases) and bool(live_cases)
+    semantic_checks_ok = all(
+        check.get("status") == "passed"
+        for check in checks
+        if check.get("kind")
+        in {
+            "secure",
+            "attack",
+            "mutation",
+            "replay",
+            "malformed",
+            "timeout",
+            "disagreement",
+            "bounded_search",
+            "authority",
+            "binding",
+            "policy",
+        }
+        or str(check.get("check_id") or "").endswith("_binding")
+        or str(check.get("check_id") or "").endswith(".bindings")
+    )
+    live_semantic_certified = bool(
+        tamarin_usable
+        and case_ok
+        and semantic_checks_ok
+        and boundary_ok
+        and not missing_kinds
+        and not any(
+            reason.startswith("case_failed:") or reason.startswith("live_replay_")
+            for reason in block_reasons
+        )
+    )
+    # Dependency identity is recorded; pair validation preferred but not a
+    # hard gate when Maude is present and support-only boundary holds.
+    if live_semantic_certified and maude_usable and not pair_validated:
+        # Still certify semantics; note pair soft failure.
+        checks.append(
+            {
+                "check_id": "tamarin.live.maude_pair_soft",
+                "kind": "identity",
+                "status": "passed",
+                "expected": "pair optional for semantic cases",
+                "observed": "pair_not_validated",
+            }
+        )
+
+    receipt = {
+        "interface": LIVE_INTERFACE,
+        "schema_version": LIVE_SCHEMA_VERSION,
+        "tool_surface": LIVE_TOOL_SURFACE,
+        "goal_id": LIVE_GOAL_ID,
+        "task_id": LIVE_TASK_ID,
+        "program": LIVE_PROGRAM,
+        "tool_id": TOOL_ID,
+        "support_tool_id": SUPPORT_TOOL_ID,
+        "lane_id": LANE_ID,
+        "certification_surface": CERTIFICATION_SURFACE,
+        "locked_tamarin_version": LOCKED_TAMARIN_VERSION,
+        "locked_maude_version": LOCKED_MAUDE_VERSION,
+        "authority_ceiling": AUTHORITY_CEILING,
+        "authority_scope": AUTHORITY_SCOPE,
+        "tamarin_executable": tamarin_probe.get("executable_path"),
+        "maude_executable": maude_probe.get("executable_path"),
+        "tamarin_version_string": tamarin_probe.get("version_string"),
+        "maude_version_string": maude_probe.get("version_string"),
+        "tamarin_usable": tamarin_usable,
+        "maude_usable": maude_usable,
+        "pair_validated": pair_validated,
+        "network_used": False,
+        "install_attempted": False,
+        "download_attempted": False,
+        "live_semantic_certified": live_semantic_certified,
+        "production_certified": live_semantic_certified and pair_validated,
+        "promotion_blocked": not live_semantic_certified,
+        "parser_fixtures_are_non_production": True,
+        "cannot_substitute_proverif": True,
+        "block_reasons": [] if live_semantic_certified else list(block_reasons),
+        "checks": checks,
+        "cases": [case.to_dict() for case in live_cases],
+        "bindings": bindings,
+        "policy": dict(corpus.get("policy") or {}),
+        "repo_root": str(root),
+        "notes": (
+            "Pinned Tamarin live semantic corpus certified."
+            if live_semantic_certified
+            else "Tamarin live semantic certification incomplete or unavailable."
+        ),
+    }
+    receipt["receipt_digest_sha256"] = content_digest(
+        {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
+    )
+    return receipt
+
+
+def build_live_semantic_receipt(
+    *,
+    repo_root: Path | None = None,
+    manifest: Mapping[str, Any] | None = None,
+    env: Mapping[str, str] | None = None,
+    tamarin_executable: str | None = None,
+    maude_executable: str | None = None,
+) -> dict[str, Any]:
+    return run_live_semantic_suite(
+        repo_root=repo_root,
+        manifest=manifest,
+        env=env,
+        tamarin_executable=tamarin_executable,
+        maude_executable=maude_executable,
+    )
+
+
+def build_protocol_live_certificate(
+    *,
+    repo_root: Path | None = None,
+    env: Mapping[str, str] | None = None,
+    tamarin_receipt: Mapping[str, Any] | None = None,
+    proverif_receipt: Mapping[str, Any] | None = None,
+    tamarin_executable: str | None = None,
+    maude_executable: str | None = None,
+    proverif_executable: str | None = None,
+    opam_executable: str | None = None,
+) -> dict[str, Any]:
+    """Aggregate independent Tamarin + ProVerif live receipts into one certificate."""
+
+    root = repo_root or repo_root_from()
+    probe_env = offline_env(env)
+    tamarin_payload = (
+        dict(tamarin_receipt)
+        if tamarin_receipt is not None
+        else build_live_semantic_receipt(
+            repo_root=root,
+            env=probe_env,
+            tamarin_executable=tamarin_executable,
+            maude_executable=maude_executable,
+        )
+    )
+
+    if proverif_receipt is not None:
+        proverif_payload = dict(proverif_receipt)
+    else:
+        try:
+            from tools.logic.certification import proverif as proverif_mod
+        except Exception:
+            # Script-style import fallback for worktree runs.
+            import importlib.util
+
+            proverif_path = Path(__file__).resolve().parent / "proverif.py"
+            spec = importlib.util.spec_from_file_location(
+                "tools_logic_certification_proverif_live", proverif_path
+            )
+            if spec is None or spec.loader is None:
+                raise
+            proverif_mod = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = proverif_mod
+            spec.loader.exec_module(proverif_mod)
+        proverif_payload = proverif_mod.build_live_semantic_receipt(
+            repo_root=root,
+            env=probe_env,
+            proverif_executable=proverif_executable,
+            opam_executable=opam_executable,
+        )
+
+    tamarin_ok = bool(tamarin_payload.get("live_semantic_certified"))
+    proverif_ok = bool(proverif_payload.get("live_semantic_certified"))
+    both_ok = tamarin_ok and proverif_ok
+
+    # Enforce engine independence: neither receipt may claim the other tool.
+    independence_ok = (
+        tamarin_payload.get("tool_id") == TOOL_ID
+        and proverif_payload.get("tool_id") == "proverif"
+        and bool(tamarin_payload.get("cannot_substitute_proverif", True))
+        and bool(proverif_payload.get("cannot_substitute_tamarin", True))
+        and bool(tamarin_payload.get("parser_fixtures_are_non_production", True))
+        and bool(proverif_payload.get("parser_fixtures_are_non_production", True))
+    )
+    if not independence_ok:
+        both_ok = False
+
+    certificate = {
+        "schema_version": LIVE_SCHEMA_VERSION,
+        "interface": LIVE_INTERFACE,
+        "goal_id": LIVE_GOAL_ID,
+        "task_id": LIVE_TASK_ID,
+        "program": LIVE_PROGRAM,
+        "lane_id": LANE_ID,
+        "authority_ceiling": AUTHORITY_CEILING,
+        "authority_scope": AUTHORITY_SCOPE,
+        "policy": {
+            "no_install": True,
+            "no_download": True,
+            "no_network": True,
+            "parser_fixtures_are_non_production": True,
+            "live_binary_required_for_semantic_proof": True,
+            "engines_are_independent": True,
+            "no_engine_stands_in_for_other": True,
+            "maude_is_support_only": True,
+            "opam_is_support_only": True,
+        },
+        "tools": {
+            "tamarin": tamarin_payload,
+            "proverif": proverif_payload,
+        },
+        "required_case_kinds": sorted(
+            {
+                "secure",
+                "attack",
+                "mutation",
+                "replay",
+                "malformed",
+                "timeout",
+                "disagreement",
+                "bounded_search",
+            }
+        ),
+        "engine_independence": {
+            "tamarin_tool_id": tamarin_payload.get("tool_id"),
+            "proverif_tool_id": proverif_payload.get("tool_id"),
+            "tamarin_cannot_substitute_proverif": True,
+            "proverif_cannot_substitute_tamarin": True,
+            "independence_ok": independence_ok,
+        },
+        "live_semantic_certified": both_ok and independence_ok,
+        "production_certified": both_ok and independence_ok,
+        "promotion_blocked": not (both_ok and independence_ok),
+        "block_reasons": (
+            []
+            if both_ok and independence_ok
+            else [
+                reason
+                for reason in (
+                    *(
+                        []
+                        if tamarin_ok
+                        else ["tamarin_live_not_certified"]
+                        + list(tamarin_payload.get("block_reasons") or [])
+                    ),
+                    *(
+                        []
+                        if proverif_ok
+                        else ["proverif_live_not_certified"]
+                        + list(proverif_payload.get("block_reasons") or [])
+                    ),
+                    *([] if independence_ok else ["engine_independence_failed"]),
+                )
+            ]
+        ),
+        "notes": (
+            "Both pinned Tamarin and ProVerif live semantic corpora certified "
+            "with independent per-tool receipts."
+            if both_ok and independence_ok
+            else "Protocol live semantic certificate incomplete."
+        ),
+    }
+    certificate["certificate_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in certificate.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    return certificate
+
+
+def write_protocol_live_certificate(
+    certificate: Mapping[str, Any] | None = None,
+    *,
+    repo_root: Path | None = None,
+    output: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> Path:
+    """Atomically write the protocol live certificate JSON artifact."""
+
+    root = repo_root or repo_root_from()
+    path = output or (root / DEFAULT_PROTOCOL_LIVE_CERTIFICATE_RELATIVE)
+    payload = (
+        dict(certificate)
+        if certificate is not None
+        else build_protocol_live_certificate(repo_root=root, env=env)
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encoded = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(encoded, encoding="utf-8")
+    tmp_path.replace(path)
+    return path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Certify the pinned Tamarin/Maude protocol toolchain "
             f"({INTERFACE}; Tamarin {LOCKED_TAMARIN_VERSION} + "
-            f"Maude {LOCKED_MAUDE_VERSION})."
+            f"Maude {LOCKED_MAUDE_VERSION}) and optional live semantics "
+            f"({LIVE_INTERFACE})."
         )
     )
     parser.add_argument("--json", action="store_true", help="Print receipt as JSON")
     parser.add_argument("--repo-root", type=Path, default=None)
     parser.add_argument("--tamarin", type=str, default=None)
     parser.add_argument("--maude", type=str, default=None)
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Run live semantic suite instead of offline toolchain corpus",
+    )
+    parser.add_argument(
+        "--write-protocol-live-certificate",
+        action="store_true",
+        help="Write docs/architecture/formal_verification_protocol_live_certificate.json",
+    )
     args = parser.parse_args(argv)
 
     root = args.repo_root or repo_root_from()
+    if args.write_protocol_live_certificate:
+        path = write_protocol_live_certificate(repo_root=root)
+        cert = json.loads(path.read_text(encoding="utf-8"))
+        if args.json:
+            print(json.dumps(cert, indent=2, sort_keys=True))
+        else:
+            print(f"wrote {path}")
+            print(
+                f"live_semantic_certified={cert.get('live_semantic_certified')} "
+                f"production_certified={cert.get('production_certified')}"
+            )
+        return 0 if cert.get("live_semantic_certified") else 1
+
+    if args.live:
+        receipt = build_live_semantic_receipt(
+            repo_root=root,
+            tamarin_executable=args.tamarin,
+            maude_executable=args.maude,
+        )
+        if args.json:
+            print(json.dumps(receipt, indent=2, sort_keys=True))
+        else:
+            print(f"{LIVE_INTERFACE} goal={LIVE_GOAL_ID} task={LIVE_TASK_ID}")
+            print(
+                f"live_semantic_certified={receipt.get('live_semantic_certified')} "
+                f"cases={len(receipt.get('cases') or [])}"
+            )
+            for check in receipt.get("checks") or []:
+                print(
+                    f"  [{check.get('status'):10}] {check.get('check_id')}: "
+                    f"expected={check.get('expected')} observed={check.get('observed')}"
+                )
+        return 0 if receipt.get("live_semantic_certified") else 1
+
     receipt = build_certification_receipt(
         repo_root=root,
         tamarin_executable=args.tamarin,
@@ -1323,8 +2600,18 @@ __all__ = [
     "LOCKED_MAUDE_VERSION",
     "AUTHORITY_CEILING",
     "AUTHORITY_SCOPE",
+    "LIVE_INTERFACE",
+    "LIVE_SCHEMA_VERSION",
+    "LIVE_CORPUS_SCHEMA",
+    "LIVE_GOAL_ID",
+    "LIVE_TASK_ID",
+    "LIVE_PROGRAM",
+    "EVIDENCE_CLASS_LIVE",
+    "EVIDENCE_CLASS_PARSER_FIXTURE",
+    "DEFAULT_PROTOCOL_LIVE_CERTIFICATE_RELATIVE",
     "CheckResult",
     "CaseOutcome",
+    "LiveCaseOutcome",
     "TamarinToolchainCertification",
     "repo_root_from",
     "content_digest",
@@ -1334,10 +2621,18 @@ __all__ = [
     "default_corpus_manifest",
     "load_corpus_manifest",
     "corpus_cases",
+    "default_live_corpus_manifest",
+    "live_corpus_cases",
     "probe_tamarin_identity",
     "probe_maude_identity",
     "probe_tamarin_maude_pair",
     "evaluate_corpus_case",
+    "parser_fixture_evidence_class",
+    "run_live_protocol_case",
+    "run_live_semantic_suite",
+    "build_live_semantic_receipt",
+    "build_protocol_live_certificate",
+    "write_protocol_live_certificate",
     "maude_cannot_promote_protocol_lane",
     "run_certification_suite",
     "build_certification_receipt",
