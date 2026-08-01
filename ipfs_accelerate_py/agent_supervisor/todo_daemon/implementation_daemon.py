@@ -8717,11 +8717,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     commit_result,
                 )
                 if not durable:
-                    replace_locked_taskboard(taskboard, original_text)
                     rollback_result = self._restore_failed_root_board_transaction(
                         todo_path,
                         preimage_commit=transaction_preimage,
                         commit_result=commit_result,
+                        taskboard=taskboard,
+                        original_text=original_text,
                     )
                     result = {
                         **common_result,
@@ -8770,6 +8771,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         preimage_commit: str,
         commit_result: Mapping[str, Any],
+        taskboard: Any,
+        original_text: str,
     ) -> dict[str, Any]:
         """Restore the exact root ref/index preimage after failed admission."""
 
@@ -8814,8 +8817,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 ref_restored = restored.returncode == 0
         relative = self._relative_to_repo(self.repo_root, path)
+        bytes_restored = False
+        restore_error = ""
+        if ref_restored:
+            try:
+                replace_locked_taskboard(taskboard, original_text)
+                bytes_restored = True
+            except OSError as exc:
+                restore_error = str(exc)[-1000:]
         index_restored = False
-        if ref_restored and relative:
+        if ref_restored and bytes_restored and relative:
             reset = subprocess.run(
                 ["git", "reset", preimage_commit, "--", relative],
                 cwd=self.repo_root,
@@ -8826,6 +8837,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             index_restored = reset.returncode == 0
         exact = bool(
             ref_restored
+            and bytes_restored
             and index_restored
             and self._resolve_git_commit_in_repo(
                 self.repo_root,
@@ -8834,13 +8846,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             == preimage_commit
             and not self._path_status(self.repo_root, relative)
         )
-        return {
+        result = {
             "restored": exact,
             "ref_restored": ref_restored,
+            "bytes_restored": bytes_restored,
             "index_restored": index_restored,
             "preimage_commit": preimage_commit,
             "failed_commit": committed,
         }
+        if restore_error:
+            result["restore_error"] = restore_error
+        return result
 
     def _commit_generated_file_update(
         self,
@@ -9425,6 +9441,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 task=task,
             )
         )
+        observed_provider = self._observed_implementation_provider(
+            task=task,
+            attempt=attempt,
+            branch_name=branch_name,
+        )
         metadata = {
             "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@2",
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
@@ -9445,9 +9466,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "task_header_prefix": self.task_header_prefix,
             "task": asdict(task),
             "implementation_attempt": int(attempt),
-            "implementation_provider": (
-                self._task_declared_implementation_provider(task)
-            ),
+            "implementation_provider": observed_provider,
             "model_invocation_observed": not self._task_uses_typed_local_execution(task),
             "implementation_protected_paths": list(
                 self.implementation_protected_paths
@@ -9609,6 +9628,44 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             },
         )
         return request, result
+
+    def _observed_implementation_provider(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        branch_name: str,
+    ) -> str:
+        """Return the unique provider observed for this exact execution."""
+
+        if self._task_uses_typed_local_execution(task):
+            return ExecutionMode.DETERMINISTIC_ONLY.value
+        matching_commands: list[list[str]] = []
+        for event in self._iter_events():
+            if (
+                str(event.get("type") or "") != "implementation_started"
+                or str(event.get("task_id") or "") != task.task_id
+                or int(event.get("attempt") or 0) != int(attempt)
+                or str(event.get("branch") or "") != branch_name
+            ):
+                continue
+            command = event.get("command")
+            if isinstance(command, list) and all(
+                isinstance(item, str) for item in command
+            ):
+                matching_commands.append(command)
+        if len(matching_commands) != 1:
+            return ""
+        rendered = " ".join(matching_commands[0]).casefold()
+        if "grok_cli_runner" in rendered or re.search(r"(^|/)grok(?:\s|$)", rendered):
+            return "grok_cli"
+        if re.search(r"(^|/)goose(?:\s|$)", rendered):
+            return "goose_meta"
+        if re.search(r"(^|/)copilot(?:\s|$)", rendered):
+            return "copilot"
+        if re.search(r"(^|/)codex(?:\s|$)", rendered):
+            return "codex_cli"
+        return ""
 
     @staticmethod
     def _portal_task_from_merge_request(request: Any) -> PortalTask:
@@ -10210,10 +10267,31 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             }
         task = matching_tasks[0]
         queue_attempt = int(getattr(request, "attempt", 0) or 0)
-        implementation_attempt = int(
-            metadata.get("implementation_attempt")
-            or queue_attempt
-            or 0
+        raw_implementation_attempt = int(
+            metadata.get("implementation_attempt") or 0
+        )
+        model_invocation_observed = bool(
+            metadata.get("model_invocation_observed")
+        )
+        implementation_provider = str(
+            metadata.get("implementation_provider") or ""
+        ).strip()
+        if model_invocation_observed and (
+            raw_implementation_attempt <= 0
+            or not implementation_provider
+        ):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "implementation_provenance_missing",
+                "task_id": task.task_id,
+                "queue_attempt": queue_attempt,
+                "implementation_attempt": raw_implementation_attempt,
+                "implementation_provider": implementation_provider,
+            }
+        implementation_attempt = (
+            raw_implementation_attempt or queue_attempt
         )
         board_identity = self._identity_for_task(task)
         request_cid = str(
@@ -10622,6 +10700,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "attempt": implementation_attempt,
                             "queue_attempt": queue_attempt,
                             "implementation_attempt": implementation_attempt,
+                            "implementation_provider": implementation_provider,
                             "branch": branch_name,
                             "baseline_ref": baseline_ref,
                             "implementation_commit": (
@@ -10725,6 +10804,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "attempt": implementation_attempt,
                             "queue_attempt": queue_attempt,
                             "implementation_attempt": implementation_attempt,
+                            "implementation_provider": implementation_provider,
                             "branch": branch_name,
                             "baseline_ref": baseline_ref,
                             "implementation_commit": (

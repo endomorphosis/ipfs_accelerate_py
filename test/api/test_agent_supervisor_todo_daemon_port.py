@@ -7082,6 +7082,12 @@ def test_merge_callback_runs_exact_post_merge_validation_before_acceptance(
             "target_branch": daemon.resolved_merge_target_branch,
             "baseline_ref": baseline,
             "model_invocation_observed": model_invocation_observed,
+            "implementation_attempt": 1,
+            "implementation_provider": (
+                "grok_cli"
+                if model_invocation_observed
+                else "deterministic-only"
+            ),
             "validation_proof": {
                 "passed": True,
                 "returncode": 0,
@@ -18375,6 +18381,69 @@ def test_failed_completion_postcondition_restores_ref_preimage(
     ).returncode != 0
     assert todo_path.read_text(encoding="utf-8") == original
     assert _git(repo, "status", "--porcelain", "--", "todo.md") == ""
+
+
+def test_failed_completion_restore_write_keeps_target_at_preimage(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    original = (
+        "## ACCEL-001 Restore failure\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+    )
+    todo_path.write_text(original, encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
+    preimage = _git(repo, "rev-parse", "main")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    task = daemon._load_tasks()[0]
+    receipt, _gate = real_git_authority(repo, task.task_id)
+    monkeypatch.setattr(
+        daemon,
+        "_generated_file_commit_is_durable",
+        lambda *_args, **_kwargs: False,
+    )
+    real_replace = implementation_daemon_module.replace_locked_taskboard
+    calls = 0
+
+    def fail_restore(stream, text):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected restore failure")
+        return real_replace(stream, text)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "replace_locked_taskboard",
+        fail_restore,
+    )
+    result = daemon.mark_authoritatively_completed_if_admitted(
+        task,
+        receipt,
+    )
+
+    rollback = result["todo_update_result"]["rollback_result"]
+    assert result["authoritatively_completed"] is False
+    assert rollback["ref_restored"] is True
+    assert rollback["bytes_restored"] is False
+    assert "injected restore failure" in rollback["restore_error"]
+    assert _git(repo, "rev-parse", "main") == preimage
+    assert _git(repo, "show", "main:todo.md") == original.rstrip("\n")
 
 
 def test_reconciled_acceptance_rejects_target_advance_during_provider_review(
