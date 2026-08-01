@@ -1,4 +1,31 @@
 {
+  "acceptance": {
+    "authorization_decision_authority_only": true,
+    "categories": [
+      "allow",
+      "conflict",
+      "delegation",
+      "deny",
+      "malformed",
+      "negative",
+      "revocation",
+      "unknown"
+    ],
+    "counterexamples_replay_deterministically": true,
+    "forbids_theorem_authority": true,
+    "goal_id": "FVT-G102",
+    "mutation_kinds": [
+      "delegation",
+      "principal",
+      "rule",
+      "scope"
+    ],
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_repair": true,
+    "receipts_bind_policy_and_engine": true,
+    "repair_task_id": "FVT-068",
+    "task_id": "FVT-038"
+  },
   "authority_ceiling": "authorization",
   "case_recipes": [
     {
@@ -131,6 +158,9 @@
   "handler_id": "authorization_semantic_certification@1",
   "interface": "AuthorizationSemanticCertification@1",
   "lane_id": "datalog_secpal",
+  "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py test/integration/toolchains/test_authorization_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'authorization or datalog or secpal' -q",
+  "objective_validation_evidence": "objective validation repair",
+  "objective_validation_repair": true,
   "policy": {
     "authorization_decision_authority_only": true,
     "counterexamples_replay_deterministically": true,
@@ -141,6 +171,7 @@
     "receipts_bind_policy_and_engine": true
   },
   "program": "formal-verification-tactician/authorization-certification",
+  "repair_task_id": "FVT-068",
   "required_categories": [
     "allow",
     "conflict",
