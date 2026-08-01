@@ -39,6 +39,12 @@ INSTALLER_PATH = (
 CERTIFIER_PATH = (
     REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl_external.py"
 )
+CENTRAL_CERTIFIER_PATH = (
+    REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
+)
+TOOLCHAIN_LOCK_PATH = (
+    REPO_ROOT / "config" / "formal_verification_toolchains.lock.json"
+)
 TS_PACKAGE = REPO_ROOT / "ipfs_datasets_py" / "typescript" / "logic-runtime-mtl"
 RECEIPT_PATH = (
     REPO_ROOT
@@ -98,6 +104,13 @@ def installer():
 @pytest.fixture(scope="module")
 def certifier():
     return _load_module("runtime_mtl_vendor_certification", CERTIFIER_PATH)
+
+
+@pytest.fixture(scope="module")
+def central_certifier():
+    return _load_module(
+        "runtime_mtl_vendor_central_certifier", CENTRAL_CERTIFIER_PATH
+    )
 
 
 @pytest.fixture(scope="module")
@@ -275,6 +288,67 @@ def test_vendor_install_independent_typescript_engine(installer, vendor_bundle) 
     assert "from ipfs_datasets_py" not in wrapper
     assert "ipfs_datasets_py.logic.software_verification" not in wrapper
     assert "python3" not in wrapper or "#!/usr/bin/env" in wrapper
+
+
+def test_managed_vendor_launcher_is_discoverable_by_central_probe(
+    central_certifier, installer, vendor_bundle
+) -> None:
+    identity = next(iter(vendor_bundle.identities.values()))
+    lock = json.loads(TOOLCHAIN_LOCK_PATH.read_text(encoding="utf-8"))
+    entry = next(
+        item
+        for item in lock["tools"]
+        if item["tool_id"] == "runtime-mtl-external"
+    )
+    managed_bin = Path(identity.install_root) / "bin"
+    probe = central_certifier.probe_tool_identity(
+        entry,
+        env={
+            "HOME": str(Path(identity.install_root) / "probe-home"),
+            "PATH": f"{managed_bin}:/usr/local/bin:/usr/bin:/bin",
+        },
+    )
+
+    assert probe["path_present"] is True
+    assert probe["identity_probed"] is True
+    assert probe["installed"] is True
+    assert probe["probe_error"] is None
+    assert PIN_VERSION in probe["version_string"]
+    assert (
+        Path(probe["executable_path"]).name
+        == installer.MANAGED_EXECUTABLE_NAME
+    )
+
+
+def test_hermetic_install_cannot_replace_managed_vendor_launcher(
+    installer, vendor_bundle
+) -> None:
+    identity = next(iter(vendor_bundle.identities.values()))
+    install_root = Path(identity.install_root)
+    managed_launcher = (
+        install_root / "bin" / installer.MANAGED_EXECUTABLE_NAME
+    )
+    before = managed_launcher.read_bytes()
+    before_digest = hashlib.sha256(before).hexdigest()
+
+    hermetic = installer.ensure_runtime_mtl_external(
+        yes=True,
+        strict=True,
+        force=True,
+        install_root=install_root,
+        hermetic_parity_engine=True,
+        vendor=False,
+        checksum_verified=True,
+        repo_root=REPO_ROOT,
+    )
+
+    assert hermetic.ok
+    assert hermetic.identity is not None
+    assert hermetic.identity.is_hermetic_parity_engine is True
+    assert managed_launcher.read_bytes() == before
+    assert hashlib.sha256(managed_launcher.read_bytes()).hexdigest() == (
+        before_digest
+    )
 
 
 def test_hermetic_parity_cannot_satisfy_vendor(installer, install_root) -> None:
