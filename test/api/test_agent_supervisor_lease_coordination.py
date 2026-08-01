@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 from ipfs_datasets_py.logic.profile_g import validate_profile_g_artifact
 
+from ipfs_accelerate_py.agent_supervisor.merge import (
+    lease_coordination as lease_coordination_module,
+)
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     launch_bundle_lanes,
     plan_bundle_lanes,
@@ -46,6 +49,103 @@ def _named_bundle(name: str) -> dict[str, object]:
         "source_todo": "dependency.todo.md",
         "tasks": [{"task_id": name}],
     }
+
+
+def test_coordination_open_retries_transient_duckdb_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    original_connect = duckdb.connect
+    attempts = 0
+    sleeps: list[float] = []
+
+    def flaky_connect(*args: object, **kwargs: object):
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise duckdb.IOException(
+                'IO Error: Could not set lock on file "leases.duckdb": '
+                "Conflicting lock is held"
+            )
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(duckdb, "connect", flaky_connect)
+    monkeypatch.setattr(
+        lease_coordination_module.time,
+        "sleep",
+        lambda seconds: sleeps.append(seconds),
+    )
+
+    with LeaseCoordinator(tmp_path / "leases.duckdb"):
+        assert attempts == 3
+
+    assert sleeps == [
+        lease_coordination_module.COORDINATION_DUCKDB_LOCK_RETRY_INITIAL_SECONDS,
+        lease_coordination_module.COORDINATION_DUCKDB_LOCK_RETRY_INITIAL_SECONDS * 2,
+    ]
+
+
+def test_coordination_open_fails_after_bounded_duckdb_lock_retries(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    lock_error = duckdb.IOException(
+        'IO Error: Could not set lock on file "leases.duckdb": '
+        "Conflicting lock is held"
+    )
+    attempts = 0
+    sleeps: list[float] = []
+
+    def locked_connect(*_args: object, **_kwargs: object):
+        nonlocal attempts
+        attempts += 1
+        raise lock_error
+
+    monkeypatch.setattr(duckdb, "connect", locked_connect)
+    monkeypatch.setattr(
+        lease_coordination_module.time,
+        "sleep",
+        lambda seconds: sleeps.append(seconds),
+    )
+
+    with pytest.raises(duckdb.IOException) as caught:
+        LeaseCoordinator(tmp_path / "leases.duckdb")
+
+    assert caught.value is lock_error
+    assert attempts == lease_coordination_module.COORDINATION_DUCKDB_LOCK_RETRY_ATTEMPTS
+    assert len(sleeps) == attempts - 1
+    assert sleeps[-1] == lease_coordination_module.COORDINATION_DUCKDB_LOCK_RETRY_MAX_SECONDS
+
+
+def test_coordination_open_does_not_retry_non_lock_duckdb_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    open_error = duckdb.IOException("IO Error: cannot open coordination database")
+    attempts = 0
+    sleeps: list[float] = []
+
+    def broken_connect(*_args: object, **_kwargs: object):
+        nonlocal attempts
+        attempts += 1
+        raise open_error
+
+    monkeypatch.setattr(duckdb, "connect", broken_connect)
+    monkeypatch.setattr(
+        lease_coordination_module.time,
+        "sleep",
+        lambda seconds: sleeps.append(seconds),
+    )
+
+    with pytest.raises(duckdb.IOException) as caught:
+        LeaseCoordinator(tmp_path / "leases.duckdb")
+
+    assert caught.value is open_error
+    assert attempts == 1
+    assert sleeps == []
 
 
 def test_claim_waits_for_latest_successful_prerequisite_receipt(tmp_path: Path) -> None:

@@ -46,6 +46,9 @@ READY_BUNDLE_TASK_STATUSES = frozenset({"todo", "ready", "needed", "queued", "in
 COORDINATION_STORE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.lease-coordination-duckdb@1"
 COORDINATION_LOCK_TIMEOUT_SECONDS = 30.0
 COORDINATION_DUCKDB_MEMORY_LIMIT = "256MB"
+COORDINATION_DUCKDB_LOCK_RETRY_ATTEMPTS = 6
+COORDINATION_DUCKDB_LOCK_RETRY_INITIAL_SECONDS = 0.05
+COORDINATION_DUCKDB_LOCK_RETRY_MAX_SECONDS = 0.5
 MAX_PERSISTED_HEARTBEATS_PER_LEASE = 8
 SMALL_STORE_FULL_ARTIFACT_LIMIT = 10_000
 DISTRIBUTED_INPUT_SCHEMA = (
@@ -82,6 +85,19 @@ DEFAULT_SINGLE_FLIGHT_LEASE_SECONDS = 30.0
 DEFAULT_SINGLE_FLIGHT_OUTCOME_TTL_SECONDS = 60.0
 DEFAULT_SINGLE_FLIGHT_POLL_SECONDS = 0.02
 DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES = 256 * 1024
+
+
+def _is_transient_duckdb_lock_error(exc: Exception) -> bool:
+    """Return whether ``exc`` is DuckDB's narrow external-lock conflict."""
+
+    exception_type = type(exc)
+    if (
+        exception_type.__module__ not in {"duckdb", "_duckdb"}
+        or exception_type.__name__ not in {"IOException", "OperationalError"}
+    ):
+        return False
+    message = str(exc).casefold()
+    return "could not set lock" in message and "conflicting lock" in message
 
 
 def profile_g_task_attempt_limit(value: Any, *, default: int = 3) -> int:
@@ -1206,11 +1222,34 @@ class LeaseCoordinator:
                     raise RuntimeError(
                         "DuckDB is required for lease coordination"
                     ) from exc
-                duckdb_connection = duckdb.connect(str(self.path))
-                duckdb_connection.execute("SET threads=1")
-                duckdb_connection.execute(
-                    f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
-                )
+                retry_delay = COORDINATION_DUCKDB_LOCK_RETRY_INITIAL_SECONDS
+                for attempt in range(1, COORDINATION_DUCKDB_LOCK_RETRY_ATTEMPTS + 1):
+                    duckdb_connection = None
+                    try:
+                        duckdb_connection = duckdb.connect(str(self.path))
+                        duckdb_connection.execute("SET threads=1")
+                        duckdb_connection.execute(
+                            f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
+                        )
+                        break
+                    except Exception as exc:
+                        if duckdb_connection is not None:
+                            try:
+                                duckdb_connection.close()
+                            except Exception:
+                                pass
+                        if (
+                            not _is_transient_duckdb_lock_error(exc)
+                            or attempt >= COORDINATION_DUCKDB_LOCK_RETRY_ATTEMPTS
+                        ):
+                            raise
+                        time.sleep(retry_delay)
+                        retry_delay = min(
+                            COORDINATION_DUCKDB_LOCK_RETRY_MAX_SECONDS,
+                            retry_delay * 2,
+                        )
+                else:  # pragma: no cover - bounded loop either connects or raises.
+                    raise RuntimeError("DuckDB coordination connection retry exhausted")
                 self._connection = _DuckConnection.wrap(
                     duckdb_connection,
                     transaction_on_context=True,
