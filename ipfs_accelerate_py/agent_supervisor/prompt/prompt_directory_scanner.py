@@ -1048,6 +1048,25 @@ def _evidence_record(
     )
 
 
+_CONFIG_NAMES = frozenset(
+    {
+        ".editorconfig",
+        ".flake8",
+        ".gitattributes",
+        ".gitignore",
+        ".pre-commit-config.yaml",
+        "pytest.ini",
+        "ruff.toml",
+        "setup.cfg",
+        "tox.ini",
+    }
+)
+_CONFIG_SUFFIXES = frozenset({".toml", ".ini", ".cfg", ".conf", ".config"})
+_SCHEMA_SUFFIXES = frozenset(
+    {".jsonschema", ".schema", ".proto", ".avsc", ".graphql", ".xsd"}
+)
+
+
 def _classify(
     behavior: "ProgramBehavior", included_paths: Sequence[str], max_symbols: int
 ) -> tuple[dict[str, Mapping[str, Any]], list[str], dict[str, int]]:
@@ -1058,28 +1077,33 @@ def _classify(
     tests: list[str] = []
     documents: list[str] = []
     policies: list[str] = []
+    configs: list[str] = []
+    schemas: list[str] = []
     for path in included:
         pure = PurePosixPath(path)
         name = pure.name.casefold()
-        language = _LANGUAGES.get(pure.suffix.casefold())
+        parts = {part.casefold() for part in pure.parts[:-1]}
+        suffix = pure.suffix.casefold()
+        language = _LANGUAGES.get(suffix)
         if language:
             languages[language] += 1
             language_paths.setdefault(language, []).append(path)
         if (
             name in _BUILD_NAMES
             or name.startswith("requirements")
-            and pure.suffix.casefold() == ".txt"
+            and suffix == ".txt"
         ):
             builds.append(path)
         if (
-            "test" in {part.casefold() for part in pure.parts[:-1]}
+            "test" in parts
+            or "tests" in parts
             or name.startswith("test_")
             or name.endswith("_test.py")
             or name.endswith(".spec.js")
             or name.endswith(".test.ts")
         ):
             tests.append(path)
-        if pure.suffix.casefold() in _DOCUMENT_SUFFIXES:
+        if suffix in _DOCUMENT_SUFFIXES:
             documents.append(path)
         if (
             name in _POLICY_NAMES
@@ -1088,6 +1112,22 @@ def _classify(
             or name.endswith(".objectives.md")
         ):
             policies.append(path)
+        if (
+            "config" in parts
+            or "configs" in parts
+            or name in _CONFIG_NAMES
+            or suffix in _CONFIG_SUFFIXES
+            or (suffix in {".yaml", ".yml", ".json"} and "config" in name)
+        ):
+            configs.append(path)
+        if (
+            "schema" in parts
+            or "schemas" in parts
+            or name.endswith(".schema.json")
+            or suffix in _SCHEMA_SUFFIXES
+            or pure.stem.endswith("_schema")
+        ):
+            schemas.append(path)
 
     from ..core.program_behavior import ProgramObservationKind
 
@@ -1144,6 +1184,8 @@ def _classify(
         "tests": {"paths": sorted(tests), "count": len(tests)},
         "documents": {"paths": sorted(documents), "count": len(documents)},
         "policies": {"paths": sorted(policies), "count": len(policies)},
+        "config": {"paths": sorted(configs), "count": len(configs)},
+        "schema": {"paths": sorted(schemas), "count": len(schemas)},
     }
     truncations = []
     if symbol_truncated:
@@ -1164,6 +1206,8 @@ def _classify(
         "tests": len(tests),
         "documents": len(documents),
         "policies": len(policies),
+        "config": len(configs),
+        "schema": len(schemas),
     }
     return categories, truncations, counts
 
@@ -2148,6 +2192,41 @@ class PromptDirectoryScanner:
         self._previous = details
         return details
 
+    def wire_planning_analysis_factory(self, factory: Any) -> "PromptDirectoryScanner":
+        """Attach a production planning factory as the default optional analysis.
+
+        The factory must expose ``optional_analysis`` (PDR-011
+        :class:`PlanningAnalysisFactory`).  Admission wiring belongs on the
+        prompt supervisor service; this scanner only consumes advisory analysis.
+        """
+
+        adapter = getattr(factory, "optional_analysis", None)
+        if adapter is None:
+            raise TypeError(
+                "planning analysis factory must expose optional_analysis"
+            )
+        self.optional_analysis = adapter
+        wire = getattr(factory, "wire_prompt_directory_scanner", None)
+        if callable(wire):
+            wire(self)
+        return self
+
+
+def build_prompt_scanner_with_planning_factory(
+    repository_allowlist: RepositoryAllowlist
+    | Sequence[str | os.PathLike[str]],
+    factory: Any,
+    *,
+    artifact_store: "BoundedArtifactStore | None" = None,
+) -> PromptDirectoryScanner:
+    """Construct a scanner with production planning ``optional_analysis`` wired."""
+
+    scanner = PromptDirectoryScanner(
+        repository_allowlist,
+        artifact_store=artifact_store,
+    )
+    return scanner.wire_planning_analysis_factory(factory)
+
 
 build_directory_scan_receipt = scan_prompt_directory
 scan_directory = scan_prompt_directory
@@ -2178,6 +2257,7 @@ __all__ = [
     "SecretLeakageError",
     "UnstableDirectoryScanError",
     "build_directory_scan_receipt",
+    "build_prompt_scanner_with_planning_factory",
     "build_repository_allowlist",
     "repository_allowlist_cid",
     "repository_root_cid",

@@ -2616,6 +2616,300 @@ def write_provider_index_baseline(
     return path
 
 
+# ---------------------------------------------------------------------------
+# Planning analysis inventory helpers (PDR-011)
+# ---------------------------------------------------------------------------
+
+PLANNING_PATH_CATEGORIES: Final[tuple[str, ...]] = (
+    "tests",
+    "config",
+    "build",
+    "schema",
+    "docs",
+    "policies",
+    "source",
+    "generated",
+    "other",
+)
+
+# Frontiers that remain open until an optional provider certifies support.
+PLANNING_OPEN_FRONTIER_KINDS: Final[tuple[str, ...]] = (
+    "cfg",
+    "dataflow",
+    "native",
+    "generated",
+    "concurrency",
+)
+
+_PLANNING_BUILD_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "build.gradle",
+        "build.gradle.kts",
+        "cargo.lock",
+        "cargo.toml",
+        "cmakelists.txt",
+        "composer.json",
+        "dockerfile",
+        "gemfile",
+        "go.mod",
+        "go.sum",
+        "makefile",
+        "meson.build",
+        "package-lock.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "poetry.lock",
+        "pom.xml",
+        "pyproject.toml",
+        "requirements.txt",
+        "setup.cfg",
+        "setup.py",
+        "tox.ini",
+        "yarn.lock",
+    }
+)
+_PLANNING_POLICY_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "agents.md",
+        "code_of_conduct.md",
+        "codeowners",
+        "contributing.md",
+        "license",
+        "license.md",
+        "notice",
+        "security.md",
+    }
+)
+_PLANNING_CONFIG_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {".toml", ".ini", ".cfg", ".conf", ".config"}
+)
+_PLANNING_CONFIG_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        ".editorconfig",
+        ".flake8",
+        ".gitattributes",
+        ".gitignore",
+        ".pre-commit-config.yaml",
+        "pytest.ini",
+        "ruff.toml",
+        "setup.cfg",
+        "tox.ini",
+    }
+)
+_PLANNING_SCHEMA_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {".json", ".jsonschema", ".schema", ".proto", ".avsc", ".graphql", ".xsd"}
+)
+_PLANNING_DOC_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {".md", ".mdx", ".rst", ".adoc", ".txt"}
+)
+_PLANNING_GENERATED_PARTS: Final[frozenset[str]] = frozenset(
+    {"generated", "dist", "build", "out", "target", "__pycache__"}
+)
+_PLANNING_NATIVE_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {
+        ".c",
+        ".cc",
+        ".cpp",
+        ".cxx",
+        ".h",
+        ".hpp",
+        ".rs",
+        ".go",
+        ".s",
+        ".S",
+        ".so",
+        ".dylib",
+        ".dll",
+        ".a",
+        ".o",
+    }
+)
+
+
+def planning_path_category(path: str) -> str:
+    """Classify one repository-relative path for the planning inventory."""
+
+    pure = PurePosixPath(_normalize_path(path))
+    name = pure.name.casefold()
+    parts = {part.casefold() for part in pure.parts[:-1]}
+    suffix = pure.suffix.casefold()
+    suffixes = {item.casefold() for item in pure.suffixes}
+
+    if parts & _PLANNING_GENERATED_PARTS or any(
+        part.endswith("_generated") or part.endswith(".generated")
+        for part in pure.parts
+    ):
+        return "generated"
+    if (
+        "test" in parts
+        or "tests" in parts
+        or "testing" in parts
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name.endswith(".spec.js")
+        or name.endswith(".test.ts")
+        or name.endswith(".test.js")
+    ):
+        return "tests"
+    if (
+        name in _PLANNING_POLICY_NAMES
+        or "policy" in name
+        or name.endswith(".todo.md")
+        or name.endswith(".objectives.md")
+        or "policies" in parts
+        or "policy" in parts
+    ):
+        return "policies"
+    if (
+        name in _PLANNING_BUILD_NAMES
+        or (name.startswith("requirements") and suffix == ".txt")
+        or name == "dockerfile"
+    ):
+        return "build"
+    if (
+        "schema" in parts
+        or "schemas" in parts
+        or name.endswith(".schema.json")
+        or ".schema" in suffixes
+        or (
+            suffix in _PLANNING_SCHEMA_SUFFIXES
+            and ("schema" in name or "schemas" in parts or pure.stem.endswith("_schema"))
+        )
+        or suffix in {".proto", ".avsc", ".graphql", ".xsd"}
+    ):
+        return "schema"
+    if (
+        "config" in parts
+        or "configs" in parts
+        or name in _PLANNING_CONFIG_NAMES
+        or suffix in _PLANNING_CONFIG_SUFFIXES
+        or (suffix in {".yaml", ".yml", ".json"} and "config" in name)
+    ):
+        return "config"
+    if (
+        "doc" in parts
+        or "docs" in parts
+        or "documentation" in parts
+        or suffix in _PLANNING_DOC_SUFFIXES
+    ):
+        return "docs"
+    if suffix in {
+        ".py",
+        ".pyi",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".java",
+        ".kt",
+        ".go",
+        ".rs",
+        ".rb",
+        ".php",
+    } or suffix in _PLANNING_NATIVE_SUFFIXES:
+        return "source"
+    return "other"
+
+
+def planning_category_inventory(
+    paths: Sequence[str],
+    *,
+    max_paths_per_category: int = 256,
+) -> dict[str, Any]:
+    """Build a body-free category inventory for planning and Doctor use."""
+
+    buckets: dict[str, list[str]] = {name: [] for name in PLANNING_PATH_CATEGORIES}
+    for path in paths:
+        category = planning_path_category(path)
+        buckets.setdefault(category, []).append(_normalize_path(path))
+    inventory: dict[str, Any] = {}
+    for category in PLANNING_PATH_CATEGORIES:
+        ordered = tuple(sorted(set(buckets.get(category, ()))))
+        inventory[category] = {
+            "count": len(ordered),
+            "paths": list(ordered[: max(0, int(max_paths_per_category))]),
+            "truncated": len(ordered) > max_paths_per_category,
+        }
+    inventory["totals"] = {
+        category: int(inventory[category]["count"])
+        for category in PLANNING_PATH_CATEGORIES
+    }
+    return inventory
+
+
+def open_frontiers_from_repository_index(
+    index: RepositoryIndex | None,
+    *,
+    optional_provider_status: Mapping[str, str] | None = None,
+) -> tuple[dict[str, Any], ...]:
+    """Record CFG/dataflow/native/generated/concurrency open frontiers.
+
+    Exact local indexing never claims these analyses are closed.  Optional
+    providers may mark a frontier degraded or abstained; they cannot silently
+    claim completeness.
+    """
+
+    status_map = {
+        str(key): str(value)
+        for key, value in dict(optional_provider_status or {}).items()
+    }
+    native_paths: list[str] = []
+    generated_paths: list[str] = []
+    if index is not None:
+        for row in index.rows:
+            category = planning_path_category(row.path)
+            if (
+                category == "generated"
+                or row.disposition_kind is CoverageKind.BINARY_OR_GENERATED
+            ):
+                generated_paths.append(row.path)
+            pure = PurePosixPath(row.path)
+            if pure.suffix.casefold() in _PLANNING_NATIVE_SUFFIXES:
+                native_paths.append(row.path)
+
+    frontiers: list[dict[str, Any]] = []
+    for kind in PLANNING_OPEN_FRONTIER_KINDS:
+        provider_status = status_map.get(kind, status_map.get(f"frontier:{kind}", ""))
+        if provider_status in {"available", "supported", "closed"}:
+            # Optional providers may only degrade; they never close these
+            # frontiers without a certified capability receipt (out of scope).
+            frontier_status = "degraded"
+            reason = "optional_provider_uncertified"
+        elif provider_status in {"missing", "unavailable", "abstain", "abstained"}:
+            frontier_status = "abstained"
+            reason = "optional_provider_unavailable"
+        elif provider_status in {"error", "failed", "degraded"}:
+            frontier_status = "degraded"
+            reason = "optional_provider_degraded"
+        else:
+            frontier_status = "open"
+            reason = "local_index_does_not_close_frontier"
+
+        evidence_paths: list[str] = []
+        if kind == "native":
+            evidence_paths = sorted(set(native_paths))[:64]
+            if evidence_paths and frontier_status == "open":
+                reason = "native_or_ffi_paths_present"
+        elif kind == "generated":
+            evidence_paths = sorted(set(generated_paths))[:64]
+            if evidence_paths and frontier_status == "open":
+                reason = "generated_paths_present"
+
+        frontiers.append(
+            {
+                "kind": kind,
+                "frontier_id": f"frontier:{kind}",
+                "status": frontier_status,
+                "reason_code": reason,
+                "path_count": len(evidence_paths),
+                "sample_paths": evidence_paths[:16],
+            }
+        )
+    return tuple(frontiers)
+
+
 __all__ = [
     "CROSS_ROOT_SYMBOL_IDENTITY_SCHEMA",
     "CrossRootSymbolIdentity",
@@ -2627,6 +2921,8 @@ __all__ = [
     "HARD_MAX_COMPACT_ROW_BYTES",
     "MULTI_ROOT_REPOSITORY_INDEX_SCHEMA",
     "MultiRootRepositoryIndex",
+    "PLANNING_OPEN_FRONTIER_KINDS",
+    "PLANNING_PATH_CATEGORIES",
     "PROVIDER_INDEX_BASELINE_RELATIVE",
     "PROVIDER_INDEX_SCHEMA",
     "ParserStatus",
@@ -2654,5 +2950,8 @@ __all__ = [
     "join_cross_root_symbols",
     "make_cross_root_symbol",
     "module_name_for_package_path",
+    "open_frontiers_from_repository_index",
+    "planning_category_inventory",
+    "planning_path_category",
     "write_provider_index_baseline",
 ]
