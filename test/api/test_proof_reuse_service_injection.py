@@ -338,7 +338,7 @@ def test_install_failure_leaves_services_unavailable_and_cache_untouched(
     assert not cache_root.exists()
 
 
-def test_pytest_configure_injects_services_but_missing_identity_still_runs(
+def test_pytest_configure_defers_services_until_exact_identity_lookup(
     tmp_path: Path,
 ) -> None:
     _Provider.constructions = 0
@@ -351,19 +351,35 @@ def test_pytest_configure_injects_services_but_missing_identity_still_runs(
 
     pytest_configure(config)
 
+    assert not hasattr(config, SERVICE_RESOLUTION_ATTRIBUTE)
+    assert not hasattr(config, LOOKUP_SERVICE_ATTRIBUTE)
+    assert importer.calls == []
+    assert _Provider.constructions == 0
+    assert _Store.constructions == []
+
+    # Ordinary collection has no exact execution identity, so optional
+    # providers remain entirely untouched and the real test runs.
+    item = _Item()
+    pytest_collection_modifyitems(config, [item])
+    assert hasattr(item, ITEM_METADATA_ATTRIBUTE)
+    assert not hasattr(config, SERVICE_RESOLUTION_ATTRIBUTE)
+    assert importer.calls == []
+    assert item.markers == []
+
+    # The first exact lookup identity is the lazy resolution boundary.
+    lookup_item = _Item()
+    lookup_item._ipfs_proof_reuse_locator = object()
+    lookup_item._ipfs_proof_reuse_execution_key = object()
+    pytest_collection_modifyitems(config, [lookup_item])
+
     resolution = getattr(config, SERVICE_RESOLUTION_ATTRIBUTE)
     assert resolution.available is True
     assert getattr(config, LOOKUP_SERVICE_ATTRIBUTE) is resolution.lookup
     assert getattr(config, STORE_SERVICE_ATTRIBUTE) is resolution.store
     assert getattr(config, PROVIDER_SERVICE_ATTRIBUTE) is resolution.provider
     assert _Provider.prove_calls == 0
-
-    item = _Item()
-    pytest_collection_modifyitems(config, [item])
-
-    assert hasattr(item, ITEM_METADATA_ATTRIBUTE)
     assert resolution.store.lookup_calls == 0
-    assert item.markers == []
+    assert lookup_item.markers == []
     assert _Provider.prove_calls == 0
 
 
@@ -380,13 +396,16 @@ def test_pytest_configure_failure_injects_no_partial_services(
 
     pytest_configure(config)
 
+    assert not hasattr(config, SERVICE_RESOLUTION_ATTRIBUTE)
+    item = _Item()
+    item._ipfs_proof_reuse_locator = object()
+    item._ipfs_proof_reuse_execution_key = object()
+    pytest_collection_modifyitems(config, [item])
+
     resolution = getattr(config, SERVICE_RESOLUTION_ATTRIBUTE)
     assert resolution.available is False
     assert resolution.reason_code == "cid_provider_unavailable"
     assert not hasattr(config, LOOKUP_SERVICE_ATTRIBUTE)
     assert not hasattr(config, STORE_SERVICE_ATTRIBUTE)
     assert not hasattr(config, PROVIDER_SERVICE_ATTRIBUTE)
-
-    item = _Item()
-    pytest_collection_modifyitems(config, [item])
     assert item.markers == []

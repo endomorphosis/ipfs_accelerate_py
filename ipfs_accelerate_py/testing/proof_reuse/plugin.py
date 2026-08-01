@@ -169,7 +169,6 @@ def pytest_configure(config: Any) -> None:
     else:
         coordinator = ProofReuseXdistCoordinator.standalone(metrics=metrics)
     setattr(config, COORDINATOR_ATTRIBUTE, coordinator)
-    _inject_default_services(config)
     _install_runtime_plugin(config)
 
 
@@ -468,24 +467,38 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
         coordinator.mark_controller_unavailable(collected)
         return
 
-    lookup = getattr(config, LOOKUP_SERVICE_ATTRIBUTE, None)
-    if proof_config.reads_candidates and isinstance(lookup, ProofReuseLookup):
-        request_items = [
-            item
-            for item in collected
-            if (
-                getattr(item, ITEM_LOOKUP_REQUEST_ATTRIBUTE, None) is not None
-                or (
-                    getattr(item, "_ipfs_proof_reuse_locator", None) is not None
-                    and getattr(
-                        item,
-                        "_ipfs_proof_reuse_execution_key",
-                        None,
-                    )
-                    is not None
+    request_items = [
+        item
+        for item in collected
+        if (
+            getattr(item, ITEM_LOOKUP_REQUEST_ATTRIBUTE, None) is not None
+            or (
+                getattr(item, "_ipfs_proof_reuse_locator", None) is not None
+                and getattr(
+                    item,
+                    "_ipfs_proof_reuse_execution_key",
+                    None,
                 )
+                is not None
             )
-        ]
+        )
+    ]
+    lookup = getattr(config, LOOKUP_SERVICE_ATTRIBUTE, None)
+    if (
+        proof_config.reads_candidates
+        and request_items
+        and not isinstance(lookup, ProofReuseLookup)
+    ):
+        # Resolve optional CID/cache/verifier dependencies only when collection
+        # produced an exact lookup identity. Ordinary fail-open execution never
+        # imports or installs those providers.
+        _inject_default_services(config)
+        lookup = getattr(config, LOOKUP_SERVICE_ATTRIBUTE, None)
+    if (
+        proof_config.reads_candidates
+        and request_items
+        and isinstance(lookup, ProofReuseLookup)
+    ):
         decisions = batch_lookup_reuse_decisions(
             lookup,
             request_items,
@@ -709,6 +722,11 @@ def pytest_sessionfinish(session: Any, exitstatus: Any) -> None:
         and coordinator.healthy
         and coordinator.pending_publications
     ):
+        if getattr(config, STORE_SERVICE_ATTRIBUTE, None) is None:
+            # A store is needed only after at least one complete pass produced
+            # a publication intent. This remains fail-open: an unavailable
+            # cache/provider leaves the real test result untouched.
+            _inject_default_services(config)
         coordinator.flush_publications(
             getattr(config, STORE_SERVICE_ATTRIBUTE, None),
             getattr(config, ISSUER_SERVICE_ATTRIBUTE, None),
