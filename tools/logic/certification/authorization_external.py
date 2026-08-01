@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
-"""External Datalog/SecPAL differential-shadow certification.
+"""External Datalog/SecPAL differential-shadow and vendor certification.
 
-``ExternalAuthorizationShadowCertification@1`` / FVT-G180 (FVT-051).
+``ExternalAuthorizationShadowCertification@1`` / FVT-G180 (FVT-051)
+``ExternalAuthorizationVendorCertification@1`` / FVT-G209 (FVT-055)
 
-Explicit strict installation selects pin-bound Soufflé and SecPAL-compatible
-shadow engines.  The certification corpus covers allow/deny/unknown/conflict/
-delegation, rule and scope mutations, deterministic replay, malformed output,
-timeouts, and differential comparison against the certified in-process
-references.  Any disagreement quarantines promotion.  External engines remain
-shadows: authorization authority stays with the in-process Datalog/SecPAL
-references (FVT-G102 / FVT-038).
+Shadow path: explicit strict installation selects pin-bound Soufflé and
+SecPAL-compatible hermetic shadow engines for differential work only.
+
+Vendor path (FVT-G209): replace the Soufflé case-oracle shadow with a
+checksummed vendor build bound to the immutable 2.4.1 source archive and
+reviewed build dependencies.  Real allow/deny/unknown/conflict/delegation
+plus rule/scope mutation, replay, malformed, timeout, and disagreement cases
+execute through the vendor engine.  linux-aarch64 is supported for Soufflé.
+External SecPAL is a lock-derived narrow unsupported-platform exception on
+linux-aarch64 and never counts as installed, complete, authoritative, or
+production-certified.  Hermetic shadows remain differential-only and cannot
+satisfy vendor production evidence.
+
+External engines remain role=shadow: authorization authority stays with the
+in-process Datalog/SecPAL references (FVT-G102 / FVT-038).
 
 This lane never edits the central multi-prover certificate and never weakens
 in-process reference semantics.
@@ -90,6 +99,26 @@ PROGRAM: Final = "formal-verification-tactician/authorization-toolchains"
 LANE_ID: Final = "datalog_secpal_external"
 HANDLER_ID: Final = "external_authorization_shadow_certification@1"
 CERTIFICATION_SURFACE: Final = "tools.logic.certification.authorization_external"
+
+VENDOR_INTERFACE: Final = "ExternalAuthorizationVendorCertification@1"
+VENDOR_SCHEMA_VERSION: Final = "external-authorization-vendor-certification/v1"
+VENDOR_INSTALL_RECEIPT_SCHEMA: Final = (
+    "formal-verification-authorization-vendor-install-receipt/v1"
+)
+VENDOR_GOAL_ID: Final = "FVT-G209"
+VENDOR_TASK_ID: Final = "FVT-055"
+VENDOR_PROGRAM: Final = (
+    "formal-verification-tactician/authorization-vendor-toolchains"
+)
+VENDOR_LANE_ID: Final = "datalog_secpal_external_vendor"
+VENDOR_HANDLER_ID: Final = "external_authorization_vendor_certification@1"
+DEFAULT_VENDOR_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_authorization_vendor_install_receipt.json"
+)
+LINUX_AARCH64: Final = "linux-aarch64"
+SOUFFLE_REQUIRED_SOURCE_SHA256: Final = (
+    authz_installer.SOUFFLE_SOURCE_ARCHIVE_SHA256
+)
 
 # External engines are shadows — authority ceiling is none.
 SHADOW_AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.NONE.value
@@ -1097,11 +1126,550 @@ def external_authorization_lane_handler(
     }
 
 
+# ---------------------------------------------------------------------------
+# Vendor certification (FVT-G209 / ExternalAuthorizationVendorCertification@1)
+# ---------------------------------------------------------------------------
+
+
+def _repo_root() -> Path:
+    return _REPO_ROOT
+
+
+def derive_secpal_platform_exception(
+    *,
+    platform_id: str | None = None,
+    repo_root: Path | str | None = None,
+    lock_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Derive the external SecPAL platform exception from the lock contract."""
+
+    host = platform_id or authz_installer._detect_platform()
+    supported = authz_installer.tool_supported_on_platform(
+        TOOL_SECPAL,
+        host,
+        repo_root=repo_root,
+        lock_path=lock_path,
+    )
+    supported_platforms = sorted(
+        authz_installer.supported_platforms_for_tool(
+            TOOL_SECPAL, repo_root=repo_root, lock_path=lock_path
+        )
+    )
+    if supported:
+        return {
+            "tool_id": TOOL_SECPAL,
+            "host_platform": host,
+            "classification": "supported_here",
+            "exception": False,
+            "narrow_scope": False,
+            "installed": None,
+            "complete": None,
+            "authoritative": False,
+            "production_certified": False,
+            "supported_platforms": supported_platforms,
+            "notes": "external SecPAL is supported on this host under the lock",
+        }
+    return {
+        "tool_id": TOOL_SECPAL,
+        "host_platform": host,
+        "classification": "unsupported_here",
+        "exception": True,
+        "narrow_scope": True,
+        "installed": False,
+        "complete": False,
+        "authoritative": False,
+        "production_certified": False,
+        "supported_platforms": supported_platforms,
+        "notes": (
+            "external SecPAL is a narrow unsupported-platform exception on "
+            f"{host} under the current contract and never counts as installed, "
+            "complete, authoritative, or production-certified"
+        ),
+    }
+
+
+def _certify_vendor_souffle(
+    identity: authz_installer.ShadowEngineIdentity,
+    *,
+    install_status: str,
+) -> EngineCertification:
+    """Run the full corpus through the checksummed vendor Soufflé engine."""
+
+    if identity.is_hermetic_shadow or not identity.is_vendor_build:
+        raise ExternalAuthorizationCertificationError(
+            "hermetic shadows cannot satisfy vendor Soufflé certification"
+        )
+    if identity.source_archive_sha256 != SOUFFLE_REQUIRED_SOURCE_SHA256:
+        raise ExternalAuthorizationCertificationError(
+            "vendor Soufflé source archive digest mismatch: "
+            f"{identity.source_archive_sha256!r} != {SOUFFLE_REQUIRED_SOURCE_SHA256!r}"
+        )
+    if not identity.artifact_sha256:
+        raise ExternalAuthorizationCertificationError(
+            "vendor Soufflé requires an exact user-local artifact digest"
+        )
+    if not identity.build_dependencies:
+        raise ExternalAuthorizationCertificationError(
+            "vendor Soufflé requires immutable build dependency pins"
+        )
+
+    engine = certify_engine(
+        TOOL_SOUFFLE,
+        identity=identity,
+        install_status=install_status,
+    )
+    # Extra vendor pin checks layered on top of the shadow corpus.
+    extra: list[CheckResult] = []
+    pin_ok = (
+        identity.version == authz_installer.pin_for_tool(TOOL_SOUFFLE)["version"]
+        and identity.source_archive_sha256 == SOUFFLE_REQUIRED_SOURCE_SHA256
+        and bool(identity.artifact_sha256)
+        and identity.is_vendor_build
+        and not identity.is_hermetic_shadow
+    )
+    extra.append(
+        CheckResult(
+            check_id="souffle.vendor.checksummed_source_archive",
+            kind="install",
+            status="passed" if pin_ok else "failed",
+            expected=SOUFFLE_REQUIRED_SOURCE_SHA256,
+            observed=identity.source_archive_sha256,
+            detail="immutable checksummed Soufflé 2.4.1 source archive",
+            engine_id=TOOL_SOUFFLE,
+        )
+    )
+    extra.append(
+        CheckResult(
+            check_id="souffle.vendor.artifact_digest_exact",
+            kind="install",
+            status="passed" if identity.artifact_sha256 else "failed",
+            expected="64-char hex digest",
+            observed=identity.artifact_sha256,
+            detail=f"executable={identity.executable}",
+            engine_id=TOOL_SOUFFLE,
+        )
+    )
+    extra.append(
+        CheckResult(
+            check_id="souffle.vendor.not_hermetic_shadow",
+            kind="install",
+            status="passed" if not identity.is_hermetic_shadow else "failed",
+            expected="is_hermetic_shadow=false",
+            observed=f"is_hermetic_shadow={identity.is_hermetic_shadow}",
+            detail="hermetic shadows remain differential-only",
+            engine_id=TOOL_SOUFFLE,
+        )
+    )
+    deps_ok = bool(identity.build_dependencies)
+    extra.append(
+        CheckResult(
+            check_id="souffle.vendor.build_dependencies_pinned",
+            kind="install",
+            status="passed" if deps_ok else "failed",
+            expected="immutable build dependency pins",
+            observed=json.dumps(
+                {k: v for k, v in identity.build_dependencies}, sort_keys=True
+            ),
+            detail="cmake/flex/bison/mcpp/sqlite3/libffi/python3 pins",
+            engine_id=TOOL_SOUFFLE,
+        )
+    )
+    all_checks = list(engine.checks) + extra
+    block_reasons = list(engine.block_reasons)
+    for check in extra:
+        if not check.passed:
+            block_reasons.append(check.check_id)
+    certified = all(item.passed for item in all_checks) and not block_reasons
+    return EngineCertification(
+        engine_id=engine.engine_id,
+        version=engine.version,
+        executable=engine.executable,
+        usable=engine.usable,
+        certified=certified,
+        role=engine.role,
+        authority_ceiling=engine.authority_ceiling,
+        is_shadow=True,
+        checks=all_checks,
+        case_results=engine.case_results,
+        block_reasons=sorted(set(block_reasons)),
+        install_status=install_status,
+    )
+
+
+def certify_external_authorization_vendor(
+    *,
+    install_root: Path | str | None = None,
+    force_install: bool = False,
+    skip_install: bool = False,
+    platform_id: str | None = None,
+    repo_root: Path | str | None = None,
+    lock_path: Path | str | None = None,
+    write_receipt_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Certify checksummed vendor Soufflé + lock-derived SecPAL exception.
+
+    Acceptance (FVT-G209):
+
+    * Soufflé 2.4.1 source/archive and build dependencies are immutable and
+      checksummed; user-local executable and artifact digests are exact.
+    * allow/deny/unknown/conflict/delegation + rule/scope mutation, replay,
+      malformed, timeout, and disagreement cases execute through vendor Soufflé.
+    * linux-aarch64 is supported for Soufflé.
+    * external SecPAL is a narrow unsupported-platform exception on
+      linux-aarch64 and never counts as installed/complete/authoritative/
+      production-certified.
+    * hermetic shadows remain differential-only.
+    """
+
+    host = platform_id or authz_installer._detect_platform()
+    root = authz_installer._expand_install_root(install_root)
+    install_bundle: authz_installer.AuthorizationInstallBundle | None = None
+    souffle_identity: authz_installer.ShadowEngineIdentity | None = None
+    souffle_status = "missing"
+    secpal_receipt: authz_installer.InstallReceipt | None = None
+
+    if skip_install:
+        pin = authz_installer.pin_for_tool(
+            TOOL_SOUFFLE, repo_root=repo_root, lock_path=lock_path
+        )
+        souffle_identity = authz_installer._identity_from_disk(
+            TOOL_SOUFFLE, root, pin, vendor=True
+        )
+        if souffle_identity is None:
+            raise ExternalAuthorizationCertificationError(
+                f"skip_install requested but vendor Soufflé is missing under {root}"
+            )
+        souffle_status = "already_present"
+        # Still derive SecPAL exception without installing.
+        secpal_receipt = authz_installer.ensure_secpal(
+            yes=True,
+            strict=False,
+            force=False,
+            install_root=root,
+            repo_root=repo_root,
+            lock_path=lock_path,
+            platform_id=host,
+            vendor=True,
+            hermetic_shadow=False,
+            checksum_verified=True,
+        )
+    else:
+        install_bundle = authz_installer.ensure_authorization_vendor(
+            yes=True,
+            strict=True,
+            force=force_install,
+            install_root=root,
+            repo_root=repo_root,
+            lock_path=lock_path,
+            platform_id=host,
+            checksum_verified=True,
+        )
+        for receipt in install_bundle.receipts:
+            if receipt.tool_id == TOOL_SOUFFLE:
+                if not receipt.ok or receipt.identity is None:
+                    raise ExternalAuthorizationCertificationError(
+                        f"vendor Soufflé install failed: {receipt.status}:{receipt.detail}"
+                    )
+                souffle_identity = receipt.identity
+                souffle_status = receipt.status
+            elif receipt.tool_id == TOOL_SECPAL:
+                secpal_receipt = receipt
+
+    if souffle_identity is None:
+        raise ExternalAuthorizationCertificationError("vendor Soufflé identity missing")
+
+    # linux-aarch64 must be supported for Soufflé under the current lock.
+    souffle_supported = authz_installer.tool_supported_on_platform(
+        TOOL_SOUFFLE, host, repo_root=repo_root, lock_path=lock_path
+    )
+    if host == LINUX_AARCH64 and not souffle_supported:
+        raise ExternalAuthorizationCertificationError(
+            "linux-aarch64 must be supported for Soufflé under the current lock"
+        )
+    if not souffle_supported:
+        raise ExternalAuthorizationCertificationError(
+            f"Soufflé unsupported on host platform {host!r}"
+        )
+
+    souffle_engine = _certify_vendor_souffle(
+        souffle_identity, install_status=souffle_status
+    )
+
+    secpal_exception = derive_secpal_platform_exception(
+        platform_id=host, repo_root=repo_root, lock_path=lock_path
+    )
+    if secpal_receipt is not None and secpal_receipt.platform_exception:
+        # Reinforce fail-closed exception claims from the install receipt.
+        secpal_exception = {
+            **secpal_exception,
+            "exception": True,
+            "narrow_scope": True,
+            "installed": False,
+            "complete": False,
+            "authoritative": False,
+            "production_certified": False,
+            "install_status": secpal_receipt.status,
+            "block_reasons": list(secpal_receipt.block_reasons),
+        }
+    elif secpal_receipt is not None and secpal_receipt.ok:
+        # Supported host: SecPAL vendor install succeeded but still never holds
+        # authorization/production authority (external engines remain shadows).
+        secpal_exception = {
+            **secpal_exception,
+            "exception": False,
+            "installed": True,
+            "complete": False,
+            "authoritative": False,
+            "production_certified": False,
+            "install_status": secpal_receipt.status,
+            "identity": (
+                None
+                if secpal_receipt.identity is None
+                else secpal_receipt.identity.to_dict()
+            ),
+        }
+
+    # Hermetic shadow must not satisfy vendor certification.
+    hermetic_cannot_satisfy = True
+    if souffle_identity.is_hermetic_shadow:
+        hermetic_cannot_satisfy = False
+
+    categories = sorted(REQUIRED_CATEGORIES)
+    block_reasons = list(souffle_engine.block_reasons)
+    if not hermetic_cannot_satisfy:
+        block_reasons.append("hermetic_shadow_used_for_vendor")
+    if secpal_exception.get("exception"):
+        # Exception path must never claim production success for SecPAL.
+        for key in ("installed", "complete", "authoritative", "production_certified"):
+            if secpal_exception.get(key) is True:
+                block_reasons.append(f"secpal_exception_claimed_{key}")
+
+    certified = bool(souffle_engine.certified) and not block_reasons
+
+    payload: dict[str, Any] = {
+        "schema_version": VENDOR_SCHEMA_VERSION,
+        "interface": VENDOR_INTERFACE,
+        "goal_id": VENDOR_GOAL_ID,
+        "task_id": VENDOR_TASK_ID,
+        "program": VENDOR_PROGRAM,
+        "lane_id": VENDOR_LANE_ID,
+        "handler_id": VENDOR_HANDLER_ID,
+        "certification_surface": CERTIFICATION_SURFACE,
+        "host_platform": host,
+        "authority_ceiling": SHADOW_AUTHORITY_CEILING,
+        "forbids_theorem_authority": True,
+        "forbids_authorization_authority_on_shadows": True,
+        "certified": certified,
+        "souffle": {
+            **souffle_engine.to_dict(),
+            "is_vendor_build": True,
+            "is_hermetic_shadow": False,
+            "source_archive_sha256": souffle_identity.source_archive_sha256,
+            "source_archive_url": souffle_identity.source_archive_url,
+            "artifact_sha256": souffle_identity.artifact_sha256,
+            "build_dependencies": {
+                k: v for k, v in souffle_identity.build_dependencies
+            },
+            "platform_id": souffle_identity.platform_id or host,
+            "linux_aarch64_supported": authz_installer.tool_supported_on_platform(
+                TOOL_SOUFFLE,
+                LINUX_AARCH64,
+                repo_root=repo_root,
+                lock_path=lock_path,
+            ),
+        },
+        "secpal_platform_exception": secpal_exception,
+        "engines": [souffle_engine.to_dict()],
+        "engine_ids": [TOOL_SOUFFLE],
+        "categories_exercised": categories,
+        "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
+        "install": None if install_bundle is None else install_bundle.to_dict(),
+        "policy": {
+            "external_engines_are_shadows": True,
+            "in_process_references_retain_authorization_authority": True,
+            "disagreement_quarantines_promotion": True,
+            "hermetic_shadows_are_differential_only": True,
+            "hermetic_shadows_cannot_satisfy_vendor": True,
+            "never_promote_hermetic_shadow_as_vendor": True,
+            "never_mutate_system_package_manager": True,
+            "strict_installation_selects_exact_pins": True,
+            "souffle_source_archive_checksummed": True,
+            "souffle_linux_aarch64_supported": True,
+            "secpal_linux_aarch64_narrow_platform_exception": True,
+            "never_grants_theorem_authority": True,
+            "never_grants_authorization_authority_to_shadows": True,
+            "grants_theorem_authority": False,
+            "grants_authorization_decision_authority": False,
+            "no_central_certificate_edit": True,
+        },
+        "summary": {
+            "souffle_certified": souffle_engine.certified,
+            "secpal_exception": bool(secpal_exception.get("exception")),
+            "checks_passed": sum(1 for check in souffle_engine.checks if check.passed),
+            "checks_total": len(souffle_engine.checks),
+            "categories_exercised": categories,
+            "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
+            "block_reasons": sorted(set(block_reasons)),
+            "hermetic_shadows_cannot_satisfy_vendor": hermetic_cannot_satisfy,
+        },
+    }
+    payload["certificate_digest_sha256"] = _stable_json_digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+
+    receipt = build_vendor_install_receipt(payload)
+    if write_receipt_path is not None:
+        path = Path(write_receipt_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        payload["receipt_path"] = str(path)
+    payload["install_receipt"] = receipt
+    return payload
+
+
+def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, Any]:
+    """Build the checked-in vendor install receipt envelope."""
+
+    souffle = certificate.get("souffle") or {}
+    exception = certificate.get("secpal_platform_exception") or {}
+    receipt = {
+        "schema_version": VENDOR_INSTALL_RECEIPT_SCHEMA,
+        "interface": VENDOR_INTERFACE,
+        "goal_id": VENDOR_GOAL_ID,
+        "task_id": VENDOR_TASK_ID,
+        "program": VENDOR_PROGRAM,
+        "lane_id": VENDOR_LANE_ID,
+        "handler_id": VENDOR_HANDLER_ID,
+        "host_platform": certificate.get("host_platform"),
+        "certified": bool(certificate.get("certified")),
+        "authority_ceiling": SHADOW_AUTHORITY_CEILING,
+        "souffle": {
+            "tool_id": TOOL_SOUFFLE,
+            "version": souffle.get("version"),
+            "executable": souffle.get("executable"),
+            "usable": souffle.get("usable"),
+            "certified": souffle.get("certified"),
+            "is_vendor_build": True,
+            "is_hermetic_shadow": False,
+            "source_archive_sha256": souffle.get("source_archive_sha256"),
+            "source_archive_url": souffle.get("source_archive_url"),
+            "artifact_sha256": souffle.get("artifact_sha256"),
+            "build_dependencies": souffle.get("build_dependencies") or {},
+            "platform_id": souffle.get("platform_id"),
+            "linux_aarch64_supported": souffle.get("linux_aarch64_supported"),
+            "role": ToolRole.SHADOW.value,
+            "authority_ceiling": SHADOW_AUTHORITY_CEILING,
+            "never_grants_authorization_authority": True,
+            "never_grants_theorem_authority": True,
+        },
+        "secpal_platform_exception": {
+            "tool_id": TOOL_SECPAL,
+            "host_platform": exception.get("host_platform"),
+            "classification": exception.get("classification"),
+            "exception": bool(exception.get("exception")),
+            "narrow_scope": bool(exception.get("narrow_scope", True)),
+            "installed": False if exception.get("exception") else exception.get("installed"),
+            "complete": False if exception.get("exception") else exception.get("complete"),
+            "authoritative": False,
+            "production_certified": False,
+            "supported_platforms": exception.get("supported_platforms") or [],
+            "notes": exception.get("notes") or "",
+        },
+        "categories_exercised": list(certificate.get("categories_exercised") or []),
+        "mutation_kinds": list(certificate.get("mutation_kinds") or []),
+        "policy": dict(certificate.get("policy") or {}),
+        "summary": dict(certificate.get("summary") or {}),
+        "certificate_digest_sha256": certificate.get("certificate_digest_sha256"),
+    }
+    receipt["receipt_digest_sha256"] = _stable_json_digest(
+        {k: v for k, v in receipt.items() if k != "receipt_digest_sha256"}
+    )
+    return receipt
+
+
+def write_vendor_install_receipt(
+    certificate: Mapping[str, Any] | None = None,
+    *,
+    repo_root: Path | str | None = None,
+    install_root: Path | str | None = None,
+    platform_id: str | None = None,
+    receipt_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Certify (if needed) and write the vendor install receipt artifact."""
+
+    root = Path(repo_root) if repo_root is not None else _repo_root()
+    path = (
+        Path(receipt_path)
+        if receipt_path is not None
+        else root / DEFAULT_VENDOR_RECEIPT_RELATIVE
+    )
+    if certificate is None:
+        certificate = certify_external_authorization_vendor(
+            install_root=install_root,
+            platform_id=platform_id,
+            repo_root=root,
+            write_receipt_path=path,
+        )
+        return dict(certificate.get("install_receipt") or {})
+    receipt = build_vendor_install_receipt(certificate)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return receipt
+
+
+def external_authorization_vendor_lane_handler(
+    *args: Any,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Lane handler for external authorization vendor certification."""
+
+    result = certify_external_authorization_vendor(
+        install_root=kwargs.get("install_root"),
+        force_install=bool(kwargs.get("force_install", False)),
+        skip_install=bool(kwargs.get("skip_install", False)),
+        platform_id=kwargs.get("platform_id"),
+        repo_root=kwargs.get("repo_root"),
+        lock_path=kwargs.get("lock_path"),
+        write_receipt_path=kwargs.get("write_receipt_path"),
+    )
+    return {
+        "lane_id": VENDOR_LANE_ID,
+        "owner_module": CERTIFICATION_SURFACE,
+        "handler_id": VENDOR_HANDLER_ID,
+        "status": "certified" if result["certified"] else "failed",
+        "certified": bool(result["certified"]),
+        "authority_ceiling": SHADOW_AUTHORITY_CEILING,
+        "reason_codes": list(result["summary"].get("block_reasons") or []),
+        "certificate_digest_sha256": result["certificate_digest_sha256"],
+        "engine_ids": list(result.get("engine_ids") or []),
+        "host_platform": result.get("host_platform"),
+        "secpal_exception": bool(
+            (result.get("secpal_platform_exception") or {}).get("exception")
+        ),
+        "args_received": bool(args) or bool(kwargs),
+        "interface": VENDOR_INTERFACE,
+        "goal_id": VENDOR_GOAL_ID,
+        "task_id": VENDOR_TASK_ID,
+        "grants_theorem_authority": False,
+        "grants_authorization_decision_authority": False,
+        "external_engines_are_shadows": True,
+        "hermetic_shadows_are_differential_only": True,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Certify external Datalog/SecPAL differential shadows "
-            f"({INTERFACE} / {GOAL_ID})."
+            f"({INTERFACE} / {GOAL_ID}) or vendor path "
+            f"({VENDOR_INTERFACE} / {VENDOR_GOAL_ID})."
         )
     )
     parser.add_argument(
@@ -1113,12 +1681,12 @@ def main(argv: list[str] | None = None) -> int:
         "--install-root",
         type=Path,
         default=None,
-        help="User-local install root for pin-bound shadows",
+        help="User-local install root for pin-bound shadows/vendor engines",
     )
     parser.add_argument(
         "--force-install",
         action="store_true",
-        help="Force re-materialization of hermetic shadows",
+        help="Force re-materialization of hermetic shadows / vendor engines",
     )
     parser.add_argument(
         "--engine",
@@ -1127,14 +1695,40 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Limit certification to one engine id (repeatable)",
     )
+    parser.add_argument(
+        "--vendor",
+        action="store_true",
+        help="Run ExternalAuthorizationVendorCertification@1 (FVT-G209)",
+    )
+    parser.add_argument(
+        "--write-receipt",
+        type=Path,
+        default=None,
+        help="Write vendor install receipt JSON to this path",
+    )
     args = parser.parse_args(argv)
 
     try:
-        receipt = certify_external_authorization_shadows(
-            install_root=args.install_root,
-            engines=args.engines,
-            force_install=args.force_install,
-        )
+        if args.vendor:
+            receipt = certify_external_authorization_vendor(
+                install_root=args.install_root,
+                force_install=args.force_install,
+                write_receipt_path=args.write_receipt,
+            )
+            interface = VENDOR_INTERFACE
+            goal_id = VENDOR_GOAL_ID
+            task_id = VENDOR_TASK_ID
+            lane_id = VENDOR_LANE_ID
+        else:
+            receipt = certify_external_authorization_shadows(
+                install_root=args.install_root,
+                engines=args.engines,
+                force_install=args.force_install,
+            )
+            interface = INTERFACE
+            goal_id = GOAL_ID
+            task_id = TASK_ID
+            lane_id = LANE_ID
     except Exception as exc:
         if args.json:
             print(
@@ -1142,33 +1736,40 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "certified": False,
                         "error": f"{type(exc).__name__}:{exc}",
-                        "interface": INTERFACE,
-                        "goal_id": GOAL_ID,
-                        "task_id": TASK_ID,
+                        "interface": VENDOR_INTERFACE if args.vendor else INTERFACE,
+                        "goal_id": VENDOR_GOAL_ID if args.vendor else GOAL_ID,
+                        "task_id": VENDOR_TASK_ID if args.vendor else TASK_ID,
                     },
                     indent=2,
                     sort_keys=True,
                 )
             )
         else:
-            print(f"{INTERFACE} FAILED: {exc}", file=sys.stderr)
+            print(f"{VENDOR_INTERFACE if args.vendor else INTERFACE} FAILED: {exc}", file=sys.stderr)
         return 1
 
     if args.json:
         print(json.dumps(receipt, indent=2, sort_keys=True))
     else:
         status = "CERTIFIED" if receipt["certified"] else "FAILED"
-        print(f"{INTERFACE} {status}")
+        print(f"{interface} {status}")
         print(
-            f"goal={GOAL_ID} task={TASK_ID} lane={LANE_ID} "
-            f"engines={','.join(receipt['engine_ids'])}"
+            f"goal={goal_id} task={task_id} lane={lane_id} "
+            f"engines={','.join(receipt.get('engine_ids') or [])}"
         )
         summary = receipt["summary"]
-        print(
-            f"checks={summary['checks_passed']}/{summary['checks_total']} "
-            f"engines_certified={summary['engines_certified']}/{summary['engines_total']}"
-        )
-        if summary["block_reasons"]:
+        if args.vendor:
+            print(
+                f"checks={summary['checks_passed']}/{summary['checks_total']} "
+                f"souffle_certified={summary.get('souffle_certified')} "
+                f"secpal_exception={summary.get('secpal_exception')}"
+            )
+        else:
+            print(
+                f"checks={summary['checks_passed']}/{summary['checks_total']} "
+                f"engines_certified={summary['engines_certified']}/{summary['engines_total']}"
+            )
+        if summary.get("block_reasons"):
             print("block_reasons:")
             for reason in summary["block_reasons"]:
                 print(f"  - {reason}")
@@ -1189,6 +1790,14 @@ __all__ = [
     "LANE_ID",
     "HANDLER_ID",
     "CERTIFICATION_SURFACE",
+    "VENDOR_INTERFACE",
+    "VENDOR_SCHEMA_VERSION",
+    "VENDOR_INSTALL_RECEIPT_SCHEMA",
+    "VENDOR_GOAL_ID",
+    "VENDOR_TASK_ID",
+    "VENDOR_PROGRAM",
+    "VENDOR_LANE_ID",
+    "VENDOR_HANDLER_ID",
     "SHADOW_AUTHORITY_CEILING",
     "REFERENCE_AUTHORITY_CEILING",
     "EXTERNAL_ENGINES",
@@ -1199,11 +1808,16 @@ __all__ = [
     "EngineCertification",
     "ExternalAuthorizationCertificationError",
     "ShadowRunRecord",
+    "build_vendor_install_receipt",
     "certify_engine",
     "certify_external_authorization_shadows",
+    "certify_external_authorization_vendor",
     "default_case_specs",
+    "derive_secpal_platform_exception",
     "external_authorization_lane_handler",
+    "external_authorization_vendor_lane_handler",
     "main",
     "materialize_case",
     "run_shadow_case",
+    "write_vendor_install_receipt",
 ]

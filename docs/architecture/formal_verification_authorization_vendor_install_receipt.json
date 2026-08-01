@@ -1,0 +1,104 @@
+{
+  "authority_ceiling": "none",
+  "categories_exercised": [
+    "allow",
+    "conflict",
+    "delegation",
+    "deny",
+    "unknown"
+  ],
+  "certificate_digest_sha256": "dc59405302114187c32ca6b93f5bc008dfed76733866f6b3ebcc9c4c49058f7d",
+  "certified": true,
+  "goal_id": "FVT-G209",
+  "handler_id": "external_authorization_vendor_certification@1",
+  "host_platform": "linux-aarch64",
+  "interface": "ExternalAuthorizationVendorCertification@1",
+  "lane_id": "datalog_secpal_external_vendor",
+  "mutation_kinds": [
+    "rule",
+    "scope"
+  ],
+  "policy": {
+    "disagreement_quarantines_promotion": true,
+    "external_engines_are_shadows": true,
+    "grants_authorization_decision_authority": false,
+    "grants_theorem_authority": false,
+    "hermetic_shadows_are_differential_only": true,
+    "hermetic_shadows_cannot_satisfy_vendor": true,
+    "in_process_references_retain_authorization_authority": true,
+    "never_grants_authorization_authority_to_shadows": true,
+    "never_grants_theorem_authority": true,
+    "never_mutate_system_package_manager": true,
+    "never_promote_hermetic_shadow_as_vendor": true,
+    "no_central_certificate_edit": true,
+    "secpal_linux_aarch64_narrow_platform_exception": true,
+    "souffle_linux_aarch64_supported": true,
+    "souffle_source_archive_checksummed": true,
+    "strict_installation_selects_exact_pins": true
+  },
+  "program": "formal-verification-tactician/authorization-vendor-toolchains",
+  "receipt_digest_sha256": "2b7df98d538eb688387d9d21bb9ea9582d2dbaea52242e821dac5bb9a1a7ccb9",
+  "schema_version": "formal-verification-authorization-vendor-install-receipt/v1",
+  "secpal_platform_exception": {
+    "authoritative": false,
+    "classification": "unsupported_here",
+    "complete": false,
+    "exception": true,
+    "host_platform": "linux-aarch64",
+    "installed": false,
+    "narrow_scope": true,
+    "notes": "external SecPAL is a narrow unsupported-platform exception on linux-aarch64 under the current contract and never counts as installed, complete, authoritative, or production-certified",
+    "production_certified": false,
+    "supported_platforms": [
+      "linux-x86_64"
+    ],
+    "tool_id": "secpal"
+  },
+  "souffle": {
+    "artifact_sha256": "3186d8fc4c64beee5f5a04faeca9b9481d6c4663910bd26e8fed0fd0d7fe3edd",
+    "authority_ceiling": "none",
+    "build_dependencies": {
+      "bison": ">=3.0",
+      "cmake": ">=3.15",
+      "flex": ">=2.6",
+      "libffi": ">=3.0",
+      "mcpp": ">=2.7",
+      "python3": ">=3.8",
+      "sqlite3": ">=3.0"
+    },
+    "certified": true,
+    "executable": "/tmp/authz-vendor-receipt-final-9wry29wx/authorization-vendor/souffle/2.4.1/bin/souffle",
+    "is_hermetic_shadow": false,
+    "is_vendor_build": true,
+    "linux_aarch64_supported": true,
+    "never_grants_authorization_authority": true,
+    "never_grants_theorem_authority": true,
+    "platform_id": "linux-aarch64",
+    "role": "shadow",
+    "source_archive_sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
+    "source_archive_url": "https://github.com/souffle-lang/souffle/archive/refs/tags/2.4.1.tar.gz",
+    "tool_id": "souffle",
+    "usable": true,
+    "version": "2.4.1"
+  },
+  "summary": {
+    "block_reasons": [],
+    "categories_exercised": [
+      "allow",
+      "conflict",
+      "delegation",
+      "deny",
+      "unknown"
+    ],
+    "checks_passed": 25,
+    "checks_total": 25,
+    "hermetic_shadows_cannot_satisfy_vendor": true,
+    "mutation_kinds": [
+      "rule",
+      "scope"
+    ],
+    "secpal_exception": true,
+    "souffle_certified": true
+  },
+  "task_id": "FVT-055"
+}
