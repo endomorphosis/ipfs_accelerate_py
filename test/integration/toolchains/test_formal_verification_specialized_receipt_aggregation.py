@@ -1,6 +1,8 @@
 """Lossless specialized receipt aggregation with composite lane handlers.
 
 FVT-065 / FVT-G203 — ``FormalVerificationSpecializedReceiptAggregation@1``.
+FVT-079 re-proves acceptance when path evidence already exists
+(``objective validation repair``).
 
 Acceptance covered:
 
@@ -17,7 +19,8 @@ Acceptance covered:
 * a second failed check of an already-present kind blocks promotion;
 * mutating any retained check or identity changes the certificate digest;
 * sibling tools never overwrite each other; checks are never collapsed by
-  kind; installers are never run.
+  kind; installers are never run;
+* objective validation repair evidence is bound on the aggregation surface.
 """
 
 from __future__ import annotations
@@ -44,6 +47,13 @@ CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certify_formal_verification_to
 INTERFACE = "FormalVerificationSpecializedReceiptAggregation@1"
 GOAL_ID = "FVT-G203"
 TASK_ID = "FVT-065"
+REPAIR_TASK_ID = "FVT-079"
+OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
+OBJECTIVE_VALIDATION_COMMAND = (
+    "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py "
+    "test/integration/test_formal_verification_real_tool_matrix.py -q"
+)
 
 REQUIRED_CERTIFIER_FAMILIES = {
     "state",
@@ -238,7 +248,26 @@ def test_specialized_aggregation_surface_constants(roles_mod, certifier) -> None
     assert certifier.SPECIALIZED_AGGREGATION_INTERFACE == INTERFACE
     assert certifier.SPECIALIZED_AGGREGATION_GOAL_ID == GOAL_ID
     assert certifier.SPECIALIZED_AGGREGATION_TASK_ID == TASK_ID
+    assert certifier.SPECIALIZED_AGGREGATION_REPAIR_TASK_ID == REPAIR_TASK_ID
+    assert (
+        certifier.SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert (
+        certifier.SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_COMMAND
+        == OBJECTIVE_VALIDATION_COMMAND
+    )
     assert certifier.SPECIALIZED_AGGREGATION_SCHEMA
+    assert roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_GOAL_ID == GOAL_ID
+    assert roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_TASK_ID == TASK_ID
+    assert (
+        roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_REPAIR_TASK_ID == REPAIR_TASK_ID
+    )
+    assert (
+        roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +365,12 @@ def test_aggregate_represents_all_required_certifier_families(certifier) -> None
     assert aggregation["interface"] == INTERFACE
     assert aggregation["goal_id"] == GOAL_ID
     assert aggregation["task_id"] == TASK_ID
+    assert aggregation["repair_task_id"] == REPAIR_TASK_ID
+    assert (
+        aggregation["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert aggregation["objective_validation_repair"] is True
     assert aggregation["all_required_certifiers_represented"] is True
     assert REQUIRED_CERTIFIER_FAMILIES <= set(
         aggregation["certifier_families_represented"]
@@ -345,6 +380,12 @@ def test_aggregate_represents_all_required_certifier_families(certifier) -> None
     assert aggregation["policy"]["collapse_by_check_kind"] is False
     assert aggregation["policy"]["sibling_overwrite_forbidden"] is True
     assert aggregation["policy"]["installers_never_run"] is True
+    assert aggregation["acceptance"]["objective_validation_repair"] is True
+    assert (
+        aggregation["acceptance"]["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert aggregation["acceptance"]["repair_task_id"] == REPAIR_TASK_ID
 
 
 def test_kernel_retains_lean_rocq_isabelle_and_protocol_retains_tamarin_proverif(
@@ -560,6 +601,10 @@ def test_build_certificate_embeds_aggregation_surface_when_role_aware_disabled(
     section = certificate["specialized_receipt_aggregation"]
     assert section["interface"] == INTERFACE
     assert section["goal_id"] == GOAL_ID
+    assert section["repair_task_id"] == REPAIR_TASK_ID
+    assert (
+        section["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    )
     assert section.get("enabled") is False
     # Mutating the aggregation section changes the certificate digest.
     body = {
@@ -636,3 +681,95 @@ def test_authority_roles_binding_fills_ceiling_in_aggregation(certifier) -> None
         ]
         == "attestation"
     )
+
+
+# ---------------------------------------------------------------------------
+# FVT-079 objective validation repair (re-prove FVT-G203)
+# ---------------------------------------------------------------------------
+
+
+def test_objective_validation_repair_proves_g203_acceptance(
+    roles_mod, certifier
+) -> None:
+    """Bind and re-prove the synthetic evidence term for FVT-G203 / FVT-079."""
+
+    assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
+    assert REPAIR_TASK_ID == "FVT-079"
+    assert (
+        certifier.SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert certifier.SPECIALIZED_AGGREGATION_REPAIR_TASK_ID == REPAIR_TASK_ID
+    assert (
+        roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert (
+        roles_mod.SPECIALIZED_RECEIPT_AGGREGATION_REPAIR_TASK_ID == REPAIR_TASK_ID
+    )
+
+    # Exact-text discovery keys must appear in every declared output.
+    roles_source = ROLES_PATH.read_text(encoding="utf-8")
+    certifier_source = CERTIFIER_PATH.read_text(encoding="utf-8")
+    test_source = Path(__file__).read_text(encoding="utf-8")
+    for source in (roles_source, certifier_source, test_source):
+        assert OBJECTIVE_VALIDATION_EVIDENCE in source
+        assert REPAIR_TASK_ID in source
+        assert GOAL_ID in source
+
+    results = _full_synthetic_matrix(certifier)
+    aggregation = certifier.aggregate_specialized_receipts(results)
+    assert aggregation["objective_validation_repair"] is True
+    assert (
+        aggregation["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert aggregation["repair_task_id"] == REPAIR_TASK_ID
+    assert aggregation["objective_validation_command"] == OBJECTIVE_VALIDATION_COMMAND
+    assert aggregation["acceptance"]["objective_validation_repair"] is True
+    assert aggregation["acceptance"]["kernel_retains_lean_rocq_isabelle"] is True
+    assert aggregation["acceptance"]["protocol_retains_tamarin_proverif"] is True
+    assert aggregation["acceptance"]["all_required_certifiers_represented"] is True
+    assert aggregation["acceptance"]["handlers_keyed_by_lane_and_tool"] is True
+    assert aggregation["acceptance"]["lossless"] is True
+    assert aggregation["acceptance"]["collapse_by_check_kind"] is False
+    assert aggregation["acceptance"]["sibling_overwrite_forbidden"] is True
+    assert aggregation["acceptance"]["installers_never_run"] is True
+
+    # Composite lane fan-out also advertises the repair surface (needs ≥2
+    # sibling tools so get_lane_handler returns CompositeLaneHandler).
+    roles_mod.reset_default_policy()
+    policy = roles_mod.default_promotion_policy()
+
+    def lean_handler(**_kwargs: Any) -> dict[str, Any]:
+        return {"tool_id": "lean", "certified": True}
+
+    def rocq_handler(**_kwargs: Any) -> dict[str, Any]:
+        return {"tool_id": "coq", "certified": True}
+
+    lean_handler.TOOL_ID = "lean"  # type: ignore[attr-defined]
+    rocq_handler.TOOL_ID = "coq"  # type: ignore[attr-defined]
+    policy.register_lane_handler("kernel", lean_handler, replace=True)
+    policy.register_lane_handler("kernel", rocq_handler, replace=True)
+    composite = policy.get_lane_handler("kernel")
+    assert isinstance(composite, roles_mod.CompositeLaneHandler)
+    fanout = composite()
+    assert fanout["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert fanout["repair_task_id"] == REPAIR_TASK_ID
+    assert fanout["objective_validation_repair"] is True
+    assert fanout["goal_id"] == GOAL_ID
+    assert set(fanout["per_tool_receipts"]) == {"lean", "coq"}
+
+    policy_dict = policy.to_dict()
+    surface = policy_dict["specialized_receipt_aggregation"]
+    assert surface["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert surface["repair_task_id"] == REPAIR_TASK_ID
+    assert surface["objective_validation_repair"] is True
+    assert surface["interface"] == INTERFACE
+
+    # Compact projection preserves the evidence term for durable certificates.
+    compact = certifier._compact_specialized_receipt_aggregation(aggregation)
+    assert compact["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert compact["repair_task_id"] == REPAIR_TASK_ID
+    assert compact["objective_validation_repair"] is True
+    assert compact["acceptance"]["objective_validation_repair"] is True
