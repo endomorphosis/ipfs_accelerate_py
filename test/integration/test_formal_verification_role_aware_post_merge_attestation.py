@@ -1,0 +1,502 @@
+"""Post-merge deployment attestation (FVT-067 / FVT-G214).
+
+``RoleAwareFormalVerificationRelease@1`` finalizer after FVT-G213 merge.
+Fail-closed: absent terminal evidence remains partial and is never
+deployment-ready; mutations invalidate the receipt identity.
+"""
+
+from __future__ import annotations
+
+import copy
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FINALIZER_PATH = (
+    REPO_ROOT / "tools" / "logic" / "finalize_formal_verification_deployment.py"
+)
+BUILDER_PATH = (
+    REPO_ROOT / "tools" / "logic" / "build_formal_verification_tactician_receipt.py"
+)
+CERTIFIER_PATH = (
+    REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
+)
+DEPLOYMENT_RECEIPT_PATH = (
+    REPO_ROOT
+    / "docs"
+    / "architecture"
+    / "formal_verification_role_aware_deployment_receipt.json"
+)
+COMPLETION_RECEIPT_PATH = (
+    REPO_ROOT
+    / "docs"
+    / "architecture"
+    / "formal_verification_tactician_readiness_completion_receipt.json"
+)
+RELEASE_CANDIDATE_PATH = (
+    REPO_ROOT
+    / "docs"
+    / "architecture"
+    / "formal_verification_role_aware_release_candidate.json"
+)
+
+INTERFACE = "RoleAwareFormalVerificationRelease@1"
+GOAL_ID = "FVT-G214"
+TASK_ID = "FVT-067"
+RELEASE_CANDIDATE_TASK_ID = "FVT-066"
+RELEASE_CANDIDATE_GOAL_ID = "FVT-G213"
+SUPERVISOR_COMPLETION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
+)
+
+
+def _load(path: Path, name: str):
+    for candidate in (REPO_ROOT, REPO_ROOT / "ipfs_datasets_py"):
+        if str(candidate) not in sys.path:
+            sys.path.insert(0, str(candidate))
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="module")
+def finalizer():
+    return _load(FINALIZER_PATH, "fvt_post_merge_finalizer_test")
+
+
+@pytest.fixture(scope="module")
+def builder():
+    return _load(BUILDER_PATH, "fvt_post_merge_builder_test")
+
+
+@pytest.fixture(scope="module")
+def certifier():
+    return _load(CERTIFIER_PATH, "fvt_post_merge_certifier_test")
+
+
+@pytest.fixture(scope="module")
+def certificate(certifier) -> dict[str, Any]:
+    return certifier.build_certificate(repo_root=REPO_ROOT, role_aware=True)
+
+
+@pytest.fixture(scope="module")
+def completion(builder) -> dict[str, Any]:
+    return builder.build_receipt(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+    )
+
+
+@pytest.fixture(scope="module")
+def attestation(finalizer, certificate, completion) -> dict[str, Any]:
+    return finalizer.build_post_merge_attestation(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        publication_mode=finalizer.PUBLICATION_MODE_EXTERNAL,
+        role_aware_certificate=certificate,
+        completion_receipt=completion,
+        g213_terminal_evidence=None,
+    )
+
+
+def _git(*args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(REPO_ROOT), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _coherent_g213_terminal(finalizer) -> dict[str, Any]:
+    """Build a coherent FVT-066 terminal snapshot against real published commits."""
+
+    implementation_commit = _git("rev-parse", "origin/main^")
+    merge_commit = _git("rev-parse", "origin/main")
+    implementation_tree = _git("rev-parse", f"{implementation_commit}^{{tree}}")
+    merge_tree = _git("rev-parse", f"{merge_commit}^{{tree}}")
+    cid = "baguqeera-g213-terminal-test-cid"
+    key = "task/v1/g213-terminal-test-key"
+    completion_receipt = {
+        "schema": SUPERVISOR_COMPLETION_SCHEMA,
+        "status": "succeeded",
+        "task_id": RELEASE_CANDIDATE_TASK_ID,
+        "canonical_task_cid": cid,
+        "canonical_task_key": key,
+        "implementation_commit": implementation_commit,
+        "merge_commit": merge_commit,
+    }
+    event_body = {
+        "type": "implementation_finished",
+        "timestamp": "2026-08-01T00:00:00Z",
+        "task_id": RELEASE_CANDIDATE_TASK_ID,
+        "canonical_task_cid": cid,
+        "canonical_task_key": key,
+        "implementation_commit": implementation_commit,
+        "validation": {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "target_commit": implementation_commit,
+        },
+        "merge": {
+            "merged": True,
+            "implementation_commit": implementation_commit,
+            "merge_commit": merge_commit,
+            "target_branch": "origin/main",
+            "integration_commit_proof": {
+                "passed": True,
+                "implementation_tree": implementation_tree,
+                "merge_tree": merge_tree,
+            },
+        },
+        "completion_receipts": [completion_receipt],
+        "stream_id": "event-log:sha256:" + "a" * 64,
+        "snapshot_id": "event-log-snapshot:sha256:" + "b" * 64,
+        "sequence": 1,
+        "previous_event_id": "",
+    }
+    event = dict(event_body)
+    event["event_id"] = finalizer.content_digest(event_body)
+    return {
+        "task_id": RELEASE_CANDIDATE_TASK_ID,
+        "canonical_task_cid": cid,
+        "canonical_task_key": key,
+        "task_state": {
+            "canonical_identity": {
+                "canonical_task_cid": cid,
+                "canonical_task_key": key,
+            }
+        },
+        "event_chain": {
+            "valid": True,
+            "event_count": 1,
+            "last_sequence": 1,
+            "last_event_id": event["event_id"],
+            "errors": [],
+        },
+        "events": [event],
+    }
+
+
+def test_expected_outputs_exist() -> None:
+    for path in (
+        FINALIZER_PATH,
+        DEPLOYMENT_RECEIPT_PATH,
+        COMPLETION_RECEIPT_PATH,
+        Path(__file__),
+    ):
+        assert path.is_file(), path
+    text = FINALIZER_PATH.read_text(encoding="utf-8")
+    assert INTERFACE in text
+    assert GOAL_ID in text
+    assert TASK_ID in text
+    assert "deployment-ready" in text or "deployment_ready" in text
+    assert "member_completion" in text
+    assert "circular" in text.lower() or "self_referential" in text
+
+
+def test_attestation_interface_goal_and_fail_closed_without_terminal(
+    attestation: dict[str, Any],
+) -> None:
+    assert attestation["interface"] == INTERFACE
+    assert attestation["goal_id"] == GOAL_ID
+    assert attestation["task_id"] == TASK_ID
+    assert attestation["schema_version"] == (
+        "formal-verification-role-aware-deployment-receipt/v1"
+    )
+    assert attestation["binding_mode"] == (
+        "post_merge_external_content_addressed_attestation"
+    )
+    assert attestation["publication_mode"] == "external_content_addressed"
+    assert attestation["status"] == "role_aware_deployment_blocked"
+    assert attestation["readiness_stage"] == "blocked"
+    assert attestation["status"] != "role_aware_deployment_ready"
+    assert attestation["readiness_stage"] != "deployment_ready"
+    assert attestation["claims"]["deployment"] is False
+    assert attestation["claims"]["post_merge_attestation"] is False
+    assert attestation["claims"]["current_task_future_event"] is False
+    assert attestation["claims"]["self_referential_current_tree"] is False
+    assert attestation["acceptance"]["g213_terminal_receipt_bound"] is False
+    assert "g213_terminal_receipt_bound" in attestation["deployment_blockers"]
+    assert attestation["acceptance"]["never_claims_current_task_future_event"] is True
+    assert attestation["acceptance"]["circular_tree_identity_forbidden"] is True
+
+
+def test_attestation_identity_is_content_addressed(
+    finalizer, attestation: dict[str, Any]
+) -> None:
+    body = {
+        key: value
+        for key, value in attestation.items()
+        if key != "receipt_identity"
+    }
+    assert attestation["receipt_identity"] == finalizer.content_digest(body)
+
+
+def test_release_candidate_digest_is_bound(
+    finalizer, attestation: dict[str, Any]
+) -> None:
+    assert RELEASE_CANDIDATE_PATH.is_file()
+    checked = json.loads(RELEASE_CANDIDATE_PATH.read_text(encoding="utf-8"))
+    stored = checked.pop("candidate_identity")
+    assert stored == finalizer.content_digest(checked)
+
+    bound = attestation["release_candidate"]
+    assert bound["goal_id"] == RELEASE_CANDIDATE_GOAL_ID
+    assert bound["task_id"] == RELEASE_CANDIDATE_TASK_ID
+    assert bound["checked_identity_valid"] is True
+    assert bound["bound"] is True
+    assert attestation["acceptance"]["release_candidate_bound"] is True
+    assert attestation["acceptance"]["candidate_digest_bound"] is True
+    assert bound["checked_candidate_identity"] == stored
+
+
+def test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready(
+    finalizer,
+) -> None:
+    checked = json.loads(DEPLOYMENT_RECEIPT_PATH.read_text(encoding="utf-8"))
+    stored = checked.pop("receipt_identity")
+    assert stored == finalizer.content_digest(checked)
+    assert checked["status"] != "role_aware_deployment_ready"
+    assert checked["status"] != "deployment_ready"
+    assert checked.get("deployment_blockers")
+    # Post-merge finalizer product may own the path; G200 reissue also uses
+    # this interface. Either goal is acceptable as long as the gate stays
+    # fail-closed.
+    assert checked["interface"] == INTERFACE
+    assert checked["status"] in {
+        "role_aware_deployment_blocked",
+        "post_merge_attestation_partial",
+    }
+
+
+def test_mutating_publication_or_event_invalidates_identity(
+    finalizer, certificate, completion
+) -> None:
+    base = finalizer.build_post_merge_attestation(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=certificate,
+        completion_receipt=completion,
+        g213_terminal_evidence=None,
+    )
+    mutated = copy.deepcopy(base)
+    mutated["post_merge"]["publication"]["mode"] = "forged"
+    body = {
+        key: value for key, value in mutated.items() if key != "receipt_identity"
+    }
+    assert finalizer.content_digest(body) != base["receipt_identity"]
+
+    mutated_event = copy.deepcopy(base)
+    terminal = mutated_event["post_merge"]["terminal"]
+    terminal["event_chain"] = dict(terminal.get("event_chain") or {})
+    terminal["event_chain"]["event_count"] = 999
+    body2 = {
+        key: value
+        for key, value in mutated_event.items()
+        if key != "receipt_identity"
+    }
+    assert finalizer.content_digest(body2) != base["receipt_identity"]
+
+
+def test_cannot_attest_current_task_future_event(
+    finalizer, certificate, completion
+) -> None:
+    forged = {
+        "task_id": TASK_ID,
+        "canonical_task_cid": "baguqeera-forged",
+        "canonical_task_key": "task/v1/forged",
+        "events": [],
+    }
+    receipt = finalizer.build_post_merge_attestation(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=certificate,
+        completion_receipt=completion,
+        g213_terminal_evidence=forged,
+    )
+    assert receipt["status"] == "role_aware_deployment_blocked"
+    assert receipt["acceptance"]["g213_terminal_receipt_bound"] is False
+    assert receipt["post_merge"]["terminal"]["claims_current_task_future_event"] is True
+    assert "cannot_attest_current_task_future_event" in receipt["deployment_blockers"]
+    assert receipt["claims"]["deployment"] is False
+
+
+def test_coherent_g213_terminal_binds_merge_gates_without_false_ready(
+    finalizer, certificate, completion
+) -> None:
+    terminal = _coherent_g213_terminal(finalizer)
+    verified = finalizer.verify_g213_terminal_evidence(
+        repo_root=REPO_ROOT,
+        evidence=terminal,
+    )
+    assert verified["bound"] is True
+    assert verified["event_chain"]["valid"] is True
+    assert verified["validation"]["bound"] is True
+    assert verified["merge"]["bound"] is True
+    assert verified["expected_outputs"]["bound"] is True
+    assert verified["commit_binding"]["valid"] is True
+    assert verified["commit_binding"]["published_to_origin_main"] is True
+
+    receipt = finalizer.build_post_merge_attestation(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=certificate,
+        completion_receipt=completion,
+        g213_terminal_evidence=terminal,
+    )
+    assert receipt["acceptance"]["g213_terminal_receipt_bound"] is True
+    assert receipt["acceptance"]["event_chain_continuous"] is True
+    assert receipt["acceptance"]["validation_result_bound"] is True
+    assert receipt["acceptance"]["merged_commit_bound"] is True
+    assert receipt["acceptance"]["origin_publication_bound"] is True
+    assert receipt["acceptance"]["g213_expected_outputs_bound"] is True
+    assert receipt["acceptance"]["publication_bound"] is True
+    # Other gates (hard-zero, elevations, managed capabilities) still block.
+    assert receipt["status"] == "role_aware_deployment_blocked"
+    assert receipt["claims"]["deployment"] is False
+    assert receipt["claims"]["merge"] is True
+    assert "g213_terminal_receipt_bound" not in receipt["deployment_blockers"]
+
+
+def test_stale_or_broken_event_chain_never_binds(
+    finalizer, certificate, completion
+) -> None:
+    terminal = _coherent_g213_terminal(finalizer)
+    terminal["events"][0]["event_id"] = "sha256:" + "0" * 64
+    receipt = finalizer.build_post_merge_attestation(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=certificate,
+        completion_receipt=completion,
+        g213_terminal_evidence=terminal,
+    )
+    assert receipt["acceptance"]["g213_terminal_receipt_bound"] is False
+    assert receipt["acceptance"]["event_chain_continuous"] is False
+    assert receipt["status"] != "role_aware_deployment_ready"
+
+
+def test_receipt_commit_mode_requires_parent_and_limited_diff(
+    finalizer, certificate, completion
+) -> None:
+    source_commit = _git("rev-parse", "HEAD")
+    # Missing receipt commit → blocked.
+    missing = finalizer.build_post_merge_attestation(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        publication_mode=finalizer.PUBLICATION_MODE_RECEIPT_COMMIT,
+        role_aware_certificate=certificate,
+        completion_receipt=completion,
+        receipt_commit=None,
+    )
+    assert missing["binding_mode"] == "post_merge_receipt_commit_publication"
+    assert missing["acceptance"]["publication_bound"] is False
+    assert "receipt_commit_missing" in missing["deployment_blockers"]
+    assert missing["status"] == "role_aware_deployment_blocked"
+
+    # A real HEAD commit is almost certainly not a limited generated-artifact
+    # receipt commit parented on certified source, so publication stays closed.
+    with_commit = finalizer.build_post_merge_attestation(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        publication_mode=finalizer.PUBLICATION_MODE_RECEIPT_COMMIT,
+        role_aware_certificate=certificate,
+        completion_receipt=completion,
+        receipt_commit=source_commit,
+    )
+    assert with_commit["status"] == "role_aware_deployment_blocked"
+    publication = with_commit["post_merge"]["publication"]
+    assert publication["mode"] == "receipt_commit"
+    assert publication["allowed_paths"]
+    assert set(publication["allowed_paths"]) <= {
+        "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
+        "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
+        "docs/architecture/formal_verification_toolchain_certificate.json",
+    }
+
+
+def test_public_surfaces_and_compact_body(
+    attestation: dict[str, Any],
+) -> None:
+    text = json.dumps(attestation, sort_keys=True)
+    assert "/home/" not in text
+    assert "/tmp/" not in text
+    assert "/private/tmp/" not in text
+    assert attestation["public_evidence_policy"]["satisfied"] is True
+    assert attestation["acceptance"]["public_surfaces_bound"] is True
+    # Compact: no bulk semantic receipt dumps.
+    encoded = json.dumps(attestation, separators=(",", ":"), ensure_ascii=False)
+    assert len(encoded.encode("utf-8")) < 1_000_000
+    for lane in attestation["role_aware_certificate"].get("semantic_lane_results") or []:
+        assert "receipt" not in lane
+        assert "per_tool" not in lane
+
+
+def test_hard_zero_authority_quarantine_and_capability_gates_recorded(
+    attestation: dict[str, Any],
+) -> None:
+    for key in (
+        "false_proof_count",
+        "false_closure_count",
+        "secret_or_witness_leakage_count",
+        "authority_boundary_violations",
+        "unresolved_cross_provider_disagreement_count",
+    ):
+        assert key in attestation["hard_zero_gates"]
+        assert isinstance(attestation["hard_zero_gates"][key], int)
+        assert attestation["hard_zero_gates"][key] >= 0
+    assert "authority_ceiling_respected" in attestation["acceptance"]
+    assert "quarantines_bound" in attestation["acceptance"]
+    assert "supported_capability_closure" in attestation["acceptance"]
+    # Current tree is not fully production-elevated; elevation gate stays open.
+    assert attestation["acceptance"]["required_elevations_complete"] is False
+    assert set(attestation["elevations"]["missing_required"]) >= {
+        "lean",
+        "runtime-mtl",
+        "datalog-authorization",
+        "secpal-authorization",
+        "coq",
+        "isabelle",
+    }
+
+
+def test_finalize_writes_atomic_external_attestation(
+    finalizer, certificate, completion, tmp_path: Path
+) -> None:
+    output = tmp_path / "post_merge_attestation.json"
+    receipt = finalizer.finalize_deployment(
+        repo_root=REPO_ROOT,
+        output=output,
+        observed_at="2026-08-01T00:00:00Z",
+        publication_mode=finalizer.PUBLICATION_MODE_EXTERNAL,
+        g213_terminal_evidence=None,
+        write=True,
+    )
+    assert output.is_file()
+    on_disk = json.loads(output.read_text(encoding="utf-8"))
+    assert on_disk["receipt_identity"] == receipt["receipt_identity"]
+    assert on_disk["status"] == "role_aware_deployment_blocked"
+    assert on_disk["goal_id"] == GOAL_ID
+    stored = on_disk.pop("receipt_identity")
+    assert stored == finalizer.content_digest(on_disk)
+
+
+def test_source_and_datasets_gitlink_recorded(
+    attestation: dict[str, Any],
+) -> None:
+    source = attestation["source"]
+    assert source.get("certified_source_commit")
+    assert source.get("certified_source_tree")
+    assert "datasets_gitlink" in source
+    assert attestation["acceptance"]["circular_tree_identity_forbidden"] is True
+    assert source.get("attestation_excluded_from_source_tree") is True
