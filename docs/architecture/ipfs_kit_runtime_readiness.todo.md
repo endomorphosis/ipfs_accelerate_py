@@ -613,7 +613,7 @@ or write authority.
 
 ## KITA-019 Implement append, fsync, group commit, segment, and clean shutdown
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
