@@ -11813,21 +11813,35 @@ def generate_objective_todos(
     ):
         try:
             from ..task_sources.todo_vector_index import (
+                _project_bundle_work_contracts_onto_records,
                 parse_todo_vector_records,
             )
 
             existing_vector_payload = json.loads(
                 index_path.read_text(encoding="utf-8")
             )
+            projected_records = parse_todo_vector_records(
+                repo_root=repo_root,
+                todo_path=todo_path,
+                task_header_prefix=task_markdown_heading_prefix(
+                    task_prefix
+                ),
+            )
+            if bundle_index_path.exists():
+                # The persisted vector projection is hydrated with the
+                # scheduler's admitted work contracts.  Compare like with
+                # like here; a raw Markdown parse deliberately lacks those
+                # contracts and otherwise makes every no-op refill look
+                # stale, rotating generated timestamps and DuckDB state.
+                projected_records = (
+                    _project_bundle_work_contracts_onto_records(
+                        bundle_index_path=bundle_index_path,
+                        records=projected_records,
+                    )
+                )
             projected_vector_records = [
                 record.to_dict()
-                for record in parse_todo_vector_records(
-                    repo_root=repo_root,
-                    todo_path=todo_path,
-                    task_header_prefix=task_markdown_heading_prefix(
-                        task_prefix
-                    ),
-                )
+                for record in projected_records
             ]
             vector_projection_stale = (
                 not isinstance(existing_vector_payload, Mapping)
