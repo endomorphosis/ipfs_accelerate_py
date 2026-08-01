@@ -768,7 +768,7 @@ or write authority.
 
 ## KITA-024 Add generation-bound invalidation, persistence, metrics, and legacy migration
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
