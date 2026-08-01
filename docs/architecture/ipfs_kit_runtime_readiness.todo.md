@@ -117,7 +117,7 @@ or write authority.
 
 ## KITA-003 Build hermetic adversarial state-machine and fault fixtures
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
