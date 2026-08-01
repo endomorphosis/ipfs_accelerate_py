@@ -736,6 +736,40 @@ class CheckResult:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    def to_public_dict(self) -> dict[str, Any]:
+        """Public projection without nested evidence that re-emits the row."""
+
+        payload = {
+            "check_id": self.check_id,
+            "kind": self.kind,
+            "status": self.status,
+            "expected": self.expected,
+            "observed": self.observed,
+            "detail": self.detail,
+        }
+        if self.evidence:
+            # Bind residual evidence by digest only; full tool/lane surfaces
+            # retain complete check bodies where required.
+            payload["evidence_digest_sha256"] = content_digest(self.evidence)
+            residual_keys = sorted(
+                key
+                for key in self.evidence.keys()
+                if key
+                not in {
+                    "check_id",
+                    "kind",
+                    "status",
+                    "expected",
+                    "observed",
+                    "detail",
+                    "reason_codes",
+                    "tool_id",
+                }
+            )
+            if residual_keys:
+                payload["evidence_residual_keys"] = residual_keys
+        return payload
+
 
 @dataclass
 class ToolCertification:
@@ -2572,6 +2606,9 @@ def aggregate_specialized_receipts(
     )
     represented_families = sorted(families_present)
 
+    # Digest material is the lossless composite + handler projection. Do not
+    # also re-embed it under ``digest_components`` (that doubled the durable
+    # certificate for no additional binding power).
     digest_components = {
         "composite_lanes": {
             key: composite_lanes[key] for key in sorted(composite_lanes)
@@ -2616,16 +2653,8 @@ def aggregate_specialized_receipts(
         "protocol_retained_tool_ids": list(
             (composite_lanes.get("protocol") or {}).get("tool_ids") or []
         ),
-        "digest_components": digest_components,
-        "aggregation_digest_sha256": "",
+        "aggregation_digest_sha256": content_digest(digest_components),
     }
-    aggregation["aggregation_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in aggregation.items()
-            if key != "aggregation_digest_sha256"
-        }
-    )
     return aggregation
 
 
@@ -3392,7 +3421,10 @@ def apply_semantic_elevations(
                         "interface": str(spec["interface"]),
                         "evidence_class": cert.evidence_class,
                         "semantic_receipt_digest_sha256": receipt_digest,
-                        "checks": [check.to_dict() for check in projected],
+                        "checks": [check.to_public_dict() for check in projected],
+                        "checks_digest_sha256": content_digest(
+                            [check.to_dict() for check in projected]
+                        ),
                     }
                 )
                 continue
@@ -3458,7 +3490,12 @@ def apply_semantic_elevations(
                             "reason": "semantic_identity_not_exactly_bound",
                             "interface": str(spec["interface"]),
                             "evidence_class": str(spec["evidence_class"]),
-                            "checks": [check.to_dict() for check in projected],
+                            "checks": [
+                                check.to_public_dict() for check in projected
+                            ],
+                            "checks_digest_sha256": content_digest(
+                                [check.to_dict() for check in projected]
+                            ),
                         }
                     )
                     continue
@@ -3491,7 +3528,10 @@ def apply_semantic_elevations(
                     "interface": str(spec["interface"]),
                     "evidence_class": cert.evidence_class,
                     "semantic_receipt_digest_sha256": receipt_digest,
-                    "checks": [check.to_dict() for check in projected],
+                    "checks": [check.to_public_dict() for check in projected],
+                    "checks_digest_sha256": content_digest(
+                        [check.to_dict() for check in projected]
+                    ),
                 }
             )
     return elevations
