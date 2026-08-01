@@ -382,33 +382,45 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
     )
     assert receipt["status"] == "role_aware_deployment_blocked"
     assert receipt["deployment_blockers"]
-    assert (
-        receipt["acceptance"][
-            "implementation_complete_and_all_child_goals_bound"
-        ]
-        is False
-    )
-    assert "implementation_complete_and_all_child_goals_bound" in receipt[
-        "deployment_blockers"
-    ]
+    # Implementation evidence can be fully path-bound while deployment
+    # certification remains fail-closed. Open gates below are independent of
+    # mere file presence and must keep the receipt blocked.
     assert receipt["completion"]["objective_child_count"] == 67
-    assert receipt["completion"]["child_goals_bound"] < 67
+    assert receipt["completion"]["child_goals_bound"] == 67
+    assert (
+        receipt["acceptance"]["implementation_complete_and_all_child_goals_bound"]
+        is True
+    )
     assert (
         receipt["acceptance"]["supported_managed_capabilities_ready"] is False
     )
+    assert "supported_managed_capabilities_ready" in receipt["deployment_blockers"]
     assert receipt["acceptance"]["supervisor_evidence_bound"] is False
+    assert "supervisor_evidence_bound" in receipt["deployment_blockers"]
     assert (
         receipt["acceptance"]["lean_runtime_mtl_authorization_elevated"]
         is False
     )
+    assert "lean_runtime_mtl_authorization_elevated" in receipt[
+        "deployment_blockers"
+    ]
     assert set(receipt["acceptance"]["required_elevations_missing"]) == (
         REQUIRED_ELEVATIONS
     )
+    assert receipt["acceptance"]["hard_zero_gates_clear"] is False
+    assert "hard_zero_gates_clear" in receipt["deployment_blockers"]
     assert receipt["source"]["attestation_excluded_from_source_tree"] is True
     assert receipt["source"]["publication_verification_required"] is True
     assert receipt["platform_exceptions"] == receipt["role_aware_certificate"][
         "managed_deployment_readiness"
     ]["platform_exceptions"]
+    # Non-ran semantic lanes (e.g. unavailable hyperproperty tools) must not be
+    # treated as omitted receipt evidence; they disclose block reasons instead.
+    assert receipt["acceptance"]["semantic_receipts_full_and_bound"] is True
+    assert not any(
+        str(item).endswith(":raw_receipt_missing")
+        for item in receipt["deployment_blockers"]
+    )
 
 
 def test_duplicate_child_goal_population_cannot_fake_implementation_completion(
