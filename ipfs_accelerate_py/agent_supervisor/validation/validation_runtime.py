@@ -58,6 +58,9 @@ _NPM_DISABLED_USER_CONFIG = "/dev/null/npmrc"
 HERMETIC_VALIDATION_RUNTIME_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/hermetic-validation-runtime@1"
 )
+VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/validation-environment-contract@1"
+)
 _RUNTIME_ID_ENV = "IPFS_ACCELERATE_VALIDATION_RUNTIME_ID"
 _CANCELLATION_ID_ENV = "IPFS_ACCELERATE_VALIDATION_CANCELLATION_ID"
 _VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
@@ -896,6 +899,56 @@ def build_validation_environment(
     result.setdefault("PYTHONHASHSEED", "0")
     result.setdefault("TZ", "UTC")
     return result
+
+
+def canonical_validation_environment_contract(
+    environment: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Describe the exact sanitized environment without changing its policy.
+
+    Implementation providers run outside the validation boundary and can see a
+    broader operator ``PATH`` and profile home.  Exposing this body-free
+    contract lets prompts and retry diagnostics distinguish that convenience
+    environment from the one used for authoritative checks.  Values come from
+    :func:`build_validation_environment`, so this helper cannot accidentally
+    advertise a toolchain entry that the scheduler would later scrub.
+
+    The todo daemon replaces the neutral base ``HOME``/XDG values with a fresh
+    private directory for every command.  That final per-command mapping is
+    documented by the daemon because the temporary path itself is intentionally
+    unpredictable.
+    """
+
+    source = os.environ if environment is None else environment
+    child = build_validation_environment(source)
+    path = child["PATH"]
+    return {
+        "schema": VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA,
+        "path": path,
+        "path_entries": tuple(path.split(os.pathsep)),
+        "path_source": (
+            VALIDATION_PATH_ENV
+            if str(source.get(VALIDATION_PATH_ENV) or "").strip()
+            else "trusted_system_directories"
+        ),
+        "path_override_environment_variable": VALIDATION_PATH_ENV,
+        "path_override_active": bool(
+            str(source.get(VALIDATION_PATH_ENV) or "").strip()
+        ),
+        "inherited_path_ignored": True,
+        "writable_toolchain_paths_rejected": True,
+        "python_interpreter": child["PYTHON"],
+        "base_home": child["HOME"],
+        "base_xdg": {
+            key: child[key]
+            for key in (
+                "XDG_CACHE_HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "XDG_STATE_HOME",
+            )
+        },
+    }
 
 
 def _validation_python_launcher_source(

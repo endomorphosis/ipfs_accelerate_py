@@ -425,6 +425,7 @@ def _guidance_lines(
     contract_gap_paths: Sequence[str],
     failed_commands: Sequence[str],
     expected_outputs: Sequence[str],
+    validation_environment_guidance: str = "",
 ) -> list[str]:
     lines = [
         "# Implementation failure review",
@@ -503,6 +504,14 @@ def _guidance_lines(
             lines.append(f"- `{command}`")
         lines.append(
             "Re-run these commands after edits and keep them green before exit."
+        )
+    if validation_environment_guidance:
+        lines.extend(
+            [
+                "",
+                "### Authoritative validation boundary",
+                validation_environment_guidance,
+            ]
         )
     if FailureReviewReason.ENVIRONMENT_VALIDATION_UNAVAILABLE.value in reason_codes:
         lines.append("")
@@ -768,6 +777,7 @@ def review_implementation_failure(
     proposal_accepted: bool | None = None,
     scope_adjudication: Mapping[str, Any] | None = None,
     validation_commands: Sequence[str] = (),
+    validation_environment_guidance: str = "",
 ) -> ImplementationFailureReviewReceipt:
     """Review one failed implementation/validation attempt.
 
@@ -777,6 +787,13 @@ def review_implementation_failure(
     """
 
     validation = _mapping(validation_result)
+    environment_guidance = str(
+        validation_environment_guidance or ""
+    ).strip()
+    if len(environment_guidance.encode("utf-8")) > 8_192:
+        raise ValueError(
+            "validation_environment_guidance exceeds 8 KiB"
+        )
     finding_codes = _finding_codes_from_validation(validation)
     changed = _normalized_paths(
         (*changed_paths, *_changed_paths_from_validation(validation))
@@ -912,6 +929,7 @@ def review_implementation_failure(
             contract_gap_paths=contract_gap_paths,
             failed_commands=failed_commands,
             expected_outputs=expected,
+            validation_environment_guidance=environment_guidance,
         )
     )
     addendum_lines = [
@@ -960,6 +978,11 @@ def review_implementation_failure(
     if failed_commands:
         addendum_lines.append(
             "Re-run and fix: " + " | ".join(failed_commands[:4]) + "."
+        )
+    if environment_guidance:
+        addendum_lines.append(
+            "Authoritative validation environment: "
+            + " ".join(environment_guidance.split())
         )
     addendum_lines.append(
         "Stay inside declared Outputs/Predicted files (files or directory "

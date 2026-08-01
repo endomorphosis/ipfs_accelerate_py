@@ -82,8 +82,24 @@ def builder():
 
 
 @pytest.fixture(scope="module")
-def certificate(certifier) -> dict[str, Any]:
-    return certifier.build_certificate(repo_root=REPO_ROOT, role_aware=True)
+def certificate_bundle(certifier) -> tuple[dict[str, Any], dict[str, Any]]:
+    full_evidence: dict[str, Any] = {}
+    certificate = certifier.build_certificate(
+        repo_root=REPO_ROOT,
+        role_aware=True,
+        full_evidence_out=full_evidence,
+    )
+    return certificate, full_evidence
+
+
+@pytest.fixture(scope="module")
+def certificate(certificate_bundle) -> dict[str, Any]:
+    return certificate_bundle[0]
+
+
+@pytest.fixture(scope="module")
+def source_specialized(certificate_bundle) -> dict[str, Any]:
+    return certificate_bundle[1]["specialized_receipt_aggregation"]
 
 
 @pytest.fixture(scope="module")
@@ -144,7 +160,7 @@ def test_certificate_identity_binds_the_complete_body(
     assert certificate["certificate_digest_sha256"] == certifier.content_digest(body)
 
 
-def test_every_semantic_lane_retains_portable_receipt_and_full_check_sets(
+def test_every_ran_semantic_lane_retains_one_receipt_and_bound_check_digests(
     certifier, certificate: dict[str, Any]
 ) -> None:
     results = certificate["semantic_lane_results"]
@@ -163,7 +179,10 @@ def test_every_semantic_lane_retains_portable_receipt_and_full_check_sets(
         "authorization_external",
         "attestation",
         "advisors",
-    } <= {row["lane_id"] for row in results}
+    } == {row["lane_id"] for row in results}
+    ran = [row for row in results if row["status"] == "ran"]
+    assert len(results) == 14
+    assert sum(isinstance(row.get("receipt"), dict) for row in ran) == len(ran)
 
     for result in results:
         if result["status"] != "ran":
@@ -175,15 +194,120 @@ def test_every_semantic_lane_retains_portable_receipt_and_full_check_sets(
         assert result["offline_observation"]["satisfied"] is True
         assert result["public_projection"]["portable_paths"] is True
         assert result["public_projection"]["raw_process_output_retained"] is False
+        assert result["projection_policy"][
+            "canonical_full_receipt_retained_once"
+        ] is True
+        assert result["projection_policy"][
+            "per_tool_checks_bound_by_digest"
+        ] is True
         for per_tool in result["per_tool"].values():
-            checks = per_tool["checks"]
-            assert per_tool["check_set_digest_sha256"] == certifier.content_digest(
-                checks
+            assert "checks" not in per_tool
+            assert len(per_tool["check_set_digest_sha256"]) == 64
+            assert REQUIRED_CHECK_KINDS <= set(
+                per_tool["check_kinds_present"]
             )
-            assert REQUIRED_CHECK_KINDS <= {
-                check["kind"] for check in checks
-            }
             assert per_tool["artifact_validation"]["valid"] is True
+
+
+def test_checked_certificate_is_compact_without_losing_handler_identities(
+    certifier,
+    certificate: dict[str, Any],
+    source_specialized: dict[str, Any],
+) -> None:
+    assert CERTIFICATE_PATH.stat().st_size < 1024 * 1024
+    assert all(
+        "checks" not in per_tool
+        for lane in certificate["semantic_lane_results"]
+        for per_tool in lane["per_tool"].values()
+    )
+    assert all(
+        "checks" not in elevation
+        for elevation in certificate["role_aware"]["elevations"]
+    )
+
+    lane_by_id = {
+        row["lane_id"]: row for row in certificate["semantic_lane_results"]
+    }
+    specialized = certificate["specialized_receipt_aggregation"]
+    handlers = specialized["specialized_by_handler"]
+    assert len(handlers) == 21
+    assert specialized["enabled"] is True
+    assert specialized["lossless"] is True
+    assert specialized["source_aggregation_digest_sha256"]
+    aggregation_body = {
+        key: value
+        for key, value in specialized.items()
+        if key != "aggregation_digest_sha256"
+    }
+    assert specialized["aggregation_digest_sha256"] == certifier.content_digest(
+        aggregation_body
+    )
+    source_handlers = source_specialized["specialized_by_handler"]
+    for handler_key, handler in handlers.items():
+        assert handler["source_tool_evidence_digest_sha256"]
+        handler_body = {
+            key: value
+            for key, value in handler.items()
+            if key != "tool_evidence_digest_sha256"
+        }
+        assert handler["tool_evidence_digest_sha256"] == certifier.content_digest(
+            handler_body
+        )
+        assert handler["source_tool_evidence_digest_sha256"] == (
+            source_handlers[handler_key]["tool_evidence_digest_sha256"]
+        )
+        assert handler["identity_digest_sha256"] == certifier.content_digest(
+            source_handlers[handler_key]["identity"]
+        )
+        lane = lane_by_id[handler["semantic_lane_id"]]
+        if lane["status"] == "ran":
+            assert handler["receipt_digest_sha256"] == lane["digest_sha256"]
+    composite_handlers = [
+        handler_key
+        for composite in specialized["composite_lanes"].values()
+        for handler_key in composite["handler_keys"]
+    ]
+    assert len(specialized["composite_lanes"]) == 9
+    assert len(composite_handlers) == 21
+    assert set(composite_handlers) == set(handlers)
+
+
+def test_mutated_supported_non_ran_lane_fails_semantic_binding(
+    certifier,
+    builder,
+    certificate: dict[str, Any],
+    completion: dict[str, Any],
+) -> None:
+    mutated = copy.deepcopy(certificate)
+    lane = next(
+        row
+        for row in mutated["semantic_lane_results"]
+        if row["lane_id"] == "kernel"
+    )
+    lane["status"] = "certifier_error"
+    lane["block_reasons"] = ["deterministic_supported_lane_failure"]
+    lane["elevated_tool_ids"] = []
+    lane["semantically_usable_tool_ids"] = []
+    lane.pop("receipt", None)
+    mutated["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in mutated.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    role_receipt = builder.build_role_aware_deployment_receipt(
+        repo_root=REPO_ROOT,
+        completion_receipt=completion,
+        role_aware_certificate=mutated,
+    )
+    assert (
+        role_receipt["acceptance"]["semantic_receipts_full_and_bound"]
+        is False
+    )
+    assert "kernel:semantic_lane_not_run" in role_receipt[
+        "deployment_blockers"
+    ]
 
 
 def test_generated_public_json_artifacts_are_portable_and_redacted(
@@ -274,6 +398,18 @@ def test_usable_pending_capabilities_keep_every_check_without_premature_promotio
     }
     for tool_id, minimum in expected_minimums.items():
         tool = tools[tool_id]
+        if tool_id == "lean" and not tool["usable"]:
+            # The supervisor's authoritative validation runtime deliberately
+            # removes user-managed tool directories from PATH and redirects
+            # ELAN_HOME.  A Lean installation visible to the managed audit
+            # shell may therefore be genuinely absent here.  That state must
+            # stay explicit and fail closed rather than becoming a portable
+            # usability requirement.
+            assert tool["unavailable"] is True
+            assert tool["production_certified"] is False
+            assert tool["promotion_blocked"] is True
+            assert tool["block_reasons"]
+            continue
         assert tool["usable"] is True, tool_id
         assert tool["production_certified"] is False, tool_id
         assert tool["promotion_blocked"] is True, tool_id
@@ -312,7 +448,10 @@ def test_usable_pending_capabilities_keep_every_check_without_premature_promotio
             if row["lane_id"] == lane_id
         )
         assert lane["usable_elevation_allowed"] is False
-        assert len(lane["per_tool"][tool_id]["checks"]) >= 12
+        assert lane["per_tool"][tool_id]["checks_total"] >= 12
+        assert len(
+            lane["per_tool"][tool_id]["check_set_digest_sha256"]
+        ) == 64
 
 
 def test_supported_missing_tools_are_blockers_not_platform_exceptions(
@@ -382,33 +521,48 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
     )
     assert receipt["status"] == "role_aware_deployment_blocked"
     assert receipt["deployment_blockers"]
-    assert (
-        receipt["acceptance"][
-            "implementation_complete_and_all_child_goals_bound"
-        ]
-        is False
-    )
-    assert "implementation_complete_and_all_child_goals_bound" in receipt[
-        "deployment_blockers"
-    ]
+    # Implementation evidence can be fully path-bound while deployment
+    # certification remains fail-closed. Open gates below are independent of
+    # mere file presence and must keep the receipt blocked.
     assert receipt["completion"]["objective_child_count"] == 67
-    assert receipt["completion"]["child_goals_bound"] < 67
+    assert receipt["completion"]["child_goals_bound"] == 67
+    assert (
+        receipt["acceptance"]["implementation_complete_and_all_child_goals_bound"]
+        is True
+    )
     assert (
         receipt["acceptance"]["supported_managed_capabilities_ready"] is False
     )
+    assert "supported_managed_capabilities_ready" in receipt["deployment_blockers"]
     assert receipt["acceptance"]["supervisor_evidence_bound"] is False
+    assert "supervisor_evidence_bound" in receipt["deployment_blockers"]
     assert (
         receipt["acceptance"]["lean_runtime_mtl_authorization_elevated"]
         is False
     )
+    assert "lean_runtime_mtl_authorization_elevated" in receipt[
+        "deployment_blockers"
+    ]
     assert set(receipt["acceptance"]["required_elevations_missing"]) == (
         REQUIRED_ELEVATIONS
     )
+    assert receipt["acceptance"]["hard_zero_gates_clear"] is False
+    assert "hard_zero_gates_clear" in receipt["deployment_blockers"]
     assert receipt["source"]["attestation_excluded_from_source_tree"] is True
     assert receipt["source"]["publication_verification_required"] is True
     assert receipt["platform_exceptions"] == receipt["role_aware_certificate"][
         "managed_deployment_readiness"
     ]["platform_exceptions"]
+    # A supported non-ran semantic lane (the currently unavailable
+    # hyperproperty vendor suite) has no canonical receipt and must block.
+    assert receipt["acceptance"]["semantic_receipts_full_and_bound"] is False
+    assert "semantic_receipts_full_and_bound" in receipt[
+        "deployment_blockers"
+    ]
+    assert any(
+        str(item).endswith(":semantic_lane_not_run")
+        for item in receipt["deployment_blockers"]
+    )
 
 
 def test_duplicate_child_goal_population_cannot_fake_implementation_completion(
@@ -523,9 +677,17 @@ def test_launcher_script_cannot_stand_in_for_the_managed_prover_artifact(
     certificate: dict[str, Any],
 ) -> None:
     cvc5 = _tools(certificate)["cvc5"]
-    assert cvc5["usable"] is True
+    if not cvc5["usable"]:
+        # A hermetic supervisor PATH may contain no CVC5 at all.  Absence is
+        # valid only when it remains unavailable and promotion-blocked.
+        assert cvc5["unavailable"] is True
+        assert cvc5["production_certified"] is False
+        assert cvc5["promotion_blocked"] is True
+        assert cvc5["block_reasons"]
+        return
     assert cvc5["executable_artifact_class"] == "launcher_script"
     assert cvc5["production_certified"] is False
+    assert cvc5["promotion_blocked"] is True
     assert "launcher_target_artifact_unbound" in cvc5["block_reasons"]
 
 
