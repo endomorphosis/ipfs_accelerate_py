@@ -47,6 +47,16 @@ ROLE_AWARE_INTERFACE: Final = "RoleAwareFormalVerificationRelease@1"
 ROLE_AWARE_GOAL_ID: Final = "FVT-G200"
 ROLE_AWARE_TASK_ID: Final = "FVT-053"
 
+# Lossless specialized receipt aggregation (FVT-G203 / FVT-065).
+SPECIALIZED_AGGREGATION_INTERFACE: Final = (
+    "FormalVerificationSpecializedReceiptAggregation@1"
+)
+SPECIALIZED_AGGREGATION_SCHEMA: Final = (
+    "formal-verification-specialized-receipt-aggregation/v1"
+)
+SPECIALIZED_AGGREGATION_GOAL_ID: Final = "FVT-G203"
+SPECIALIZED_AGGREGATION_TASK_ID: Final = "FVT-065"
+
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 DEFAULT_CERTIFICATE_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_toolchain_certificate.json"
@@ -1834,9 +1844,15 @@ def certify_property_lanes(
 # Semantic certifiers owned by later installation/certification tasks. Each
 # entry maps offline lock tool ids to a focused certifier module. Elevation
 # never installs, downloads, or conceals unavailable tools.
+#
+# ``property_lane_id`` groups specialized certifier runs into composite property
+# lanes for lossless aggregation (FVT-G203). ``certifier_family`` is the
+# acceptance-facing family name used by specialized receipt aggregation.
 SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     {
         "lane_id": "kernel",
+        "property_lane_id": "kernel",
+        "certifier_family": "kernel",
         "module_relative": Path("tools/logic/certification/lean.py"),
         "callable_name": "build_certification_receipt",
         "tool_ids": ("lean",),
@@ -1849,6 +1865,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "kernel_rocq",
+        "property_lane_id": "kernel",
+        "certifier_family": "kernel",
         "module_relative": Path("tools/logic/certification/rocq.py"),
         "callable_name": "build_certification_receipt",
         "tool_ids": ("coq",),
@@ -1862,6 +1880,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "kernel_isabelle",
+        "property_lane_id": "kernel",
+        "certifier_family": "kernel",
         "module_relative": Path("tools/logic/certification/isabelle.py"),
         "callable_name": "build_certification_receipt",
         "tool_ids": ("isabelle",),
@@ -1875,6 +1895,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "runtime_mtl",
+        "property_lane_id": "runtime_mtl",
+        "certifier_family": "runtime_mtl_in_process",
         "module_relative": Path("tools/logic/certification/runtime_mtl.py"),
         "callable_name": "certify_runtime_mtl_semantics",
         "tool_ids": ("runtime-mtl",),
@@ -1886,6 +1908,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "datalog_secpal",
+        "property_lane_id": "datalog_secpal",
+        "certifier_family": "authorization_in_process",
         "module_relative": Path("tools/logic/certification/authorization.py"),
         "callable_name": "certify_authorization_semantics",
         "tool_ids": ("datalog-authorization", "secpal-authorization"),
@@ -1897,6 +1921,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "state_model",
+        "property_lane_id": "tla",
+        "certifier_family": "state",
         "module_relative": Path("tools/logic/certification/state_model.py"),
         "callable_name": "build_certification_receipt",
         "tool_ids": ("apalache", "tlc"),
@@ -1908,6 +1934,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "protocol_tamarin",
+        "property_lane_id": "protocol",
+        "certifier_family": "protocol",
         "module_relative": Path("tools/logic/certification/tamarin.py"),
         "callable_name": "build_certification_receipt",
         "tool_ids": ("tamarin",),
@@ -1919,6 +1947,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "protocol_proverif",
+        "property_lane_id": "protocol",
+        "certifier_family": "protocol",
         "module_relative": Path("tools/logic/certification/proverif.py"),
         "callable_name": "build_certification_receipt",
         "tool_ids": ("proverif",),
@@ -1930,6 +1960,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "atp",
+        "property_lane_id": "atp",
+        "certifier_family": "atp",
         "module_relative": Path("tools/logic/certification/atp.py"),
         "callable_name": "build_certification_receipt",
         "tool_ids": ("vampire", "eprover"),
@@ -1941,6 +1973,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "hyperltl",
+        "property_lane_id": "hyperltl",
+        "certifier_family": "hyperproperty",
         "module_relative": Path("tools/logic/certification/hyperproperty.py"),
         "callable_name": "certify_hyperproperty_toolchains",
         "tool_ids": ("hyperltl", "autohyper", "mchyper"),
@@ -1952,6 +1986,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "runtime_mtl_external",
+        "property_lane_id": "runtime_mtl",
+        "certifier_family": "runtime_mtl_external",
         "module_relative": Path("tools/logic/certification/runtime_mtl_external.py"),
         "callable_name": "certify_external_runtime_mtl",
         "tool_ids": ("runtime-mtl-external",),
@@ -1963,6 +1999,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "authorization_external",
+        "property_lane_id": "datalog_secpal",
+        "certifier_family": "authorization_external",
         "module_relative": Path("tools/logic/certification/authorization_external.py"),
         "callable_name": "certify_external_authorization_shadows",
         "tool_ids": ("souffle", "secpal"),
@@ -1974,6 +2012,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "attestation",
+        "property_lane_id": "attestation",
+        "certifier_family": "zkp",
         "module_relative": Path("tools/logic/certification/zkp.py"),
         "callable_name": "build_certification_receipt",
         "tool_ids": ("zkp-circuit",),
@@ -1986,6 +2026,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
     },
     {
         "lane_id": "advisors",
+        "property_lane_id": "hammer",
+        "certifier_family": "advisor",
         "module_relative": Path("tools/logic/certification/advisors.py"),
         "callable_name": "build_certification_receipt",
         "tool_ids": ("symbolicai", "ergoai"),
@@ -1996,6 +2038,29 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
         "production_elevation_allowed": False,
     },
 )
+
+# Acceptance-required specialized certifier families (FVT-G203).
+REQUIRED_SPECIALIZED_CERTIFIER_FAMILIES: Final[frozenset[str]] = frozenset(
+    {
+        "state",
+        "protocol",
+        "kernel",
+        "atp",
+        "hyperproperty",
+        "advisor",
+        "authorization_in_process",
+        "authorization_external",
+        "runtime_mtl_in_process",
+        "runtime_mtl_external",
+        "zkp",
+    }
+)
+
+# Composite property lanes that must retain multi-tool specialized evidence.
+COMPOSITE_PROPERTY_LANE_REQUIRED_TOOLS: Final[Mapping[str, tuple[str, ...]]] = {
+    "kernel": ("lean", "coq", "isabelle"),
+    "protocol": ("tamarin", "proverif"),
+}
 
 
 def _load_module_from_path(module_path: Path, module_name: str) -> Any:
@@ -2012,7 +2077,12 @@ def _normalize_semantic_checks(
     tool_id: str,
     raw_checks: Sequence[Mapping[str, Any]] | None,
 ) -> list[CheckResult]:
-    """Retain the complete semantic check set and fail closed on missing kinds."""
+    """Retain the complete semantic check set without collapsing by kind.
+
+    FVT-G203: every check participates in the retained evidence. A second
+    failed check of an already-present kind is kept (never discarded) so
+    promotion can fail closed.
+    """
 
     checks: list[CheckResult] = []
     kinds_present: set[str] = set()
@@ -2026,13 +2096,13 @@ def _normalize_semantic_checks(
         kinds_present.add(kind)
         checks.append(
             CheckResult(
-            check_id=str(raw.get("check_id") or f"{tool_id}.{kind}"),
-            kind=kind or "unclassified",
-            status=status,
-            expected=str(raw.get("expected") or "semantic_pass"),
-            observed=str(raw.get("observed") or status),
-            detail=str(raw.get("detail") or "role-aware semantic elevation"),
-            evidence=dict(raw),
+                check_id=str(raw.get("check_id") or f"{tool_id}.{kind}"),
+                kind=kind or "unclassified",
+                status=status,
+                expected=str(raw.get("expected") or "semantic_pass"),
+                observed=str(raw.get("observed") or status),
+                detail=str(raw.get("detail") or "role-aware semantic elevation"),
+                evidence=dict(raw),
             )
         )
 
@@ -2054,6 +2124,486 @@ def _normalize_semantic_checks(
             )
         )
     return checks
+
+
+def second_failed_check_blocks_promotion(
+    checks: Sequence[CheckResult | Mapping[str, Any]],
+) -> tuple[bool, list[str]]:
+    """Return whether a second failed check of an already-present kind blocks.
+
+    Checks are never collapsed by kind. When a kind already has at least one
+    retained check and a later check of that same kind fails, promotion is
+    blocked with an explicit reason code.
+    """
+
+    reasons: list[str] = []
+    seen_kinds: set[str] = set()
+    for raw in checks:
+        if isinstance(raw, CheckResult):
+            kind = raw.kind
+            status = raw.status
+        elif isinstance(raw, Mapping):
+            kind = str(raw.get("kind") or "unclassified")
+            status = str(raw.get("status") or "failed").lower()
+        else:
+            continue
+        kind = kind.strip().lower() or "unclassified"
+        if status == "failed" and kind in seen_kinds:
+            reasons.append(f"second_failed_check_of_already_present_kind:{kind}")
+        seen_kinds.add(kind)
+        if status == "failed" and f"failed_check_kind:{kind}" not in reasons:
+            # Any failure blocks; second-failed is an additional explicit signal.
+            if f"second_failed_check_of_already_present_kind:{kind}" not in reasons:
+                reasons.append(f"failed_check_kind:{kind}")
+    # Prefer the second-failed reason as the primary block signal when present.
+    ordered = [
+        reason
+        for reason in reasons
+        if reason.startswith("second_failed_check_of_already_present_kind:")
+    ] + [
+        reason
+        for reason in reasons
+        if not reason.startswith("second_failed_check_of_already_present_kind:")
+    ]
+    return bool(ordered), ordered
+
+
+def _spec_by_lane_id(lane_id: str) -> dict[str, Any] | None:
+    for spec in SEMANTIC_CERTIFIER_SPECS:
+        if str(spec["lane_id"]) == lane_id:
+            return dict(spec)
+    return None
+
+
+def _authority_ceiling_for_tool(
+    tool_id: str,
+    authority_roles: Mapping[str, Any] | None,
+) -> str | None:
+    tools = (authority_roles or {}).get("tools") or {}
+    if not isinstance(tools, Mapping):
+        return None
+    meta = tools.get(tool_id)
+    if not isinstance(meta, Mapping):
+        return None
+    ceiling = meta.get("authority_ceiling")
+    return str(ceiling) if ceiling is not None else None
+
+
+def _extract_specialized_tool_record(
+    *,
+    tool_id: str,
+    semantic_result: Mapping[str, Any],
+    spec: Mapping[str, Any],
+    authority_roles: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Project one tool's specialized evidence without discarding identity."""
+
+    per_tool = semantic_result.get("per_tool")
+    per_tool = per_tool if isinstance(per_tool, Mapping) else {}
+    tool_payload = per_tool.get(tool_id)
+    tool_payload = tool_payload if isinstance(tool_payload, Mapping) else {}
+
+    receipt = semantic_result.get("receipt")
+    receipt = receipt if isinstance(receipt, Mapping) else {}
+    raw_receipt_digest = (
+        str(semantic_result.get("digest_sha256") or "")
+        or str(receipt.get("receipt_digest_sha256") or "")
+        or str(receipt.get("certificate_digest_sha256") or "")
+        or str(receipt.get("digest_sha256") or "")
+    )
+
+    checks = tool_payload.get("checks")
+    if not isinstance(checks, list):
+        checks = []
+    identity = tool_payload.get("identity")
+    identity = identity if isinstance(identity, Mapping) else {}
+    artifacts = identity.get("artifacts")
+    artifacts = (
+        [item for item in artifacts if isinstance(item, Mapping)]
+        if isinstance(artifacts, Sequence)
+        and not isinstance(artifacts, (str, bytes, bytearray))
+        else []
+    )
+
+    bindings: list[dict[str, Any]] = []
+    for field_name in (
+        "lock_path",
+        "lock_digest",
+        "goal_id",
+        "task_id",
+        "interface",
+        "schema_version",
+    ):
+        if field_name in receipt:
+            bindings.append(
+                {
+                    "kind": "receipt_binding",
+                    "field": field_name,
+                    "value": receipt.get(field_name),
+                }
+            )
+    for artifact in artifacts:
+        bindings.append(
+            {
+                "kind": "artifact_binding",
+                "artifact": dict(artifact),
+            }
+        )
+
+    cases = [
+        {
+            "check_id": (
+                check.get("check_id")
+                if isinstance(check, Mapping)
+                else getattr(check, "check_id", None)
+            ),
+            "kind": (
+                check.get("kind")
+                if isinstance(check, Mapping)
+                else getattr(check, "kind", None)
+            ),
+            "status": (
+                check.get("status")
+                if isinstance(check, Mapping)
+                else getattr(check, "status", None)
+            ),
+        }
+        for check in checks
+    ]
+
+    dependencies = []
+    for key in ("dependencies", "dependency_digests", "pins"):
+        value = receipt.get(key)
+        if value:
+            dependencies.append({"field": key, "value": value})
+
+    sources = [
+        {
+            "kind": "semantic_certifier_module",
+            "path": str(spec.get("module") or semantic_result.get("module") or ""),
+            "sha256": semantic_result.get("certifier_module_sha256"),
+        },
+        {
+            "kind": "semantic_lane_result",
+            "lane_id": semantic_result.get("lane_id"),
+            "digest_sha256": semantic_result.get("digest_sha256"),
+        },
+    ]
+
+    executable = {
+        "path": identity.get("executable_path"),
+        "version_string": identity.get("version_string"),
+        "identity_probed": identity.get("identity_probed"),
+    }
+
+    check_models = [
+        CheckResult(
+            check_id=str(
+                (check.get("check_id") if isinstance(check, Mapping) else "")
+                or f"{tool_id}.check"
+            ),
+            kind=str(
+                (check.get("kind") if isinstance(check, Mapping) else "")
+                or "unclassified"
+            ),
+            status=str(
+                (check.get("status") if isinstance(check, Mapping) else "failed")
+                or "failed"
+            ),
+            expected=str(
+                (check.get("expected") if isinstance(check, Mapping) else "")
+                or ""
+            ),
+            observed=str(
+                (check.get("observed") if isinstance(check, Mapping) else "")
+                or ""
+            ),
+            detail=str(
+                (check.get("detail") if isinstance(check, Mapping) else "")
+                or ""
+            ),
+            evidence=dict(check) if isinstance(check, Mapping) else {},
+        )
+        for check in checks
+        if isinstance(check, Mapping)
+    ]
+    blocks, block_reasons = second_failed_check_blocks_promotion(check_models)
+    certified = bool(tool_payload.get("certified")) and not blocks
+    if blocks:
+        block_reasons = list(block_reasons) + list(
+            tool_payload.get("block_reasons") or []
+        )
+    else:
+        block_reasons = list(tool_payload.get("block_reasons") or [])
+
+    record = {
+        "handler_key": f"{spec.get('property_lane_id') or semantic_result.get('lane_id')}::{tool_id}",
+        "semantic_lane_id": semantic_result.get("lane_id"),
+        "property_lane_id": spec.get("property_lane_id")
+        or semantic_result.get("lane_id"),
+        "certifier_family": spec.get("certifier_family"),
+        "tool_id": tool_id,
+        "certified": certified,
+        "promotion_blocked": blocks or not certified,
+        "block_reasons": block_reasons,
+        "checks": checks,
+        "cases": cases,
+        "bindings": bindings,
+        "executable": executable,
+        "artifacts": artifacts,
+        "dependencies": dependencies,
+        "sources": sources,
+        "authority_ceiling": _authority_ceiling_for_tool(tool_id, authority_roles),
+        "raw_receipt_digest": raw_receipt_digest,
+        "check_set_digest_sha256": tool_payload.get("check_set_digest_sha256")
+        or content_digest(checks),
+        "identity": dict(identity),
+        "artifact_validation": tool_payload.get("artifact_validation"),
+        "interface": semantic_result.get("interface") or spec.get("interface"),
+        "module": semantic_result.get("module") or spec.get("module"),
+    }
+    record["tool_evidence_digest_sha256"] = content_digest(record)
+    return record
+
+
+def aggregate_specialized_receipts(
+    semantic_results: Sequence[Mapping[str, Any]],
+    *,
+    authority_roles: Mapping[str, Any] | None = None,
+    property_lanes: Sequence[Mapping[str, Any]] = PROPERTY_LANES,
+) -> dict[str, Any]:
+    """Losslessly aggregate specialized semantic receipts by composite lane.
+
+    ``FormalVerificationSpecializedReceiptAggregation@1`` / FVT-G203.
+
+    * Handlers / evidence are keyed by ``(property_lane_id, tool_id)``.
+    * Kernel retains Lean, Rocq (coq), and Isabelle; protocol retains Tamarin
+      and ProVerif.
+    * Every check, case, binding, executable, artifact, dependency, source,
+      authority ceiling, and raw receipt digest participates in the digest.
+    * A second failed check of an already-present kind blocks promotion.
+    * Sibling tools never overwrite each other; checks are never collapsed by
+      kind; installers are never run.
+    """
+
+    specs_by_lane = {
+        str(spec["lane_id"]): dict(spec) for spec in SEMANTIC_CERTIFIER_SPECS
+    }
+    families_present: set[str] = set()
+    specialized_by_handler: dict[str, dict[str, Any]] = {}
+    composite_lanes: dict[str, dict[str, Any]] = {}
+
+    for result in semantic_results:
+        lane_id = str(result.get("lane_id") or "")
+        spec = specs_by_lane.get(lane_id) or _spec_by_lane_id(lane_id) or {
+            "lane_id": lane_id,
+            "property_lane_id": lane_id,
+            "certifier_family": lane_id,
+            "tool_ids": tuple(result.get("tool_ids") or ()),
+            "module": result.get("module"),
+            "interface": result.get("interface"),
+        }
+        property_lane_id = str(
+            spec.get("property_lane_id") or result.get("lane_id") or lane_id
+        )
+        family = str(spec.get("certifier_family") or property_lane_id)
+        families_present.add(family)
+
+        lane_entry = composite_lanes.setdefault(
+            property_lane_id,
+            {
+                "property_lane_id": property_lane_id,
+                "semantic_lane_ids": [],
+                "certifier_families": [],
+                "tool_ids": [],
+                "per_tool": {},
+                "raw_receipt_digests": [],
+                "specialized_handler_keys": [],
+            },
+        )
+        if lane_id and lane_id not in lane_entry["semantic_lane_ids"]:
+            lane_entry["semantic_lane_ids"].append(lane_id)
+        if family not in lane_entry["certifier_families"]:
+            lane_entry["certifier_families"].append(family)
+
+        raw_digest = str(result.get("digest_sha256") or "")
+        if raw_digest and raw_digest not in lane_entry["raw_receipt_digests"]:
+            lane_entry["raw_receipt_digests"].append(raw_digest)
+
+        tool_ids = [
+            str(tool_id)
+            for tool_id in (result.get("tool_ids") or spec.get("tool_ids") or ())
+        ]
+        for tool_id in tool_ids:
+            record = _extract_specialized_tool_record(
+                tool_id=tool_id,
+                semantic_result=result,
+                spec=spec,
+                authority_roles=authority_roles,
+            )
+            handler_key = str(record["handler_key"])
+            # Never let a later sibling overwrite an earlier specialized receipt.
+            if handler_key in specialized_by_handler:
+                continue
+            specialized_by_handler[handler_key] = record
+            if tool_id not in lane_entry["tool_ids"]:
+                lane_entry["tool_ids"].append(tool_id)
+            if tool_id not in lane_entry["per_tool"]:
+                lane_entry["per_tool"][tool_id] = record
+            if handler_key not in lane_entry["specialized_handler_keys"]:
+                lane_entry["specialized_handler_keys"].append(handler_key)
+
+    # Ensure required multi-tool composite lanes expose every expected tool slot
+    # even when a specialized certifier is absent (explicit gap, not overwrite).
+    for property_lane_id, required_tools in COMPOSITE_PROPERTY_LANE_REQUIRED_TOOLS.items():
+        lane_entry = composite_lanes.setdefault(
+            property_lane_id,
+            {
+                "property_lane_id": property_lane_id,
+                "semantic_lane_ids": [],
+                "certifier_families": [],
+                "tool_ids": [],
+                "per_tool": {},
+                "raw_receipt_digests": [],
+                "specialized_handler_keys": [],
+            },
+        )
+        for tool_id in required_tools:
+            if tool_id in lane_entry["per_tool"]:
+                continue
+            handler_key = f"{property_lane_id}::{tool_id}"
+            gap = {
+                "handler_key": handler_key,
+                "semantic_lane_id": None,
+                "property_lane_id": property_lane_id,
+                "certifier_family": (
+                    "kernel" if property_lane_id == "kernel" else "protocol"
+                ),
+                "tool_id": tool_id,
+                "certified": False,
+                "promotion_blocked": True,
+                "block_reasons": ["specialized_receipt_missing"],
+                "checks": [],
+                "cases": [],
+                "bindings": [],
+                "executable": {},
+                "artifacts": [],
+                "dependencies": [],
+                "sources": [],
+                "authority_ceiling": _authority_ceiling_for_tool(
+                    tool_id, authority_roles
+                ),
+                "raw_receipt_digest": "",
+                "check_set_digest_sha256": content_digest([]),
+                "identity": {},
+                "artifact_validation": {"valid": False, "failures": ["missing"]},
+                "interface": None,
+                "module": None,
+            }
+            gap["tool_evidence_digest_sha256"] = content_digest(gap)
+            lane_entry["per_tool"][tool_id] = gap
+            if tool_id not in lane_entry["tool_ids"]:
+                lane_entry["tool_ids"].append(tool_id)
+            if handler_key not in lane_entry["specialized_handler_keys"]:
+                lane_entry["specialized_handler_keys"].append(handler_key)
+            specialized_by_handler.setdefault(handler_key, gap)
+
+    for lane_entry in composite_lanes.values():
+        per_tool = lane_entry["per_tool"]
+        blocked_tools = sorted(
+            tool_id
+            for tool_id, record in per_tool.items()
+            if record.get("promotion_blocked")
+        )
+        certified_tools = sorted(
+            tool_id
+            for tool_id, record in per_tool.items()
+            if record.get("certified")
+        )
+        lane_entry["blocked_tool_ids"] = blocked_tools
+        lane_entry["certified_tool_ids"] = certified_tools
+        lane_entry["promotion_ready"] = bool(certified_tools) and not blocked_tools
+        lane_entry["lane_digest_sha256"] = content_digest(
+            {
+                "property_lane_id": lane_entry["property_lane_id"],
+                "per_tool": per_tool,
+                "raw_receipt_digests": lane_entry["raw_receipt_digests"],
+                "specialized_handler_keys": lane_entry["specialized_handler_keys"],
+            }
+        )
+
+    property_lane_index = {
+        str(lane["lane_id"]): dict(lane) for lane in property_lanes
+    }
+    for lane_id, lane_meta in property_lane_index.items():
+        if lane_id not in composite_lanes:
+            continue
+        composite_lanes[lane_id]["property_class"] = lane_meta.get("property_class")
+        composite_lanes[lane_id]["description"] = lane_meta.get("description")
+        composite_lanes[lane_id]["authority_tool_ids"] = list(
+            lane_meta.get("authority_tool_ids") or ()
+        )
+
+    missing_families = sorted(
+        REQUIRED_SPECIALIZED_CERTIFIER_FAMILIES - families_present
+    )
+    represented_families = sorted(families_present)
+
+    digest_components = {
+        "composite_lanes": {
+            key: composite_lanes[key] for key in sorted(composite_lanes)
+        },
+        "specialized_by_handler": {
+            key: specialized_by_handler[key]
+            for key in sorted(specialized_by_handler)
+        },
+        "certifier_families_represented": represented_families,
+        "missing_certifier_families": missing_families,
+    }
+    aggregation: dict[str, Any] = {
+        "schema_version": SPECIALIZED_AGGREGATION_SCHEMA,
+        "interface": SPECIALIZED_AGGREGATION_INTERFACE,
+        "goal_id": SPECIALIZED_AGGREGATION_GOAL_ID,
+        "task_id": SPECIALIZED_AGGREGATION_TASK_ID,
+        "program": PROGRAM,
+        "policy": {
+            "handlers_keyed_by_lane_and_tool": True,
+            "lossless": True,
+            "collapse_by_check_kind": False,
+            "sibling_overwrite_forbidden": True,
+            "installers_never_run": True,
+            "raw_receipt_identity_retained": True,
+            "second_failed_check_of_already_present_kind_blocks_promotion": True,
+            "every_check_case_binding_executable_artifact_dependency_source_ceiling_and_raw_digest_in_digest": True,
+        },
+        "certifier_families_required": sorted(REQUIRED_SPECIALIZED_CERTIFIER_FAMILIES),
+        "certifier_families_represented": represented_families,
+        "missing_certifier_families": missing_families,
+        "all_required_certifiers_represented": not missing_families,
+        "composite_lanes": {
+            key: composite_lanes[key] for key in sorted(composite_lanes)
+        },
+        "specialized_by_handler": {
+            key: specialized_by_handler[key]
+            for key in sorted(specialized_by_handler)
+        },
+        "kernel_retained_tool_ids": list(
+            (composite_lanes.get("kernel") or {}).get("tool_ids") or []
+        ),
+        "protocol_retained_tool_ids": list(
+            (composite_lanes.get("protocol") or {}).get("tool_ids") or []
+        ),
+        "digest_components": digest_components,
+        "aggregation_digest_sha256": "",
+    }
+    aggregation["aggregation_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in aggregation.items()
+            if key != "aggregation_digest_sha256"
+        }
+    )
+    return aggregation
 
 
 def _tool_certified_from_semantic_receipt(
@@ -2373,6 +2923,8 @@ def run_semantic_lane_certifiers(
         tool_ids = tuple(spec["tool_ids"])
         entry: dict[str, Any] = {
             "lane_id": lane_id,
+            "property_lane_id": str(spec.get("property_lane_id") or lane_id),
+            "certifier_family": str(spec.get("certifier_family") or lane_id),
             "interface": str(spec["interface"]),
             "module": Path(spec["module_relative"]).as_posix(),
             "tool_ids": list(tool_ids),
@@ -2479,17 +3031,25 @@ def run_semantic_lane_certifiers(
             checks_complete = bool(normalized_checks) and all(
                 check.status == "passed" for check in normalized_checks
             )
+            second_failed_blocks, second_failed_reasons = (
+                second_failed_check_blocks_promotion(normalized_checks)
+            )
             certified = bool(
                 certified
                 and entry["receipt_integrity"]["valid"]
                 and entry["offline_observation"]["satisfied"]
                 and checks_complete
                 and artifact_validation["valid"]
+                and not second_failed_blocks
             )
+            tool_block_reasons = list(block_reasons) + list(
+                artifact_validation["failures"]
+            )
+            if second_failed_blocks:
+                tool_block_reasons.extend(second_failed_reasons)
             entry["per_tool"][tool_id] = {
                 "certified": certified,
-                "block_reasons": list(block_reasons)
-                + list(artifact_validation["failures"]),
+                "block_reasons": tool_block_reasons,
                 "check_kinds_present": sorted(
                     {
                         str(c.get("kind"))
@@ -2497,6 +3057,8 @@ def run_semantic_lane_certifiers(
                         if isinstance(c, Mapping) and c.get("kind")
                     }
                 ),
+                # Lossless: retain every check, including duplicate kinds.
+                "checks_retained_without_kind_collapse": True,
                 "checks_passed": sum(
                     1
                     for c in raw_checks
@@ -2509,6 +3071,7 @@ def run_semantic_lane_certifiers(
                 ),
                 "identity": identity,
                 "artifact_validation": artifact_validation,
+                "handler_key": f"{entry['property_lane_id']}::{tool_id}",
             }
             if certified:
                 entry["semantically_usable_tool_ids"].append(tool_id)
@@ -3377,6 +3940,22 @@ def build_certificate(
         _project_semantic_lane_result(result, repo_root=root)
         for result in semantic_results
     ]
+    specialized_aggregation = (
+        aggregate_specialized_receipts(
+            public_semantic_results,
+            authority_roles=authority_roles,
+            property_lanes=PROPERTY_LANES,
+        )
+        if role_aware
+        else {
+            "schema_version": SPECIALIZED_AGGREGATION_SCHEMA,
+            "interface": SPECIALIZED_AGGREGATION_INTERFACE,
+            "goal_id": SPECIALIZED_AGGREGATION_GOAL_ID,
+            "task_id": SPECIALIZED_AGGREGATION_TASK_ID,
+            "enabled": False,
+            "reason": "role_aware_elevation_disabled",
+        }
+    )
     certificate: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "interface": INTERFACE,
@@ -3510,6 +4089,8 @@ def build_certificate(
         # Retain every check in a portable public projection. Raw process
         # output and secret/witness values are retained only by digest.
         "semantic_lane_results": public_semantic_results,
+        # FVT-G203: lossless per-tool specialized evidence aggregation.
+        "specialized_receipt_aggregation": specialized_aggregation,
         "managed_deployment_readiness": deployment_readiness,
         "role_aware": {
             "enabled": bool(role_aware),
