@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import builtins
 import hashlib
-import importlib
 import math
+import subprocess
+import sys
 from typing import Any
 
 import pytest
@@ -443,8 +444,18 @@ def test_profile_contradiction_to_dict_is_json_ready() -> None:
 
 
 def test_importlib_reload_keeps_public_api() -> None:
-    reloaded = importlib.reload(bridge)
-    assert reloaded.STRICT_ARTIFACT_PROFILE == STRICT_ARTIFACT_PROFILE
-    identity = reloaded.identify_strict_artifact({"reload": True})
-    assert identity.profile == STRICT_ARTIFACT_PROFILE
-    reset_provider_import_cache()
+    # Reloading a module replaces its exception and Enum classes.  Exercise
+    # that compatibility contract in an isolated interpreter so collection-
+    # time imports in other test modules do not retain stale class identities.
+    script = """
+import importlib
+from ipfs_accelerate_py.agent_supervisor.analysis import content_identity_bridge as bridge
+
+expected_profile = bridge.STRICT_ARTIFACT_PROFILE
+reloaded = importlib.reload(bridge)
+assert reloaded.STRICT_ARTIFACT_PROFILE == expected_profile
+identity = reloaded.identify_strict_artifact({"reload": True})
+assert identity.profile == expected_profile
+reloaded.reset_provider_import_cache()
+"""
+    subprocess.run([sys.executable, "-c", script], check=True)

@@ -3548,18 +3548,23 @@ DATASETS_LOGIC_BACKEND_SPECS: Final[Mapping[DatasetsLogicBackendKind, DatasetsLo
         description="CEC/DCEC deontic reasoning surface",
         symbols=(
             DatasetsLogicSymbolSpec(
-                "ipfs_datasets_py.logic.CEC.dcec_wrapper",
-                "DCECLibraryWrapper",
+                "ipfs_datasets_py.logic.CEC.native",
+                "parse_dcec_string",
+                required_parameters=("expression",),
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.CEC.native",
+                "Formula",
                 required_callable=False,
             ),
             DatasetsLogicSymbolSpec(
-                "ipfs_datasets_py.logic.CEC.dcec_wrapper",
+                "ipfs_datasets_py.logic.CEC.native",
+                "DCECContainer",
+                required_callable=False,
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.CEC.native",
                 "DCECStatement",
-                required_callable=False,
-            ),
-            DatasetsLogicSymbolSpec(
-                "ipfs_datasets_py.logic.CEC.shadow_prover_wrapper",
-                "ShadowProverWrapper",
                 required_callable=False,
             ),
         ),
@@ -4313,27 +4318,118 @@ class DatasetsLogicBackendProvider:
         )
 
     def _invoke_cec(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        wrapper_module = self._importer("ipfs_datasets_py.logic.CEC.dcec_wrapper")
-        wrapper = wrapper_module.DCECLibraryWrapper(use_native=False)
-        if hasattr(wrapper, "initialize"):
-            try:
-                wrapper.initialize()
-            except Exception:
-                # Initialization may require optional native assets; statement
-                # construction still exercises the exact Python signature.
-                pass
+        native_module = self._importer("ipfs_datasets_py.logic.CEC.native")
         statement_text = str(
             payload.get("statement")
             or payload.get("obligation_id")
             or "Obligatory(agent, action)"
         )
-        statement = wrapper.add_statement(statement_text, label="mcp-obligation")
+        try:
+            formula = native_module.parse_dcec_string(statement_text)
+        except Exception as exc:
+            raise DatasetsLogicBackendError(
+                f"CEC statement parsing failed: {exc}",
+                reason_code="cec_statement_parse_failed",
+                details={
+                    "exception_type": type(exc).__name__,
+                    "stage": "parse",
+                    "symbol": (
+                        "ipfs_datasets_py.logic.CEC.native.parse_dcec_string"
+                    ),
+                },
+            ) from exc
+
+        formula_type = getattr(native_module, "Formula", None)
+        if (
+            formula is None
+            or not inspect.isclass(formula_type)
+            or not isinstance(formula, formula_type)
+        ):
+            raise DatasetsLogicBackendError(
+                "CEC parser did not return a typed native Formula",
+                reason_code="cec_typed_formula_required",
+                details={
+                    "stage": "parse",
+                    "symbol": (
+                        "ipfs_datasets_py.logic.CEC.native.parse_dcec_string"
+                    ),
+                    "parsed_type": (
+                        type(formula).__name__ if formula is not None else "NoneType"
+                    ),
+                },
+            )
+        self._record(
+            "cec_parse_statement",
+            {
+                "module": "ipfs_datasets_py.logic.CEC.native",
+                "symbol": "parse_dcec_string",
+                "formula_type": type(formula).__name__,
+            },
+        )
+
+        try:
+            container = native_module.DCECContainer()
+        except Exception as exc:
+            raise DatasetsLogicBackendError(
+                f"CEC native container initialization failed: {exc}",
+                reason_code="cec_runtime_unavailable",
+                details={
+                    "exception_type": type(exc).__name__,
+                    "stage": "initialize",
+                    "symbol": (
+                        "ipfs_datasets_py.logic.CEC.native.DCECContainer"
+                    ),
+                },
+            ) from exc
+
+        try:
+            statement = container.add_statement(
+                formula,
+                label="mcp-obligation",
+            )
+        except Exception as exc:
+            raise DatasetsLogicBackendError(
+                f"CEC native statement insertion failed: {exc}",
+                reason_code="cec_statement_add_failed",
+                details={
+                    "exception_type": type(exc).__name__,
+                    "stage": "add",
+                    "symbol": (
+                        "ipfs_datasets_py.logic.CEC.native."
+                        "DCECContainer.add_statement"
+                    ),
+                },
+            ) from exc
+
+        statement_type = getattr(native_module, "DCECStatement", None)
+        if (
+            statement is None
+            or not inspect.isclass(statement_type)
+            or not isinstance(statement, statement_type)
+        ):
+            raise DatasetsLogicBackendError(
+                "CEC native container did not return a typed DCECStatement",
+                reason_code="cec_statement_add_failed",
+                details={
+                    "stage": "add",
+                    "symbol": (
+                        "ipfs_datasets_py.logic.CEC.native."
+                        "DCECContainer.add_statement"
+                    ),
+                    "statement_type": (
+                        type(statement).__name__
+                        if statement is not None
+                        else "NoneType"
+                    ),
+                },
+            )
         self._record(
             "cec_add_statement",
             {
-                "module": "ipfs_datasets_py.logic.CEC.dcec_wrapper",
-                "symbol": "DCECLibraryWrapper.add_statement",
-                "is_valid": bool(getattr(statement, "is_valid", False)),
+                "module": "ipfs_datasets_py.logic.CEC.native",
+                "symbol": "DCECContainer.add_statement",
+                "formula_type": type(formula).__name__,
+                "statement_type": type(statement).__name__,
             },
         )
         return _candidate_provider_result(
@@ -4343,10 +4439,12 @@ class DatasetsLogicBackendProvider:
             payload=payload,
             invocation={
                 "symbol": (
-                    "ipfs_datasets_py.logic.CEC.dcec_wrapper."
-                    "DCECLibraryWrapper.add_statement"
+                    "ipfs_datasets_py.logic.CEC.native."
+                    "DCECContainer.add_statement"
                 ),
-                "statement_valid": bool(getattr(statement, "is_valid", False)),
+                "statement_valid": True,
+                "formula_type": type(formula).__name__,
+                "statement_type": type(statement).__name__,
             },
         )
 

@@ -2346,6 +2346,172 @@ def test_objective_tracker_automatically_aggregates_descendant_state(tmp_path) -
     ]
 
 
+def test_objective_tracker_accepts_closed_descendant_task_lineage_for_parent(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Goals
+
+## G1 Parent
+
+- Status: active
+- Acceptance: parent criterion
+- Validation: true
+
+## G1.S1 Child
+
+- Status: verified_complete
+- Parents: G1
+- Acceptance: child criterion
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text(
+        """# Task board
+
+## PORTAL-001 Implement child
+
+- Status: completed
+- Goal id: G1.S1
+""",
+        encoding="utf-8",
+    )
+    identity = completion_tree_identity(repo, objective_path=objective_path)
+    observed_at = datetime.now(timezone.utc)
+
+    provisional = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        completion_evidence_records={
+            "G1.S1": [
+                _complete_evidence(
+                    acceptance_criterion="child criterion",
+                    repository_tree=identity.tree_id,
+                    observed_at=observed_at,
+                    provenance_cid="bafy-child-completion",
+                )
+            ],
+        },
+        completion_gate_records={
+            "G1.S1": _tracker_gate(identity, "child criterion"),
+        },
+    )
+
+    parent = provisional.decisions["G1"]
+    assert parent["tasks_complete"] is True
+    assert parent["verified"] is False
+    assert parent["state"] == "provisionally_complete"
+    assert "missing_criterion_evidence" in parent["reason_codes"]
+    assert "G1" in provisional.provisional_goal_ids
+
+    completed = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        completion_evidence_records={
+            "G1": [
+                _complete_evidence(
+                    acceptance_criterion="parent criterion",
+                    repository_tree=identity.tree_id,
+                    observed_at=observed_at,
+                    provenance_cid="bafy-parent-completion",
+                )
+            ],
+            "G1.S1": [
+                _complete_evidence(
+                    acceptance_criterion="child criterion",
+                    repository_tree=identity.tree_id,
+                    observed_at=observed_at,
+                    provenance_cid="bafy-child-completion",
+                )
+            ],
+        },
+        completion_gate_records={
+            "G1": _tracker_gate(identity, "parent criterion"),
+            "G1.S1": _tracker_gate(identity, "child criterion"),
+        },
+    )
+
+    parent = completed.decisions["G1"]
+    assert parent["tasks_complete"] is True
+    assert parent["verified"] is True
+    assert completed.validation_results["G1"]["passed"] is True
+    assert completed.validation_results["G1"].get("reason") != (
+        "no_producing_tasks"
+    )
+    assert "G1" in completed.verified_goal_ids
+
+
+def test_objective_tracker_keeps_parent_open_for_descendant_task(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Goals
+
+## G1 Parent
+
+- Status: provisionally_complete
+- Acceptance: parent criterion
+- Validation: true
+
+## G1.S1 Child
+
+- Status: provisionally_complete
+- Parents: G1
+- Acceptance: child criterion
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text(
+        """# Task board
+
+## PORTAL-001 Implement child
+
+- Status: todo
+- Goal id: G1.S1
+""",
+        encoding="utf-8",
+    )
+    identity = completion_tree_identity(repo, objective_path=objective_path)
+    observed_at = datetime.now(timezone.utc)
+
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        completion_evidence_records={
+            "G1.S1": [
+                _complete_evidence(
+                    acceptance_criterion="child criterion",
+                    repository_tree=identity.tree_id,
+                    observed_at=observed_at,
+                    provenance_cid="bafy-child-completion",
+                )
+            ],
+        },
+        completion_gate_records={
+            "G1.S1": _tracker_gate(identity, "child criterion"),
+        },
+    )
+
+    parent = result.decisions["G1"]
+    assert parent["tasks_complete"] is False
+    assert parent["verified"] is False
+    assert result.validation_results["G1"]["reason"] == (
+        "open_descendant_todo_tasks"
+    )
+    assert result.validation_results["G1"]["todo_boards"] == [str(todo_path)]
+
+
 def test_objective_tracker_reopens_parent_with_child_in_same_reconciliation(
     tmp_path,
 ) -> None:

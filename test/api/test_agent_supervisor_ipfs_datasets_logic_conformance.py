@@ -160,6 +160,15 @@ def test_exact_backend_specs_cover_ir_tdfol_cec_smt_and_hammer() -> None:
     }
     assert set(DATASETS_LOGIC_BACKEND_SPECS) == kinds
     assert LOGIC_IR_INTERFACE == "LogicIR@1"
+    cec_symbols = DATASETS_LOGIC_BACKEND_SPECS[
+        DatasetsLogicBackendKind.CEC
+    ].symbols
+    assert {(item.module, item.name) for item in cec_symbols} == {
+        ("ipfs_datasets_py.logic.CEC.native", "parse_dcec_string"),
+        ("ipfs_datasets_py.logic.CEC.native", "Formula"),
+        ("ipfs_datasets_py.logic.CEC.native", "DCECContainer"),
+        ("ipfs_datasets_py.logic.CEC.native", "DCECStatement"),
+    }
 
 
 def test_real_module_probes_call_actual_ir_tdfol_cec_smt_hammer_signatures() -> None:
@@ -422,6 +431,153 @@ def test_solver_output_remains_candidate_until_trusted_reconstruction() -> None:
     assert trusted_seen, "trusted reconstruction must observe solver candidates"
     assert validated.outcome is not ContractProofOutcome.PROVED
     assert validated.receipt.authoritative_assurance is not AssuranceLevel.KERNEL_VERIFIED
+
+
+def test_cec_native_wiring_parses_typed_formula_before_add(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[object] = []
+
+    class Formula:
+        pass
+
+    class DCECStatement:
+        pass
+
+    formula = Formula()
+    statement = DCECStatement()
+
+    def parse_dcec_string(expression: str):
+        events.append(("parse", expression))
+        return formula
+
+    class DCECContainer:
+        def __init__(self) -> None:
+            events.append("initialize")
+
+        def add_statement(self, value, *, label=None):
+            events.append(("add", value, label))
+            return statement
+
+    native_module = SimpleNamespace(
+        parse_dcec_string=parse_dcec_string,
+        Formula=Formula,
+        DCECContainer=DCECContainer,
+        DCECStatement=DCECStatement,
+    )
+    provider = create_datasets_logic_backend_provider(
+        DatasetsLogicBackendKind.CEC
+    )
+    monkeypatch.setattr(
+        provider,
+        "_importer",
+        lambda name: (
+            native_module
+            if name == "ipfs_datasets_py.logic.CEC.native"
+            else pytest.fail(f"unexpected CEC import: {name}")
+        ),
+    )
+
+    result = provider.prove(
+        {
+            "obligation_id": "obl:native-cec",
+            "statement": "Obligatory(agent, keep_policy)",
+        }
+    )
+
+    assert result["candidate"] is True
+    assert result["proof_success"] is False
+    assert result["kernel_checked"] is False
+    assert result["authoritative_assurance"] == DATASETS_LOGIC_CANDIDATE_ASSURANCE
+    assert result["invocation"] == {
+        "symbol": (
+            "ipfs_datasets_py.logic.CEC.native.DCECContainer.add_statement"
+        ),
+        "statement_valid": True,
+        "formula_type": "Formula",
+        "statement_type": "DCECStatement",
+    }
+    assert events == [
+        ("parse", "Obligatory(agent, keep_policy)"),
+        "initialize",
+        ("add", formula, "mcp-obligation"),
+    ]
+    assert [entry["operation"] for entry in provider.call_log] == [
+        "cec_parse_statement",
+        "cec_add_statement",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("failure_stage", "reason_code", "failure_code"),
+    (
+        ("parse", "cec_statement_parse_failed", "unsupported"),
+        ("typed_formula", "cec_typed_formula_required", "unsupported"),
+        ("initialize", "cec_runtime_unavailable", "unavailable"),
+        ("add", "cec_statement_add_failed", "unsupported"),
+    ),
+)
+def test_cec_native_wiring_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+    reason_code: str,
+    failure_code: str,
+) -> None:
+    class Formula:
+        pass
+
+    class DCECStatement:
+        pass
+
+    def parse_dcec_string(_expression: str):
+        if failure_stage == "parse":
+            raise ValueError("invalid DCEC expression")
+        if failure_stage == "typed_formula":
+            return object()
+        return Formula()
+
+    class DCECContainer:
+        def __init__(self) -> None:
+            if failure_stage == "initialize":
+                raise RuntimeError("container unavailable")
+
+        def add_statement(self, _formula, *, label=None):
+            assert label == "mcp-obligation"
+            if failure_stage == "add":
+                raise RuntimeError("statement rejected")
+            return DCECStatement()
+
+    native_module = SimpleNamespace(
+        parse_dcec_string=parse_dcec_string,
+        Formula=Formula,
+        DCECContainer=DCECContainer,
+        DCECStatement=DCECStatement,
+    )
+    provider = create_datasets_logic_backend_provider(
+        DatasetsLogicBackendKind.CEC
+    )
+    monkeypatch.setattr(
+        provider,
+        "_importer",
+        lambda name: (
+            native_module
+            if name == "ipfs_datasets_py.logic.CEC.native"
+            else pytest.fail(f"unexpected CEC import: {name}")
+        ),
+    )
+
+    response = provider.prove(
+        {
+            "obligation_id": "obl:native-cec-failure",
+            "statement": "Obligatory(agent, keep_policy)",
+        }
+    )
+
+    assert response.ok is False
+    assert response.error.code.value == failure_code
+    assert response.error.details["reason_code"] == reason_code
+    assert response.error.details["proof_success"] is False
+    assert response.error.details.get("candidate", False) is False
 
 
 def test_unavailable_providers_are_unsupported_not_local_success() -> None:

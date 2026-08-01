@@ -1685,6 +1685,58 @@ def normalize_task_header_prefix(value: str) -> str:
     return f"## {stripped}"
 
 
+TASK_DIRECT_IMPLEMENTATION_BOOLEAN_KEYS = frozenset(
+    {"is schedulable", "review only"}
+)
+AMBIGUOUS_TASK_BOOLEAN_METADATA = "<ambiguous-task-boolean-metadata>"
+
+
+def normalize_task_metadata_key(value: Any) -> str:
+    """Return the canonical comparison form for task metadata keys."""
+
+    return re.sub(
+        r"[^a-z0-9]+",
+        " ",
+        str(value).strip().lower(),
+    ).strip()
+
+
+def merge_task_metadata_value(
+    metadata: dict[str, str],
+    key: Any,
+    value: Any,
+    *,
+    normalize_underscores: bool = False,
+    fallback_only: bool = False,
+) -> None:
+    """Store metadata while preserving ambiguous authorization aliases."""
+
+    storage_key = str(key).strip().lower()
+    if normalize_underscores:
+        storage_key = storage_key.replace("_", " ")
+    if not storage_key:
+        return
+    rendered_value = str(value).strip()
+    normalized_key = normalize_task_metadata_key(storage_key)
+    if normalized_key in TASK_DIRECT_IMPLEMENTATION_BOOLEAN_KEYS:
+        matching_keys = [
+            existing_key
+            for existing_key in metadata
+            if normalize_task_metadata_key(existing_key) == normalized_key
+        ]
+        if matching_keys:
+            if fallback_only:
+                return
+            for existing_key in matching_keys:
+                metadata.pop(existing_key, None)
+            metadata[normalized_key] = AMBIGUOUS_TASK_BOOLEAN_METADATA
+            return
+    if fallback_only:
+        metadata.setdefault(storage_key, rendered_value)
+    else:
+        metadata[storage_key] = rendered_value
+
+
 RETRY_BUDGET_REPAIR_TITLE_RE = re.compile(
     r"^Resolve\s+(?P<kind>validation|implementation|merge)\s+retry-budget\s+failure\s+for\s+(?P<source>[A-Z][A-Z0-9]*-\d+)\b",
     re.IGNORECASE,
@@ -2638,6 +2690,7 @@ class PortalTaskState:
     strict_deprioritized_ready_task_ids: list[str] = field(default_factory=list)
     waiting_task_ids: list[str] = field(default_factory=list)
     blocked_task_ids: list[str] = field(default_factory=list)
+    task_policy_blockers: dict[str, list[str]] = field(default_factory=dict)
     task_statuses: dict[str, str] = field(default_factory=dict)
     task_artifacts: dict[str, list[str]] = field(default_factory=dict)
     task_validation: dict[str, list[str]] = field(default_factory=dict)
@@ -2733,6 +2786,13 @@ class PortalTaskState:
                 ],
                 waiting_task_ids=[str(item) for item in payload.get("waiting_task_ids", []) or []],
                 blocked_task_ids=[str(item) for item in payload.get("blocked_task_ids", []) or []],
+                task_policy_blockers={
+                    str(key): [str(item) for item in value]
+                    for key, value in (
+                        payload.get("task_policy_blockers") or {}
+                    ).items()
+                    if isinstance(value, list)
+                },
                 task_statuses={str(key): str(value) for key, value in (payload.get("task_statuses") or {}).items()},
                 task_artifacts={
                     str(key): [str(item) for item in value]
@@ -2907,6 +2967,7 @@ def state_file_repair_reason(path: Path) -> str:
         return "malformed_state_metadata"
     for field_name in (
         "task_statuses",
+        "task_policy_blockers",
         "task_artifacts",
         "task_validation",
         "task_identities",
@@ -2950,7 +3011,7 @@ def parse_task_text(
             if not stripped.startswith("- ") or ":" not in stripped:
                 continue
             key, value = stripped[2:].split(":", 1)
-            metadata[key.strip().lower()] = value.strip()
+            merge_task_metadata_value(metadata, key, value)
         if not metadata:
             metadata["blocked reason"] = "empty task metadata"
         default_status = "blocked" if metadata.get("blocked reason") == "empty task metadata" else "todo"
@@ -3539,18 +3600,22 @@ class PortalImplementationDaemon:
 
         body = dict(task.body)
         provenance = body.get("provenance")
-        metadata: dict[str, str] = {
-            str(key).strip().lower().replace("_", " "): cls._task_source_metadata_text(
-                value
+        metadata: dict[str, str] = {}
+        for key, value in body.items():
+            merge_task_metadata_value(
+                metadata,
+                key,
+                cls._task_source_metadata_text(value),
+                normalize_underscores=True,
             )
-            for key, value in body.items()
-            if str(key).strip()
-        }
         if isinstance(provenance, Mapping):
             for key, value in provenance.items():
-                metadata.setdefault(
-                    str(key).strip().lower().replace("_", " "),
+                merge_task_metadata_value(
+                    metadata,
+                    key,
                     cls._task_source_metadata_text(value),
+                    normalize_underscores=True,
+                    fallback_only=True,
                 )
         metadata.update(
             {
@@ -7832,6 +7897,7 @@ class PortalImplementationDaemon:
             "blocked_count",
             "active_task_id",
             "selection_idle_reason",
+            "task_policy_blockers",
             "state_path",
             "strategy_path",
             "events_path",
@@ -8050,6 +8116,7 @@ class PortalImplementationDaemon:
         state.strict_deprioritized_ready_task_ids = []
         state.waiting_task_ids = []
         state.blocked_task_ids = []
+        state.task_policy_blockers = {}
         state.completed_count = 0
         state.ready_count = 0
         state.selectable_ready_count = 0
@@ -8105,6 +8172,7 @@ class PortalImplementationDaemon:
             "blocked_count": 0,
             "active_task_id": state.active_task_id,
             "selection_idle_reason": reason,
+            "task_policy_blockers": {},
             "state_path": str(self.state_path),
             "strategy_path": str(self.strategy_path),
             "events_path": str(self.events_path),
@@ -8508,6 +8576,14 @@ class PortalImplementationDaemon:
             for task in tasks
             if self._canonical_ref(task) in completed_cids
         )
+        task_policy_blockers = {
+            task.task_id: list(blockers)
+            for task in tasks
+            if task.task_id not in completed_set
+            and (
+                blockers := self._task_direct_implementation_blockers(task)
+            )
+        }
         protected_path_conflicts_by_task = {
             task.task_id: task_implementation_protected_path_conflicts(
                 task,
@@ -8533,6 +8609,7 @@ class PortalImplementationDaemon:
                 and bool(task.depends_on)
                 and not str(task.metadata.get("blocked reason") or "").strip()
                 and task.task_id not in strategy_blocked_task_ids
+                and task.task_id not in task_policy_blockers
                 and all(
                     dependency in dependency_satisfied_task_ids
                     for dependency in task.depends_on
@@ -8553,6 +8630,11 @@ class PortalImplementationDaemon:
                 resolved_statuses[task.task_id] = "completed"
                 if task.task_id not in previous_completed:
                     newly_completed.append(task.task_id)
+                continue
+            if task.task_id in task_policy_blockers:
+                # These fields are authorization boundaries, not transient
+                # scheduler pressure.
+                resolved_statuses[task.task_id] = "blocked"
                 continue
             if task.task_id in protected_path_conflicts_by_task:
                 # This is a board/configuration error, not transient provider
@@ -8725,6 +8807,7 @@ class PortalImplementationDaemon:
             if resolved_statuses[task.task_id] in {"waiting", "merge-queued"}
         ]
         state.blocked_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "blocked"]
+        state.task_policy_blockers = dict(task_policy_blockers)
         state.ready_count = len(state.ready_task_ids)
         state.selectable_ready_count = len(state.selectable_ready_task_ids)
         state.external_reserved_count = len(state.external_reserved_task_ids)
@@ -8942,6 +9025,7 @@ class PortalImplementationDaemon:
                     "eligible_ready_count": state.eligible_ready_count,
                     "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
                     "selection_idle_reason": state.selection_idle_reason,
+                    "task_policy_blockers": dict(state.task_policy_blockers),
                     "max_task_attempts": self.max_task_attempts,
                     "attempt_limited_task_ids": [
                         item["task_id"] for item in attempt_limited_tasks
@@ -8999,6 +9083,7 @@ class PortalImplementationDaemon:
             "blocked_count": state.blocked_count,
             "active_task_id": state.active_task_id,
             "selection_idle_reason": state.selection_idle_reason,
+            "task_policy_blockers": dict(state.task_policy_blockers),
             "max_task_attempts": self.max_task_attempts,
             "attempt_limited_task_ids": [
                 item["task_id"] for item in attempt_limited_tasks
@@ -9225,7 +9310,9 @@ class PortalImplementationDaemon:
         state = PortalTaskState.load(self.state_path)
         if state.active_task_id or state.implementation_in_progress:
             return {}
-        task_ids = list(dict.fromkeys(state.selectable_ready_task_ids))
+        # This projection is the final durable scheduling boundary; the
+        # selectable list intentionally retains filtered tasks for diagnostics.
+        task_ids = list(dict.fromkeys(state.eligible_ready_task_ids))
         if not task_ids:
             return {}
 
@@ -9365,6 +9452,17 @@ class PortalImplementationDaemon:
         return result
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
+        policy_blockers = self._task_direct_implementation_blockers(task)
+        if policy_blockers:
+            result = {
+                "skipped": True,
+                "reason": "task_direct_implementation_ineligible",
+                "task_id": task.task_id,
+                "attempt": self._task_attempt(state, task),
+                "policy_blockers": list(policy_blockers),
+            }
+            self._record_event("implementation_skipped", result)
+            return result
         protected_conflicts = task_implementation_protected_path_conflicts(
             task,
             self.implementation_protected_paths,
@@ -41713,6 +41811,87 @@ class PortalImplementationDaemon:
             and str(receipt.get("retired_task_reason") or "").startswith("off_mission_")
         }
 
+    @staticmethod
+    def _task_boolean_metadata_resolution(
+        task: PortalTask,
+        key: str,
+        *,
+        default: bool,
+    ) -> tuple[bool | None, str]:
+        """Resolve one optional task boolean without widening malformed input."""
+
+        normalized_key = normalize_task_metadata_key(key)
+        matches = [
+            value
+            for metadata_key, value in task.metadata.items()
+            if normalize_task_metadata_key(metadata_key) == normalized_key
+        ]
+        if not matches:
+            return default, ""
+        if len(matches) != 1 or matches[0] == AMBIGUOUS_TASK_BOOLEAN_METADATA:
+            return None, "ambiguous"
+        value = matches[0]
+        if isinstance(value, bool):
+            return value, ""
+        if isinstance(value, int) and value in {0, 1}:
+            return bool(value), ""
+        if isinstance(value, str):
+            normalized_value = value.strip().lower()
+            if normalized_value in {"1", "true", "yes", "on"}:
+                return True, ""
+            if normalized_value in {"0", "false", "no", "off"}:
+                return False, ""
+        return None, "invalid"
+
+    @classmethod
+    def _task_boolean_metadata(
+        cls,
+        task: PortalTask,
+        key: str,
+        *,
+        default: bool,
+    ) -> bool | None:
+        value, _condition = cls._task_boolean_metadata_resolution(
+            task,
+            key,
+            default=default,
+        )
+        return value
+
+    @classmethod
+    def _task_direct_implementation_blockers(
+        cls,
+        task: PortalTask,
+    ) -> tuple[str, ...]:
+        """Return stable reasons that forbid direct implementation."""
+
+        is_schedulable, schedulable_condition = (
+            cls._task_boolean_metadata_resolution(
+                task,
+                "is schedulable",
+                default=True,
+            )
+        )
+        review_only, review_condition = cls._task_boolean_metadata_resolution(
+            task,
+            "review only",
+            default=False,
+        )
+        blockers: list[str] = []
+        if schedulable_condition:
+            blockers.append(f"{schedulable_condition}_is_schedulable")
+        elif is_schedulable is False:
+            blockers.append("task_marked_unschedulable")
+        if review_condition:
+            blockers.append(f"{review_condition}_review_only")
+        elif review_only is True:
+            blockers.append("task_marked_review_only")
+        return tuple(blockers)
+
+    @classmethod
+    def _task_direct_implementation_allowed(cls, task: PortalTask) -> bool:
+        return not cls._task_direct_implementation_blockers(task)
+
     def _selection_scope(
         self,
         tasks: list[PortalTask],
@@ -41720,13 +41899,40 @@ class PortalImplementationDaemon:
         strategy: dict[str, Any],
     ) -> dict[str, Any]:
         selectable_ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        noncompleted_tasks = [
+            task
+            for task in tasks
+            if resolved_statuses.get(task.task_id) != "completed"
+        ]
+        policy_ineligible = [
+            task
+            for task in noncompleted_tasks
+            if self._task_direct_implementation_blockers(task)
+        ]
+        policy_eligible_ready = [
+            task
+            for task in selectable_ready
+            if self._task_direct_implementation_allowed(task)
+        ]
         strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
-        strict_ready = [task.task_id for task in selectable_ready if task.task_id in strict_deprioritized]
-        eligible_ready = [task.task_id for task in selectable_ready if task.task_id not in strict_deprioritized]
+        strict_ready = [
+            task.task_id
+            for task in policy_eligible_ready
+            if task.task_id in strict_deprioritized
+        ]
+        eligible_ready = [
+            task.task_id
+            for task in policy_eligible_ready
+            if task.task_id not in strict_deprioritized
+        ]
         reason = ""
         if not eligible_ready:
             if strict_ready:
                 reason = "all_selectable_ready_tasks_deprioritized_as_off_mission"
+            elif selectable_ready and not policy_eligible_ready:
+                reason = "all_selectable_ready_tasks_ineligible_by_task_metadata"
+            elif policy_ineligible and len(policy_ineligible) == len(noncompleted_tasks):
+                reason = "all_selectable_ready_tasks_ineligible_by_task_metadata"
             elif selectable_ready:
                 reason = "no_eligible_ready_tasks_after_selection_filters"
             else:
@@ -41746,7 +41952,12 @@ class PortalImplementationDaemon:
         unresolved_merge_failures: dict[str, dict[str, Any]],
         recent_outcomes: dict[str, dict[str, Any]],
     ) -> PortalTask | None:
-        ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        ready = [
+            task
+            for task in tasks
+            if resolved_statuses.get(task.task_id) == "ready"
+            and self._task_direct_implementation_allowed(task)
+        ]
         # The durable queue is authoritative across isolated lane state dirs.
         # Consult both canonical and display identities for compatibility with
         # queue records written before canonical task ids were introduced.
