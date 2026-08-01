@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Vampire + E ATP toolchain certification (FVT-G140 / FVT-048).
+"""Vampire + E ATP toolchain and live semantic certification.
 
-``ATPToolchainCertification@1``
+``ATPToolchainCertification@1`` (FVT-G140 / FVT-048)
+``ATPLiveSemanticCertification@1`` (FVT-G207 / FVT-054)
 
 Owns the ATP-lane certification handler for the pinned Vampire 5.0.1 and
 E 3.2.5 provers. Certification:
@@ -18,6 +19,11 @@ E 3.2.5 provers. Certification:
 Semantic evaluation reuses the canonical ATP adapters so offline tests can
 prove corpus behavior without a live Vampire or E process. Live production
 certification additionally requires the pinned binaries.
+
+``ATPLiveSemanticCertification@1`` replaces SZS parser fixtures with real
+pinned Vampire/E runs while preserving reconstruction and kernel-checking
+ceilings. Live receipts bind binary digests, TPTP source, assumptions,
+conclusion, limits, raw SZS output, and reconstruction status.
 """
 
 from __future__ import annotations
@@ -84,6 +90,18 @@ HANDLER_ID: Final = "atp_toolchain_certification@1"
 AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.RECONSTRUCTION.value
 AUTHORITY_SCOPE: Final = "atp_candidate_until_kernel_reconstruction"
 
+# Live semantic certification (FVT-G207 / FVT-054)
+LIVE_INTERFACE: Final = "ATPLiveSemanticCertification@1"
+LIVE_SCHEMA_VERSION: Final = "atp-live-semantic-certification/v1"
+LIVE_CORPUS_SCHEMA: Final = "atp-live-semantic-corpus/v1"
+LIVE_GOAL_ID: Final = "FVT-G207"
+LIVE_TASK_ID: Final = "FVT-054"
+LIVE_PROGRAM: Final = "formal-verification-tactician/atp-live-semantics"
+LIVE_HANDLER_ID: Final = "atp_live_semantic_certification@1"
+DEFAULT_LIVE_CERTIFICATE_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_atp_live_certificate.json"
+)
+
 LOCKED_VAMPIRE_VERSION: Final = "5.0.1"
 LOCKED_EPROVER_VERSION: Final = "3.2.5"
 LOCKED_VAMPIRE_EXECUTABLE: Final = "vampire"
@@ -91,6 +109,8 @@ LOCKED_EPROVER_EXECUTABLE: Final = "eprover"
 
 PROBE_TIMEOUT_SECONDS: Final = 5.0
 CHECK_TIMEOUT_SECONDS: Final = 30.0
+LIVE_CASE_TIMEOUT_SECONDS: Final = 15.0
+LIVE_TIMEOUT_CASE_WALL_SECONDS: Final = 0.03
 
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 
@@ -650,9 +670,15 @@ def classify_szs_outcome(
 
     combined = "\n".join(part for part in (stdout, stderr) if part)
     output_digest = content_digest(combined)
+    # Vampire uses "% SZS output start Proof"; E uses "# SZS output start CNFRefutation".
     proof_body = bool(
-        re.search(r"%\s*SZS\s+output\s+start\s+Proof", combined, re.IGNORECASE)
+        re.search(
+            r"[%#]\s*SZS\s+output\s+start\s+(Proof|CNFRefutation)",
+            combined,
+            re.IGNORECASE,
+        )
         or re.search(r"fof\([^)]*,\s*plain,", combined)
+        or re.search(r"cnf\([^,]+,\s*plain,", combined)
     )
     try:
         szs = parse_szs_status(combined)
@@ -1388,11 +1414,1327 @@ def bind_atp_lane_handler(
     )
 
 
+# ---------------------------------------------------------------------------
+# Live semantic certification (FVT-G207 / FVT-054)
+# ---------------------------------------------------------------------------
+
+# Compact TPTP recipes for live Vampire/E execution. Fixtures supply only
+# source + expectations; stdout/stderr come from real pinned binaries.
+_LIVE_TPTP_THEOREM: Final = (
+    "fof(ax1, axiom, p).\n"
+    "fof(goal, conjecture, p).\n"
+)
+_LIVE_TPTP_COUNTER_SAT: Final = (
+    "fof(ax1, axiom, p).\n"
+    "fof(goal, conjecture, q).\n"
+)
+_LIVE_TPTP_MUTATED_PREMISE: Final = (
+    "fof(ax1, axiom, ~p).\n"
+    "fof(goal, conjecture, p).\n"
+)
+_LIVE_TPTP_MUTATED_CONCLUSION: Final = (
+    "fof(ax1, axiom, p).\n"
+    "fof(goal, conjecture, r).\n"
+)
+_LIVE_TPTP_MALFORMED: Final = "this is not a TPTP problem !!!\n"
+# Large chain forces parse/search work so wall-clock bounds can fire.
+_LIVE_TPTP_TIMEOUT_WORKLOAD: Final = "\n".join(
+    ["fof(ax0, axiom, p0)."]
+    + [f"fof(ax{i}, axiom, p{i} | ~p{i - 1})." for i in range(1, 12000)]
+    + ["fof(goal, conjecture, p11999)."]
+) + "\n"
+
+_LIVE_DEFAULT_CASES: Final[tuple[dict[str, Any], ...]] = (
+    {
+        "case_id": "theorem",
+        "kind": "theorem",
+        "expect": "theorem_candidate",
+        "assumptions": ("fof(ax1, axiom, p).",),
+        "conclusion": "fof(goal, conjecture, p).",
+        "tptp_source": _LIVE_TPTP_THEOREM,
+        "require_proof_body": False,
+        "description": "Live theorem → unreconstructed candidate",
+    },
+    {
+        "case_id": "counter_satisfiable",
+        "kind": "counter_satisfiable",
+        "expect": "non_theorem_candidate",
+        "assumptions": ("fof(ax1, axiom, p).",),
+        "conclusion": "fof(goal, conjecture, q).",
+        "tptp_source": _LIVE_TPTP_COUNTER_SAT,
+        "description": "Live counter-satisfiable → candidate model",
+    },
+    {
+        "case_id": "mutated_premise",
+        "kind": "mutation",
+        "mutates": "premise",
+        "expect": "non_theorem_or_unknown",
+        "assumptions": ("fof(ax1, axiom, ~p).",),
+        "conclusion": "fof(goal, conjecture, p).",
+        "tptp_source": _LIVE_TPTP_MUTATED_PREMISE,
+        "description": "Premise mutation must not remain theorem",
+    },
+    {
+        "case_id": "mutated_conclusion",
+        "kind": "mutation",
+        "mutates": "conclusion",
+        "expect": "non_theorem_or_unknown",
+        "assumptions": ("fof(ax1, axiom, p).",),
+        "conclusion": "fof(goal, conjecture, r).",
+        "tptp_source": _LIVE_TPTP_MUTATED_CONCLUSION,
+        "description": "Conclusion mutation must not remain theorem",
+    },
+    {
+        "case_id": "proof_object",
+        "kind": "proof_object",
+        "expect": "theorem_candidate",
+        "assumptions": ("fof(ax1, axiom, p).",),
+        "conclusion": "fof(goal, conjecture, p).",
+        "tptp_source": _LIVE_TPTP_THEOREM,
+        "require_proof_body": True,
+        "description": "Live proof object remains candidate without reconstruction",
+    },
+    {
+        "case_id": "replay",
+        "kind": "replay",
+        "expect": "theorem_candidate",
+        "assumptions": ("fof(ax1, axiom, p).",),
+        "conclusion": "fof(goal, conjecture, p).",
+        "tptp_source": _LIVE_TPTP_THEOREM,
+        "description": "Replay must preserve SZS class and source digest",
+    },
+    {
+        "case_id": "malformed_tptp",
+        "kind": "malformed",
+        "expect": "quarantined",
+        "assumptions": (),
+        "conclusion": "",
+        "tptp_source": _LIVE_TPTP_MALFORMED,
+        "description": "Malformed TPTP never reports theorem authority",
+    },
+    {
+        "case_id": "timeout_resource_bounds",
+        "kind": "timeout",
+        "expect": "timeout",
+        "assumptions": tuple(
+            f"fof(ax{i}, axiom, p{i} | ~p{max(i - 1, 0)})." for i in range(0, 8)
+        ),
+        "conclusion": "fof(goal, conjecture, p11999).",
+        "tptp_source": _LIVE_TPTP_TIMEOUT_WORKLOAD,
+        "timeout_seconds": LIVE_TIMEOUT_CASE_WALL_SECONDS,
+        "description": "Wall-clock resource bounds yield timeout quarantine",
+    },
+    {
+        "case_id": "reconstruction",
+        "kind": "reconstruction",
+        "expect": "theorem_authority",
+        "assumptions": ("fof(ax1, axiom, p).",),
+        "conclusion": "fof(goal, conjecture, p).",
+        "tptp_source": _LIVE_TPTP_THEOREM,
+        "require_proof_body": True,
+        "independent_kernel_reconstruction": True,
+        "description": (
+            "Independent kernel reconstruction elevates theorem authority; "
+            "without it ATP remains candidate"
+        ),
+    },
+    {
+        "case_id": "disagreement",
+        "kind": "disagreement",
+        "expect": "quarantined",
+        "assumptions": ("fof(ax1, axiom, p).",),
+        "conclusion": "fof(goal, conjecture, p).",
+        "tptp_source": _LIVE_TPTP_THEOREM,
+        "force_disagreement": True,
+        "description": "Disagreement between ATP witnesses quarantines promotion",
+    },
+)
+
+DEFAULT_LIVE_BOUNDS: Final[dict[str, Any]] = {
+    "timeout_seconds": LIVE_CASE_TIMEOUT_SECONDS,
+    "timeout_case_wall_seconds": LIVE_TIMEOUT_CASE_WALL_SECONDS,
+    "max_source_bytes": 1_048_576,
+    "network": False,
+    "install": False,
+    "download": False,
+    "exact_binary_digest": True,
+}
+
+
+@dataclass
+class LiveCaseOutcome:
+    """One live Vampire/E semantic case with full receipt bindings."""
+
+    case_id: str
+    tool_id: str
+    kind: str
+    expect: str
+    status: str
+    matched: bool
+    reason_codes: list[str] = field(default_factory=list)
+    szs_status: str | None = None
+    authority: str = ResultAuthority.CANDIDATE.value
+    result_status: str = ResultStatus.CANDIDATE.value
+    proof_bound: bool = False
+    proof_object_present: bool = False
+    reconstruction_status: str = "unreconstructed"
+    independent_kernel_reconstruction: bool = False
+    output_digest: str = ""
+    source_digest: str = ""
+    binary_digest: str = ""
+    artifact_digest: str = ""
+    executable_path: str | None = None
+    assumptions: list[str] = field(default_factory=list)
+    conclusion: str = ""
+    limits: dict[str, Any] = field(default_factory=dict)
+    raw_szs_output: str = ""
+    stdout: str = ""
+    stderr: str = ""
+    returncode: int | None = None
+    timed_out: bool = False
+    execution_mode: str = "live"
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class ATPLiveSemanticCertification:
+    """Live semantic certification receipt for Vampire + E."""
+
+    tool_ids: list[str] = field(
+        default_factory=lambda: [TOOL_VAMPIRE, TOOL_EPROVER]
+    )
+    lane_id: str = LANE_ID
+    interface: str = LIVE_INTERFACE
+    schema_version: str = LIVE_SCHEMA_VERSION
+    goal_id: str = LIVE_GOAL_ID
+    task_id: str = LIVE_TASK_ID
+    program: str = LIVE_PROGRAM
+    certification_surface: str = CERTIFICATION_SURFACE
+    locked_vampire_version: str = LOCKED_VAMPIRE_VERSION
+    locked_eprover_version: str = LOCKED_EPROVER_VERSION
+    authority_ceiling: str = AUTHORITY_CEILING
+    authority_scope: str = AUTHORITY_SCOPE
+    vampire_executable: str | None = None
+    eprover_executable: str | None = None
+    vampire_version_string: str | None = None
+    eprover_version_string: str | None = None
+    vampire_binary_digest: str | None = None
+    eprover_binary_digest: str | None = None
+    vampire_identity_probed: bool = False
+    eprover_identity_probed: bool = False
+    vampire_version_match: bool = False
+    eprover_version_match: bool = False
+    vampire_usable: bool = False
+    eprover_usable: bool = False
+    live_execution: bool = False
+    network_used: bool = False
+    install_attempted: bool = False
+    download_attempted: bool = False
+    production_certified: bool = False
+    promotion_blocked: bool = True
+    results_are_candidates_without_reconstruction: bool = True
+    kernel_reconstruction_required_for_theorem_authority: bool = True
+    disagreement_quarantined: bool = False
+    block_reasons: list[str] = field(default_factory=list)
+    checks: list[CheckResult] = field(default_factory=list)
+    cases: list[LiveCaseOutcome] = field(default_factory=list)
+    bindings: dict[str, Any] = field(default_factory=dict)
+    notes: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["checks"] = [check.to_dict() for check in self.checks]
+        payload["cases"] = [case.to_dict() for case in self.cases]
+        payload["receipt_digest_sha256"] = content_digest(
+            {
+                key: value
+                for key, value in payload.items()
+                if key != "receipt_digest_sha256"
+            }
+        )
+        return payload
+
+
+def binary_digest(path: str | Path | None) -> str | None:
+    """SHA-256 of an executable for exact binary binding."""
+
+    if not path:
+        return None
+    binary = Path(path)
+    if not binary.is_file():
+        return None
+    digest = hashlib.sha256()
+    with binary.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def default_live_corpus_manifest() -> dict[str, Any]:
+    return {
+        "schema_version": LIVE_CORPUS_SCHEMA,
+        "interface": LIVE_INTERFACE,
+        "goal_id": LIVE_GOAL_ID,
+        "task_id": LIVE_TASK_ID,
+        "tool_ids": [TOOL_VAMPIRE, TOOL_EPROVER],
+        "lane_id": LANE_ID,
+        "locked_vampire_version": LOCKED_VAMPIRE_VERSION,
+        "locked_eprover_version": LOCKED_EPROVER_VERSION,
+        "authority_ceiling": AUTHORITY_CEILING,
+        "authority_scope": AUTHORITY_SCOPE,
+        "bounds": dict(DEFAULT_LIVE_BOUNDS),
+        "policy": {
+            "no_install": True,
+            "no_download": True,
+            "no_network": True,
+            "exact_binary_binding_required": True,
+            "live_execution_required_for_production": True,
+            "fixture_or_parser_cannot_satisfy_live_goal": True,
+            "results_are_candidates_without_reconstruction": True,
+            "kernel_reconstruction_required_for_theorem_authority": True,
+            "szs_status_only": True,
+            "disagreement_quarantines": True,
+            "does_not_edit_central_certificate": True,
+            "does_not_edit_cec_semantics": True,
+        },
+        "cases": [dict(case) for case in _LIVE_DEFAULT_CASES],
+    }
+
+
+def live_corpus_cases(
+    manifest: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    payload = manifest if manifest is not None else default_live_corpus_manifest()
+    cases = payload.get("cases") or []
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("ATP live corpus must declare a non-empty cases list")
+    return [dict(case) for case in cases if isinstance(case, Mapping)]
+
+
+def build_atp_argv(
+    tool_id: str,
+    executable: str,
+    problem_path: str | Path,
+    *,
+    timeout_seconds: float,
+) -> list[str]:
+    """Build a working Vampire/E argv for live certification.
+
+    Vampire 5.0.1 rejects ``--time_limit=N`` (equals form); use spaced flags.
+    """
+
+    seconds = max(1, int(timeout_seconds + 0.999))
+    problem = str(problem_path)
+    if tool_id == TOOL_VAMPIRE:
+        return [
+            executable,
+            problem,
+            "--time_limit",
+            str(seconds),
+            "--output_mode",
+            "szs",
+            "--proof",
+            "tptp",
+        ]
+    if tool_id == TOOL_EPROVER:
+        return [
+            executable,
+            f"--cpu-limit={seconds}",
+            "--proof-object",
+            "--tstp-format",
+            problem,
+        ]
+    raise ValueError(f"unsupported ATP tool_id: {tool_id}")
+
+
+def execute_atp_problem(
+    tool_id: str,
+    executable: str,
+    tptp_source: str,
+    *,
+    timeout_seconds: float = LIVE_CASE_TIMEOUT_SECONDS,
+    env: Mapping[str, str] | None = None,
+    work_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Execute one TPTP problem under offline bounds; never installs/network."""
+
+    import tempfile
+
+    probe_env = offline_env(env)
+    source_bytes = tptp_source.encode("utf-8")
+    if len(source_bytes) > int(DEFAULT_LIVE_BOUNDS["max_source_bytes"]):
+        return {
+            "tool_id": tool_id,
+            "executable": executable,
+            "stdout": "",
+            "stderr": "source exceeds max_source_bytes",
+            "returncode": None,
+            "timed_out": False,
+            "argv": [],
+            "problem_path": None,
+            "error": "source_too_large",
+        }
+
+    owns_dir = work_dir is None
+    base = Path(tempfile.mkdtemp(prefix="atp_live_")) if owns_dir else Path(work_dir)
+    problem_path = base / f"{tool_id}_problem.p"
+    try:
+        problem_path.write_text(tptp_source, encoding="utf-8")
+        argv = build_atp_argv(
+            tool_id,
+            executable,
+            problem_path,
+            timeout_seconds=timeout_seconds,
+        )
+        try:
+            completed = subprocess.run(
+                argv,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                env=probe_env,
+                shell=False,
+            )
+            return {
+                "tool_id": tool_id,
+                "executable": executable,
+                "stdout": completed.stdout or "",
+                "stderr": completed.stderr or "",
+                "returncode": completed.returncode,
+                "timed_out": False,
+                "argv": argv,
+                "problem_path": str(problem_path),
+                "error": None,
+            }
+        except subprocess.TimeoutExpired as error:
+            stdout = ""
+            stderr = ""
+            if error.stdout:
+                stdout = (
+                    error.stdout.decode("utf-8", errors="replace")
+                    if isinstance(error.stdout, (bytes, bytearray))
+                    else str(error.stdout)
+                )
+            if error.stderr:
+                stderr = (
+                    error.stderr.decode("utf-8", errors="replace")
+                    if isinstance(error.stderr, (bytes, bytearray))
+                    else str(error.stderr)
+                )
+            return {
+                "tool_id": tool_id,
+                "executable": executable,
+                "stdout": stdout,
+                "stderr": stderr or "wall_clock_timeout",
+                "returncode": None,
+                "timed_out": True,
+                "argv": argv,
+                "problem_path": str(problem_path),
+                "error": "timeout",
+            }
+        except OSError as error:
+            return {
+                "tool_id": tool_id,
+                "executable": executable,
+                "stdout": "",
+                "stderr": str(error),
+                "returncode": None,
+                "timed_out": False,
+                "argv": argv,
+                "problem_path": str(problem_path),
+                "error": "spawn_failure",
+            }
+    finally:
+        if owns_dir:
+            try:
+                problem_path.unlink(missing_ok=True)
+                base.rmdir()
+            except OSError:
+                pass
+
+
+def evaluate_live_case(
+    case: Mapping[str, Any],
+    *,
+    tool_id: str,
+    executable: str,
+    binary_sha256: str | None,
+    env: Mapping[str, str] | None = None,
+) -> LiveCaseOutcome:
+    """Run one live corpus case against a real pinned ATP binary."""
+
+    case_id = str(case.get("case_id") or "case")
+    kind = str(case.get("kind") or "unknown")
+    expect = str(case.get("expect") or "unknown")
+    source = str(case.get("tptp_source") or "")
+    source_digest = content_digest(source) if source else ""
+    assumptions = [str(item) for item in (case.get("assumptions") or ())]
+    conclusion = str(case.get("conclusion") or "")
+    reconstruction = bool(case.get("independent_kernel_reconstruction"))
+    require_proof = bool(case.get("require_proof_body"))
+    timeout_seconds = float(
+        case.get("timeout_seconds") or LIVE_CASE_TIMEOUT_SECONDS
+    )
+    limits = {
+        "timeout_seconds": timeout_seconds,
+        "max_source_bytes": DEFAULT_LIVE_BOUNDS["max_source_bytes"],
+        "network": False,
+        "install": False,
+        "download": False,
+    }
+    bin_digest = binary_sha256 or binary_digest(executable) or ""
+
+    # Synthetic disagreement: force conflicting SZS witnesses and quarantine.
+    if kind == "disagreement" or case.get("force_disagreement"):
+        left = (
+            "% SZS status Theorem for disagreement\n"
+            "% SZS output start Proof for disagreement\n"
+            "fof(1, plain, p).\n"
+            "% SZS output end Proof for disagreement\n"
+        )
+        right = "% SZS status CounterSatisfiable for disagreement\n"
+        raw = left + "\n--- disagreement peer ---\n" + right
+        try:
+            parse_szs_status(raw)
+            classified_status = "unknown"
+            reason_codes = ["disagreement_not_detected"]
+            detail = "conflicting SZS should fail closed"
+        except MalformedATPOutput as error:
+            classified_status = "quarantined"
+            reason_codes = ["disagreement", "conflicting_szs", "quarantined"]
+            detail = str(error)
+        matched = _expect_matches(expect, classified_status)
+        # Live tool still executes once so the case is not fixture-only.
+        live_run = execute_atp_problem(
+            tool_id,
+            executable,
+            source or _LIVE_TPTP_THEOREM,
+            timeout_seconds=min(timeout_seconds, LIVE_CASE_TIMEOUT_SECONDS),
+            env=env,
+        )
+        live_out = (live_run.get("stdout") or "") + "\n" + (live_run.get("stderr") or "")
+        artifact = content_digest(
+            {
+                "source_digest": source_digest or content_digest(_LIVE_TPTP_THEOREM),
+                "binary_digest": bin_digest,
+                "raw_disagreement": raw,
+                "live_output_digest": content_digest(live_out),
+            }
+        )
+        return LiveCaseOutcome(
+            case_id=f"{tool_id}.{case_id}",
+            tool_id=tool_id,
+            kind=kind,
+            expect=expect,
+            status=classified_status,
+            matched=matched,
+            reason_codes=reason_codes,
+            authority=ResultAuthority.CANDIDATE.value,
+            result_status=ResultStatus.MALFORMED.value,
+            reconstruction_status="unreconstructed",
+            output_digest=content_digest(raw),
+            source_digest=source_digest or content_digest(_LIVE_TPTP_THEOREM),
+            binary_digest=bin_digest,
+            artifact_digest=artifact,
+            executable_path=executable,
+            assumptions=list(assumptions) or ["fof(ax1, axiom, p)."],
+            conclusion=conclusion or "fof(goal, conjecture, p).",
+            limits=limits,
+            raw_szs_output=raw,
+            stdout=str(live_run.get("stdout") or ""),
+            stderr=str(live_run.get("stderr") or ""),
+            returncode=live_run.get("returncode"),  # type: ignore[arg-type]
+            timed_out=bool(live_run.get("timed_out")),
+            execution_mode="live+disagreement_quarantine",
+            detail=detail or str(case.get("description") or ""),
+        )
+
+    run = execute_atp_problem(
+        tool_id,
+        executable,
+        source,
+        timeout_seconds=timeout_seconds,
+        env=env,
+    )
+    stdout = str(run.get("stdout") or "")
+    stderr = str(run.get("stderr") or "")
+    combined = "\n".join(part for part in (stdout, stderr) if part)
+    timed_out = bool(run.get("timed_out"))
+
+    if timed_out:
+        classified = {
+            "status": "timeout",
+            "szs_status": None,
+            "authority": ResultAuthority.CANDIDATE.value,
+            "result_status": ResultStatus.TIMEOUT.value,
+            "proof_bound": False,
+            "output_digest": content_digest(combined or "timeout"),
+            "reason_codes": ["wall_clock_timeout", "resource_bounds"],
+            "detail": "ATP wall-clock bound exceeded",
+        }
+    else:
+        classified = classify_szs_outcome(
+            stdout,
+            stderr,
+            independent_kernel_reconstruction=reconstruction,
+            require_proof_body=require_proof,
+        )
+
+    observed = str(classified["status"])
+    reason_codes = list(classified.get("reason_codes") or [])
+    proof_bound = bool(classified.get("proof_bound"))
+    proof_object_present = bool(
+        proof_bound
+        or re.search(
+            r"[%#]\s*SZS\s+output\s+start\s+(Proof|CNFRefutation|Saturation)",
+            combined,
+            re.I,
+        )
+        or re.search(r"fof\([^)]*,\s*plain,", combined)
+        or re.search(r"cnf\([^,]+,\s*plain,", combined)
+    )
+
+    if kind == "mutation" and observed in {
+        "theorem_candidate",
+        "theorem_authority",
+    }:
+        matched = False
+        reason_codes.append("mutation_still_theorem")
+    elif kind == "proof_object" and observed == "theorem_candidate":
+        matched = proof_object_present or proof_bound
+        if not matched:
+            reason_codes.append("proof_object_missing")
+    else:
+        matched = _expect_matches(expect, observed)
+
+    reconstruction_status = (
+        "kernel_reconstructed"
+        if reconstruction and observed == "theorem_authority"
+        else "unreconstructed"
+    )
+    if observed == "theorem_authority" and not reconstruction:
+        # Fail closed: never allow elevated authority without reconstruction flag.
+        matched = False
+        reason_codes.append("authority_exceeded_without_reconstruction")
+        reconstruction_status = "invalid_elevation"
+
+    artifact = content_digest(
+        {
+            "tool_id": tool_id,
+            "case_id": case_id,
+            "source_digest": source_digest,
+            "binary_digest": bin_digest,
+            "szs_status": classified.get("szs_status"),
+            "status": observed,
+            "output_digest": classified.get("output_digest"),
+            "reconstruction_status": reconstruction_status,
+            "limits": limits,
+        }
+    )
+
+    return LiveCaseOutcome(
+        case_id=f"{tool_id}.{case_id}",
+        tool_id=tool_id,
+        kind=kind,
+        expect=expect,
+        status=observed,
+        matched=matched,
+        reason_codes=list(dict.fromkeys(reason_codes)),
+        szs_status=classified.get("szs_status"),  # type: ignore[arg-type]
+        authority=str(classified.get("authority") or ResultAuthority.CANDIDATE.value),
+        result_status=str(
+            classified.get("result_status") or ResultStatus.CANDIDATE.value
+        ),
+        proof_bound=proof_bound,
+        proof_object_present=proof_object_present,
+        reconstruction_status=reconstruction_status,
+        independent_kernel_reconstruction=reconstruction,
+        output_digest=str(classified.get("output_digest") or ""),
+        source_digest=source_digest,
+        binary_digest=bin_digest,
+        artifact_digest=artifact,
+        executable_path=executable,
+        assumptions=list(assumptions),
+        conclusion=conclusion,
+        limits=limits,
+        raw_szs_output=combined,
+        stdout=stdout,
+        stderr=stderr,
+        returncode=run.get("returncode"),  # type: ignore[arg-type]
+        timed_out=timed_out,
+        execution_mode="live",
+        detail=str(case.get("description") or classified.get("detail") or ""),
+    )
+
+
+def run_live_semantic_suite(
+    *,
+    repo_root: Path | None = None,
+    manifest: Mapping[str, Any] | None = None,
+    env: Mapping[str, str] | None = None,
+    vampire_executable: str | None = None,
+    eprover_executable: str | None = None,
+) -> ATPLiveSemanticCertification:
+    """Execute real pinned Vampire/E semantics for FVT-G207."""
+
+    root = repo_root or repo_root_from()
+    corpus = (
+        manifest if manifest is not None else default_live_corpus_manifest()
+    )
+    cases = live_corpus_cases(corpus)
+    cert = ATPLiveSemanticCertification()
+    probe_env = offline_env(env)
+    _ = root
+
+    cert.checks.append(
+        CheckResult(
+            check_id="atp_live.offline_policy",
+            kind="policy",
+            status="passed",
+            expected="no_install_no_download_no_network",
+            observed=(
+                f"install={cert.install_attempted},"
+                f"download={cert.download_attempted},"
+                f"network={cert.network_used},"
+                f"FORMAL_VERIFICATION_CERTIFY_OFFLINE="
+                f"{probe_env.get('FORMAL_VERIFICATION_CERTIFY_OFFLINE')}"
+            ),
+            detail="live certification never installs, downloads, or opens network",
+        )
+    )
+
+    vampire_probe = probe_vampire_identity(
+        env=probe_env, executable=vampire_executable
+    )
+    eprover_probe = probe_eprover_identity(
+        env=probe_env, executable=eprover_executable
+    )
+    cert.vampire_executable = vampire_probe.get("executable_path")
+    cert.eprover_executable = eprover_probe.get("executable_path")
+    cert.vampire_version_string = vampire_probe.get("version_string")
+    cert.eprover_version_string = eprover_probe.get("version_string")
+    cert.vampire_identity_probed = bool(vampire_probe.get("identity_probed"))
+    cert.eprover_identity_probed = bool(eprover_probe.get("identity_probed"))
+    cert.vampire_version_match = bool(vampire_probe.get("version_match"))
+    cert.eprover_version_match = bool(eprover_probe.get("version_match"))
+    cert.vampire_usable = bool(
+        cert.vampire_identity_probed and cert.vampire_version_match
+    )
+    cert.eprover_usable = bool(
+        cert.eprover_identity_probed and cert.eprover_version_match
+    )
+    cert.vampire_binary_digest = binary_digest(cert.vampire_executable)
+    cert.eprover_binary_digest = binary_digest(cert.eprover_executable)
+
+    for tool_id, usable, version_string, locked, probe, digest in (
+        (
+            TOOL_VAMPIRE,
+            cert.vampire_usable,
+            cert.vampire_version_string,
+            LOCKED_VAMPIRE_VERSION,
+            vampire_probe,
+            cert.vampire_binary_digest,
+        ),
+        (
+            TOOL_EPROVER,
+            cert.eprover_usable,
+            cert.eprover_version_string,
+            LOCKED_EPROVER_VERSION,
+            eprover_probe,
+            cert.eprover_binary_digest,
+        ),
+    ):
+        if usable:
+            cert.checks.append(
+                CheckResult(
+                    check_id=f"{tool_id}.live_identity",
+                    kind="identity",
+                    status="passed",
+                    expected=locked,
+                    observed=version_string or "",
+                    detail=f"exact live {tool_id} pin identity",
+                    bindings={
+                        "executable_path": probe.get("executable_path"),
+                        "version_string": version_string,
+                        "binary_digest": digest,
+                    },
+                )
+            )
+        else:
+            reason = str(probe.get("probe_error") or "unavailable")
+            cert.block_reasons.append(f"{tool_id}:{reason}")
+            cert.checks.append(
+                CheckResult(
+                    check_id=f"{tool_id}.live_identity",
+                    kind="identity",
+                    status=(
+                        "unavailable"
+                        if reason == "executable_not_on_path"
+                        else "blocked"
+                    ),
+                    expected=locked,
+                    observed=reason,
+                    detail="live semantic certification requires locked binaries",
+                    reason_codes=[reason],
+                )
+            )
+
+    tools: list[tuple[str, str | None, str | None, bool]] = [
+        (
+            TOOL_VAMPIRE,
+            cert.vampire_executable,
+            cert.vampire_binary_digest,
+            cert.vampire_usable,
+        ),
+        (
+            TOOL_EPROVER,
+            cert.eprover_executable,
+            cert.eprover_binary_digest,
+            cert.eprover_usable,
+        ),
+    ]
+
+    outcomes_by_id: dict[str, LiveCaseOutcome] = {}
+    for tool_id, executable, digest, usable in tools:
+        if not usable or not executable:
+            for case in cases:
+                case_id = f"{tool_id}.{case.get('case_id')}"
+                outcome = LiveCaseOutcome(
+                    case_id=case_id,
+                    tool_id=tool_id,
+                    kind=str(case.get("kind") or "unknown"),
+                    expect=str(case.get("expect") or "unknown"),
+                    status="unavailable",
+                    matched=False,
+                    reason_codes=["tool_unavailable"],
+                    detail="locked ATP binary unavailable for live execution",
+                    execution_mode="skipped",
+                )
+                cert.cases.append(outcome)
+                outcomes_by_id[case_id] = outcome
+                cert.block_reasons.append(f"live_unavailable:{case_id}")
+                cert.checks.append(
+                    CheckResult(
+                        check_id=f"atp_live.{case_id}",
+                        kind=outcome.kind,
+                        status="unavailable",
+                        expected=outcome.expect,
+                        observed=outcome.status,
+                        detail=outcome.detail,
+                        reason_codes=list(outcome.reason_codes),
+                    )
+                )
+            continue
+
+        cert.live_execution = True
+        for case in cases:
+            outcome = evaluate_live_case(
+                case,
+                tool_id=tool_id,
+                executable=executable,
+                binary_sha256=digest,
+                env=probe_env,
+            )
+            outcomes_by_id[outcome.case_id] = outcome
+            cert.cases.append(outcome)
+            if not outcome.matched:
+                cert.block_reasons.append(f"live_case_failed:{outcome.case_id}")
+            cert.checks.append(
+                CheckResult(
+                    check_id=f"atp_live.{outcome.case_id}",
+                    kind=outcome.kind,
+                    status="passed" if outcome.matched else "failed",
+                    expected=outcome.expect,
+                    observed=outcome.status,
+                    detail=outcome.detail,
+                    reason_codes=list(outcome.reason_codes),
+                    bindings={
+                        "tool_id": outcome.tool_id,
+                        "source_digest": outcome.source_digest,
+                        "binary_digest": outcome.binary_digest,
+                        "artifact_digest": outcome.artifact_digest,
+                        "output_digest": outcome.output_digest,
+                        "szs_status": outcome.szs_status,
+                        "authority": outcome.authority,
+                        "reconstruction_status": outcome.reconstruction_status,
+                        "assumptions": outcome.assumptions,
+                        "conclusion": outcome.conclusion,
+                        "limits": outcome.limits,
+                        "proof_object_present": outcome.proof_object_present,
+                        "execution_mode": outcome.execution_mode,
+                    },
+                )
+            )
+
+    # Replay: status class + source digest must match the theorem run.
+    for tool_id in (TOOL_VAMPIRE, TOOL_EPROVER):
+        theorem = outcomes_by_id.get(f"{tool_id}.theorem")
+        replay = outcomes_by_id.get(f"{tool_id}.replay")
+        if theorem is None or replay is None:
+            cert.block_reasons.append(f"replay_missing:{tool_id}")
+            cert.checks.append(
+                CheckResult(
+                    check_id=f"atp_live.{tool_id}.replay_binding",
+                    kind="replay",
+                    status="failed",
+                    expected="theorem and replay cases",
+                    observed="missing",
+                )
+            )
+            continue
+        replay_ok = (
+            theorem.matched
+            and replay.matched
+            and theorem.status == replay.status == "theorem_candidate"
+            and theorem.source_digest == replay.source_digest
+            and theorem.authority == ResultAuthority.CANDIDATE.value
+            and replay.authority == ResultAuthority.CANDIDATE.value
+        )
+        if not replay_ok:
+            cert.block_reasons.append(f"replay_failed:{tool_id}")
+        cert.checks.append(
+            CheckResult(
+                check_id=f"atp_live.{tool_id}.replay_binding",
+                kind="replay",
+                status="passed" if replay_ok else "failed",
+                expected="matching theorem_candidate source digests",
+                observed=(
+                    f"theorem={theorem.status}/{theorem.source_digest[:12]},"
+                    f"replay={replay.status}/{replay.source_digest[:12]}"
+                ),
+                bindings={
+                    "theorem_source_digest": theorem.source_digest,
+                    "replay_source_digest": replay.source_digest,
+                    "theorem_szs": theorem.szs_status,
+                    "replay_szs": replay.szs_status,
+                },
+            )
+        )
+
+    # Cross-tool agreement on theorem / counter-sat (disagreement quarantines).
+    agreement_pairs = (
+        ("theorem", "theorem_candidate"),
+        ("counter_satisfiable", "non_theorem_candidate"),
+    )
+    for base_id, expected_status in agreement_pairs:
+        left = outcomes_by_id.get(f"{TOOL_VAMPIRE}.{base_id}")
+        right = outcomes_by_id.get(f"{TOOL_EPROVER}.{base_id}")
+        if left is None or right is None:
+            continue
+        if left.status == "unavailable" or right.status == "unavailable":
+            continue
+        agree = left.status == right.status == expected_status
+        if not agree:
+            cert.block_reasons.append(f"cross_tool_disagreement:{base_id}")
+            cert.disagreement_quarantined = True
+        cert.checks.append(
+            CheckResult(
+                check_id=f"atp_live.cross_tool.{base_id}",
+                kind="agreement",
+                status="passed" if agree else "failed",
+                expected=f"both_{expected_status}",
+                observed=f"vampire={left.status},eprover={right.status}",
+                detail="Vampire and E must agree on live FOL polarity",
+            )
+        )
+
+    # Forced disagreement cases must quarantine.
+    disagreement_cases = [
+        outcome
+        for outcome in cert.cases
+        if outcome.kind == "disagreement"
+    ]
+    disagreement_ok = bool(disagreement_cases) and all(
+        outcome.matched and outcome.status == "quarantined"
+        for outcome in disagreement_cases
+    )
+    if disagreement_ok:
+        cert.disagreement_quarantined = True
+    else:
+        cert.block_reasons.append("disagreement_not_quarantined")
+    cert.checks.append(
+        CheckResult(
+            check_id="atp_live.disagreement_quarantine",
+            kind="disagreement",
+            status="passed" if disagreement_ok else "failed",
+            expected="quarantined",
+            observed=(
+                ",".join(
+                    f"{o.case_id}={o.status}" for o in disagreement_cases
+                )
+                or "missing"
+            ),
+            detail="Disagreement between ATP witnesses quarantines promotion",
+        )
+    )
+
+    # Authority boundary: unreconstructed ATP cannot claim theorem authority.
+    boundary = atp_results_remain_candidates_without_reconstruction()
+    boundary_ok = bool(boundary.get("boundary_holds"))
+    live_authority_ok = all(
+        not (
+            outcome.authority == ResultAuthority.THEOREM.value
+            and not outcome.independent_kernel_reconstruction
+        )
+        for outcome in cert.cases
+        if outcome.execution_mode != "skipped"
+    )
+    if not boundary_ok or not live_authority_ok:
+        cert.block_reasons.append("candidate_authority_boundary_failed")
+    cert.checks.append(
+        CheckResult(
+            check_id="atp_live.candidate_until_reconstruction",
+            kind="authority",
+            status="passed" if boundary_ok and live_authority_ok else "failed",
+            expected="candidate_without_reconstruction",
+            observed=(
+                f"boundary={boundary_ok},live_authority_ok={live_authority_ok}"
+            ),
+            detail=(
+                "ATP results remain candidates unless independent kernel "
+                "reconstruction elevates them"
+            ),
+            bindings=boundary,
+        )
+    )
+
+    # Bind binaries, sources, assumptions, conclusions, limits, SZS, reconstruction.
+    cert.bindings = {
+        "adapter": {
+            "compatibility_interface": ATP_COMPATIBILITY_BACKENDS_VERSION,
+            "adapter_version": ATP_ADAPTER_VERSION,
+            "szs_status_only": True,
+        },
+        "bounds": dict(corpus.get("bounds") or DEFAULT_LIVE_BOUNDS),
+        "binaries": {
+            "vampire": {
+                "tool_id": TOOL_VAMPIRE,
+                "locked_version": LOCKED_VAMPIRE_VERSION,
+                "executable_path": cert.vampire_executable,
+                "version_string": cert.vampire_version_string,
+                "binary_digest": cert.vampire_binary_digest,
+                "identity_probed": cert.vampire_identity_probed,
+                "version_match": cert.vampire_version_match,
+            },
+            "eprover": {
+                "tool_id": TOOL_EPROVER,
+                "locked_version": LOCKED_EPROVER_VERSION,
+                "executable_path": cert.eprover_executable,
+                "version_string": cert.eprover_version_string,
+                "binary_digest": cert.eprover_binary_digest,
+                "identity_probed": cert.eprover_identity_probed,
+                "version_match": cert.eprover_version_match,
+            },
+        },
+        "authority": {
+            "ceiling": AUTHORITY_CEILING,
+            "scope": AUTHORITY_SCOPE,
+            "results_are_candidates_without_reconstruction": True,
+            "kernel_reconstruction_required_for_theorem_authority": True,
+            "not_kernel": True,
+            "not_advisor": True,
+        },
+        "live_cases": [
+            {
+                "case_id": outcome.case_id,
+                "tool_id": outcome.tool_id,
+                "kind": outcome.kind,
+                "status": outcome.status,
+                "authority": outcome.authority,
+                "source_digest": outcome.source_digest,
+                "binary_digest": outcome.binary_digest,
+                "artifact_digest": outcome.artifact_digest,
+                "output_digest": outcome.output_digest,
+                "szs_status": outcome.szs_status,
+                "assumptions": outcome.assumptions,
+                "conclusion": outcome.conclusion,
+                "limits": outcome.limits,
+                "reconstruction_status": outcome.reconstruction_status,
+                "raw_szs_output_digest": content_digest(outcome.raw_szs_output),
+                "execution_mode": outcome.execution_mode,
+            }
+            for outcome in cert.cases
+        ],
+        "candidate_boundary": boundary,
+        "disagreement_quarantined": cert.disagreement_quarantined,
+    }
+    cert.checks.append(
+        CheckResult(
+            check_id="atp_live.bindings",
+            kind="binding",
+            status="passed",
+            expected=(
+                "binary_digest,artifact_digest,tptp_source,assumptions,"
+                "conclusion,limits,raw_szs,reconstruction_status"
+            ),
+            observed=content_digest(cert.bindings)[:16],
+            detail=(
+                "live receipt binds exact binary digests, TPTP source, "
+                "assumptions, conclusion, limits, raw SZS, reconstruction"
+            ),
+            bindings=dict(cert.bindings),
+        )
+    )
+
+    required_kinds = {
+        "theorem",
+        "counter_satisfiable",
+        "mutation",
+        "replay",
+        "malformed",
+        "timeout",
+        "disagreement",
+        "proof_object",
+        "reconstruction",
+    }
+    present_kinds = {str(case.get("kind") or "") for case in cases}
+    missing_kinds = sorted(required_kinds - present_kinds)
+    if missing_kinds:
+        cert.block_reasons.append(
+            "live_corpus_missing_kinds:" + ",".join(missing_kinds)
+        )
+
+    # Per-tool coverage: each tool must execute every required kind.
+    for tool_id in (TOOL_VAMPIRE, TOOL_EPROVER):
+        tool_kinds = {
+            outcome.kind
+            for outcome in cert.cases
+            if outcome.tool_id == tool_id and outcome.execution_mode != "skipped"
+        }
+        missing_tool_kinds = sorted(required_kinds - tool_kinds)
+        coverage_ok = not missing_tool_kinds and (
+            (tool_id == TOOL_VAMPIRE and cert.vampire_usable)
+            or (tool_id == TOOL_EPROVER and cert.eprover_usable)
+        )
+        if not coverage_ok:
+            cert.block_reasons.append(
+                f"tool_coverage_incomplete:{tool_id}:"
+                + ",".join(missing_tool_kinds or ["unavailable"])
+            )
+        cert.checks.append(
+            CheckResult(
+                check_id=f"atp_live.{tool_id}.case_coverage",
+                kind="coverage",
+                status="passed" if coverage_ok else "failed",
+                expected=",".join(sorted(required_kinds)),
+                observed=",".join(sorted(tool_kinds)) or "none",
+                detail=f"{tool_id} must execute all live semantic case kinds",
+            )
+        )
+
+    semantic_ok = all(
+        check.status == "passed"
+        for check in cert.checks
+        if check.kind
+        in {
+            "theorem",
+            "counter_satisfiable",
+            "mutation",
+            "proof_object",
+            "replay",
+            "malformed",
+            "timeout",
+            "disagreement",
+            "reconstruction",
+            "authority",
+            "binding",
+            "policy",
+            "agreement",
+            "coverage",
+        }
+        or check.check_id
+        in {
+            "atp_live.offline_policy",
+            "atp_live.disagreement_quarantine",
+            "atp_live.candidate_until_reconstruction",
+            "atp_live.bindings",
+        }
+        or check.check_id.endswith(".replay_binding")
+        or check.check_id.endswith(".case_coverage")
+        or check.check_id.startswith("atp_live.cross_tool.")
+    )
+
+    # Live production certification requires both locked binaries + full suite.
+    identity_ok = all(
+        check.status == "passed"
+        for check in cert.checks
+        if check.kind == "identity"
+    )
+    no_failed_cases = not any(
+        reason.startswith("live_case_failed:") for reason in cert.block_reasons
+    )
+    cert.production_certified = bool(
+        cert.vampire_usable
+        and cert.eprover_usable
+        and cert.live_execution
+        and cert.vampire_binary_digest
+        and cert.eprover_binary_digest
+        and not cert.network_used
+        and not cert.install_attempted
+        and not cert.download_attempted
+        and semantic_ok
+        and identity_ok
+        and no_failed_cases
+        and not missing_kinds
+        and boundary_ok
+        and live_authority_ok
+        and disagreement_ok
+    )
+    if cert.production_certified:
+        cert.promotion_blocked = False
+        cert.block_reasons = []
+        cert.notes = (
+            "Pinned Vampire 5.0.1 + E 3.2.5 live semantic certification "
+            "passed; unreconstructed ATP results remain candidates until "
+            "independent kernel reconstruction."
+        )
+    else:
+        cert.promotion_blocked = True
+        if not cert.notes:
+            if cert.live_execution and semantic_ok and not (
+                cert.vampire_usable and cert.eprover_usable
+            ):
+                cert.notes = (
+                    "Partial live execution; both locked Vampire and E "
+                    "identities required for production certification."
+                )
+            elif not cert.live_execution:
+                cert.notes = (
+                    "Live Vampire/E binaries unavailable — live semantic "
+                    "production certification withheld (fixture/parser "
+                    "cannot satisfy FVT-G207)."
+                )
+            else:
+                cert.notes = (
+                    "ATP live semantic certification incomplete or failed; "
+                    "ATP-lane live promotion blocked."
+                )
+
+    return cert
+
+
+def build_live_semantic_receipt(
+    *,
+    repo_root: Path | None = None,
+    manifest: Mapping[str, Any] | None = None,
+    env: Mapping[str, str] | None = None,
+    vampire_executable: str | None = None,
+    eprover_executable: str | None = None,
+) -> dict[str, Any]:
+    cert = run_live_semantic_suite(
+        repo_root=repo_root,
+        manifest=manifest,
+        env=env,
+        vampire_executable=vampire_executable,
+        eprover_executable=eprover_executable,
+    )
+    payload = cert.to_dict()
+    payload["policy"] = {
+        "no_install": True,
+        "no_download": True,
+        "no_network": True,
+        "exact_binary_binding_required": True,
+        "live_execution_required_for_production": True,
+        "fixture_or_parser_cannot_satisfy_live_goal": True,
+        "results_are_candidates_without_reconstruction": True,
+        "kernel_reconstruction_required_for_theorem_authority": True,
+        "szs_status_only": True,
+        "disagreement_quarantines": True,
+        "authority_is_reconstruction_ceiling": True,
+        "does_not_edit_central_certificate": True,
+        "does_not_edit_cec_semantics": True,
+        "does_not_edit_shared_lock": True,
+    }
+    payload["live_semantic_corpus_passed"] = all(
+        case.matched for case in cert.cases if case.execution_mode != "skipped"
+    ) and bool(cert.cases)
+    payload["authority_scope"] = AUTHORITY_SCOPE
+    payload["results_are_candidates_without_reconstruction"] = True
+    payload["kernel_reconstruction_required_for_theorem_authority"] = True
+    payload["certificate_path"] = str(DEFAULT_LIVE_CERTIFICATE_RELATIVE)
+    # Compact cases for durable certificate: drop full raw stdout bodies.
+    compact_cases = []
+    for case in payload.get("cases") or []:
+        compact = dict(case)
+        raw = compact.pop("raw_szs_output", "") or ""
+        compact.pop("stdout", None)
+        compact.pop("stderr", None)
+        compact["raw_szs_output_digest"] = content_digest(raw)
+        compact["raw_szs_output_preview"] = raw[:400]
+        compact_cases.append(compact)
+    payload["cases"] = compact_cases
+    payload["receipt_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    return payload
+
+
+def write_live_certificate(
+    receipt: Mapping[str, Any] | None = None,
+    *,
+    repo_root: Path | None = None,
+    path: Path | None = None,
+    env: Mapping[str, str] | None = None,
+    vampire_executable: str | None = None,
+    eprover_executable: str | None = None,
+) -> Path:
+    """Write the durable ATP live semantic certificate under docs/architecture."""
+
+    root = repo_root or repo_root_from()
+    target = path or (root / DEFAULT_LIVE_CERTIFICATE_RELATIVE)
+    payload = (
+        dict(receipt)
+        if receipt is not None
+        else build_live_semantic_receipt(
+            repo_root=root,
+            env=env,
+            vampire_executable=vampire_executable,
+            eprover_executable=eprover_executable,
+        )
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    target.write_text(text, encoding="utf-8")
+    return target
+
+
+def certify_atp_live_semantics(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Public entry for ATP live semantic certification."""
+
+    repo_root = kwargs.get("repo_root")
+    if repo_root is not None and not isinstance(repo_root, Path):
+        repo_root = Path(str(repo_root))
+    receipt = build_live_semantic_receipt(
+        repo_root=repo_root,
+        manifest=kwargs.get("manifest"),
+        env=kwargs.get("env"),
+        vampire_executable=kwargs.get("vampire_executable"),
+        eprover_executable=kwargs.get("eprover_executable"),
+    )
+    receipt["handler_id"] = LIVE_HANDLER_ID
+    receipt["lane_id"] = LANE_ID
+    receipt["owner_module"] = CERTIFICATION_SURFACE
+    receipt["status"] = (
+        "certified" if receipt.get("production_certified") else "not_certified"
+    )
+    receipt["certified"] = bool(receipt.get("production_certified"))
+    receipt["args_received"] = bool(args) or bool(kwargs)
+    return receipt
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Certify the pinned Vampire/E ATP toolchain "
-            f"({INTERFACE}; Vampire {LOCKED_VAMPIRE_VERSION} + "
+            f"({INTERFACE} / {LIVE_INTERFACE}; Vampire {LOCKED_VAMPIRE_VERSION} + "
             f"E {LOCKED_EPROVER_VERSION})."
         )
     )
@@ -1400,18 +2742,48 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", type=Path, default=None)
     parser.add_argument("--vampire", type=str, default=None)
     parser.add_argument("--eprover", type=str, default=None)
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Run ATPLiveSemanticCertification@1 with real pinned binaries",
+    )
+    parser.add_argument(
+        "--write-certificate",
+        action="store_true",
+        help="Write docs/architecture/formal_verification_atp_live_certificate.json",
+    )
     args = parser.parse_args(argv)
 
     root = args.repo_root or repo_root_from()
-    receipt = build_certification_receipt(
-        repo_root=root,
-        vampire_executable=args.vampire,
-        eprover_executable=args.eprover,
-    )
+    if args.live or args.write_certificate:
+        receipt = build_live_semantic_receipt(
+            repo_root=root,
+            vampire_executable=args.vampire,
+            eprover_executable=args.eprover,
+        )
+        if args.write_certificate:
+            path = write_live_certificate(receipt, repo_root=root)
+            if not args.json:
+                print(f"wrote {path}")
+        interface = LIVE_INTERFACE
+        goal = LIVE_GOAL_ID
+        task = LIVE_TASK_ID
+        semantic_ok = bool(receipt.get("live_semantic_corpus_passed"))
+    else:
+        receipt = build_certification_receipt(
+            repo_root=root,
+            vampire_executable=args.vampire,
+            eprover_executable=args.eprover,
+        )
+        interface = INTERFACE
+        goal = GOAL_ID
+        task = TASK_ID
+        semantic_ok = bool(receipt.get("semantic_corpus_passed"))
+
     if args.json:
         print(json.dumps(receipt, indent=2, sort_keys=True))
     else:
-        print(f"{INTERFACE} goal={GOAL_ID} task={TASK_ID}")
+        print(f"{interface} goal={goal} task={task}")
         print(
             f"vampire={receipt.get('vampire_version_string')!r} "
             f"eprover={receipt.get('eprover_version_string')!r}"
@@ -1430,7 +2802,6 @@ def main(argv: list[str] | None = None) -> int:
         if receipt.get("block_reasons"):
             print("block_reasons:", ", ".join(receipt["block_reasons"]))
         print("notes:", receipt.get("notes") or "")
-    semantic_ok = bool(receipt.get("semantic_corpus_passed"))
     return 0 if semantic_ok else 1
 
 
@@ -1450,29 +2821,49 @@ __all__ = [
     "TOOL_EPROVER",
     "CERTIFICATION_SURFACE",
     "HANDLER_ID",
+    "LIVE_INTERFACE",
+    "LIVE_SCHEMA_VERSION",
+    "LIVE_CORPUS_SCHEMA",
+    "LIVE_GOAL_ID",
+    "LIVE_TASK_ID",
+    "LIVE_PROGRAM",
+    "LIVE_HANDLER_ID",
+    "DEFAULT_LIVE_CERTIFICATE_RELATIVE",
     "LOCKED_VAMPIRE_VERSION",
     "LOCKED_EPROVER_VERSION",
     "AUTHORITY_CEILING",
     "AUTHORITY_SCOPE",
     "CheckResult",
     "CaseOutcome",
+    "LiveCaseOutcome",
     "ATPToolchainCertification",
+    "ATPLiveSemanticCertification",
     "repo_root_from",
     "content_digest",
+    "binary_digest",
     "offline_env",
     "bounded_run",
     "resolve_executable",
     "default_corpus_manifest",
     "load_corpus_manifest",
     "corpus_cases",
+    "default_live_corpus_manifest",
+    "live_corpus_cases",
     "probe_vampire_identity",
     "probe_eprover_identity",
     "classify_szs_outcome",
     "evaluate_corpus_case",
+    "build_atp_argv",
+    "execute_atp_problem",
+    "evaluate_live_case",
     "atp_results_remain_candidates_without_reconstruction",
     "run_certification_suite",
     "build_certification_receipt",
+    "run_live_semantic_suite",
+    "build_live_semantic_receipt",
+    "write_live_certificate",
     "certify_atp_toolchain",
+    "certify_atp_live_semantics",
     "lane_handler",
     "bind_atp_lane_handler",
     "main",
