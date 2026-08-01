@@ -559,12 +559,24 @@ def test_directory_output_still_missing_without_descendant_changes() -> None:
     assert "Still required outputs" in review.next_attempt_prompt_addendum
 
 
-def test_implementation_prompt_policy_appendix_includes_admission_budgets() -> None:
+def test_implementation_prompt_policy_appendix_includes_admission_budgets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES,
         PortalImplementationDaemon,
         PortalTask,
     )
+    from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+        VALIDATION_PATH_ENV,
+        canonical_validation_environment_contract,
+    )
 
+    monkeypatch.setenv(
+        "PATH",
+        "/home/test/.elan/bin:/home/test/.local/theorem-provers/bin",
+    )
+    monkeypatch.delenv(VALIDATION_PATH_ENV, raising=False)
     task = PortalTask(
         task_id="LIG-016",
         title="Integration test for end-to-end admissibility",
@@ -589,9 +601,53 @@ def test_implementation_prompt_policy_appendix_includes_admission_budgets() -> N
     assert "directory trees" in appendix
     assert "2000000" in appendix
     assert "2500000" in appendix
-    assert "1000000" in appendix
+    assert str(DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES) in appendix
     assert "tests/fixtures/logic/admissibility" in appendix
     assert "compact recipes" in appendix
+    contract = canonical_validation_environment_contract()
+    assert (
+        f'`PATH` is exactly "{contract["path"]}"'
+        in appendix
+    )
+    assert "/home/test/.elan/bin" not in appendix
+    assert "inherited `PATH` is ignored" in appendix
+    assert "ipfs-accelerate-validation-home-" in appendix
+    assert "`$HOME/.cache`" in appendix
+    assert "`~/.elan`" in appendix
+    assert "user-writable tool directories are rejected" in appendix
+    assert "never claim usability or weaken mandatory tests" in appendix
+
+
+def test_failure_review_binds_authoritative_validation_environment() -> None:
+    environment_guidance = (
+        "## Authoritative validation environment (fail-closed)\n"
+        '- `PATH` is exactly "/usr/bin:/bin"; inherited `PATH` is ignored.\n'
+        "- `HOME` is private and ephemeral; `XDG_CONFIG_HOME` is under it."
+    )
+    review = review_implementation_failure(
+        task_id="FVT-053",
+        attempt=2,
+        expected_outputs=("formal_verification_toolchain_certificate.json",),
+        changed_paths=("formal_verification_toolchain_certificate.json",),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "failed_commands": [
+                "python -m pytest tests/integration/logic/test_toolchain.py -q"
+            ],
+        },
+        validation_environment_guidance=environment_guidance,
+    )
+
+    assert environment_guidance in review.guidance_markdown
+    assert "Authoritative validation environment:" in (
+        review.next_attempt_prompt_addendum
+    )
+    assert '"/usr/bin:/bin"' in review.next_attempt_prompt_addendum
+    restored = ImplementationFailureReviewReceipt.from_dict(review.to_record())
+    assert restored.receipt_id == review.receipt_id
 
 
 def test_size_guidance_when_only_size_findings() -> None:

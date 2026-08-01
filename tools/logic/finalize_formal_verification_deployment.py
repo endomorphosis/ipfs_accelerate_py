@@ -28,6 +28,8 @@ Contract (fail-closed):
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import importlib.util
 import json
 import os
@@ -271,6 +273,7 @@ def verify_release_candidate_digest_material(
     candidate: Mapping[str, Any] | None,
     *,
     certifier,
+    role_aware_certificate: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Verify the candidate's compact digest projection is self-consistent.
 
@@ -323,8 +326,16 @@ def verify_release_candidate_digest_material(
     tool_checks = _safe_dict(material.get("tool_check_digests"))
     tool_artifacts = _safe_dict(material.get("tool_artifact_digests"))
     semantic_receipts = _safe_dict(material.get("semantic_receipt_digests"))
-    specialized = _safe_dict(
+    specialized_binding = _safe_dict(
         certificate.get("specialized_receipt_aggregation")
+    )
+    specialized = _safe_dict(specialized_binding.get("projection"))
+    specialized_verification = _safe_dict(
+        specialized_binding.get("verification")
+    )
+    bound_certificate = _safe_dict(role_aware_certificate)
+    live_specialized = _safe_dict(
+        bound_certificate.get("specialized_receipt_aggregation")
     )
     certificate_authority = _safe_dict(certificate.get("authority_roles"))
     candidate_authority = _safe_dict(payload.get("roles"))
@@ -335,11 +346,130 @@ def verify_release_candidate_digest_material(
         "tool_check_digests",
         "tool_artifact_digests",
         "semantic_receipt_digests",
-        "specialized_aggregation_digest",
+        "specialized_projection_aggregation_digest",
+        "specialized_source_aggregation_digest",
+        "specialized_projection_handler_digests",
+        "specialized_source_handler_digests",
         "authority_roles_policy_digest",
         "lock_digest",
         "quarantine_digest",
     }
+    expected_handler_keys = {
+        (
+            f"{str(spec.get('property_lane_id') or spec.get('lane_id') or '')}"
+            f"::{str(tool_id)}"
+        )
+        for spec in certifier.SEMANTIC_CERTIFIER_SPECS
+        for tool_id in _safe_list(spec.get("tool_ids"))
+    }
+    specialized_handlers = _safe_dict(
+        specialized.get("specialized_by_handler")
+    )
+    handler_keys = set(str(key) for key in specialized_handlers)
+    projection_handler_digests = {
+        str(handler_key): _safe_dict(handler).get(
+            "tool_evidence_digest_sha256"
+        )
+        for handler_key, handler in sorted(specialized_handlers.items())
+    }
+    source_handler_digests = {
+        str(handler_key): _safe_dict(handler).get(
+            "source_tool_evidence_digest_sha256"
+        )
+        for handler_key, handler in sorted(specialized_handlers.items())
+    }
+    handler_self_digests_valid = bool(
+        handler_keys == expected_handler_keys
+        and len(specialized_handlers) == len(expected_handler_keys)
+        and all(
+            _is_sha256(
+                _safe_dict(handler).get(
+                    "tool_evidence_digest_sha256"
+                ),
+                prefixed=False,
+            )
+            and _safe_dict(handler).get(
+                "tool_evidence_digest_sha256"
+            )
+            == certifier.content_digest(
+                {
+                    key: value
+                    for key, value in _safe_dict(handler).items()
+                    if key != "tool_evidence_digest_sha256"
+                }
+            )
+            and _is_sha256(
+                _safe_dict(handler).get(
+                    "source_tool_evidence_digest_sha256"
+                ),
+                prefixed=False,
+            )
+            for handler in specialized_handlers.values()
+        )
+    )
+    expected_composites: dict[str, set[str]] = {}
+    for spec in certifier.SEMANTIC_CERTIFIER_SPECS:
+        property_lane_id = str(
+            spec.get("property_lane_id")
+            or spec.get("lane_id")
+            or ""
+        )
+        expected_composites.setdefault(property_lane_id, set()).update(
+            f"{property_lane_id}::{str(tool_id)}"
+            for tool_id in _safe_list(spec.get("tool_ids"))
+        )
+    composites = _safe_dict(specialized.get("composite_lanes"))
+    composite_handler_occurrences: list[str] = []
+    composite_rows_valid = bool(
+        set(str(key) for key in composites)
+        == set(expected_composites)
+        and len(composites) == len(expected_composites) == 9
+    )
+    for lane_id, expected_keys in sorted(expected_composites.items()):
+        row = _safe_dict(composites.get(lane_id))
+        observed_keys = [
+            str(item)
+            for item in _safe_list(row.get("handler_keys"))
+        ]
+        composite_handler_occurrences.extend(observed_keys)
+        if not (
+            row.get("property_lane_id") == lane_id
+            and set(observed_keys) == expected_keys
+            and len(observed_keys) == len(set(observed_keys))
+            and _is_sha256(
+                row.get("digest_sha256"),
+                prefixed=False,
+            )
+        ):
+            composite_rows_valid = False
+    composite_coverage_valid = bool(
+        composite_rows_valid
+        and len(composite_handler_occurrences)
+        == len(expected_handler_keys)
+        and len(composite_handler_occurrences)
+        == len(set(composite_handler_occurrences))
+        and set(composite_handler_occurrences)
+        == expected_handler_keys
+    )
+    projection_digest_computed = certifier.content_digest(
+        {
+            key: value
+            for key, value in specialized.items()
+            if key != "aggregation_digest_sha256"
+        }
+    )
+    bound_certificate_digest_valid = bool(
+        bound_certificate.get("certificate_digest_sha256")
+        and bound_certificate.get("certificate_digest_sha256")
+        == certifier.content_digest(
+            {
+                key: value
+                for key, value in bound_certificate.items()
+                if key != "certificate_digest_sha256"
+            }
+        )
+    )
+
     checks = {
         "required_keys_complete": required_keys <= set(material),
         "certificate_digest_well_formed": _is_sha256(
@@ -348,6 +478,11 @@ def verify_release_candidate_digest_material(
         "certificate_digest_matches_projection": (
             material.get("certificate_digest_sha256")
             == certificate.get("certificate_digest_sha256")
+        ),
+        "certificate_digest_matches_bound_certificate": bool(
+            bound_certificate_digest_valid
+            and material.get("certificate_digest_sha256")
+            == bound_certificate.get("certificate_digest_sha256")
         ),
         "tool_ids_unique": bool(projected_tools) and unique_tool_ids,
         "tool_check_digests_well_formed": bool(tool_checks)
@@ -373,14 +508,95 @@ def verify_release_candidate_digest_material(
         "semantic_receipt_digests_match_projection": (
             semantic_receipts == expected_semantic_receipts
         ),
-        "specialized_aggregation_digest_well_formed": _is_sha256(
-            material.get("specialized_aggregation_digest"), prefixed=False
+        "specialized_projection_aggregation_digest_well_formed": _is_sha256(
+            material.get(
+                "specialized_projection_aggregation_digest"
+            ),
+            prefixed=False,
         ),
-        "specialized_aggregation_digest_matches_projection": (
-            material.get("specialized_aggregation_digest")
-            == (
-                specialized.get("aggregation_digest_sha256")
-                or specialized.get("digest_sha256")
+        "specialized_projection_aggregation_digest_recomputed": (
+            material.get(
+                "specialized_projection_aggregation_digest"
+            )
+            == specialized.get("aggregation_digest_sha256")
+            == projection_digest_computed
+        ),
+        "specialized_source_aggregation_digest_well_formed": _is_sha256(
+            material.get("specialized_source_aggregation_digest"),
+            prefixed=False,
+        ),
+        "specialized_source_aggregation_digest_matches_projection": (
+            material.get("specialized_source_aggregation_digest")
+            == specialized.get(
+                "source_aggregation_digest_sha256"
+            )
+        ),
+        "specialized_handler_population_exact": (
+            handler_keys == expected_handler_keys
+            and len(specialized_handlers)
+            == len(expected_handler_keys)
+        ),
+        "specialized_handler_self_digests_recomputed": (
+            handler_self_digests_valid
+        ),
+        "specialized_composite_coverage_exact": (
+            composite_coverage_valid
+        ),
+        "specialized_projection_handler_digests_match": (
+            _safe_dict(
+                material.get(
+                    "specialized_projection_handler_digests"
+                )
+            )
+            == projection_handler_digests
+        ),
+        "specialized_source_handler_digests_match": (
+            _safe_dict(
+                material.get(
+                    "specialized_source_handler_digests"
+                )
+            )
+            == source_handler_digests
+        ),
+        "specialized_projection_matches_live_certificate": bool(
+            live_specialized and specialized == live_specialized
+        ),
+        "specialized_source_binding_matches_live_certificate": bool(
+            live_specialized
+            and material.get("specialized_source_aggregation_digest")
+            == live_specialized.get(
+                "source_aggregation_digest_sha256"
+            )
+            and source_handler_digests
+            == {
+                str(handler_key): _safe_dict(handler).get(
+                    "source_tool_evidence_digest_sha256"
+                )
+                for handler_key, handler in sorted(
+                    _safe_dict(
+                        live_specialized.get(
+                            "specialized_by_handler"
+                        )
+                    ).items()
+                )
+            }
+        ),
+        "specialized_fvt066_independent_audit_bound": bool(
+            specialized_verification.get("projection_valid") is True
+            and specialized_verification.get("source_valid") is True
+            and specialized_verification.get(
+                "source_matches_independent_reconstruction"
+            )
+            is True
+            and specialized_verification.get(
+                "projection_aggregation_digest_sha256"
+            )
+            == specialized.get("aggregation_digest_sha256")
+            and specialized_verification.get(
+                "source_aggregation_digest_sha256"
+            )
+            == specialized.get(
+                "source_aggregation_digest_sha256"
             )
         ),
         "authority_roles_policy_digest_well_formed": _is_sha256(
@@ -396,12 +612,28 @@ def verify_release_candidate_digest_material(
         "lock_digest_well_formed": _is_sha256(
             material.get("lock_digest"), prefixed=False
         ),
+        "lock_digest_matches_live_certificate": (
+            material.get("lock_digest")
+            == _safe_dict(bound_certificate.get("lock")).get(
+                "digest_sha256"
+            )
+        ),
         "quarantine_digest_well_formed": _is_sha256(
             material.get("quarantine_digest"), prefixed=False
         ),
         "quarantine_digest_matches_projection": (
             material.get("quarantine_digest")
             == certifier.content_digest(quarantines)
+        ),
+        "quarantine_digest_matches_live_certificate": (
+            material.get("quarantine_digest")
+            == certifier.content_digest(
+                _safe_list(
+                    bound_certificate.get(
+                        "disagreement_quarantines"
+                    )
+                )
+            )
         ),
     }
     failures = sorted(key for key, passed in checks.items() if not passed)
@@ -440,6 +672,9 @@ def bind_release_candidate(
         repo_root=repo_root,
         role_aware_certificate=live_certificate,
     )
+    checked_certificate = load_json(
+        repo_root / DEFAULT_TOOLCHAIN_CERT_RELATIVE
+    )
     live_identity = str(live.get("candidate_identity") or "")
     checked_identity = (
         str(checked.get("candidate_identity") or "") if isinstance(checked, Mapping) else ""
@@ -465,6 +700,7 @@ def bind_release_candidate(
     digest_material = verify_release_candidate_digest_material(
         checked,
         certifier=certifier,
+        role_aware_certificate=checked_certificate,
     )
     # Live recompute may drift with host tools; the durable gate is that the
     # checked-in candidate is content-addressed, names G213 correctly, and has
@@ -597,6 +833,34 @@ def _event_content_id(event: Mapping[str, Any]) -> str:
     return content_digest(body)
 
 
+def _is_canonical_supervisor_task_cid(value: Any) -> bool:
+    """Accept only canonical CIDv1/dag-json/sha2-256 task identities."""
+
+    text = str(value or "")
+    if (
+        not text
+        or text != text.lower()
+        or not text.startswith("b")
+        or not re.fullmatch(r"b[a-z2-7]+", text)
+    ):
+        return False
+    encoded = text[1:]
+    padding = "=" * ((8 - len(encoded) % 8) % 8)
+    try:
+        raw = base64.b32decode(
+            (encoded + padding).upper(),
+            casefold=False,
+        )
+    except (ValueError, binascii.Error):
+        return False
+    # CIDv1 (0x01), dag-json (0x0129 varint), sha2-256 (0x12), 32 bytes
+    # (0x20), followed by the exact digest.
+    return bool(
+        len(raw) == 37
+        and raw[:5] == b"\x01\xa9\x02\x12\x20"
+    )
+
+
 def _derive_commit_binding(
     *,
     repo_root: Path,
@@ -717,6 +981,8 @@ def verify_g213_terminal_evidence(
         "merge": {},
         "member_completion_receipts": [],
         "commit_binding": {},
+        "assumed_completion_references": [],
+        "assumed_completion_rejected": False,
         "claims_current_task_future_event": False,
         "block_reasons": block_reasons,
         "snapshot_digest_sha256": None,
@@ -753,6 +1019,69 @@ def verify_g213_terminal_evidence(
     result["canonical_task_key"] = expected_key or None
     if not expected_cid or not expected_key:
         block_reasons.append("canonical_task_identity_missing")
+    if expected_cid and not _is_canonical_supervisor_task_cid(
+        expected_cid
+    ):
+        block_reasons.append("canonical_task_cid_not_strict_cidv1")
+
+    task_state = _safe_dict(payload.get("task_state"))
+    assumed_references = sorted(
+        {
+            str(reference)
+            for source in (
+                payload.get("assumed_completed_task_ids"),
+                task_state.get("assumed_completed_task_ids"),
+            )
+            for reference in _safe_list(source)
+            if str(reference)
+        }
+    )
+    raw_assumed_counts = (
+        payload.get("assumed_completed_count"),
+        task_state.get("assumed_completed_count"),
+    )
+    parsed_assumed_counts = [
+        value
+        for value in raw_assumed_counts
+        if isinstance(value, int)
+        and not isinstance(value, bool)
+        and value >= 0
+    ]
+    invalid_assumed_count = any(
+        value is not None
+        and (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+        )
+        for value in raw_assumed_counts
+    )
+    assumed_count = max(
+        *parsed_assumed_counts,
+        len(assumed_references),
+        int(invalid_assumed_count),
+    )
+    result["assumed_completion_references"] = assumed_references
+    target_assumed_references = sorted(
+        set(assumed_references)
+        & {
+            RELEASE_CANDIDATE_TASK_ID,
+            RELEASE_CANDIDATE_GOAL_ID,
+            expected_cid,
+            expected_key,
+        }
+    )
+    result["assumed_completion_count"] = assumed_count
+    result["target_assumed_completion_references"] = (
+        target_assumed_references
+    )
+    result["assumed_completion_rejected"] = bool(
+        target_assumed_references or invalid_assumed_count
+    )
+    if target_assumed_references or invalid_assumed_count:
+        block_reasons.append(
+            "g213_target_assumed_completion_forbidden"
+        )
 
     chain = _safe_dict(payload.get("event_chain"))
     events = [
@@ -783,11 +1112,31 @@ def verify_g213_terminal_evidence(
             chain_errors.append(f"event_{index}:canonical_task_cid_mismatch")
         if expected_key and str(event.get("canonical_task_key") or "") != expected_key:
             chain_errors.append(f"event_{index}:canonical_task_key_mismatch")
+        if (
+            event.get("assumed_completed") is True
+            or str(event.get("completion_basis") or "").lower()
+            in {"assumed", "assumed_completed", "legacy_assumption"}
+            or str(event.get("type") or "").lower()
+            in {"assumed_completed", "implementation_assumed_complete"}
+        ):
+            chain_errors.append(
+                f"event_{index}:assumed_completion_forbidden"
+            )
         previous_sequence = sequence if isinstance(sequence, int) else previous_sequence
         previous_event_id = event_id
 
+    chain_projection_matches = bool(
+        chain
+        and chain.get("valid") is True
+        and chain.get("event_count") == len(events)
+        and chain.get("last_sequence") == previous_sequence
+        and chain.get("last_event_id") == (previous_event_id or None)
+        and not _safe_list(chain.get("errors"))
+    )
+    if not chain_projection_matches:
+        chain_errors.append("declared_event_chain_projection_mismatch")
     event_chain_valid = bool(events) and not chain_errors and (
-        chain.get("valid") is True if chain else True
+        chain_projection_matches
     )
     result["event_chain"] = {
         "valid": event_chain_valid,
@@ -842,13 +1191,37 @@ def verify_g213_terminal_evidence(
             target_branch=str(merge.get("target_branch") or ""),
             integration_proof=integration_proof,
         )
-        receipts = [
+        receipt_candidates = [
             dict(receipt)
             for receipt in _safe_list(event.get("completion_receipts"))
             if isinstance(receipt, Mapping)
             and receipt.get("schema") == SUPERVISOR_COMPLETION_SCHEMA
-            and receipt.get("status") == "succeeded"
             and str(receipt.get("task_id") or "") == RELEASE_CANDIDATE_TASK_ID
+        ]
+        assumed_receipts = [
+            receipt
+            for receipt in receipt_candidates
+            if (
+                receipt.get("assumed_completed") is True
+                or receipt.get("legacy") is True
+                or str(receipt.get("completion_basis") or "").lower()
+                in {"assumed", "assumed_completed", "legacy_assumption"}
+                or str(receipt.get("status") or "").lower()
+                in {"assumed", "assumed_completed"}
+            )
+        ]
+        if assumed_receipts:
+            block_reasons.append(
+                "g213_assumed_completion_receipt_forbidden"
+            )
+        receipts = [
+            receipt
+            for receipt in receipt_candidates
+            if receipt.get("status") == "succeeded"
+            and not assumed_receipts
+            and _is_canonical_supervisor_task_cid(
+                receipt.get("canonical_task_cid")
+            )
             and (
                 not expected_cid
                 or str(receipt.get("canonical_task_cid") or "") == expected_cid
@@ -1577,7 +1950,10 @@ def build_post_merge_attestation(
         "platform_exceptions": platform_exceptions,
         "artifacts": artifacts,
         "claims": {
-            "merge": bool(terminal.get("bound")),
+            "merge": bool(
+                terminal.get("bound")
+                and candidate_merge_binding.get("bound")
+            ),
             "deployment": bool(all_ready),
             "post_merge_attestation": bool(all_ready),
             "self_referential_current_tree": False,

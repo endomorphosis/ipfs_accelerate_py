@@ -79,16 +79,33 @@ def builder():
 
 
 @pytest.fixture(scope="module")
-def certificate(certifier) -> dict[str, Any]:
-    return certifier.build_certificate(repo_root=REPO_ROOT, role_aware=True)
+def certificate_bundle(certifier) -> tuple[dict[str, Any], dict[str, Any]]:
+    full_evidence: dict[str, Any] = {}
+    certificate = certifier.build_certificate(
+        repo_root=REPO_ROOT,
+        role_aware=True,
+        full_evidence_out=full_evidence,
+    )
+    return certificate, full_evidence
 
 
 @pytest.fixture(scope="module")
-def candidate(builder, certificate) -> dict[str, Any]:
+def certificate(certificate_bundle) -> dict[str, Any]:
+    return certificate_bundle[0]
+
+
+@pytest.fixture(scope="module")
+def source_specialized(certificate_bundle) -> dict[str, Any]:
+    return certificate_bundle[1]["specialized_receipt_aggregation"]
+
+
+@pytest.fixture(scope="module")
+def candidate(builder, certificate, source_specialized) -> dict[str, Any]:
     return builder.build_role_aware_release_candidate(
         repo_root=REPO_ROOT,
         observed_at="2026-08-01T00:00:00Z",
         role_aware_certificate=certificate,
+        source_specialized_receipt_aggregation=source_specialized,
     )
 
 
@@ -149,8 +166,13 @@ def test_candidate_is_compact_not_bulk_certificate_dump(
         assert set(lane["per_tool_bindings"]) == set(
             (lanes_by_id[lane["lane_id"]].get("per_tool") or {}).keys()
         )
-    assert "specialized_by_handler" not in bound.get(
-        "specialized_receipt_aggregation", {}
+    specialized = bound["specialized_receipt_aggregation"]
+    assert "source_specialized_receipt_aggregation" not in specialized
+    projection = specialized["projection"]
+    assert len(projection["specialized_by_handler"]) == 21
+    assert all(
+        "checks" not in handler
+        for handler in projection["specialized_by_handler"].values()
     )
     for tool in bound.get("tools") or []:
         assert "checks" not in tool
@@ -161,6 +183,7 @@ def test_compact_projection_retains_lane_tool_and_handler_digest_bindings(
     certifier,
     candidate: dict[str, Any],
     certificate: dict[str, Any],
+    source_specialized: dict[str, Any],
 ) -> None:
     """Every compact row remains independently tied to its full evidence."""
 
@@ -182,26 +205,462 @@ def test_compact_projection_retains_lane_tool_and_handler_digest_bindings(
                 certifier.content_digest(per_tool)
             )
 
-    full_specialized = certificate["specialized_receipt_aggregation"]
-    compact_specialized = bound["specialized_receipt_aggregation"]
-    assert compact_specialized["aggregation_digest_sha256"] == (
-        full_specialized["aggregation_digest_sha256"]
+    compact_specialized = certificate["specialized_receipt_aggregation"]
+    bound_specialized = bound["specialized_receipt_aggregation"]
+    projection = bound_specialized["projection"]
+    verification = bound_specialized["verification"]
+    assert projection == compact_specialized
+    assert verification["projection_valid"] is True
+    assert verification["source_valid"] is True
+    assert verification["independent_full_evidence_valid"] is True
+    assert verification["handler_population_valid"] is True
+    assert verification["source_handler_population_valid"] is True
+    assert verification["expected_handler_count"] == 21
+    assert verification["handler_count"] == 21
+    assert verification["failures"] == []
+
+    projection_body = {
+        key: value
+        for key, value in projection.items()
+        if key != "aggregation_digest_sha256"
+    }
+    assert projection["aggregation_digest_sha256"] == (
+        certifier.content_digest(projection_body)
     )
-    assert compact_specialized["aggregation_digest_valid"] is True
-    full_handlers = full_specialized["specialized_by_handler"]
-    assert set(compact_specialized["handlers"]) == set(full_handlers)
-    for handler_key, handler in full_handlers.items():
-        compact_handler = compact_specialized["handlers"][handler_key]
-        assert compact_handler["tool_evidence_digest_sha256"] == handler[
-            "tool_evidence_digest_sha256"
-        ]
-        assert compact_handler["tool_evidence_digest_valid"] is True
-        assert compact_handler["check_set_digest_sha256"] == handler[
-            "check_set_digest_sha256"
-        ]
-        assert compact_handler["raw_receipt_digest"] == handler[
-            "raw_receipt_digest"
-        ]
+    assert projection["source_aggregation_digest_sha256"] == (
+        source_specialized["aggregation_digest_sha256"]
+    )
+
+    compact_handlers = projection["specialized_by_handler"]
+    source_handlers = source_specialized["specialized_by_handler"]
+    assert set(compact_handlers) == set(source_handlers)
+    assert set(verification["handlers"]) == set(compact_handlers)
+    assert len(compact_handlers) == 21
+    for handler_key, handler in compact_handlers.items():
+        source_handler = source_handlers[handler_key]
+        handler_body = {
+            key: value
+            for key, value in handler.items()
+            if key != "tool_evidence_digest_sha256"
+        }
+        source_body = {
+            key: value
+            for key, value in source_handler.items()
+            if key != "tool_evidence_digest_sha256"
+        }
+        assert handler["tool_evidence_digest_sha256"] == (
+            certifier.content_digest(handler_body)
+        )
+        assert handler["source_tool_evidence_digest_sha256"] == (
+            source_handler["tool_evidence_digest_sha256"]
+        )
+        assert source_handler["tool_evidence_digest_sha256"] == (
+            certifier.content_digest(source_body)
+        )
+        handler_check = verification["handlers"][handler_key]
+        assert handler_check[
+            "projection_tool_evidence_digest_valid"
+        ] is True
+        assert handler_check[
+            "source_tool_evidence_digest_verified"
+        ] is True
+        assert handler_check["mapping_valid"] is True
+        assert handler_check["receipt_binding_valid"] is True
+
+    composite_handlers = [
+        handler_key
+        for composite in projection["composite_lanes"].values()
+        for handler_key in composite["handler_keys"]
+    ]
+    assert len(projection["composite_lanes"]) == 9
+    assert len(composite_handlers) == 21
+    assert set(composite_handlers) == set(compact_handlers)
+    assert projection["enabled"] is True
+    assert projection["lossless"] is True
+    for handler_key, source_handler in source_handlers.items():
+        assert compact_handlers[handler_key]["identity_digest_sha256"] == (
+            certifier.content_digest(source_handler["identity"])
+        )
+
+
+def test_source_digest_provenance_is_not_treated_as_verified_without_source(
+    builder,
+    certificate: dict[str, Any],
+) -> None:
+    checked = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=certificate,
+    )
+    verification = checked["role_aware_certificate"][
+        "specialized_receipt_aggregation"
+    ]["verification"]
+    assert verification["projection_valid"] is True
+    assert verification["source_evidence_supplied"] is False
+    assert verification["source_valid"] is False
+    assert all(
+        row["source_tool_evidence_digest_verified"] is False
+        for row in verification["handlers"].values()
+    )
+    assert checked["acceptance"][
+        "specialized_source_evidence_independently_verified"
+    ] is False
+    assert "specialized_source_evidence_independently_verified" in checked[
+        "blockers"
+    ]
+
+
+def test_specialized_projection_mutation_and_population_loss_fail_closed(
+    certifier,
+    builder,
+    certificate: dict[str, Any],
+    source_specialized: dict[str, Any],
+) -> None:
+    mutated = copy.deepcopy(certificate)
+    specialized = mutated["specialized_receipt_aggregation"]
+    handler_key = sorted(specialized["specialized_by_handler"])[0]
+    specialized["specialized_by_handler"][handler_key]["tool_id"] = "forged"
+    specialized["aggregation_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in specialized.items()
+            if key != "aggregation_digest_sha256"
+        }
+    )
+    mutated["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in mutated.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    checked = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=mutated,
+        source_specialized_receipt_aggregation=source_specialized,
+    )
+    verification = checked["role_aware_certificate"][
+        "specialized_receipt_aggregation"
+    ]["verification"]
+    assert verification["projection_valid"] is False
+    assert any(
+        "handler_mapping_mismatch" in failure
+        or "projection_handler_digest_mismatch" in failure
+        for failure in verification["failures"]
+    )
+
+    dropped = copy.deepcopy(certificate)
+    dropped_specialized = dropped["specialized_receipt_aggregation"]
+    dropped_specialized["specialized_by_handler"].pop(handler_key)
+    dropped_specialized["aggregation_digest_sha256"] = (
+        certifier.content_digest(
+            {
+                key: value
+                for key, value in dropped_specialized.items()
+                if key != "aggregation_digest_sha256"
+            }
+        )
+    )
+    dropped["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in dropped.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    dropped_candidate = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=dropped,
+        source_specialized_receipt_aggregation=source_specialized,
+    )
+    dropped_verification = dropped_candidate["role_aware_certificate"][
+        "specialized_receipt_aggregation"
+    ]["verification"]
+    assert dropped_verification["handler_population_valid"] is False
+    assert dropped_verification["projection_valid"] is False
+
+    forged_identity = copy.deepcopy(certificate)
+    forged_specialized = forged_identity["specialized_receipt_aggregation"]
+    forged_handler = forged_specialized["specialized_by_handler"][
+        handler_key
+    ]
+    forged_handler["identity_digest_sha256"] = "f" * 64
+    forged_handler["tool_evidence_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in forged_handler.items()
+            if key != "tool_evidence_digest_sha256"
+        }
+    )
+    forged_specialized["aggregation_digest_sha256"] = (
+        certifier.content_digest(
+            {
+                key: value
+                for key, value in forged_specialized.items()
+                if key != "aggregation_digest_sha256"
+            }
+        )
+    )
+    forged_identity["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in forged_identity.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    forged_candidate = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=forged_identity,
+        source_specialized_receipt_aggregation=source_specialized,
+    )
+    forged_verification = forged_candidate["role_aware_certificate"][
+        "specialized_receipt_aggregation"
+    ]["verification"]
+    assert forged_verification["projection_valid"] is True
+    assert forged_verification["compact_projection_matches_source"] is False
+    assert forged_verification["source_valid"] is False
+
+    forged_composite = copy.deepcopy(certificate)
+    forged_specialized = forged_composite[
+        "specialized_receipt_aggregation"
+    ]
+    composite = next(iter(forged_specialized["composite_lanes"].values()))
+    composite["handler_keys"] = list(composite["handler_keys"])[:-1]
+    forged_specialized["aggregation_digest_sha256"] = (
+        certifier.content_digest(
+            {
+                key: value
+                for key, value in forged_specialized.items()
+                if key != "aggregation_digest_sha256"
+            }
+        )
+    )
+    forged_composite["certificate_digest_sha256"] = (
+        certifier.content_digest(
+            {
+                key: value
+                for key, value in forged_composite.items()
+                if key != "certificate_digest_sha256"
+            }
+        )
+    )
+    forged_composite_candidate = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=forged_composite,
+        source_specialized_receipt_aggregation=source_specialized,
+    )
+    composite_verification = forged_composite_candidate[
+        "role_aware_certificate"
+    ]["specialized_receipt_aggregation"]["verification"]
+    assert composite_verification[
+        "composite_handler_coverage_valid"
+    ] is False
+    assert composite_verification["projection_valid"] is False
+
+
+def test_mutated_full_specialized_source_never_verifies(
+    builder,
+    certificate: dict[str, Any],
+    source_specialized: dict[str, Any],
+) -> None:
+    mutated_source = copy.deepcopy(source_specialized)
+    handler_key = sorted(mutated_source["specialized_by_handler"])[0]
+    mutated_source["specialized_by_handler"][handler_key]["tool_id"] = "forged"
+    checked = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=certificate,
+        source_specialized_receipt_aggregation=mutated_source,
+    )
+    verification = checked["role_aware_certificate"][
+        "specialized_receipt_aggregation"
+    ]["verification"]
+    assert verification["projection_valid"] is True
+    assert verification["source_valid"] is False
+    assert verification["independent_full_evidence_valid"] is False
+    assert checked["acceptance"][
+        "specialized_receipt_aggregation_bound"
+    ] is False
+
+
+def test_self_rehashed_full_specialized_forgery_is_not_independent_evidence(
+    certifier,
+    builder,
+    certificate: dict[str, Any],
+    source_specialized: dict[str, Any],
+) -> None:
+    """A digest-consistent source rewrite still differs from reconstruction."""
+
+    forged_source = copy.deepcopy(source_specialized)
+    handler_key, handler = next(
+        (
+            key,
+            row,
+        )
+        for key, row in forged_source["specialized_by_handler"].items()
+        if row.get("cases")
+    )
+    handler["cases"][0]["status"] = "forged_pass"
+    handler["tool_evidence_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in handler.items()
+            if key != "tool_evidence_digest_sha256"
+        }
+    )
+    forged_source["aggregation_digest_sha256"] = (
+        builder._specialized_source_aggregation_digest(
+            certifier,
+            forged_source,
+        )
+    )
+
+    forged_certificate = copy.deepcopy(certificate)
+    forged_certificate["specialized_receipt_aggregation"] = (
+        certifier._compact_specialized_receipt_aggregation(
+            forged_source
+        )
+    )
+    forged_certificate["certificate_digest_sha256"] = (
+        certifier.content_digest(
+            {
+                key: value
+                for key, value in forged_certificate.items()
+                if key != "certificate_digest_sha256"
+            }
+        )
+    )
+    checked = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=forged_certificate,
+        source_specialized_receipt_aggregation=forged_source,
+    )
+    verification = checked["role_aware_certificate"][
+        "specialized_receipt_aggregation"
+    ]["verification"]
+    assert verification["projection_valid"] is True
+    assert verification[
+        "source_aggregation_digest_verified"
+    ] is True
+    assert verification[
+        "source_matches_independent_reconstruction"
+    ] is False
+    assert verification["source_valid"] is False
+    assert (
+        "specialized:source_not_independently_reconstructed"
+        in verification["failures"]
+    )
+    assert handler_key in verification["handlers"]
+
+
+def test_self_rehashed_receipt_platform_and_global_authority_forgery_fail_closed(
+    certifier,
+    builder,
+    certificate: dict[str, Any],
+) -> None:
+    forged_receipt = copy.deepcopy(certificate)
+    lane = next(
+        row
+        for row in forged_receipt["semantic_lane_results"]
+        if row.get("status") == "ran"
+        and isinstance(row.get("receipt"), dict)
+    )
+    lane["interface"] = "ForgedSemanticReceipt@1"
+    lane["receipt"]["interface"] = "ForgedSemanticReceipt@1"
+    for digest_field in (
+        "receipt_digest_sha256",
+        "certificate_digest_sha256",
+        "digest_sha256",
+    ):
+        if digest_field in lane["receipt"]:
+            lane["receipt"][digest_field] = certifier.content_digest(
+                {
+                    key: value
+                    for key, value in lane["receipt"].items()
+                    if key != digest_field
+                }
+            )
+    lane["digest_sha256"] = certifier.content_digest(lane["receipt"])
+    forged_receipt["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in forged_receipt.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    checked_receipt = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=forged_receipt,
+    )
+    assert checked_receipt["semantic_audit"]["valid"] is False
+    assert any(
+        "interface_mismatch" in failure
+        for failure in checked_receipt["semantic_audit"]["failures"]
+    )
+
+    forged_platform = copy.deepcopy(certificate)
+    managed = forged_platform["managed_deployment_readiness"]
+    managed["ready"] = True
+    managed["status"] = "all_supported_managed_capabilities_ready"
+    managed["capability_blockers"] = []
+    managed["dependency_blockers"] = []
+    managed["all_blockers"] = []
+    forged_platform["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in forged_platform.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    checked_platform = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=forged_platform,
+    )
+    platform_audit = checked_platform["platform_support_audit"]
+    assert platform_audit["valid"] is False
+    assert "managed_blockers_or_ready_not_derived" in platform_audit[
+        "failures"
+    ]
+
+    forged_authority = copy.deepcopy(certificate)
+    tool = next(
+        row
+        for row in forged_authority["tools"]
+        if row["tool_id"] == "java"
+    )
+    tool["production_certified"] = True
+    production_ids = forged_authority["promotion"][
+        "production_certified_tool_ids"
+    ]
+    production_ids.append("java")
+    production_ids.sort()
+    forged_authority["certificate_digest_sha256"] = (
+        certifier.content_digest(
+            {
+                key: value
+                for key, value in forged_authority.items()
+                if key != "certificate_digest_sha256"
+            }
+        )
+    )
+    checked_authority = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=forged_authority,
+    )
+    elevation_audit = checked_authority["required_elevation_audit"]
+    assert elevation_audit["valid"] is False
+    assert (
+        "global_production_authority_not_independently_derived"
+        in elevation_audit["failures"]
+    )
 
 
 def test_candidate_interface_and_stage_ceiling(
@@ -760,6 +1219,11 @@ def test_checked_in_candidate_is_content_addressed_and_not_false_ready(
 def test_required_elevations_are_disclosed(
     candidate: dict[str, Any],
 ) -> None:
+    assert candidate["required_elevation_audit"]["valid"] is True
+    assert candidate["platform_support_audit"]["valid"] is True
+    assert candidate["required_elevation_audit"][
+        "expected_global_production_certified_tool_ids"
+    ] == candidate["elevations"]["production_certified_tool_ids"]
     assert set(candidate["elevations"]["required"]) == REQUIRED_ELEVATIONS
     missing = set(candidate["elevations"]["missing_required"])
     assert missing <= REQUIRED_ELEVATIONS
@@ -770,22 +1234,43 @@ def test_required_elevations_are_disclosed(
         ] is False
 
 
-def test_semantic_lanes_retain_full_check_sets_when_ran(
+def test_semantic_lanes_bind_canonical_receipts_and_compact_check_sets(
+    certifier,
     certificate: dict[str, Any],
     candidate: dict[str, Any],
 ) -> None:
+    candidate_lanes = {
+        row["lane_id"]: row
+        for row in candidate["role_aware_certificate"][
+            "semantic_lane_results"
+        ]
+    }
     for result in certificate.get("semantic_lane_results") or []:
         if result.get("status") != "ran":
             continue
+        receipt = result.get("receipt")
+        assert isinstance(receipt, dict)
+        assert result["digest_sha256"] == certifier.content_digest(receipt)
         for tool_id, per_tool in (result.get("per_tool") or {}).items():
-            checks = per_tool.get("checks") or []
-            assert REQUIRED_CHECK_KINDS <= {check["kind"] for check in checks}, (
-                tool_id
+            assert "checks" not in per_tool
+            assert REQUIRED_CHECK_KINDS <= set(
+                per_tool["check_kinds_present"]
             )
-    assert candidate["acceptance"]["semantic_receipts_full_and_bound"] is (
-        bool(certificate.get("semantic_lane_results"))
-        or not certificate["role_aware"]["enabled"]
-    )
+            assert re.fullmatch(
+                r"[0-9a-f]{64}",
+                per_tool["check_set_digest_sha256"],
+            )
+            compact_tool = candidate_lanes[result["lane_id"]][
+                "per_tool_bindings"
+            ][tool_id]
+            assert compact_tool["check_set_digest_sha256"] == (
+                per_tool["check_set_digest_sha256"]
+            )
+            assert compact_tool["tool_evidence_digest_sha256"] == (
+                certifier.content_digest(per_tool)
+            )
+    assert candidate["acceptance"]["semantic_receipts_full_and_bound"] is False
+    assert "hyperltl:semantic_lane_not_run" in candidate["blockers"]
 
 
 def test_builder_constants_align_with_goal_packet(builder) -> None:
