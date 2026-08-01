@@ -64,3 +64,36 @@ def test_preloaded_multiformats_preserves_capability_contract(monkeypatch) -> No
     assert cache_module.HAVE_MULTIFORMATS is True
     assert cache_module.CID is FakeCID
     assert cache_module.multiformats_multihash is fake_multihash
+
+
+def test_negative_probe_recovers_after_authorized_provider_load(monkeypatch) -> None:
+    _reset_lazy_state(monkeypatch)
+    monkeypatch.delitem(sys.modules, "multiformats", raising=False)
+    real_import = builtins.__import__
+
+    def blocked_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "multiformats" or name.startswith("multiformats."):
+            raise ModuleNotFoundError(
+                "optional CID provider unavailable",
+                name="multiformats",
+            )
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_import)
+    assert cache_module._ensure_multiformats() is False
+    assert cache_module._MULTIFORMATS_IMPORT_ATTEMPTED is True
+
+    provider = ModuleType("multiformats")
+
+    class InstalledCID:
+        pass
+
+    installed_multihash = object()
+    provider.CID = InstalledCID
+    provider.multihash = installed_multihash
+    monkeypatch.setitem(sys.modules, "multiformats", provider)
+
+    assert cache_module._ensure_multiformats() is True
+    assert cache_module.CID is InstalledCID
+    assert cache_module.multiformats_multihash is installed_multihash
+    assert cache_module.HAVE_MULTIFORMATS is True

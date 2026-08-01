@@ -75,6 +75,24 @@ _MULTIFORMATS_IMPORT_ATTEMPTED = HAVE_MULTIFORMATS
 _MULTIFORMATS_IMPORT_LOCK = Lock()
 
 
+def _adopt_loaded_multiformats() -> bool:
+    """Adopt a provider loaded by an authorized installer in this process."""
+
+    global CID
+    global HAVE_MULTIFORMATS
+    global multiformats_multihash
+
+    loaded = sys.modules.get("multiformats")
+    cid_type = getattr(loaded, "CID", None)
+    multihash_module = getattr(loaded, "multihash", None)
+    if cid_type is None or multihash_module is None:
+        return False
+    CID = cid_type
+    multiformats_multihash = multihash_module
+    HAVE_MULTIFORMATS = True
+    return True
+
+
 def _ensure_multiformats() -> bool:
     """Load the optional content-addressing provider at first real use."""
 
@@ -83,10 +101,19 @@ def _ensure_multiformats() -> bool:
     global multiformats_multihash
     global _MULTIFORMATS_IMPORT_ATTEMPTED
 
+    if HAVE_MULTIFORMATS:
+        return True
+    # A controlled proof-reuse installer may make the provider available after
+    # an earlier negative probe. Positive capability is stable, while cached
+    # absence must not mask that explicit in-process transition.
+    if _adopt_loaded_multiformats():
+        return True
     if _MULTIFORMATS_IMPORT_ATTEMPTED:
         return HAVE_MULTIFORMATS
 
     with _MULTIFORMATS_IMPORT_LOCK:
+        if HAVE_MULTIFORMATS or _adopt_loaded_multiformats():
+            return True
         if _MULTIFORMATS_IMPORT_ATTEMPTED:
             return HAVE_MULTIFORMATS
         try:

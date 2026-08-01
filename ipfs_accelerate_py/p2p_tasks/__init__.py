@@ -61,6 +61,9 @@ _EXPORTS: Final[dict[str, tuple[str, str]]] = {
     "cache_set_sync": ("client", "cache_set_sync"),
     "run_worker": ("worker", "run_worker"),
 }
+_MODULE_EXPORTS: Final = frozenset(
+    {"client", "peer_trust", "protocol", "service", "task_queue", "worker"}
+)
 
 __all__ = list(_EXPORTS)
 
@@ -68,6 +71,10 @@ __all__ = list(_EXPORTS)
 def __getattr__(name: str):
     """Resolve one compatibility export without importing unrelated stacks."""
 
+    if name in _MODULE_EXPORTS:
+        module = importlib.import_module(f"{__name__}.{name}")
+        globals()[name] = module
+        return module
     try:
         module_name, attribute_name = _EXPORTS[name]
     except KeyError:
@@ -79,4 +86,4 @@ def __getattr__(name: str):
 
 
 def __dir__() -> list[str]:
-    return sorted(set(globals()).union(__all__))
+    return sorted(set(globals()).union(__all__).union(_MODULE_EXPORTS))
