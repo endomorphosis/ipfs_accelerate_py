@@ -58,6 +58,8 @@ RELEASE_CANDIDATE_TASK_ID: Final = "FVT-066"
 RELEASE_CANDIDATE_MAX_STAGE: Final = "release_candidate"
 
 # Lossless specialized receipt aggregation (FVT-G203 / FVT-065).
+# FVT-079 re-proves acceptance when path evidence already exists (objective
+# validation repair).
 SPECIALIZED_AGGREGATION_INTERFACE: Final = (
     "FormalVerificationSpecializedReceiptAggregation@1"
 )
@@ -66,6 +68,15 @@ SPECIALIZED_AGGREGATION_SCHEMA: Final = (
 )
 SPECIALIZED_AGGREGATION_GOAL_ID: Final = "FVT-G203"
 SPECIALIZED_AGGREGATION_TASK_ID: Final = "FVT-065"
+SPECIALIZED_AGGREGATION_REPAIR_TASK_ID: Final = "FVT-079"
+SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE: Final = (
+    "objective validation repair"
+)
+SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_COMMAND: Final = (
+    "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py "
+    "test/integration/test_formal_verification_real_tool_matrix.py -q"
+)
 
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 DEFAULT_CERTIFICATE_RELATIVE: Final = Path(
@@ -691,11 +702,23 @@ def _compact_specialized_receipt_aggregation(
         if isinstance(aggregation.get("policy"), Mapping)
         else {}
     )
+    repair_ok = bool(aggregation.get("objective_validation_repair"))
     projected = {
         "schema_version": aggregation.get("schema_version"),
         "interface": aggregation.get("interface"),
         "goal_id": aggregation.get("goal_id"),
         "task_id": aggregation.get("task_id"),
+        "repair_task_id": aggregation.get("repair_task_id")
+        or SPECIALIZED_AGGREGATION_REPAIR_TASK_ID,
+        "objective_validation_evidence": aggregation.get(
+            "objective_validation_evidence"
+        )
+        or SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE,
+        "objective_validation_repair": repair_ok,
+        "objective_validation_command": aggregation.get(
+            "objective_validation_command"
+        )
+        or SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_COMMAND,
         "enabled": bool(
             aggregation.get("interface")
             == SPECIALIZED_AGGREGATION_INTERFACE
@@ -728,6 +751,15 @@ def _compact_specialized_receipt_aggregation(
             "canonical_full_receipts_live_in_semantic_lane_results": True,
             "derived_specialized_rows_are_digest_only": True,
             "source_and_projection_digests_are_distinct": True,
+        },
+        "acceptance": {
+            "objective_validation_repair": repair_ok,
+            "objective_validation_evidence": (
+                SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE
+            ),
+            "repair_task_id": SPECIALIZED_AGGREGATION_REPAIR_TASK_ID,
+            "goal_id": SPECIALIZED_AGGREGATION_GOAL_ID,
+            "task_id": SPECIALIZED_AGGREGATION_TASK_ID,
         },
     }
     projected["aggregation_digest_sha256"] = content_digest(projected)
@@ -2862,12 +2894,39 @@ def aggregate_specialized_receipts(
         "certifier_families_represented": represented_families,
         "missing_certifier_families": missing_families,
     }
+    kernel_tools = list(
+        (composite_lanes.get("kernel") or {}).get("tool_ids") or []
+    )
+    protocol_tools = list(
+        (composite_lanes.get("protocol") or {}).get("tool_ids") or []
+    )
+    kernel_complete = set(COMPOSITE_PROPERTY_LANE_REQUIRED_TOOLS["kernel"]).issubset(
+        kernel_tools
+    )
+    protocol_complete = set(
+        COMPOSITE_PROPERTY_LANE_REQUIRED_TOOLS["protocol"]
+    ).issubset(protocol_tools)
+    # FVT-079 objective validation repair: true only when every required
+    # certifier family is present and composite kernel/protocol tool sets
+    # retain their sibling specialized evidence.
+    objective_validation_repair = (
+        not missing_families and kernel_complete and protocol_complete
+    )
     aggregation: dict[str, Any] = {
         "schema_version": SPECIALIZED_AGGREGATION_SCHEMA,
         "interface": SPECIALIZED_AGGREGATION_INTERFACE,
         "goal_id": SPECIALIZED_AGGREGATION_GOAL_ID,
         "task_id": SPECIALIZED_AGGREGATION_TASK_ID,
+        "repair_task_id": SPECIALIZED_AGGREGATION_REPAIR_TASK_ID,
         "program": PROGRAM,
+        # FVT-079 objective validation repair: re-prove FVT-G203 acceptance.
+        "objective_validation_evidence": (
+            SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE
+        ),
+        "objective_validation_repair": objective_validation_repair,
+        "objective_validation_command": (
+            SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_COMMAND
+        ),
         "policy": {
             "handlers_keyed_by_lane_and_tool": True,
             "lossless": True,
@@ -2889,12 +2948,25 @@ def aggregate_specialized_receipts(
             key: specialized_by_handler[key]
             for key in sorted(specialized_by_handler)
         },
-        "kernel_retained_tool_ids": list(
-            (composite_lanes.get("kernel") or {}).get("tool_ids") or []
-        ),
-        "protocol_retained_tool_ids": list(
-            (composite_lanes.get("protocol") or {}).get("tool_ids") or []
-        ),
+        "kernel_retained_tool_ids": kernel_tools,
+        "protocol_retained_tool_ids": protocol_tools,
+        "acceptance": {
+            "objective_validation_repair": objective_validation_repair,
+            "objective_validation_evidence": (
+                SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE
+            ),
+            "repair_task_id": SPECIALIZED_AGGREGATION_REPAIR_TASK_ID,
+            "goal_id": SPECIALIZED_AGGREGATION_GOAL_ID,
+            "task_id": SPECIALIZED_AGGREGATION_TASK_ID,
+            "handlers_keyed_by_lane_and_tool": True,
+            "lossless": True,
+            "collapse_by_check_kind": False,
+            "sibling_overwrite_forbidden": True,
+            "installers_never_run": True,
+            "kernel_retains_lean_rocq_isabelle": kernel_complete,
+            "protocol_retains_tamarin_proverif": protocol_complete,
+            "all_required_certifiers_represented": not missing_families,
+        },
         "aggregation_digest_sha256": content_digest(digest_components),
     }
     return aggregation
@@ -4325,8 +4397,25 @@ def build_certificate(
             "interface": SPECIALIZED_AGGREGATION_INTERFACE,
             "goal_id": SPECIALIZED_AGGREGATION_GOAL_ID,
             "task_id": SPECIALIZED_AGGREGATION_TASK_ID,
+            "repair_task_id": SPECIALIZED_AGGREGATION_REPAIR_TASK_ID,
+            "objective_validation_evidence": (
+                SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE
+            ),
+            "objective_validation_repair": False,
+            "objective_validation_command": (
+                SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_COMMAND
+            ),
             "enabled": False,
             "reason": "role_aware_elevation_disabled",
+            "acceptance": {
+                "objective_validation_repair": False,
+                "objective_validation_evidence": (
+                    SPECIALIZED_AGGREGATION_OBJECTIVE_VALIDATION_EVIDENCE
+                ),
+                "repair_task_id": SPECIALIZED_AGGREGATION_REPAIR_TASK_ID,
+                "goal_id": SPECIALIZED_AGGREGATION_GOAL_ID,
+                "task_id": SPECIALIZED_AGGREGATION_TASK_ID,
+            },
         }
     )
     specialized_aggregation = (
