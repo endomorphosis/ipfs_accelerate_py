@@ -165,9 +165,61 @@
     "forbid_curl_pipe_shell": true,
     "never_materialize_private_witness_in_public_artifacts": true
   },
+  "live_verifier": {
+    "schema_version": "zkp-live-verifier/v1",
+    "interface": "ZKPLiveVerifierDeployment@1",
+    "goal_id": "FVT-G211",
+    "task_id": "FVT-059",
+    "predecessor_goal_id": "FVT-G190",
+    "predecessor_task_id": "FVT-047",
+    "receipt_path": "docs/architecture/formal_verification_zkp_live_deployment_receipt.json",
+    "certification_surface": "tools.logic.certification.zkp",
+    "execution_mode": "live_cryptographic_verifier",
+    "sample_binding_cannot_satisfy_live_goal": true,
+    "live_execution_required_for_production": true,
+    "fixture_or_schema_only_cannot_satisfy_live_goal": true,
+    "absent_operator_bound_public_artifacts_are_deployment_blockers": true,
+    "never_platform_exception_for_absent_public_artifacts": true,
+    "required_public_identities": [
+      "circuit_id",
+      "circuit_version",
+      "circuit_public_digest",
+      "ceremony_id",
+      "ceremony_digest",
+      "crs_id",
+      "crs_digest",
+      "proving_key_id",
+      "proving_key_digest",
+      "verification_key_id",
+      "verification_key_digest",
+      "public_input_schema_id",
+      "public_input_schema_digest",
+      "backend_id",
+      "backend_version",
+      "backend_mode",
+      "proving_system",
+      "verification_key_expires_at",
+      "max_attestation_ttl_seconds",
+      "revocation_policy_id"
+    ],
+    "required_case_kinds": [
+      "positive",
+      "corrupted_proof",
+      "corrupted_key",
+      "corrupted_public_input",
+      "circuit_mismatch",
+      "mutation",
+      "replay",
+      "stale",
+      "revoked",
+      "secret_safety",
+      "authority"
+    ],
+    "notes": "Distinguish schema-valid sample bindings (FVT-G190) from live verifier execution (FVT-G211). Operator-bound public digests missing from the lock remain deployment blockers, never platform exceptions."
+  },
   "review": {
     "status": "reviewed",
     "reviewed_at": "2026-07-31T00:00:00Z",
-    "review_notes": "Production deployment binding replaces the former circuit_witness install gap with digest-only secret-safe references."
+    "review_notes": "Production deployment binding replaces the former circuit_witness install gap with digest-only secret-safe references. Live verifier deployment receipt is bound at docs/architecture/formal_verification_zkp_live_deployment_receipt.json (FVT-G211)."
   }
 }
