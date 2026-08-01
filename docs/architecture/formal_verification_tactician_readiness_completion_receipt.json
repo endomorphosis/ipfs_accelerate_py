@@ -6,11 +6,11 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-01T18:17:18Z",
+  "observed_at": "2026-08-01T18:20:47Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "a88d2d3497334962714bac6b43834d65ec7311a9",
-    "parent_tree": "ece9718367f4e489fc8594a169bc113338dfd29e",
+    "parent_commit": "020bf21001a70e80474bc4b0de02c64f13767ef8",
+    "parent_tree": "18285864d809a823ac24ee7f556978f5ff9c260e",
     "datasets_gitlink": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
     "datasets_embedded_head": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
     "datasets_origin_main": "1cd68c2127a3e2d807d55a0e147b928c2f4c05dc",
@@ -205,8 +205,8 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "a88d2d3497334962714bac6b43834d65ec7311a9",
-        "tree": "ece9718367f4e489fc8594a169bc113338dfd29e",
+        "commit": "020bf21001a70e80474bc4b0de02c64f13767ef8",
+        "tree": "18285864d809a823ac24ee7f556978f5ff9c260e",
         "origin_main": "805ad0abd6aa78b4ec5e85f72f8961c234f54da7",
         "clean": true,
         "matches_origin_main": false
@@ -3810,5 +3810,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:66e32765617c698bfcfdf840f294e7447af83f462fb60ca705b81e6eae311702"
+  "receipt_identity": "sha256:faf6301ded0089197227084ecadd946b2f06e76805fc4daf4c325d05503b361d"
 }
