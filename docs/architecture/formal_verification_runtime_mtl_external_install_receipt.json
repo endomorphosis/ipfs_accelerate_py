@@ -10,13 +10,13 @@
     "timestamp_boundary",
     "violated"
   ],
-  "certificate_digest_sha256": "2bb94ea3f46204ef9ee9d25ace0a34f69a2dc2b09cdaf2ab1f73acbe1e01b938",
+  "certificate_digest_sha256": "a16e79a7faff4667997a3e8735c25f2de1a964f49644b59eec18d24dd754489d",
   "certified": true,
   "goal_id": "FVT-G210",
   "handler_id": "external_runtime_mtl_vendor_certification@1",
   "hermetic_parity_shadow": {
     "cannot_satisfy_vendor": true,
-    "executable": "/tmp/mtl-vendor-receipt2-sc6v1lso/hermetic-shadow-probe/runtime-mtl-external/runtime-mtl-external/1.0.0-reviewed/bin/runtime-mtl-external",
+    "executable": "<managed-tool-path-redacted>",
     "is_hermetic_parity_engine": true,
     "is_vendor_build": false,
     "non_production_shadow_evidence": true
@@ -46,13 +46,13 @@
     "strict_installation_selects_exact_pin": true
   },
   "program": "formal-verification-tactician/runtime-mtl-external-runtime",
-  "receipt_digest_sha256": "73f6ae87e066cd53a4040492928096daeb43ecca5ac18e20e48c82020139b50a",
+  "receipt_digest_sha256": "166c43d23e2006df8c32c2ebee0b623b353508e9cf055977834bb52ba3dcb15f",
   "runtime_mtl_external": {
     "artifact_sha256": "c24e5f99e3b124c045ee98816ffa8d2cf13190120b00515772f6434aaa664b93",
     "authority_ceiling": "finite_trace",
     "certified": true,
-    "executable": "/tmp/mtl-vendor-receipt2-sc6v1lso/runtime-mtl-vendor/runtime-mtl-external/1.0.0-reviewed/bin/runtime-mtl-external",
-    "executable_digest_sha256": "9b1fb90fa2901b33b1234701265bdbe94a210b4c0fd897569ca3af6c3bf4ed1e",
+    "executable": "<managed-tool-path-redacted>",
+    "executable_digest_sha256": "463c37783df48327cb699770b83dc95f075d8a1d6dd11b52b2663b047dfe34a5",
     "finite_trace_authority_only": true,
     "is_hermetic_parity_engine": false,
     "is_vendor_build": true,

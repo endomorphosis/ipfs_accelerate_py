@@ -5,7 +5,7 @@
   "task_id": "FVT-030",
   "program": "formal-verification-tactician/readiness",
   "description": "Hermetic offline multi-prover certification receipt. Available tools pass live positive/negative/mutation/replay checks with exact identities; absent/mismatched lanes are explicit skips/unavailable and block only their promotion; PATH shims are not usability; certification performs no download/network/install and quarantines disagreement. Role-aware reissue retains Lean, Runtime MTL, and Datalog/SecPAL as usable but non-production; external Rocq and Isabelle remain unavailable until their installation and live fan-in goals are complete.",
-  "observed_at": "2026-08-01T03:20:49Z",
+  "observed_at": "2026-08-01T06:42:51Z",
   "binding_mode": "offline_pinned_live_lanes_role_aware",
   "lock": {
     "path": "config/formal_verification_toolchains.lock.json",
@@ -378,14 +378,16 @@
       ],
       "certified_tool_ids": [],
       "certified_authority_tool_ids": [],
-      "unavailable_tool_ids": [],
+      "unavailable_tool_ids": [
+        "symbolicai"
+      ],
       "blocked_tool_ids": [
         "symbolicai",
         "ergoai"
       ],
       "disagreement_quarantine_ids": [],
       "promotion_ready": false,
-      "notes": ""
+      "notes": "Absent tools block only their own promotion."
     },
     {
       "lane_id": "kernel",
@@ -430,16 +432,14 @@
       ],
       "certified_tool_ids": [],
       "certified_authority_tool_ids": [],
-      "unavailable_tool_ids": [
-        "runtime-mtl-external"
-      ],
+      "unavailable_tool_ids": [],
       "blocked_tool_ids": [
         "runtime-mtl",
         "runtime-mtl-external"
       ],
       "disagreement_quarantine_ids": [],
       "promotion_ready": false,
-      "notes": "Absent tools block only their own promotion."
+      "notes": ""
     },
     {
       "lane_id": "attestation",
@@ -678,7 +678,7 @@
           "detail": "Rocq OPAM root is repository-local and never ~/.opam",
           "evidence": {
             "compacted": true,
-            "digest_sha256": "10b9f6de391edb1887a9cb809ff924e749a28a98e40da9653e80c434bac9da03",
+            "digest_sha256": "ae64f4230dd854bbe27fc72696b5321efd91f57e89c2308a59df5b85b9d44554",
             "residual_keys": [
               "bindings"
             ]
@@ -869,11 +869,11 @@
           "kind": "binding",
           "status": "passed",
           "expected": "imports,source,theorem,assumptions,kernel_identity",
-          "observed": "21f2c33e6ba41cab",
+          "observed": "8a6090775acdb396",
           "detail": "receipt binds every trust-relevant kernel check input",
           "evidence": {
             "compacted": true,
-            "digest_sha256": "b635195f14ad58e3989f3be81de420ab97cebdf88f2e5099c95c6717348c7a8d",
+            "digest_sha256": "4a3a804fe9887b679cc2153445b133d4ff90817dac2f87f944daf5028029faa5",
             "residual_keys": [
               "bindings"
             ]
@@ -901,11 +901,11 @@
         }
       ],
       "semantic_receipt_digests": [
-        "61811eb3259552046b94a720a4d8d58610e10a69183b12d1107c973013cb2e15"
+        "45f7901e6f43cfc877d722edb6faee8f679c6a7eacd59b70e333783ec4c071e3"
       ],
       "evidence_class": "external_prover_installation_pending",
       "notes": "RocqToolchainCertification@1 evidence is fully bound but classified as external_prover_installation_pending; it cannot be relabeled as production proof authority.",
-      "checks_digest_sha256": "a1f465ad52461db34c148dd57726ef91facea34b985ec0cd5e0f3ac55207bd87",
+      "checks_digest_sha256": "07291cc4b148bf36b5f73c953b764e90bb94d08d369c74ba9626b3f88a4e0e0e",
       "checks_projection": "shallow_rows_full_evidence_digest"
     },
     {
@@ -1454,7 +1454,7 @@
         }
       ],
       "semantic_receipt_digests": [
-        "20ed138b70e4e8989fc88f5d79bebdff4a940060e7aaaf955716259cca05ca36"
+        "3765f4ee23e50c9a4e8360f62b890cd60e1170855cbd6ec75d265cd3b28926cd"
       ],
       "evidence_class": "usable_pending_authorization_vendor_fanin",
       "notes": "AuthorizationSemanticCertification@1 evidence is fully bound but classified as usable_pending_authorization_vendor_fanin; it cannot be relabeled as production proof authority.",
@@ -1651,7 +1651,7 @@
           "detail": "strict hermetic selection of locked advisor identities",
           "evidence": {
             "compacted": true,
-            "digest_sha256": "4101190749844dd8b6df08167cc0a39fba48fe75b407f541e6191a430761889d",
+            "digest_sha256": "1d5023605b9f2c54247d1d9151d4cf8a5ae57dd44c59ce7c72d7d8e959def175",
             "residual_keys": [
               "bindings"
             ]
@@ -1748,11 +1748,11 @@
         }
       ],
       "semantic_receipt_digests": [
-        "d7de3ece0f4e44588bdbba6cb83f131741eaed7eb11ce6903e60d85fa5d5d841"
+        "dbb2eb2fc21fad569c149a75c4c2f270a951369e9b9e681da9f99e98433b0447"
       ],
       "evidence_class": "proposal_only_semantics",
       "notes": "AdvisorRoleCertification@1 evidence is fully bound but classified as proposal_only_semantics; it cannot be relabeled as production proof authority.",
-      "checks_digest_sha256": "50e994d161eb49db160f4af989609db7f173808e7ee829de547e0b488d68bd59",
+      "checks_digest_sha256": "b4cb6b374a566b86e11234b785d40be92610ecde7a5063769438844ef80b0d6b",
       "checks_projection": "shallow_rows_full_evidence_digest"
     },
     {
@@ -2282,7 +2282,7 @@
           "detail": "False proof rejected by the kernel",
           "evidence": {
             "compacted": true,
-            "digest_sha256": "497f7ceae0d3e190c1c8446d2c45386cf9b27516778b37daaeec9f2146f6e552",
+            "digest_sha256": "65d654f0f99ce46e640064c8bd49e3ac7693491d727ea1e4db322c7690a7fb7f",
             "residual_keys": [
               "bindings"
             ]
@@ -2297,7 +2297,7 @@
           "detail": "Malformed proof term rejected",
           "evidence": {
             "compacted": true,
-            "digest_sha256": "7dc369ae30e4d8f5503c59cd984ed5bd733563256fa79bb640b238d61d53ce4d",
+            "digest_sha256": "2fa7b1f46295171d461756ba6af83633efbfc1cf54b6d91bbd85c6bf86b400c9",
             "residual_keys": [
               "bindings"
             ]
@@ -2312,7 +2312,7 @@
           "detail": "Hypothesis mutation of the true theorem is rejected",
           "evidence": {
             "compacted": true,
-            "digest_sha256": "68787313ffe24b0db4cb9480e6d0dedea1c9784c944adea146a035db7d71ca91",
+            "digest_sha256": "f727e1c85bde2a9a970d77d8ed098933dbc1de9d2d2f0809fc066963ae9aaea7",
             "residual_keys": [
               "bindings"
             ]
@@ -2327,7 +2327,7 @@
           "detail": "Conclusion mutation of the true theorem is rejected",
           "evidence": {
             "compacted": true,
-            "digest_sha256": "1b2cddef797d0ab1f96ef39493434e6a32e577a94dce2b292bd39c5c043bef4b",
+            "digest_sha256": "b0c98795e9813bbb8b65b1e789df63d1efaa4ee627e1b35d36a252e4a76c3b44",
             "residual_keys": [
               "bindings"
             ]
@@ -2460,11 +2460,11 @@
         }
       ],
       "semantic_receipt_digests": [
-        "dbda920bab9afd2a30b0c2b11e74632ebee6c6ee4fc51c5864f4afd51fe78176"
+        "85b67f0dc7d7a83f75a0b649de5b8146fb994b43a29c5db8175640a02173530e"
       ],
       "evidence_class": "usable_pending_kernel_live_fanin",
       "notes": "LeanSemanticCertification@1 evidence is fully bound but classified as usable_pending_kernel_live_fanin; it cannot be relabeled as production proof authority.",
-      "checks_digest_sha256": "5833939226b9f195b4f4ef28dda97a959ad171a30f960f279a65168f26645066",
+      "checks_digest_sha256": "4150e76c3ffbc1e99ffb0391cfb991f973fa68a22b89463470ad7fa9c639ba50",
       "checks_projection": "shallow_rows_full_evidence_digest"
     },
     {
@@ -3010,12 +3010,12 @@
         {
           "kind": "semantic_certifier_module",
           "path": "tools/logic/certification/runtime_mtl.py",
-          "sha256": "sha256:40f509d3bc712e3ded40d403dd8548ec0d9e03933deb985caf38ba56e044de40",
+          "sha256": "sha256:70e65a44885214daf6ba25756550c1fb3d308d250d62927727ee4012abb8e2b3",
           "artifact_class": "repository_source"
         }
       ],
       "semantic_receipt_digests": [
-        "3a4b27368d96fd0cbee1cd5207c4ecf2cb3b87544bbac6963c0e07681d2ba2e6"
+        "7acd11764e78d8fa9c756e6470ec0e3e6e77e94b83ebb8db30c992c00df9b0e6"
       ],
       "evidence_class": "usable_pending_external_runtime_mtl",
       "notes": "RuntimeMTLSemanticCertification@1 evidence is fully bound but classified as usable_pending_external_runtime_mtl; it cannot be relabeled as production proof authority.",
@@ -3032,62 +3032,679 @@
         "runtime_mtl"
       ],
       "availability_declared": "managed_pin",
-      "executable_path": null,
-      "executable_sha256": null,
-      "executable_artifact_class": "none",
-      "version_string": null,
+      "executable_path": "<host-path-redacted>",
+      "executable_sha256": "sha256:463c37783df48327cb699770b83dc95f075d8a1d6dd11b52b2663b047dfe34a5",
+      "executable_artifact_class": "generated_hermetic_shim",
+      "version_string": "runtime-mtl-external 1.0.0-reviewed (typescript-vendor-engine; RuntimeMTLMonitor@1)",
       "locked_version": "1.0.0-reviewed",
-      "locked_version_mismatch": true,
+      "locked_version_mismatch": false,
       "shim_toolchain_mismatch": false,
-      "path_present": false,
-      "identity_probed": false,
-      "installed": false,
-      "usable": false,
+      "path_present": true,
+      "identity_probed": true,
+      "installed": true,
+      "usable": true,
       "production_certified": false,
-      "unavailable": true,
+      "unavailable": false,
       "promotion_blocked": true,
       "block_reasons": [
-        "unavailable"
+        "live_checks_incomplete_or_failed",
+        "evidence_class_cannot_satisfy_production_authority"
       ],
       "checks": [
         {
-          "check_id": "runtime-mtl-external.positive",
+          "check_id": "runtime-mtl-external.role.finite_trace",
+          "kind": "role",
+          "status": "passed",
+          "expected": "authority/finite_trace",
+          "observed": "authority/finite_trace",
+          "detail": "external Runtime MTL retains finite-trace authority only",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "42c353f3fa5acf12fedda87efd823c89ab27540e32d8edb962f9bf7d217d0187",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.install.strict_pin",
+          "kind": "install",
+          "status": "passed",
+          "expected": "1.0.0-reviewed",
+          "observed": "1.0.0-reviewed",
+          "detail": "executable=<host-path-redacted>",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "093ca1feb23fd90e44b17ae7668be83395ed0d01619b66eddb39d21cf34bc332",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:satisfied.ltlf-always.positive",
           "kind": "positive",
-          "status": "unavailable",
-          "expected": "installed+probed",
-          "observed": "unavailable",
-          "detail": "executable_not_on_path"
+          "status": "passed",
+          "expected": "satisfied/true",
+          "observed": "satisfied/true",
+          "detail": "Complete finite LTLf always(safe) holds on a safe trace.",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "7fef982a462bf7e23a6f637a7f8329db939e938d7d4daea8b434effa59c0a17a",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
         },
         {
-          "check_id": "runtime-mtl-external.negative",
-          "kind": "negative",
-          "status": "unavailable",
-          "expected": "installed+probed",
-          "observed": "unavailable",
-          "detail": "executable_not_on_path"
+          "check_id": "runtime-mtl-external.case:satisfied.ltlf-always.parity",
+          "kind": "parity",
+          "status": "passed",
+          "expected": "satisfied",
+          "observed": "satisfied",
+          "detail": "python=satisfied; external=satisfied; typescript=satisfied",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "41fa973d0941ee2ef5f8a27434509ae4fcfeb3711c76e6e86c9f9834c2e0679f",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
         },
         {
-          "check_id": "runtime-mtl-external.mutation",
-          "kind": "mutation",
-          "status": "unavailable",
-          "expected": "installed+probed",
-          "observed": "unavailable",
-          "detail": "executable_not_on_path"
-        },
-        {
-          "check_id": "runtime-mtl-external.replay",
+          "check_id": "runtime-mtl-external.case:satisfied.ltlf-always.replay",
           "kind": "replay",
-          "status": "unavailable",
-          "expected": "installed+probed",
-          "observed": "unavailable",
-          "detail": "executable_not_on_path"
+          "status": "passed",
+          "expected": "satisfied/true",
+          "observed": "satisfied/true",
+          "detail": "external replay must be deterministic",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "3009efbe71aeccf19bc786c983ecd9da1c4251e5217c3399c76e19b33df0a31e",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:satisfied.mtl-eventually.positive",
+          "kind": "positive",
+          "status": "passed",
+          "expected": "satisfied/true",
+          "observed": "satisfied/true",
+          "detail": "MTL eventually(ready) within closed [0,1] is satisfied.",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "f794269e8f04d968d6970b488b6f956c10abb7452950ec9973c6d4ee6d5cff96",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:satisfied.mtl-eventually.parity",
+          "kind": "parity",
+          "status": "passed",
+          "expected": "satisfied",
+          "observed": "satisfied",
+          "detail": "python=satisfied; external=satisfied; typescript=satisfied",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "819407c0e5011bb18893dc8d0698ed330128f9c7fbe44910b23ed6bf6417a2e8",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:satisfied.mtl-eventually.replay",
+          "kind": "replay",
+          "status": "passed",
+          "expected": "satisfied/true",
+          "observed": "satisfied/true",
+          "detail": "external replay must be deterministic",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "a4b55fe98f9f3fb961340a8d039b2276593aad9322bb32a2eea711b3f2eafe7a",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:violated.prefix-always.negative",
+          "kind": "negative",
+          "status": "passed",
+          "expected": "violated/false",
+          "observed": "violated/false",
+          "detail": "Always(safe) is violated when safe is falsified.",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "6d5cc013ddf7e400562f913761b4f640c5e4570dbbd6abd38888b2d296013ba8",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:violated.prefix-always.parity",
+          "kind": "parity",
+          "status": "passed",
+          "expected": "violated",
+          "observed": "violated",
+          "detail": "python=violated; external=violated; typescript=violated",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "247f6b010d352cbe1eb0a6ca43780c2494d19d0387ef8c7a6c5dea1dbe523e3f",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:violated.prefix-always.replay",
+          "kind": "replay",
+          "status": "passed",
+          "expected": "violated/false",
+          "observed": "violated/false",
+          "detail": "external replay must be deterministic",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "6e5559a483be869fde660a09f142565a8b145b95412769b7d0b31086b0e7769c",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:violated.mtl-open-upper.negative",
+          "kind": "negative",
+          "status": "passed",
+          "expected": "violated/false",
+          "observed": "violated/false",
+          "detail": "Open upper bound excludes the ready event at t=1.",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "a2581179cf8a98a767c4cf7b014d0b8269de886ae3950c987cbbe2f059260aea",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:violated.mtl-open-upper.parity",
+          "kind": "parity",
+          "status": "passed",
+          "expected": "violated",
+          "observed": "violated",
+          "detail": "python=violated; external=violated; typescript=violated",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "0d7c4253f610127d19d5cb984cb2ea10a247baede2469a08c327e1be85cf4d0f",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:violated.mtl-open-upper.replay",
+          "kind": "replay",
+          "status": "passed",
+          "expected": "violated/false",
+          "observed": "violated/false",
+          "detail": "external replay must be deterministic",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "685df4ca911c32a288700b2a46fdb5174f28d70f32fac66447e908955e804958",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:timestamp_boundary.closed.positive",
+          "kind": "positive",
+          "status": "passed",
+          "expected": "satisfied/true",
+          "observed": "satisfied/true",
+          "detail": "Closed upper bound includes the boundary timestamp.",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "3b92b407e3f126519dc4551999d0d5889a9ed3c47acfe3ca813baa7e8da59e32",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:timestamp_boundary.closed.parity",
+          "kind": "parity",
+          "status": "passed",
+          "expected": "satisfied",
+          "observed": "satisfied",
+          "detail": "python=satisfied; external=satisfied; typescript=satisfied",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "41cd2f0fc9041ced611abfeed7c2a7ced4cda5d8a23397701bf07d43b3540812",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:timestamp_boundary.closed.replay",
+          "kind": "replay",
+          "status": "passed",
+          "expected": "satisfied/true",
+          "observed": "satisfied/true",
+          "detail": "external replay must be deterministic",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "ed7a786aa8eb0f13e62261fb6a002500d73282a4572482da6856f4ccd3e23f90",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:timestamp_boundary.open.negative",
+          "kind": "negative",
+          "status": "passed",
+          "expected": "violated/false",
+          "observed": "violated/false",
+          "detail": "Open upper bound excludes the boundary timestamp.",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "ba24dd3e0400b74c13bdae5734d39e6468f5250b28897e4559964379c4cd0520",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:timestamp_boundary.open.parity",
+          "kind": "parity",
+          "status": "passed",
+          "expected": "violated",
+          "observed": "violated",
+          "detail": "python=violated; external=violated; typescript=violated",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "2306a4c17b6687dca75fecf3c155cfde9f187bc10ae65217fdb5e454c094cd33",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:timestamp_boundary.open.replay",
+          "kind": "replay",
+          "status": "passed",
+          "expected": "violated/false",
+          "observed": "violated/false",
+          "detail": "external replay must be deterministic",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "50aa9f802768bd4b5376dbac079985b0852be2c8652d0510b2daac7e166dfd86",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:clean_prefix.always.positive",
+          "kind": "positive",
+          "status": "passed",
+          "expected": "unknown/inconclusive",
+          "observed": "unknown/inconclusive",
+          "detail": "Clean finite prefix stays unknown; never becomes theorem.",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "3e6b722e605fd16eedbb484b2b09b654c1903a31ce68a93f1368428efe442df9",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:clean_prefix.always.parity",
+          "kind": "parity",
+          "status": "passed",
+          "expected": "unknown",
+          "observed": "unknown",
+          "detail": "python=unknown; external=unknown; typescript=skipped",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "95c92dd3837c10ef72c78e0e71dd99886485286d403cbcf302fde464085a68a5",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:clean_prefix.always.replay",
+          "kind": "replay",
+          "status": "passed",
+          "expected": "unknown/inconclusive",
+          "observed": "unknown/inconclusive",
+          "detail": "external replay must be deterministic",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "bdfe6af6eb6642ca8b98be9ed8845f1b1af385633148127cdea4e2beebb78885",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:malformed.late-event.positive",
+          "kind": "positive",
+          "status": "passed",
+          "expected": "malformed/inconclusive",
+          "observed": "malformed/inconclusive",
+          "detail": "Non-monotone timestamps fail closed as malformed.",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "095d6eae420bce6b52913a5d5450688fd0d2a88f181f988f8fd2ba87c226ba0c",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:malformed.late-event.parity",
+          "kind": "parity",
+          "status": "passed",
+          "expected": "malformed",
+          "observed": "malformed",
+          "detail": "python=malformed; external=malformed; typescript=skipped",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "370cdfa6ff56077a08d003d4084fac3e4e392bcb84d30491ff7a72f8b05dc83a",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:malformed.late-event.replay",
+          "kind": "replay",
+          "status": "passed",
+          "expected": "malformed/inconclusive",
+          "observed": "malformed/inconclusive",
+          "detail": "external replay must be deterministic",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "6b877dff5fd6f7cc6d0e5c0221226da4aa2f293e6f3ee44d15010d357ffd97ca",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:mutation.interval.mutation",
+          "kind": "mutation",
+          "status": "passed",
+          "expected": "violated/false",
+          "observed": "violated/false",
+          "detail": "mutation_kind=interval; baseline=satisfied/true; digests_changed=True",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "7febd6ff004cd4ae28d697c76575bb38bb6abf26ae318ea2480d2bf9188c14d4",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:mutation.event.mutation",
+          "kind": "mutation",
+          "status": "passed",
+          "expected": "violated/false",
+          "observed": "violated/false",
+          "detail": "mutation_kind=event; baseline=satisfied/true; digests_changed=True",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "4fe2bf198226213abbad9f277475c6a3d46892c538325348578574e2523ed839",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:shortest_violating_prefix.shortest_prefix_replay",
+          "kind": "replay",
+          "status": "passed",
+          "expected": "violated@shortest_prefix",
+          "observed": "violated/len=3",
+          "detail": "shortest_prefix_length=3",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "f8c8019d6e89108f875856a0e16fbbddb0e56c9df2b5ea5f949d98ea0d428281",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:malformed.malformed",
+          "kind": "malformed",
+          "status": "passed",
+          "expected": "error|malformed|quarantine (never satisfied theorem)",
+          "observed": "malformed",
+          "detail": "malformed input fail-closed",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "27fb795c9452e63d272c481b5c76d7db0d2cbd4c3ab0f78b54a708f6d40d5613",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:disagreement.disagreement_quarantine",
+          "kind": "disagreement_quarantine",
+          "status": "passed",
+          "expected": "disagreement+quarantine",
+          "observed": "violated/false vs satisfied/true",
+          "detail": "any disagreement quarantines promotion",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "ac567392ab3c8c537cf9d430fb8ca1382c91cd49d7600ffe6774b53566425162",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.case:bounds.bounds",
+          "kind": "bounds",
+          "status": "passed",
+          "expected": "no_global_correctness_claim|quarantine",
+          "observed": "authorizes_global_proof=True;quarantined=True",
+          "detail": "finite-trace authority only; elevation quarantined",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "baeae2de6fe7cc8c1128f8f59ee4285a34dc933a51856c74ff899d9c158bc535",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
+        },
+        {
+          "check_id": "runtime-mtl-external.authority.finite_trace_only",
+          "kind": "authority",
+          "status": "passed",
+          "expected": "authority/finite_trace; never theorem",
+          "observed": "authority/finite_trace",
+          "detail": "no global correctness claim is inferred",
+          "evidence": {
+            "compacted": true,
+            "digest_sha256": "c1d39c24976bf49d1b77f592dcd996e7a3a7dc7e841657e879184a41621e90ad",
+            "residual_keys": [
+              "authority",
+              "authorizes_global_proof",
+              "engine_id",
+              "is_theorem_authority",
+              "quarantined"
+            ]
+          }
         }
       ],
-      "artifact_identities": [],
-      "semantic_receipt_digests": [],
-      "evidence_class": "unavailable",
-      "notes": "Tool not installed or not probeable (executable_not_on_path); blocks only this tool's promotion.",
-      "checks_digest_sha256": "71ba74cf23aa2aa07e75d5fa1072c9c7ce4de3a7870a2be00ebc01db352c8360",
+      "artifact_identities": [
+        {
+          "kind": "executable",
+          "path": "<host-path-redacted>",
+          "sha256": "sha256:463c37783df48327cb699770b83dc95f075d8a1d6dd11b52b2663b047dfe34a5",
+          "artifact_class": "generated_hermetic_shim"
+        },
+        {
+          "kind": "semantic_executable",
+          "path": "<host-path-redacted>",
+          "sha256": "sha256:d5c16510e7848c284bc69497f68fafb3d7d0f3fdae3282652c5f0a72bae4d5e0",
+          "artifact_class": "generated_hermetic_shim"
+        },
+        {
+          "kind": "semantic_certifier_module",
+          "path": "tools/logic/certification/runtime_mtl_external.py",
+          "sha256": "sha256:268286d89b09887be637165f6db67207996687124a8e354acb951ab5f8fef51c",
+          "artifact_class": "repository_source"
+        }
+      ],
+      "semantic_receipt_digests": [
+        "631562f9a3ed2c40c560cb420ad9125937b838445d11277aed3cc2cfa5d35eb4"
+      ],
+      "evidence_class": "hermetic_adapter_shim",
+      "notes": "ExternalRuntimeMTLCertification@1 evidence is fully bound but classified as hermetic_adapter_shim; it cannot be relabeled as production proof authority.",
+      "checks_digest_sha256": "d31dc54c4ff6716ded4ba1d72526b101c86e2102b55f47a1a716f9cb24a3da58",
       "checks_projection": "shallow_rows_full_evidence_digest"
     },
     {
@@ -3629,7 +4246,7 @@
         }
       ],
       "semantic_receipt_digests": [
-        "20ed138b70e4e8989fc88f5d79bebdff4a940060e7aaaf955716259cca05ca36"
+        "3765f4ee23e50c9a4e8360f62b890cd60e1170855cbd6ec75d265cd3b28926cd"
       ],
       "evidence_class": "usable_pending_authorization_vendor_fanin",
       "notes": "AuthorizationSemanticCertification@1 evidence is fully bound but classified as usable_pending_authorization_vendor_fanin; it cannot be relabeled as production proof authority.",
@@ -3789,21 +4406,20 @@
       "executable_path": null,
       "executable_sha256": null,
       "executable_artifact_class": "none",
-      "version_string": "python-distribution:symbolicai==1.14.0;module:symai",
+      "version_string": null,
       "locked_version": ">=1.14.0,<2.0.0",
-      "locked_version_mismatch": false,
+      "locked_version_mismatch": true,
       "shim_toolchain_mismatch": false,
       "path_present": false,
-      "identity_probed": true,
-      "installed": true,
-      "usable": true,
+      "identity_probed": false,
+      "installed": false,
+      "usable": false,
       "production_certified": false,
-      "unavailable": false,
+      "unavailable": true,
       "promotion_blocked": true,
       "block_reasons": [
-        "live_checks_incomplete_or_failed",
-        "evidence_class_cannot_satisfy_production_authority",
-        "non_certifying_role"
+        "unavailable",
+        "evidence_class_cannot_satisfy_production_authority"
       ],
       "checks": [
         {
@@ -3890,7 +4506,7 @@
           "detail": "strict hermetic selection of locked advisor identities",
           "evidence": {
             "compacted": true,
-            "digest_sha256": "4101190749844dd8b6df08167cc0a39fba48fe75b407f541e6191a430761889d",
+            "digest_sha256": "1d5023605b9f2c54247d1d9151d4cf8a5ae57dd44c59ce7c72d7d8e959def175",
             "residual_keys": [
               "bindings"
             ]
@@ -3996,11 +4612,11 @@
         }
       ],
       "semantic_receipt_digests": [
-        "d7de3ece0f4e44588bdbba6cb83f131741eaed7eb11ce6903e60d85fa5d5d841"
+        "dbb2eb2fc21fad569c149a75c4c2f270a951369e9b9e681da9f99e98433b0447"
       ],
       "evidence_class": "proposal_only_semantics",
       "notes": "AdvisorRoleCertification@1 evidence is fully bound but classified as proposal_only_semantics; it cannot be relabeled as production proof authority.",
-      "checks_digest_sha256": "b8b6fcddeaa04b73116e1f23030ccd5bffb65baf22fa00c5dd2354c91246b43c",
+      "checks_digest_sha256": "4c61098d6733fece8ad1fecc5789b005f13e9aed2cd071238dc2501ba63dce18",
       "checks_projection": "shallow_rows_full_evidence_digest"
     },
     {
@@ -4381,9 +4997,9 @@
       "hyperltl",
       "isabelle",
       "mchyper",
-      "runtime-mtl-external",
       "secpal",
       "souffle",
+      "symbolicai",
       "tlc",
       "zkp-circuit"
     ],
@@ -4457,7 +5073,8 @@
         "evidence_class_cannot_satisfy_production_authority"
       ],
       "runtime-mtl-external": [
-        "unavailable"
+        "live_checks_incomplete_or_failed",
+        "evidence_class_cannot_satisfy_production_authority"
       ],
       "secpal": [
         "unavailable"
@@ -4474,9 +5091,8 @@
         "live_checks_incomplete_or_failed"
       ],
       "symbolicai": [
-        "live_checks_incomplete_or_failed",
-        "evidence_class_cannot_satisfy_production_authority",
-        "non_certifying_role"
+        "unavailable",
+        "evidence_class_cannot_satisfy_production_authority"
       ],
       "tamarin": [
         "launcher_target_artifact_unbound",
@@ -4505,9 +5121,9 @@
       "opam",
       "proverif",
       "runtime-mtl",
+      "runtime-mtl-external",
       "secpal-authorization",
       "stack",
-      "symbolicai",
       "tamarin",
       "vampire"
     ],
@@ -4922,7 +5538,7 @@
       ],
       "elevated_tool_ids": [],
       "block_reasons": [],
-      "digest_sha256": "544750b2429eafc68478fd86581ce6a071f8bbffd98689415dec482e445288cd",
+      "digest_sha256": "52cb684041a6db3f500d6fafeb59212c4f8f0cc8f150a135b8718ece4951dd5c",
       "notes": "",
       "evidence_class": "usable_pending_kernel_live_fanin",
       "production_elevation_allowed": false,
@@ -5023,7 +5639,7 @@
               "imports": [],
               "assumptions": [],
               "source_digest": "9e11f3ad08604700b4d05b5440927c264b5e87b955dabb1594e1c54de2b9c316",
-              "output_digest": "372b0995d63b93acddbf0388b2b38d396ad2e7d0b03d8a7e1aa20e33370f7e14",
+              "output_digest": "087d4b380a7832c12560b71702bf71fc6adf75acb30b9e7dd182b7c6ec26cbd4",
               "returncode": 1
             }
           },
@@ -5042,7 +5658,7 @@
               "imports": [],
               "assumptions": [],
               "source_digest": "2f26262d12bdd4f94bdacb26b0f2370514fe808ab10ee14bef8185628949263a",
-              "output_digest": "e72478496d15803a5ee4e78cdb9dbecd989cb48828214ce7b8bf9e73cc4025be",
+              "output_digest": "c2bcb1aa62ec57b5e5122b8f9409439f340875864fe6e30f910294b8748277d4",
               "returncode": 1
             }
           },
@@ -5063,7 +5679,7 @@
                 "h : n = n"
               ],
               "source_digest": "ef6dbd7cee06a0cdcff851790842f7a9e8d7b970dacdc87390dcfedd71e2389f",
-              "output_digest": "a94294e0e85099ebb9628bf460dcb324f599ee198f0eed3f16c09cbf5b8f298f",
+              "output_digest": "6753d195c5d35008578291d808f25eca60a04a27068a19bdf6b5c977243be2c8",
               "returncode": 1
             }
           },
@@ -5084,7 +5700,7 @@
                 "h : n = m"
               ],
               "source_digest": "33ca5222eb44e2cf3a3a41bee0d820868bce4f41d30acd1ab634e87f19291705",
-              "output_digest": "465bcf1873481aed66a6a20d735fdabba0a286ca193d94640c4034405115e28e",
+              "output_digest": "43ce5b2f8660a480a8295e11071468d0126b64abb4bcf450193e03ad057445b4",
               "returncode": 1
             }
           },
@@ -5283,12 +5899,12 @@
             "imports": [],
             "assumptions": [],
             "source_digest": "9e11f3ad08604700b4d05b5440927c264b5e87b955dabb1594e1c54de2b9c316",
-            "output_digest": "372b0995d63b93acddbf0388b2b38d396ad2e7d0b03d8a7e1aa20e33370f7e14",
+            "output_digest": "087d4b380a7832c12560b71702bf71fc6adf75acb30b9e7dd182b7c6ec26cbd4",
             "stdout": {
               "redacted": true,
               "reason": "raw_process_output_forbidden",
-              "byte_length": 136,
-              "sha256": "7e986191f440696be9d8b670385210c402d4638b2f1227a8a325b0a28389b883"
+              "byte_length": 184,
+              "sha256": "b42b7345e0184aa6727aab6979f0121678f4ff28f010234e31e5ea05ac3f47c5"
             },
             "stderr": {
               "redacted": true,
@@ -5311,12 +5927,12 @@
             "imports": [],
             "assumptions": [],
             "source_digest": "2f26262d12bdd4f94bdacb26b0f2370514fe808ab10ee14bef8185628949263a",
-            "output_digest": "e72478496d15803a5ee4e78cdb9dbecd989cb48828214ce7b8bf9e73cc4025be",
+            "output_digest": "c2bcb1aa62ec57b5e5122b8f9409439f340875864fe6e30f910294b8748277d4",
             "stdout": {
               "redacted": true,
               "reason": "raw_process_output_forbidden",
-              "byte_length": 135,
-              "sha256": "ce7e9bcfd863e2616045cfc8bb145937aefb4ef11c073ee0f44a9f62a4791017"
+              "byte_length": 183,
+              "sha256": "187a10b7f3765695e804033afbe64b51f705af47768f35021fd94af73b47ea81"
             },
             "stderr": {
               "redacted": true,
@@ -5341,12 +5957,12 @@
               "h : n = n"
             ],
             "source_digest": "ef6dbd7cee06a0cdcff851790842f7a9e8d7b970dacdc87390dcfedd71e2389f",
-            "output_digest": "a94294e0e85099ebb9628bf460dcb324f599ee198f0eed3f16c09cbf5b8f298f",
+            "output_digest": "6753d195c5d35008578291d808f25eca60a04a27068a19bdf6b5c977243be2c8",
             "stdout": {
               "redacted": true,
               "reason": "raw_process_output_forbidden",
-              "byte_length": 131,
-              "sha256": "89c801b2e7d2a39c2cf9e5aab0e381ff2d79d5f8f9ffa0ea4d4ccc8760522b44"
+              "byte_length": 179,
+              "sha256": "5c83eab5f0697bdb76fd3abb62d7cf61e36159d7db819add3ae7c1fd232aa6d4"
             },
             "stderr": {
               "redacted": true,
@@ -5371,12 +5987,12 @@
               "h : n = m"
             ],
             "source_digest": "33ca5222eb44e2cf3a3a41bee0d820868bce4f41d30acd1ab634e87f19291705",
-            "output_digest": "465bcf1873481aed66a6a20d735fdabba0a286ca193d94640c4034405115e28e",
+            "output_digest": "43ce5b2f8660a480a8295e11071468d0126b64abb4bcf450193e03ad057445b4",
             "stdout": {
               "redacted": true,
               "reason": "raw_process_output_forbidden",
-              "byte_length": 131,
-              "sha256": "1be1569ae3d0128f48a959a89d48f660177e81b53658c0d143ce171305ce0e43"
+              "byte_length": 179,
+              "sha256": "f1dd93b6b01ab3408594870417ead1bc8291346d97527f11471ee1f898e9156f"
             },
             "stderr": {
               "redacted": true,
@@ -5561,7 +6177,7 @@
           }
         },
         "notes": "Pinned Lean v4.31.0 kernel semantics certified: true theorem accepted; false/malformed/mutation/sorry/admit/unsafe rejected; deterministic replay; bindings complete; authority is kernel proof checking only.",
-        "receipt_digest_sha256": "87999af7b1e082da17272b28eb2f35223b9e33eeb52b93bb6e5e54db45e9ed6b",
+        "receipt_digest_sha256": "31e7ef87759f3973310875cc318ebe6441a93869fc62677fc7ba1c1a785d4266",
         "policy": {
           "no_install": true,
           "no_download": true,
@@ -5597,7 +6213,7 @@
       "receipt_goal_id": "FVT-G101",
       "receipt_task_id": "FVT-040",
       "public_projection": {
-        "source_receipt_digest_sha256": "dbda920bab9afd2a30b0c2b11e74632ebee6c6ee4fc51c5864f4afd51fe78176",
+        "source_receipt_digest_sha256": "85b67f0dc7d7a83f75a0b649de5b8146fb994b43a29c5db8175640a02173530e",
         "portable_paths": true,
         "raw_process_output_retained": false,
         "raw_secret_or_witness_retained": false
@@ -5619,7 +6235,7 @@
           "checks_retained_without_kind_collapse": true,
           "checks_passed": 14,
           "checks_total": 14,
-          "check_set_digest_sha256": "f5a7e76cfa90c60a040a2aa7b85c1a9707fad1195df2244c929ae57c2a25eb5f",
+          "check_set_digest_sha256": "62b353e37271b37ae1e9a0eb657842b590fb26ff81c7c9ff863ad451f8b53592",
           "check_status_counts": {
             "passed": 14,
             "failed": 0,
@@ -5678,7 +6294,7 @@
       ],
       "elevated_tool_ids": [],
       "block_reasons": [],
-      "digest_sha256": "5067db2e01e583a171920c442802c52ccbb1a4a7706156078ed50d72602ca50f",
+      "digest_sha256": "e81cb78ab6b9ef1c35fd078c56399418cbf9500bee30f996372c6df6fa8e7b72",
       "notes": "",
       "evidence_class": "external_prover_installation_pending",
       "production_elevation_allowed": false,
@@ -6005,7 +6621,7 @@
             "kind": "binding",
             "status": "passed",
             "expected": "imports,source,theorem,assumptions,kernel_identity",
-            "observed": "21f2c33e6ba41cab",
+            "observed": "8a6090775acdb396",
             "detail": "receipt binds every trust-relevant kernel check input",
             "reason_codes": [],
             "bindings": {
@@ -6458,7 +7074,7 @@
           }
         },
         "notes": "Pinned Rocq/Coq 9.1.1 kernel semantics certified: true theorem accepted; false proof, mutations, admit/Admitted/Axiom escapes, malformed input, and version mismatch fail closed; bindings complete; OPAM is support only under an isolated root.",
-        "receipt_digest_sha256": "acaf35cd895d863f3b9ff3b2700f4de9be6fdf04fb0d7c13319677568ee3e8bd",
+        "receipt_digest_sha256": "242177c98e6cac3b132d4f8845d107ced35a6dbe7494c5030b734a443c6344e6",
         "policy": {
           "no_install": true,
           "no_download": true,
@@ -6497,7 +7113,7 @@
       "receipt_goal_id": "FVT-G150",
       "receipt_task_id": "FVT-045",
       "public_projection": {
-        "source_receipt_digest_sha256": "61811eb3259552046b94a720a4d8d58610e10a69183b12d1107c973013cb2e15",
+        "source_receipt_digest_sha256": "45f7901e6f43cfc877d722edb6faee8f679c6a7eacd59b70e333783ec4c071e3",
         "portable_paths": true,
         "raw_process_output_retained": false,
         "raw_secret_or_witness_retained": false
@@ -6521,7 +7137,7 @@
           "checks_retained_without_kind_collapse": true,
           "checks_passed": 16,
           "checks_total": 16,
-          "check_set_digest_sha256": "9fb0ad80192a7e45f15edbcc1ada97ff747c4bca921a64e855efb6e9dddc15f0",
+          "check_set_digest_sha256": "972f3c1fd0e7919907744f071fbff6391aaba85d2a9720accf0f9f048bc7a879",
           "check_status_counts": {
             "passed": 16,
             "failed": 0,
@@ -7581,12 +8197,12 @@
       ],
       "elevated_tool_ids": [],
       "block_reasons": [],
-      "digest_sha256": "82303d2067cdc057235c1266f306c63c3d322dbda3f3d1bf8f15fa8a3eba2743",
+      "digest_sha256": "bf2a98dd4a2ad60a2659a9a8e07c878b69261437819bc0f97f4d2a31873e570f",
       "notes": "",
       "evidence_class": "usable_pending_external_runtime_mtl",
       "production_elevation_allowed": false,
       "usable_elevation_allowed": true,
-      "certifier_module_sha256": "sha256:40f509d3bc712e3ded40d403dd8548ec0d9e03933deb985caf38ba56e044de40",
+      "certifier_module_sha256": "sha256:70e65a44885214daf6ba25756550c1fb3d308d250d62927727ee4012abb8e2b3",
       "receipt": {
         "schema_version": "runtime-mtl-semantic-certification/v1",
         "interface": "RuntimeMTLSemanticCertification@1",
@@ -8048,7 +8664,7 @@
             "late_events": false,
             "missing_observation": false,
             "reason": "{\"compared_cases\": 13, \"mismatch_count\": 0}",
-            "result_digest": "3ae952491b42bd14a527794e4f1ba9927f244665125b3ee26e0be28b9a2b54d9",
+            "result_digest": "c726455b604d32575a7df68096bd8a4da9ae25ee6ee6d638372ee2d1128ebb4e",
             "shortest_prefix_length": null,
             "status": "satisfied",
             "trace_digest": "",
@@ -8070,7 +8686,7 @@
             {
               "path": "tools/logic/certification/runtime_mtl.py",
               "exists": true,
-              "content_sha256": "40f509d3bc712e3ded40d403dd8548ec0d9e03933deb985caf38ba56e044de40"
+              "content_sha256": "70e65a44885214daf6ba25756550c1fb3d308d250d62927727ee4012abb8e2b3"
             },
             {
               "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/monitoring/runtime_mtl.py",
@@ -8095,21 +8711,31 @@
             {
               "path": "test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json",
               "exists": true,
-              "content_sha256": "8d29b0d3016096881691abab6c3a19e08f8742d0279e45ad1acfd684d2ecaa26"
+              "content_sha256": "471f799c29b8cc54d3a753eadc051fabd8fe691fcd4c16b95a308bc71abc8460"
             },
             {
               "path": "test/integration/toolchains/test_runtime_mtl_semantic_certification.py",
               "exists": true,
-              "content_sha256": "f3930e9d1212014ec6e45de4031a663133738a15f8f69ce87228e61a8e7a3cd5"
+              "content_sha256": "1eb1c6e5c4e2df95585f35a04821d639ad722079be56431798645cb84d32bb61"
             }
           ],
-          "tree_digest_sha256": "9a26bfe0565441e01e919d69a1049207a4fffe473bbd0117c155ff48fcc35b33"
+          "tree_digest_sha256": "5d517efa3609ec19018a1b4d8076ea4aa727d7f7a6a985e6694ffd6076207029"
         },
         "parity": {
           "package_path": "ipfs_datasets_py/typescript/logic-runtime-mtl",
           "package_present": true,
+          "prebuilt_required": true,
+          "certification_builds_or_installs": false,
           "compared_cases": 13,
-          "mismatches": []
+          "mismatches": [],
+          "prebuilt": {
+            "index_path": "ipfs_datasets_py/typescript/logic-runtime-mtl/dist/src/index.js",
+            "index_sha256": "3a53d735543862f53c03aec3adcc6c38c3c61c957841634af92f37006d9de543",
+            "package_json_sha256": "9e3e60d9586abd9fad2774bf131dd5b51cf263d8246fad7d3ad8bf84209126fe",
+            "package_lock_sha256": "fa3d6cec7a231c100adfb2a17f930c938be1d48e316a8d8b259833afc3f6389d",
+            "source_index_sha256": "d48d16a805fec6fcae8ccde5066803c78da6659cc296ac9f039487b7e4c41794",
+            "node_executable_sha256": "2b0f6efd95c31c5538cc0a9042d5d13b7328cffcfdcc409f2e2ef336c4402086"
+          }
         },
         "manifest": {
           "schema_version": "runtime-mtl-semantic-corpus/v1",
@@ -8120,6 +8746,8 @@
         "policy": {
           "in_process_only": true,
           "no_external_parity_install": true,
+          "requires_prebuilt_typescript_artifact": true,
+          "certification_never_builds_typescript": true,
           "no_central_certificate_edit": true,
           "receipts_bind_formula_trace_clock_bounds_implementation_source_tree": true,
           "finite_trace_authority_only": true,
@@ -8146,7 +8774,7 @@
           "cases_total": 16,
           "block_reasons": []
         },
-        "certificate_digest_sha256": "0023e1053225cdcf247e62872ac14da8f6e0d921d7bdc55a78e15a9f195c66ae"
+        "certificate_digest_sha256": "95a7ceaf6d3919eb86351598e63d7ae18bfc7bfe85878e3f5c34341a80d099b9"
       },
       "receipt_integrity": {
         "valid": true,
@@ -8171,7 +8799,7 @@
       "receipt_goal_id": "FVT-G103",
       "receipt_task_id": "FVT-039",
       "public_projection": {
-        "source_receipt_digest_sha256": "3a4b27368d96fd0cbee1cd5207c4ecf2cb3b87544bbac6963c0e07681d2ba2e6",
+        "source_receipt_digest_sha256": "7acd11764e78d8fa9c756e6470ec0e3e6e77e94b83ebb8db30c992c00df9b0e6",
         "portable_paths": true,
         "raw_process_output_retained": false,
         "raw_secret_or_witness_retained": false
@@ -8207,17 +8835,17 @@
               {
                 "kind": "semantic_certifier_module",
                 "path": "tools/logic/certification/runtime_mtl.py",
-                "sha256": "sha256:40f509d3bc712e3ded40d403dd8548ec0d9e03933deb985caf38ba56e044de40",
+                "sha256": "sha256:70e65a44885214daf6ba25756550c1fb3d308d250d62927727ee4012abb8e2b3",
                 "artifact_class": "repository_source"
               }
             ],
-            "artifacts_digest_sha256": "1898d5aecd25db13de9b5eeabd0f0b3ddd24e3b99594fbd45ca8586e466b860f"
+            "artifacts_digest_sha256": "bdc1d4f13ef0d59efc305636d5fdefe122a27a7460d4e9f28f645971b6a1ee60"
           },
           "artifact_validation": {
             "valid": true,
             "failures": [],
             "has_production_binding": false,
-            "validated_digest_sha256": "52348a9bc999ebe5cc9461a21e3bce533a3df93f839dd718582d332d598d23dc",
+            "validated_digest_sha256": "729d71510f26b76422625a94891ff0ebffeab6179a4ae768113b42ca3583d5c8",
             "production_bindings_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "handler_key": "runtime_mtl::runtime-mtl"
@@ -9569,7 +10197,7 @@
       "receipt_goal_id": "FVT-G102",
       "receipt_task_id": "FVT-038",
       "public_projection": {
-        "source_receipt_digest_sha256": "20ed138b70e4e8989fc88f5d79bebdff4a940060e7aaaf955716259cca05ca36",
+        "source_receipt_digest_sha256": "3765f4ee23e50c9a4e8360f62b890cd60e1170855cbd6ec75d265cd3b28926cd",
         "portable_paths": true,
         "raw_process_output_retained": false,
         "raw_secret_or_witness_retained": false
@@ -12669,7 +13297,7 @@
       "semantically_usable_tool_ids": [],
       "elevated_tool_ids": [],
       "block_reasons": [],
-      "digest_sha256": "b5de7d972cdfc33faa6e8f1279d7b7a8a7d532802ed14d74ee1c42b72109fe29",
+      "digest_sha256": "a82d6436f95e2fb36f14cd12a6e82383708cdcea285f3369fe16e800d975230c",
       "notes": "",
       "evidence_class": "identity_plus_fixture_parser",
       "production_elevation_allowed": false,
@@ -13158,7 +13786,7 @@
             "kind": "binding",
             "status": "passed",
             "expected": "model,claims,bounds,binaries,isolated_root",
-            "observed": "d28e8abf5ff57c08",
+            "observed": "0e555245c7869eb7",
             "detail": "receipt binds model, claims, bounds, exact binaries, and isolated OPAM root",
             "reason_codes": [],
             "bindings": {
@@ -14011,7 +14639,7 @@
           }
         },
         "notes": "Pinned ProVerif 2.05 + OPAM 2.5.2 certified for protocol claims and attacks under an isolated OPAM root; OPAM remains support only.",
-        "receipt_digest_sha256": "02e418eadee284b1116f5df2b3f42aead55ab7ef86d83be7786593dd220ca340",
+        "receipt_digest_sha256": "5e6fb2206336230e1cea0589e7ae96455c6adf916c71ee62dcd7754bb4a881c8",
         "policy": {
           "no_install": true,
           "no_download": true,
@@ -14051,7 +14679,7 @@
       "receipt_goal_id": "FVT-G131",
       "receipt_task_id": "FVT-044",
       "public_projection": {
-        "source_receipt_digest_sha256": "fb3ead637931162aad5f78eb7564efe69d651f5b69c6ec9dd04f84a4b4e54249",
+        "source_receipt_digest_sha256": "a3d153e7ccc200b0c467110c09a6ebf355ba45bb9f541bd87dd9029724b32253",
         "portable_paths": true,
         "raw_process_output_retained": false,
         "raw_secret_or_witness_retained": false
@@ -14082,7 +14710,7 @@
           "checks_retained_without_kind_collapse": true,
           "checks_passed": 15,
           "checks_total": 17,
-          "check_set_digest_sha256": "618c13f3e04fc1074bb639a57593fa684a0e97e061a1cb9f85fdf8a6fb8c8f6b",
+          "check_set_digest_sha256": "7376d8dc1ae8088de6a16e44d7300e6aab893fde523187d3dc1cb9be287ed3cf",
           "check_status_counts": {
             "passed": 15,
             "failed": 2,
@@ -15405,15 +16033,17 @@
       ],
       "status": "ran",
       "certified": true,
-      "semantically_usable_tool_ids": [],
+      "semantically_usable_tool_ids": [
+        "runtime-mtl-external"
+      ],
       "elevated_tool_ids": [],
       "block_reasons": [],
-      "digest_sha256": "6fa81ead68bc7a7b520f10ec58ff38516da71bbfb8649dd035591b213dfe5aa1",
+      "digest_sha256": "1fa6e0bb5a8da68550c83abc9c91b32effeb3aaadd2919ec4b49bac82013676a",
       "notes": "",
       "evidence_class": "hermetic_adapter_shim",
       "production_elevation_allowed": false,
       "usable_elevation_allowed": true,
-      "certifier_module_sha256": "sha256:f0c86655a5c29eac5abb5f3622ebb4e4d24578abf675b6e4c95291000494f2a6",
+      "certifier_module_sha256": "sha256:268286d89b09887be637165f6db67207996687124a8e354acb951ab5f8fef51c",
       "receipt": {
         "schema_version": "external-runtime-mtl-certification/v1",
         "interface": "ExternalRuntimeMTLCertification@1",
@@ -16140,12 +16770,12 @@
               {
                 "authority": "monitor",
                 "authorizes_global_proof": false,
-                "check_id": "runtime-mtl-external.case:violated.prefix-always.positive",
+                "check_id": "runtime-mtl-external.case:violated.prefix-always.negative",
                 "detail": "Always(safe) is violated when safe is falsified.",
                 "engine_id": "runtime-mtl-external",
                 "expected": "violated/false",
                 "is_theorem_authority": false,
-                "kind": "positive",
+                "kind": "negative",
                 "observed": "violated/false",
                 "quarantined": false,
                 "status": "passed"
@@ -16179,12 +16809,12 @@
               {
                 "authority": "monitor",
                 "authorizes_global_proof": false,
-                "check_id": "runtime-mtl-external.case:violated.mtl-open-upper.positive",
+                "check_id": "runtime-mtl-external.case:violated.mtl-open-upper.negative",
                 "detail": "Open upper bound excludes the ready event at t=1.",
                 "engine_id": "runtime-mtl-external",
                 "expected": "violated/false",
                 "is_theorem_authority": false,
-                "kind": "positive",
+                "kind": "negative",
                 "observed": "violated/false",
                 "quarantined": false,
                 "status": "passed"
@@ -16257,12 +16887,12 @@
               {
                 "authority": "monitor",
                 "authorizes_global_proof": false,
-                "check_id": "runtime-mtl-external.case:timestamp_boundary.open.positive",
+                "check_id": "runtime-mtl-external.case:timestamp_boundary.open.negative",
                 "detail": "Open upper bound excludes the boundary timestamp.",
                 "engine_id": "runtime-mtl-external",
                 "expected": "violated/false",
                 "is_theorem_authority": false,
-                "kind": "positive",
+                "kind": "negative",
                 "observed": "violated/false",
                 "quarantined": false,
                 "status": "passed"
@@ -16523,7 +17153,7 @@
           "corpus_disagreement": false,
           "block_reasons": []
         },
-        "certificate_digest_sha256": "41aacfe7781a01ce144b60c97b8bdf65f745bfab5e5298b398d48707b2b3e2c4"
+        "certificate_digest_sha256": "19a5e2c21fa9a7fba11102903dac63fa10e83cbc880d2536f8a6de77126e1e25"
       },
       "receipt_integrity": {
         "valid": true,
@@ -16548,17 +17178,15 @@
       "receipt_goal_id": "FVT-G181",
       "receipt_task_id": "FVT-052",
       "public_projection": {
-        "source_receipt_digest_sha256": "003f462c4806f62d7d9a7844c4549e8ac732bb217f33b3fb5177c44eedeca447",
+        "source_receipt_digest_sha256": "631562f9a3ed2c40c560cb420ad9125937b838445d11277aed3cc2cfa5d35eb4",
         "portable_paths": true,
         "raw_process_output_retained": false,
         "raw_secret_or_witness_retained": false
       },
       "per_tool": {
         "runtime-mtl-external": {
-          "certified": false,
-          "block_reasons": [
-            "failed_check_kind:negative"
-          ],
+          "certified": true,
+          "block_reasons": [],
           "check_kinds_present": [
             "authority",
             "bounds",
@@ -16574,11 +17202,11 @@
           ],
           "checks_retained_without_kind_collapse": true,
           "checks_passed": 33,
-          "checks_total": 34,
-          "check_set_digest_sha256": "a3d973e024ee13653255d5cb7bfb7954c46c63feaaecf39d5fb14701adf8bbbf",
+          "checks_total": 33,
+          "check_set_digest_sha256": "03a9f60442d7ac5ee0aca5d32cf78c3665aeef245e493e4f967b13d9e315e76a",
           "check_status_counts": {
             "passed": 33,
-            "failed": 1,
+            "failed": 0,
             "skipped": 0,
             "unavailable": 0
           },
@@ -16596,17 +17224,17 @@
               {
                 "kind": "semantic_certifier_module",
                 "path": "tools/logic/certification/runtime_mtl_external.py",
-                "sha256": "sha256:f0c86655a5c29eac5abb5f3622ebb4e4d24578abf675b6e4c95291000494f2a6",
+                "sha256": "sha256:268286d89b09887be637165f6db67207996687124a8e354acb951ab5f8fef51c",
                 "artifact_class": "repository_source"
               }
             ],
-            "artifacts_digest_sha256": "6239e4b5924117be043c9da5922e19db798b3176724528202f4e22b767c881f0"
+            "artifacts_digest_sha256": "1097eab915a8cdbec11c5336c9bdac1d40261315e291a1d25f07c4e8569b302e"
           },
           "artifact_validation": {
             "valid": true,
             "failures": [],
             "has_production_binding": false,
-            "validated_digest_sha256": "0fbaf7347b40a4c6b6d5730b820a73be67775e4cd3e5a123598a548c61a571a7",
+            "validated_digest_sha256": "4b51c8cf995b786c0dcb8a040f95a9788673aa67ed429b59af966a18d0425fd1",
             "production_bindings_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "handler_key": "runtime_mtl::runtime-mtl-external"
@@ -18478,7 +19106,7 @@
       "receipt_goal_id": "FVT-G190",
       "receipt_task_id": "FVT-047",
       "public_projection": {
-        "source_receipt_digest_sha256": "cc5bc6a7c21e0b18a115158683220d1c538deab6b86932d189a385fc875a23af",
+        "source_receipt_digest_sha256": "6f12552d0414b175a71f4f7fe7748995baa7e15f258bb139725d65c2df3bc410",
         "portable_paths": true,
         "raw_process_output_retained": false,
         "raw_secret_or_witness_retained": false
@@ -20485,7 +21113,7 @@
       "receipt_goal_id": "FVT-G160",
       "receipt_task_id": "FVT-050",
       "public_projection": {
-        "source_receipt_digest_sha256": "d7de3ece0f4e44588bdbba6cb83f131741eaed7eb11ce6903e60d85fa5d5d841",
+        "source_receipt_digest_sha256": "dbb2eb2fc21fad569c149a75c4c2f270a951369e9b9e681da9f99e98433b0447",
         "portable_paths": true,
         "raw_process_output_retained": false,
         "raw_secret_or_witness_retained": false
@@ -20713,7 +21341,7 @@
           "kernel::coq",
           "kernel::isabelle"
         ],
-        "digest_sha256": "f7a54cd9ce4b3a59aba59a59634a6f122997c642a554e7acd72269472fb99bd1"
+        "digest_sha256": "57e67c8db6563919fbf156df9f34610e4afbf73bc4ed0878e9d401981ca17662"
       },
       "protocol": {
         "property_lane_id": "protocol",
@@ -20725,7 +21353,7 @@
           "protocol::tamarin",
           "protocol::proverif"
         ],
-        "digest_sha256": "337553423090054c4d8531a952739eeecc64499ced36ba4f88e51d138f2db531"
+        "digest_sha256": "541707c2f515bdb0a075b0f701a012a2f271d0d5bb843b790e261581707f9cca"
       },
       "runtime_mtl": {
         "property_lane_id": "runtime_mtl",
@@ -20737,7 +21365,7 @@
           "runtime_mtl::runtime-mtl",
           "runtime_mtl::runtime-mtl-external"
         ],
-        "digest_sha256": "58a23d796ebebe9aedc05dd9c96c4d6ee1284b0aedb13e6bcabb2867992f6efa"
+        "digest_sha256": "4a4112859c0ed7ddcb4caf3777c456545bcbc3cb766613907faf18e4773e58e3"
       },
       "tla": {
         "property_lane_id": "tla",
@@ -20989,16 +21617,16 @@
         "certifier_family": "kernel",
         "certified": true,
         "authority_ceiling": "kernel",
-        "receipt_digest_sha256": "5067db2e01e583a171920c442802c52ccbb1a4a7706156078ed50d72602ca50f",
-        "check_set_digest_sha256": "9fb0ad80192a7e45f15edbcc1ada97ff747c4bca921a64e855efb6e9dddc15f0",
+        "receipt_digest_sha256": "e81cb78ab6b9ef1c35fd078c56399418cbf9500bee30f996372c6df6fa8e7b72",
+        "check_set_digest_sha256": "972f3c1fd0e7919907744f071fbff6391aaba85d2a9720accf0f9f048bc7a879",
         "identity_digest_sha256": "c3622ef00b230cc07f2e6e44a83e5263f2e088a8f77bccbe7eda501034291eb1",
         "artifacts_digest_sha256": "621660fb6021e6447c1cc3f2a0814179765676bfbb20d0fded905f58b9ca4e9a",
         "bindings_digest_sha256": "3155cfbdbef0d88a745f69e95ab40a0820e590b21b548cb2ee52b1e996144ff6",
         "cases_digest_sha256": "355c5a6af6db9baf86ebacff87108158e540a03580776548e3b10e431ad7a0b7",
         "dependencies_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-        "sources_digest_sha256": "566d6e52a86bf46da0de0bcc230bc35f43559082b6b603f6b6e60c6a6383a473",
-        "source_tool_evidence_digest_sha256": "b9c16365a05aa1f62c06a39bb3cb99c051c1998347ee3073ac2255e621a9e361",
-        "tool_evidence_digest_sha256": "75f389ded55a5ad9b4f68ff8c0fdeab1cca7fb8f7d7e39bba6a3477332f8eedf"
+        "sources_digest_sha256": "9eca73467e62080c781e41469a4df4365b6d6e4245233636ca7d6135aa22cfdd",
+        "source_tool_evidence_digest_sha256": "8aaaeed1e8582b617f288e9c3852a715bc54c20b1e9069ff9542c30015b41ed4",
+        "tool_evidence_digest_sha256": "b74ea6ccdaa7247d03f9e5f1110c863b48315318101e9aab113ac0b35b10dad1"
       },
       "kernel::isabelle": {
         "handler_key": "kernel::isabelle",
@@ -21027,16 +21655,16 @@
         "certifier_family": "kernel",
         "certified": true,
         "authority_ceiling": "kernel",
-        "receipt_digest_sha256": "544750b2429eafc68478fd86581ce6a071f8bbffd98689415dec482e445288cd",
-        "check_set_digest_sha256": "f5a7e76cfa90c60a040a2aa7b85c1a9707fad1195df2244c929ae57c2a25eb5f",
+        "receipt_digest_sha256": "52cb684041a6db3f500d6fafeb59212c4f8f0cc8f150a135b8718ece4951dd5c",
+        "check_set_digest_sha256": "62b353e37271b37ae1e9a0eb657842b590fb26ff81c7c9ff863ad451f8b53592",
         "identity_digest_sha256": "bf1bc4516d504f782ef4a17d360026e8d2fea6b0ae1da2c76240dcef085345e7",
         "artifacts_digest_sha256": "a07183c41505f8339fe26089e9d1c5a98edb4de3057f1813c4ea9adb38ef7653",
         "bindings_digest_sha256": "eec83a9bc316efae9499bce1de53cda97d32c45e29cadfb3708cae9b97daad59",
         "cases_digest_sha256": "26c0335385bc50c45025b67cc9375ee49aa4c275e238558b40c987f195c607ac",
         "dependencies_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-        "sources_digest_sha256": "934aed0a6a12ae2a9e1548964d6592debe929357565d714bc607b13b6fb4e0a6",
-        "source_tool_evidence_digest_sha256": "072023ebf637e1a506e7df457ccb4fc2f03239ec2ee6217cf9c2a1210eaeabff",
-        "tool_evidence_digest_sha256": "91f8c73be161e767f66cfd8ae2fc9795708ac9b438d387ca2178af814cc62558"
+        "sources_digest_sha256": "ea95818149c8192c8f8876bbdb5516cc4047401ea3ecea400bec0f44daa7dedd",
+        "source_tool_evidence_digest_sha256": "926330956966feda135ffb0a193601bcd865a30341f1ad387e62353bfe2be522",
+        "tool_evidence_digest_sha256": "97a23caed056c0f5757cbad56b533999a0094967bd018d7c146ade92f2323644"
       },
       "protocol::proverif": {
         "handler_key": "protocol::proverif",
@@ -21046,16 +21674,16 @@
         "certifier_family": "protocol",
         "certified": false,
         "authority_ceiling": "protocol",
-        "receipt_digest_sha256": "b5de7d972cdfc33faa6e8f1279d7b7a8a7d532802ed14d74ee1c42b72109fe29",
-        "check_set_digest_sha256": "618c13f3e04fc1074bb639a57593fa684a0e97e061a1cb9f85fdf8a6fb8c8f6b",
+        "receipt_digest_sha256": "a82d6436f95e2fb36f14cd12a6e82383708cdcea285f3369fe16e800d975230c",
+        "check_set_digest_sha256": "7376d8dc1ae8088de6a16e44d7300e6aab893fde523187d3dc1cb9be287ed3cf",
         "identity_digest_sha256": "4f7f4cdc9e69dfcd8b80d3c9c47880119c6465ce2babe971c90d24492790f56a",
         "artifacts_digest_sha256": "00eaac683e8c277de905c02e3f57e5bfb49bf9c92e236ad1d646fdc3f94daf79",
         "bindings_digest_sha256": "5bd270d21d1579604edad7b1f28e5dc0d33744d22f2966d0c0cef5069d1425b6",
         "cases_digest_sha256": "a26e58dd00e7037267a746147f9097230d14ea299652d1b1f5de95c00e40320c",
         "dependencies_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-        "sources_digest_sha256": "0d85653b5a05071415751592d72781061888e4f7f254fa2d475c08f09dc99c09",
-        "source_tool_evidence_digest_sha256": "886bac699c84302f05137df7f2b58f7a78f09ca9b30df83a1fd425752e6c7511",
-        "tool_evidence_digest_sha256": "5b9fbd010d95ce7dad9a6c24557e2a24978aa8da607613490b0b24756acf7023"
+        "sources_digest_sha256": "891ac36606748fea41028adaaa645086f9e9986ded7e033e1fc4fdf789cc783d",
+        "source_tool_evidence_digest_sha256": "1982c0c97cc1c7cf26a9338b61bd2711fcba08e4993be02a06ab62d8fd79f68e",
+        "tool_evidence_digest_sha256": "a13fd2e5b2685790f4f66a474496510437152b9e69851f38271cd50d1293ce34"
       },
       "protocol::tamarin": {
         "handler_key": "protocol::tamarin",
@@ -21084,16 +21712,16 @@
         "certifier_family": "runtime_mtl_in_process",
         "certified": true,
         "authority_ceiling": "finite_trace",
-        "receipt_digest_sha256": "82303d2067cdc057235c1266f306c63c3d322dbda3f3d1bf8f15fa8a3eba2743",
+        "receipt_digest_sha256": "bf2a98dd4a2ad60a2659a9a8e07c878b69261437819bc0f97f4d2a31873e570f",
         "check_set_digest_sha256": "d0d3e74a078116cda28017fd3c81fb128cf2299fecf54fb119d09e4f376cdc6a",
-        "identity_digest_sha256": "36d98bd3e325822d36b3587a16d528edefbeba706d22462a5b9f3034f78a2ab8",
-        "artifacts_digest_sha256": "1898d5aecd25db13de9b5eeabd0f0b3ddd24e3b99594fbd45ca8586e466b860f",
-        "bindings_digest_sha256": "6679c3a1eaaa434e9d1fa58ae9bc80d7566d2b2a1ffbe296c7fe76a79998c4d4",
+        "identity_digest_sha256": "b963cc83d34b8884cd8ebc3eda312fe22c1ffa739f849ea67d5ccb9f91019fec",
+        "artifacts_digest_sha256": "bdc1d4f13ef0d59efc305636d5fdefe122a27a7460d4e9f28f645971b6a1ee60",
+        "bindings_digest_sha256": "9a02a009d7d4ac41e8925f8c280d59f044c7e64c5316258c19b746ce6325d894",
         "cases_digest_sha256": "8587f8ec43053f8c80385434a9e49c85306c029ad84d421bfa714557f35fdaa7",
         "dependencies_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-        "sources_digest_sha256": "95e029fd1fd05a86cb39578d16d7b5466cf9ff6e5843078c234c66ea0b7bb8c6",
-        "source_tool_evidence_digest_sha256": "38c81fe7f51adb031453dd7fb28b29f247feaace0ac02d17e19aa86a99e5fc11",
-        "tool_evidence_digest_sha256": "f4efc4541d1f3514c9ca7990e96ab663fe4f6ff6dbb625cb133ce16a6542f715"
+        "sources_digest_sha256": "f37b30aa4b86e15d90ee0a19af0e1cfe4ffcdaeca8d9417d8de2370dcdcb2bb7",
+        "source_tool_evidence_digest_sha256": "d3b63be40ca8df0e0bf319934b5cc5d3c02afb5fc899b3720612e7e58eb548ff",
+        "tool_evidence_digest_sha256": "7cccaa9e5b223ede64d327d081252dde683fd5244781aafe3058777654316107"
       },
       "runtime_mtl::runtime-mtl-external": {
         "handler_key": "runtime_mtl::runtime-mtl-external",
@@ -21101,18 +21729,18 @@
         "property_lane_id": "runtime_mtl",
         "semantic_lane_id": "runtime_mtl_external",
         "certifier_family": "runtime_mtl_external",
-        "certified": false,
+        "certified": true,
         "authority_ceiling": "finite_trace",
-        "receipt_digest_sha256": "6fa81ead68bc7a7b520f10ec58ff38516da71bbfb8649dd035591b213dfe5aa1",
-        "check_set_digest_sha256": "a3d973e024ee13653255d5cb7bfb7954c46c63feaaecf39d5fb14701adf8bbbf",
-        "identity_digest_sha256": "c2e756df587f45d09d8459d591c211d5046beb40d5ec644b5abfad75af8fce59",
-        "artifacts_digest_sha256": "6239e4b5924117be043c9da5922e19db798b3176724528202f4e22b767c881f0",
-        "bindings_digest_sha256": "217fb1d1dfdaff05f496f4cdf2cffb51087363788ae3bd5f7bdcb38d4c9a4ddd",
-        "cases_digest_sha256": "d9cc829b811c758825e149be38e11063b4efad6f000b2c160bf12bee8af8271a",
+        "receipt_digest_sha256": "1fa6e0bb5a8da68550c83abc9c91b32effeb3aaadd2919ec4b49bac82013676a",
+        "check_set_digest_sha256": "03a9f60442d7ac5ee0aca5d32cf78c3665aeef245e493e4f967b13d9e315e76a",
+        "identity_digest_sha256": "968b859300ee90e54b93b68f19b09918585d860bf6a6c8ff264d8972fd173812",
+        "artifacts_digest_sha256": "1097eab915a8cdbec11c5336c9bdac1d40261315e291a1d25f07c4e8569b302e",
+        "bindings_digest_sha256": "d783763da2b7d7426e8b9cf94acb3e24448e8fafdcdd68dd5d55bd1188debc0c",
+        "cases_digest_sha256": "2f5d1b6425c0324d2e2dc7c5209883fd3ea4f48a9ede531fbbc8835286fdc514",
         "dependencies_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-        "sources_digest_sha256": "5f42d4b48a22ae8a09e7a02e8412f83538597038a898d9d3dac2eb077114ffd1",
-        "source_tool_evidence_digest_sha256": "daaf8efc93c24bc1d61a5973db7713b4b3215ca7d9653a3494cf3e63aeb442e1",
-        "tool_evidence_digest_sha256": "ef354682a3d0b7337f5bc0d0e7ce3aa68142983d374f955c80b04b3dc787c1e1"
+        "sources_digest_sha256": "014abfffe62ec3081532ee7369e83000ffe04d947fbf99f6a3e9c3eb7283c1b1",
+        "source_tool_evidence_digest_sha256": "755977a6fd507740513dc064dda24794987f4d287f204c4b9a3ae5dd79ac606c",
+        "tool_evidence_digest_sha256": "b0827c9ab5d520db488d6bd015254a6ccb6c107ba9b5250e7011fb48d47207e0"
       },
       "tla::apalache": {
         "handler_key": "tla::apalache",
@@ -21153,13 +21781,13 @@
         "tool_evidence_digest_sha256": "83f277bdf99bf1489bded32cba331ea0b09e563e173e864ed5c1f2e325ac7e82"
       }
     },
-    "source_aggregation_digest_sha256": "04777b8e1771cca482874a4de010b07b6461b012c0cd148dfb275ab846697572",
+    "source_aggregation_digest_sha256": "053a6b7d41952c256f48c6c18676850e131dde51155463cb537be6da01d12dd4",
     "projection_policy": {
       "canonical_full_receipts_live_in_semantic_lane_results": true,
       "derived_specialized_rows_are_digest_only": true,
       "source_and_projection_digests_are_distinct": true
     },
-    "aggregation_digest_sha256": "da7f9cf78e0ffd1b7fdc1b128dcc0c0fb7d78872a517f23b3215bed328ec6194"
+    "aggregation_digest_sha256": "e507ba786e73665bbf0ac95862573729f0f3765302d1fe207cd1883d9c0ae974"
   },
   "managed_deployment_readiness": {
     "host_platform": "linux-aarch64",
@@ -21811,13 +22439,13 @@
         "category": "capability",
         "role": "authority",
         "authority_ceiling": "finite_trace",
-        "evidence_class": "unavailable",
-        "artifact_classes": [],
+        "evidence_class": "hermetic_adapter_shim",
+        "artifact_classes": [
+          "generated_hermetic_shim",
+          "repository_source"
+        ],
         "reasons": [
-          "full_semantic_check_set_missing_or_failed",
-          "locked_version_mismatch",
           "semantic_evidence_below_authority_ceiling",
-          "semantic_receipt_not_bound",
           "supported_managed_installation_missing_or_shim_only"
         ]
       },
@@ -22138,13 +22766,13 @@
         "category": "capability",
         "role": "authority",
         "authority_ceiling": "finite_trace",
-        "evidence_class": "unavailable",
-        "artifact_classes": [],
+        "evidence_class": "hermetic_adapter_shim",
+        "artifact_classes": [
+          "generated_hermetic_shim",
+          "repository_source"
+        ],
         "reasons": [
-          "full_semantic_check_set_missing_or_failed",
-          "locked_version_mismatch",
           "semantic_evidence_below_authority_ceiling",
-          "semantic_receipt_not_bound",
           "supported_managed_installation_missing_or_shim_only"
         ]
       },
@@ -22259,8 +22887,8 @@
         "reason": "evidence_class_cannot_satisfy_production_authority",
         "interface": "LeanSemanticCertification@1",
         "evidence_class": "usable_pending_kernel_live_fanin",
-        "semantic_receipt_digest_sha256": "dbda920bab9afd2a30b0c2b11e74632ebee6c6ee4fc51c5864f4afd51fe78176",
-        "checks_digest_sha256": "5833939226b9f195b4f4ef28dda97a959ad171a30f960f279a65168f26645066",
+        "semantic_receipt_digest_sha256": "85b67f0dc7d7a83f75a0b649de5b8146fb994b43a29c5db8175640a02173530e",
+        "checks_digest_sha256": "4150e76c3ffbc1e99ffb0391cfb991f973fa68a22b89463470ad7fa9c639ba50",
         "checks_count": 14
       },
       {
@@ -22270,8 +22898,8 @@
         "reason": "evidence_class_cannot_satisfy_production_authority",
         "interface": "RocqToolchainCertification@1",
         "evidence_class": "external_prover_installation_pending",
-        "semantic_receipt_digest_sha256": "61811eb3259552046b94a720a4d8d58610e10a69183b12d1107c973013cb2e15",
-        "checks_digest_sha256": "a1f465ad52461db34c148dd57726ef91facea34b985ec0cd5e0f3ac55207bd87",
+        "semantic_receipt_digest_sha256": "45f7901e6f43cfc877d722edb6faee8f679c6a7eacd59b70e333783ec4c071e3",
+        "checks_digest_sha256": "07291cc4b148bf36b5f73c953b764e90bb94d08d369c74ba9626b3f88a4e0e0e",
         "checks_count": 16
       },
       {
@@ -22292,7 +22920,7 @@
         "reason": "evidence_class_cannot_satisfy_production_authority",
         "interface": "RuntimeMTLSemanticCertification@1",
         "evidence_class": "usable_pending_external_runtime_mtl",
-        "semantic_receipt_digest_sha256": "3a4b27368d96fd0cbee1cd5207c4ecf2cb3b87544bbac6963c0e07681d2ba2e6",
+        "semantic_receipt_digest_sha256": "7acd11764e78d8fa9c756e6470ec0e3e6e77e94b83ebb8db30c992c00df9b0e6",
         "checks_digest_sha256": "d0d3e74a078116cda28017fd3c81fb128cf2299fecf54fb119d09e4f376cdc6a",
         "checks_count": 12
       },
@@ -22303,7 +22931,7 @@
         "reason": "evidence_class_cannot_satisfy_production_authority",
         "interface": "AuthorizationSemanticCertification@1",
         "evidence_class": "usable_pending_authorization_vendor_fanin",
-        "semantic_receipt_digest_sha256": "20ed138b70e4e8989fc88f5d79bebdff4a940060e7aaaf955716259cca05ca36",
+        "semantic_receipt_digest_sha256": "3765f4ee23e50c9a4e8360f62b890cd60e1170855cbd6ec75d265cd3b28926cd",
         "checks_digest_sha256": "017b17fd14348ed4cb9a4fac7f263be1ae02b5823378c50e6a4c24a8effbc296",
         "checks_count": 24
       },
@@ -22314,7 +22942,7 @@
         "reason": "evidence_class_cannot_satisfy_production_authority",
         "interface": "AuthorizationSemanticCertification@1",
         "evidence_class": "usable_pending_authorization_vendor_fanin",
-        "semantic_receipt_digest_sha256": "20ed138b70e4e8989fc88f5d79bebdff4a940060e7aaaf955716259cca05ca36",
+        "semantic_receipt_digest_sha256": "3765f4ee23e50c9a4e8360f62b890cd60e1170855cbd6ec75d265cd3b28926cd",
         "checks_digest_sha256": "f81d07888f4e03b9fe7f70a7232fbf44de81d80049cd56f082fab6ca5e8023b8",
         "checks_count": 24
       },
@@ -22353,7 +22981,7 @@
         "lane_id": "protocol_proverif",
         "elevated": false,
         "reason": "required_check_kinds_incomplete",
-        "checks_digest_sha256": "60e3a0e2592ecbd05fca08ce435d827e9ce3f53e774d0cb6b65a130ac8250f61",
+        "checks_digest_sha256": "cc723f5ee7cf611aad621d96b5edfdc8901cee2a1b116ed3a93efdc880ed8a31",
         "checks_count": 17
       },
       {
@@ -22376,9 +23004,12 @@
         "tool_id": "runtime-mtl-external",
         "lane_id": "runtime_mtl_external",
         "elevated": false,
-        "reason": "required_check_kinds_incomplete",
-        "checks_digest_sha256": "b53116dd9765ffd6b7d9a24f0982e783c26b203becefd6df3c93c9fd1b19dd61",
-        "checks_count": 34
+        "reason": "evidence_class_cannot_satisfy_production_authority",
+        "interface": "ExternalRuntimeMTLCertification@1",
+        "evidence_class": "hermetic_adapter_shim",
+        "semantic_receipt_digest_sha256": "631562f9a3ed2c40c560cb420ad9125937b838445d11277aed3cc2cfa5d35eb4",
+        "checks_digest_sha256": "d31dc54c4ff6716ded4ba1d72526b101c86e2102b55f47a1a716f9cb24a3da58",
+        "checks_count": 33
       },
       {
         "tool_id": "souffle",
@@ -22411,8 +23042,8 @@
         "reason": "evidence_class_cannot_satisfy_production_authority",
         "interface": "AdvisorRoleCertification@1",
         "evidence_class": "proposal_only_semantics",
-        "semantic_receipt_digest_sha256": "d7de3ece0f4e44588bdbba6cb83f131741eaed7eb11ce6903e60d85fa5d5d841",
-        "checks_digest_sha256": "b8b6fcddeaa04b73116e1f23030ccd5bffb65baf22fa00c5dd2354c91246b43c",
+        "semantic_receipt_digest_sha256": "dbb2eb2fc21fad569c149a75c4c2f270a951369e9b9e681da9f99e98433b0447",
+        "checks_digest_sha256": "4c61098d6733fece8ad1fecc5789b005f13e9aed2cd071238dc2501ba63dce18",
         "checks_count": 12
       },
       {
@@ -22422,8 +23053,8 @@
         "reason": "evidence_class_cannot_satisfy_production_authority",
         "interface": "AdvisorRoleCertification@1",
         "evidence_class": "proposal_only_semantics",
-        "semantic_receipt_digest_sha256": "d7de3ece0f4e44588bdbba6cb83f131741eaed7eb11ce6903e60d85fa5d5d841",
-        "checks_digest_sha256": "50e994d161eb49db160f4af989609db7f173808e7ee829de547e0b488d68bd59",
+        "semantic_receipt_digest_sha256": "dbb2eb2fc21fad569c149a75c4c2f270a951369e9b9e681da9f99e98433b0447",
+        "checks_digest_sha256": "b4cb6b374a566b86e11234b785d40be92610ecde7a5063769438844ef80b0d6b",
         "checks_count": 11
       }
     ],
@@ -22461,7 +23092,7 @@
     "release_candidate": "docs/architecture/formal_verification_role_aware_release_candidate.json",
     "lock": "config/formal_verification_toolchains.lock.json"
   },
-  "certificate_digest_sha256": "85dc27f1df9f0258adf0de2fd2cebdb093646aaaaee6b622cee087586ab4c67b",
+  "certificate_digest_sha256": "297836748751d7b90ed66f129e8a25be72a7f58842655a4522ea2de0cb456316",
   "public_evidence_policy": {
     "satisfied": true,
     "failures": [],

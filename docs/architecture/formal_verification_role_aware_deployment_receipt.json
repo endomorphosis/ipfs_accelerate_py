@@ -6,7 +6,7 @@
   "goal_id": "FVT-G214",
   "task_id": "FVT-067",
   "program": "formal-verification-tactician/toolchain-release-finalizer",
-  "observed_at": "2026-08-01T03:20:49Z",
+  "observed_at": "2026-08-01T06:43:44Z",
   "binding_mode": "post_merge_external_content_addressed_attestation",
   "publication_mode": "external_content_addressed",
   "status": "role_aware_deployment_blocked",
@@ -14,33 +14,21 @@
   "description": "Fail-closed post-merge deployment attestation (FVT-G214). Binds the FVT-G213 release candidate, its durable terminal supervisor completion receipt, and publishes either an external content-addressed attestation or a receipt commit with a strictly limited generated-artifact diff. Never attests the current task's future event and never claims deployment-ready without terminal evidence.",
   "source": {
     "model": "two_phase_source_then_attestation_publication/v1",
-    "certified_source_commit": "34b563003dd89f458fcb1b38f8f651771778893c",
-    "certified_source_tree": "288dbe4e28c59e4edf25fdb815ed3753e26bfcb8",
-    "datasets_gitlink": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
-    "datasets_embedded_head": "f857976a26d2688a1da3742762754673b1abdd22",
-    "source_commit_bound": false,
+    "certified_source_commit": "e736c6b95436cb95b11c901288bb291feccfee31",
+    "certified_source_tree": "504dafbeacae7308cfca0eb1b5c81bbf311de91b",
+    "datasets_gitlink": "7415adc5100192ee35676778f1018f6b072378f9",
+    "datasets_embedded_head": "7415adc5100192ee35676778f1018f6b072378f9",
+    "source_commit_bound": true,
     "source_candidate_clean": false,
     "dirty_paths_at_certification": [
       "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
       "docs/architecture/formal_verification_role_aware_release_candidate.json",
+      "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json",
       "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
-      "docs/architecture/formal_verification_toolchain_certificate.json",
-      "ipfs_datasets_py",
-      "test/integration/test_formal_verification_role_aware_completion.py",
-      "test/integration/test_formal_verification_role_aware_post_merge_attestation.py",
-      "test/integration/test_formal_verification_role_aware_release_candidate.py",
-      "tools/logic/build_formal_verification_tactician_receipt.py",
-      "tools/logic/certify_formal_verification_toolchains.py",
-      "tools/logic/finalize_formal_verification_deployment.py"
+      "docs/architecture/formal_verification_toolchain_certificate.json"
     ],
     "non_attestation_dirty_paths": [
-      "ipfs_datasets_py",
-      "test/integration/test_formal_verification_role_aware_completion.py",
-      "test/integration/test_formal_verification_role_aware_post_merge_attestation.py",
-      "test/integration/test_formal_verification_role_aware_release_candidate.py",
-      "tools/logic/build_formal_verification_tactician_receipt.py",
-      "tools/logic/certify_formal_verification_toolchains.py",
-      "tools/logic/finalize_formal_verification_deployment.py"
+      "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json"
     ],
     "attestation_paths": [
       "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
@@ -64,8 +52,8 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "34b563003dd89f458fcb1b38f8f651771778893c",
-        "tree": "288dbe4e28c59e4edf25fdb815ed3753e26bfcb8",
+        "commit": "e736c6b95436cb95b11c901288bb291feccfee31",
+        "tree": "504dafbeacae7308cfca0eb1b5c81bbf311de91b",
         "origin_main": "0ae5f590e858cfe2618b9a24aa4479e9e8ca619e",
         "clean": false,
         "matches_origin_main": false
@@ -73,27 +61,25 @@
       "gitlink": {
         "path": "ipfs_datasets_py",
         "mode": "160000",
-        "commit": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46"
+        "commit": "7415adc5100192ee35676778f1018f6b072378f9"
       },
       "embedded_checkout": {
         "path": "ipfs_datasets_py",
-        "head": "f857976a26d2688a1da3742762754673b1abdd22",
+        "head": "7415adc5100192ee35676778f1018f6b072378f9",
         "clean": true,
-        "matches_gitlink": false,
-        "origin_main": "f857976a26d2688a1da3742762754673b1abdd22",
+        "matches_gitlink": true,
+        "origin_main": "7415adc5100192ee35676778f1018f6b072378f9",
         "matches_origin_main": true
       },
       "publication_gates": {
         "parent_publication_lag": true,
-        "datasets_publication_lag": true,
+        "datasets_publication_lag": false,
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
       },
       "aligned_for_implementation": false,
       "diagnostics": [
         "parent_working_tree_dirty",
-        "gitlink_embedded_head_mismatch",
-        "datasets_publication_lag_vs_origin_main",
         "parent_publication_lag_vs_origin_main"
       ]
     }
@@ -105,13 +91,13 @@
     "goal_id": "FVT-G213",
     "task_id": "FVT-066",
     "schema_version": "formal-verification-role-aware-release-candidate/v1",
-    "checked_candidate_identity": "sha256:29d72c824c7af3c28f532f048eddc91be45777b51cdf197e8091ab456382cd41",
-    "live_candidate_identity": "sha256:96957f0a68b89d30f84dc3428caa367e6bcba0f589c1c2b3c613bd0455b9ceca",
+    "checked_candidate_identity": "sha256:5a8c95fbf75b98cae0573387da8b0edcd376642cfe2757c23a9c52f77e8cb76c",
+    "live_candidate_identity": "sha256:e3bb254c163252c883f9d84f6d63e0e9fe6c04255f0cf43536728b9efbf85d83",
     "checked_identity_valid": true,
     "matches_live_recompute": false,
     "digest_material_verification": {
       "valid": true,
-      "digest_material_identity": "sha256:0cbb9ce26294434364f4d38c10978aacbd3401eb5ce1db7521584313dc248d45",
+      "digest_material_identity": "sha256:cdb2039bc893524ab5108eef5049cd3202fd2e5eff3144cb404d76f6aebb3125",
       "checks": {
         "required_keys_complete": true,
         "certificate_digest_well_formed": true,
@@ -160,13 +146,12 @@
       "max_stage": "release_candidate",
       "merge_event_present": false
     },
-    "file_sha256": "sha256:43fe02fe9214f5a32f919092a84a405b83d7b090d2525b71b3b65a014d42c8bb",
+    "file_sha256": "sha256:54009745179c5ac501bc4f3dff665d990e3b62f5b1844d8c25d1f33b8a2d7bfe",
     "live": {
-      "candidate_identity": "sha256:96957f0a68b89d30f84dc3428caa367e6bcba0f589c1c2b3c613bd0455b9ceca",
+      "candidate_identity": "sha256:e3bb254c163252c883f9d84f6d63e0e9fe6c04255f0cf43536728b9efbf85d83",
       "status": "role_aware_release_candidate_blocked",
       "readiness_stage": "blocked",
       "blockers": [
-        "certified_source_bound",
         "hyperltl:semantic_lane_not_run",
         "managed:apalache:full_semantic_check_set_missing_or_failed",
         "managed:apalache:launcher_target_artifact_unbound",
@@ -213,9 +198,10 @@
         "managed:proverif:semantic_evidence_below_authority_ceiling",
         "managed:proverif:semantic_receipt_not_bound",
         "managed:proverif:supported_managed_installation_missing_or_shim_only",
-        "managed:runtime-mtl-external:full_semantic_check_set_missing_or_failed",
-        "managed:runtime-mtl-external:locked_version_mismatch",
-        "managed:runtime-mtl-external:semantic_evidence_below_authority_ceiling"
+        "managed:runtime-mtl-external:semantic_evidence_below_authority_ceiling",
+        "managed:runtime-mtl-external:supported_managed_installation_missing_or_shim_only",
+        "managed:souffle:full_semantic_check_set_missing_or_failed",
+        "managed:souffle:locked_version_mismatch"
       ]
     },
     "block_reasons": [],
@@ -223,34 +209,34 @@
       "interface": "RoleAwareFormalVerificationReleaseCandidate@1",
       "goal_id": "FVT-G213",
       "task_id": "FVT-066",
-      "candidate_identity": "sha256:29d72c824c7af3c28f532f048eddc91be45777b51cdf197e8091ab456382cd41",
+      "candidate_identity": "sha256:5a8c95fbf75b98cae0573387da8b0edcd376642cfe2757c23a9c52f77e8cb76c",
       "status": "role_aware_release_candidate_blocked",
       "readiness_stage": "blocked",
       "digest_material": {
-        "certificate_digest_sha256": "85dc27f1df9f0258adf0de2fd2cebdb093646aaaaee6b622cee087586ab4c67b",
+        "certificate_digest_sha256": "297836748751d7b90ed66f129e8a25be72a7f58842655a4522ea2de0cb456316",
         "tool_check_digests": {
           "apalache": "9b2af65e46a0aed4ca7c9f865d47b753853fb3861d9262a39dbe2a13eeed6f49",
           "autohyper": "8a72dc5c3c5b25cb8c4cbb73402c18c51c1275b71d93f64182125d521bd62ccc",
-          "coq": "519ebff3c8d60298738812ea8c8e1fbc1d311a8dcf6e9ba0851322d5d42529ba",
+          "coq": "c5c95efc6219a66324dfa62810e8541b3ae873bc9746f125a39855198548188e",
           "cvc5": "73d8086cdb0f5ed09d53cca87584b69a3f916ca46a16b1f57634c1ced34e57d8",
           "datalog-authorization": "aedd02270f46bb29ce94c403509c78170bb03950da0a0a84141cf30724f3c713",
           "eprover": "e417b59ebedb015501429db7512d92533d9ee7fa7e03d5ecb5955e158df2c266",
-          "ergoai": "84c416acda9913fb53786e15fa67559cb36100f77abc3727b697373c0f67c1a4",
+          "ergoai": "a2d57b0621c1f645bf501fcca269f2ceff159d60c89d9fdbac9862c2aa616be0",
           "hyperltl": "0b9ad75cfeb0000289beb07a023cc35f8c7993ab292395c814a9e20306e219e5",
           "isabelle": "3082a1c5e4e83dfa431d72ff954bd21b78119afbd2c3b03549529ca2091f5c4e",
           "java": "703f490c6879c4b8f1b5fbfff586accd47ef3f6791a26ec4ea1ec3dbf361bb02",
-          "lean": "590fc774e1ea8fc71d6568ff61617666d6eac44b484660c8281e2f088bcea1f6",
+          "lean": "e6e1dd54a57eade59a79136c2dd33e100beabd62655cb099330c02d6a1a8dc32",
           "maude": "d54e0592856a6210af425e997b232be03e105d59e728ca0228cdc5c56679b49e",
           "mchyper": "bb2ce0a3596b4085aca49773e4db88487136557b64ea007983b2911b19767e78",
           "opam": "795d1bb6eb93894cf49d6132823c4ed881ef6ffeec106de88893ea63ff88883d",
           "proverif": "88585e2084fb9f094bbf6652ee173c281368a478a0bd72cbc4862b7f79f05488",
           "runtime-mtl": "de491ce69724554c6e59cf44be7f3e2b9104440d747a8e4f8cfd4e6836c84821",
-          "runtime-mtl-external": "de7f2523fdcc84a45673f64e72136e318a8b06eb4b7de08fa344f3aa350a021f",
+          "runtime-mtl-external": "cf6c3a50537ba0b42cbf10eb8060dff938004ab871b3a3187dcce7dfbb5a4d5f",
           "secpal": "ade16d63beaf32d61a42d72686f0b696f2600b0e3ebc1bbc1e9260e8487b7948",
           "secpal-authorization": "9335c3b5c2f73d84b5fa90da9ac9e7f2c4e2bf7d6f03ec5ebf7170fb2735afdf",
           "souffle": "93c4966d901c5dee03fbaafff82a8238989d8af25118320ce80a5bf8c8f72b71",
           "stack": "81999d21e1eb47866a36fc9cda3bdc307abc68c295185aa45c13aee1ca0232fa",
-          "symbolicai": "f92361b9eb0b54c57062a914d050dc8b60e647d8143e08161e25a9999e2f31d6",
+          "symbolicai": "8c167c5a97189c0a0c3552197a7dd381cfe02759dd2df2d06a5d3492e16141a9",
           "tamarin": "c9095cfa80db8e3b727ba172e02f92813ca62fd8af70be8e7b98e1c0c3f52103",
           "tlc": "cf7c44a580b3092ad28ecdd887b3e3a39d18375a5611f5efde122295e9c4433f",
           "vampire": "dd6ad8f0e8e7888edb81bf96d45ff96ccfacfe39f119d3fed9dcae52bdb5be46",
@@ -302,9 +288,13 @@
             "sha256:3a2febf527ff9af3f3270b482d465729a8e6024fe01f2e53aa18aacaaa47dbf4"
           ],
           "runtime-mtl": [
-            "sha256:40f509d3bc712e3ded40d403dd8548ec0d9e03933deb985caf38ba56e044de40"
+            "sha256:70e65a44885214daf6ba25756550c1fb3d308d250d62927727ee4012abb8e2b3"
           ],
-          "runtime-mtl-external": [],
+          "runtime-mtl-external": [
+            "sha256:268286d89b09887be637165f6db67207996687124a8e354acb951ab5f8fef51c",
+            "sha256:463c37783df48327cb699770b83dc95f075d8a1d6dd11b52b2663b047dfe34a5",
+            "sha256:d5c16510e7848c284bc69497f68fafb3d7d0f3fdae3282652c5f0a72bae4d5e0"
+          ],
           "secpal": [],
           "secpal-authorization": [
             "sha256:f8fd4ea76691172f4fbfb2deaca565be4920ebf56cd90e8350c87d0625d4cb6e"
@@ -331,22 +321,22 @@
           "zkp-circuit": []
         },
         "semantic_receipt_digests": {
-          "kernel": "544750b2429eafc68478fd86581ce6a071f8bbffd98689415dec482e445288cd",
-          "kernel_rocq": "5067db2e01e583a171920c442802c52ccbb1a4a7706156078ed50d72602ca50f",
+          "kernel": "52cb684041a6db3f500d6fafeb59212c4f8f0cc8f150a135b8718ece4951dd5c",
+          "kernel_rocq": "e81cb78ab6b9ef1c35fd078c56399418cbf9500bee30f996372c6df6fa8e7b72",
           "kernel_isabelle": "962e8fc7773fd47f26cd2f7b8bb302cd3648e378c02643c23f3a0a648d61769a",
-          "runtime_mtl": "82303d2067cdc057235c1266f306c63c3d322dbda3f3d1bf8f15fa8a3eba2743",
+          "runtime_mtl": "bf2a98dd4a2ad60a2659a9a8e07c878b69261437819bc0f97f4d2a31873e570f",
           "datalog_secpal": "1c56612f1405ed2bb53ea52bb8ebdbeb38147b7fb4c3b83ca2d1cbf07a1be8dd",
           "state_model": "e07d77ed67ec73928671190b68b07319388d950e3f612c9a7278551ef0147f5b",
           "protocol_tamarin": "631cfcdbc88b12894eec09eb38de8bed90624891260e1d65bbb05d7844336dc5",
-          "protocol_proverif": "b5de7d972cdfc33faa6e8f1279d7b7a8a7d532802ed14d74ee1c42b72109fe29",
+          "protocol_proverif": "a82d6436f95e2fb36f14cd12a6e82383708cdcea285f3369fe16e800d975230c",
           "atp": "32638a4b24925ab5c91917fb4c2d856be6662e50bf70b171b1e86c5ee74265cb",
-          "runtime_mtl_external": "6fa81ead68bc7a7b520f10ec58ff38516da71bbfb8649dd035591b213dfe5aa1",
+          "runtime_mtl_external": "1fa6e0bb5a8da68550c83abc9c91b32effeb3aaadd2919ec4b49bac82013676a",
           "authorization_external": "46773d7f8ab87996007ef7bb1a48a0c857a81dbaa1a87f8fcadcb1358b5a7892",
           "attestation": "c1a6547dca7f7431fe3f0657a4cd8675af39091bebe866763a423822791de722",
           "advisors": "781cd5fe254ee3411e39f94d386f734f722cb52fcbdd553f31b134304ed545e9"
         },
-        "specialized_projection_aggregation_digest": "da7f9cf78e0ffd1b7fdc1b128dcc0c0fb7d78872a517f23b3215bed328ec6194",
-        "specialized_source_aggregation_digest": "04777b8e1771cca482874a4de010b07b6461b012c0cd148dfb275ab846697572",
+        "specialized_projection_aggregation_digest": "e507ba786e73665bbf0ac95862573729f0f3765302d1fe207cd1883d9c0ae974",
+        "specialized_source_aggregation_digest": "053a6b7d41952c256f48c6c18676850e131dde51155463cb537be6da01d12dd4",
         "specialized_projection_handler_digests": {
           "atp::eprover": "164fbc0cfdfdb83c2b0c6aa1ee9ca22249b37e324d53560172984e5556660646",
           "atp::vampire": "1c3ac09200f7b44f9bc85a1f8204c4b2771ee2183061f7344c9f8062427f556d",
@@ -360,13 +350,13 @@
           "hyperltl::autohyper": "a6643af455c188be9760cbf27c0c33c01e90da776e671b1e9d6c71d147844feb",
           "hyperltl::hyperltl": "e3a5f7ba0a0ac202edf7771a6d0904c8ec099798d39b12c3123309cef2502d74",
           "hyperltl::mchyper": "83c188e296a094e4bf9eaa851f5a63007aeb76747f6dd69170cf9157ca67e421",
-          "kernel::coq": "75f389ded55a5ad9b4f68ff8c0fdeab1cca7fb8f7d7e39bba6a3477332f8eedf",
+          "kernel::coq": "b74ea6ccdaa7247d03f9e5f1110c863b48315318101e9aab113ac0b35b10dad1",
           "kernel::isabelle": "f038cec9eeedd039474a5c9373df228615ccee02202ffb54814945ea30cc69c2",
-          "kernel::lean": "91f8c73be161e767f66cfd8ae2fc9795708ac9b438d387ca2178af814cc62558",
-          "protocol::proverif": "5b9fbd010d95ce7dad9a6c24557e2a24978aa8da607613490b0b24756acf7023",
+          "kernel::lean": "97a23caed056c0f5757cbad56b533999a0094967bd018d7c146ade92f2323644",
+          "protocol::proverif": "a13fd2e5b2685790f4f66a474496510437152b9e69851f38271cd50d1293ce34",
           "protocol::tamarin": "2a32d93d34950baf3e90d267a96522806997e25f3d82986d768e12e086c286cc",
-          "runtime_mtl::runtime-mtl": "f4efc4541d1f3514c9ca7990e96ab663fe4f6ff6dbb625cb133ce16a6542f715",
-          "runtime_mtl::runtime-mtl-external": "ef354682a3d0b7337f5bc0d0e7ce3aa68142983d374f955c80b04b3dc787c1e1",
+          "runtime_mtl::runtime-mtl": "7cccaa9e5b223ede64d327d081252dde683fd5244781aafe3058777654316107",
+          "runtime_mtl::runtime-mtl-external": "b0827c9ab5d520db488d6bd015254a6ccb6c107ba9b5250e7011fb48d47207e0",
           "tla::apalache": "94109f3ae3856958e53ed9fbf873a3cc48e37affa976e6a276406d65d4ae18a3",
           "tla::tlc": "83f277bdf99bf1489bded32cba331ea0b09e563e173e864ed5c1f2e325ac7e82"
         },
@@ -383,13 +373,13 @@
           "hyperltl::autohyper": "f36139386083a514c8a87d143cd9c059ffd8b70f159863025bd5bcce7b0302fe",
           "hyperltl::hyperltl": "81ea2a1f2e57f2b1708ea2e66ee62afc85583fe4c081e8889b46ff08443dd28f",
           "hyperltl::mchyper": "13bbe4ecfccc6a55820720a8618bb0fda31b909e25fb986064f9946aadc67319",
-          "kernel::coq": "b9c16365a05aa1f62c06a39bb3cb99c051c1998347ee3073ac2255e621a9e361",
+          "kernel::coq": "8aaaeed1e8582b617f288e9c3852a715bc54c20b1e9069ff9542c30015b41ed4",
           "kernel::isabelle": "98379170a76d88d5e61e43691714c6081ed3beff486448346c94696a374604b3",
-          "kernel::lean": "072023ebf637e1a506e7df457ccb4fc2f03239ec2ee6217cf9c2a1210eaeabff",
-          "protocol::proverif": "886bac699c84302f05137df7f2b58f7a78f09ca9b30df83a1fd425752e6c7511",
+          "kernel::lean": "926330956966feda135ffb0a193601bcd865a30341f1ad387e62353bfe2be522",
+          "protocol::proverif": "1982c0c97cc1c7cf26a9338b61bd2711fcba08e4993be02a06ab62d8fd79f68e",
           "protocol::tamarin": "1d41ea1df913909429a0ecd2b6798055e34e68ae4aac8c7d496f31f504648339",
-          "runtime_mtl::runtime-mtl": "38c81fe7f51adb031453dd7fb28b29f247feaace0ac02d17e19aa86a99e5fc11",
-          "runtime_mtl::runtime-mtl-external": "daaf8efc93c24bc1d61a5973db7713b4b3215ca7d9653a3494cf3e63aeb442e1",
+          "runtime_mtl::runtime-mtl": "d3b63be40ca8df0e0bf319934b5cc5d3c02afb5fc899b3720612e7e58eb548ff",
+          "runtime_mtl::runtime-mtl-external": "755977a6fd507740513dc064dda24794987f4d287f204c4b9a3ae5dd79ac606c",
           "tla::apalache": "ebcf2610b70784b530f14553b9496f5a900195966e4523bb031c1bd960d95627",
           "tla::tlc": "881615265ab3fb700ad28275e8cc0a7458bb08ee3536ec8e38b0c283465e49ea"
         },
@@ -402,7 +392,7 @@
       "bound": false,
       "terminal_evidence_bound": false,
       "merge_commit": null,
-      "current_blob": "8e0a3c949dbc62e2916e30c795c46c8c20f2a8ae",
+      "current_blob": "d7380a1463021e98fd40f5046fdbef141f1eb319",
       "merged_blob": null,
       "failures": [],
       "binding_rule": "The candidate file bytes must equal the blob published by the verified FVT-066 terminal merge commit."
@@ -466,8 +456,8 @@
     "g213_expected_outputs_bound": false,
     "validation_result_bound": false,
     "merged_commit_bound": false,
-    "source_tree_bound": false,
-    "datasets_gitlink_bound": false,
+    "source_tree_bound": true,
+    "datasets_gitlink_bound": true,
     "origin_publication_bound": false,
     "supported_capability_closure": false,
     "hard_zero_gates_clear": false,
@@ -496,8 +486,8 @@
     "g213_expected_outputs_bound": false,
     "validation_result_bound": false,
     "merged_commit_bound": false,
-    "source_tree_bound": false,
-    "datasets_gitlink_bound": false,
+    "source_tree_bound": true,
+    "datasets_gitlink_bound": true,
     "origin_publication_bound": false,
     "supported_capability_closure": false,
     "hard_zero_gates_clear": false,
@@ -515,7 +505,6 @@
     "never_claims_current_task_future_event": true
   },
   "deployment_blockers": [
-    "datasets_gitlink_bound",
     "event_chain_continuous",
     "g213_expected_outputs_bound",
     "g213_terminal_evidence_missing",
@@ -567,10 +556,7 @@
     "managed:proverif:semantic_evidence_below_authority_ceiling",
     "managed:proverif:semantic_receipt_not_bound",
     "managed:proverif:supported_managed_installation_missing_or_shim_only",
-    "managed:runtime-mtl-external:full_semantic_check_set_missing_or_failed",
-    "managed:runtime-mtl-external:locked_version_mismatch",
     "managed:runtime-mtl-external:semantic_evidence_below_authority_ceiling",
-    "managed:runtime-mtl-external:semantic_receipt_not_bound",
     "managed:runtime-mtl-external:supported_managed_installation_missing_or_shim_only",
     "managed:souffle:full_semantic_check_set_missing_or_failed",
     "managed:souffle:locked_version_mismatch",
@@ -601,7 +587,6 @@
     "merged_commit_bound",
     "origin_publication_bound",
     "release_candidate_merge_blob_bound",
-    "source_tree_bound",
     "supported_capability_closure",
     "validation_result_bound"
   ],
@@ -736,7 +721,7 @@
     "schema_version": "formal-verification-toolchain-certificate/v1",
     "goal_id": "FVT-G060",
     "task_id": "FVT-030",
-    "certificate_digest_sha256": "2158cf7c56682d5af2bb931133598741c0aaccb45e0b86ba3de9c77399fc0839",
+    "certificate_digest_sha256": "63262a4d322e8ae151f941e5e0a0c2ca75608278849e3de820812bf99d150c5a",
     "role_aware": {
       "enabled": true,
       "elevated_tool_ids": []
@@ -757,9 +742,9 @@
         "opam",
         "proverif",
         "runtime-mtl",
+        "runtime-mtl-external",
         "secpal-authorization",
         "stack",
-        "symbolicai",
         "tamarin",
         "vampire"
       ],
@@ -769,9 +754,9 @@
         "hyperltl",
         "isabelle",
         "mchyper",
-        "runtime-mtl-external",
         "secpal",
         "souffle",
+        "symbolicai",
         "tlc",
         "zkp-circuit"
       ]
@@ -827,14 +812,14 @@
       {
         "lane_id": "kernel",
         "status": "ran",
-        "digest_sha256": "9396ef3e4ffc0607fa59161355249238a80e6ffebbc1c1963159e079955878ca",
+        "digest_sha256": "f6579cc1602889a7ec9f18e87d336e56193b28975fb79acbfe265b4814f4d092",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "kernel_rocq",
         "status": "ran",
-        "digest_sha256": "5067db2e01e583a171920c442802c52ccbb1a4a7706156078ed50d72602ca50f",
+        "digest_sha256": "e81cb78ab6b9ef1c35fd078c56399418cbf9500bee30f996372c6df6fa8e7b72",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
@@ -848,7 +833,7 @@
       {
         "lane_id": "runtime_mtl",
         "status": "ran",
-        "digest_sha256": "82303d2067cdc057235c1266f306c63c3d322dbda3f3d1bf8f15fa8a3eba2743",
+        "digest_sha256": "bf2a98dd4a2ad60a2659a9a8e07c878b69261437819bc0f97f4d2a31873e570f",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
@@ -876,7 +861,7 @@
       {
         "lane_id": "protocol_proverif",
         "status": "ran",
-        "digest_sha256": "b5de7d972cdfc33faa6e8f1279d7b7a8a7d532802ed14d74ee1c42b72109fe29",
+        "digest_sha256": "a82d6436f95e2fb36f14cd12a6e82383708cdcea285f3369fe16e800d975230c",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
@@ -899,7 +884,7 @@
       {
         "lane_id": "runtime_mtl_external",
         "status": "ran",
-        "digest_sha256": "6fa81ead68bc7a7b520f10ec58ff38516da71bbfb8649dd035591b213dfe5aa1",
+        "digest_sha256": "1fa6e0bb5a8da68550c83abc9c91b32effeb3aaadd2919ec4b49bac82013676a",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
@@ -928,26 +913,26 @@
     "tool_check_digests": {
       "apalache": "9b2af65e46a0aed4ca7c9f865d47b753853fb3861d9262a39dbe2a13eeed6f49",
       "autohyper": "8a72dc5c3c5b25cb8c4cbb73402c18c51c1275b71d93f64182125d521bd62ccc",
-      "coq": "519ebff3c8d60298738812ea8c8e1fbc1d311a8dcf6e9ba0851322d5d42529ba",
+      "coq": "c5c95efc6219a66324dfa62810e8541b3ae873bc9746f125a39855198548188e",
       "cvc5": "73d8086cdb0f5ed09d53cca87584b69a3f916ca46a16b1f57634c1ced34e57d8",
       "datalog-authorization": "aedd02270f46bb29ce94c403509c78170bb03950da0a0a84141cf30724f3c713",
       "eprover": "e417b59ebedb015501429db7512d92533d9ee7fa7e03d5ecb5955e158df2c266",
-      "ergoai": "be92b0a575201b021b02a7af1378b098e31e9089b3a08eb536bf6d66552b6e44",
+      "ergoai": "f28f71c5270c94a43934bc5efcbe789d76c81d70ded0eeb4cc26cd0e49eead85",
       "hyperltl": "0b9ad75cfeb0000289beb07a023cc35f8c7993ab292395c814a9e20306e219e5",
       "isabelle": "3082a1c5e4e83dfa431d72ff954bd21b78119afbd2c3b03549529ca2091f5c4e",
       "java": "703f490c6879c4b8f1b5fbfff586accd47ef3f6791a26ec4ea1ec3dbf361bb02",
-      "lean": "c0c3a65362ba2b1f281b7c4e83b7e21b2d365b33b4765f3b3c7c887e9279ecbc",
+      "lean": "baaf8dd3583d2b6a89e8e2f54ec3676d9c26de48205727b0693e9c4ad10a33c5",
       "maude": "d54e0592856a6210af425e997b232be03e105d59e728ca0228cdc5c56679b49e",
       "mchyper": "bb2ce0a3596b4085aca49773e4db88487136557b64ea007983b2911b19767e78",
       "opam": "795d1bb6eb93894cf49d6132823c4ed881ef6ffeec106de88893ea63ff88883d",
       "proverif": "88585e2084fb9f094bbf6652ee173c281368a478a0bd72cbc4862b7f79f05488",
       "runtime-mtl": "de491ce69724554c6e59cf44be7f3e2b9104440d747a8e4f8cfd4e6836c84821",
-      "runtime-mtl-external": "de7f2523fdcc84a45673f64e72136e318a8b06eb4b7de08fa344f3aa350a021f",
+      "runtime-mtl-external": "cf6c3a50537ba0b42cbf10eb8060dff938004ab871b3a3187dcce7dfbb5a4d5f",
       "secpal": "ade16d63beaf32d61a42d72686f0b696f2600b0e3ebc1bbc1e9260e8487b7948",
       "secpal-authorization": "9335c3b5c2f73d84b5fa90da9ac9e7f2c4e2bf7d6f03ec5ebf7170fb2735afdf",
       "souffle": "93c4966d901c5dee03fbaafff82a8238989d8af25118320ce80a5bf8c8f72b71",
       "stack": "81999d21e1eb47866a36fc9cda3bdc307abc68c295185aa45c13aee1ca0232fa",
-      "symbolicai": "5f3c831331ec18cdadd616a5bfb56ed00da3652ce6020d1e7bbd20e220a3d3f5",
+      "symbolicai": "f9625ed42328b6e7e415b5c62a26e4163f012ae314ad67c10738301058a14ecb",
       "tamarin": "c9095cfa80db8e3b727ba172e02f92813ca62fd8af70be8e7b98e1c0c3f52103",
       "tlc": "cf7c44a580b3092ad28ecdd887b3e3a39d18375a5611f5efde122295e9c4433f",
       "vampire": "dd6ad8f0e8e7888edb81bf96d45ff96ccfacfe39f119d3fed9dcae52bdb5be46",
@@ -1152,13 +1137,13 @@
           "category": "capability",
           "role": "authority",
           "authority_ceiling": "finite_trace",
-          "evidence_class": "unavailable",
-          "artifact_classes": [],
+          "evidence_class": "hermetic_adapter_shim",
+          "artifact_classes": [
+            "generated_hermetic_shim",
+            "repository_source"
+          ],
           "reasons": [
-            "full_semantic_check_set_missing_or_failed",
-            "locked_version_mismatch",
             "semantic_evidence_below_authority_ceiling",
-            "semantic_receipt_not_bound",
             "supported_managed_installation_missing_or_shim_only"
           ]
         },
@@ -1396,10 +1381,7 @@
         {
           "tool_id": "runtime-mtl-external",
           "reasons": [
-            "full_semantic_check_set_missing_or_failed",
-            "locked_version_mismatch",
             "semantic_evidence_below_authority_ceiling",
-            "semantic_receipt_not_bound",
             "supported_managed_installation_missing_or_shim_only"
           ]
         },
@@ -1475,10 +1457,10 @@
     "interface": "FormalVerificationTacticianCompletionReceipt@1",
     "completion_goal_id": "FVT-G090",
     "task_id": "FVT-036",
-    "receipt_identity": "sha256:5734e8272654c65caf14fd0fc20742f7f2edc7eced9eb059f6c31a1e2451e65e",
-    "implementation_status": "complete",
+    "receipt_identity": "sha256:39b5de726b1ac254be7fabb0a155874ca8d7da6b16f99cfba0aa080d229c0d2f",
+    "implementation_status": "incomplete",
     "deployment_status": "not_deployment_certified",
-    "child_goals_bound": 67,
+    "child_goals_bound": 66,
     "child_goal_count": 67
   },
   "elevations": {
@@ -1514,9 +1496,9 @@
       "opam",
       "proverif",
       "runtime-mtl",
+      "runtime-mtl-external",
       "secpal-authorization",
       "stack",
-      "symbolicai",
       "tamarin",
       "vampire"
     ]
@@ -1565,19 +1547,19 @@
     "release_candidate": {
       "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
       "present": true,
-      "content_identity": "sha256:29d72c824c7af3c28f532f048eddc91be45777b51cdf197e8091ab456382cd41",
-      "file_sha256": "sha256:43fe02fe9214f5a32f919092a84a405b83d7b090d2525b71b3b65a014d42c8bb"
+      "content_identity": "sha256:5a8c95fbf75b98cae0573387da8b0edcd376642cfe2757c23a9c52f77e8cb76c",
+      "file_sha256": "sha256:54009745179c5ac501bc4f3dff665d990e3b62f5b1844d8c25d1f33b8a2d7bfe"
     },
     "completion_receipt": {
       "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
       "present": true,
-      "content_identity": "sha256:5734e8272654c65caf14fd0fc20742f7f2edc7eced9eb059f6c31a1e2451e65e"
+      "content_identity": "sha256:39b5de726b1ac254be7fabb0a155874ca8d7da6b16f99cfba0aa080d229c0d2f"
     },
     "toolchain_certificate": {
       "path": "docs/architecture/formal_verification_toolchain_certificate.json",
       "present": true,
-      "content_identity": "sha256:0bde0d087b152aaae3a07658146059b968194f4215b84e1c90f468bbf23bb459",
-      "role_aware_digest": "2158cf7c56682d5af2bb931133598741c0aaccb45e0b86ba3de9c77399fc0839"
+      "content_identity": "sha256:eda157484510cd6f4506d659f8a300fbf493a12303c2a8cd096559ee7874c48a",
+      "role_aware_digest": "63262a4d322e8ae151f941e5e0a0c2ca75608278849e3de820812bf99d150c5a"
     },
     "deployment_receipt": {
       "path": "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
@@ -1600,9 +1582,9 @@
       "hyperltl",
       "isabelle",
       "mchyper",
-      "runtime-mtl-external",
       "secpal",
       "souffle",
+      "symbolicai",
       "tlc",
       "zkp-circuit"
     ],
@@ -1618,9 +1600,9 @@
       "opam",
       "proverif",
       "runtime-mtl",
+      "runtime-mtl-external",
       "secpal-authorization",
       "stack",
-      "symbolicai",
       "tamarin",
       "vampire"
     ],
@@ -1796,13 +1778,13 @@
         "category": "capability",
         "role": "authority",
         "authority_ceiling": "finite_trace",
-        "evidence_class": "unavailable",
-        "artifact_classes": [],
+        "evidence_class": "hermetic_adapter_shim",
+        "artifact_classes": [
+          "generated_hermetic_shim",
+          "repository_source"
+        ],
         "reasons": [
-          "full_semantic_check_set_missing_or_failed",
-          "locked_version_mismatch",
           "semantic_evidence_below_authority_ceiling",
-          "semantic_receipt_not_bound",
           "supported_managed_installation_missing_or_shim_only"
         ]
       },
@@ -1961,5 +1943,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:22ce1f2b571bcd9c6aa269c77aacfa4da4af55898caf7edc56506150dde3051b"
+  "receipt_identity": "sha256:355caa46147c7c823e5b8ba5c2ce9f543747cb0f17b6878b57c6321ff93eb77c"
 }
