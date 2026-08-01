@@ -61,6 +61,7 @@ from ..merge.checkout_lock import (
     adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease,
     checkout_lock_metadata,
+    checkout_mutation_lease_state,
     checkout_mutation_lock_path,
     checkout_repository_id,
     merge_target_queue_dir,
@@ -35313,6 +35314,96 @@ class PortalImplementationDaemon:
                     "checkout_mutation_release_failed": True,
                 }
             if retaining:
+                lease_state = checkout_mutation_lease_state(current)
+                if lease_state == "absent":
+                    identity_fields = {
+                        "kind",
+                        "pid",
+                        "owner_script",
+                        "repo_root",
+                        "task_id",
+                        "attempt",
+                        "branch",
+                        "operation",
+                        "state_dir",
+                        "state_path",
+                        "started_at",
+                        "lease_id",
+                    }
+                    recovery_extra = {
+                        key: value
+                        for key, value in current.metadata.items()
+                        if key not in identity_fields
+                    }
+                    recovery_extra.update(
+                        {
+                            "recovered_from_lease_id": current.lease_id,
+                            "recovered_at": utc_now(),
+                        }
+                    )
+                    renewed, reason, existing, _waited = (
+                        self._acquire_checkout_mutation_lease(
+                            task_id=str(
+                                current.metadata.get("task_id")
+                                or task_id
+                            ),
+                            attempt=int(
+                                current.metadata.get("attempt")
+                                or attempt
+                                or 0
+                            ),
+                            branch=str(
+                                current.metadata.get("branch")
+                                or branch
+                            ),
+                            operation=str(
+                                current.metadata.get("operation")
+                                or operation
+                            ),
+                            extra=recovery_extra,
+                        )
+                    )
+                    if renewed is None:
+                        payload = {
+                            **dict(failure_fields or {}),
+                            "reason": (
+                                "checkout_mutation_absent_retained_lease_"
+                                f"reacquire_{reason}"
+                            ),
+                            "lock_path": str(current.lock_path),
+                            "checkout_mutation_lease_retained": True,
+                            "checkout_mutation_recovery_required": True,
+                        }
+                        if existing:
+                            payload["lock_owner_pid"] = int(
+                                existing.get("pid") or 0
+                            )
+                            payload["lock_owner_task_id"] = str(
+                                existing.get("task_id") or ""
+                            )
+                        return payload
+                    current = renewed
+                    lease_state = "current"
+                    self._checkout_mutation_context.lease = current
+                    self._record_event(
+                        "checkout_mutation_absent_lease_reconciled",
+                        {
+                            "operation": operation,
+                            "lock_path": str(current.lock_path),
+                            "lease_id": current.lease_id,
+                        },
+                    )
+                if lease_state != "current":
+                    return {
+                        **dict(failure_fields or {}),
+                        "reason": (
+                            "checkout_mutation_retained_lease_"
+                            f"{lease_state}"
+                        ),
+                        "lock_path": str(current.lock_path),
+                        "checkout_mutation_lease_retained": True,
+                        "checkout_mutation_recovery_required": True,
+                    }
                 dirty_paths = self._dirty_implementation_protected_paths(
                     self._retained_checkout_mutation_paths()
                 )

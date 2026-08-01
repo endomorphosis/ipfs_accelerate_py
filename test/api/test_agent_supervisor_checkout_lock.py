@@ -285,6 +285,78 @@ def test_release_requires_acquired_lease_id_on_same_inode(
     assert json.loads(lock_path.read_text(encoding="utf-8")) == replacement
 
 
+def test_release_treats_confirmed_absent_lock_as_released(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / "implementation-main-merge.lock"
+    metadata = _metadata(tmp_path, operation="already-released")
+    lease, _reason, _incumbent, _waited = acquire_checkout_mutation_lease(
+        lock_path,
+        metadata,
+        owner_active=lambda _owner: True,
+    )
+    assert lease is not None
+    lock_path.unlink()
+
+    assert release_checkout_mutation_lease(lease)
+    assert not lock_path.exists()
+
+
+@pytest.mark.parametrize(
+    "replacement_record",
+    [
+        "",
+        "{not-json\n",
+        "[]\n",
+        "{}\n",
+    ],
+)
+def test_release_preserves_malformed_or_legacy_replacement(
+    tmp_path: Path,
+    replacement_record: str,
+) -> None:
+    lock_path = tmp_path / "implementation-main-merge.lock"
+    metadata = _metadata(tmp_path, operation="original-owner")
+    lease, _reason, _incumbent, _waited = acquire_checkout_mutation_lease(
+        lock_path,
+        metadata,
+        owner_active=lambda _owner: True,
+    )
+    assert lease is not None
+    replacement_path = tmp_path / "replacement.pending"
+    replacement_path.write_text(replacement_record, encoding="utf-8")
+    os.replace(replacement_path, lock_path)
+
+    assert not release_checkout_mutation_lease(lease)
+    assert lock_path.read_text(encoding="utf-8") == replacement_record
+
+
+def test_release_preserves_existing_lock_when_read_is_inconclusive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "implementation-main-merge.lock"
+    metadata = _metadata(tmp_path, operation="original-owner")
+    lease, _reason, _incumbent, _waited = acquire_checkout_mutation_lease(
+        lock_path,
+        metadata,
+        owner_active=lambda _owner: True,
+    )
+    assert lease is not None
+    replacement_record = b"inconclusive replacement\n"
+    replacement_path = tmp_path / "replacement.pending"
+    replacement_path.write_bytes(replacement_record)
+    os.replace(replacement_path, lock_path)
+    monkeypatch.setattr(
+        checkout_lock_module,
+        "_read_checkout_lock",
+        lambda _lock_path: (None, None),
+    )
+
+    assert not release_checkout_mutation_lease(lease)
+    assert lock_path.read_bytes() == replacement_record
+
+
 def test_serialized_update_guard_contention_is_bounded(
     tmp_path: Path,
 ) -> None:

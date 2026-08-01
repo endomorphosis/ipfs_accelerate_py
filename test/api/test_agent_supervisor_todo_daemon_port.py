@@ -24858,9 +24858,194 @@ def test_implementation_daemon_board_write_and_commit_share_one_checkout_lease(
     assert _git(repo, "status", "--porcelain") == ""
 
 
+def test_implementation_daemon_reacquires_after_pending_lease_is_absent(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    stale_lease, reason, _existing, _waited = (
+        daemon._acquire_checkout_mutation_lease(
+            task_id="ACCEL-STALE",
+            attempt=1,
+            branch="implementation/stale",
+            operation="stale_operation",
+        )
+    )
+    assert stale_lease is not None
+    assert reason == "acquired"
+    daemon._checkout_mutation_context.lease = stale_lease
+    daemon._checkout_mutation_context.transaction_depth = 0
+    daemon._checkout_mutation_context.release_pending = True
+    stale_lease.lock_path.unlink()
+    callback_lease_ids: list[str] = []
+
+    def callback() -> dict[str, object]:
+        current = daemon._current_checkout_mutation_lease()
+        assert current is not None
+        assert current.lock_path.exists()
+        callback_lease_ids.append(current.lease_id)
+        return {"merged": True}
+
+    result = daemon._run_checkout_mutation_transaction(
+        task_id="ACCEL-NEXT",
+        attempt=1,
+        branch="implementation/next",
+        operation="merge_branch_to_main",
+        callback=callback,
+        failure_fields={"merged": False},
+    )
+
+    assert result["merged"] is True
+    assert callback_lease_ids
+    assert callback_lease_ids != [stale_lease.lease_id]
+    assert daemon._current_checkout_mutation_lease() is None
+    assert not checkout_mutation_lock_path(repo).exists()
+
+
+def test_implementation_daemon_pending_lease_preserves_replacement(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    stale_lease, reason, _existing, _waited = (
+        daemon._acquire_checkout_mutation_lease(
+            task_id="ACCEL-STALE",
+            attempt=1,
+            branch="implementation/stale",
+            operation="stale_operation",
+        )
+    )
+    assert stale_lease is not None
+    assert reason == "acquired"
+    replacement = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="ACCEL-OTHER",
+        branch="implementation/other",
+        owner_script="",
+        extra={"operation": "other_operation"},
+    )
+    replacement_path = repo / ".git" / "replacement.pending"
+    replacement_path.write_text(json.dumps(replacement), encoding="utf-8")
+    os.replace(replacement_path, stale_lease.lock_path)
+    daemon._checkout_mutation_context.lease = stale_lease
+    daemon._checkout_mutation_context.transaction_depth = 0
+    daemon._checkout_mutation_context.release_pending = True
+    callback_called = False
+
+    def callback() -> dict[str, object]:
+        nonlocal callback_called
+        callback_called = True
+        return {"merged": True}
+
+    result = daemon._run_checkout_mutation_transaction(
+        task_id="ACCEL-NEXT",
+        operation="merge_branch_to_main",
+        callback=callback,
+        failure_fields={"merged": False},
+    )
+
+    assert result["merged"] is False
+    assert result["reason"] == "checkout_mutation_release_pending"
+    assert callback_called is False
+    assert json.loads(stale_lease.lock_path.read_text(encoding="utf-8")) == (
+        replacement
+    )
+
+
+def test_absent_retained_daemon_lease_keeps_context_when_reacquire_loses_race(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    stale_lease, reason, _existing, _waited = (
+        daemon._acquire_checkout_mutation_lease(
+            task_id="ACCEL-STALE",
+            operation="mark_tasks_completed",
+        )
+    )
+    assert stale_lease is not None
+    assert reason == "acquired"
+    daemon._checkout_mutation_context.lease = stale_lease
+    daemon._checkout_mutation_context.transaction_depth = 0
+    daemon._checkout_mutation_context.release_pending = False
+    daemon._checkout_mutation_context.retain_until_protected_clean = True
+    daemon._checkout_mutation_context.protected_recovery_allowed_operations = (
+        "mark_tasks_completed",
+    )
+    stale_lease.lock_path.unlink()
+    monkeypatch.setattr(
+        daemon,
+        "_acquire_checkout_mutation_lease",
+        lambda **_kwargs: (
+            None,
+            "lock_exists",
+            {"lease_id": "competing-lease"},
+            0.0,
+        ),
+    )
+    callback_called = False
+
+    def callback() -> dict[str, object]:
+        nonlocal callback_called
+        callback_called = True
+        return {"updated": True}
+
+    result = daemon._run_checkout_mutation_transaction(
+        task_id="ACCEL-STALE",
+        operation="mark_tasks_completed",
+        callback=callback,
+        failure_fields={"updated": False},
+    )
+
+    assert result["updated"] is False
+    assert result["reason"] == (
+        "checkout_mutation_absent_retained_lease_reacquire_lock_exists"
+    )
+    assert result["checkout_mutation_recovery_required"] is True
+    assert callback_called is False
+    assert daemon._current_checkout_mutation_lease() is stale_lease
+
+
+@pytest.mark.parametrize("remove_retained_lease", [False, True])
 def test_implementation_daemon_retains_dirty_protected_completion_lease_until_recovery(
     tmp_path,
     monkeypatch,
+    remove_retained_lease,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -24943,10 +25128,24 @@ def test_implementation_daemon_retains_dirty_protected_completion_lease_until_re
     )
     assert unexpected_mutations == []
 
+    recovered_callback_lease_ids: list[str] = []
+
+    def recover_generated_commit(path, *, task_id, subject):
+        current = daemon._current_checkout_mutation_lease()
+        assert current is not None
+        recovered_callback_lease_ids.append(current.lease_id)
+        return original_commit(
+            path,
+            task_id=task_id,
+            subject=subject,
+        )
+
+    if remove_retained_lease:
+        retained_lease.lock_path.unlink()
     monkeypatch.setattr(
         daemon,
         "_commit_generated_file_update_locked",
-        original_commit,
+        recover_generated_commit,
     )
     recovered = daemon._mark_task_completed_in_todo("ACCEL-001")
 
@@ -24956,6 +25155,9 @@ def test_implementation_daemon_retains_dirty_protected_completion_lease_until_re
     assert recovered["commit_result"]["committed"] is True
     assert recovered["checkout_mutation_lease_recovered"] is True
     assert recovered["checkout_mutation_lease_retained"] is False
+    assert recovered_callback_lease_ids
+    if remove_retained_lease:
+        assert recovered_callback_lease_ids != [retained_lease.lease_id]
     assert daemon._current_checkout_mutation_lease() is None
     assert not checkout_mutation_lock_path(repo).exists()
     assert _git(repo, "status", "--porcelain") == ""

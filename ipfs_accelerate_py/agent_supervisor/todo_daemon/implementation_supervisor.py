@@ -28,6 +28,7 @@ from ..merge.checkout_lock import (
     acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
+    checkout_mutation_lease_state,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
     read_checkout_mutation_lease,
@@ -10646,6 +10647,53 @@ class PortalImplementationSupervisor:
         producer: str,
         callback,
     ):
+        lease_state = checkout_mutation_lease_state(lease)
+        if lease_state == "absent":
+            # The durable fence is authoritative. Renew the lost lease before
+            # clearing any retained recovery state so a competing publisher
+            # cannot turn a deferred repair into false recovery success.
+            renewed_metadata = {
+                **dict(lease.metadata),
+                **self._supervisor_checkout_lock_metadata(
+                    operation=str(
+                        lease.metadata.get("operation")
+                        or operation
+                    ),
+                    extra={
+                        "recovered_from_lease_id": lease.lease_id,
+                        "recovered_at": utc_now(),
+                    },
+                ),
+            }
+            renewed, reason, _existing = (
+                self._acquire_supervisor_checkout_lease(
+                    lease.lock_path,
+                    renewed_metadata,
+                )
+            )
+            if renewed is None:
+                raise RuntimeError(
+                    "checkout_mutation_protected_recovery_incomplete: "
+                    "checkout_mutation_absent_lease_reacquire_"
+                    f"{reason}"
+            )
+            lease = renewed
+            lease_state = "current"
+            self._checkout_mutation_context.lease = lease
+            self._record_event(
+                "checkout_mutation_absent_lease_reconciled",
+                {
+                    "operation": operation,
+                    "producer": producer,
+                    "lock_path": str(lease.lock_path),
+                    "lease_id": lease.lease_id,
+                },
+            )
+        if lease_state != "current":
+            raise RuntimeError(
+                "checkout_mutation_protected_recovery_incomplete: "
+                f"checkout_mutation_retained_lease_{lease_state}"
+            )
         if (
             operation == "generated_dirty_repair"
             and str(lease.metadata.get("operation") or "")

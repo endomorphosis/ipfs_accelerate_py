@@ -3355,6 +3355,107 @@ def test_generated_board_replacement_failed_release_is_not_durable(
     assert supervisor._current_supervisor_checkout_lease() is not None
 
 
+def test_retained_generated_recovery_reacquires_when_lease_is_absent(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    lock_path = checkout_mutation_lock_path(repo)
+    lease, reason, _existing = supervisor._acquire_supervisor_checkout_lease(
+        lock_path,
+        supervisor._supervisor_checkout_lock_metadata(
+            operation="generated_board_update",
+            extra={"producer": "lost-lease-test"},
+        ),
+    )
+    assert lease is not None
+    assert reason == "acquired"
+    supervisor._checkout_mutation_context.lease = lease
+    supervisor._checkout_mutation_context.transaction_depth = 0
+    supervisor._checkout_mutation_context.retain_until_protected_clean = True
+    supervisor._checkout_mutation_context.retained_operation = (
+        "generated_board_update"
+    )
+    supervisor._checkout_mutation_context.retained_producer = (
+        "lost-lease-test"
+    )
+    lock_path.unlink()
+    callback_lease_ids: list[str] = []
+
+    def callback() -> list[str]:
+        current = supervisor._current_supervisor_checkout_lease()
+        assert current is not None
+        assert current.lock_path.exists()
+        callback_lease_ids.append(current.lease_id)
+        return ["recovered"]
+
+    result = supervisor._run_generated_board_producer(
+        producer="lost-lease-test",
+        commit_outputs=True,
+        operation="generated_dirty_repair",
+        callback=callback,
+    )
+
+    assert result == ["recovered"]
+    assert callback_lease_ids
+    assert callback_lease_ids != [lease.lease_id]
+    assert supervisor._current_supervisor_checkout_lease() is None
+    assert not lock_path.exists()
+
+
+def test_absent_retained_recovery_keeps_context_when_reacquire_loses_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    lock_path = checkout_mutation_lock_path(repo)
+    lease, reason, _existing = supervisor._acquire_supervisor_checkout_lease(
+        lock_path,
+        supervisor._supervisor_checkout_lock_metadata(
+            operation="generated_board_update",
+            extra={"producer": "lost-race-test"},
+        ),
+    )
+    assert lease is not None
+    assert reason == "acquired"
+    supervisor._checkout_mutation_context.lease = lease
+    supervisor._checkout_mutation_context.transaction_depth = 0
+    supervisor._checkout_mutation_context.retain_until_protected_clean = True
+    supervisor._checkout_mutation_context.retained_producer = (
+        "lost-race-test"
+    )
+    lock_path.unlink()
+    monkeypatch.setattr(
+        supervisor,
+        "_acquire_supervisor_checkout_lease",
+        lambda *_args, **_kwargs: (
+            None,
+            "lock_exists",
+            {"lease_id": "competing-lease"},
+        ),
+    )
+    callback_called = False
+
+    def callback() -> list[str]:
+        nonlocal callback_called
+        callback_called = True
+        return []
+
+    with pytest.raises(
+        RuntimeError,
+        match="checkout_mutation_absent_lease_reacquire_lock_exists",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="lost-race-test",
+            commit_outputs=True,
+            operation="generated_dirty_repair",
+            callback=callback,
+        )
+
+    assert callback_called is False
+    assert supervisor._current_supervisor_checkout_lease() is lease
+    assert supervisor._retained_generated_checkout_lease() is True
+
+
 def test_generated_board_snapshot_exception_releases_without_fake_nesting(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterator, Literal, Mapping
 
 try:
     import fcntl
@@ -336,6 +336,14 @@ class CheckoutMutationLease:
         return str(self.metadata.get("lease_id") or "")
 
 
+CheckoutMutationLeaseState = Literal[
+    "current",
+    "absent",
+    "replaced",
+    "inconclusive",
+]
+
+
 def _read_checkout_lock(
     lock_path: Path,
 ) -> tuple[dict[str, Any] | None, tuple[int, int] | None]:
@@ -377,6 +385,49 @@ def read_checkout_mutation_lease(
         device=identity[0],
         inode=identity[1],
     )
+
+
+def _checkout_mutation_lease_state_unlocked(
+    lease: CheckoutMutationLease,
+) -> CheckoutMutationLeaseState:
+    """Classify a lease while the durable lock update guard is held."""
+
+    current, identity = _read_checkout_lock(lease.lock_path)
+    if current is None or identity is None:
+        # A failed read is not proof of absence: malformed JSON, an inode
+        # replacement during the read, and an I/O failure all collapse to an
+        # inconclusive result. Confirm absence with a separate stat while the
+        # serialized update guard is still held.
+        try:
+            lease.lock_path.stat(follow_symlinks=False)
+        except FileNotFoundError:
+            return "absent"
+        except OSError:
+            return "inconclusive"
+        return "inconclusive"
+    if (
+        identity == (lease.device, lease.inode)
+        and str(current.get("lease_id") or "") == lease.lease_id
+    ):
+        return "current"
+    return "replaced"
+
+
+def checkout_mutation_lease_state(
+    lease: CheckoutMutationLease,
+    *,
+    timeout_seconds: float = 1.0,
+) -> CheckoutMutationLeaseState:
+    """Safely classify whether a durable lease is current, gone, or replaced."""
+
+    try:
+        with serialized_lock_update(
+            lease.lock_path,
+            timeout_seconds=timeout_seconds,
+        ):
+            return _checkout_mutation_lease_state_unlocked(lease)
+    except (FileNotFoundError, TimeoutError):
+        return "inconclusive"
 
 
 def _atomic_replace_checkout_mutation_lease(
@@ -705,21 +756,30 @@ def release_checkout_mutation_lease(
     *,
     timeout_seconds: float = 1.0,
 ) -> bool:
-    """Release only the exact inode and lease identity acquired by the caller."""
+    """Release the exact lease, or confirm that it is already absent.
+
+    A fully published replacement is never removed. Confirmed absence is an
+    idempotent success so a caller cannot retain a stale in-memory lease
+    forever after another recovery path has already removed its durable lock.
+    """
 
     try:
         with serialized_lock_update(
             lease.lock_path,
             timeout_seconds=timeout_seconds,
         ):
-            current, identity = _read_checkout_lock(lease.lock_path)
-            if (
-                current is None
-                or identity != (lease.device, lease.inode)
-                or str(current.get("lease_id") or "") != lease.lease_id
-            ):
+            state = _checkout_mutation_lease_state_unlocked(lease)
+            if state == "absent":
+                return True
+            if state != "current":
                 return False
-            lease.lock_path.unlink()
+            try:
+                lease.lock_path.unlink()
+            except FileNotFoundError:
+                return (
+                    _checkout_mutation_lease_state_unlocked(lease)
+                    == "absent"
+                )
             return True
     except (FileNotFoundError, TimeoutError):
         return False
