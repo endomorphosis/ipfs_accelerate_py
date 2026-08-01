@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -45,6 +46,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     optimize_bundle_payloads,
+    plan_bundle_lanes,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     adapt_goal_bundle,
@@ -1335,6 +1337,69 @@ def test_bundle_optimizer_preserves_width_for_disjoint_managed_submodule_tasks()
         == 0
         for payload in concurrent
     )
+
+
+def test_implemented_bundle_planner_serializes_disjoint_managed_submodule_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    first = _task(
+        "SUBMODULE-ALPHA",
+        outputs=["vendor/runtime/src/alpha.py"],
+        predicted_paths=["vendor/runtime/src/alpha.py"],
+        files=["vendor/runtime/src/alpha.py"],
+        submodules=["vendor/runtime"],
+        interfaces=["AlphaAPI@1"],
+        goal_id="GOAL-ALPHA",
+        context_paths=["vendor/runtime/src/alpha.py"],
+        validation_commands=["pytest tests/test_alpha.py"],
+        merge_fate="objective/GOAL-ALPHA",
+    )
+    second = _task(
+        "SUBMODULE-BETA",
+        outputs=["vendor/runtime/src/beta.py"],
+        predicted_paths=["vendor/runtime/src/beta.py"],
+        files=["vendor/runtime/src/beta.py"],
+        submodules=["vendor/runtime"],
+        interfaces=["BetaAPI@1"],
+        goal_id="GOAL-BETA",
+        context_paths=["vendor/runtime/src/beta.py"],
+        validation_commands=["pytest tests/test_beta.py"],
+        merge_fate="objective/GOAL-BETA",
+        resource_class="cpu-large",
+    )
+    source = [
+        {
+            "bundle_key": "objective/managed-submodule",
+            "parallel_lane": "managed-submodule",
+            "todo_path": "managed-submodule.todo.md",
+            "tasks": [first, second],
+        }
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: source,
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        implement=True,
+        worktree_submodule_paths=("vendor/runtime",),
+        allow_disjoint_submodule_concurrency=True,
+    )
+
+    assert sorted(lane.optimizer_execution_wave for lane in lanes) == [0, 1]
+    assert all(
+        other.bundle_key in lane.conflicting_task_ids
+        for lane in lanes
+        for other in lanes
+        if other.bundle_key != lane.bundle_key
+    )
+    assert all("--implement" in lane.command for lane in lanes)
 
 
 def test_bundle_supervisor_optimizer_cannot_resurrect_completed_members():

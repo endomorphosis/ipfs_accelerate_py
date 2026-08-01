@@ -3180,12 +3180,33 @@ def plan_bundle_lanes(
         and payload.get("is_schedulable") is not False
         and payload.get("review_only") is not True
     ]
+    # Implementation daemons currently coordinate managed-submodule mutation
+    # with one repository-shared claim per configured submodule root.  Do not
+    # let precise outer conflict planning over-admit work that the inner daemon
+    # must then defer behind that broader claim.  Analysis-only planning may
+    # still expose the opt-in width; implemented lanes remain serialized until
+    # the downstream claim registry can atomically enforce path-scope overlap.
+    effective_disjoint_submodule_concurrency = bool(
+        allow_disjoint_submodule_concurrency and not implement
+    )
+    if (
+        allow_disjoint_submodule_concurrency
+        and implement
+        and worktree_submodule_paths
+    ):
+        logger.warning(
+            "Disjoint managed-submodule concurrency was requested for "
+            "implemented lanes, but implementation resource claims are "
+            "submodule-root scoped; retaining root-level serialization."
+        )
     if optimize_bundles:
         bundle_payloads = optimize_bundle_payloads(
             bundle_payloads,
             policy=bundle_optimization_policy,
             managed_submodule_paths=worktree_submodule_paths,
-            allow_disjoint_submodule_concurrency=allow_disjoint_submodule_concurrency,
+            allow_disjoint_submodule_concurrency=(
+                effective_disjoint_submodule_concurrency
+            ),
             conflict_inputs=_conflict_graph_inputs(bundle_index_path),
         )
     conflict_annotations = _bundle_conflict_annotations(
@@ -3194,7 +3215,9 @@ def plan_bundle_lanes(
         repo_root=repo_root,
         task_prefix=task_prefix,
         managed_submodule_paths=worktree_submodule_paths,
-        allow_disjoint_submodule_concurrency=allow_disjoint_submodule_concurrency,
+        allow_disjoint_submodule_concurrency=(
+            effective_disjoint_submodule_concurrency
+        ),
     )
     for payload in bundle_payloads:
         bundle_key = str(payload.get("bundle_key") or "objective/general")
