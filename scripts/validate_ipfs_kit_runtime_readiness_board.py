@@ -20,7 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (  # 
     parse_goal_heap,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (  # noqa: E402
-    parse_task_file,
+    parse_task_text,
 )
 
 PLAN_PATH = REPO_ROOT / "docs/architecture/IPFS_KIT_RUNTIME_READINESS_PLAN.md"
@@ -52,6 +52,9 @@ GOAL_IDS = (
 INITIAL_COMPLETED = ("KITA-000",)
 INITIAL_READY = ("KITA-001", "KITA-002", "KITA-003", "KITA-004")
 TERMINAL_TASK = "KITA-047"
+SEALED_TASKBOARD_DEFINITION_SHA256 = (
+    "sha256:51a55a9a900688a382788940eb3f62d6b5b101a4a6fbf0218c17bdd15972e524"
+)
 
 GOAL_STATES = frozenset(
     {
@@ -64,6 +67,7 @@ GOAL_STATES = frozenset(
     }
 )
 TASK_STATES = frozenset({"todo", "in_progress", "blocked", "completed"})
+PERSISTED_PROGRESS_STATES = frozenset({"todo", "completed"})
 REQUIRED_GOAL_FIELDS = (
     "status",
     "parent",
@@ -233,6 +237,40 @@ def _canonical_sha256(value: object) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _taskboard_definition_sha256(text: str) -> str:
+    """Hash the sealed board while excluding its one mutable field.
+
+    The implementation daemon is authorized to persist only ``todo`` to
+    ``completed`` status transitions.  Normalizing those values back to the
+    launch projection makes that progress hash-neutral while retaining every
+    task heading, dependency, contract, ownership field, and byte of the
+    surrounding control document under the original seal.
+    """
+
+    normalized: list[str] = []
+    current_task_id = ""
+    for line in text.splitlines(keepends=True):
+        if line.startswith("## KITA-"):
+            header = line[3:].strip()
+            current_task_id = header.split(" ", 1)[0] if header else ""
+        if current_task_id and line.startswith("- Status:"):
+            newline = (
+                "\r\n"
+                if line.endswith("\r\n")
+                else "\n"
+                if line.endswith("\n")
+                else ""
+            )
+            initial_status = (
+                "completed" if current_task_id == "KITA-000" else "todo"
+            )
+            line = f"- Status: {initial_status}{newline}"
+        normalized.append(line)
+    return "sha256:" + hashlib.sha256(
+        "".join(normalized).encode("utf-8")
+    ).hexdigest()
 
 
 def _safe_relative_paths(values: Iterable[str], *, field: str) -> list[str]:
@@ -409,13 +447,23 @@ def validate(
         if cycle:
             errors.append(f"{name} graph contains a cycle: {list(cycle)}")
 
-    tasks = parse_task_file(todo_path, task_header_prefix="## KITA-")
+    todo_text = todo_path.read_text(encoding="utf-8")
+    tasks = parse_task_text(
+        todo_text,
+        path=todo_path,
+        task_header_prefix="## KITA-",
+    )
     task_ids = tuple(task.task_id for task in tasks)
     task_id_set = set(task_ids)
     if task_ids != TASK_IDS:
         errors.append(f"task IDs/order differ: expected {TASK_IDS}, got {task_ids}")
     if len(task_ids) != len(task_id_set):
         errors.append("taskboard contains duplicate task IDs")
+    taskboard_definition_sha256 = _taskboard_definition_sha256(todo_text)
+    if taskboard_definition_sha256 != SEALED_TASKBOARD_DEFINITION_SHA256:
+        errors.append(
+            "taskboard topology or metadata differs from the sealed projection"
+        )
 
     scheduler = _load_scheduler(scheduler_path, errors)
     protected_paths = tuple(
@@ -452,8 +500,11 @@ def validate(
                 errors.append("KITA-000 must be completed")
             if not str(task.metadata.get("completion evidence") or "").strip():
                 errors.append("KITA-000 requires completion evidence")
-        elif task.status != "todo":
-            errors.append(f"{task.task_id} must start todo in the sealed projection")
+        elif task.status not in PERSISTED_PROGRESS_STATES:
+            errors.append(
+                f"{task.task_id} has non-persistent progress status "
+                f"{task.status!r}; the sealed board permits only todo or completed"
+            )
         if task.status == "completed":
             completed.add(task.task_id)
         if task.status == "blocked":
@@ -561,6 +612,23 @@ def validate(
         missing = sorted(required.difference(task_edges.get(task_id, ())))
         if missing:
             errors.append(f"{task_id} missing required join dependencies: {missing}")
+    incomplete_dependencies = {
+        task_id: sorted(
+            dependency
+            for dependency in task_edges.get(task_id, ())
+            if dependency not in completed
+        )
+        for task_id in sorted(completed)
+        if any(
+            dependency not in completed
+            for dependency in task_edges.get(task_id, ())
+        )
+    }
+    if incomplete_dependencies:
+        errors.append(
+            "completed tasks are not dependency-closed: "
+            + json.dumps(incomplete_dependencies, sort_keys=True)
+        )
 
     ready = tuple(
         task_id
@@ -576,14 +644,11 @@ def validate(
         and task_id not in blocked
         and task_id not in ready
     )
-    if tuple(sorted(completed)) != INITIAL_COMPLETED:
-        errors.append(f"initial completed tasks differ: {sorted(completed)}")
-    if ready != INITIAL_READY:
-        errors.append(f"initial ready tasks differ: expected {INITIAL_READY}, got {ready}")
-    if len(waiting) != 43:
-        errors.append(f"expected 43 dependency-waiting tasks, got {len(waiting)}")
     if blocked:
-        errors.append(f"sealed projection must have no blocked tasks: {sorted(blocked)}")
+        errors.append(
+            "persistent board progress must not contain blocked tasks: "
+            f"{sorted(blocked)}"
+        )
 
     dependency_graph = materialize_task_dependency_dag(task_records)
     if dependency_graph.invalid_task_cids:
@@ -633,7 +698,7 @@ def validate(
             "root_goal_id": "KITA-G000",
         }
         if projection != expected_projection:
-            errors.append("scheduler initial_projection differs from parsed board")
+            errors.append("scheduler initial_projection differs from the launch seal")
 
     lanes = scheduler.get("lanes")
     if not isinstance(lanes, list) or len(lanes) != 4:
@@ -721,6 +786,7 @@ def validate(
         "root_goal_ids": list(goal_roots),
         "todo_path": str(todo_path),
         "todo_sha256": _sha256(todo_path),
+        "taskboard_definition_sha256": taskboard_definition_sha256,
         "task_count": len(tasks),
         "completed_task_ids": sorted(completed),
         "ready_task_ids": list(ready),

@@ -464,6 +464,75 @@ def _shell_tokens(command: str) -> list[str]:
         return []
 
 
+_DYNAMIC_PATH_CHARACTERS = frozenset("*?[]{}$`;&|<>")
+
+
+def _safe_literal_repository_path(
+    value: str,
+    *,
+    allow_current_directory: bool = False,
+) -> str | None:
+    """Normalize one literal repository-relative path or reject it.
+
+    Validation targets become scope evidence, so shell-expanded, absolute,
+    drive-qualified, and parent-traversing values must never be projected onto
+    repository paths.  An empty string is reserved for the valid repository
+    root (``.``) when ``allow_current_directory`` is true; ``None`` means the
+    value is unsafe or malformed.
+    """
+
+    raw = str(value or "").strip().replace("\\", "/")
+    if (
+        not raw
+        or "\0" in raw
+        or raw.startswith("~")
+        or any(character in raw for character in _DYNAMIC_PATH_CHARACTERS)
+    ):
+        return None
+    while raw.startswith("./"):
+        raw = raw[2:]
+    path = PurePosixPath(raw or ".")
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or (path.parts and path.parts[0].endswith(":"))
+    ):
+        return None
+    if path.as_posix() == ".":
+        return "" if allow_current_directory else None
+    return path.as_posix()
+
+
+def validation_command_repository_root(command: str) -> str | None:
+    """Return the bounded repository root used by a validation command.
+
+    The only supported working-directory change is an exact leading
+    ``cd <safe-relative> &&`` prefix.  Commands without ``cd`` use the
+    repository root and return ``""``.  ``None`` denotes malformed or unsafe
+    shell structure and tells callers to withhold all inferred path authority.
+    """
+
+    text = normalize_validation_command_text(command)
+    tokens = _shell_tokens(text)
+    if not tokens:
+        return "" if not text else None
+    cd_positions = tuple(
+        index for index, token in enumerate(tokens) if token == "cd"
+    )
+    if not cd_positions:
+        return ""
+    if (
+        cd_positions != (0,)
+        or len(tokens) < 4
+        or tokens[2] != "&&"
+    ):
+        return None
+    return _safe_literal_repository_path(
+        tokens[1],
+        allow_current_directory=True,
+    )
+
+
 def _normalize_path(value: str) -> str:
     normalized = str(value or "").strip().replace("\\", "/")
     while normalized.startswith("./"):
@@ -471,27 +540,37 @@ def _normalize_path(value: str) -> str:
     return normalized.lstrip("/")
 
 
-def _looks_like_impact_path(token: str) -> bool:
-    value = _normalize_path(token.split("::", 1)[0])
-    if not value or value.startswith("-") or value in {".", ".."}:
-        return False
-    return (
+def _literal_impact_path(token: str) -> str:
+    raw_value = str(token or "").split("::", 1)[0]
+    value = _safe_literal_repository_path(raw_value)
+    if value is None or value.startswith("-"):
+        return ""
+    if (
         "/" in value
         or value.startswith(("test_", "tests", "test"))
         or value.endswith((".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs"))
-    )
+    ):
+        return value
+    return ""
 
 
 def infer_validation_impact_paths(command: str) -> tuple[str, ...]:
     """Extract explicit test/file targets from a shell command.
 
     An empty result means the command has global or unknown impact and must not
-    be omitted by impact selection.
+    be omitted by impact selection.  Targets are always resolved from the
+    repository root, including commands with a bounded leading
+    ``cd <safe-relative> &&`` prefix.
     """
 
     if not _TEST_RUNNER_RE.search(command):
         return ()
+    repository_root = validation_command_repository_root(command)
+    if repository_root is None:
+        return ()
     tokens = _shell_tokens(command)
+    if tokens and tokens[0] == "cd":
+        tokens = tokens[3:]
     impacts: list[str] = []
     after_runner = False
     for token in tokens:
@@ -504,10 +583,18 @@ def infer_validation_impact_paths(command: str) -> tuple[str, ...]:
             continue
         if not after_runner:
             continue
-        if _looks_like_impact_path(token):
-            value = _normalize_path(token.split("::", 1)[0])
-            if value and value not in impacts:
-                impacts.append(value)
+        if token in {"&&", "||", ";", "|"}:
+            break
+        value = _literal_impact_path(token)
+        if not value:
+            continue
+        rooted_value = (
+            _safe_literal_repository_path(f"{repository_root}/{value}")
+            if repository_root
+            else value
+        )
+        if rooted_value and rooted_value not in impacts:
+            impacts.append(rooted_value)
     return tuple(impacts)
 
 

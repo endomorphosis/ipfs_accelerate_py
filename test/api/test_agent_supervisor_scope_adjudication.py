@@ -15,6 +15,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.scope_adjudication import (
     ScopeExpansionReason,
     adjudicate_scope_expansion,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
+    infer_validation_impact_paths,
+)
 from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     ValidationScheduler,
 )
@@ -158,6 +161,83 @@ def test_explicit_validation_target_justifies_guarded_integration_test() -> None
     assert receipt.decisions[0].reason_codes == (
         ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,
     )
+
+
+def test_leading_cd_resolves_validation_target_from_repository_root() -> None:
+    child_test = "ipfs_kit_py/tests/test_mcp_vfs_adapter_contract.py"
+    before_test = (
+        "def test_vfs_adapter_contract():\n"
+        "    assert adapter_version() == 1\n"
+    )
+    after_test = before_test.replace("== 1", "== 2")
+    receipt = _adjudicate(
+        (
+            _entry(
+                "ipfs_kit_py/ipfs_kit_py/core/vfs/adapters.py",
+                "ADAPTER_VERSION = 1\n",
+                "ADAPTER_VERSION = 2\n",
+            ),
+            _entry(child_test, before_test, after_test),
+        ),
+        scope=("ipfs_kit_py/ipfs_kit_py/core/vfs/adapters.py",),
+        validation_commands=(
+            "cd ipfs_kit_py && python -m pytest -q "
+            "tests/test_mcp_vfs_adapter_contract.py",
+        ),
+    )
+
+    assert receipt.justified_paths == (child_test,)
+    assert receipt.decisions[0].reason_codes == (
+        ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,
+    )
+    assert receipt.decisions[0].evidence_paths == (child_test,)
+
+
+def test_leading_cd_does_not_authorize_wrong_root_duplicate() -> None:
+    wrong_root_test = "tests/test_mcp_vfs_adapter_contract.py"
+    before_test = (
+        "def test_vfs_adapter_contract():\n"
+        "    assert adapter_version() == 1\n"
+    )
+    receipt = _adjudicate(
+        (
+            _entry(
+                "ipfs_kit_py/ipfs_kit_py/core/vfs/adapters.py",
+                "ADAPTER_VERSION = 1\n",
+                "ADAPTER_VERSION = 2\n",
+            ),
+            _entry(
+                wrong_root_test,
+                before_test,
+                before_test.replace("== 1", "== 2"),
+            ),
+        ),
+        scope=("ipfs_kit_py/ipfs_kit_py/core/vfs/adapters.py",),
+        validation_commands=(
+            "cd ipfs_kit_py && python -m pytest -q "
+            "tests/test_mcp_vfs_adapter_contract.py",
+        ),
+    )
+
+    assert receipt.denied_paths == (wrong_root_test,)
+    assert receipt.decisions[0].reason_codes == (
+        ScopeExpansionReason.TEST_WITHOUT_REGRESSION_EVIDENCE,
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "cd /tmp/ipfs_kit_py && python -m pytest tests/test_vfs.py",
+        "cd ../ipfs_kit_py && python -m pytest tests/test_vfs.py",
+        "echo ready && cd ipfs_kit_py && python -m pytest tests/test_vfs.py",
+        "cd ipfs_kit_py || python -m pytest tests/test_vfs.py",
+    ),
+)
+def test_unsafe_or_unbounded_cd_withholds_validation_path_authority(
+    command: str,
+) -> None:
+    assert infer_validation_impact_paths(command) == ()
 
 
 def test_changed_golden_fixture_cannot_claim_validation_target() -> None:
@@ -468,6 +548,7 @@ def test_daemon_revalidates_justified_expansion_and_exposes_receipt(
         if event["type"].startswith("implementation_")
     ] == [
         "implementation_scope_adjudicated",
+        "implementation_expected_outputs_checked",
         "implementation_proposal_validated",
     ]
 

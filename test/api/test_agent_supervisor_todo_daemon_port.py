@@ -13189,6 +13189,81 @@ def test_provider_declared_retry_reset_and_explicit_command_attribution(
     assert grok_daemon._active_provider_capacity_backoff() == {}
 
 
+def test_auto_provider_with_codex_model_ignores_grok_capacity_latch(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 1, 20, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "auto",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_copilot_has_auth",
+        lambda: False,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["grok"],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+        },
+    )
+
+    assert daemon._current_implementation_provider_labels() == {
+        "codex",
+        "copilot",
+        "provider",
+    }
+    assert daemon._active_provider_capacity_backoff() == {}
+    command = daemon._build_implementation_command(repo)
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+
+
 @pytest.mark.parametrize(
     "retry_line",
     (

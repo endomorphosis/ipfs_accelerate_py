@@ -153,6 +153,7 @@ from ..validation.validation_commands import (
     infer_validation_impact_paths,
     normalize_validation_command_text,
     split_validation_commands,
+    validation_command_repository_root,
 )
 from ..validation.validation_runtime import (
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
@@ -1550,6 +1551,32 @@ _COPILOT_MODEL_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MODEL"
 _COPILOT_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_EFFORT"
 _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
 _COPILOT_MAX_CONTINUES_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MAX_CONTINUES"
+_CODEX_MODEL_PROVIDER_HINT_RE = re.compile(
+    r"^(?:gpt(?:[-.]|$)|o[1-9](?:[-.]|$)|codex(?:[-.]|$))",
+    re.IGNORECASE,
+)
+
+
+def _configured_implementation_provider() -> str:
+    """Resolve an auto provider when its configured model is unambiguous.
+
+    Configured boards pass the selected Codex model separately from the
+    provider selector.  Treating ``auto`` as availability-only used to choose
+    Grok first and silently ignore an explicit ``gpt-*`` model.  Keep unknown
+    model names on the existing availability path, while binding recognized
+    OpenAI/Codex model families to the Codex runner.
+    """
+
+    provider = (
+        os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+        or "auto"
+    )
+    if provider != "auto":
+        return provider
+    model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+    if model and _CODEX_MODEL_PROVIDER_HINT_RE.match(model):
+        return "codex"
+    return provider
 
 
 def _copilot_fallback_command(
@@ -1797,6 +1824,9 @@ def normalize_retry_validation_path(value: Any) -> str:
 def validation_command_working_prefix(command: str) -> str:
     """Return a safe package working prefix declared by a test command."""
 
+    repository_root = validation_command_repository_root(command)
+    if repository_root is None:
+        return ""
     try:
         tokens = shlex.split(str(command or ""), posix=True)
     except ValueError:
@@ -1807,19 +1837,23 @@ def validation_command_working_prefix(command: str) -> str:
             raw_prefix = tokens[index + 1]
         elif token.startswith(("--prefix=", "--cwd=", "--dir=")):
             raw_prefix = token.split("=", 1)[1]
-        elif token == "cd" and index + 1 < len(tokens):
-            raw_prefix = tokens[index + 1]
         if not raw_prefix:
             continue
         normalized = normalize_retry_validation_path(raw_prefix)
+        if repository_root and normalized:
+            normalized = normalize_retry_validation_path(
+                f"{repository_root}/{normalized}"
+            )
         if normalized:
             return normalized
-    return ""
+    return repository_root
 
 
 def normalize_reported_test_failure_path(command: str, value: Any) -> str:
     """Resolve one runner-relative failure path to the repository root."""
 
+    if validation_command_repository_root(command) is None:
+        return ""
     normalized = normalize_retry_validation_path(value)
     if not normalized:
         return ""
@@ -1836,10 +1870,9 @@ def normalize_reported_test_failure_path(command: str, value: Any) -> str:
 def unsafe_validation_path_aliases(command: str) -> set[str]:
     """Return normalized aliases derived from absolute or escaping arguments.
 
-    ``infer_validation_impact_paths`` intentionally removes a leading slash
-    for changed-file matching.  Authorization must retain that distinction,
-    so repair scopes conservatively exclude aliases whose raw argument was
-    absolute, drive-qualified, or traversed above the repository root.
+    Impact inference now rejects these paths directly.  Retain the aliases as
+    defense in depth for persisted results created by older supervisors and
+    for diagnostic paths reported by external runners.
     """
 
     try:
@@ -9092,21 +9125,25 @@ class PortalImplementationDaemon:
         classified["evidence"] = evidence[-4:]
         return classified
 
-    def _current_implementation_provider_labels(self) -> set[str]:
+    def _current_implementation_provider_labels(
+        self,
+        task: PortalTask | None = None,
+    ) -> set[str]:
         """Return coarse provider labels for the active implementation runner."""
 
-        explicit_command = self.implementation_command or os.environ.get(
-            "IMPLEMENTATION_DAEMON_COMMAND",
-            "",
-        ).strip()
+        declared_provider = self._task_declared_implementation_provider(task)
+        explicit_command = ""
+        if not declared_provider:
+            explicit_command = self.implementation_command or os.environ.get(
+                "IMPLEMENTATION_DAEMON_COMMAND",
+                "",
+            ).strip()
         explicit_labels = _provider_labels_from_implementation_command(
             explicit_command
         )
         if explicit_labels:
             return {*explicit_labels, "provider"}
-        provider = (
-            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower() or "auto"
-        )
+        provider = declared_provider or _configured_implementation_provider()
         if provider in {
             "goose",
             "goose_meta",
@@ -9140,7 +9177,10 @@ class PortalImplementationDaemon:
             labels.update({"codex", "copilot", "provider"})
         return labels or {"provider"}
 
-    def _provider_capacity_backoff_schedule(self) -> dict[str, Any]:
+    def _provider_capacity_backoff_schedule(
+        self,
+        task: PortalTask | None = None,
+    ) -> dict[str, Any]:
         """Return the latest invocation-bound provider retry schedule, if any.
 
         Includes expired schedules (``active`` false) so ``run_once`` can wake
@@ -9166,6 +9206,10 @@ class PortalImplementationDaemon:
                     if current_labels is None:
                         current_labels = (
                             self._current_implementation_provider_labels()
+                            if task is None
+                            else self._current_implementation_provider_labels(
+                                task
+                            )
                         )
                     if not (exhausted & current_labels):
                         continue
@@ -9181,8 +9225,11 @@ class PortalImplementationDaemon:
                 return {}
         return {}
 
-    def _active_provider_capacity_backoff(self) -> dict[str, Any]:
-        schedule = self._provider_capacity_backoff_schedule()
+    def _active_provider_capacity_backoff(
+        self,
+        task: PortalTask | None = None,
+    ) -> dict[str, Any]:
+        schedule = self._provider_capacity_backoff_schedule(task)
         return schedule if schedule.get("active", False) else {}
 
     def _selectable_task_retry_schedule(self) -> dict[str, Any]:
@@ -9362,7 +9409,7 @@ class PortalImplementationDaemon:
         provider_backoff = (
             {}
             if deterministic_only
-            else self._active_provider_capacity_backoff()
+            else self._active_provider_capacity_backoff(task)
         )
         if provider_backoff:
             result = {
@@ -39094,10 +39141,7 @@ class PortalImplementationDaemon:
         if env_command and not declared_provider:
             return shlex.split(env_command)
 
-        configured_provider = (
-            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
-            or "auto"
-        )
+        configured_provider = _configured_implementation_provider()
         provider = (
             declared_provider
             or configured_provider
@@ -39334,9 +39378,7 @@ class PortalImplementationDaemon:
             return configured
         provider = self._task_declared_implementation_provider(task)
         if not provider:
-            provider = (
-                os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
-            )
+            provider = _configured_implementation_provider()
         environment_name = (
             _GROK_CONTEXT_WINDOW_ENV
             if provider in {

@@ -21,7 +21,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from .proof.formal_verification_contracts import canonical_json, content_identity
-from .validation.validation_commands import infer_validation_impact_paths
+from .validation.validation_commands import (
+    infer_validation_impact_paths,
+    validation_command_repository_root,
+)
 
 
 FAILURE_REVIEW_SCHEMA = (
@@ -262,6 +265,9 @@ def _scope_contract_gap_paths(
         )
     )
     for command in validation_commands:
+        repository_root = validation_command_repository_root(str(command))
+        if repository_root is None:
+            continue
         validation_paths.update(
             _normalized_paths(infer_validation_impact_paths(str(command)))
         )
@@ -271,12 +277,14 @@ def _scope_contract_gap_paths(
             tokens = []
         for index, token in enumerate(tokens):
             raw_prefix = ""
-            if token in {"--prefix", "--cwd", "--dir", "cd"}:
+            if token in {"--prefix", "--cwd", "--dir"}:
                 if index + 1 < len(tokens):
                     raw_prefix = tokens[index + 1]
             elif token.startswith(("--prefix=", "--cwd=", "--dir=")):
                 raw_prefix = token.split("=", 1)[1]
             prefix = _normalize_path(raw_prefix)
+            if repository_root and prefix:
+                prefix = _normalize_path(f"{repository_root}/{prefix}")
             if prefix:
                 validation_paths.add(prefix)
     if not validation_paths:

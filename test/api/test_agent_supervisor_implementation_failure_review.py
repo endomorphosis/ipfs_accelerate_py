@@ -231,6 +231,67 @@ def test_unverifiable_validation_companion_requests_contract_revision() -> None:
     ]
 
 
+def test_child_repository_validation_target_requests_contract_revision() -> None:
+    child_test = "ipfs_kit_py/tests/test_mcp_vfs_adapter_contract.py"
+    wrong_root_duplicate = "tests/test_mcp_vfs_adapter_contract.py"
+    adapter_path = "ipfs_kit_py/ipfs_kit_py/core/vfs/adapters.py"
+    review = review_implementation_failure(
+        task_id="KITA-007",
+        attempt=1,
+        expected_outputs=(adapter_path,),
+        changed_paths=(
+            adapter_path,
+            child_test,
+            wrong_root_duplicate,
+        ),
+        validation_commands=(
+            "cd ipfs_kit_py && python -m pytest -q "
+            "tests/test_mcp_vfs_adapter_contract.py",
+        ),
+        proposal_accepted=False,
+        scope_adjudication={
+            "accepted": False,
+            "justified_paths": [],
+            "denied_paths": [child_test, wrong_root_duplicate],
+            "decisions": [
+                {
+                    "path": child_test,
+                    "verdict": "denied",
+                    "reason_codes": ["test_change_unverifiable"],
+                },
+                {
+                    "path": wrong_root_duplicate,
+                    "verdict": "denied",
+                    "reason_codes": ["test_change_unverifiable"],
+                },
+            ],
+        },
+        validation_result={
+            "attempted": False,
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+            "error": "proposal_validation_failed",
+            "proposal_gate": {
+                "reason_codes": ["path_outside_scope"],
+                "changed_paths": [
+                    adapter_path,
+                    child_test,
+                    wrong_root_duplicate,
+                ],
+            },
+        },
+    )
+
+    assert review.contract_gap_paths == (child_test,)
+    assert (
+        FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value
+        in review.reason_codes
+    )
+    assert child_test in review.next_attempt_prompt_addendum
+    assert wrong_root_duplicate not in review.contract_gap_paths
+
+
 def test_validation_selection_impact_paths_are_not_candidate_changes() -> None:
     expected_outputs = (
         "data/validation/conformance-report.json",
