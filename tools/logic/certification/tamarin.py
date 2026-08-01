@@ -104,19 +104,26 @@ DEFAULT_PROTOCOL_LIVE_CERTIFICATE_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_protocol_live_certificate.json"
 )
 
-# Live semantic surface (FVT-G205 / FVT-058). Distinct from offline toolchain
-# certification so parser fixtures remain non-production evidence.
+# Live semantic surface (FVT-G205 / FVT-058; objective validation repair FVT-075).
+# Distinct from offline toolchain certification so parser fixtures remain
+# non-production evidence.
 LIVE_INTERFACE: Final = "ProtocolLiveSemanticCertification@1"
 LIVE_SCHEMA_VERSION: Final = "protocol-live-semantic-certification/v1"
 LIVE_CORPUS_SCHEMA: Final = "protocol-live-semantic-corpus/v1"
 LIVE_GOAL_ID: Final = "FVT-G205"
 LIVE_TASK_ID: Final = "FVT-058"
+LIVE_REPAIR_TASK_ID: Final = "FVT-075"
 LIVE_PROGRAM: Final = "formal-verification-tactician/protocol-live-semantics"
 LIVE_TOOL_SURFACE: Final = "tamarin-live-semantic"
 EVIDENCE_CLASS_LIVE: Final = "live"
 EVIDENCE_CLASS_PARSER_FIXTURE: Final = "parser_fixture"
 
 _RAW_OUTPUT_CAP: Final = 8_192
+_RAW_PREVIEW_CAP: Final = 400
+PUBLIC_MANAGED_PATH_REDACTION: Final = "<managed-tool-path-redacted>"
+CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE: Final = (
+    "pinned_protocol_binary_unavailable_on_validation_path"
+)
 
 # Compact live sources. Each case is executed by the pinned tamarin-prover
 # binary when available; parser fixtures alone never satisfy live certification.
@@ -612,6 +619,188 @@ def resolve_executable(candidates: Sequence[str] | None = None) -> str | None:
         if found:
             return found
     return None
+
+
+def redact_managed_path(path: str | None) -> str | None:
+    """Redact host-absolute tool paths for durable public certificates."""
+
+    if path is None:
+        return None
+    text = str(path).strip()
+    if not text:
+        return text
+    name = Path(text).name
+    if name:
+        return f"{PUBLIC_MANAGED_PATH_REDACTION}/{name}"
+    return PUBLIC_MANAGED_PATH_REDACTION
+
+
+_HOST_PATH_IN_TEXT = re.compile(
+    r"(?:/home/[^:\s\"']+|/Users/[^:\s\"']+)"
+)
+
+
+def redact_host_paths_in_text(text: str | None) -> str | None:
+    """Scrub host-absolute path fragments out of free-form version banners."""
+
+    if text is None:
+        return None
+    value = str(text)
+    if not value:
+        return value
+
+    def _replace(match: re.Match[str]) -> str:
+        return redact_managed_path(match.group(0)) or PUBLIC_MANAGED_PATH_REDACTION
+
+    return _HOST_PATH_IN_TEXT.sub(_replace, value)
+
+
+def _redact_strings_deep(value: Any) -> Any:
+    if isinstance(value, str):
+        return redact_host_paths_in_text(value)
+    if isinstance(value, Mapping):
+        return {key: _redact_strings_deep(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_strings_deep(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_strings_deep(item) for item in value)
+    return value
+
+
+def compact_live_case_for_certificate(case: Mapping[str, Any]) -> dict[str, Any]:
+    """Shrink one live case for durable certificate storage.
+
+    Keeps digests, status, and binding metadata. Drops full source bodies and
+    raw stdout/stderr so the checked-in certificate stays a compact receipt
+    rather than a bulk golden dump.
+    """
+
+    compact = dict(case)
+    raw = str(compact.pop("raw_output", "") or "")
+    stdout = str(compact.pop("stdout", "") or "")
+    stderr = str(compact.pop("stderr", "") or "")
+    source = str(compact.pop("source", "") or "")
+    combined = raw if raw else f"{stdout}\n{stderr}"
+    if not compact.get("output_digest"):
+        compact["output_digest"] = content_digest(combined) if combined.strip() else ""
+    if not compact.get("source_digest") and source:
+        compact["source_digest"] = content_digest(source)
+    compact["raw_output_preview"] = redact_host_paths_in_text(
+        combined[:_RAW_PREVIEW_CAP]
+    )
+    compact["source_preview"] = source[:_RAW_PREVIEW_CAP]
+    if compact.get("executable_path"):
+        compact["executable_path"] = redact_managed_path(
+            str(compact["executable_path"])
+        )
+    if compact.get("tool_version"):
+        compact["tool_version"] = redact_host_paths_in_text(
+            str(compact["tool_version"])
+        )
+    # Keep attack-trace structure; truncate oversized raw embeds if present.
+    attack = compact.get("attack_trace")
+    if isinstance(attack, Mapping):
+        attack_copy = dict(attack)
+        for key in ("raw", "raw_output", "stdout"):
+            value = attack_copy.get(key)
+            if isinstance(value, str) and len(value) > _RAW_PREVIEW_CAP:
+                attack_copy[f"{key}_preview"] = redact_host_paths_in_text(
+                    value[:_RAW_PREVIEW_CAP]
+                )
+                del attack_copy[key]
+        compact["attack_trace"] = _redact_strings_deep(attack_copy)
+    return _redact_strings_deep(compact)
+
+
+def compact_live_tool_receipt_for_certificate(
+    receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Produce a durable, host-portable tool receipt for the protocol certificate."""
+
+    payload = dict(receipt)
+    payload["cases"] = [
+        compact_live_case_for_certificate(case)
+        for case in (payload.get("cases") or [])
+        if isinstance(case, Mapping)
+    ]
+
+    compact_checks: list[dict[str, Any]] = []
+    for check in payload.get("checks") or []:
+        if not isinstance(check, Mapping):
+            continue
+        entry = {
+            "check_id": check.get("check_id"),
+            "kind": check.get("kind"),
+            "status": check.get("status"),
+            "expected": check.get("expected"),
+            "observed": redact_host_paths_in_text(str(check.get("observed") or "")),
+            "detail": redact_host_paths_in_text(str(check.get("detail") or "")),
+            "reason_codes": list(check.get("reason_codes") or []),
+        }
+        bindings = check.get("bindings")
+        if isinstance(bindings, Mapping):
+            # Preserve binding key presence without re-emitting full envelopes.
+            entry["binding_keys"] = sorted(str(key) for key in bindings.keys())
+            entry["bindings_digest"] = content_digest(dict(bindings))
+        compact_checks.append(entry)
+    payload["checks"] = compact_checks
+
+    for key in (
+        "tamarin_executable",
+        "maude_executable",
+        "proverif_executable",
+        "opam_executable",
+    ):
+        if payload.get(key):
+            payload[key] = redact_managed_path(str(payload[key]))
+
+    for key in (
+        "tamarin_version_string",
+        "maude_version_string",
+        "proverif_version_string",
+        "opam_version_string",
+    ):
+        if payload.get(key):
+            payload[key] = redact_host_paths_in_text(str(payload[key]))
+
+    bindings = payload.get("bindings")
+    if isinstance(bindings, Mapping):
+        rewritten = dict(bindings)
+        for role in ("tool", "dependency"):
+            role_payload = rewritten.get(role)
+            if isinstance(role_payload, Mapping):
+                role_copy = dict(role_payload)
+                if role_copy.get("executable_path"):
+                    role_copy["executable_path"] = redact_managed_path(
+                        str(role_copy["executable_path"])
+                    )
+                if role_copy.get("version_string"):
+                    role_copy["version_string"] = redact_host_paths_in_text(
+                        str(role_copy["version_string"])
+                    )
+                rewritten[role] = role_copy
+        raw_output = rewritten.get("raw_output")
+        if isinstance(raw_output, Mapping):
+            raw_copy = dict(raw_output)
+            raw_copy.pop("raw_output", None)
+            raw_copy.pop("stdout", None)
+            raw_copy.pop("stderr", None)
+            rewritten["raw_output"] = raw_copy
+        payload["bindings"] = rewritten
+
+    payload.pop("repo_root", None)
+    payload["certificate_compact"] = True
+    payload["repair_task_id"] = LIVE_REPAIR_TASK_ID
+    payload = _redact_strings_deep(payload)
+    payload.pop("receipt_digest_sha256", None)
+    payload["receipt_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    return payload
 
 
 def first_nonempty_line(text: str) -> str:
@@ -2245,12 +2434,18 @@ def run_live_semantic_suite(
             }
         )
 
+    capability_gap = (
+        None
+        if tamarin_usable
+        else CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE
+    )
     receipt = {
         "interface": LIVE_INTERFACE,
         "schema_version": LIVE_SCHEMA_VERSION,
         "tool_surface": LIVE_TOOL_SURFACE,
         "goal_id": LIVE_GOAL_ID,
         "task_id": LIVE_TASK_ID,
+        "repair_task_id": LIVE_REPAIR_TASK_ID,
         "program": LIVE_PROGRAM,
         "tool_id": TOOL_ID,
         "support_tool_id": SUPPORT_TOOL_ID,
@@ -2270,21 +2465,32 @@ def run_live_semantic_suite(
         "network_used": False,
         "install_attempted": False,
         "download_attempted": False,
+        "live_execution": bool(tamarin_usable and live_cases),
         "live_semantic_certified": live_semantic_certified,
         "production_certified": live_semantic_certified and pair_validated,
         "promotion_blocked": not live_semantic_certified,
         "parser_fixtures_are_non_production": True,
         "cannot_substitute_proverif": True,
+        "fixture_or_parser_cannot_satisfy_live_goal": True,
+        "capability_gap": capability_gap,
         "block_reasons": [] if live_semantic_certified else list(block_reasons),
         "checks": checks,
         "cases": [case.to_dict() for case in live_cases],
         "bindings": bindings,
-        "policy": dict(corpus.get("policy") or {}),
+        "policy": {
+            **dict(corpus.get("policy") or {}),
+            "fixture_or_parser_cannot_satisfy_live_goal": True,
+            "live_binary_required_for_semantic_proof": True,
+        },
         "repo_root": str(root),
         "notes": (
             "Pinned Tamarin live semantic corpus certified."
             if live_semantic_certified
-            else "Tamarin live semantic certification incomplete or unavailable."
+            else (
+                "Tamarin live semantic certification incomplete or unavailable; "
+                "parser fixtures remain non-production and cannot satisfy "
+                f"{LIVE_GOAL_ID}."
+            )
         ),
     }
     receipt["receipt_digest_sha256"] = content_digest(
@@ -2377,29 +2583,47 @@ def build_protocol_live_certificate(
     if not independence_ok:
         both_ok = False
 
+    # Durable certificate stores compact per-tool receipts (digests/previews),
+    # not full live stdout envelopes or host-absolute managed paths.
+    tamarin_public = compact_live_tool_receipt_for_certificate(tamarin_payload)
+    proverif_public = compact_live_tool_receipt_for_certificate(proverif_payload)
+
+    capability_gaps = [
+        gap
+        for gap in (
+            tamarin_payload.get("capability_gap"),
+            proverif_payload.get("capability_gap"),
+        )
+        if gap
+    ]
+
     certificate = {
         "schema_version": LIVE_SCHEMA_VERSION,
         "interface": LIVE_INTERFACE,
         "goal_id": LIVE_GOAL_ID,
         "task_id": LIVE_TASK_ID,
+        "repair_task_id": LIVE_REPAIR_TASK_ID,
         "program": LIVE_PROGRAM,
         "lane_id": LANE_ID,
         "authority_ceiling": AUTHORITY_CEILING,
         "authority_scope": AUTHORITY_SCOPE,
+        "certificate_compact": True,
         "policy": {
             "no_install": True,
             "no_download": True,
             "no_network": True,
             "parser_fixtures_are_non_production": True,
             "live_binary_required_for_semantic_proof": True,
+            "fixture_or_parser_cannot_satisfy_live_goal": True,
             "engines_are_independent": True,
             "no_engine_stands_in_for_other": True,
             "maude_is_support_only": True,
             "opam_is_support_only": True,
+            "durable_certificate_is_compact": True,
         },
         "tools": {
-            "tamarin": tamarin_payload,
-            "proverif": proverif_payload,
+            "tamarin": tamarin_public,
+            "proverif": proverif_public,
         },
         "required_case_kinds": sorted(
             {
@@ -2420,9 +2644,14 @@ def build_protocol_live_certificate(
             "proverif_cannot_substitute_tamarin": True,
             "independence_ok": independence_ok,
         },
+        "live_execution": bool(
+            tamarin_payload.get("live_execution")
+            and proverif_payload.get("live_execution")
+        ),
         "live_semantic_certified": both_ok and independence_ok,
         "production_certified": both_ok and independence_ok,
         "promotion_blocked": not (both_ok and independence_ok),
+        "capability_gaps": capability_gaps,
         "block_reasons": (
             []
             if both_ok and independence_ok
@@ -2447,9 +2676,14 @@ def build_protocol_live_certificate(
         ),
         "notes": (
             "Both pinned Tamarin and ProVerif live semantic corpora certified "
-            "with independent per-tool receipts."
+            "with independent compact per-tool receipts "
+            f"(objective validation repair {LIVE_REPAIR_TASK_ID})."
             if both_ok and independence_ok
-            else "Protocol live semantic certificate incomplete."
+            else (
+                "Protocol live semantic certificate incomplete; "
+                "parser fixtures cannot satisfy live certification and "
+                "missing pinned binaries are recorded as capability gaps."
+            )
         ),
     }
     certificate["certificate_digest_sha256"] = content_digest(
@@ -2605,9 +2839,12 @@ __all__ = [
     "LIVE_CORPUS_SCHEMA",
     "LIVE_GOAL_ID",
     "LIVE_TASK_ID",
+    "LIVE_REPAIR_TASK_ID",
     "LIVE_PROGRAM",
     "EVIDENCE_CLASS_LIVE",
     "EVIDENCE_CLASS_PARSER_FIXTURE",
+    "PUBLIC_MANAGED_PATH_REDACTION",
+    "CAPABILITY_GAP_PINNED_BINARY_UNAVAILABLE",
     "DEFAULT_PROTOCOL_LIVE_CERTIFICATE_RELATIVE",
     "CheckResult",
     "CaseOutcome",
@@ -2618,6 +2855,10 @@ __all__ = [
     "offline_env",
     "bounded_run",
     "resolve_executable",
+    "redact_managed_path",
+    "redact_host_paths_in_text",
+    "compact_live_case_for_certificate",
+    "compact_live_tool_receipt_for_certificate",
     "default_corpus_manifest",
     "load_corpus_manifest",
     "corpus_cases",
