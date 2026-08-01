@@ -24,6 +24,7 @@ import importlib.util
 import json
 import os
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,7 @@ TASK_ID = "FVT-062"
 LOCKED_TLC_VERSION = "1.8.0"
 LOCKED_TLC_RELEASE_TAG = "v1.8.0"
 LOCKED_TLC_REVISION = "30cc360"
+LOCKED_TLC_FULL_REVISION = "30cc3601321c3fc02e044d0ecb5c58d8921e18df"
 LOCKED_TLC_SHA256 = (
     "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
 )
@@ -153,6 +155,22 @@ def _fake_java(
             f"exit {runtime_exit}"
         ),
     )
+
+
+def _write_tlc_jar(path: Path) -> Path:
+    """Write a minimal JAR carrying TLC's reviewed release identity."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    manifest = (
+        "Manifest-Version: 1.0\r\n"
+        f"X-Git-Tag: {LOCKED_TLC_RELEASE_TAG}\r\n"
+        f"X-Git-ShortRevision: {LOCKED_TLC_REVISION}\r\n"
+        f"X-Git-Revision: {LOCKED_TLC_FULL_REVISION}\r\n"
+        "\r\n"
+    )
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("META-INF/MANIFEST.MF", manifest)
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -698,8 +716,7 @@ def test_successful_tlc_install_binds_java17_and_revision_manifest(
     install_root = tmp_path / "install"
 
     def fake_download(url: str, destination: Path, **kwargs: object):
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(b"reviewed-tlc-fixture")
+        _write_tlc_jar(destination)
         return True, state_model.TLC_SHA256
 
     monkeypatch.setattr(state_model, "download_artifact", fake_download)
@@ -769,8 +786,7 @@ def test_tlc_failed_runtime_validation_preserves_prior_good_install(
     previous_jar = final_jar.read_bytes()
 
     def fake_download(url: str, destination: Path, **kwargs: object):
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(b"not-a-real-jar")
+        _write_tlc_jar(destination)
         return True, state_model.TLC_SHA256
 
     monkeypatch.setattr(state_model, "download_artifact", fake_download)
@@ -859,7 +875,13 @@ def test_apalache_publication_failure_restores_previous_install(
     def fake_extract(archive: Path, destination: Path) -> None:
         _write_executable(
             destination / "apalache-0.58.3" / "bin" / "apalache-mc",
-            'echo "Apalache 0.58.3"',
+            (
+                'if [ "${1:-}" = "version" ]; then\n'
+                f'  echo "{LOCKED_APALACHE_VERSION}"\n'
+                "  exit 0\n"
+                "fi\n"
+                "exit 64"
+            ),
         )
 
     monkeypatch.setattr(state_model, "download_artifact", fake_download)
@@ -931,5 +953,9 @@ def test_managed_tlc_identity_requires_exact_digest_and_revision_manifest(
     identity = state_model.managed_tlc_identity(root, java_executable=java17)
     assert identity["artifact_digest_verified"] is False
     assert identity["usable"] is False
-    assert identity["revision"] == LOCKED_TLC_REVISION
-    assert identity["release_tag"] == LOCKED_TLC_RELEASE_TAG
+    assert identity["revision"] is None
+    assert identity["release_tag"] is None
+    assert (
+        identity["jar_manifest_identity"]["reason_code"]
+        == "tlc_jar_manifest_unreadable"
+    )
