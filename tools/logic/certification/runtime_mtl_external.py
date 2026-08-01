@@ -1,22 +1,30 @@
 #!/usr/bin/env python3
-"""External Runtime MTL cross-runtime parity certification.
+"""External Runtime MTL cross-runtime parity and vendor certification.
 
-``ExternalRuntimeMTLCertification@1`` / FVT-G181 (FVT-052).
+``ExternalRuntimeMTLCertification@1`` / FVT-G181 (FVT-052) and vendor path
+``ExternalRuntimeMTLVendorCertification@1`` / FVT-G210 (FVT-056).
 
 Explicit strict installation selects the exact pin-bound external monitor.
 Python (in-process reference), TypeScript (when available), and the external
-hermetic parity engine must agree on:
+engine must agree on:
 
 * satisfied / violated golden traces;
 * closed vs open boundary intervals;
 * interval and event mutations;
 * shortest-prefix discovery and deterministic replay;
 * malformed input fail-closed behaviour;
-* bounds or disagreement quarantine.
+* timeout and bounds or disagreement quarantine.
 
 Finite-trace authority is preserved; no global correctness claim is inferred.
-This lane owns the external installer plugin, parity handler, and test; it never
-edits the in-process semantic reference lane or the central multi-prover
+
+The **vendor** lane (FVT-G210) certifies a reproducibly built TypeScript/Node
+monitor that never imports or dispatches to the Python reference.  Package,
+source, lockfile, runtime, executable, and artifact digests are bound.
+Generated Python hermetic parity wrappers remain non-production shadow evidence
+and cannot satisfy vendor production claims.
+
+This lane owns the external installer plugin, parity/vendor handlers, and tests;
+it never edits the in-process semantic reference lane or the central multi-prover
 certificate.
 """
 
@@ -89,6 +97,21 @@ LANE_ID: Final = "runtime_mtl_external"
 HANDLER_ID: Final = "external_runtime_mtl_certification@1"
 CERTIFICATION_SURFACE: Final = "tools.logic.certification.runtime_mtl_external"
 
+# Vendor certification (FVT-G210 / FVT-056).
+VENDOR_INTERFACE: Final = "ExternalRuntimeMTLVendorCertification@1"
+VENDOR_SCHEMA_VERSION: Final = "external-runtime-mtl-vendor-certification/v1"
+VENDOR_INSTALL_RECEIPT_SCHEMA: Final = (
+    "formal-verification-runtime-mtl-external-install-receipt/v1"
+)
+VENDOR_GOAL_ID: Final = "FVT-G210"
+VENDOR_TASK_ID: Final = "FVT-056"
+VENDOR_PROGRAM: Final = "formal-verification-tactician/runtime-mtl-external-runtime"
+VENDOR_LANE_ID: Final = "runtime_mtl_external_vendor"
+VENDOR_HANDLER_ID: Final = "external_runtime_mtl_vendor_certification@1"
+DEFAULT_VENDOR_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json"
+)
+
 TOOL_EXTERNAL: Final = mtl_installer.TOOL_RUNTIME_MTL_EXTERNAL
 EXTERNAL_ENGINES: Final = (TOOL_EXTERNAL,)
 REFERENCE_ENGINE: Final = "runtime-mtl"
@@ -98,7 +121,7 @@ REFERENCE_ENGINES: Final = (REFERENCE_ENGINE,)
 AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.FINITE_TRACE.value
 MONITOR_AUTHORITY: Final = MonitorAuthority.MONITOR.value
 
-# Corpus categories required by FVT-G181 acceptance.
+# Corpus categories required by FVT-G181 / FVT-G210 acceptance.
 REQUIRED_CATEGORIES: Final = frozenset(
     {
         "satisfied",
@@ -124,6 +147,9 @@ CHECK_KINDS: Final = frozenset(
         "install",
         "role",
         "bounds",
+        "timeout",
+        "digest",
+        "independence",
     }
 )
 
@@ -312,6 +338,7 @@ def _run_external_process(
     timeout_seconds: float = 5.0,
     env: Mapping[str, str] | None = None,
     runner: BoundedToolRunner | None = None,
+    memory_bytes: int | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Execute one external parity evaluation; return (result_or_None, meta)."""
 
@@ -328,13 +355,20 @@ def _run_external_process(
     run_env = dict(os.environ)
     if env:
         run_env.update({str(k): str(v) for k, v in env.items()})
+    # Node/V8 needs ~512MiB address space; Python hermetic engines fit in 128MiB.
+    exe_lower = str(executable).casefold()
+    if memory_bytes is None:
+        if "runtime-mtl-vendor" in exe_lower or "logic-runtime-mtl" in exe_lower:
+            memory_bytes = 512 * 1024 * 1024
+        else:
+            memory_bytes = 128 * 1024 * 1024
     request = ToolRunRequest(
         argv=argv,
         runtime=ToolRuntime.NATIVE,
         limits=ToolRunLimits(
             timeout_seconds=timeout_seconds,
-            cpu_seconds=timeout_seconds,
-            memory_bytes=128 * 1024 * 1024,
+            cpu_seconds=max(timeout_seconds, 5.0),
+            memory_bytes=memory_bytes,
             max_output_bytes=128 * 1024,
             max_input_bytes=max(64 * 1024, len(source.encode("utf-8")) + 1024),
             max_workspace_bytes=max(
@@ -1321,11 +1355,555 @@ def external_runtime_mtl_lane_handler(
     }
 
 
+# ---------------------------------------------------------------------------
+# Vendor certification (FVT-G210)
+# ---------------------------------------------------------------------------
+
+
+def _certify_vendor_engine(
+    identity: mtl_installer.ExternalMonitorIdentity,
+    *,
+    install_status: str,
+    repo_root: Path,
+) -> EngineCertification:
+    """Run the full corpus on the independent TypeScript vendor engine."""
+
+    if identity.is_hermetic_parity_engine or not identity.is_vendor_build:
+        raise ExternalRuntimeMTLCertificationError(
+            "hermetic parity engines cannot satisfy vendor Runtime MTL certification"
+        )
+    for field_name in (
+        "package_digest_sha256",
+        "source_digest_sha256",
+        "lockfile_digest_sha256",
+        "runtime_digest_sha256",
+        "artifact_sha256",
+    ):
+        if not getattr(identity, field_name, ""):
+            raise ExternalRuntimeMTLCertificationError(
+                f"vendor identity missing bound digest {field_name}"
+            )
+
+    engine = certify_engine(
+        identity.tool_id,
+        identity=identity,
+        install_status=install_status,
+        repo_root=repo_root,
+    )
+    extra_checks: list[CheckResult] = []
+    block_reasons = list(engine.block_reasons)
+
+    # Digest binding checks.
+    digests_ok = all(
+        [
+            len(identity.package_digest_sha256) == 64,
+            len(identity.source_digest_sha256) == 64,
+            len(identity.lockfile_digest_sha256) == 64,
+            len(identity.runtime_digest_sha256) == 64,
+            len(identity.artifact_sha256) == 64,
+            len(identity.executable_digest_sha256 or identity.artifact_sha256) == 64,
+        ]
+    )
+    extra_checks.append(
+        CheckResult(
+            check_id=f"{identity.tool_id}.vendor.digests_bound",
+            kind="digest",
+            status="passed" if digests_ok else "failed",
+            expected="package+source+lockfile+runtime+executable+artifact digests",
+            observed=(
+                f"pkg={identity.package_digest_sha256[:12]}…"
+                f" src={identity.source_digest_sha256[:12]}…"
+                f" lock={identity.lockfile_digest_sha256[:12]}…"
+            ),
+            detail="all vendor digests are exact 64-char hex",
+            engine_id=identity.tool_id,
+        )
+    )
+    if not digests_ok:
+        block_reasons.append("vendor_digests_incomplete")
+
+    # Independence: executable must not be the hermetic Python parity wrapper.
+    exe_text = ""
+    try:
+        exe_text = Path(identity.executable).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        exe_text = ""
+    independence_ok = (
+        identity.is_vendor_build
+        and not identity.is_hermetic_parity_engine
+        and "hermetic-parity-engine" not in exe_text
+        and "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl"
+        not in exe_text
+        and "from ipfs_datasets_py" not in exe_text
+        and "typescript-vendor" in _probe_banner(identity.executable).casefold()
+    )
+    extra_checks.append(
+        CheckResult(
+            check_id=f"{identity.tool_id}.vendor.no_python_reference_dispatch",
+            kind="independence",
+            status="passed" if independence_ok else "failed",
+            expected="independent TypeScript/Node; no Python reference import",
+            observed=(
+                f"vendor={identity.is_vendor_build};"
+                f"hermetic={identity.is_hermetic_parity_engine};"
+                f"banner={_probe_banner(identity.executable)[:80]}"
+            ),
+            detail="vendor engine never imports or dispatches to Python reference",
+            engine_id=identity.tool_id,
+        )
+    )
+    if not independence_ok:
+        block_reasons.append("vendor_not_independent_of_python")
+
+    # Explicit timeout quarantine probe.
+    timeout_fixture = next(
+        (
+            item
+            for item in golden_fixtures()
+            if item.get("expected", {}).get("status") == "satisfied"
+        ),
+        golden_fixtures()[0],
+    )
+    timed = run_parity_case(
+        identity.tool_id,
+        "case:timeout",
+        {
+            "case_id": "case:timeout",
+            "formula": timeout_fixture["formula"],
+            "trace": timeout_fixture["trace"],
+            "position": timeout_fixture.get("position", 0),
+        },
+        executable=identity.executable,
+        engine_version=identity.version,
+        timeout_seconds=0.25,
+        env={mtl_installer.ENV_SLEEP_SECONDS: "2.0"},
+    )
+    engine.case_results.append(timed)
+    timeout_ok = timed.timed_out and timed.quarantined and timed.status == "timeout"
+    extra_checks.append(
+        CheckResult(
+            check_id=f"{identity.tool_id}.case:timeout.timeout",
+            kind="timeout",
+            status="passed" if timeout_ok else "failed",
+            expected="timeout+quarantine",
+            observed=f"{timed.status}/timed_out={timed.timed_out}",
+            detail="vendor timeout probes quarantine promotion",
+            engine_id=identity.tool_id,
+            quarantined=timed.quarantined,
+        )
+    )
+    if not timeout_ok:
+        block_reasons.append("timeout_not_quarantined")
+
+    # Re-bind package digests against the source tree when available.
+    try:
+        package_root = mtl_installer.resolve_vendor_package_root(repo_root)
+        source_digests = mtl_installer.compute_vendor_source_digests(package_root)
+        source_match = (
+            source_digests["package_digest_sha256"] == identity.package_digest_sha256
+            and source_digests["source_digest_sha256"] == identity.source_digest_sha256
+            and source_digests["lockfile_digest_sha256"] == identity.lockfile_digest_sha256
+        )
+    except Exception as exc:
+        source_match = False
+        block_reasons.append(f"source_digest_rebind_failed:{type(exc).__name__}")
+        source_digests = {}
+    extra_checks.append(
+        CheckResult(
+            check_id=f"{identity.tool_id}.vendor.source_lock_match",
+            kind="digest",
+            status="passed" if source_match else "failed",
+            expected="identity digests match locked TypeScript package tree",
+            observed="match" if source_match else "mismatch",
+            detail=str(source_digests)[:240],
+            engine_id=identity.tool_id,
+        )
+    )
+    if not source_match and "source_digest_rebind_failed" not in "".join(block_reasons):
+        block_reasons.append("source_lock_digest_mismatch")
+
+    all_checks = list(engine.checks) + extra_checks
+    certified = (
+        engine.usable
+        and all(item.passed for item in all_checks)
+        and not block_reasons
+        and identity.is_vendor_build
+        and not identity.is_hermetic_parity_engine
+    )
+    return EngineCertification(
+        engine_id=engine.engine_id,
+        version=engine.version,
+        executable=engine.executable,
+        usable=engine.usable,
+        certified=certified,
+        role=engine.role,
+        authority_ceiling=engine.authority_ceiling,
+        checks=all_checks,
+        case_results=engine.case_results,
+        block_reasons=sorted(set(block_reasons)),
+        install_status=install_status,
+    )
+
+
+def _probe_banner(executable: str) -> str:
+    import subprocess
+
+    try:
+        completed = subprocess.run(
+            [executable, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return ((completed.stdout or "") + (completed.stderr or "")).strip()
+
+
+def certify_external_runtime_mtl_vendor(
+    *,
+    install_root: Path | str | None = None,
+    force_install: bool = False,
+    skip_install: bool = False,
+    repo_root: Path | str | None = None,
+    lock_path: Path | str | None = None,
+    write_receipt_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Certify the independent TypeScript/Node vendor Runtime MTL engine.
+
+    Acceptance (FVT-G210):
+
+    * locked TypeScript dependency graph builds an independent Node package
+      without importing or dispatching to the Python reference;
+    * package, source, lockfile, runtime, executable, and artifact digests
+      are bound;
+    * positive, negative, interval/event mutation, timestamp boundary,
+      shortest-prefix replay, malformed, timeout, bounds, and disagreement
+      cases execute out of process;
+    * finite-trace authority and inconclusive-prefix semantics are preserved;
+    * generated Python parity wrappers remain non-production shadow evidence.
+    """
+
+    root_repo = Path(repo_root) if repo_root is not None else _REPO_ROOT
+    install_path = mtl_installer._expand_install_root(install_root)
+    install_bundle: mtl_installer.RuntimeMTLInstallBundle | None = None
+    identity: mtl_installer.ExternalMonitorIdentity | None = None
+    install_status = "missing"
+
+    if skip_install:
+        pin = mtl_installer.pin_for_tool(
+            TOOL_EXTERNAL, repo_root=root_repo, lock_path=lock_path
+        )
+        identity = mtl_installer._identity_from_disk(
+            TOOL_EXTERNAL, install_path, pin, vendor=True
+        )
+        if identity is None:
+            raise ExternalRuntimeMTLCertificationError(
+                f"skip_install requested but vendor Runtime MTL is missing under "
+                f"{install_path}"
+            )
+        install_status = "already_present"
+    else:
+        install_bundle = mtl_installer.ensure_runtime_mtl_vendor(
+            yes=True,
+            strict=True,
+            force=force_install,
+            install_root=install_path,
+            repo_root=root_repo,
+            lock_path=lock_path,
+            checksum_verified=True,
+        )
+        if not install_bundle.ok:
+            raise ExternalRuntimeMTLCertificationError(
+                "vendor installation failed: "
+                + "; ".join(
+                    f"{r.tool_id}:{r.status}:{r.detail}"
+                    for r in install_bundle.receipts
+                )
+            )
+        for receipt in install_bundle.receipts:
+            if receipt.identity is not None:
+                identity = receipt.identity
+                install_status = receipt.status
+                break
+
+    if identity is None:
+        raise ExternalRuntimeMTLCertificationError("vendor Runtime MTL identity missing")
+    if identity.is_hermetic_parity_engine or not identity.is_vendor_build:
+        raise ExternalRuntimeMTLCertificationError(
+            "hermetic parity engines cannot satisfy vendor certification"
+        )
+
+    pin = mtl_installer.pin_for_tool(
+        TOOL_EXTERNAL, repo_root=root_repo, lock_path=lock_path
+    )
+    if identity.version != pin["version"]:
+        raise ExternalRuntimeMTLCertificationError(
+            f"strict pin mismatch for vendor engine: "
+            f"{identity.version!r} != {pin['version']!r}"
+        )
+
+    engine = _certify_vendor_engine(
+        identity, install_status=install_status, repo_root=root_repo
+    )
+
+    # Hermetic shadow cannot satisfy vendor.
+    hermetic_cannot_satisfy = True
+    hermetic_probe = mtl_installer.ensure_runtime_mtl_external(
+        yes=True,
+        strict=True,
+        force=False,
+        install_root=install_path / "hermetic-shadow-probe",
+        repo_root=root_repo,
+        hermetic_parity_engine=True,
+        vendor=False,
+        checksum_verified=True,
+    )
+    hermetic_is_shadow = (
+        hermetic_probe.ok
+        and hermetic_probe.identity is not None
+        and hermetic_probe.identity.is_hermetic_parity_engine
+        and not hermetic_probe.identity.is_vendor_build
+    )
+    if not hermetic_is_shadow:
+        hermetic_cannot_satisfy = False
+
+    categories = sorted(REQUIRED_CATEGORIES)
+    block_reasons = list(engine.block_reasons)
+    if not hermetic_cannot_satisfy:
+        block_reasons.append("hermetic_shadow_policy_broken")
+    if identity.executable == (
+        hermetic_probe.identity.executable if hermetic_probe.identity else ""
+    ):
+        block_reasons.append("vendor_reused_hermetic_executable")
+
+    certified = bool(engine.certified) and not block_reasons
+
+    payload: dict[str, Any] = {
+        "schema_version": VENDOR_SCHEMA_VERSION,
+        "interface": VENDOR_INTERFACE,
+        "goal_id": VENDOR_GOAL_ID,
+        "task_id": VENDOR_TASK_ID,
+        "program": VENDOR_PROGRAM,
+        "lane_id": VENDOR_LANE_ID,
+        "handler_id": VENDOR_HANDLER_ID,
+        "certification_surface": CERTIFICATION_SURFACE,
+        "authority_ceiling": AUTHORITY_CEILING,
+        "forbids_theorem_authority": True,
+        "forbids_global_correctness_claim": True,
+        "certified": certified,
+        "runtime_mtl_external": {
+            **engine.to_dict(),
+            "is_vendor_build": True,
+            "is_hermetic_parity_engine": False,
+            "package_identity": identity.package_identity,
+            "package_digest_sha256": identity.package_digest_sha256,
+            "source_digest_sha256": identity.source_digest_sha256,
+            "lockfile_digest_sha256": identity.lockfile_digest_sha256,
+            "runtime_digest_sha256": identity.runtime_digest_sha256,
+            "executable_digest_sha256": identity.executable_digest_sha256
+            or identity.artifact_sha256,
+            "artifact_sha256": identity.artifact_sha256,
+            "node_version": identity.node_version,
+            "platform_id": identity.platform_id,
+            "never_grants_theorem_authority": True,
+            "finite_trace_authority_only": True,
+            "no_python_reference_dispatch": True,
+        },
+        "engines": [engine.to_dict()],
+        "engine_ids": [engine.engine_id],
+        "external_engines": list(EXTERNAL_ENGINES),
+        "reference_engines": list(REFERENCE_ENGINES),
+        "categories_exercised": categories,
+        "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
+        "install": None if install_bundle is None else install_bundle.to_dict(),
+        "hermetic_parity_shadow": {
+            "is_hermetic_parity_engine": True,
+            "is_vendor_build": False,
+            "non_production_shadow_evidence": True,
+            "cannot_satisfy_vendor": hermetic_cannot_satisfy,
+            "executable": (
+                hermetic_probe.identity.executable
+                if hermetic_probe.identity is not None
+                else ""
+            ),
+        },
+        "policy": {
+            "strict_installation_selects_exact_pin": True,
+            "locked_typescript_dependency_graph": True,
+            "independent_node_package_without_python_dispatch": True,
+            "package_source_lockfile_runtime_executable_artifact_digests_bound": True,
+            "disagreement_quarantines_promotion": True,
+            "finite_trace_authority_only": True,
+            "never_grants_theorem_authority": True,
+            "no_global_correctness_claim": True,
+            "inconclusive_prefix_semantics_preserved": True,
+            "hermetic_parity_wrappers_are_non_production_shadows": True,
+            "hermetic_parity_wrappers_cannot_satisfy_vendor": True,
+            "never_promote_hermetic_as_vendor": True,
+            "no_central_certificate_edit": True,
+            "no_in_process_reference_edit": True,
+            "grants_theorem_authority": False,
+            "grants_global_correctness": False,
+        },
+        "summary": {
+            "vendor_certified": engine.certified,
+            "checks_passed": sum(1 for check in engine.checks if check.passed),
+            "checks_total": len(engine.checks),
+            "categories_exercised": categories,
+            "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
+            "block_reasons": sorted(set(block_reasons)),
+            "hermetic_parity_wrappers_cannot_satisfy_vendor": hermetic_cannot_satisfy,
+        },
+    }
+    payload["certificate_digest_sha256"] = _stable_json_digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+
+    receipt = build_vendor_install_receipt(payload)
+    if write_receipt_path is not None:
+        path = Path(write_receipt_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        payload["receipt_path"] = str(path)
+    payload["install_receipt"] = receipt
+    return payload
+
+
+def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, Any]:
+    """Build the checked-in vendor install receipt envelope."""
+
+    engine = certificate.get("runtime_mtl_external") or {}
+    receipt = {
+        "schema_version": VENDOR_INSTALL_RECEIPT_SCHEMA,
+        "interface": VENDOR_INTERFACE,
+        "goal_id": VENDOR_GOAL_ID,
+        "task_id": VENDOR_TASK_ID,
+        "program": VENDOR_PROGRAM,
+        "lane_id": VENDOR_LANE_ID,
+        "handler_id": VENDOR_HANDLER_ID,
+        "certified": bool(certificate.get("certified")),
+        "authority_ceiling": AUTHORITY_CEILING,
+        "runtime_mtl_external": {
+            "tool_id": TOOL_EXTERNAL,
+            "version": engine.get("version"),
+            "executable": engine.get("executable"),
+            "usable": engine.get("usable"),
+            "certified": engine.get("certified"),
+            "is_vendor_build": True,
+            "is_hermetic_parity_engine": False,
+            "package_identity": engine.get("package_identity"),
+            "package_digest_sha256": engine.get("package_digest_sha256"),
+            "source_digest_sha256": engine.get("source_digest_sha256"),
+            "lockfile_digest_sha256": engine.get("lockfile_digest_sha256"),
+            "runtime_digest_sha256": engine.get("runtime_digest_sha256"),
+            "executable_digest_sha256": engine.get("executable_digest_sha256"),
+            "artifact_sha256": engine.get("artifact_sha256"),
+            "node_version": engine.get("node_version"),
+            "platform_id": engine.get("platform_id"),
+            "role": ToolRole.AUTHORITY.value,
+            "authority_ceiling": AUTHORITY_CEILING,
+            "never_grants_theorem_authority": True,
+            "finite_trace_authority_only": True,
+            "no_python_reference_dispatch": True,
+        },
+        "hermetic_parity_shadow": dict(
+            certificate.get("hermetic_parity_shadow") or {}
+        ),
+        "categories_exercised": list(certificate.get("categories_exercised") or []),
+        "mutation_kinds": list(certificate.get("mutation_kinds") or []),
+        "policy": dict(certificate.get("policy") or {}),
+        "summary": dict(certificate.get("summary") or {}),
+        "certificate_digest_sha256": certificate.get("certificate_digest_sha256"),
+    }
+    receipt["receipt_digest_sha256"] = _stable_json_digest(
+        {k: v for k, v in receipt.items() if k != "receipt_digest_sha256"}
+    )
+    return receipt
+
+
+def write_vendor_install_receipt(
+    certificate: Mapping[str, Any] | None = None,
+    *,
+    repo_root: Path | str | None = None,
+    install_root: Path | str | None = None,
+    receipt_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Certify (if needed) and write the vendor install receipt artifact."""
+
+    root = Path(repo_root) if repo_root is not None else _REPO_ROOT
+    path = (
+        Path(receipt_path)
+        if receipt_path is not None
+        else root / DEFAULT_VENDOR_RECEIPT_RELATIVE
+    )
+    if certificate is None:
+        certificate = certify_external_runtime_mtl_vendor(
+            install_root=install_root,
+            force_install=True,
+            repo_root=root,
+            write_receipt_path=path,
+        )
+        return dict(certificate.get("install_receipt") or {})
+    receipt = build_vendor_install_receipt(certificate)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return receipt
+
+
+def external_runtime_mtl_vendor_lane_handler(
+    *args: Any,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Lane handler for external Runtime MTL vendor certification."""
+
+    result = certify_external_runtime_mtl_vendor(
+        install_root=kwargs.get("install_root"),
+        force_install=bool(kwargs.get("force_install", False)),
+        skip_install=bool(kwargs.get("skip_install", False)),
+        repo_root=kwargs.get("repo_root"),
+        lock_path=kwargs.get("lock_path"),
+    )
+    return {
+        "lane_id": VENDOR_LANE_ID,
+        "owner_module": CERTIFICATION_SURFACE,
+        "handler_id": VENDOR_HANDLER_ID,
+        "status": "certified" if result["certified"] else "failed",
+        "certified": bool(result["certified"]),
+        "authority_ceiling": AUTHORITY_CEILING,
+        "reason_codes": list(result["summary"].get("block_reasons") or []),
+        "certificate_digest_sha256": result["certificate_digest_sha256"],
+        "engine_ids": list(result.get("engine_ids") or []),
+        "args_received": bool(args) or bool(kwargs),
+        "interface": VENDOR_INTERFACE,
+        "goal_id": VENDOR_GOAL_ID,
+        "task_id": VENDOR_TASK_ID,
+        "grants_theorem_authority": False,
+        "grants_global_correctness": False,
+        "finite_trace_authority_only": True,
+        "hermetic_parity_wrappers_cannot_satisfy_vendor": bool(
+            result["summary"].get("hermetic_parity_wrappers_cannot_satisfy_vendor")
+        ),
+        "is_vendor_build": True,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Certify external Runtime MTL cross-runtime parity "
-            f"({INTERFACE} / {GOAL_ID})."
+            "Certify external Runtime MTL cross-runtime parity / vendor engine "
+            f"({INTERFACE} / {VENDOR_INTERFACE})."
         )
     )
     parser.add_argument(
@@ -1342,7 +1920,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--force-install",
         action="store_true",
-        help="Force re-materialization of hermetic parity engine",
+        help="Force re-materialization of external engine",
     )
     parser.add_argument(
         "--engine",
@@ -1351,14 +1929,40 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Limit certification to one engine id (repeatable)",
     )
+    parser.add_argument(
+        "--vendor",
+        action="store_true",
+        help="Run ExternalRuntimeMTLVendorCertification@1 (FVT-G210)",
+    )
+    parser.add_argument(
+        "--write-receipt",
+        type=Path,
+        default=None,
+        help="Write vendor install receipt JSON to this path",
+    )
     args = parser.parse_args(argv)
 
     try:
-        receipt = certify_external_runtime_mtl(
-            install_root=args.install_root,
-            engines=args.engines,
-            force_install=args.force_install,
-        )
+        if args.vendor:
+            receipt = certify_external_runtime_mtl_vendor(
+                install_root=args.install_root,
+                force_install=args.force_install,
+                write_receipt_path=args.write_receipt,
+            )
+            interface = VENDOR_INTERFACE
+            goal_id = VENDOR_GOAL_ID
+            task_id = VENDOR_TASK_ID
+            lane_id = VENDOR_LANE_ID
+        else:
+            receipt = certify_external_runtime_mtl(
+                install_root=args.install_root,
+                engines=args.engines,
+                force_install=args.force_install,
+            )
+            interface = INTERFACE
+            goal_id = GOAL_ID
+            task_id = TASK_ID
+            lane_id = LANE_ID
     except Exception as exc:
         if args.json:
             print(
@@ -1366,33 +1970,42 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "certified": False,
                         "error": f"{type(exc).__name__}:{exc}",
-                        "interface": INTERFACE,
-                        "goal_id": GOAL_ID,
-                        "task_id": TASK_ID,
+                        "interface": VENDOR_INTERFACE if args.vendor else INTERFACE,
+                        "goal_id": VENDOR_GOAL_ID if args.vendor else GOAL_ID,
+                        "task_id": VENDOR_TASK_ID if args.vendor else TASK_ID,
                     },
                     indent=2,
                     sort_keys=True,
                 )
             )
         else:
-            print(f"{INTERFACE} FAILED: {exc}", file=sys.stderr)
+            print(
+                f"{VENDOR_INTERFACE if args.vendor else INTERFACE} FAILED: {exc}",
+                file=sys.stderr,
+            )
         return 1
 
     if args.json:
         print(json.dumps(receipt, indent=2, sort_keys=True))
     else:
         status = "CERTIFIED" if receipt["certified"] else "FAILED"
-        print(f"{INTERFACE} {status}")
+        print(f"{interface} {status}")
         print(
-            f"goal={GOAL_ID} task={TASK_ID} lane={LANE_ID} "
-            f"engines={','.join(receipt['engine_ids'])}"
+            f"goal={goal_id} task={task_id} lane={lane_id} "
+            f"engines={','.join(receipt.get('engine_ids') or [])}"
         )
         summary = receipt["summary"]
-        print(
-            f"checks={summary['checks_passed']}/{summary['checks_total']} "
-            f"engines_certified={summary['engines_certified']}/{summary['engines_total']}"
-        )
-        if summary["block_reasons"]:
+        if args.vendor:
+            print(
+                f"checks={summary['checks_passed']}/{summary['checks_total']} "
+                f"vendor_certified={summary.get('vendor_certified')}"
+            )
+        else:
+            print(
+                f"checks={summary['checks_passed']}/{summary['checks_total']} "
+                f"engines_certified={summary['engines_certified']}/{summary['engines_total']}"
+            )
+        if summary.get("block_reasons"):
             print("block_reasons:")
             for reason in summary["block_reasons"]:
                 print(f"  - {reason}")
@@ -1413,6 +2026,15 @@ __all__ = [
     "LANE_ID",
     "HANDLER_ID",
     "CERTIFICATION_SURFACE",
+    "VENDOR_INTERFACE",
+    "VENDOR_SCHEMA_VERSION",
+    "VENDOR_INSTALL_RECEIPT_SCHEMA",
+    "VENDOR_GOAL_ID",
+    "VENDOR_TASK_ID",
+    "VENDOR_PROGRAM",
+    "VENDOR_LANE_ID",
+    "VENDOR_HANDLER_ID",
+    "DEFAULT_VENDOR_RECEIPT_RELATIVE",
     "AUTHORITY_CEILING",
     "EXTERNAL_ENGINES",
     "REFERENCE_ENGINES",
@@ -1422,11 +2044,15 @@ __all__ = [
     "EngineCertification",
     "ExternalRuntimeMTLCertificationError",
     "ParityRunRecord",
+    "build_vendor_install_receipt",
     "certify_engine",
     "certify_external_runtime_mtl",
+    "certify_external_runtime_mtl_vendor",
     "default_case_specs",
     "external_runtime_mtl_lane_handler",
+    "external_runtime_mtl_vendor_lane_handler",
     "main",
     "materialize_case",
     "run_parity_case",
+    "write_vendor_install_receipt",
 ]
