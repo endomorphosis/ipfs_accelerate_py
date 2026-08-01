@@ -97,6 +97,7 @@ GENERATED_ARTIFACT_PATHS: Final[frozenset[str]] = frozenset(
 
 PUBLICATION_MODE_EXTERNAL: Final = "external_content_addressed"
 PUBLICATION_MODE_RECEIPT_COMMIT: Final = "receipt_commit"
+RECEIPT_IDENTITY_SELF_REFERENCE: Final = "self:receipt_identity"
 
 COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
@@ -174,6 +175,17 @@ def _safe_list(value: Any) -> list[Any]:
     if isinstance(value, tuple):
         return list(value)
     return []
+
+
+def _is_sha256(value: Any, *, prefixed: bool | None = None) -> bool:
+    text = str(value or "")
+    has_prefix = text.startswith("sha256:")
+    if prefixed is True and not has_prefix:
+        return False
+    if prefixed is False and has_prefix:
+        return False
+    digest = text.removeprefix("sha256:")
+    return bool(SHA256_RE.fullmatch(digest))
 
 
 def _git(
@@ -255,6 +267,158 @@ def write_receipt(receipt: Mapping[str, Any], output: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def verify_release_candidate_digest_material(
+    candidate: Mapping[str, Any] | None,
+    *,
+    certifier,
+) -> dict[str, Any]:
+    """Verify the candidate's compact digest projection is self-consistent.
+
+    A live candidate rebuild is useful diagnostics, but it includes host and
+    working-tree observations that can legitimately drift after FVT-066. The
+    durable gate is therefore the checked-in candidate identity plus digest
+    material that can be independently reproduced from its compact certificate
+    projection.
+    """
+
+    payload = dict(candidate) if isinstance(candidate, Mapping) else {}
+    material = _safe_dict(payload.get("digest_material"))
+    certificate = _safe_dict(payload.get("role_aware_certificate"))
+
+    projected_tools = [
+        dict(tool)
+        for tool in _safe_list(certificate.get("tools"))
+        if isinstance(tool, Mapping) and str(tool.get("tool_id") or "")
+    ]
+    tool_ids = [str(tool.get("tool_id")) for tool in projected_tools]
+    unique_tool_ids = len(tool_ids) == len(set(tool_ids))
+    expected_tool_checks = {
+        str(tool.get("tool_id")): tool.get("checks_digest_sha256")
+        for tool in projected_tools
+    }
+    expected_tool_artifacts = {
+        str(tool.get("tool_id")): sorted(
+            {
+                str(digest)
+                for digest in _safe_list(tool.get("artifact_digests"))
+                if str(digest)
+            }
+        )
+        for tool in projected_tools
+    }
+
+    projected_lanes = [
+        dict(lane)
+        for lane in _safe_list(certificate.get("semantic_lane_results"))
+        if isinstance(lane, Mapping) and str(lane.get("lane_id") or "")
+    ]
+    lane_ids = [str(lane.get("lane_id")) for lane in projected_lanes]
+    unique_lane_ids = len(lane_ids) == len(set(lane_ids))
+    expected_semantic_receipts = {
+        str(lane.get("lane_id")): str(lane.get("digest_sha256"))
+        for lane in projected_lanes
+        if lane.get("digest_sha256")
+    }
+
+    tool_checks = _safe_dict(material.get("tool_check_digests"))
+    tool_artifacts = _safe_dict(material.get("tool_artifact_digests"))
+    semantic_receipts = _safe_dict(material.get("semantic_receipt_digests"))
+    specialized = _safe_dict(
+        certificate.get("specialized_receipt_aggregation")
+    )
+    certificate_authority = _safe_dict(certificate.get("authority_roles"))
+    candidate_authority = _safe_dict(payload.get("roles"))
+    quarantines = _safe_list(certificate.get("disagreement_quarantines"))
+
+    required_keys = {
+        "certificate_digest_sha256",
+        "tool_check_digests",
+        "tool_artifact_digests",
+        "semantic_receipt_digests",
+        "specialized_aggregation_digest",
+        "authority_roles_policy_digest",
+        "lock_digest",
+        "quarantine_digest",
+    }
+    checks = {
+        "required_keys_complete": required_keys <= set(material),
+        "certificate_digest_well_formed": _is_sha256(
+            material.get("certificate_digest_sha256"), prefixed=False
+        ),
+        "certificate_digest_matches_projection": (
+            material.get("certificate_digest_sha256")
+            == certificate.get("certificate_digest_sha256")
+        ),
+        "tool_ids_unique": bool(projected_tools) and unique_tool_ids,
+        "tool_check_digests_well_formed": bool(tool_checks)
+        and all(_is_sha256(value, prefixed=False) for value in tool_checks.values()),
+        "tool_check_digests_match_projection": (
+            tool_checks == expected_tool_checks
+        ),
+        "tool_artifact_digests_well_formed": bool(tool_artifacts)
+        and all(
+            _is_sha256(digest)
+            for digests in tool_artifacts.values()
+            for digest in _safe_list(digests)
+        ),
+        "tool_artifact_digests_match_projection": (
+            tool_artifacts == expected_tool_artifacts
+        ),
+        "semantic_lane_ids_unique": bool(projected_lanes) and unique_lane_ids,
+        "semantic_receipt_digests_well_formed": bool(semantic_receipts)
+        and all(
+            _is_sha256(value, prefixed=False)
+            for value in semantic_receipts.values()
+        ),
+        "semantic_receipt_digests_match_projection": (
+            semantic_receipts == expected_semantic_receipts
+        ),
+        "specialized_aggregation_digest_well_formed": _is_sha256(
+            material.get("specialized_aggregation_digest"), prefixed=False
+        ),
+        "specialized_aggregation_digest_matches_projection": (
+            material.get("specialized_aggregation_digest")
+            == (
+                specialized.get("aggregation_digest_sha256")
+                or specialized.get("digest_sha256")
+            )
+        ),
+        "authority_roles_policy_digest_well_formed": _is_sha256(
+            material.get("authority_roles_policy_digest"), prefixed=False
+        ),
+        "authority_roles_policy_digest_matches_projection": (
+            material.get("authority_roles_policy_digest")
+            == certificate_authority.get("policy_digest_sha256")
+            == candidate_authority.get("policy_digest_sha256")
+        ),
+        # The compact certificate omits the full lock body, so the immutable
+        # candidate identity can bind only a syntactically valid lock digest.
+        "lock_digest_well_formed": _is_sha256(
+            material.get("lock_digest"), prefixed=False
+        ),
+        "quarantine_digest_well_formed": _is_sha256(
+            material.get("quarantine_digest"), prefixed=False
+        ),
+        "quarantine_digest_matches_projection": (
+            material.get("quarantine_digest")
+            == certifier.content_digest(quarantines)
+        ),
+    }
+    failures = sorted(key for key, passed in checks.items() if not passed)
+    return {
+        "valid": not failures,
+        "digest_material_identity": content_digest(material) if material else None,
+        "checks": checks,
+        "failures": failures,
+        "live_recompute_required": False,
+        "binding_rule": (
+            "Checked candidate identity plus independently reproduced compact "
+            "certificate digest material; host-dependent live recomputation is "
+            "diagnostic only."
+        ),
+    }
+
+
 def bind_release_candidate(
     *,
     repo_root: Path,
@@ -298,13 +462,19 @@ def bind_release_candidate(
         and checked.get("task_id") == RELEASE_CANDIDATE_TASK_ID
         and checked.get("schema_version") == RELEASE_CANDIDATE_SCHEMA_VERSION
     )
+    digest_material = verify_release_candidate_digest_material(
+        checked,
+        certifier=certifier,
+    )
     # Live recompute may drift with host tools; the durable gate is that the
-    # checked-in candidate is content-addressed and names G213 correctly.
+    # checked-in candidate is content-addressed, names G213 correctly, and has
+    # independently reproducible compact digest material.
     bound = bool(
         path.is_file()
         and interface_ok
         and checked_identity_valid
         and checked_identity
+        and digest_material.get("valid")
     )
     matches_live = bool(bound and checked_identity == live_identity)
     return {
@@ -320,6 +490,7 @@ def bind_release_candidate(
         "live_candidate_identity": live_identity or None,
         "checked_identity_valid": checked_identity_valid,
         "matches_live_recompute": matches_live,
+        "digest_material_verification": digest_material,
         "bound": bound,
         "readiness_stage": (
             (checked or {}).get("readiness_stage") if isinstance(checked, Mapping) else None
@@ -339,6 +510,10 @@ def bind_release_candidate(
                 ("release_candidate_missing", path.is_file()),
                 ("release_candidate_interface_mismatch", interface_ok),
                 ("release_candidate_identity_invalid", checked_identity_valid),
+                (
+                    "release_candidate_digest_material_invalid",
+                    bool(digest_material.get("valid")),
+                ),
             )
             if not condition
         ],
@@ -365,6 +540,50 @@ def bind_release_candidate(
         "_checked_body": checked_body,
         "_live": live,
         "_certificate": live_certificate,
+    }
+
+
+def bind_release_candidate_to_terminal_merge(
+    *,
+    repo_root: Path,
+    terminal: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind the current candidate bytes to the verified terminal merge tree."""
+
+    relative = DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix()
+    merge_commit = str(_safe_dict(terminal.get("merge")).get("merge_commit") or "")
+    terminal_bound = terminal.get("bound") is True
+    current_blob = _git_stdout(repo_root, "hash-object", "--", relative)
+    merged_blob = (
+        _git_stdout(repo_root, "rev-parse", "--verify", f"{merge_commit}:{relative}")
+        if terminal_bound and COMMIT_RE.fullmatch(merge_commit)
+        else None
+    )
+    bound = bool(
+        terminal_bound
+        and current_blob
+        and merged_blob
+        and current_blob == merged_blob
+    )
+    failures: list[str] = []
+    if terminal_bound:
+        if not current_blob:
+            failures.append("release_candidate_current_blob_missing")
+        if not merged_blob:
+            failures.append("release_candidate_terminal_merge_blob_missing")
+        elif current_blob != merged_blob:
+            failures.append("release_candidate_terminal_merge_blob_mismatch")
+    return {
+        "bound": bound,
+        "terminal_evidence_bound": terminal_bound,
+        "merge_commit": merge_commit or None,
+        "current_blob": current_blob,
+        "merged_blob": merged_blob,
+        "failures": failures,
+        "binding_rule": (
+            "The candidate file bytes must equal the blob published by the "
+            "verified FVT-066 terminal merge commit."
+        ),
     }
 
 
@@ -703,13 +922,20 @@ def verify_external_publication(
 ) -> dict[str, Any]:
     """External content-addressed attestation (no circular tree claim)."""
 
-    present = bool(output_path and output_path.is_file())
-    file_identity = sha256_file(output_path) if present and output_path else None
-    # External attestation identity is the receipt body digest, not the tree.
-    identity_bound = bool(
-        receipt_identity
-        and str(receipt_identity).startswith("sha256:")
-        and SHA256_RE.fullmatch(str(receipt_identity).removeprefix("sha256:"))
+    identity_self_reference = (
+        str(receipt_identity or "") == RECEIPT_IDENTITY_SELF_REFERENCE
+    )
+    identity_is_digest = _is_sha256(receipt_identity, prefixed=True)
+    # The embedded publication uses a canonical self-reference so the outer
+    # receipt can be sealed exactly once. A concrete digest remains accepted
+    # for callers that independently verify an already-written receipt.
+    identity_bound = identity_self_reference or identity_is_digest
+    inspect_output = bool(identity_is_digest)
+    present = bool(output_path and output_path.is_file()) if inspect_output else None
+    file_identity = (
+        sha256_file(output_path)
+        if inspect_output and present and output_path
+        else None
     )
     relative = None
     if output_path is not None:
@@ -723,13 +949,30 @@ def verify_external_publication(
         "circular_tree_identity_forbidden": True,
         "self_referential_current_tree_claim": False,
         "receipt_identity": receipt_identity,
+        "receipt_identity_is_self_reference": identity_self_reference,
+        "receipt_identity_resolution": (
+            "top_level.receipt_identity"
+            if identity_self_reference
+            else "concrete_receipt_identity"
+            if identity_is_digest
+            else None
+        ),
         "output_path": relative,
         "output_present": present,
         "output_file_sha256": file_identity,
+        "output_observation": (
+            "deferred_until_after_atomic_write"
+            if identity_self_reference
+            else "observed"
+            if identity_is_digest
+            else "unavailable"
+        ),
         "publication_rule": (
             "External content-addressed attestation: the receipt identity is "
             "the digest of the attestation body excluding itself; the source "
-            "tree never includes this receipt."
+            "tree never includes this receipt. The embedded publication binds "
+            "that identity through the canonical self:receipt_identity "
+            "reference so no nested circular digest is required."
         ),
         "block_reasons": []
         if identity_bound
@@ -966,6 +1209,13 @@ def build_post_merge_attestation(
         repo_root=repo_root,
         evidence=g213_terminal_evidence,
     )
+    candidate_merge_binding = bind_release_candidate_to_terminal_merge(
+        repo_root=repo_root,
+        terminal=terminal,
+    )
+    release_candidate_public["terminal_merge_blob_binding"] = (
+        candidate_merge_binding
+    )
 
     source = builder.build_source_attestation(repo_root)
     datasets_gitlink_bound = bool(
@@ -1118,7 +1368,7 @@ def build_post_merge_attestation(
         if key != "deployment_receipt"
     )
 
-    # Publication verification (identity filled after body is sealed for external).
+    # External mode binds a canonical self-reference before the one final seal.
     if publication_mode == PUBLICATION_MODE_RECEIPT_COMMIT:
         publication = verify_receipt_commit_publication(
             repo_root=repo_root,
@@ -1127,7 +1377,7 @@ def build_post_merge_attestation(
         )
     else:
         publication = verify_external_publication(
-            receipt_identity=None,
+            receipt_identity=RECEIPT_IDENTITY_SELF_REFERENCE,
             output_path=output_path,
             repo_root=repo_root,
         )
@@ -1135,6 +1385,14 @@ def build_post_merge_attestation(
     acceptance = {
         "release_candidate_bound": bool(candidate_binding.get("bound")),
         "candidate_digest_bound": bool(candidate_binding.get("checked_identity_valid")),
+        "candidate_digest_material_bound": bool(
+            _safe_dict(
+                candidate_binding.get("digest_material_verification")
+            ).get("valid")
+        ),
+        "release_candidate_merge_blob_bound": bool(
+            candidate_merge_binding.get("bound")
+        ),
         "g213_terminal_receipt_bound": bool(terminal.get("bound")),
         "event_chain_continuous": bool(
             _safe_dict(terminal.get("event_chain")).get("valid")
@@ -1178,6 +1436,8 @@ def build_post_merge_attestation(
         for key in (
             "release_candidate_bound",
             "candidate_digest_bound",
+            "candidate_digest_material_bound",
+            "release_candidate_merge_blob_bound",
             "g213_terminal_receipt_bound",
             "event_chain_continuous",
             "g213_expected_outputs_bound",
@@ -1207,6 +1467,7 @@ def build_post_merge_attestation(
         [key for key, ok in readiness_requirements.items() if not ok]
         + list(terminal.get("block_reasons") or [])
         + list(candidate_binding.get("block_reasons") or [])
+        + list(candidate_merge_binding.get("failures") or [])
         + list(publication.get("block_reasons") or [])
         + [
             f"managed:{item.get('tool_id')}:{reason}"
@@ -1382,61 +1643,39 @@ def build_post_merge_attestation(
             leakage,
         )
 
-    # Seal identity. External publication bound after identity exists.
+    # Seal exactly once. External publication already carries the canonical
+    # self-reference to this top-level identity.
     body_for_identity = {
         key: value for key, value in receipt.items() if key != "receipt_identity"
     }
-    receipt_identity = content_digest(body_for_identity)
-    receipt["receipt_identity"] = receipt_identity
-
-    if publication_mode == PUBLICATION_MODE_EXTERNAL:
-        publication = verify_external_publication(
-            receipt_identity=receipt_identity,
-            output_path=output_path,
-            repo_root=repo_root,
-        )
-        receipt["post_merge"]["publication"] = publication
-        receipt["acceptance"]["publication_bound"] = bool(publication.get("bound"))
-        receipt["readiness_requirements"]["publication_bound"] = bool(
-            publication.get("bound")
-        )
-        # Refresh blockers/status now that external identity is sealed.
-        blockers = {
-            key
-            for key, ok in receipt["readiness_requirements"].items()
-            if not ok
-        }
-        blockers.update(terminal.get("block_reasons") or [])
-        blockers.update(candidate_binding.get("block_reasons") or [])
-        blockers.update(publication.get("block_reasons") or [])
-        for item in _safe_list(managed.get("all_blockers")):
-            if not isinstance(item, Mapping):
-                continue
-            for reason in _safe_list(item.get("reasons")):
-                blockers.add(f"managed:{item.get('tool_id')}:{reason}")
-        if not public_evidence_policy.get("satisfied"):
-            blockers.add("public_surfaces_bound")
-        receipt["deployment_blockers"] = sorted(blockers)
-        ready = not blockers and all(receipt["readiness_requirements"].values())
-        if ready:
-            receipt["status"] = "role_aware_deployment_ready"
-            receipt["readiness_stage"] = "deployment_ready"
-            receipt["claims"]["deployment"] = True
-            receipt["claims"]["post_merge_attestation"] = True
-            receipt["claims"]["max_stage"] = "deployment_ready"
-        else:
-            receipt["status"] = "role_aware_deployment_blocked"
-            receipt["readiness_stage"] = "blocked"
-            receipt["claims"]["deployment"] = False
-            receipt["claims"]["post_merge_attestation"] = False
-            receipt["claims"]["max_stage"] = "blocked"
-        # Re-seal identity after publication field update.
-        body_for_identity = {
-            key: value for key, value in receipt.items() if key != "receipt_identity"
-        }
-        receipt["receipt_identity"] = content_digest(body_for_identity)
+    receipt["receipt_identity"] = content_digest(body_for_identity)
 
     return receipt
+
+
+def load_verified_receipt(
+    output: Path,
+    *,
+    expected: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Read an on-disk receipt and fail closed on round-trip or digest drift."""
+
+    written = load_json(output)
+    if written is None:
+        raise RuntimeError(f"deployment receipt was not readable after write: {output}")
+    if expected is not None and written != dict(expected):
+        raise RuntimeError(
+            "deployment receipt changed during JSON write/read round trip"
+        )
+    stored_identity = written.get("receipt_identity")
+    body = {
+        key: value for key, value in written.items() if key != "receipt_identity"
+    }
+    if not _is_sha256(stored_identity, prefixed=True):
+        raise RuntimeError("deployment receipt identity is missing or malformed")
+    if stored_identity != content_digest(body):
+        raise RuntimeError("deployment receipt identity failed on-disk verification")
+    return written
 
 
 def finalize_deployment(
@@ -1467,24 +1706,9 @@ def finalize_deployment(
     )
     if write:
         write_receipt(receipt, output_path)
-        # After write, external publication output_present becomes true; recompute
-        # publication metadata without changing sealed identity semantics.
-        if publication_mode == PUBLICATION_MODE_EXTERNAL:
-            publication = verify_external_publication(
-                receipt_identity=receipt.get("receipt_identity"),
-                output_path=output_path,
-                repo_root=repo_root,
-            )
-            # Keep sealed identity stable: only annotate a side channel.
-            receipt.setdefault("publication_write", {})["output_present"] = (
-                publication.get("output_present")
-            )
-            receipt["publication_write"]["output_path"] = publication.get(
-                "output_path"
-            )
-            receipt["publication_write"]["output_file_sha256"] = publication.get(
-                "output_file_sha256"
-            )
+        # Return the exact mapping that was persisted. Publication observation
+        # is deliberately not appended after sealing.
+        receipt = load_verified_receipt(output_path, expected=receipt)
     return receipt
 
 
