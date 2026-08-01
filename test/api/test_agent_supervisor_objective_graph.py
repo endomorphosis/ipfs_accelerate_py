@@ -4571,8 +4571,10 @@ def test_bundle_regeneration_rehydrates_contract_bound_dependency_projection(
     assert regenerated_task["dependency_task_cids"] == []
 
 
+@pytest.mark.parametrize("tamper_discovery", [False, True])
 def test_objective_regeneration_recovers_card_missing_from_bundle_index(
     tmp_path,
+    tamper_discovery,
 ):
     repo, objective_path, todo_path = _seed_repo(tmp_path)
     discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
@@ -4599,6 +4601,16 @@ def test_objective_regeneration_recovers_card_missing_from_bundle_index(
         if task["task_id"] != missing_task_id
     ]
     index_path.write_text(json.dumps(index), encoding="utf-8")
+    if tamper_discovery:
+        discovery = records[0].discovery_path
+        discovery.write_text(
+            discovery.read_text(encoding="utf-8").replace(
+                f"Fingerprint: {records[0].finding.fingerprint}",
+                "Fingerprint: " + ("0" * 40),
+                1,
+            ),
+            encoding="utf-8",
+        )
 
     repeated = generate_objective_todos(
         repo_root=repo,
@@ -4620,14 +4632,17 @@ def test_objective_regeneration_recovers_card_missing_from_bundle_index(
         for task in info["tasks"]
         if task["task_id"] == missing_task_id
     ]
-    assert len(recovered_tasks) == 1
-    assert (
-        recovered_tasks[0]["canonical_task_cid"]
-        == objective_finding_task_identity(
-            missing_task_id,
-            records[0].finding,
-        ).canonical_task_cid
-    )
+    if tamper_discovery:
+        assert recovered_tasks == []
+    else:
+        assert len(recovered_tasks) == 1
+        assert (
+            recovered_tasks[0]["canonical_task_cid"]
+            == objective_finding_task_identity(
+                missing_task_id,
+                records[0].finding,
+            ).canonical_task_cid
+        )
 
 
 def test_empty_objective_scan_refreshes_existing_todo_and_bundle_projections(tmp_path):

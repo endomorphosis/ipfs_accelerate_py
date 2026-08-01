@@ -10044,6 +10044,40 @@ def _objective_reprojection_committed(
     )
 
 
+def _objective_discovery_receipt_matches(
+    discovery_path: Path,
+    *,
+    task_id: str,
+    finding: ObjectiveFinding,
+    identity: TaskIdentity,
+    evidence_outputs: Sequence[str],
+) -> bool:
+    """Verify that a recovery discovery receipt describes the exact finding."""
+
+    try:
+        text = discovery_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+    def exact_line(label: str, value: str) -> bool:
+        pattern = rf"^{re.escape(label)}:[ \t]*{re.escape(value)}[ \t]*$"
+        return len(re.findall(pattern, text, flags=re.MULTILINE)) == 1
+
+    if not text.startswith(f"# {task_id} Objective Goal Gap\n"):
+        return False
+    if not (
+        exact_line("Fingerprint", finding.fingerprint)
+        and exact_line("Goal id", finding.goal_id)
+        and exact_line("Bundle", finding.bundle_key)
+    ):
+        return False
+    return not evidence_outputs or _objective_reprojection_committed(
+        discovery_path,
+        identity=identity,
+        evidence_outputs=evidence_outputs,
+    )
+
+
 def _objective_evidence_reprojection_sweep_scope(
     markdown: str,
     *,
@@ -11390,6 +11424,13 @@ def generate_objective_todos(
                 discovery_path is None
                 or shard_path is None
                 or shard_path != expected_shard_path
+                or not _objective_discovery_receipt_matches(
+                    discovery_path,
+                    task_id=block.task_id,
+                    finding=finding,
+                    identity=identity,
+                    evidence_outputs=evidence_outputs,
+                )
             ):
                 continue
             projected_dependencies = (

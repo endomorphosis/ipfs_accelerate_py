@@ -521,15 +521,32 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
     )
     assert receipt["status"] == "role_aware_deployment_blocked"
     assert receipt["deployment_blockers"]
-    # Implementation evidence can be fully path-bound while deployment
-    # certification remains fail-closed. Open gates below are independent of
-    # mere file presence and must keep the receipt blocked.
-    assert receipt["completion"]["objective_child_count"] == 67
-    assert receipt["completion"]["child_goals_bound"] == 67
+    # Goal bindings and implementation completion are derived from the
+    # current objective heap. A newly strengthened goal may be intentionally
+    # unbound while its replacement task is pending; the receipt must describe
+    # that state consistently instead of hard-coding a prior board count.
+    completion = receipt["completion"]
+    objective_child_count = completion["objective_child_count"]
+    child_goals_bound = completion["child_goals_bound"]
+    child_goals_unbound = list(completion["child_goals_unbound"])
+    assert child_goals_bound + len(child_goals_unbound) == objective_child_count
+    implementation_gate = (
+        completion["implementation_status"] == "complete"
+        and child_goals_bound == objective_child_count
+        and not child_goals_unbound
+    )
     assert (
         receipt["acceptance"]["implementation_complete_and_all_child_goals_bound"]
-        is True
+        is implementation_gate
     )
+    if implementation_gate:
+        assert "implementation_complete_and_all_child_goals_bound" not in (
+            receipt["deployment_blockers"]
+        )
+    else:
+        assert "implementation_complete_and_all_child_goals_bound" in (
+            receipt["deployment_blockers"]
+        )
     assert (
         receipt["acceptance"]["supported_managed_capabilities_ready"] is False
     )
