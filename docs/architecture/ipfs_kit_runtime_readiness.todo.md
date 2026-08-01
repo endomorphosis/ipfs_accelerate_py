@@ -737,7 +737,7 @@ or write authority.
 
 ## KITA-023 Implement concurrency-safe ARC, byte accounting, and single-flight fills
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
