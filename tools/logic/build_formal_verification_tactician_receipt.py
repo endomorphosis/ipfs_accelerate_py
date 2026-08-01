@@ -2227,7 +2227,43 @@ def build_receipt(
         ],
     }
 
-    # Content-address the receipt excluding the identity field itself.
+    # The standalone completion receipt is a checked-in public artifact just
+    # like the toolchain certificate and role-aware deployment receipt.  Apply
+    # the same portable projection before content-addressing it so an exact
+    # deployment path, raw process output, or private witness cannot escape
+    # through the historical (non-role-aware) surface.  Redactions retain
+    # bounded byte-length/content-digest metadata, while repository-relative
+    # paths and pre-existing artifact identities remain useful.
+    certifier = _load_certifier_module(repo_root)
+    projected = certifier.public_evidence_projection(receipt, repo_root=repo_root)
+    if not isinstance(projected, dict):
+        raise TypeError("completion receipt public projection must be a mapping")
+    receipt = projected
+
+    public_evidence_policy = certifier.public_evidence_audit(receipt)
+    receipt["public_evidence_policy"] = public_evidence_policy
+    receipt["acceptance"]["public_evidence_safe"] = bool(
+        public_evidence_policy["satisfied"]
+    )
+    if not public_evidence_policy["satisfied"]:
+        leakage_count = max(
+            int(
+                receipt["hard_zero_gates"].get(
+                    "secret_or_witness_leakage_count"
+                )
+                or 0
+            ),
+            len(public_evidence_policy["failures"]),
+        )
+        receipt["hard_zero_gates"]["secret_or_witness_leakage_count"] = (
+            leakage_count
+        )
+        receipt["acceptance"]["secret_or_witness_leakage_count"] = leakage_count
+        receipt["acceptance"]["hard_zero_gates_clear"] = False
+
+    # Content-address the projected receipt excluding the identity field
+    # itself.  The identity therefore covers the portable public form, not
+    # host-private source values.
     receipt["receipt_identity"] = content_digest(receipt)
     return receipt
 

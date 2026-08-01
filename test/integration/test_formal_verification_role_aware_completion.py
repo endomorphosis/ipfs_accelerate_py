@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -185,17 +186,46 @@ def test_every_semantic_lane_retains_portable_receipt_and_full_check_sets(
             assert per_tool["artifact_validation"]["valid"] is True
 
 
-def test_generated_certificate_and_role_receipt_are_portable_and_redacted(
+def test_generated_public_json_artifacts_are_portable_and_redacted(
     certifier,
     builder,
     certificate: dict[str, Any],
     completion: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    certificate_text = json.dumps(certificate, sort_keys=True)
-    assert "/home/" not in certificate_text
-    assert "/tmp/" not in certificate_text
-    assert "private-witness-FVT047-SECRET-AXIOM-NEVER-LEAK" not in certificate_text
-    assert certificate["public_evidence_policy"]["satisfied"] is True
+    original_build_deployment_section = builder.build_deployment_section
+
+    def _deployment_with_private_probe(**kwargs):
+        deployment = original_build_deployment_section(**kwargs)
+        deployment["private_probe"] = {
+            "executable_path": "/home/user/.elan/bin/lake",
+            "stdout": "unbounded-secret-output" * 10000,
+            "stderr": "private-process-error",
+            "secret": "raw-secret-value",
+            "witness": "raw-witness-value",
+            "artifact_digest_sha256": "sha256:" + ("a" * 64),
+            "version_string": "Lake version 5.0.0",
+        }
+        return deployment
+
+    monkeypatch.setattr(
+        builder,
+        "build_deployment_section",
+        _deployment_with_private_probe,
+    )
+    private_completion = builder.build_receipt(
+        repo_root=REPO_ROOT,
+        observed_at="2026-07-31T00:00:00Z",
+    )
+    completion_probe = private_completion["deployment"]["private_probe"]
+    assert completion_probe["executable_path"] == "<host-path-redacted>"
+    assert completion_probe["artifact_digest_sha256"] == "sha256:" + ("a" * 64)
+    assert completion_probe["version_string"] == "Lake version 5.0.0"
+    for key in ("stdout", "stderr", "secret", "witness"):
+        redaction = completion_probe[key]
+        assert redaction["redacted"] is True
+        assert redaction["byte_length"] > 0
+        assert re.fullmatch(r"[0-9a-f]{64}", redaction["sha256"])
 
     role_receipt = builder.build_role_aware_deployment_receipt(
         repo_root=REPO_ROOT,
@@ -212,13 +242,24 @@ def test_generated_certificate_and_role_receipt_are_portable_and_redacted(
             },
         },
     )
-    role_text = json.dumps(role_receipt, sort_keys=True)
-    assert "/home/" not in role_text
-    assert "/tmp/" not in role_text
-    assert "raw-secret-value" not in role_text
-    assert "raw-witness-value" not in role_text
-    assert "unbounded-secret-output" not in role_text
-    assert role_receipt["public_evidence_policy"]["satisfied"] is True
+
+    for public_artifact in (certificate, private_completion, role_receipt):
+        artifact_text = json.dumps(public_artifact, sort_keys=True)
+        assert "/home/" not in artifact_text
+        assert "/tmp/" not in artifact_text
+        assert "/private/tmp/" not in artifact_text
+        assert "private-witness-FVT047-SECRET-AXIOM-NEVER-LEAK" not in artifact_text
+        assert "raw-secret-value" not in artifact_text
+        assert "raw-witness-value" not in artifact_text
+        assert "unbounded-secret-output" not in artifact_text
+        assert public_artifact["public_evidence_policy"]["satisfied"] is True
+
+    # The normal standalone projection is covered too, independently of the
+    # adversarial injection above.
+    completion_text = json.dumps(completion, sort_keys=True)
+    assert "/home/" not in completion_text
+    assert "/tmp/" not in completion_text
+    assert completion["public_evidence_policy"]["satisfied"] is True
 
 
 def test_usable_pending_capabilities_keep_every_check_without_premature_promotion(
