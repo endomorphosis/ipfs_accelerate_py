@@ -21,6 +21,44 @@ import time
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("comprehensive_dependency_installer")
 
+
+_PACKAGING_FILES = ("pyproject.toml", "setup.py", "setup.cfg")
+_WORKSPACE_SIBLING_ALIASES = {
+    "ipfs_datasets_py": "ipfs_datasets",
+    "ipfs_kit_py": "ipfs_kit",
+}
+
+
+def _has_packaging_metadata(package_path: Path) -> bool:
+    """Return whether a directory is an installable Python package root."""
+
+    return package_path.is_dir() and any(
+        (package_path / name).is_file() for name in _PACKAGING_FILES
+    )
+
+
+def _resolve_local_package_path(repo_root: Path, package: str) -> Path:
+    """Resolve an installable local package without replacing existing paths."""
+
+    root_path = repo_root / package
+    legacy_path = repo_root / "external" / package
+    candidates = [root_path, legacy_path]
+
+    sibling_name = _WORKSPACE_SIBLING_ALIASES.get(package)
+    if sibling_name:
+        candidates.append(repo_root.parent / sibling_name)
+
+    for candidate in candidates:
+        if _has_packaging_metadata(candidate):
+            return candidate
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return root_path
+
+
 class ComprehensiveDependencyInstaller:
     """Comprehensive dependency installer with graceful failure handling."""
     
@@ -31,11 +69,31 @@ class ComprehensiveDependencyInstaller:
         self.successful_installations = []
         self.log_file = log_file
         self.system_info = self._get_system_info()
+        self.repo_root = Path(__file__).resolve().parents[1]
         self.local_packages = [
             "ipfs_kit_py",
+            "ipfs_datasets_py",
             "ipfs_model_manager_py",
             "ipfs_transformers_py",
         ]
+        self.git_sources = {
+            "ipfs_kit_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_kit_py.git",
+                "branch": "main",
+            },
+            "ipfs_datasets_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_datasets_py.git",
+                "branch": "main",
+            },
+            "ipfs_model_manager_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_model_manager_py.git",
+                "branch": "main",
+            },
+            "ipfs_transformers_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_transformers_py.git",
+                "branch": "main",
+            },
+        }
         
         # Comprehensive dependency definitions
         self.dependencies = {
@@ -458,97 +516,31 @@ class ComprehensiveDependencyInstaller:
     def install_local_packages(self) -> Dict[str, bool]:
         """Install local external packages in editable mode when present."""
         results: Dict[str, bool] = {}
-        repo_root = Path(__file__).resolve().parents[1]
-        external_dir = repo_root / "external"
-
-        git_sources = {
-            "ipfs_kit_py": {
-                "repo": "https://github.com/endomorphosis/ipfs_kit_py.git",
-                "branch": "main",
-            },
-            "ipfs_model_manager_py": {
-                "repo": "https://github.com/endomorphosis/ipfs_model_manager_py.git",
-                "branch": "main",
-            },
-            "ipfs_transformers_py": {
-                "repo": "https://github.com/endomorphosis/ipfs_transformers_py.git",
-                "branch": "main",
-            },
-        }
-
-        if not external_dir.exists():
-            logger.info("No root directory directory found; skipping local package installs")
-            return results
 
         for package in self.local_packages:
-            if package in git_sources:
-                source = git_sources[package]
-                target_path = external_dir / package
+            package_path = _resolve_local_package_path(self.repo_root, package)
+            if package in self.git_sources and not package_path.exists():
+                source = self.git_sources[package]
+                target_path = package_path
                 try:
-                    if target_path.exists() and (target_path / ".git").exists():
-                        logger.info(f"Updating {package} to {source['branch']} in {target_path}")
-                        subprocess.run(
-                            ["git", "-C", str(target_path), "fetch", "origin"],
-                            capture_output=True,
-                            text=True,
-                            timeout=300,
-                            check=False,
-                        )
-                        subprocess.run(
-                            ["git", "-C", str(target_path), "checkout", source["branch"]],
-                            capture_output=True,
-                            text=True,
-                            timeout=300,
-                            check=False,
-                        )
-                        subprocess.run(
-                            ["git", "-C", str(target_path), "reset", "--hard", f"origin/{source['branch']}"] ,
-                            capture_output=True,
-                            text=True,
-                            timeout=300,
-                            check=False,
-                        )
-                    else:
-                        if target_path.exists():
-                            logger.warning(f"{target_path} exists but is not a git repo; reinstalling from git")
-                        logger.info(f"Cloning {package} ({source['branch']}) into {target_path}")
-                        clone_result = subprocess.run(
-                            [
-                                "git",
-                                "clone",
-                                "--depth",
-                                "1",
-                                "--branch",
-                                source["branch"],
-                                source["repo"],
-                                str(target_path),
-                            ],
-                            capture_output=True,
-                            text=True,
-                            timeout=300,
-                        )
-                        if clone_result.returncode != 0:
-                            raise RuntimeError(clone_result.stderr.strip() or "git clone failed")
-
-                    logger.info(f"Installing {package} from {target_path}")
-                    install_result = subprocess.run(
-                        [sys.executable, "-m", "pip", "install", "-e", str(target_path)],
+                    logger.info(f"Cloning {package} ({source['branch']}) into {target_path}")
+                    clone_result = subprocess.run(
+                        [
+                            "git",
+                            "clone",
+                            "--depth",
+                            "1",
+                            "--branch",
+                            source["branch"],
+                            source["repo"],
+                            str(target_path),
+                        ],
                         capture_output=True,
                         text=True,
                         timeout=300,
                     )
-                    if install_result.returncode == 0:
-                        self.successful_installations.append(package)
-                        self.installation_log.append({
-                            "package": package,
-                            "status": "success",
-                            "pip_name": str(target_path),
-                            "timestamp": time.time(),
-                        })
-                        results[package] = True
-                        logger.info(f"✅ Installed {package} from git ({source['branch']})")
-                    else:
-                        raise RuntimeError(install_result.stderr.strip() or "pip install failed")
+                    if clone_result.returncode != 0:
+                        raise RuntimeError(clone_result.stderr.strip() or "git clone failed")
                 except subprocess.TimeoutExpired:
                     self.failed_installations.append({
                         "package": package,
@@ -557,6 +549,7 @@ class ComprehensiveDependencyInstaller:
                     })
                     results[package] = False
                     logger.error(f"❌ Installation timeout for {package}")
+                    continue
                 except Exception as e:
                     self.failed_installations.append({
                         "package": package,
@@ -565,8 +558,8 @@ class ComprehensiveDependencyInstaller:
                     })
                     results[package] = False
                     logger.error(f"❌ Installation error for {package}: {e}")
-                continue
-            package_path = external_dir / package
+                    continue
+
             if not package_path.exists():
                 logger.info(f"⏭️ Skipping {package} (not found at {package_path})")
                 results[package] = False
@@ -582,6 +575,7 @@ class ComprehensiveDependencyInstaller:
                     "reason": "missing packaging metadata",
                     "timestamp": time.time(),
                 })
+                results[package] = False
                 continue
 
             try:
@@ -634,7 +628,7 @@ class ComprehensiveDependencyInstaller:
     @staticmethod
     def _has_packaging_files(package_path: Path) -> bool:
         """Return True when a local path has Python packaging metadata."""
-        return any((package_path / name).exists() for name in ("pyproject.toml", "setup.py", "setup.cfg"))
+        return _has_packaging_metadata(package_path)
     
     def install_fallback_packages(self, main_package: str, fallback_packages: List[str]) -> bool:
         """Install fallback packages if main package fails."""
@@ -697,7 +691,20 @@ class ComprehensiveDependencyInstaller:
         local_results = self.install_local_packages()
 
         # Install dependencies by category priority
-        category_order = ["core", "mcp", "web", "database", "ai", "testing", "dev", "performance", "media", "data", "ipfs"]
+        category_order = [
+            "core",
+            "networking",
+            "mcp",
+            "web",
+            "database",
+            "ai",
+            "testing",
+            "dev",
+            "performance",
+            "media",
+            "data",
+            "ipfs",
+        ]
         
         for category in category_order:
             category_deps = {name: dep for name, dep in deps_to_install.items() 

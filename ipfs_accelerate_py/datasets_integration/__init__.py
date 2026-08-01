@@ -32,11 +32,44 @@ Example:
 
 import os
 import sys
+from pathlib import Path
 from typing import Optional, Any, Dict
 
 # Check if ipfs_datasets_py is available
 _DATASETS_AVAILABLE = None
 _DATASETS_PATH = None
+
+
+def _resolve_datasets_source_path(
+    repo_root: Path,
+    custom_path: Optional[str] = None,
+) -> Optional[Path]:
+    """Find a source checkout whose root exposes ``ipfs_datasets_py``.
+
+    Standalone accelerator checkouts use the ``ipfs_datasets_py`` git
+    submodule at their repository root. Umbrella workspaces may instead keep
+    the initialized checkout beside this repository as ``ipfs_datasets``.
+    Empty, uninitialized gitlink directories are deliberately skipped.
+    """
+
+    if custom_path:
+        custom = Path(custom_path).expanduser()
+        if custom.is_dir():
+            return custom.resolve()
+
+    candidates = (
+        repo_root / "ipfs_datasets_py",
+        repo_root / "external" / "ipfs_datasets_py",
+        repo_root.parent / "ipfs_datasets",
+        repo_root.parent / "ipfs_datasets_py",
+    )
+    for candidate in candidates:
+        if (
+            candidate.is_dir()
+            and (candidate / "ipfs_datasets_py" / "__init__.py").is_file()
+        ):
+            return candidate.resolve()
+    return None
 
 
 def _check_datasets_availability() -> bool:
@@ -54,15 +87,12 @@ def _check_datasets_availability() -> bool:
     
     # Try to find and import ipfs_datasets_py
     try:
-        # Check for submodule path
-        current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        submodule_path = os.path.join(current_dir, 'external', 'ipfs_datasets_py')
-        custom_path = os.environ.get('IPFS_DATASETS_PATH')
-        
-        if custom_path and os.path.isdir(custom_path):
-            _DATASETS_PATH = custom_path
-        elif os.path.isdir(submodule_path):
-            _DATASETS_PATH = submodule_path
+        repo_root = Path(__file__).resolve().parents[2]
+        source_path = _resolve_datasets_source_path(
+            repo_root,
+            os.environ.get('IPFS_DATASETS_PATH'),
+        )
+        _DATASETS_PATH = str(source_path) if source_path is not None else None
         
         # Add to path if found
         if _DATASETS_PATH and _DATASETS_PATH not in sys.path:

@@ -49,6 +49,29 @@ except (ImportError, ValueError):
 logger = logging.getLogger(__name__)
 
 
+def _resolve_ipfs_kit_source_path(repo_root: Path) -> Optional[Path]:
+    """Find an initialized ``ipfs_kit_py`` source checkout.
+
+    The package is a root-level submodule in standalone accelerator checkouts
+    and a sibling named ``ipfs_kit`` in the umbrella workspace. Empty gitlink
+    directories are skipped so they cannot mask the initialized sibling.
+    """
+
+    candidates = (
+        repo_root / "ipfs_kit_py",
+        repo_root / "external" / "ipfs_kit_py",
+        repo_root.parent / "ipfs_kit",
+        repo_root.parent / "ipfs_kit_py",
+    )
+    for candidate in candidates:
+        if (
+            candidate.is_dir()
+            and (candidate / "ipfs_kit_py" / "__init__.py").is_file()
+        ):
+            return candidate.resolve()
+    return None
+
+
 def _deps_get(deps: object | None, key: str) -> Any | None:
     if deps is None or not key:
         return None
@@ -240,18 +263,11 @@ class IPFSKitStorage:
         Falls back to local mode if unavailable.
         """
         try:
-            # Add local ipfs_kit_py directory to the path (prefer workspace copy)
-            repo_root = Path(__file__).parent.parent.parent
-            candidate_paths = [
-                repo_root / "ipfs_kit_py",
-                repo_root / "external" / "ipfs_kit_py",
-            ]
-
-            for ipfs_kit_path in candidate_paths:
-                if ipfs_kit_path.exists():
-                    sys.path.insert(0, str(ipfs_kit_path))
-                    logger.debug(f"Added ipfs_kit_py path: {ipfs_kit_path}")
-                    break
+            repo_root = Path(__file__).resolve().parents[1]
+            ipfs_kit_path = _resolve_ipfs_kit_source_path(repo_root)
+            if ipfs_kit_path is not None and str(ipfs_kit_path) not in sys.path:
+                sys.path.insert(0, str(ipfs_kit_path))
+                logger.debug(f"Added ipfs_kit_py path: {ipfs_kit_path}")
             
             # Try to import ipfs_kit_py modules directly (avoid backends/__init__.py due to missing synapse_storage)
             from ipfs_kit_py.backends.base_adapter import BackendAdapter
