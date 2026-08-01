@@ -165,6 +165,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
+    ReconciliationLifecycleBlockedError,
     TodoTaskState,
     TodoImplementationDaemon,
     implied_validation_test_output_paths,
@@ -26118,6 +26119,7 @@ def _seed_reconciled_generated_artifact_candidate(
     *,
     task_id: str,
     validation: str = "python -m pytest -q test_feature.py",
+    branch_name: str = "",
 ) -> dict[str, object]:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -26153,7 +26155,10 @@ def _seed_reconciled_generated_artifact_candidate(
     _git(repo, "add", "README.md", "artifacts", "test_feature.py", "todo.md")
     _git(repo, "commit", "-m", "base")
     baseline = _git(repo, "rev-parse", "HEAD")
-    branch_name = f"implementation/{task_id.lower()}-generated-artifact"
+    branch_name = (
+        branch_name
+        or f"implementation/{task_id.lower()}-generated-artifact"
+    )
     _git(repo, "checkout", "-b", branch_name)
     (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(repo, "add", "feature.py")
@@ -26171,6 +26176,1529 @@ def _seed_reconciled_generated_artifact_candidate(
         "candidate": candidate,
         "worktree_path": worktree_path,
     }
+
+
+def _seed_dead_reconciliation_lifecycle(
+    daemon: TodoImplementationDaemon,
+    *,
+    task: PortalTask,
+    worktree_path: Path,
+    branch_name: str,
+    attempt: int,
+    owner=None,
+):
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        ProcessBirthIdentity,
+    )
+
+    identity = daemon._identity_for_task(task)
+    record = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=attempt,
+        lane_id="terminated-lane",
+        workspace_path=worktree_path,
+        branch=branch_name,
+        merge_target=daemon.resolved_merge_target_branch,
+        state_dir=str(daemon.state_path.parent.resolve()),
+        owner=owner
+        or ProcessBirthIdentity(
+            pid=2**30 - 31,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    return daemon.worktree_lifecycle.mark_active(
+        worktree_path,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+
+
+@pytest.mark.parametrize(
+    ("validation", "expected_returncode"),
+    [
+        ("python -m py_compile feature.py", 0),
+        (
+            "python -m pytest -q test_feature.py "
+            "-k no_such_test_selected",
+            1,
+        ),
+    ],
+)
+def test_reconciled_candidate_adopts_and_finalizes_dead_lifecycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    validation: str,
+    expected_returncode: int,
+) -> None:
+    task_id = "ACCEL-010Z"
+    branch_name = (
+        "implementation/accel-010z-dead-owner-attempt-2-123"
+    )
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id=task_id,
+        validation=validation,
+        branch_name=branch_name,
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=fixture["todo_path"],
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=fixture["repo"],
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    lifecycle = _seed_dead_reconciliation_lifecycle(
+        daemon,
+        task=task,
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        attempt=2,
+    )
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id,
+        attempt=lifecycle.attempt,
+    )
+    initial_state = TodoTaskState.load(daemon.state_path)
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_attempt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "reconciliation consumed an implementation attempt"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation_in_ephemeral_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "reconciliation dispatched an implementation provider"
+        ),
+    )
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="dead-owner-lifecycle-recovery",
+    )
+
+    assert result["returncode"] == expected_returncode
+    assert result["worktree_lifecycle_reconciliation"]["adopted"] is True
+    assert daemon.worktree_lifecycle.load_workspace(
+        fixture["worktree_path"]
+    ) is None
+    assert not index_path.exists()
+    assert not TodoTaskState.load(
+        daemon.state_path
+    ).implementation_in_progress
+    final_state = TodoTaskState.load(daemon.state_path)
+    assert (
+        final_state.implementation_attempts
+        == initial_state.implementation_attempts
+    )
+    assert (
+        final_state.implementation_attempts_by_cid
+        == initial_state.implementation_attempts_by_cid
+    )
+    if expected_returncode == 0:
+        assert result["merge_result"][
+            "worktree_lifecycle_handoff"
+        ]["finalized"] is True
+        assert "- Status: completed" in fixture["todo_path"].read_text(
+            encoding="utf-8"
+        )
+    else:
+        assert result["worktree_lifecycle_finalize_result"][
+            "finalized"
+        ] is True
+        assert result["validation_result"]["reason"] == (
+            "declared_validation_failed"
+        )
+
+
+@pytest.mark.parametrize(
+    ("owner_kind", "expected_reason"),
+    [
+        ("live", "worktree_lifecycle_owner_alive"),
+        ("unknown", "worktree_lifecycle_owner_liveness_unknown"),
+    ],
+)
+def test_reconciliation_preserves_unreclaimable_lifecycle_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner_kind: str,
+    expected_reason: str,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        ProcessBirthIdentity,
+        current_process_birth,
+    )
+
+    task_id = "ACCEL-010Y"
+    branch_name = "implementation/accel-010y-live-attempt-2-123"
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id=task_id,
+        validation="python -m py_compile feature.py",
+        branch_name=branch_name,
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=fixture["todo_path"],
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=fixture["repo"],
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    sentinel = fixture["worktree_path"] / ".pytest_cache" / "owner-data"
+    sentinel.parent.mkdir(parents=True)
+    sentinel.write_bytes(b"must not be prepared away")
+    lifecycle = _seed_dead_reconciliation_lifecycle(
+        daemon,
+        task=task,
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        attempt=2,
+        owner=(
+            current_process_birth()
+            if owner_kind == "live"
+            else ProcessBirthIdentity(
+                pid=2**30 - 31,
+                start_time_ticks=1,
+                boot_id="unknown-owner",
+            )
+        ),
+    )
+    if owner_kind == "unknown":
+        daemon.worktree_lifecycle.proc_root = (
+            tmp_path / "unavailable-proc"
+        )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_attempt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "lifecycle rejection consumed an attempt"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation_in_ephemeral_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "lifecycle rejection dispatched a provider"
+        ),
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(
+        fixture["worktree_path"]
+    )
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id,
+        attempt=lifecycle.attempt,
+    )
+    durable_bytes = (record_path.read_bytes(), index_path.read_bytes())
+    initial_state = TodoTaskState.load(daemon.state_path)
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="live-owner-lifecycle-recovery",
+    )
+
+    reconciliation = result["worktree_lifecycle_reconciliation"]
+    assert reconciliation["blocked"] is True
+    assert reconciliation["reason"] == expected_reason
+    assert result["provider_dispatched"] is False
+    assert (record_path.read_bytes(), index_path.read_bytes()) == durable_bytes
+    assert sentinel.read_bytes() == b"must not be prepared away"
+    final_state = TodoTaskState.load(daemon.state_path)
+    assert (
+        final_state.implementation_attempts
+        == initial_state.implementation_attempts
+    )
+    assert (
+        final_state.implementation_attempts_by_cid
+        == initial_state.implementation_attempts_by_cid
+    )
+    assert "- Status: todo" in fixture["todo_path"].read_text(
+        encoding="utf-8"
+    )
+
+
+def test_reconciled_lifecycle_handoff_failure_is_not_queue_visible(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_id = "ACCEL-010X"
+    branch_name = "implementation/accel-010x-handoff-attempt-2-123"
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id=task_id,
+        validation="python -m py_compile feature.py",
+        branch_name=branch_name,
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=fixture["todo_path"],
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=fixture["repo"],
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    lifecycle = _seed_dead_reconciliation_lifecycle(
+        daemon,
+        task=task,
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        attempt=2,
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(
+        fixture["worktree_path"]
+    )
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id,
+        attempt=lifecycle.attempt,
+    )
+    competing_claims = []
+    original_finalize = daemon._finalize_exact_worktree_lifecycle
+    original_enqueue = daemon._enqueue_merge_candidate
+    original_consume = daemon._consume_one_merge_candidate
+
+    def fail_handoff(*_args, **_kwargs):
+        competing_claims.append(
+            daemon.merge_queue.dequeue("competing-consumer")
+        )
+        return {
+            "finalized": False,
+            "reason": "injected_lifecycle_compare_delete_race",
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_exact_worktree_lifecycle",
+        fail_handoff,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_enqueue_merge_candidate",
+        lambda **_kwargs: pytest.fail(
+            "failed lifecycle handoff published a queue request"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_consume_one_merge_candidate",
+        lambda: pytest.fail(
+            "failed lifecycle handoff invoked the merge train"
+        ),
+    )
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="failed-lifecycle-handoff",
+    )
+
+    assert competing_claims
+    assert all(claim is None for claim in competing_claims)
+    assert daemon.merge_queue.pending_count() == 0
+    assert result["returncode"] == 1
+    assert result["worktree_lifecycle_reconciliation"]["blocked"] is True
+    assert result["validation_result"]["reason"] == (
+        "reconciliation_worktree_lifecycle_handoff_failed"
+    )
+    assert record_path.exists()
+    assert index_path.exists()
+    assert TodoTaskState.load(daemon.state_path).implementation_in_progress
+    assert (
+        _git(fixture["worktree_path"], "rev-parse", "HEAD")
+        == fixture["candidate"]
+    )
+    assert "- Status: todo" in fixture["todo_path"].read_text(
+        encoding="utf-8"
+    )
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    terminal = next(
+        event
+        for event in reversed(events)
+        if event.get("type")
+        == "worktree_reconciliation_validation_finished"
+    )
+    assert daemon._retryable_reconciliation_event_failure(terminal) is True
+
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_exact_worktree_lifecycle",
+        original_finalize,
+    )
+    resolution = daemon._finalize_reconciled_worktree_lifecycle(
+        fixture["worktree_path"],
+        {
+            **result["worktree_lifecycle_reconciliation"],
+            "blocked": False,
+        },
+    )
+    assert resolution["finalized"] is True
+    state = TodoTaskState.load(daemon.state_path)
+    daemon._mark_implementation_finished(
+        state,
+        finished_at="2026-07-31T00:00:00+00:00",
+    )
+    state.save(daemon.state_path)
+    implementation_lock_path = daemon._implementation_lock_path()
+    implementation_lock = json.loads(
+        implementation_lock_path.read_text(encoding="utf-8")
+    )
+    assert daemon._release_implementation_lock(
+        implementation_lock_path,
+        implementation_lock,
+    )
+    task_claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=lifecycle.canonical_task_cid,
+    )
+    task_claim = json.loads(
+        task_claim_path.read_text(encoding="utf-8")
+    )
+    assert daemon._release_implementation_task_claim(
+        task_claim_path,
+        task_claim,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_enqueue_merge_candidate",
+        original_enqueue,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_consume_one_merge_candidate",
+        original_consume,
+    )
+    second = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="failed-lifecycle-handoff",
+    )
+
+    assert second["returncode"] == 0
+    assert second["validation_result"]["proposal_gate"]["accepted"] is True
+    assert "- Status: completed" in fixture["todo_path"].read_text(
+        encoding="utf-8"
+    )
+
+
+def test_reconciliation_admission_append_ambiguity_preserves_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_id = "ACCEL-010V"
+    branch_name = "implementation/accel-010v-admission-attempt-2-123"
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id=task_id,
+        validation="python -m py_compile feature.py",
+        branch_name=branch_name,
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=fixture["todo_path"],
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=fixture["repo"],
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    lifecycle = _seed_dead_reconciliation_lifecycle(
+        daemon,
+        task=task,
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        attempt=2,
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(
+        fixture["worktree_path"]
+    )
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id,
+        attempt=lifecycle.attempt,
+    )
+    lock_path = daemon._implementation_lock_path()
+    original_record_event = daemon._record_event
+    preserved: dict[str, bytes | str] = {}
+    admission_pending = True
+
+    def ambiguously_append_admission(event_type, payload):
+        nonlocal admission_pending
+        if (
+            admission_pending
+            and event_type == "implementation_proposal_validated"
+            and payload.get("reconciliation_admission")
+        ):
+            admission_pending = False
+            active = daemon._active_worktree_lifecycle
+            assert active is not None
+            preserved.update(
+                {
+                    "record": record_path.read_bytes(),
+                    "index": index_path.read_bytes(),
+                    "state": daemon.state_path.read_bytes(),
+                    "lock": lock_path.read_bytes(),
+                    "lease": active.lease_id,
+                    "boot_id": active.owner.boot_id,
+                }
+            )
+            original_record_event(event_type, payload)
+            raise RuntimeError(
+                "injected ambiguous admission append acknowledgement"
+            )
+        return original_record_event(event_type, payload)
+
+    monkeypatch.setattr(
+        daemon,
+        "_record_event",
+        ambiguously_append_admission,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_enqueue_merge_candidate",
+        lambda **_kwargs: pytest.fail(
+            "unconfirmed admission published a queue request"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_restore_ephemeral_worktree_paths_for_commit",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unconfirmed admission reached candidate cleanup"
+        ),
+    )
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="ambiguous-admission-recovery",
+    )
+
+    assert result["returncode"] == 1
+    reconciliation = result["worktree_lifecycle_reconciliation"]
+    assert reconciliation["blocked"] is True
+    assert reconciliation["finalized"] is False
+    assert reconciliation["reason"] == (
+        "reconciliation_proposal_admission_receipt_unconfirmed"
+    )
+    assert record_path.read_bytes() == preserved["record"]
+    assert index_path.read_bytes() == preserved["index"]
+    assert daemon.state_path.read_bytes() == preserved["state"]
+    assert lock_path.read_bytes() == preserved["lock"]
+    assert daemon.merge_queue.pending_count() == 0
+    assert "- Status: todo" in fixture["todo_path"].read_text(
+        encoding="utf-8"
+    )
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    admission_event = next(
+        event
+        for event in events
+        if event.get("type") == "implementation_proposal_validated"
+        and event.get("recovery_key")
+        == "ambiguous-admission-recovery"
+    )
+    admission_json = json.dumps(
+        admission_event["reconciliation_admission"],
+        sort_keys=True,
+    )
+    assert preserved["lease"] not in admission_json
+    assert preserved["boot_id"] not in admission_json
+    assert "record_authority_cid" in admission_json
+    assert "admission_authority_cid" in admission_json
+
+
+def test_supervisor_stops_before_cleanup_on_reconciliation_finalize_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_id = "ACCEL-010S"
+    branch_name = "implementation/accel-010s-finalize-attempt-2-123"
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id=task_id,
+        validation=(
+            "python -m pytest -q test_feature.py "
+            "-k no_such_test_selected"
+        ),
+        branch_name=branch_name,
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=fixture["todo_path"],
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=fixture["repo"],
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path,
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    lifecycle = _seed_dead_reconciliation_lifecycle(
+        daemon,
+        task=task,
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        attempt=2,
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(
+        fixture["worktree_path"]
+    )
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id,
+        attempt=lifecycle.attempt,
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=fixture["todo_path"],
+            state_path=daemon.state_path,
+            strategy_path=daemon.strategy_path,
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=fixture["repo"],
+            worktree_root=tmp_path,
+            merge_target_branch="main",
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_build_worktree_reconciliation_daemon",
+        lambda: daemon,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_reconciliation_cleanup_result",
+        lambda *_args, **_kwargs: pytest.fail(
+            "blocked lifecycle reconciliation reached supervisor cleanup"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_reconciled_worktree_lifecycle",
+        lambda *_args, **_kwargs: {
+            "finalized": False,
+            "reason": "injected_terminal_compare_delete_race",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_attempt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "finalize race consumed an implementation attempt"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation_in_ephemeral_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "finalize race dispatched an implementation provider"
+        ),
+    )
+
+    with pytest.raises(ReconciliationLifecycleBlockedError):
+        supervisor.reconcile_backlogged_worktrees()
+
+    assert record_path.exists()
+    assert index_path.exists()
+    assert daemon._implementation_lock_path().exists()
+    assert TodoTaskState.load(
+        daemon.state_path
+    ).implementation_in_progress
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    terminal = next(
+        event
+        for event in reversed(events)
+        if event.get("type")
+        == "worktree_reconciliation_validation_finished"
+    )
+    reconciliation = terminal["worktree_lifecycle_reconciliation"]
+    assert reconciliation["blocked"] is True
+    assert reconciliation["finalized"] is False
+    assert reconciliation["reason"] == (
+        "reconciliation_worktree_lifecycle_finalize_failed"
+    )
+    assert daemon._retryable_reconciliation_event_failure(terminal) is True
+    recovery_key = terminal["recovery_key"]
+    _, _, outcome_keys, _ = supervisor._reconciliation_task_context(
+        daemon
+    )
+    assert recovery_key not in outcome_keys
+
+
+def test_reconciliation_admission_recovers_sigkill_after_lifecycle_delete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_id = "ACCEL-010Y"
+    branch_name = "implementation/accel-010y-sigkill-attempt-2-123"
+    recovery_key = "sigkill-after-lifecycle-delete"
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id=task_id,
+        validation="python -m py_compile feature.py",
+        branch_name=branch_name,
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=fixture["todo_path"],
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=fixture["repo"],
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    lifecycle = _seed_dead_reconciliation_lifecycle(
+        daemon,
+        task=task,
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        attempt=2,
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(
+        fixture["worktree_path"]
+    )
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id,
+        attempt=lifecycle.attempt,
+    )
+    child_script = """
+import os
+import sys
+from pathlib import Path
+
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    TodoImplementationDaemon,
+)
+
+(
+    todo_path,
+    state_path,
+    strategy_path,
+    events_path,
+    repo_root,
+    worktree_root,
+    worktree_path,
+    branch_name,
+    baseline_ref,
+    candidate_commit,
+    recovery_key,
+) = sys.argv[1:]
+daemon = TodoImplementationDaemon(
+    todo_path=Path(todo_path),
+    state_path=Path(state_path),
+    strategy_path=Path(strategy_path),
+    events_path=Path(events_path),
+    repo_root=Path(repo_root),
+    task_header_prefix="## ACCEL-",
+    worktree_root=Path(worktree_root),
+    merge_target_branch="main",
+    worktree_submodule_paths=[],
+)
+task = daemon._load_tasks()[0]
+record_event = daemon._record_event
+
+def kill_before_handoff_marker(event_type, payload):
+    if event_type == "worktree_reconciliation_lifecycle_handoff_finalized":
+        os._exit(91)
+    return record_event(event_type, payload)
+
+daemon._record_event = kill_before_handoff_marker
+daemon.reconcile_validated_worktree_candidate(
+    worktree_path=Path(worktree_path),
+    branch_name=branch_name,
+    task=task,
+    baseline_ref=baseline_ref,
+    candidate_commit=candidate_commit,
+    recovery_key=recovery_key,
+)
+os._exit(92)
+"""
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            child_script,
+            str(fixture["todo_path"]),
+            str(daemon.state_path),
+            str(daemon.strategy_path),
+            str(daemon.events_path),
+            str(fixture["repo"]),
+            str(tmp_path / "worktrees"),
+            str(fixture["worktree_path"]),
+            branch_name,
+            str(fixture["baseline"]),
+            str(fixture["candidate"]),
+            recovery_key,
+        ],
+        cwd=Path(__file__).resolve().parents[2],
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert child.returncode == 91, child.stderr
+    assert not record_path.exists()
+    assert not index_path.exists()
+    assert daemon.merge_queue.pending_count() == 0
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    admission = next(
+        event
+        for event in events
+        if event.get("type") == "implementation_proposal_validated"
+        and event.get("recovery_key") == recovery_key
+    )
+    assert admission["reconciliation_admission"]["lifecycle"][
+        "record_id"
+    ] == lifecycle.record_id
+    assert not any(
+        event.get("type")
+        == "worktree_reconciliation_lifecycle_handoff_finalized"
+        for event in events
+    )
+    assert not any(
+        event.get("type")
+        == "worktree_reconciliation_validation_finished"
+        for event in events
+    )
+    absence = daemon._reconcile_exact_quiesced_worktree_lifecycle(
+        worktree_path=fixture["worktree_path"],
+        task_id=task.task_id,
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        branch_name=branch_name,
+        expected_attempt=2,
+        reason="sigkill_post_delete_absence_verified",
+        action="adopt",
+    )
+    admitted_proposal_id = daemon._reconciliation_admission_matches_candidate(
+        admission,
+        task_id=task.task_id,
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        recovery_key=recovery_key,
+        branch_name=branch_name,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        worktree_path=fixture["worktree_path"],
+        lifecycle_reconciliation=absence,
+    )
+    assert admitted_proposal_id == admission["proposal_id"]
+    for tamper in (
+        "fence",
+        "record_authority_cid",
+        "receipt_id",
+        "candidate_fingerprint",
+        "task_id",
+        "recovery_key",
+    ):
+        changed = json.loads(json.dumps(admission))
+        nested = changed["reconciliation_admission"]
+        if tamper == "fence":
+            nested["lifecycle"]["fence"] += 1
+        elif tamper == "record_authority_cid":
+            authority_cid = nested["lifecycle"][
+                "record_authority_cid"
+            ]
+            nested["lifecycle"]["record_authority_cid"] = (
+                authority_cid[:-1]
+                + ("a" if authority_cid[-1] != "a" else "b")
+            )
+        elif tamper == "receipt_id":
+            changed["receipt_id"] = "tampered-receipt"
+            nested["receipt_id"] = "tampered-receipt"
+        elif tamper == "candidate_fingerprint":
+            fingerprint = "sha256:" + ("f" * 64)
+            changed["candidate_fingerprint"] = fingerprint
+            nested["candidate_fingerprint"] = fingerprint
+        elif tamper == "task_id":
+            changed["task_id"] = "ACCEL-TAMPERED"
+            nested["task_id"] = "ACCEL-TAMPERED"
+        else:
+            changed["recovery_key"] = "tampered-recovery"
+            nested["recovery_key"] = "tampered-recovery"
+        assert (
+            daemon._reconciliation_admission_matches_candidate(
+                changed,
+                task_id=task.task_id,
+                canonical_task_cid=lifecycle.canonical_task_cid,
+                recovery_key=recovery_key,
+                branch_name=branch_name,
+                baseline_ref=fixture["baseline"],
+                candidate_commit=fixture["candidate"],
+                worktree_path=fixture["worktree_path"],
+                lifecycle_reconciliation=absence,
+            )
+            == ""
+        )
+    for terminal_reason in (
+        "declared_validation_failed",
+        "implementation_protected_path_mutated",
+    ):
+        terminal_state_dir = (
+            tmp_path / f"terminal-{terminal_reason}"
+        )
+        terminal_daemon = TodoImplementationDaemon(
+            todo_path=fixture["todo_path"],
+            state_path=terminal_state_dir / "task_state.json",
+            strategy_path=terminal_state_dir / "strategy.json",
+            events_path=terminal_state_dir / "events.jsonl",
+            repo_root=fixture["repo"],
+            task_header_prefix="## ACCEL-",
+            worktree_root=tmp_path / "worktrees",
+            merge_target_branch="main",
+            worktree_submodule_paths=[],
+        )
+        admission_payload = {
+            key: value
+            for key, value in admission.items()
+            if key
+            not in {
+                "type",
+                "timestamp",
+                "event_id",
+                "previous_event_id",
+                "sequence",
+                "snapshot_id",
+                "stream_id",
+            }
+        }
+        terminal_daemon._record_event(
+            "implementation_proposal_validated",
+            admission_payload,
+        )
+        terminal_absence = (
+            terminal_daemon
+            ._reconcile_exact_quiesced_worktree_lifecycle(
+                worktree_path=fixture["worktree_path"],
+                task_id=task.task_id,
+                canonical_task_cid=lifecycle.canonical_task_cid,
+                branch_name=branch_name,
+                expected_attempt=2,
+                reason="terminal_revocation_absence_verified",
+                action="adopt",
+            )
+        )
+        exact_retry_args = {
+            "task_id": task.task_id,
+            "recovery_key": recovery_key,
+            "canonical_task_cid": lifecycle.canonical_task_cid,
+            "branch_name": branch_name,
+            "baseline_ref": fixture["baseline"],
+            "candidate_commit": fixture["candidate"],
+            "worktree_path": fixture["worktree_path"],
+            "lifecycle_reconciliation": terminal_absence,
+        }
+        assert admitted_proposal_id in (
+            terminal_daemon
+            ._retryable_reconciliation_proposal_ids(
+                **exact_retry_args
+            )
+        )
+        if terminal_reason == "declared_validation_failed":
+            unrelated_proposal_id = "proposal-from-other-candidate"
+            terminal_daemon._record_event(
+                "worktree_reconciliation_validation_finished",
+                {
+                    "task_id": task.task_id,
+                    "task_cid": lifecycle.canonical_task_cid,
+                    "recovery_key": recovery_key,
+                    "branch": "implementation/other-attempt-2-123",
+                    "baseline_ref": "other-baseline",
+                    "implementation_commit": "other-candidate",
+                    "worktree_path": str(tmp_path / "other-worktree"),
+                    "provider_dispatched": False,
+                    "attempt_consumed": False,
+                    "returncode": 127,
+                    "validation_result": {
+                        "attempted": True,
+                        "passed": False,
+                        "returncode": 127,
+                        "reason": "declared_validation_failed",
+                        "infrastructure_failure": True,
+                        "outcome": "infrastructure_failure",
+                        "proposal_gate": {
+                            "attempted": True,
+                            "accepted": True,
+                            "proposal_id": unrelated_proposal_id,
+                            "reason_codes": [],
+                        },
+                    },
+                },
+            )
+            assert unrelated_proposal_id not in (
+                terminal_daemon
+                ._retryable_reconciliation_proposal_ids(
+                    **exact_retry_args
+                )
+            )
+            assert unrelated_proposal_id in (
+                terminal_daemon
+                ._retryable_reconciliation_proposal_ids(
+                    task_id=task.task_id,
+                    recovery_key=recovery_key,
+                )
+            )
+        terminal_daemon._record_event(
+            "worktree_reconciliation_validation_finished",
+            {
+                "task_id": task.task_id,
+                "task_cid": lifecycle.canonical_task_cid,
+                "recovery_key": recovery_key,
+                "branch": branch_name,
+                "baseline_ref": fixture["baseline"],
+                "implementation_commit": fixture["candidate"],
+                "worktree_path": str(fixture["worktree_path"]),
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                "returncode": 1,
+                "validation_result": {
+                    "attempted": True,
+                    "passed": False,
+                    "returncode": 1,
+                    "reason": terminal_reason,
+                    "proposal_gate": {
+                        "attempted": True,
+                        "accepted": True,
+                        "proposal_id": admitted_proposal_id,
+                        "reason_codes": [],
+                    },
+                    "protected_path_violation": (
+                        {
+                            "changed_paths": [
+                                "docs/planning/TODO.md"
+                            ]
+                        }
+                        if terminal_reason
+                        == "implementation_protected_path_mutated"
+                        else {}
+                    ),
+                },
+            },
+        )
+        assert (
+            terminal_daemon
+            ._retryable_reconciliation_proposal_ids(
+                **exact_retry_args
+            )
+            == ()
+        )
+
+    restarted = TodoImplementationDaemon(
+        todo_path=fixture["todo_path"],
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=fixture["repo"],
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    shutdown = restarted.reconcile_quiesced_active_attempt()
+    assert shutdown["reconciled"] is True
+    assert shutdown["blocked"] is False
+    monkeypatch.setattr(
+        restarted,
+        "_record_task_attempt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "SIGKILL recovery consumed an implementation attempt"
+        ),
+    )
+    monkeypatch.setattr(
+        restarted,
+        "_run_implementation_in_ephemeral_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "SIGKILL recovery dispatched an implementation provider"
+        ),
+    )
+
+    result = restarted.reconcile_validated_worktree_candidate(
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        task=restarted._load_tasks()[0],
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key=recovery_key,
+    )
+
+    assert result["returncode"] == 0
+    assert result["validation_result"]["proposal_gate"]["accepted"] is True
+    assert restarted._retryable_reconciliation_proposal_ids(
+        task_id=task.task_id,
+        recovery_key=recovery_key,
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        branch_name=branch_name,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        worktree_path=fixture["worktree_path"],
+        lifecycle_reconciliation=absence,
+    ) == ()
+    assert "- Status: completed" in fixture["todo_path"].read_text(
+        encoding="utf-8"
+    )
+
+
+def test_reconciliation_admission_matches_dead_predecessor_after_sigkill(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_id = "ACCEL-010T"
+    branch_name = "implementation/accel-010t-sigkill-attempt-2-123"
+    recovery_key = "sigkill-after-proposal-admission"
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id=task_id,
+        validation="python -m py_compile feature.py",
+        branch_name=branch_name,
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=fixture["todo_path"],
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=fixture["repo"],
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    lifecycle = _seed_dead_reconciliation_lifecycle(
+        daemon,
+        task=task,
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        attempt=2,
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(
+        fixture["worktree_path"]
+    )
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id,
+        attempt=lifecycle.attempt,
+    )
+    child_script = """
+import os
+import sys
+from pathlib import Path
+
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    TodoImplementationDaemon,
+)
+
+(
+    todo_path,
+    state_path,
+    strategy_path,
+    events_path,
+    repo_root,
+    worktree_root,
+    worktree_path,
+    branch_name,
+    baseline_ref,
+    candidate_commit,
+    recovery_key,
+) = sys.argv[1:]
+daemon = TodoImplementationDaemon(
+    todo_path=Path(todo_path),
+    state_path=Path(state_path),
+    strategy_path=Path(strategy_path),
+    events_path=Path(events_path),
+    repo_root=Path(repo_root),
+    task_header_prefix="## ACCEL-",
+    worktree_root=Path(worktree_root),
+    merge_target_branch="main",
+    worktree_submodule_paths=[],
+)
+task = daemon._load_tasks()[0]
+daemon._run_validation_commands = (
+    lambda *_args, **_kwargs: os._exit(90)
+)
+daemon.reconcile_validated_worktree_candidate(
+    worktree_path=Path(worktree_path),
+    branch_name=branch_name,
+    task=task,
+    baseline_ref=baseline_ref,
+    candidate_commit=candidate_commit,
+    recovery_key=recovery_key,
+)
+os._exit(92)
+"""
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            child_script,
+            str(fixture["todo_path"]),
+            str(daemon.state_path),
+            str(daemon.strategy_path),
+            str(daemon.events_path),
+            str(fixture["repo"]),
+            str(tmp_path / "worktrees"),
+            str(fixture["worktree_path"]),
+            branch_name,
+            str(fixture["baseline"]),
+            str(fixture["candidate"]),
+            recovery_key,
+        ],
+        cwd=Path(__file__).resolve().parents[2],
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert child.returncode == 90, child.stderr
+    assert record_path.exists()
+    assert index_path.exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    admission = next(
+        event
+        for event in events
+        if event.get("type") == "implementation_proposal_validated"
+        and event.get("recovery_key") == recovery_key
+    )
+    predecessor_cid = admission["reconciliation_admission"][
+        "lifecycle"
+    ]["record_authority_cid"]
+
+    restarted = TodoImplementationDaemon(
+        todo_path=fixture["todo_path"],
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=fixture["repo"],
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    protected = restarted._reconcile_implementation_protected_path_fence()
+    assert protected["blocked"] is False
+    state = TodoTaskState.load(restarted.state_path)
+    restarted._mark_implementation_finished(
+        state,
+        finished_at="2026-07-31T00:00:00+00:00",
+    )
+    state.save(restarted.state_path)
+    monkeypatch.setattr(
+        restarted,
+        "_record_task_attempt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "predecessor replay consumed an implementation attempt"
+        ),
+    )
+    monkeypatch.setattr(
+        restarted,
+        "_run_implementation_in_ephemeral_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "predecessor replay dispatched an implementation provider"
+        ),
+    )
+
+    result = restarted.reconcile_validated_worktree_candidate(
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        task=restarted._load_tasks()[0],
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key=recovery_key,
+    )
+
+    reconciliation = result["worktree_lifecycle_reconciliation"]
+    assert result["returncode"] == 0
+    assert reconciliation["adopted"] is True
+    assert reconciliation["predecessor_authority_cid"] == predecessor_cid
+    assert result["validation_result"]["proposal_gate"]["accepted"] is True
+    assert "- Status: completed" in fixture["todo_path"].read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("failure_phase", "expected_phase"),
+    [
+        ("handoff_event", "lifecycle_handoff_event"),
+        ("pool_return", "worktree_pool_release"),
+        ("pool_raise", "worktree_pool_release"),
+        ("queue_publish", "merge_queue_publication"),
+    ],
+)
+def test_reconciled_post_finalize_publish_gap_is_rediscoverable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_phase: str,
+    expected_phase: str,
+) -> None:
+    task_id = "ACCEL-010W"
+    branch_name = "implementation/accel-010w-gap-attempt-2-123"
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id=task_id,
+        validation="python -m py_compile feature.py",
+        branch_name=branch_name,
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=fixture["todo_path"],
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=fixture["repo"],
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    lifecycle = _seed_dead_reconciliation_lifecycle(
+        daemon,
+        task=task,
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        attempt=2,
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(
+        fixture["worktree_path"]
+    )
+    initial_state = TodoTaskState.load(daemon.state_path)
+    original_record_event = daemon._record_event
+    original_release = daemon._release_pooled_worktree_lease
+    original_enqueue = daemon._enqueue_merge_candidate
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_attempt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "handoff retry consumed an implementation attempt"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation_in_ephemeral_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "handoff retry dispatched an implementation provider"
+        ),
+    )
+    pool_key = fixture["worktree_path"].resolve()
+    if failure_phase == "handoff_event":
+        marker_failure_pending = True
+
+        def fail_handoff_marker(event_type, payload):
+            nonlocal marker_failure_pending
+            if (
+                marker_failure_pending
+                and event_type
+                == "worktree_reconciliation_lifecycle_handoff_finalized"
+            ):
+                marker_failure_pending = False
+                raise RuntimeError("injected handoff marker append failure")
+            return original_record_event(event_type, payload)
+
+        monkeypatch.setattr(
+            daemon,
+            "_record_event",
+            fail_handoff_marker,
+        )
+    elif failure_phase in {"pool_return", "pool_raise"}:
+        daemon._worktree_pool_leases[pool_key] = object()
+        if failure_phase == "pool_return":
+            monkeypatch.setattr(
+                daemon,
+                "_release_pooled_worktree_lease",
+                lambda *_args, **_kwargs: {
+                    "attempted": True,
+                    "released": False,
+                    "reason": "injected_pool_release_rejected",
+                    "receipt": "preserved",
+                },
+            )
+        else:
+            monkeypatch.setattr(
+                daemon,
+                "_release_pooled_worktree_lease",
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    RuntimeError("injected pool release exception")
+                ),
+            )
+    else:
+        monkeypatch.setattr(
+            daemon,
+            "_enqueue_merge_candidate",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("injected queue publication failure")
+            ),
+        )
+
+    first = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="post-finalize-gap",
+    )
+
+    assert first["returncode"] == 1
+    assert first["validation_result"]["reason"] == (
+        "reconciliation_handoff_publication_failed_after_"
+        "lifecycle_finalize"
+    )
+    assert first["validation_result"]["infrastructure_failure"] is True
+    assert first["validation_result"]["handoff_phase"] == expected_phase
+    if failure_phase == "pool_return":
+        assert first["validation_result"]["worktree_pool_handoff"][
+            "receipt"
+        ] == "preserved"
+    assert not record_path.exists()
+    assert daemon.merge_queue.pending_count() == 0
+    assert fixture["worktree_path"].exists()
+    assert _git(fixture["worktree_path"], "rev-parse", "HEAD") == (
+        fixture["candidate"]
+    )
+    assert not TodoTaskState.load(
+        daemon.state_path
+    ).implementation_in_progress
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    terminal = next(
+        event
+        for event in reversed(events)
+        if event.get("type")
+        == "worktree_reconciliation_validation_finished"
+        and event.get("recovery_key") == "post-finalize-gap"
+    )
+    assert daemon._retryable_reconciliation_event_failure(terminal) is True
+    proposal_id = first["validation_result"]["proposal_gate"][
+        "proposal_id"
+    ]
+    assert proposal_id in daemon._retryable_reconciliation_proposal_ids(
+        task_id=task.task_id,
+        recovery_key="post-finalize-gap",
+    )
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id=task.task_id,
+        recovery_key="different-post-finalize-gap",
+    ) == ()
+
+    monkeypatch.setattr(
+        daemon,
+        "_record_event",
+        original_record_event,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_pooled_worktree_lease",
+        original_release,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_enqueue_merge_candidate",
+        original_enqueue,
+    )
+    daemon._worktree_pool_leases.pop(pool_key, None)
+    daemon._worktree_pool_effective_paths.pop(pool_key, None)
+    second = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=fixture["worktree_path"],
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="post-finalize-gap",
+    )
+
+    assert second["returncode"] == 0
+    final_state = TodoTaskState.load(daemon.state_path)
+    assert (
+        final_state.implementation_attempts
+        == initial_state.implementation_attempts
+    )
+    assert (
+        final_state.implementation_attempts_by_cid
+        == initial_state.implementation_attempts_by_cid
+    )
+    assert "- Status: completed" in fixture["todo_path"].read_text(
+        encoding="utf-8"
+    )
 
 
 def test_reconciled_candidate_restores_tracked_validation_screenshot(

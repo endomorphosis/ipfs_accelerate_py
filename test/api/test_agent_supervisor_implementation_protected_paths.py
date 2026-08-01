@@ -48,6 +48,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     run_process_group_stream,
 )
+from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+    ProcessBirthIdentity,
+    current_process_birth,
+)
 
 
 POLICY_PATH = "implementation_plan/policies/analyzer-approvals.json"
@@ -262,6 +266,47 @@ def _persist_active_attempt_state(
     state.last_implementation_task_cid = identity.canonical_task_cid
     state.save(daemon.state_path)
     return state
+
+
+def _seed_active_lifecycle(
+    daemon: PortalImplementationDaemon,
+    task: PortalTask,
+    workspace: Path,
+    owner: ProcessBirthIdentity,
+):
+    identity = daemon._identity_for_task(task)
+    record = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=1,
+        lane_id="shutdown-reconciliation",
+        workspace_path=workspace,
+        branch="lane",
+        merge_target=daemon.resolved_merge_target_branch,
+        state_dir=str(daemon.state_path.parent.resolve()),
+        owner=owner,
+    )
+    return daemon.worktree_lifecycle.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+
+
+def _persist_stale_implementation_lock(
+    daemon: PortalImplementationDaemon,
+    task: PortalTask,
+) -> Path:
+    lock_path = daemon._implementation_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = daemon._build_implementation_lock_metadata(
+        task,
+        1,
+        "2026-07-31T00:00:00+00:00",
+    )
+    payload["pid"] = 2**30 - 7
+    lock_path.write_text(json.dumps(payload), encoding="utf-8")
+    return lock_path
 
 
 def test_normalize_implementation_protected_paths_is_exact_and_fail_closed(
@@ -879,13 +924,32 @@ def test_crash_reconciliation_rejects_missing_ephemeral_workspace_when_shared_ch
     assert daemon._implementation_protected_incident_path().exists()
 
 
+@pytest.mark.parametrize("terminal_lifecycle", [False, True])
 def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
     tmp_path: Path,
+    terminal_lifecycle: bool,
 ) -> None:
     daemon, _repo, workspace, protected = _protected_git_worktree_daemon(
         tmp_path
     )
     task = _task(outputs=["src/example.py"])
+    lifecycle = _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    if terminal_lifecycle:
+        lifecycle = daemon.worktree_lifecycle.mark_terminal(
+            workspace,
+            lease_id=lifecycle.lease_id,
+            expected_fence=lifecycle.fence,
+            reason="interrupted_terminal_cleanup",
+        )
     daemon._require_implementation_protected_snapshot(
         task=task,
         attempt=1,
@@ -905,6 +969,26 @@ def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
     assert (
         result["protected_path_reconciliation"]["reason"]
         == "crash_reconciliation_unchanged"
+    )
+    assert (
+        result["worktree_lifecycle_precheck"]["reason"]
+        == "worktree_lifecycle_quiescence_verified"
+    )
+    assert (
+        result["worktree_lifecycle_reconciliation"]["finalized"]
+        is True
+    )
+    assert (
+        daemon.worktree_lifecycle.load_workspace(workspace)
+        is None
+    )
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=lifecycle.canonical_task_cid,
+            task_id=lifecycle.task_id,
+            attempt=lifecycle.attempt,
+        )
+        is None
     )
     assert not daemon._implementation_protected_active_snapshot_path().exists()
     assert not daemon._implementation_protected_incident_path().exists()
@@ -955,6 +1039,229 @@ def test_quiesced_shutdown_preserves_real_protected_path_incident(
     state = PortalTaskState.load(daemon.state_path)
     assert state.implementation_in_progress is True
     assert state.active_task_id == task.task_id
+
+
+def test_quiesced_shutdown_preserves_fence_for_live_lifecycle_owner(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        current_process_birth(),
+    )
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    snapshot_path = (
+        daemon._implementation_protected_active_snapshot_path()
+    )
+    before_lifecycle = (
+        daemon.worktree_lifecycle.workspace_path_for(workspace).read_bytes()
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "worktree_lifecycle_reconciliation_blocked"
+    )
+    assert (
+        result["worktree_lifecycle_precheck"]["reason"]
+        == "worktree_lifecycle_owner_alive"
+    )
+    assert snapshot_path.exists()
+    assert PortalTaskState.load(
+        daemon.state_path
+    ).implementation_in_progress
+    assert (
+        daemon.worktree_lifecycle.workspace_path_for(
+            workspace
+        ).read_bytes()
+        == before_lifecycle
+    )
+
+
+@pytest.mark.parametrize("failure", ["unknown", "binding_mismatch"])
+def test_quiesced_shutdown_preserves_all_evidence_for_lifecycle_rejection(
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    daemon, _repo, workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    lifecycle = _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(workspace)
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id,
+        attempt=lifecycle.attempt,
+    )
+    if failure == "unknown":
+        daemon.worktree_lifecycle.proc_root = tmp_path / "missing-proc"
+    else:
+        payload = json.loads(record_path.read_text(encoding="utf-8"))
+        payload["branch"] = "different-branch"
+        record_path.write_text(json.dumps(payload), encoding="utf-8")
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    lock_path = _persist_stale_implementation_lock(daemon, task)
+    snapshot_path = daemon._implementation_protected_active_snapshot_path()
+    before = {
+        "record": record_path.read_bytes(),
+        "index": index_path.read_bytes(),
+        "snapshot": snapshot_path.read_bytes(),
+        "state": daemon.state_path.read_bytes(),
+        "lock": lock_path.read_bytes(),
+    }
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert record_path.read_bytes() == before["record"]
+    assert index_path.read_bytes() == before["index"]
+    assert snapshot_path.read_bytes() == before["snapshot"]
+    assert daemon.state_path.read_bytes() == before["state"]
+    assert lock_path.read_bytes() == before["lock"]
+
+
+@pytest.mark.parametrize(
+    "phase_drift",
+    ["owner", "successor", "delete"],
+)
+def test_quiesced_shutdown_phase_drift_preserves_snapshot_state_and_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase_drift: str,
+) -> None:
+    daemon, _repo, workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    lifecycle = _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(workspace)
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id,
+        attempt=lifecycle.attempt,
+    )
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    lock_path = _persist_stale_implementation_lock(daemon, task)
+    snapshot_path = daemon._implementation_protected_active_snapshot_path()
+    preserved = {
+        "snapshot": snapshot_path.read_bytes(),
+        "state": daemon.state_path.read_bytes(),
+        "lock": lock_path.read_bytes(),
+    }
+    original_reconcile = (
+        daemon._reconcile_exact_quiesced_worktree_lifecycle
+    )
+    drifted_evidence: dict[str, bytes] = {}
+
+    def drift_before_finalize(*args, **kwargs):
+        if kwargs.get("action") == "finalize":
+            if phase_drift == "delete":
+                record_path.unlink()
+                index_path.unlink()
+            else:
+                record_payload = json.loads(
+                    record_path.read_text(encoding="utf-8")
+                )
+                record_payload["owner"] = ProcessBirthIdentity(
+                    pid=2**30 - 9,
+                    start_time_ticks=2,
+                    boot_id="replacement-dead-owner",
+                ).to_dict()
+                if phase_drift == "successor":
+                    record_payload["fence"] += 1
+                    record_payload["lease_id"] = "successor-lease"
+                record_path.write_text(
+                    json.dumps(record_payload),
+                    encoding="utf-8",
+                )
+                index_payload = json.loads(
+                    index_path.read_text(encoding="utf-8")
+                )
+                if phase_drift == "successor":
+                    index_payload["fence"] += 1
+                    index_payload["lease_id"] = "successor-lease"
+                    index_path.write_text(
+                        json.dumps(index_payload),
+                        encoding="utf-8",
+                    )
+                drifted_evidence["record"] = record_path.read_bytes()
+                drifted_evidence["index"] = index_path.read_bytes()
+        return original_reconcile(*args, **kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_reconcile_exact_quiesced_worktree_lifecycle",
+        drift_before_finalize,
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "worktree_lifecycle_reconciliation_blocked"
+    assert snapshot_path.read_bytes() == preserved["snapshot"]
+    assert daemon.state_path.read_bytes() == preserved["state"]
+    assert lock_path.read_bytes() == preserved["lock"]
+    if phase_drift == "delete":
+        assert not record_path.exists()
+        assert not index_path.exists()
+    else:
+        assert record_path.read_bytes() == drifted_evidence["record"]
+        assert index_path.read_bytes() == drifted_evidence["index"]
 
 
 def test_quiesced_shutdown_refuses_live_implementation_lock(
