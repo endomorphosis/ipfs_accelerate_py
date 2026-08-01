@@ -1831,9 +1831,14 @@ def inspect_gitlink_closure(
             reasons.append("recursive_gitlink_map_unavailable")
             return
         for relative, recorded_commit in gitlinks:
+            # A nested location is only unique within its complete ancestry.
+            # Folding the immediate parent identity into this digest commits
+            # the full chain recursively, so equal child commits and path
+            # names under sibling gitlinks cannot collapse to one identity.
             link_id = canonical_content_cid(
                 {
                     "schema": GITLINK_ENTRY_SCHEMA + "/location",
+                    "parent_gitlink_id": parent_gitlink_id,
                     "parent_commit": parent_commit,
                     "location": relative,
                 }
@@ -1845,6 +1850,29 @@ def inspect_gitlink_closure(
             except (OSError, RuntimeError, ValueError):
                 complete = False
                 reasons.append("gitlink_checkout_outside_repository")
+                continue
+            top_status, top_output = _git(
+                candidate,
+                "rev-parse",
+                "--show-toplevel",
+            )
+            if top_status != 0 or not str(top_output):
+                complete = False
+                reasons.append("gitlink_checkout_unavailable")
+                continue
+            try:
+                child_root = Path(str(top_output)).resolve(strict=True)
+            except (OSError, RuntimeError):
+                complete = False
+                reasons.append("gitlink_checkout_unresolvable")
+                continue
+            # An empty, uninitialized submodule directory is still beneath the
+            # parent checkout.  Git otherwise walks upward and reports the
+            # parent's root and HEAD, which must never be accepted as child
+            # authority.
+            if child_root != resolved_candidate:
+                complete = False
+                reasons.append("gitlink_checkout_root_mismatch")
                 continue
             head_status, head_output = _git(candidate, "rev-parse", "HEAD")
             tree_status, tree_output = _git(candidate, "rev-parse", "HEAD^{tree}")
@@ -2228,6 +2256,7 @@ def descriptor_satisfies_repository_descriptor(
         "recursive_gitlink_map_unavailable",
         "gitlink_checkout_unavailable",
         "gitlink_checkout_unresolvable",
+        "gitlink_checkout_root_mismatch",
         "gitlink_checkout_outside_repository",
         "gitlink_identity_invalid",
         "status_unavailable",
