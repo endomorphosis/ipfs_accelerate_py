@@ -335,9 +335,19 @@
     "souffle": {
       "version": "2.4.1",
       "url": "https://github.com/souffle-lang/souffle/archive/refs/tags/2.4.1.tar.gz",
-      "sha256": "",
+      "sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
       "identity_kind": "immutable_source_tag",
-      "release_tag": "2.4.1"
+      "release_tag": "2.4.1",
+      "is_checksummed": true,
+      "build_dependencies": {
+        "cmake": ">=3.15",
+        "flex": ">=2.6",
+        "bison": ">=3.0",
+        "mcpp": ">=2.7",
+        "sqlite3": ">=3.0",
+        "libffi": ">=3.0",
+        "python3": ">=3.8"
+      }
     },
     "ergoai": {
       "version": "3.0",
@@ -1356,10 +1366,10 @@
           "tool_id": "souffle",
           "version": "2.4.1",
           "artifact_url": "https://github.com/souffle-lang/souffle/archive/refs/tags/2.4.1.tar.gz",
-          "sha256": "",
+          "sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
           "platform": "any",
-          "notes": "Immutable GitHub release tag 2.4.1",
-          "is_checksummed": false,
+          "notes": "Immutable checksummed GitHub release tag 2.4.1 source archive; vendor install binds this digest",
+          "is_checksummed": true,
           "license": "UPL-1.0",
           "source": "https://github.com/souffle-lang/souffle"
         }
@@ -1391,7 +1401,22 @@
           "linux-aarch64",
           "darwin-x86_64",
           "darwin-arm64"
-        ]
+        ],
+        "build_dependencies": {
+          "cmake": ">=3.15",
+          "flex": ">=2.6",
+          "bison": ">=3.0",
+          "mcpp": ">=2.7",
+          "sqlite3": ">=3.0",
+          "libffi": ">=3.0",
+          "python3": ">=3.8"
+        },
+        "vendor_install": {
+          "mode": "checksummed_source_archive",
+          "source_archive_sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
+          "hermetic_shadows_are_differential_only": true,
+          "never_promote_hermetic_shadow_as_vendor": true
+        }
       }
     },
     {
@@ -1420,7 +1445,7 @@
           "artifact_url": "",
           "sha256": "",
           "platform": "any",
-          "notes": "Reviewed external SecPAL differential-shadow identity; operator-bound binary digest at install",
+          "notes": "Reviewed external SecPAL operator-bound identity. Deployment-contract supported_platforms is the support ceiling: linux-aarch64 is a narrow unsupported-platform exception and never counts as installed, complete, authoritative, or production-certified.",
           "is_checksummed": false,
           "license": "MS-PL",
           "source": "https://www.microsoft.com/en-us/research/project/secpal/"
@@ -1449,7 +1474,23 @@
         "unsupported_platforms_fail_closed": true,
         "supported_platforms": [
           "linux-x86_64"
-        ]
+        ],
+        "platform_exceptions": {
+          "linux-aarch64": {
+            "classification": "unsupported_here",
+            "narrow_scope": true,
+            "installed": false,
+            "complete": false,
+            "authoritative": false,
+            "production_certified": false,
+            "notes": "External SecPAL has no reviewed linux-aarch64 vendor pin under the current contract; never counts as installed, complete, authoritative, or production-certified on this host."
+          }
+        },
+        "vendor_install": {
+          "mode": "operator_bound_platform_matrix",
+          "hermetic_shadows_are_differential_only": true,
+          "never_promote_hermetic_shadow_as_vendor": true
+        }
       }
     },
     {
