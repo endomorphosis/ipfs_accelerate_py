@@ -222,6 +222,7 @@ DEFAULT_RESOURCE_CLASSES = PROOF_RESOURCE_CLASSES
 # because the host has a CPU.
 LOCAL_CPU_TOOLCHAIN_RESOURCE_CLASSES = frozenset(
     {
+        "exclusive-jvm-toolchain",
         "exclusive-opam-toolchain",
         "jvm-proof-solver",
         "large-kernel-toolchain",

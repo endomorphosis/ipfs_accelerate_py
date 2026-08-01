@@ -226,6 +226,7 @@ def test_cpu_extension_resource_classes_do_not_bypass_host_capabilities() -> Non
 @pytest.mark.parametrize(
     ("advertised_resource_class", "required_resource_class"),
     [
+        (ProofResourceClass.SOLVER.value, "exclusive-jvm-toolchain"),
         (ProofResourceClass.SOLVER.value, "jvm-proof-solver"),
         (ProofResourceClass.SOLVER.value, "exclusive-opam-toolchain"),
         (ProofResourceClass.KERNEL.value, "large-kernel-toolchain"),
@@ -271,18 +272,24 @@ def test_unrecognized_non_cpu_resource_classes_remain_fail_closed(
     assert "resource_class_mismatch" in decision.reasons
 
 
-def test_exclusive_planner_resource_classes_serialize_by_default() -> None:
+@pytest.mark.parametrize(
+    "resource_class",
+    ["exclusive-jvm-toolchain", "exclusive-opam-toolchain"],
+)
+def test_exclusive_planner_resource_classes_serialize_by_default(
+    resource_class: str,
+) -> None:
     scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
 
     snapshot = scheduler.schedule(
         (
             LaneResourceRequirements(
-                lane_id="opam-one",
-                resource_class="exclusive-opam-toolchain",
+                lane_id="toolchain-one",
+                resource_class=resource_class,
             ),
             LaneResourceRequirements(
-                lane_id="opam-two",
-                resource_class="exclusive-opam-toolchain",
+                lane_id="toolchain-two",
+                resource_class=resource_class,
             ),
         ),
         host=_host(
@@ -290,8 +297,8 @@ def test_exclusive_planner_resource_classes_serialize_by_default() -> None:
         ),
     )
 
-    first = snapshot.decision_for("opam-one")
-    second = snapshot.decision_for("opam-two")
+    first = snapshot.decision_for("toolchain-one")
+    second = snapshot.decision_for("toolchain-two")
     assert first is not None and first.admitted is True
     assert second is not None and second.admitted is False
     assert "resource_class_concurrency" in second.reasons
