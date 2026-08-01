@@ -7228,9 +7228,21 @@ class PortalImplementationDaemon:
 
     def _identity_for_task(self, task: PortalTask) -> TaskIdentity:
         metadata = dict(task.metadata)
-        if task.canonical_task_key:
+        normalized_metadata = {
+            str(key).strip().casefold().replace("_", " "): str(value or "").strip()
+            for key, value in metadata.items()
+        }
+        # parse_task_text has already bound a board-provided identity to any
+        # exact additional path authority.  Preserve that source pair here so
+        # repeated daemon lookups reproduce the parsed identity instead of
+        # recursively wrapping the derived identity in the same authority.
+        source_identity_complete = bool(
+            normalized_metadata.get("canonical task key")
+            and normalized_metadata.get("canonical task cid")
+        )
+        if task.canonical_task_key and not source_identity_complete:
             metadata["canonical task key"] = task.canonical_task_key
-        if task.canonical_task_cid:
+        if task.canonical_task_cid and not source_identity_complete:
             metadata["canonical task cid"] = task.canonical_task_cid
         return canonical_task_identity(
             {

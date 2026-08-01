@@ -122,6 +122,43 @@ def test_provided_task_identity_still_binds_path_authority() -> None:
     )
 
 
+def test_daemon_preserves_parsed_authority_bound_identity(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    todo_path.write_text(
+        """# Tasks
+
+## REF-001 Bind one exact additional edit path
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: supervisor
+- Outputs: src/release.py
+- Acceptance: The release task retains one stable authority-bound identity.
+- Allowed paths: docs/release-receipt.json
+- Canonical task key: task/v1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+- Canonical task CID: bafyprovidedidentity
+""",
+        encoding="utf-8",
+    )
+    [task] = parse_task_file(todo_path, task_header_prefix="## REF-")
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## REF-",
+    )
+
+    first = daemon._identity_for_task(task)
+    second = daemon._identity_for_task(task)
+
+    assert first.canonical_task_key == task.canonical_task_key
+    assert first.canonical_task_cid == task.canonical_task_cid
+    assert second == first
+
+
 def test_explicit_dedupe_key_migrates_legacy_aliases_idempotently() -> None:
     first = _task("REF-001")
     second = _task("OTHER-002")
