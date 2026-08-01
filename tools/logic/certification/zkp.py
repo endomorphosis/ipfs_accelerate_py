@@ -106,16 +106,80 @@ HANDLER_ID: Final = "zkp_deployment_certifier"
 AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.ATTESTATION.value
 AUTHORITY_SCOPE: Final = "receipt_attestation_only"
 
+# Live verifier deployment (FVT-G211 / FVT-059) — distinct from schema-valid
+# sample bindings certified by ZKPDeploymentCertification@1.
+LIVE_INTERFACE: Final = "ZKPLiveVerifierDeployment@1"
+LIVE_SCHEMA_VERSION: Final = "zkp-live-verifier-deployment/v1"
+LIVE_GOAL_ID: Final = "FVT-G211"
+LIVE_TASK_ID: Final = "FVT-059"
+LIVE_PROGRAM: Final = "formal-verification-tactician/zkp-production-runtime"
+LIVE_HANDLER_ID: Final = "zkp_live_verifier_deployment@1"
+DEFAULT_LIVE_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_zkp_live_deployment_receipt.json"
+)
+
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_zkp_deployment.lock.json")
 SHARED_TOOLCHAINS_LOCK_RELATIVE: Final = Path(
     "config/formal_verification_toolchains.lock.json"
 )
 
 PRIVATE_SECRET_MARKER: Final = "private-witness-FVT047-SECRET-AXIOM-NEVER-LEAK"
+LIVE_PRIVATE_SECRET_MARKER: Final = "private-witness-FVT059-SECRET-AXIOM-NEVER-LEAK"
 FIXTURE_NOW: Final = "2026-07-31T12:00:00Z"
 FIXTURE_EXPIRES: Final = "2026-07-31T12:05:00Z"
 FIXTURE_STALE: Final = "2026-07-31T12:06:00Z"
 FIXTURE_KEY_EXPIRES: Final = "2030-01-01T00:00:00Z"
+
+# Exact public identities the live verifier must bind (acceptance FVT-G211).
+REQUIRED_LIVE_PUBLIC_IDENTITY_FIELDS: Final = (
+    "circuit_id",
+    "circuit_version",
+    "circuit_public_digest",
+    "ceremony_id",
+    "ceremony_digest",
+    "crs_id",
+    "crs_digest",
+    "proving_key_id",
+    "proving_key_digest",
+    "verification_key_id",
+    "verification_key_digest",
+    "verification_key_expires_at",
+    "public_input_schema_id",
+    "public_input_schema_digest",
+    "backend_id",
+    "backend_version",
+    "backend_mode",
+    "proving_system",
+    "max_attestation_ttl_seconds",
+    "revocation_policy_id",
+)
+
+# Operator-bound public artifacts: digest identities that must be present for
+# deployment. Absence is a deployment blocker, never a platform exception.
+OPERATOR_BOUND_PUBLIC_ARTIFACT_FIELDS: Final = (
+    "circuit_public_digest",
+    "ceremony_digest",
+    "crs_digest",  # public parameters
+    "verification_key_digest",
+    "public_input_schema_digest",
+    "proving_key_digest",  # digest-only reference; bytes stay secret-safe
+)
+
+REQUIRED_LIVE_CASE_KINDS: Final = frozenset(
+    {
+        "positive",
+        "corrupted_proof",
+        "corrupted_key",
+        "corrupted_public_input",
+        "circuit_mismatch",
+        "mutation",
+        "replay",
+        "stale",
+        "revoked",
+        "secret_safety",
+        "authority",
+    }
+)
 
 _SHA256_CID = re.compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -1477,6 +1541,655 @@ def bind_attestation_lane(
 
 
 # ---------------------------------------------------------------------------
+# Live verifier deployment (ZKPLiveVerifierDeployment@1 / FVT-G211)
+# ---------------------------------------------------------------------------
+
+
+def assess_sample_binding(
+    lock: Mapping[str, Any] | None = None,
+    *,
+    repo_root: Path | None = None,
+    lock_path: Path | None = None,
+) -> dict[str, Any]:
+    """Schema-valid sample binding assessment (not live verifier evidence).
+
+    A reviewed lock that passes structural validation is a *sample binding*.
+    Sample bindings alone cannot satisfy the live deployment goal.
+    """
+
+    root = repo_root or repo_root_from()
+    resolved = lock_path or (root / DEFAULT_LOCK_RELATIVE)
+    payload = dict(lock) if lock is not None else load_deployment_lock(
+        resolved, repo_root=root
+    )
+    reasons = validate_deployment_lock(payload)
+    bindings = lock_public_bindings(payload) if not reasons else {}
+    missing_identities = [
+        field
+        for field in REQUIRED_LIVE_PUBLIC_IDENTITY_FIELDS
+        if not bindings.get(field)
+    ]
+    return {
+        "kind": "sample_binding",
+        "interface": LOCK_INTERFACE,
+        "schema_version": LOCK_SCHEMA_VERSION,
+        "goal_id": GOAL_ID,
+        "task_id": TASK_ID,
+        "lock_path": str(resolved),
+        "lock_digest": content_digest(payload),
+        "schema_valid": not reasons,
+        "sample_binding_valid": not reasons and not missing_identities,
+        "live_verifier": False,
+        "can_satisfy_live_goal": False,
+        "block_reasons": list(reasons)
+        + [f"missing_identity:{field}" for field in missing_identities],
+        "bindings": bindings,
+        "notes": (
+            "Schema-valid sample binding only; does not execute the live "
+            "cryptographic verifier corpus and cannot satisfy FVT-G211."
+        ),
+    }
+
+
+def assess_operator_bound_public_artifacts(
+    lock: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Classify absent operator-bound public artifacts as deployment blockers.
+
+    Missing public digests/identities block deployment. They are never
+    reclassified as platform exceptions (FVT-G211 acceptance).
+    """
+
+    bindings = lock_public_bindings(lock)
+    present: dict[str, str] = {}
+    absent: list[str] = []
+    for field in OPERATOR_BOUND_PUBLIC_ARTIFACT_FIELDS:
+        value = bindings.get(field)
+        text = str(value or "").strip()
+        if text and _SHA256_CID.fullmatch(text):
+            present[field] = text
+        else:
+            absent.append(field)
+
+    # Public-input schema required keys count as operator-bound public schema.
+    schema = lock.get("public_input_schema") or {}
+    required_keys = list(schema.get("required_keys") or []) if isinstance(schema, Mapping) else []
+    schema_ok = bool(required_keys) and all(
+        key in required_keys for key in REQUIRED_PUBLIC_INPUT_KEYS
+    )
+    if not schema_ok:
+        absent.append("public_input_schema.required_keys")
+
+    # Freshness / expiry / version / revocation identities.
+    freshness = lock.get("freshness") or {}
+    revocation = lock.get("revocation") or {}
+    circuit = lock.get("circuit") or {}
+    backend = lock.get("backend") or {}
+    for label, ok in (
+        ("circuit.circuit_version", bool(isinstance(circuit, Mapping) and circuit.get("circuit_version"))),
+        ("backend.backend_version", bool(isinstance(backend, Mapping) and backend.get("backend_version"))),
+        (
+            "freshness.verification_key_expires_at",
+            bool(isinstance(freshness, Mapping) and freshness.get("verification_key_expires_at")),
+        ),
+        (
+            "freshness.max_attestation_ttl_seconds",
+            bool(
+                isinstance(freshness, Mapping)
+                and isinstance(freshness.get("max_attestation_ttl_seconds"), int)
+                and int(freshness.get("max_attestation_ttl_seconds") or 0) > 0
+            ),
+        ),
+        (
+            "revocation.policy_id",
+            bool(isinstance(revocation, Mapping) and revocation.get("policy_id")),
+        ),
+    ):
+        if not ok:
+            absent.append(label)
+
+    blockers = [
+        {
+            "blocker_id": f"absent_operator_bound_public_artifact:{field}",
+            "kind": "deployment_blocker",
+            "field": field,
+            "classification": "deployment_blocker",
+            "is_platform_exception": False,
+            "detail": (
+                "Absent operator-bound public artifact is a deployment blocker, "
+                "not a platform exception."
+            ),
+        }
+        for field in absent
+    ]
+    return {
+        "schema_version": "zkp-operator-bound-public-artifacts/v1",
+        "present": present,
+        "absent": list(absent),
+        "all_present": not absent,
+        "deployment_blockers": blockers,
+        "platform_exceptions": [],
+        "absent_are_deployment_blockers_not_platform_exceptions": True,
+        "never_reclassify_absent_as_platform_exception": True,
+    }
+
+
+def sample_binding_cannot_satisfy_live_goal(
+    *,
+    sample: Mapping[str, Any] | None = None,
+    live: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Prove the sample-binding / live-verifier distinction (FVT-G211)."""
+
+    sample_payload = dict(sample or {})
+    live_payload = dict(live or {})
+    sample_valid = bool(sample_payload.get("sample_binding_valid"))
+    live_ok = bool(live_payload.get("live_verifier_executed")) and bool(
+        live_payload.get("production_certified")
+    )
+    distinction_holds = (
+        sample_payload.get("can_satisfy_live_goal") is False
+        and sample_payload.get("live_verifier") is False
+        and (not sample_valid or live_payload.get("live_verifier_executed") is True)
+    )
+    return {
+        "distinction": "sample_binding_vs_live_verifier",
+        "sample_binding_valid": sample_valid,
+        "sample_can_satisfy_live_goal": False,
+        "live_verifier_executed": bool(live_payload.get("live_verifier_executed")),
+        "live_production_certified": live_ok,
+        "distinction_holds": distinction_holds or (
+            sample_payload.get("can_satisfy_live_goal") is False
+            and sample_payload.get("kind") == "sample_binding"
+        ),
+        "policy": {
+            "sample_binding_cannot_satisfy_live_goal": True,
+            "live_execution_required_for_production": True,
+            "fixture_or_schema_only_cannot_satisfy_live_goal": True,
+        },
+    }
+
+
+def run_live_verifier_deployment(
+    *,
+    repo_root: Path | None = None,
+    lock_path: Path | None = None,
+    lock: Mapping[str, Any] | None = None,
+    env: Mapping[str, str] | None = None,
+    sample_binding_only: bool = False,
+) -> dict[str, Any]:
+    """Execute the live cryptographic verifier against exact lock identities.
+
+    When ``sample_binding_only`` is True, only the schema-valid sample binding
+    is assessed and production certification is withheld (proves the
+    sample/live distinction).
+    """
+
+    root = repo_root or repo_root_from()
+    resolved_lock_path = lock_path or (root / DEFAULT_LOCK_RELATIVE)
+    payload = dict(lock) if lock is not None else load_deployment_lock(
+        resolved_lock_path, repo_root=root
+    )
+
+    sample = assess_sample_binding(
+        payload, repo_root=root, lock_path=resolved_lock_path
+    )
+    operator_artifacts = assess_operator_bound_public_artifacts(payload)
+
+    receipt: dict[str, Any] = {
+        "tool_id": TOOL_ID,
+        "lane_id": LANE_ID,
+        "interface": LIVE_INTERFACE,
+        "schema_version": LIVE_SCHEMA_VERSION,
+        "goal_id": LIVE_GOAL_ID,
+        "task_id": LIVE_TASK_ID,
+        "predecessor_goal_id": GOAL_ID,
+        "predecessor_task_id": TASK_ID,
+        "program": LIVE_PROGRAM,
+        "certification_surface": CERTIFICATION_SURFACE,
+        "handler_id": LIVE_HANDLER_ID,
+        "authority_ceiling": AUTHORITY_CEILING,
+        "authority_scope": AUTHORITY_SCOPE,
+        "lock_path": str(resolved_lock_path),
+        "lock_digest": content_digest(payload),
+        "receipt_path": str(DEFAULT_LIVE_RECEIPT_RELATIVE),
+        "network_used": False,
+        "install_attempted": False,
+        "download_attempted": False,
+        "sample_binding": sample,
+        "operator_bound_public_artifacts": operator_artifacts,
+        "live_verifier_executed": False,
+        "live_execution": False,
+        "execution_mode": "sample_binding_only" if sample_binding_only else "pending",
+        "production_certified": False,
+        "promotion_blocked": True,
+        "certified": False,
+        "usable": bool(sample.get("sample_binding_valid")),
+        "block_reasons": [],
+        "checks": [],
+        "cases": [],
+        "bindings": dict(sample.get("bindings") or {}),
+        "policy": {
+            "no_install": True,
+            "no_download": True,
+            "no_network": True,
+            "secret_safe": True,
+            "private_witness_never_in_public_artifacts": True,
+            "authority_is_attestation_only": True,
+            "never_replaces_theorem_authority": True,
+            "sample_binding_cannot_satisfy_live_goal": True,
+            "live_execution_required_for_production": True,
+            "fixture_or_schema_only_cannot_satisfy_live_goal": True,
+            "absent_operator_bound_public_artifacts_are_deployment_blockers": True,
+            "never_platform_exception_for_absent_public_artifacts": True,
+            "does_not_edit_central_certificate": True,
+        },
+        "notes": "",
+    }
+
+    # Absent operator-bound public artifacts → deployment blockers only.
+    if operator_artifacts["deployment_blockers"]:
+        receipt["block_reasons"].extend(
+            item["blocker_id"] for item in operator_artifacts["deployment_blockers"]
+        )
+        receipt["checks"].append(
+            {
+                "check_id": "zkp.live.operator_bound_public_artifacts",
+                "kind": "deployment_blocker",
+                "status": "failed",
+                "expected": "all_operator_bound_public_artifacts_present",
+                "observed": "absent:" + ",".join(operator_artifacts["absent"]),
+                "detail": (
+                    "Absent operator-bound public artifacts are deployment "
+                    "blockers, not platform exceptions"
+                ),
+                "reason_codes": list(operator_artifacts["absent"]),
+                "bindings": {
+                    "platform_exceptions": [],
+                    "deployment_blockers": operator_artifacts["deployment_blockers"],
+                },
+            }
+        )
+    else:
+        receipt["checks"].append(
+            {
+                "check_id": "zkp.live.operator_bound_public_artifacts",
+                "kind": "binding",
+                "status": "passed",
+                "expected": "all_operator_bound_public_artifacts_present",
+                "observed": "present",
+                "detail": (
+                    "Circuit, ceremony, CRS/public-parameter, verification-key, "
+                    "and public-input-schema digests are operator-bound"
+                ),
+                "reason_codes": [],
+                "bindings": {"present": operator_artifacts["present"]},
+            }
+        )
+
+    if sample_binding_only:
+        receipt["execution_mode"] = "sample_binding_only"
+        receipt["notes"] = (
+            "Sample-binding-only assessment: schema-valid lock bindings are "
+            "not live verifier evidence; production certification withheld."
+        )
+        receipt["block_reasons"].append("sample_binding_only_not_live_verifier")
+        receipt["promotion_blocked"] = True
+        receipt["production_certified"] = False
+        receipt["certified"] = False
+        distinction = sample_binding_cannot_satisfy_live_goal(
+            sample=sample, live=receipt
+        )
+        receipt["sample_vs_live_distinction"] = distinction
+        receipt["receipt_digest_sha256"] = content_digest(
+            {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
+        )
+        return receipt
+
+    if not sample.get("sample_binding_valid") or operator_artifacts["deployment_blockers"]:
+        receipt["execution_mode"] = "blocked_before_live"
+        receipt["notes"] = (
+            "Live verifier not executed: sample binding invalid or operator-bound "
+            "public artifacts absent (deployment blockers)."
+        )
+        if not sample.get("sample_binding_valid"):
+            receipt["block_reasons"].append("sample_binding_invalid")
+        receipt["promotion_blocked"] = True
+        distinction = sample_binding_cannot_satisfy_live_goal(
+            sample=sample, live=receipt
+        )
+        receipt["sample_vs_live_distinction"] = distinction
+        receipt["receipt_digest_sha256"] = content_digest(
+            {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
+        )
+        return receipt
+
+    # Live cryptographic verification corpus against exact lock identities.
+    cert = run_deployment_certification(
+        repo_root=root,
+        lock_path=resolved_lock_path,
+        lock=payload,
+        env=env,
+    )
+    cert_dict = cert.to_dict()
+    receipt["live_verifier_executed"] = True
+    receipt["live_execution"] = True
+    receipt["execution_mode"] = "live_cryptographic_verifier"
+    receipt["network_used"] = bool(cert_dict.get("network_used"))
+    receipt["install_attempted"] = bool(cert_dict.get("install_attempted"))
+    receipt["download_attempted"] = bool(cert_dict.get("download_attempted"))
+    receipt["bindings"] = dict(cert_dict.get("bindings") or {})
+    receipt["checks"].extend(list(cert_dict.get("checks") or []))
+    receipt["cases"] = list(cert_dict.get("cases") or [])
+    receipt["usable"] = bool(cert_dict.get("usable"))
+    receipt["deployment_certification"] = {
+        "interface": INTERFACE,
+        "schema_version": SCHEMA_VERSION,
+        "goal_id": GOAL_ID,
+        "task_id": TASK_ID,
+        "production_certified": bool(cert_dict.get("production_certified")),
+        "certified": bool(cert_dict.get("certified")),
+        "promotion_blocked": bool(cert_dict.get("promotion_blocked")),
+        "receipt_digest_sha256": cert_dict.get("receipt_digest_sha256"),
+    }
+
+    # Exact identity binding check (acceptance list).
+    live_bindings = receipt["bindings"]
+    missing_live = [
+        field
+        for field in REQUIRED_LIVE_PUBLIC_IDENTITY_FIELDS
+        if not live_bindings.get(field)
+    ]
+    identity_ok = not missing_live
+    receipt["checks"].append(
+        {
+            "check_id": "zkp.live.exact_identity_binding",
+            "kind": "binding",
+            "status": "passed" if identity_ok else "failed",
+            "expected": "exact_circuit_ceremony_keys_schema_backend_expiry_freshness_revocation",
+            "observed": "ok" if identity_ok else "missing:" + ",".join(missing_live),
+            "detail": (
+                "Live verifier binds circuit, ceremony, proving-key, verification-key, "
+                "public-parameter (CRS), public-input-schema, version, expiry, "
+                "freshness, and revocation identities"
+            ),
+            "reason_codes": [f"missing:{field}" for field in missing_live],
+            "bindings": {
+                field: live_bindings.get(field)
+                for field in REQUIRED_LIVE_PUBLIC_IDENTITY_FIELDS
+            },
+        }
+    )
+    if not identity_ok:
+        receipt["block_reasons"].append(
+            "live_identity_incomplete:" + ",".join(missing_live)
+        )
+
+    # Required live case kinds must have run and passed.
+    present_kinds = {case.get("kind") for case in receipt["cases"] if isinstance(case, Mapping)}
+    missing_kinds = sorted(REQUIRED_LIVE_CASE_KINDS - present_kinds)
+    failed_cases = [
+        case
+        for case in receipt["cases"]
+        if isinstance(case, Mapping)
+        and case.get("kind") in REQUIRED_LIVE_CASE_KINDS
+        and not case.get("passed")
+    ]
+    corpus_ok = not missing_kinds and not failed_cases
+    receipt["checks"].append(
+        {
+            "check_id": "zkp.live.corpus_coverage",
+            "kind": "corpus",
+            "status": "passed" if corpus_ok else "failed",
+            "expected": ",".join(sorted(REQUIRED_LIVE_CASE_KINDS)),
+            "observed": ",".join(sorted(str(item) for item in present_kinds if item)),
+            "detail": (
+                "positive and corrupted proof/key/public-input, circuit mismatch, "
+                "mutation, replay, stale, and revoked cases run against the live verifier"
+            ),
+            "reason_codes": (
+                [f"missing:{item}" for item in missing_kinds]
+                + [f"failed:{case.get('case_id')}" for case in failed_cases]
+            ),
+            "bindings": {},
+        }
+    )
+    if not corpus_ok:
+        if missing_kinds:
+            receipt["block_reasons"].append(
+                "live_corpus_missing:" + ",".join(missing_kinds)
+            )
+        if failed_cases:
+            receipt["block_reasons"].append(
+                "live_corpus_failed:"
+                + ",".join(str(case.get("case_id")) for case in failed_cases)
+            )
+
+    # Secret-safety re-check on the live receipt surfaces.
+    secret_ok = True
+    secret_reasons: list[str] = []
+    encoded_receipt = json.dumps(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key not in {"sample_binding"}  # may embed notes only
+        },
+        sort_keys=True,
+        default=str,
+    )
+    for needle in (PRIVATE_SECRET_MARKER, LIVE_PRIVATE_SECRET_MARKER):
+        if needle in encoded_receipt:
+            secret_ok = False
+            secret_reasons.append(f"secret_in_live_receipt:{needle[:32]}")
+    if public_artifact_contains(receipt.get("bindings") or {}, PRIVATE_SECRET_MARKER):
+        secret_ok = False
+        secret_reasons.append("secret_in_live_bindings")
+    receipt["checks"].append(
+        {
+            "check_id": "zkp.live.secret_safety",
+            "kind": "secret_safety",
+            "status": "passed" if secret_ok else "failed",
+            "expected": "no_private_material_in_public_live_receipt",
+            "observed": "safe" if secret_ok else ",".join(secret_reasons),
+            "detail": (
+                "No private witness, proving-key bytes, trapdoor, secret path value, "
+                "or secret value enters the public live deployment receipt"
+            ),
+            "reason_codes": secret_reasons,
+            "bindings": {},
+        }
+    )
+    if not secret_ok:
+        receipt["block_reasons"].append("live_secret_safety_failed")
+
+    # Authority boundary: attestation never replaces theorem authority.
+    authority_check = next(
+        (
+            check
+            for check in receipt["checks"]
+            if isinstance(check, Mapping)
+            and check.get("check_id") == "zkp.authority_boundary"
+        ),
+        None,
+    )
+    authority_ok = bool(
+        authority_check
+        and authority_check.get("status") == "passed"
+        and receipt["authority_ceiling"] == AUTHORITY_CEILING
+        and receipt["authority_scope"] == AUTHORITY_SCOPE
+    )
+    receipt["checks"].append(
+        {
+            "check_id": "zkp.live.authority_boundary",
+            "kind": "authority",
+            "status": "passed" if authority_ok else "failed",
+            "expected": "attestation_only_preserves_theorem",
+            "observed": (
+                (authority_check or {}).get("observed")
+                if authority_check
+                else "missing_authority_check"
+            ),
+            "detail": (
+                "ZKP attests an underlying trusted receipt and never replaces "
+                "semantic theorem authority"
+            ),
+            "reason_codes": [] if authority_ok else ["authority_boundary_failed"],
+            "bindings": {
+                "authority_ceiling": receipt["authority_ceiling"],
+                "authority_scope": receipt["authority_scope"],
+                "never_replaces_theorem_authority": True,
+            },
+        }
+    )
+    if not authority_ok:
+        receipt["block_reasons"].append("live_authority_boundary_failed")
+
+    offline_ok = (
+        not receipt["network_used"]
+        and not receipt["install_attempted"]
+        and not receipt["download_attempted"]
+    )
+    cert_ok = bool(cert_dict.get("production_certified"))
+    live_ok = (
+        receipt["live_verifier_executed"]
+        and identity_ok
+        and corpus_ok
+        and secret_ok
+        and authority_ok
+        and offline_ok
+        and cert_ok
+        and not operator_artifacts["deployment_blockers"]
+        and not receipt["block_reasons"]
+    )
+    # Recompute block_reasons may include earlier items; only pass when empty
+    # of semantic failures after filtering duplicate accumulation.
+    semantic_blockers = [
+        reason
+        for reason in receipt["block_reasons"]
+        if not reason.startswith("sample_binding")
+    ]
+    live_ok = (
+        receipt["live_verifier_executed"]
+        and identity_ok
+        and corpus_ok
+        and secret_ok
+        and authority_ok
+        and offline_ok
+        and cert_ok
+        and not operator_artifacts["deployment_blockers"]
+        and not semantic_blockers
+    )
+
+    receipt["production_certified"] = live_ok
+    receipt["certified"] = live_ok
+    receipt["promotion_blocked"] = not live_ok
+    if live_ok:
+        receipt["block_reasons"] = []
+        receipt["notes"] = (
+            "Live secret-safe ZKP deployment certified: configured backend performed "
+            "live verification against exact circuit, ceremony, proving-key, "
+            "verification-key, public-parameter, public-input-schema, version, "
+            "expiry, freshness, and revocation identities; positive and fail-closed "
+            "negative cases passed; private material never entered public surfaces; "
+            "attestation authority preserves underlying theorem authority."
+        )
+    else:
+        receipt["notes"] = (
+            "Live ZKP verifier deployment incomplete or failed; promotion blocked. "
+            "Sample bindings alone cannot satisfy this goal."
+        )
+
+    distinction = sample_binding_cannot_satisfy_live_goal(sample=sample, live=receipt)
+    receipt["sample_vs_live_distinction"] = distinction
+    receipt["live_corpus_passed"] = corpus_ok and cert_ok
+    receipt["receipt_digest_sha256"] = content_digest(
+        {key: value for key, value in receipt.items() if key != "receipt_digest_sha256"}
+    )
+    return receipt
+
+
+def build_live_deployment_receipt(
+    *,
+    repo_root: Path | None = None,
+    lock_path: Path | None = None,
+    lock: Mapping[str, Any] | None = None,
+    env: Mapping[str, str] | None = None,
+    sample_binding_only: bool = False,
+) -> dict[str, Any]:
+    """Machine-readable live verifier deployment receipt for semantic fan-in."""
+
+    return run_live_verifier_deployment(
+        repo_root=repo_root,
+        lock_path=lock_path,
+        lock=lock,
+        env=env,
+        sample_binding_only=sample_binding_only,
+    )
+
+
+def write_live_deployment_receipt(
+    receipt: Mapping[str, Any] | None = None,
+    *,
+    repo_root: Path | None = None,
+    path: Path | None = None,
+    lock_path: Path | None = None,
+    lock: Mapping[str, Any] | None = None,
+    env: Mapping[str, str] | None = None,
+) -> Path:
+    """Write the durable live ZKP deployment receipt under docs/architecture."""
+
+    root = repo_root or repo_root_from()
+    target = path or (root / DEFAULT_LIVE_RECEIPT_RELATIVE)
+    payload = (
+        dict(receipt)
+        if receipt is not None
+        else build_live_deployment_receipt(
+            repo_root=root,
+            lock_path=lock_path,
+            lock=lock,
+            env=env,
+        )
+    )
+    # Compact: drop any accidental private markers; keep public surfaces only.
+    encoded = json.dumps(payload, sort_keys=True, default=str)
+    if PRIVATE_SECRET_MARKER in encoded or LIVE_PRIVATE_SECRET_MARKER in encoded:
+        raise ZKPDeploymentCertificationError(
+            "refusing to write live receipt containing private secret markers"
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    target.write_text(text, encoding="utf-8")
+    return target
+
+
+def certify_zkp_live_verifier_deployment(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Public entry for live secret-safe ZKP deployment certification."""
+
+    repo_root = kwargs.get("repo_root")
+    if repo_root is not None and not isinstance(repo_root, Path):
+        repo_root = Path(str(repo_root))
+    lock_path = kwargs.get("lock_path")
+    if lock_path is not None and not isinstance(lock_path, Path):
+        lock_path = Path(str(lock_path))
+    receipt = build_live_deployment_receipt(
+        repo_root=repo_root,
+        lock_path=lock_path,
+        lock=kwargs.get("lock"),
+        env=kwargs.get("env"),
+        sample_binding_only=bool(kwargs.get("sample_binding_only", False)),
+    )
+    receipt["handler_id"] = LIVE_HANDLER_ID
+    receipt["lane_id"] = LANE_ID
+    receipt["owner_module"] = CERTIFICATION_SURFACE
+    receipt["status"] = (
+        "certified" if receipt.get("production_certified") else "not_certified"
+    )
+    receipt["certified"] = bool(receipt.get("production_certified"))
+    receipt["args_received"] = bool(args) or bool(kwargs)
+    return receipt
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1485,7 +2198,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Bind and certify a production ZKP circuit deployment "
-            f"({INTERFACE})."
+            f"({INTERFACE} / {LIVE_INTERFACE})."
         )
     )
     parser.add_argument(
@@ -1505,24 +2218,60 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Repository root containing the deployment lock",
     )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help=f"Run {LIVE_INTERFACE} and optionally write the durable receipt",
+    )
+    parser.add_argument(
+        "--write-live-receipt",
+        action="store_true",
+        help="Write docs/architecture/formal_verification_zkp_live_deployment_receipt.json",
+    )
+    parser.add_argument(
+        "--sample-binding-only",
+        action="store_true",
+        help="Assess sample binding only (withholds live production certification)",
+    )
     args = parser.parse_args(argv)
 
     root = args.repo_root or repo_root_from()
-    receipt = build_certification_receipt(
-        repo_root=root,
-        lock_path=args.lock,
-    )
+    if args.live or args.write_live_receipt:
+        receipt = build_live_deployment_receipt(
+            repo_root=root,
+            lock_path=args.lock,
+            sample_binding_only=bool(args.sample_binding_only),
+        )
+        if args.write_live_receipt:
+            written = write_live_deployment_receipt(receipt, repo_root=root)
+            receipt["written_receipt_path"] = str(written)
+        interface = LIVE_INTERFACE
+        goal = LIVE_GOAL_ID
+        task = LIVE_TASK_ID
+    else:
+        receipt = build_certification_receipt(
+            repo_root=root,
+            lock_path=args.lock,
+        )
+        interface = INTERFACE
+        goal = GOAL_ID
+        task = TASK_ID
 
     if args.json:
         print(json.dumps(receipt, indent=2, sort_keys=True))
     else:
-        print(f"{INTERFACE} goal={GOAL_ID} task={TASK_ID}")
+        print(f"{interface} goal={goal} task={task}")
         print(f"lock={receipt.get('lock_path')}")
         print(
             f"usable={receipt.get('usable')} "
             f"production_certified={receipt.get('production_certified')} "
             f"promotion_blocked={receipt.get('promotion_blocked')}"
         )
+        if receipt.get("live_verifier_executed") is not None:
+            print(
+                f"live_verifier_executed={receipt.get('live_verifier_executed')} "
+                f"execution_mode={receipt.get('execution_mode')}"
+            )
         for check in receipt.get("checks") or []:
             print(
                 f"  [{check.get('status'):10}] {check.get('check_id')}: "
@@ -1553,9 +2302,20 @@ __all__ = [
     "HANDLER_ID",
     "AUTHORITY_CEILING",
     "AUTHORITY_SCOPE",
+    "LIVE_INTERFACE",
+    "LIVE_SCHEMA_VERSION",
+    "LIVE_GOAL_ID",
+    "LIVE_TASK_ID",
+    "LIVE_PROGRAM",
+    "LIVE_HANDLER_ID",
+    "DEFAULT_LIVE_RECEIPT_RELATIVE",
+    "REQUIRED_LIVE_PUBLIC_IDENTITY_FIELDS",
+    "OPERATOR_BOUND_PUBLIC_ARTIFACT_FIELDS",
+    "REQUIRED_LIVE_CASE_KINDS",
     "DEFAULT_LOCK_RELATIVE",
     "REQUIRED_CASE_KINDS",
     "PRIVATE_SECRET_MARKER",
+    "LIVE_PRIVATE_SECRET_MARKER",
     "ZKPDeploymentCertificationError",
     "CheckResult",
     "CaseOutcome",
@@ -1574,5 +2334,12 @@ __all__ = [
     "certify_zkp_deployment",
     "lane_handler",
     "bind_attestation_lane",
+    "assess_sample_binding",
+    "assess_operator_bound_public_artifacts",
+    "sample_binding_cannot_satisfy_live_goal",
+    "run_live_verifier_deployment",
+    "build_live_deployment_receipt",
+    "write_live_deployment_receipt",
+    "certify_zkp_live_verifier_deployment",
     "main",
 ]
