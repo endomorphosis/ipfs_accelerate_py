@@ -6,11 +6,11 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-01T09:39:14Z",
+  "observed_at": "2026-08-01T00:00:00Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "c3b9f9176a5007181f5c74e29b1f5c11db9e7478",
-    "parent_tree": "2409d7a57e487a4fa6b88b69e87a565e6fa31ba1",
+    "parent_commit": "af0de7ebee343b74c596f56d8b48d0de58e6b641",
+    "parent_tree": "8a076ceee5688d3744d4dd941494a60f62e0f94f",
     "datasets_gitlink": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
     "datasets_embedded_head": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
     "datasets_origin_main": "7415adc5100192ee35676778f1018f6b072378f9",
@@ -18,11 +18,11 @@
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
-    "implementation_complete": false,
+    "implementation_complete": true,
     "deployment_section_present": true,
     "implementation_section_present": true,
     "child_goal_count": 67,
-    "child_goals_bound": 66,
+    "child_goals_bound": 67,
     "schemas_corpus_public_ops_metrics_rollout_bound": true,
     "parent_datasets_publication_bound": true,
     "exact_tools_bound": true,
@@ -163,13 +163,11 @@
     }
   },
   "implementation": {
-    "status": "incomplete",
+    "status": "complete",
     "description": "Current-tree implementation completion: child goal evidence, schemas/contracts, golden corpus, public operations, metrics, and rollout policy are bound by content identity. Implementation is not deployment certification.",
     "child_goal_count": 67,
-    "child_goals_bound": 66,
-    "child_goals_unbound": [
-      "FVT-G213"
-    ],
+    "child_goals_bound": 67,
+    "child_goals_unbound": [],
     "schemas_bound": true,
     "schema_surfaces": [
       "readiness_baseline",
@@ -207,10 +205,10 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "c3b9f9176a5007181f5c74e29b1f5c11db9e7478",
-        "tree": "2409d7a57e487a4fa6b88b69e87a565e6fa31ba1",
+        "commit": "af0de7ebee343b74c596f56d8b48d0de58e6b641",
+        "tree": "8a076ceee5688d3744d4dd941494a60f62e0f94f",
         "origin_main": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
-        "clean": true,
+        "clean": false,
         "matches_origin_main": false
       },
       "gitlink": {
@@ -232,8 +230,9 @@
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
       },
-      "aligned_for_implementation": true,
+      "aligned_for_implementation": false,
       "diagnostics": [
+        "parent_working_tree_dirty",
         "datasets_publication_lag_vs_origin_main",
         "parent_publication_lag_vs_origin_main"
       ]
@@ -3620,23 +3619,21 @@
       "evidence_present": [
         "test/integration/test_formal_verification_role_aware_release_candidate.py",
         "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
-        "docs/architecture/formal_verification_role_aware_release_candidate.json"
-      ],
-      "evidence_missing": [
+        "docs/architecture/formal_verification_role_aware_release_candidate.json",
         "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "tools/logic/certify_formal_verification_toolchains.py",
         "tools/logic/build_formal_verification_tactician_receipt.py",
         "test/integration/test_formal_verification_role_aware_release_candidate.py",
         "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
         "docs/architecture/formal_verification_role_aware_release_candidate.json",
+        "docs/architecture/formal_verification_production_elevation_fanin_receipt.json",
         "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
       ],
-      "outputs_missing": [
-        "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
-      ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G214",
@@ -3814,5 +3811,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:a9b43dbd5556551899a0796bf51467ea2342186b6bfbf01e24c88bde7ae98315"
+  "receipt_identity": "sha256:02428ad3223759aa8f15b4ed8f19747349193e88b5f05d31e349f18587836065"
 }

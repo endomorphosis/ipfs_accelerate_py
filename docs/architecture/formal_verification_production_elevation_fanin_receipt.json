@@ -6,7 +6,7 @@
   "goal_id": "FVT-G213",
   "task_id": "FVT-081",
   "program": "formal-verification-tactician/toolchain-release-candidate",
-  "observed_at": "2026-08-01T09:39:14Z",
+  "observed_at": "2026-08-01T00:00:00Z",
   "description": "Fail-closed production-semantic elevation fan-in. Each required tool is independently reconstructed from its canonical PNMR receipt and exact compact binding before production elevation.",
   "policy": {
     "required_check_kinds": [
@@ -39,18 +39,16 @@
       "tool_id": "lean",
       "lane_id": "kernel",
       "interface": "LeanSemanticCertification@1",
-      "evidence_class": "usable_pending_kernel_live_fanin",
+      "evidence_class": "unavailable",
       "production_elevation_allowed": false,
       "lane_status": "ran",
-      "lane_digest_sha256": "417bc7cd0b10b347b58d37dff85f2f19faf48ffea45a041fe657ceca4e602b5c",
-      "compact_tool_certified": true,
+      "lane_digest_sha256": "030e11b73ddfad286a79a86f95c91693e87d53d7518ab4e5d2f14e5320d1d723",
+      "compact_tool_certified": false,
       "independent_reconstruction": {
-        "valid": true,
+        "valid": false,
         "recompute_valid": true,
         "recompute_failure": null,
         "check_kinds_present": [
-          "binding",
-          "fail_closed",
           "identity",
           "mutation",
           "negative",
@@ -65,19 +63,24 @@
           "replay"
         ],
         "required_kinds_present": true,
-        "required_kinds_all_passed": true,
-        "required_kinds_failed": [],
+        "required_kinds_all_passed": false,
+        "required_kinds_failed": [
+          "mutation",
+          "negative",
+          "positive",
+          "replay"
+        ],
         "required_kinds_missing": [],
-        "check_set_digest_sha256": "1898943e560a5a14cd505b24533c05619904f6cd22a6a27e0183da1caa755aea",
-        "compact_check_set_digest_sha256": "1898943e560a5a14cd505b24533c05619904f6cd22a6a27e0183da1caa755aea",
+        "check_set_digest_sha256": "7aa1173cc53f02d5a64070ca24de113de73bce2979a30cb832e36cc39c8c714b",
+        "compact_check_set_digest_sha256": "7aa1173cc53f02d5a64070ca24de113de73bce2979a30cb832e36cc39c8c714b",
         "compact_binding_valid": true,
-        "checks_total": 14,
-        "checks_passed": 14,
+        "checks_total": 6,
+        "checks_passed": 1,
         "check_status_counts": {
-          "passed": 14,
-          "failed": 0,
+          "passed": 1,
+          "failed": 4,
           "skipped": 0,
-          "unavailable": 0
+          "unavailable": 1
         },
         "raw_checks_embedded": false
       },
@@ -94,18 +97,20 @@
       "eligible_for_production_elevation": false,
       "required_elevation_audit_present": false,
       "block_reasons": [
-        "production_elevation_not_allowed_by_evidence_class"
+        "independent_pnmr_reconstruction_incomplete",
+        "production_elevation_not_allowed_by_evidence_class",
+        "semantic_tool_not_certified"
       ]
     },
     "runtime-mtl": {
       "tool_id": "runtime-mtl",
       "lane_id": "runtime_mtl",
       "interface": "RuntimeMTLSemanticCertification@1",
-      "evidence_class": "usable_pending_external_runtime_mtl",
+      "evidence_class": "live",
       "production_elevation_allowed": false,
       "lane_status": "ran",
-      "lane_digest_sha256": "a1718f9c8895f0160c10082f1cfd5e28216f4f68e967a85d2cf86b16b1827eba",
-      "compact_tool_certified": true,
+      "lane_digest_sha256": "29e9e2c0ea5df1c66091b183ee3f7db83dd2afbdf7125b41ba5d6fe3d627c6bb",
+      "compact_tool_certified": false,
       "independent_reconstruction": {
         "valid": true,
         "recompute_valid": true,
@@ -129,15 +134,15 @@
         "required_kinds_all_passed": true,
         "required_kinds_failed": [],
         "required_kinds_missing": [],
-        "check_set_digest_sha256": "d0d3e74a078116cda28017fd3c81fb128cf2299fecf54fb119d09e4f376cdc6a",
-        "compact_check_set_digest_sha256": "d0d3e74a078116cda28017fd3c81fb128cf2299fecf54fb119d09e4f376cdc6a",
+        "check_set_digest_sha256": "6c00020e8ac1db8462a0e210468a71b774e49764dfbdfbfd00c6bc27ef3ded5a",
+        "compact_check_set_digest_sha256": "6c00020e8ac1db8462a0e210468a71b774e49764dfbdfbfd00c6bc27ef3ded5a",
         "compact_binding_valid": true,
         "checks_total": 12,
-        "checks_passed": 12,
+        "checks_passed": 11,
         "check_status_counts": {
-          "passed": 12,
+          "passed": 11,
           "failed": 0,
-          "skipped": 0,
+          "skipped": 1,
           "unavailable": 0
         },
         "raw_checks_embedded": false
@@ -155,7 +160,8 @@
       "eligible_for_production_elevation": false,
       "required_elevation_audit_present": false,
       "block_reasons": [
-        "production_elevation_not_allowed_by_evidence_class"
+        "production_elevation_not_allowed_by_evidence_class",
+        "semantic_tool_not_certified"
       ]
     },
     "datalog-authorization": {
@@ -285,8 +291,8 @@
       "evidence_class": "external_prover_installation_pending",
       "production_elevation_allowed": false,
       "lane_status": "ran",
-      "lane_digest_sha256": "d5ed225b1bf42049f207ad6de1d2b3158465b75935e40b39c4413f9001ed22d7",
-      "compact_tool_certified": true,
+      "lane_digest_sha256": "742b2ca0fe6fc94f6d97a90b7a6a517009887960ca0995dfa863ab14811bd8e9",
+      "compact_tool_certified": false,
       "independent_reconstruction": {
         "valid": true,
         "recompute_valid": true,
@@ -313,16 +319,16 @@
         "required_kinds_all_passed": true,
         "required_kinds_failed": [],
         "required_kinds_missing": [],
-        "check_set_digest_sha256": "e674c75ffd96a096fad424fb5d91b11b49136bc5c79b9ade4927063b6500342b",
-        "compact_check_set_digest_sha256": "e674c75ffd96a096fad424fb5d91b11b49136bc5c79b9ade4927063b6500342b",
+        "check_set_digest_sha256": "f9a1d78bc06f630684612646f6a8e37df5e690ef9a6583e94c8c2102b1de5601",
+        "compact_check_set_digest_sha256": "f9a1d78bc06f630684612646f6a8e37df5e690ef9a6583e94c8c2102b1de5601",
         "compact_binding_valid": true,
         "checks_total": 16,
-        "checks_passed": 16,
+        "checks_passed": 15,
         "check_status_counts": {
-          "passed": 16,
+          "passed": 15,
           "failed": 0,
           "skipped": 0,
-          "unavailable": 0
+          "unavailable": 1
         },
         "raw_checks_embedded": false
       },
@@ -339,7 +345,8 @@
       "eligible_for_production_elevation": false,
       "required_elevation_audit_present": false,
       "block_reasons": [
-        "production_elevation_not_allowed_by_evidence_class"
+        "production_elevation_not_allowed_by_evidence_class",
+        "semantic_tool_not_certified"
       ]
     },
     "isabelle": {
@@ -349,8 +356,8 @@
       "evidence_class": "external_prover_installation_pending",
       "production_elevation_allowed": false,
       "lane_status": "ran",
-      "lane_digest_sha256": "bbb19d529311cd0652eddf89635b3a67197937bd1fb6e2cb8a4621f4b1181555",
-      "compact_tool_certified": true,
+      "lane_digest_sha256": "ac5aace2fc0ce8bb957dcfa19f5d9aa7c2dd09255e76757c84d56c9e8889b9e5",
+      "compact_tool_certified": false,
       "independent_reconstruction": {
         "valid": true,
         "recompute_valid": true,
@@ -379,16 +386,16 @@
         "required_kinds_all_passed": true,
         "required_kinds_failed": [],
         "required_kinds_missing": [],
-        "check_set_digest_sha256": "6572bf98613480bf7cd7760137f51aa78f3ee362ae01143c6a585f7fe8bbba15",
-        "compact_check_set_digest_sha256": "6572bf98613480bf7cd7760137f51aa78f3ee362ae01143c6a585f7fe8bbba15",
+        "check_set_digest_sha256": "262419e9c8547f23cf45e809724cc244041e1bc9eb83587ff65402cc474d06ac",
+        "compact_check_set_digest_sha256": "262419e9c8547f23cf45e809724cc244041e1bc9eb83587ff65402cc474d06ac",
         "compact_binding_valid": true,
         "checks_total": 16,
-        "checks_passed": 16,
+        "checks_passed": 15,
         "check_status_counts": {
-          "passed": 16,
+          "passed": 15,
           "failed": 0,
           "skipped": 0,
-          "unavailable": 0
+          "unavailable": 1
         },
         "raw_checks_embedded": false
       },
@@ -405,15 +412,16 @@
       "eligible_for_production_elevation": false,
       "required_elevation_audit_present": false,
       "block_reasons": [
-        "production_elevation_not_allowed_by_evidence_class"
+        "production_elevation_not_allowed_by_evidence_class",
+        "semantic_tool_not_certified"
       ]
     }
   },
   "certificate_identity": {
     "valid": true,
     "digest_valid": true,
-    "stored_digest_sha256": "32c62c6e338ae781073fa4ff54f7a482f063dc2f6ba7104e71573e8bfbc60826",
-    "computed_digest_sha256": "32c62c6e338ae781073fa4ff54f7a482f063dc2f6ba7104e71573e8bfbc60826",
+    "stored_digest_sha256": "8c92799b1c15f6bbbb4418937b8c33b737a9ffc9834953ad973d222277e9a7f5",
+    "computed_digest_sha256": "8c92799b1c15f6bbbb4418937b8c33b737a9ffc9834953ad973d222277e9a7f5",
     "interface_valid": true,
     "role_aware_identity_valid": true,
     "public_evidence_valid": true,
@@ -469,15 +477,16 @@
   "summary": {
     "required_count": 6,
     "independent_reconstruction_complete": [
-      "lean",
       "runtime-mtl",
       "datalog-authorization",
       "secpal-authorization",
       "coq",
       "isabelle"
     ],
-    "independent_reconstruction_incomplete": [],
-    "all_required_reconstructions_valid": true,
+    "independent_reconstruction_incomplete": [
+      "lean"
+    ],
+    "all_required_reconstructions_valid": false,
     "production_elevation_present": [],
     "production_elevation_missing": [
       "lean",
@@ -512,13 +521,11 @@
       "coq",
       "isabelle"
     ],
-    "expected_global_production_certified_tool_ids": [
-      "z3"
-    ],
+    "expected_global_production_certified_tool_ids": [],
     "failures": []
   },
   "role_aware_certificate": {
-    "digest_sha256": "32c62c6e338ae781073fa4ff54f7a482f063dc2f6ba7104e71573e8bfbc60826",
+    "digest_sha256": "8c92799b1c15f6bbbb4418937b8c33b737a9ffc9834953ad973d222277e9a7f5",
     "interface": "FormalVerificationToolchainCertificate@1",
     "projection_model": "digest_bound_compact_projection/v1",
     "raw_certificate_embedded": false
@@ -527,7 +534,7 @@
     "role_aware_certificate_identity_bound": true,
     "required_tools_population_exact": true,
     "each_required_tool_has_independent_reconstruction_surface": true,
-    "all_required_reconstructions_valid": true,
+    "all_required_reconstructions_valid": false,
     "production_elevation_requires_independent_pnmr": true,
     "no_elevation_without_reconstruction": true,
     "production_elevation_allowed_respected": true,
@@ -569,5 +576,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_digest_sha256": "sha256:2b03ad0c8bf43b355b9c7ffe179006cd520f8c6e68c4bfa8f5f5c7f3b79982f1"
+  "receipt_digest_sha256": "sha256:89020d3d74f1ecd3abec54e3028710fac7c5155635aa0547add5256648355b13"
 }
