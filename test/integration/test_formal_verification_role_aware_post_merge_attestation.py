@@ -297,14 +297,33 @@ def test_release_candidate_digest_is_bound(
     assert bound["goal_id"] == RELEASE_CANDIDATE_GOAL_ID
     assert bound["task_id"] == RELEASE_CANDIDATE_TASK_ID
     assert bound["checked_identity_valid"] is True
-    assert bound["bound"] is True
+    # FVT-081 reissued the immutable candidate without rewriting the older
+    # full toolchain certificate owned by FVT-083.  The finalizer must publish
+    # that external-anchor drift as an honest partial result; a self-consistent
+    # candidate is not sufficient authority to weaken any certificate, source,
+    # or lock binding.
+    assert bound["bound"] is False
     digest_binding = bound["digest_material_verification"]
-    assert digest_binding["valid"] is True
-    assert digest_binding["failures"] == []
+    assert digest_binding["valid"] is False
+    assert set(digest_binding["failures"]) == {
+        "certificate_digest_matches_bound_certificate",
+        "lock_digest_matches_live_certificate",
+        "specialized_projection_matches_live_certificate",
+        "specialized_source_binding_matches_live_certificate",
+    }
     assert str(digest_binding["digest_material_identity"]).startswith("sha256:")
-    assert attestation["acceptance"]["release_candidate_bound"] is True
+    assert bound["block_reasons"] == [
+        "release_candidate_digest_material_invalid"
+    ]
+    assert attestation["acceptance"]["release_candidate_bound"] is False
     assert attestation["acceptance"]["candidate_digest_bound"] is True
-    assert attestation["acceptance"]["candidate_digest_material_bound"] is True
+    assert (
+        attestation["acceptance"]["candidate_digest_material_bound"]
+        is False
+    )
+    assert "release_candidate_digest_material_invalid" in (
+        attestation["deployment_blockers"]
+    )
     assert bound["checked_candidate_identity"] == stored
 
 
@@ -383,6 +402,14 @@ def test_rehashed_specialized_handler_composite_and_source_maps_fail_closed(
     ]
     material["specialized_projection_handler_digests"][handler_key] = (
         handler["tool_evidence_digest_sha256"]
+    )
+    # A coherent forgery also updates the candidate-embedded audit digest.
+    # This embedded value is not independent authority; the separately loaded
+    # certificate/source projection must still reject the mutation.
+    forged_handler_candidate["role_aware_certificate"][
+        "specialized_receipt_aggregation"
+    ]["verification"]["projection_aggregation_digest_sha256"] = (
+        specialized["aggregation_digest_sha256"]
     )
     handler_verification = (
         finalizer.verify_release_candidate_digest_material(
