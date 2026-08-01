@@ -148,7 +148,7 @@ or write authority.
 
 ## KITA-004 Establish install, cold-import, workload, TPS, and resource baselines
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
