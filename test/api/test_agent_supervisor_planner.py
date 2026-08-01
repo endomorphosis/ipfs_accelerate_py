@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     BundleLaneSpec,
     DynamicBundleScheduler,
     _execution_slice_implementation_max_timeout,
+    build_arg_parser as build_bundle_supervisor_arg_parser,
     launch_bundle_lanes,
     plan_bundle_lanes,
 )
@@ -437,6 +438,261 @@ def test_dynamic_scheduler_propagates_runtime_bundle_exclusions(
 
     assert scheduler._plan() == []
     assert observed_exclusions == ("bundle/runtime-excluded",)
+
+
+def test_bundle_lane_planner_fences_one_ready_member_without_rewriting_shared_input(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "index.json"
+    source_board = tmp_path / "shared.todo.md"
+    index_path.write_text("{}", encoding="utf-8")
+    source_board.write_text(
+        "## FVT-053 protected retry\n\n- Status: todo\n\n"
+        "## FVT-083 release reissue\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    original_bytes = source_board.read_bytes()
+    source_profile = {
+        "goal_cid": "cid-goal",
+        "subgoal_cid": "cid-subgoal",
+        "plan_branch_cid": "cid-plan",
+        "selection_cid": "cid-selection",
+        "task_cid": "cid-original-bundle",
+        "task_spec_cid": "cid-original-task-spec",
+    }
+    tasks = [
+        {
+            "task_id": "FVT-053",
+            "canonical_task_cid": "cid-fvt-053",
+            "canonical_task_key": "task/v1/fvt-053",
+            "status": "todo",
+        },
+        {
+            "task_id": "FVT-083",
+            "canonical_task_cid": "cid-fvt-083",
+            "canonical_task_key": "task/v1/fvt-083",
+            "status": "todo",
+        },
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: [
+            {
+                "bundle_key": "formal-verification-tactician/toolchain-release",
+                "todo_path": source_board.name,
+                "source_todo": "docs/formal-verification.todo.md",
+                "tasks": tasks,
+                "execution_slice_task_ids": ["FVT-053", "FVT-083"],
+                "execution_slice_task_cids": ["cid-fvt-053", "cid-fvt-083"],
+                "is_schedulable": True,
+                "review_only": False,
+                "claimable": True,
+                "profile_g": source_profile,
+            }
+        ],
+    )
+
+    [lane] = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        excluded_task_ids=(" FVT-053 ", "FVT-053"),
+        optimize_bundles=False,
+    )
+
+    assert lane.task_ids == ["FVT-083"]
+    assert lane.expected_task_cids_by_id == {"FVT-083": "cid-fvt-083"}
+    assert lane.queue_payload["execution_slice_task_ids"] == ["FVT-083"]
+    assert lane.queue_payload["execution_slice_task_cids"] == ["cid-fvt-083"]
+    assert lane.queue_payload["runtime_excluded_task_ids"] == ["FVT-053"]
+    assert [task["task_id"] for task in lane.queue_payload["tasks"]] == [
+        "FVT-053",
+        "FVT-083",
+    ]
+    assert lane.queue_payload["source_profile_g_ref"]["task_cid"] == (
+        "cid-original-bundle"
+    )
+    assert "profile_g" not in lane.queue_payload
+    assert lane.task_cid == ""
+    assert lane.command.count("--execution-slice-task-id") == 1
+    task_flag = lane.command.index("--execution-slice-task-id")
+    assert lane.command[task_flag + 1] == "FVT-083"
+    assert "FVT-053" not in lane.command
+    assert source_board.read_bytes() == original_bytes
+    assert not (tmp_path / "state").exists()
+
+
+def test_bundle_lane_planner_omits_fully_excluded_slice_before_retry_registration(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / "index.json"
+    index_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: [
+            {
+                "bundle_key": "bundle/protected-final-attempt",
+                "todo_path": "protected.todo.md",
+                "tasks": [
+                    {
+                        "task_id": "FVT-053",
+                        "canonical_task_cid": "cid-fvt-053",
+                    }
+                ],
+                "execution_slice_task_ids": ["FVT-053"],
+                "execution_slice_task_cids": ["cid-fvt-053"],
+                "is_schedulable": True,
+                "review_only": False,
+                "claimable": True,
+            }
+        ],
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        excluded_task_ids=("FVT-053",),
+        optimize_bundles=False,
+    )
+
+    assert lanes == []
+    assert not (tmp_path / "state").exists()
+
+
+def test_checked_in_formal_verification_index_fences_fvt_053_from_fvt_083_retry(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    index_path = (
+        repo_root
+        / "data"
+        / "agent_supervisor"
+        / "formal_verification_tactician_readiness"
+        / "bundles"
+        / "index.json"
+    )
+    query_path = index_path.with_suffix(".duckdb")
+    source_board = index_path.parent / (
+        "formal-verification-tactician-toolchain-release.todo.md"
+    )
+    immutable_digests = {
+        path: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in (index_path, query_path, source_board)
+    }
+
+    initial_payloads = build_bundle_task_payloads(index_path, max_attempts=4)
+    completion_receipts = {
+        str(task["canonical_task_cid"]): {
+            "status": "succeeded",
+            "receipt_cid": f"test-receipt:{task['task_id']}",
+        }
+        for payload in initial_payloads
+        for task in payload.get("tasks", [])
+        if isinstance(task, dict)
+        and task.get("task_id") not in {"FVT-053", "FVT-083"}
+        and task.get("canonical_task_cid")
+    }
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo_root,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        max_task_attempts=4,
+        completion_receipts=completion_receipts,
+        excluded_task_ids=("FVT-053",),
+    )
+    [lane] = [
+        item
+        for item in lanes
+        if item.bundle_key
+        == "formal-verification-tactician/toolchain-release"
+    ]
+    tasks_by_id = {
+        str(task.get("task_id") or ""): task
+        for task in lane.queue_payload["tasks"]
+    }
+
+    assert lane.task_ids == ["FVT-083"]
+    assert lane.queue_payload["execution_slice_task_ids"] == ["FVT-083"]
+    assert lane.queue_payload["execution_slice_task_cids"] == [
+        tasks_by_id["FVT-083"]["canonical_task_cid"]
+    ]
+    assert lane.expected_task_cids_by_id == {
+        "FVT-083": tasks_by_id["FVT-083"]["canonical_task_cid"]
+    }
+    assert lane.queue_payload["runtime_excluded_task_ids"] == ["FVT-053"]
+    assert {"FVT-053", "FVT-083"}.issubset(tasks_by_id)
+    assert "FVT-053" not in lane.command
+
+    with LeaseCoordinator(tmp_path / "coordination.duckdb") as coordinator:
+        registered = coordinator.register_bundle(lane.queue_payload)
+        with pytest.raises(KeyError, match="unknown task CID"):
+            coordinator.claim(
+                tasks_by_id["FVT-053"]["canonical_task_cid"],
+                "did:web:test.invalid",
+            )
+        grant = coordinator.claim(
+            tasks_by_id["FVT-083"]["canonical_task_cid"],
+            "did:web:test.invalid",
+        )
+        assert grant.task_cid == registered["canonical_task_cid"]
+        assert grant.attempt == 1
+
+    assert {
+        path: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in immutable_digests
+    } == immutable_digests
+
+
+def test_dynamic_scheduler_and_cli_propagate_repeatable_task_exclusions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    args = build_bundle_supervisor_arg_parser().parse_args(
+        [
+            "--bundle-index-path",
+            "index.json",
+            "--exclude-task-id",
+            "FVT-053",
+            "--exclude-task-id",
+            "FVT-054",
+        ]
+    )
+    assert args.exclude_task_id == ["FVT-053", "FVT-054"]
+
+    index_path = tmp_path / "index.json"
+    index_path.write_text("{}", encoding="utf-8")
+    observed_exclusions: tuple[str, ...] | None = None
+
+    def fake_plan_bundle_lanes(**kwargs):
+        nonlocal observed_exclusions
+        observed_exclusions = tuple(kwargs.get("excluded_task_ids") or ())
+        return []
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.plan_bundle_lanes",
+        fake_plan_bundle_lanes,
+    )
+    scheduler = DynamicBundleScheduler(
+        bundle_index_path=index_path,
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        excluded_task_ids=("FVT-053", "FVT-054"),
+    )
+
+    assert scheduler._plan() == []
+    assert observed_exclusions == ("FVT-053", "FVT-054")
 
 
 def test_bundle_lane_planner_preserves_task_specific_implementation_timeout(

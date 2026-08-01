@@ -1948,6 +1948,106 @@ def _execution_slice_members(
     ]
 
 
+def _apply_runtime_task_exclusions(
+    payloads: Sequence[dict[str, Any]],
+    *,
+    excluded_task_ids: Sequence[str],
+) -> list[dict[str, Any]]:
+    """Fence selected ready members without changing reviewed bundle inputs.
+
+    Task exclusions are an operator control for one supervisor run, not a task
+    completion signal.  Keep every source member and work contract attached as
+    dependency/provenance evidence, but narrow the authorized execution slice.
+    A bundle whose entire ready slice is excluded is omitted instead of being
+    registered with coordination, so the fenced work cannot consume a retry.
+
+    Embedded Profile-G artifacts bind the original execution slice.  Detach
+    that aggregate identity whenever the slice changes and retain a compact
+    provenance reference; registration will derive a fresh slice identity from
+    the remaining canonical member identities.
+    """
+
+    excluded = {
+        str(task_id).strip()
+        for task_id in excluded_task_ids
+        if str(task_id).strip()
+    }
+    if not excluded:
+        return list(payloads)
+
+    projected_payloads: list[dict[str, Any]] = []
+    for original in payloads:
+        payload = dict(original)
+        execution_tasks = _execution_slice_members(
+            payload,
+            _mapping_list(payload.get("tasks")),
+        )
+        excluded_members = [
+            task
+            for task in execution_tasks
+            if str(task.get("task_id") or "").strip() in excluded
+        ]
+        if not excluded_members:
+            projected_payloads.append(payload)
+            continue
+
+        retained_members = [
+            task
+            for task in execution_tasks
+            if str(task.get("task_id") or "").strip() not in excluded
+        ]
+        if not retained_members:
+            continue
+
+        source_profile = (
+            dict(payload.get("profile_g") or {})
+            if isinstance(payload.get("profile_g"), Mapping)
+            else {}
+        )
+        if source_profile:
+            payload["source_profile_g_ref"] = {
+                key: str(source_profile.get(key) or "")
+                for key in (
+                    "goal_cid",
+                    "subgoal_cid",
+                    "plan_branch_cid",
+                    "selection_cid",
+                    "task_cid",
+                    "task_spec_cid",
+                )
+                if source_profile.get(key)
+            }
+            payload.pop("profile_g", None)
+
+        payload["execution_slice_task_ids"] = [
+            str(task.get("task_id") or "").strip()
+            for task in retained_members
+            if str(task.get("task_id") or "").strip()
+        ]
+        payload["execution_slice_task_cids"] = [
+            str(
+                task.get("canonical_task_cid")
+                or task.get("task_cid")
+                or ""
+            ).strip()
+            for task in retained_members
+            if str(
+                task.get("canonical_task_cid")
+                or task.get("task_cid")
+                or ""
+            ).strip()
+        ]
+        payload["runtime_excluded_task_ids"] = sorted(
+            {
+                str(task.get("task_id") or "").strip()
+                for task in excluded_members
+                if str(task.get("task_id") or "").strip()
+            }
+        )
+        projected_payloads.append(payload)
+    return projected_payloads
+
+
 def _first_nonempty(payloads: Sequence[dict[str, Any]], *keys: str) -> Any:
     for payload in payloads:
         for key in keys:
@@ -3135,6 +3235,7 @@ def plan_bundle_lanes(
     optimize_bundles: bool = True,
     bundle_optimization_policy: BundleOptimizationPolicy | None = None,
     excluded_bundle_keys: Sequence[str] = (),
+    excluded_task_ids: Sequence[str] = (),
 ) -> list[BundleLaneSpec]:
     """Return one isolated supervisor command for each objective bundle."""
 
@@ -3187,6 +3288,10 @@ def plan_bundle_lanes(
         and payload.get("is_schedulable") is not False
         and payload.get("review_only") is not True
     ]
+    bundle_payloads = _apply_runtime_task_exclusions(
+        bundle_payloads,
+        excluded_task_ids=excluded_task_ids,
+    )
     # Implementation daemons currently coordinate managed-submodule mutation
     # with one repository-shared claim per configured submodule root.  Do not
     # let precise outer conflict planning over-admit work that the inner daemon
@@ -4261,7 +4366,7 @@ class DynamicBundleScheduler:
                 self._plan_cache = None
         if self._plan_cache is None:
             allowed = {
-                "task_prefix", "excluded_bundle_keys", "implement",
+                "task_prefix", "excluded_bundle_keys", "excluded_task_ids", "implement",
                 "daemon_interval", "stale_seconds",
                 "check_interval", "max_restarts", "max_task_attempts",
                 "implementation_timeout",
@@ -5804,6 +5909,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "option to fence multiple bundles without rewriting the index"
         ),
     )
+    parser.add_argument(
+        "--exclude-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Exact task ID to omit from this supervisor run; repeat the option "
+            "to fence members without rewriting their shared bundle or taskboard"
+        ),
+    )
     parser.add_argument("--start", action="store_true", help="Launch the planned lane supervisors")
     parser.add_argument("--max-lanes", type=int, default=1, help="Maximum concurrent leased workers")
     parser.add_argument("--poll-interval", type=float, default=5.0)
@@ -5923,6 +6037,11 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
             str(bundle_key).strip()
             for bundle_key in (getattr(args, "exclude_bundle_key", ()) or ())
             if str(bundle_key).strip()
+        ),
+        excluded_task_ids=tuple(
+            str(task_id).strip()
+            for task_id in (getattr(args, "exclude_task_id", ()) or ())
+            if str(task_id).strip()
         ),
         implement=args.implement,
         daemon_interval=args.daemon_interval,
