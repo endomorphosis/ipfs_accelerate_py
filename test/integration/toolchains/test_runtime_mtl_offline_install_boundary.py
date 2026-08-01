@@ -1,4 +1,10 @@
-"""Fail-closed install boundary for Runtime MTL semantic certification."""
+"""Fail-closed install boundary for Runtime MTL semantic certification.
+
+Also binds FVT-072 objective validation repair discovery for the offline
+install-versus-certification boundary of FVT-G210: every offline semantic path
+consumes only a preinstalled digest-verified artifact and never runs package
+managers, builds, downloads, or network access.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +16,11 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CERTIFIER_PATH = REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl.py"
+VENDOR_CERTIFIER_PATH = (
+    REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl_external.py"
+)
+OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
+VENDOR_REPAIR_TASK_ID = "FVT-072"
 
 
 @pytest.fixture(scope="module")
@@ -141,3 +152,31 @@ def test_missing_prebuilt_parity_blocks_semantic_certification(
     assert receipt["production_certified"] is False
     assert receipt["promotion_blocked"] is True
     assert "typescript_parity_unavailable" in receipt["block_reasons"]
+
+
+def test_vendor_certifier_binds_objective_validation_repair() -> None:
+    """FVT-072 objective validation repair discovery for FVT-G210 offline boundary."""
+
+    for candidate in (REPO_ROOT, REPO_ROOT / "ipfs_datasets_py"):
+        text = str(candidate)
+        if text not in sys.path:
+            sys.path.insert(0, text)
+    spec = importlib.util.spec_from_file_location(
+        "runtime_mtl_vendor_offline_boundary",
+        VENDOR_CERTIFIER_PATH,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    assert module.VENDOR_REPAIR_TASK_ID == VENDOR_REPAIR_TASK_ID
+    assert module.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    assert "test_runtime_mtl_offline_install_boundary.py" in (
+        module.OBJECTIVE_VALIDATION_COMMAND
+    )
+    assert "test_external_runtime_mtl_vendor_certification.py" in (
+        module.OBJECTIVE_VALIDATION_COMMAND
+    )
+    # Policy constants on the vendor surface declare offline + approved root.
+    assert module.VENDOR_GOAL_ID == "FVT-G210"
