@@ -239,5 +239,5 @@ PDR-G000  Proof-directed Planner and Doctor self-improvement loop
 - Evidence: PDR-090, PDR-091, PDR-092
 - Outputs: test/integration/test_agent_supervisor_planner_doctor_e2e.py, scripts/ops/agent_supervisor/proof_directed_planner_doctor.py, docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md, ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_release.py
 - Validation: python -m pytest test/integration/test_agent_supervisor_planner_doctor_e2e.py test/api/test_agent_supervisor_planner_doctor_release.py -q
-- Acceptance: Cold/warm/delta/restart and 1/2/4/bounded-8 lane runs have zero safety-floor violations; kill switch and rollback are exact; no skip/synthetic evidence qualifies; final receipt independently reloads source evidence and proves every child goal without relying on task counts.
+- Acceptance: Cold/warm/delta/restart and 1/2/4/configured-maximum lane runs have zero safety-floor violations; kill switch and rollback are exact; no skip/synthetic evidence qualifies; final receipt independently reloads source evidence and proves every child goal without relying on task counts.
 - Conflict policy: Release code may read protected anchors but never rewrite them; automatic promotion needs separate operator policy.

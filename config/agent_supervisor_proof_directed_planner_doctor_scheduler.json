@@ -24,11 +24,19 @@
     "docs/architecture/AGENT_SUPERVISOR_PROOF_DIRECTED_PLANNER_DOCTOR_PLAN.md",
     "docs/architecture/agent_supervisor_proof_directed_planner_doctor.objectives.md",
     "docs/architecture/agent_supervisor_proof_directed_planner_doctor.todo.md",
-    "config/agent_supervisor_proof_directed_planner_doctor_scheduler.json",
-    "config/agent_supervisor_planner_doctor_benchmark.json",
-    "docs/architecture/agent_supervisor_planner_doctor_threat_model.md",
-    "test/fixtures/agent_supervisor/planner_doctor_holdout"
+    "config/agent_supervisor_proof_directed_planner_doctor_scheduler.json"
   ],
+  "protected_after_manual_completion": {
+    "PDR-002": [
+      "docs/architecture/agent_supervisor_planner_doctor_threat_model.md",
+      "config/agent_supervisor_planner_doctor_authority_policy.json"
+    ],
+    "PDR-003": [
+      "config/agent_supervisor_planner_doctor_benchmark.json",
+      "docs/architecture/agent_supervisor_planner_doctor_benchmark.md",
+      "test/fixtures/agent_supervisor/planner_doctor_holdout"
+    ]
+  },
   "derived_refill": {
     "enabled_at_bootstrap": false,
     "enabled_after_task": "PDR-081",

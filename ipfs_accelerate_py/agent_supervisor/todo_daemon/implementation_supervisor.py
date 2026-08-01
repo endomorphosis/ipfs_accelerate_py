@@ -109,6 +109,10 @@ DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS = float(
 )
 MAX_MANAGED_SUBMODULE_WORKTREE_PRUNES_PER_PASS = 32
 MANAGED_SUBMODULE_WORKTREE_PRUNE_TIMEOUT_SECONDS = 30.0
+SCHEDULER_CONFIG_SCHEMA_PATTERN = re.compile(
+    r"^ipfs_accelerate_py\.agent_supervisor\."
+    r"[a-z0-9_.-]+\.scheduler_config@1$"
+)
 
 # Atomic checkout leases describe complete, bounded mutation transactions
 # rather than projected task ownership.  A live owner of one of these
@@ -127,6 +131,355 @@ ATOMIC_CHECKOUT_MUTATION_LEASE_OPERATIONS = frozenset(
         "repair_main_checkout_merge_state",
     }
 )
+
+
+class SupervisorSchedulerConfigError(ValueError):
+    """Raised when a scheduler profile cannot safely configure the supervisor."""
+
+
+def _scheduler_config_sequence(
+    value: Any,
+    *,
+    field_name: str,
+) -> tuple[str, ...]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise SupervisorSchedulerConfigError(
+            f"{field_name} must be a sequence of strings"
+        )
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise SupervisorSchedulerConfigError(
+                f"{field_name} must contain non-empty strings"
+            )
+        normalized = item.strip()
+        if normalized not in result:
+            result.append(normalized)
+    return tuple(result)
+
+
+def _scheduler_config_mapping(
+    value: Any,
+    *,
+    field_name: str,
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise SupervisorSchedulerConfigError(f"{field_name} must be an object")
+    return value
+
+
+def _scheduler_config_relative_path(
+    value: Any,
+    *,
+    field_name: str,
+    repo_root: Path,
+    must_exist: bool,
+) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise SupervisorSchedulerConfigError(
+            f"{field_name} must be a non-empty repo-relative path"
+        )
+    raw = value.strip()
+    candidate = Path(raw)
+    if (
+        raw in {".", ".."}
+        or raw.startswith(("/", "\\"))
+        or raw.endswith(("/", "\\"))
+        or "\\" in raw
+        or "\0" in raw
+        or "://" in raw
+        or re.match(r"^[A-Za-z]:", raw)
+        or candidate.is_absolute()
+        or ".." in candidate.parts
+    ):
+        raise SupervisorSchedulerConfigError(
+            f"{field_name} must be a safe repo-relative path: {raw!r}"
+        )
+    normalized = candidate.as_posix()
+    try:
+        resolved = (repo_root / normalized).resolve(strict=False)
+        resolved.relative_to(repo_root)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise SupervisorSchedulerConfigError(
+            f"{field_name} escapes the repository: {raw!r}"
+        ) from exc
+    if must_exist and not resolved.exists():
+        raise SupervisorSchedulerConfigError(
+            f"{field_name} does not exist: {raw!r}"
+        )
+    return normalized
+
+
+def load_supervisor_scheduler_config(
+    path: Path | str,
+    *,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Load and validate a sealed scheduler profile without enabling effects.
+
+    The profile is configuration input only.  It cannot turn on implementation,
+    refill, Doctor mutation, or rollout; those remain explicit runtime actions.
+    """
+
+    root = (repo_root or REPO_ROOT).resolve()
+    raw_path = Path(path)
+    config_path = raw_path if raw_path.is_absolute() else root / raw_path
+    if config_path.is_symlink():
+        raise SupervisorSchedulerConfigError(
+            "scheduler config must be a regular non-symlink file"
+        )
+    try:
+        resolved_config_path = config_path.resolve(strict=True)
+        resolved_config_path.relative_to(root)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SupervisorSchedulerConfigError(
+            "scheduler config must be an existing file inside the repository"
+        ) from exc
+    if not resolved_config_path.is_file():
+        raise SupervisorSchedulerConfigError(
+            "scheduler config must be a regular non-symlink file"
+        )
+    try:
+        payload = json.loads(resolved_config_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise SupervisorSchedulerConfigError(
+            f"scheduler config is not valid JSON: {resolved_config_path}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise SupervisorSchedulerConfigError(
+            "scheduler config root must be an object"
+        )
+    schema = payload.get("schema")
+    if not isinstance(schema, str) or not SCHEDULER_CONFIG_SCHEMA_PATTERN.fullmatch(
+        schema
+    ):
+        raise SupervisorSchedulerConfigError(
+            "scheduler config schema must be a supported scheduler_config@1"
+        )
+
+    normalized = dict(payload)
+    normalized["taskboard_path"] = _scheduler_config_relative_path(
+        payload.get("taskboard_path"),
+        field_name="taskboard_path",
+        repo_root=root,
+        must_exist=True,
+    )
+    normalized["objectives_path"] = _scheduler_config_relative_path(
+        payload.get("objectives_path"),
+        field_name="objectives_path",
+        repo_root=root,
+        must_exist=True,
+    )
+    task_prefix = payload.get("task_prefix")
+    if (
+        not isinstance(task_prefix, str)
+        or not re.fullmatch(r"## [A-Z][A-Z0-9]*-", task_prefix.strip())
+    ):
+        raise SupervisorSchedulerConfigError(
+            "task_prefix must be a canonical heading prefix such as '## PDR-'"
+        )
+    normalized["task_prefix"] = task_prefix.strip()
+    namespace = payload.get("board_namespace")
+    if (
+        not isinstance(namespace, str)
+        or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,127}", namespace.strip())
+    ):
+        raise SupervisorSchedulerConfigError(
+            "board_namespace must be a canonical lowercase identifier"
+        )
+    normalized["board_namespace"] = namespace.strip()
+
+    integer_fields = {
+        "max_lanes": (1, 64),
+        "max_restarts": (0, 10_000),
+        "max_task_attempts": (0, 10_000),
+        "implementation_timeout_seconds": (1, 7 * 24 * 60 * 60),
+        "validation_max_workers": (1, 256),
+    }
+    for field_name, (minimum, maximum) in integer_fields.items():
+        value = payload.get(field_name)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < minimum
+            or value > maximum
+        ):
+            raise SupervisorSchedulerConfigError(
+                f"{field_name} must be an integer in [{minimum}, {maximum}]"
+            )
+        normalized[field_name] = value
+    number_fields = {
+        "poll_interval_seconds": (0.05, 86_400.0),
+        "daemon_interval_seconds": (0.05, 86_400.0),
+        "check_interval_seconds": (0.05, 86_400.0),
+        "stale_seconds": (1.0, 30 * 24 * 60 * 60.0),
+    }
+    for field_name, (minimum, maximum) in number_fields.items():
+        value = payload.get(field_name)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) < minimum
+            or float(value) > maximum
+        ):
+            raise SupervisorSchedulerConfigError(
+                f"{field_name} must be a finite number in [{minimum}, {maximum}]"
+            )
+        normalized[field_name] = float(value)
+
+    merge_target = payload.get("merge_target_branch")
+    if (
+        not isinstance(merge_target, str)
+        or not merge_target.strip()
+        or merge_target.startswith(("/", "-"))
+        or merge_target.endswith("/")
+        or ".." in merge_target
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", merge_target)
+    ):
+        raise SupervisorSchedulerConfigError(
+            "merge_target_branch is not a safe branch name"
+        )
+    normalized["merge_target_branch"] = merge_target
+
+    authority_switches = (
+        ("derived_refill", "enabled_at_bootstrap"),
+        ("doctor", "enabled_at_bootstrap"),
+        ("doctor", "mutation_authorized"),
+        ("doctor", "narrow_autonomous_mutation_enabled"),
+        ("rollout", "automatic_enabled"),
+    )
+    for section_name, switch_name in authority_switches:
+        section = _scheduler_config_mapping(
+            payload.get(section_name, {}),
+            field_name=section_name,
+        )
+        switch = section.get(switch_name, False)
+        if not isinstance(switch, bool):
+            raise SupervisorSchedulerConfigError(
+                f"{section_name}.{switch_name} must be a boolean"
+            )
+        if switch:
+            raise SupervisorSchedulerConfigError(
+                f"{section_name}.{switch_name} cannot be enabled by a "
+                "scheduler bootstrap profile"
+            )
+
+    submodules = _scheduler_config_sequence(
+        payload.get("worktree_submodule_paths", ()),
+        field_name="worktree_submodule_paths",
+    )
+    normalized["worktree_submodule_paths"] = tuple(
+        _scheduler_config_relative_path(
+            item,
+            field_name="worktree_submodule_paths",
+            repo_root=root,
+            must_exist=True,
+        )
+        for item in submodules
+    )
+    protected_paths = _scheduler_config_sequence(
+        payload.get("protected_paths", ()),
+        field_name="protected_paths",
+    )
+    try:
+        normalized["protected_paths"] = normalize_implementation_protected_paths(
+            protected_paths,
+            repo_root=root,
+        )
+    except ValueError as exc:
+        raise SupervisorSchedulerConfigError(str(exc)) from exc
+    normalized["_config_path"] = str(resolved_config_path)
+    return normalized
+
+
+def supervisor_scheduler_config_cli_defaults(
+    profile: Mapping[str, Any],
+    *,
+    repo_root: Path | None = None,
+) -> list[str]:
+    """Translate a validated profile into conservative existing CLI options."""
+
+    root = (repo_root or REPO_ROOT).resolve()
+    state_prefix = re.sub(
+        r"[^a-z0-9]+",
+        "_",
+        str(profile["board_namespace"]).lower(),
+    ).strip("_")[:80]
+    options = [
+        "--todo-path",
+        str(root / str(profile["taskboard_path"])),
+        "--task-prefix",
+        str(profile["task_prefix"]),
+        "--state-prefix",
+        state_prefix,
+        "--stale-seconds",
+        str(profile["stale_seconds"]),
+        "--check-interval",
+        str(profile["check_interval_seconds"]),
+        "--max-restarts",
+        str(profile["max_restarts"]),
+        "--max-task-attempts",
+        str(profile["max_task_attempts"]),
+        "--daemon-interval",
+        str(profile["daemon_interval_seconds"]),
+        "--implementation-timeout",
+        str(profile["implementation_timeout_seconds"]),
+        "--validation-max-workers",
+        str(profile["validation_max_workers"]),
+        "--merge-target-branch",
+        str(profile["merge_target_branch"]),
+        "--objective-path",
+        str(root / str(profile["objectives_path"])),
+        "--no-objective-task-janitor",
+        "--no-objective-goal-completion-reconcile",
+    ]
+    for path in profile["worktree_submodule_paths"]:
+        options.extend(("--worktree-submodule-path", str(path)))
+    for path in profile["protected_paths"]:
+        options.extend(("--implementation-protected-path", str(path)))
+    return options
+
+
+def expand_supervisor_scheduler_config_args(
+    argv: Sequence[str],
+    *,
+    repo_root: Path | None = None,
+) -> tuple[list[str], Path | None]:
+    """Prepend scheduler defaults while preserving later explicit overrides."""
+
+    raw = [str(item) for item in argv]
+    if "-h" in raw or "--help" in raw:
+        return raw, None
+    config_values: list[str] = []
+    remaining: list[str] = []
+    index = 0
+    while index < len(raw):
+        token = raw[index]
+        if token == "--scheduler-config":
+            if index + 1 >= len(raw):
+                raise SupervisorSchedulerConfigError(
+                    "--scheduler-config requires a path"
+                )
+            config_values.append(raw[index + 1])
+            index += 2
+            continue
+        if token.startswith("--scheduler-config="):
+            config_values.append(token.split("=", 1)[1])
+            index += 1
+            continue
+        remaining.append(token)
+        index += 1
+    if not config_values:
+        return remaining, None
+    if len(config_values) != 1 or not config_values[0].strip():
+        raise SupervisorSchedulerConfigError(
+            "--scheduler-config may be supplied exactly once"
+        )
+    root = (repo_root or REPO_ROOT).resolve()
+    profile = load_supervisor_scheduler_config(config_values[0], repo_root=root)
+    defaults = supervisor_scheduler_config_cli_defaults(profile, repo_root=root)
+    return [*defaults, *remaining], Path(str(profile["_config_path"]))
 
 
 def _managed_daemon_child_environment() -> dict[str, str]:
@@ -345,6 +698,7 @@ class PortalSupervisorConfig:
     implementation_timeout: float = 1800.0
     implementation_max_timeout: float | None = None
     implementation_log_stall_seconds: float = 300.0
+    validation_max_workers: int | None = None
     use_ephemeral_worktree: bool = True
     worktree_root: Path | None = None
     merge_target_branch: str = ""
@@ -11515,6 +11869,13 @@ class PortalImplementationSupervisor:
                 str(max(0, int(self.config.max_task_attempts))),
             ]
         )
+        if self.config.validation_max_workers is not None:
+            command.extend(
+                [
+                    "--validation-max-workers",
+                    str(max(1, int(self.config.validation_max_workers))),
+                ]
+            )
         for path in self.config.generated_dirty_repair_paths:
             command.extend(["--generated-status-path", str(path)])
         for relative in self.config.implementation_protected_paths:
@@ -11910,7 +12271,23 @@ class PortalImplementationSupervisor:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    expanded_argv, scheduler_config_path = (
+        expand_supervisor_scheduler_config_args(
+            sys.argv[1:] if argv is None else argv,
+            repo_root=REPO_ROOT,
+        )
+    )
     parser = argparse.ArgumentParser(description="Supervise the portal implementation backlog daemon")
+    parser.add_argument(
+        "--scheduler-config",
+        type=Path,
+        default=scheduler_config_path,
+        help=(
+            "Sealed scheduler_config@1 JSON profile. Safe profile values become "
+            "defaults; explicit scalar CLI options take precedence. The profile "
+            "never enables implementation, refill, Doctor mutation, or rollout."
+        ),
+    )
     parser.add_argument("--once", action="store_true", help="Run one supervisor check and exit")
     parser.add_argument(
         "--todo-path",
@@ -12026,6 +12403,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=300.0,
         help="Recycle an active implementation attempt after this many seconds without log output; <=0 disables.",
+    )
+    parser.add_argument(
+        "--validation-max-workers",
+        type=int,
+        default=None,
+        help=(
+            "Maximum validation subprocesses used by the managed daemon. "
+            "Defaults to the daemon policy when omitted."
+        ),
     )
     parser.add_argument(
         "--no-ephemeral-worktree",
@@ -12597,7 +12983,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity",
     )
-    return parser.parse_args(argv)
+    parsed = parser.parse_args(expanded_argv)
+    parsed.scheduler_config = scheduler_config_path
+    return parsed
 
 
 def supervisor_config_from_args(
@@ -12650,6 +13038,7 @@ def supervisor_config_from_args(
         implementation_timeout=args.implementation_timeout,
         implementation_max_timeout=args.implementation_max_timeout,
         implementation_log_stall_seconds=args.implementation_log_stall_seconds,
+        validation_max_workers=args.validation_max_workers,
         use_ephemeral_worktree=implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,

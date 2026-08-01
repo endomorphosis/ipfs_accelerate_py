@@ -255,10 +255,14 @@ class PersistentTaskQueue:
         self._dirty = self._dirty or changed or entry.to_dict() != before_entry
         return entry
 
-    def get_or_create(self, task_id: str, *, priority: str = "P2", track: str = "") -> TaskQueueEntry:
+    def get_or_create(self, task_id: str, *, priority: str = "", track: str = "") -> TaskQueueEntry:
         key = self.resolve_key(task_id)
         if key not in self.entries:
-            self.entries[key] = TaskQueueEntry(task_id=task_id, priority=priority, track=track)
+            self.entries[key] = TaskQueueEntry(
+                task_id=task_id,
+                priority=priority or "P2",
+                track=track,
+            )
             self._dirty = True
         entry = self.entries[key]
         if priority and entry.priority != priority:

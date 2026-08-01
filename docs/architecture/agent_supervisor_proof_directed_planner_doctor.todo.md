@@ -66,7 +66,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-001 Freeze the mainline capability and residual-gap inventory
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -140,7 +140,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Preconditions: PDR seed plan describes the paired benchmark dimensions and promotion boundary.
 - Effects: Freezes cases, paired roots, metrics, denominators, cache/concurrency strata, budgets, oracles, ablations, and stop conditions before benchmark code exists.
 - Evidence subset: benchmark manifest and policy roots
-- Acceptance: Manifest separates development and held-out roots; fixes prompt/mutation/toolchain/provider/tokenizer/hardware/cache/worker inputs; sweeps 1/2/4/bounded-8 lanes; measures clock/tokens/process-tree resources/GPU/quality; labels missing telemetry unavailable; prohibits synthetic/skipped promotion; protects oracles and denominators; requires quality non-inferiority and zero safety floors before Pareto comparison.
+- Acceptance: Manifest separates development and held-out roots; fixes prompt/mutation/toolchain/provider/tokenizer/hardware/cache/worker inputs; sweeps 1/2/4/configured-maximum lanes (six at bootstrap); measures clock/tokens/process-tree resources/GPU/quality; labels missing telemetry unavailable; prohibits synthetic/skipped promotion; protects oracles and denominators; requires quality non-inferiority and zero safety floors before Pareto comparison.
 
 ## PDR-010 Unify repository forest, Doctor snapshot, finding, and root contracts
 
@@ -946,7 +946,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Preconditions: Real Planner/Doctor services, runtime execution, transaction, fixed point and benchmark manifest exist.
 - Effects: Benchmark results come from actual code/service execution rather than fixture expectations or hardcoded counters.
 - Evidence subset: paired baseline/challenger repository runs, service/plan/repair/proof/validation/merge receipts, cache and concurrency strata
-- Acceptance: Runner creates hermetic mini-repositories with seeded prompt/planning/contract/security/repair cases, invokes real create/steer and Doctor services, executes admitted tasks/repairs in isolated worktrees, runs real solvers/tools when capability-certified, and obtains results from independent validations. It never reads fixture `expected` fields to choose diagnosis/disposition/repair/completion. Current deterministic Doctor and V2 synthetic benchmarks are labeled model/conformance evidence only. Paired inputs match exactly; cold/exact/delta/restart and 1/2/4/bounded-8 runs are replayable; skips cannot qualify promotion.
+- Acceptance: Runner creates hermetic mini-repositories with seeded prompt/planning/contract/security/repair cases, invokes real create/steer and Doctor services, executes admitted tasks/repairs in isolated worktrees, runs real solvers/tools when capability-certified, and obtains results from independent validations. It never reads fixture `expected` fields to choose diagnosis/disposition/repair/completion. Current deterministic Doctor and V2 synthetic benchmarks are labeled model/conformance evidence only. Paired inputs match exactly; cold/exact/delta/restart and 1/2/4/configured-maximum runs are replayable; skips cannot qualify promotion.
 
 ## PDR-071 Attribute wall time, tokens, process-tree resources, GPU, I/O, and cost
 
@@ -1101,7 +1101,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Conflict policy: Test only against protected fixtures/policies; never weaken a floor or mark a skipped/unavailable case pass.
 - Preconditions: Planner, Doctor, repair, attestation, live benchmark, telemetry/oracle and rollout are integrated.
 - Effects: Produces independent qualification receipts for release and operator rollout.
-- Evidence subset: create/steer/diagnose/repair/benchmark/refill across Python/CLI/MCP, Markdown/DuckDB, cold/warm/delta/restart and 1/2/4/bounded-8 lanes
+- Evidence subset: create/steer/diagnose/repair/benchmark/refill across Python/CLI/MCP, Markdown/DuckDB, cold/warm/delta/restart and 1/2/4/configured-maximum lanes
 - Acceptance: Exact transport/projection/restart/replay identities hold; adversarial injection/secret/path/policy/IR/security/provider/cache/proof/ZKP/task/oracle/authority attacks fail; missing callers, poisoned indexes, forged receipts, fake transactions/fixed points and model calls in deterministic mode are caught; chaos covers provider/tool/telemetry loss, process crash/PID reuse, worktree/lease/ref-CAS/merge/task-source split brain, rollback and repository drift; safety floors are zero, resource bounds hold, all required live checks run with no skip, and rollback restores exact roots.
 
 ## PDR-091 Deliver protected launch profiles, lifecycle controls, kill switch, and runbook
@@ -1114,7 +1114,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Track: operations
 - Depends on: PDR-032, PDR-033, PDR-040, PDR-080, PDR-082, PDR-090
 - Goal id: PDR-G100
-- Outputs: scripts/ops/agent_supervisor/proof_directed_planner_doctor.py, docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md, config/agent_supervisor_proof_directed_planner_doctor_scheduler.json, test/api/test_agent_supervisor_planner_doctor_operations.py
+- Outputs: scripts/ops/agent_supervisor/proof_directed_planner_doctor.py, docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md, test/api/test_agent_supervisor_planner_doctor_operations.py
 - Validation: python -m pytest test/api/test_agent_supervisor_planner_doctor_operations.py -q
 - Board namespace: agent-supervisor-proof-directed-planner-doctor-v1
 - Bundle: agent-supervisor/proof-directed-planner-doctor/operations
@@ -1122,7 +1122,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Resource class: cpu-medium
 - Resource stage: implementation
 - Implementation timeout seconds: 10800
-- Predicted files: scripts/ops/agent_supervisor/proof_directed_planner_doctor.py, docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md, config/agent_supervisor_proof_directed_planner_doctor_scheduler.json, test/api/test_agent_supervisor_planner_doctor_operations.py
+- Predicted files: scripts/ops/agent_supervisor/proof_directed_planner_doctor.py, docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md, test/api/test_agent_supervisor_planner_doctor_operations.py
 - Interfaces: PlannerDoctorOperations@1
 - Conflict policy: Launcher reads protected anchors and writes only isolated state/worktrees/logs/derived task source; no silent policy elevation.
 - Preconditions: Qualification, live epoch and rollout gates pass in shadow.

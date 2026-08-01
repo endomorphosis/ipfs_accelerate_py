@@ -210,6 +210,41 @@ def test_persistent_queue_migrates_legacy_display_id_to_canonical_identity(tmp_p
     assert restored.dirty is False
 
 
+def test_persistent_queue_selection_preserves_registered_scheduling_metadata(tmp_path) -> None:
+    queue = PersistentTaskQueue.load(tmp_path / "task_queue.json", save_interval=0)
+    identity = canonical_task_identity(
+        _task("REF-001"),
+        board_namespace="main",
+        source_path="tasks.todo.md",
+    )
+    entry = queue.register_task(identity, priority="P0", track="foundation")
+
+    queue.record_selection(identity.canonical_task_cid)
+
+    assert entry.priority == "P0"
+    assert entry.track == "foundation"
+    assert entry.attempt_count == 1
+
+
+def test_legacy_markdown_pending_status_normalizes_to_todo(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    todo_path.write_text(
+        """# Tasks
+
+## REF-001 Ready under the common pending spelling
+
+- Status: pending
+- Priority: P0
+- Track: foundation
+""",
+        encoding="utf-8",
+    )
+
+    [task] = parse_task_file(todo_path, "## REF-")
+
+    assert task.status == "todo"
+
+
 def test_persistent_queue_recovers_from_malformed_numeric_state(tmp_path) -> None:
     path = tmp_path / "task_queue.json"
     path.write_text(
@@ -334,6 +369,9 @@ def test_implementation_daemon_coalesces_duplicate_work_before_selection(tmp_pat
     assert selected["canonical_task_cid"] == state.active_task_cid
     queue = PersistentTaskQueue.load(tmp_path / "state" / "task_queue.json")
     assert len(queue.entries) == 1
+    [entry] = queue.entries.values()
+    assert entry.priority == "P0"
+    assert entry.attempt_count == 1
 
 
 def test_claim_lock_and_retry_history_follow_canonical_identity_across_aliases(tmp_path) -> None:

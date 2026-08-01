@@ -1663,7 +1663,7 @@ def normalize_status(value: str) -> str:
         return "blocked"
     if lowered in {"active", "in_progress"}:
         return "in_progress"
-    if lowered in {"ready", "todo", "queued", ""}:
+    if lowered in {"ready", "todo", "queued", "pending", ""}:
         return "todo"
     return lowered
 
@@ -41481,6 +41481,8 @@ class PortalImplementationDaemon:
         selected = sorted(ready, key=sort_key)[0]
         # Record selection in persistent queue
         self.task_queue.record_selection(self._canonical_ref(selected))
+        if self.task_queue.dirty:
+            self.task_queue.save()
         return selected
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
