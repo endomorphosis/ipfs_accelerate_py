@@ -111,12 +111,18 @@ def _first_tool_with_raw_required_kind(
     fanin: dict[str, Any],
     *,
     kind: str = "positive",
+    require_valid_reconstruction: bool = False,
 ) -> tuple[str, dict[str, Any]]:
     """Pick a ran lane whose raw receipt still carries a required kind."""
 
     for tool_id in REQUIRED_TOOLS:
         row = fanin["tools"][tool_id]
         if row["lane_status"] != "ran":
+            continue
+        if (
+            require_valid_reconstruction
+            and not row["independent_reconstruction"]["valid"]
+        ):
             continue
         _, lane = _lane_for_tool(certifier, certificate, tool_id)
         receipt = lane.get("receipt") or {}
@@ -388,9 +394,7 @@ def test_current_missing_elevations_are_disclosed_not_promoted(
                 "production_elevation_not_allowed_by_evidence_class"
                 in row["block_reasons"]
             ) or row["lane_status"] != "ran", tool_id
-        assert row["surfaces_consistent"] is True or not any(
-            row["surfaces"].values()
-        )
+        assert row["surfaces_consistent"] is True
         if any(row["surfaces"].values()) and not all(row["surfaces"].values()):
             pytest.fail(f"{tool_id}: inconsistent elevation surfaces")
 
@@ -453,6 +457,7 @@ def test_duplicate_failed_required_kind_invalidates_reconstruction(
         certificate,
         fanin,
         kind="positive",
+        require_valid_reconstruction=True,
     )
     lane = copy.deepcopy(original_lane)
     receipt = lane["receipt"]
@@ -499,7 +504,7 @@ def test_duplicate_failed_required_kind_invalidates_reconstruction(
     assert reconstruction["compact_binding_valid"] is True
     assert reconstruction["required_kinds_present"] is True
     assert reconstruction["required_kinds_all_passed"] is False
-    assert "positive" in reconstruction["required_kinds_failed"]
+    assert reconstruction["required_kinds_failed"] == ["positive"]
     assert reconstruction["valid"] is False
 
 
@@ -516,7 +521,7 @@ def test_compact_digest_mismatch_invalidates_reconstruction(
             candidate
             for candidate in REQUIRED_TOOLS
             if fanin["tools"][candidate]["independent_reconstruction"][
-                "recompute_valid"
+                "valid"
             ]
         ),
         "lean",
@@ -572,12 +577,13 @@ def test_mutating_reconstruction_digest_changes_identity(
     target_tool = None
     for tool_id in REQUIRED_TOOLS:
         row = fanin["tools"][tool_id]
-        if row["independent_reconstruction"]["recompute_valid"]:
+        if row["independent_reconstruction"]["valid"]:
             target_tool = tool_id
             target_lane = row["lane_id"]
             break
-    if target_lane is None or target_tool is None:
-        pytest.skip("no reconstructed required tool available in this environment")
+    assert target_lane is not None and target_tool is not None, (
+        "no valid required-tool reconstruction available"
+    )
 
     lane = next(
         item
@@ -613,8 +619,7 @@ def test_mutating_reconstruction_digest_changes_identity(
                     engine_checks.pop()
                     mutated_any = True
             break
-    if not mutated_any:
-        pytest.skip("unable to mutate required-kind checks for target tool")
+    assert mutated_any, "unable to mutate required-kind checks for target tool"
 
     for field_name in (
         "receipt_digest_sha256",
