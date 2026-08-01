@@ -690,6 +690,7 @@ def supervisor_scheduler_config_cli_defaults(
         str(root / str(profile["objectives_path"])),
         "--no-objective-task-janitor",
         "--no-objective-goal-completion-reconcile",
+        "--no-objective-goal-migration",
     ]
     for path in profile["worktree_submodule_paths"]:
         options.extend(("--worktree-submodule-path", str(path)))

@@ -608,4 +608,5 @@ def test_pdr_scheduler_profile_is_directly_consumable() -> None:
     assert "--objective-path" in expanded
     assert "--no-objective-task-janitor" in expanded
     assert "--no-objective-goal-completion-reconcile" in expanded
+    assert "--no-objective-goal-migration" in expanded
     assert expanded[-1] == "--once"
