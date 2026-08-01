@@ -52,6 +52,12 @@ def _init_repo(path: Path) -> None:
 
 
 def _task() -> PortalTask:
+    outputs = [
+        "external/child/docs/contract.md",
+        "external/child/tests/vocabulary.json",
+    ]
+    validation = ["python3 -m pytest tests/test_contract.py -q"]
+    acceptance = "Both exact nested artifacts are complete and coherent."
     return PortalTask(
         task_id="REV-001",
         title="Review a nested implementation",
@@ -59,13 +65,22 @@ def _task() -> PortalTask:
         completion="manual",
         priority="P0",
         track="review",
-        outputs=[
-            "external/child/docs/contract.md",
-            "external/child/tests/vocabulary.json",
-        ],
-        validation=["python3 -m pytest tests/test_contract.py -q"],
-        acceptance="Both exact nested artifacts are complete and coherent.",
-        metadata={"Provider role": "grok-implement, codex-review"},
+        outputs=outputs,
+        validation=validation,
+        acceptance=acceptance,
+        metadata={
+            "status": "ready",
+            "completion": "manual",
+            "priority": "P0",
+            "track": "review",
+            "outputs": ", ".join(outputs),
+            "validation": validation[0],
+            "acceptance": acceptance,
+            "provider role": "grok-implement, codex-review",
+            "canonical task key": "uiir-test:REV-001",
+            "canonical task cid": "sha256:" + "a" * 64,
+            "board namespace": "uiir-test",
+        },
         canonical_task_key="uiir-test:REV-001",
         canonical_task_cid="sha256:" + "a" * 64,
         board_namespace="uiir-test",
@@ -270,8 +285,19 @@ def nested_case(tmp_path: Path) -> SimpleNamespace:
     todo_path = root / "tasks.todo.md"
     todo_path.write_text(
         "# Review tasks\n\n"
-        "## REV-001 Review a nested implementation\n"
-        "- Status: ready\n",
+        "## REV-001 Review a nested implementation\n\n"
+        "- Status: ready\n"
+        "- Completion: manual\n"
+        "- Priority: P0\n"
+        "- Track: review\n"
+        "- Outputs: external/child/docs/contract.md, "
+        "external/child/tests/vocabulary.json\n"
+        "- Validation: python3 -m pytest tests/test_contract.py -q\n"
+        "- Acceptance: Both exact nested artifacts are complete and coherent.\n"
+        "- Provider role: grok-implement, codex-review\n"
+        "- Canonical task key: uiir-test:REV-001\n"
+        f"- Canonical task CID: sha256:{'a' * 64}\n"
+        "- Board namespace: uiir-test\n",
         encoding="utf-8",
     )
     (root / ".gitignore").write_text("state/\n", encoding="utf-8")

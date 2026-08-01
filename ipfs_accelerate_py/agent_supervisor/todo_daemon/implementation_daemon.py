@@ -156,6 +156,14 @@ from .task_execution_policy import (
     TaskExecutionRequest,
     TypedLocalOperation,
 )
+from .post_merge_review import (
+    PostMergeReviewError,
+    VerifiedImplementerProvenance,
+    mint_gate_from_live_outcome,
+    perform_post_merge_independent_review,
+    post_merge_task_binding_id,
+    verified_implementer_provenance_from_ledger,
+)
 from .authoritative_completion import *  # noqa: F403
 from .worktrees import WorktreeLease, WorktreePool
 
@@ -2551,8 +2559,23 @@ def state_file_repair_reason(path: Path) -> str:
 
 
 def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) -> list[PortalTask]:
+    return parse_task_text(
+        path.read_text(encoding="utf-8"),
+        source_path=path,
+        task_header_prefix=task_header_prefix,
+    )
+
+
+def parse_task_text(
+    text: str,
+    *,
+    source_path: Path,
+    task_header_prefix: str = TASK_HEADER_PREFIX,
+) -> list[PortalTask]:
+    """Parse an already-read board snapshot without reopening its lock."""
+
     task_header_prefix = normalize_task_header_prefix(task_header_prefix)
-    lines = path.read_text(encoding="utf-8").splitlines()
+    lines = text.splitlines()
     tasks: list[PortalTask] = []
     current_id = ""
     current_title = ""
@@ -2581,8 +2604,10 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
                 "acceptance": str(metadata.get("acceptance", "")).strip(),
                 "metadata": metadata,
             },
-            board_namespace=metadata.get("board namespace", "") or path.name,
-            source_path=path,
+            board_namespace=(
+                metadata.get("board namespace", "") or source_path.name
+            ),
+            source_path=source_path,
         )
         tasks.append(
             PortalTask(
@@ -6355,6 +6380,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         queued_merge_task_ids = self._pending_queued_merge_task_ids(recent_outcomes)
         quarantined_merge_task_ids = self._quarantined_queued_merge_task_ids(recent_outcomes)
         successfully_merged_task_ids = self._successfully_merged_task_ids()
+        acceptance_pending_merged_task_ids = (
+            successfully_merged_task_ids
+            | shared_completed_task_ids
+        ) - board_completed_task_ids
         merged_status_repair: dict[str, Any] = {}
         stale_merged_completed_task_ids = [
             task.task_id
@@ -6388,6 +6417,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 and len(existing_outputs) == len(task.outputs)
                 and not unresolved_merge_failure
                 and not transient_merge_deferral
+                and task.task_id
+                not in acceptance_pending_merged_task_ids
             )
             if task.task_id in status_completed_task_ids or artifact_complete:
                 completed_set.add(task.task_id)
@@ -6492,6 +6523,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 continue
             if task.task_id in unresolved_merge_failure_task_ids:
                 resolved_statuses[task.task_id] = "blocked"
+                continue
+            if task.task_id in acceptance_pending_merged_task_ids:
+                # The implementation is already integrated.  Only acceptance
+                # reconciliation may advance it; never spend another model
+                # implementation attempt while the board remains incomplete.
+                resolved_statuses[task.task_id] = "waiting"
                 continue
             unresolved_deps = [
                 dep for dep in task.depends_on if dep not in dependency_satisfied_task_ids
@@ -8540,6 +8577,81 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "task_id": primary_task_id,
                         "reason": "completion_target_not_checked_out",
                     }
+                receipt_payload = (
+                    authoritative_receipt.to_dict()
+                    if isinstance(
+                        authoritative_receipt,
+                        ImplementationReceipt,
+                    )
+                    else dict(authoritative_receipt or {})
+                )
+                raw_gate_evidence = receipt_payload.get("gate_evidence")
+                provider_gate = (
+                    raw_gate_evidence.get("provider_review")
+                    if isinstance(raw_gate_evidence, Mapping)
+                    else None
+                )
+                if (
+                    isinstance(provider_gate, Mapping)
+                    and provider_gate.get("task_binding_id")
+                ):
+                    live_matches = [
+                        candidate
+                        for candidate in parse_task_text(
+                            original_text,
+                            source_path=todo_path,
+                            task_header_prefix=self.task_header_prefix,
+                        )
+                        if candidate.task_id == primary_task_id
+                    ]
+                    if len(live_matches) != 1:
+                        return {
+                            "updated": False,
+                            "completion_durable": False,
+                            "already_completed_exact": False,
+                            "task_id": primary_task_id,
+                            "reason": "acceptance_task_binding_unavailable",
+                        }
+                    live_task = live_matches[0]
+                    live_identity = self._identity_for_task(live_task)
+                    relative_board = self._relative_to_repo(
+                        self.repo_root,
+                        todo_path,
+                    )
+                    committed_board = subprocess.run(
+                        [
+                            "git",
+                            "show",
+                            f"{transaction_preimage}:{relative_board}",
+                        ],
+                        cwd=self.repo_root,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        check=False,
+                    )
+                    binding_exact = bool(
+                        committed_board.returncode == 0
+                        and committed_board.stdout
+                        == original_text.encode("utf-8")
+                        and receipt_payload.get("merge_commit")
+                        == transaction_preimage
+                        and provider_gate.get("task_binding_id")
+                        == post_merge_task_binding_id(live_task)
+                        and provider_gate.get("canonical_task_key")
+                        == live_identity.canonical_task_key
+                        and provider_gate.get("canonical_task_cid")
+                        == live_identity.canonical_task_cid
+                        and provider_gate.get("board_namespace")
+                        == live_identity.board_namespace
+                    )
+                    if not binding_exact:
+                        return {
+                            "updated": False,
+                            "completion_durable": False,
+                            "already_completed_exact": False,
+                            "task_id": primary_task_id,
+                            "reason": "acceptance_task_binding_changed",
+                        }
                 lines = original_text.splitlines(keepends=True)
                 target_set = set(target_task_ids)
                 current_task_id = ""
@@ -9667,6 +9779,148 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return "codex_cli"
         return ""
 
+    def _resolve_implementation_evidence_context(
+        self,
+        *,
+        source_repo_root: Any,
+        source_state_path: Any,
+        source_events_path: Any,
+        require_explicit: bool = False,
+    ) -> tuple[Path, Path] | None:
+        """Resolve one originating lane's evidence paths inside this repository."""
+
+        try:
+            repository_root = self.repo_root.resolve()
+        except (OSError, RuntimeError):
+            return None
+        raw_source_root = str(source_repo_root or "").strip()
+        if require_explicit and not raw_source_root:
+            return None
+        if raw_source_root:
+            try:
+                candidate_root = Path(raw_source_root)
+                if not candidate_root.is_absolute():
+                    candidate_root = repository_root / candidate_root
+                resolved_source_root = candidate_root.resolve()
+            except (OSError, RuntimeError, ValueError):
+                return None
+            if resolved_source_root != repository_root:
+                return None
+
+        def resolve_path(raw_value: Any, fallback: Path) -> Path | None:
+            raw_text = str(raw_value or "").strip()
+            if require_explicit and not raw_text:
+                return None
+            try:
+                candidate = (
+                    Path(raw_text) if raw_text else Path(fallback)
+                )
+                if not candidate.is_absolute():
+                    candidate = repository_root / candidate
+                return candidate.resolve()
+            except (OSError, RuntimeError, ValueError):
+                return None
+
+        state_path = resolve_path(source_state_path, self.state_path)
+        events_path = resolve_path(source_events_path, self.events_path)
+        if (
+            state_path is None
+            or events_path is None
+            or state_path == events_path
+            or state_path.parent != events_path.parent
+            or state_path.suffix != ".json"
+            or events_path.suffix != ".jsonl"
+        ):
+            return None
+        return state_path, events_path
+
+    def _implementation_evidence_path_record(self, path: Path) -> str:
+        """Persist a stable repo-relative path when possible, absolute otherwise."""
+
+        resolved = Path(path).resolve()
+        try:
+            return resolved.relative_to(self.repo_root.resolve()).as_posix()
+        except ValueError:
+            return str(resolved)
+
+    def _recover_verified_implementation_provenance(
+        self,
+        *,
+        task: PortalTask,
+        branch_name: str,
+        implementation_commit: str,
+        implementation_attempt: int = 0,
+        implementation_state_path: Path | None = None,
+        implementation_events_path: Path | None = None,
+    ) -> VerifiedImplementerProvenance | None:
+        """Recover one exact model execution using state only as a locator."""
+
+        source_state_path = (
+            Path(implementation_state_path)
+            if implementation_state_path is not None
+            else self.state_path
+        )
+        source_events_path = (
+            Path(implementation_events_path)
+            if implementation_events_path is not None
+            else self.events_path
+        )
+        locator = int(implementation_attempt or 0)
+        locator_source = "explicit"
+        if locator <= 0:
+            try:
+                state = PortalTaskState.load(source_state_path)
+            except (OSError, TypeError, ValueError):
+                return None
+            identity = self._identity_for_task(task)
+            canonical_locator = int(
+                state.implementation_attempts_by_cid.get(
+                    identity.canonical_task_cid,
+                    0,
+                )
+                or 0
+            )
+            if canonical_locator > 0:
+                locator = canonical_locator
+                locator_source = "canonical_task_cid"
+            else:
+                locator = int(
+                    state.implementation_attempts.get(
+                        task.task_id,
+                        0,
+                    )
+                    or 0
+                )
+                locator_source = "legacy_display_task_id"
+        if locator <= 0:
+            return None
+        try:
+            provenance = verified_implementer_provenance_from_ledger(
+                source_events_path,
+                repo_root=self.repo_root,
+                expected_task_id=task.task_id,
+                expected_implementation_attempt=locator,
+                expected_implementation_commit=implementation_commit,
+                expected_branch=branch_name or None,
+            )
+            self._record_event(
+                "implementation_provenance_recovered",
+                {
+                    "task_id": task.task_id,
+                    "attempt": locator,
+                    "branch": branch_name,
+                    "implementation_commit": implementation_commit,
+                    "implementation_provider": provenance.provider_id,
+                    "locator_source": locator_source,
+                    "source_state_path": str(source_state_path),
+                    "source_events_path": str(source_events_path),
+                    "provenance_id": provenance.provenance_id,
+                },
+            )
+            return provenance
+        except (PostMergeReviewError, OSError, TypeError, ValueError):
+            return None
+
     @staticmethod
     def _portal_task_from_merge_request(request: Any) -> PortalTask:
         task_payload = request.metadata.get("task") if isinstance(request.metadata, dict) else {}
@@ -10009,27 +10263,80 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         task: PortalTask,
         attempt: int,
+        implementation_branch: str = "",
+        implementation_state_path: Path | None = None,
+        implementation_events_path: Path | None = None,
         implementation_commit: str,
         merge_commit: str,
         repository_tree_id: str,
+        queue_attempt: int | None = None,
+        baseline_commit: str = "",
+        expected_changed_paths: Sequence[str] = (),
+        implementer_provider: str = "",
+        validation_result: Mapping[str, Any] | None = None,
+        implementer_provenance: VerifiedImplementerProvenance | None = None,
     ) -> dict[str, Any]:
-        """Return no authority until a verified provider receipt adapter binds it.
+        """Run one live, independent review and mint only its durable gate."""
 
-        A content hash over a JSONL event is not provider provenance.  The
-        post-merge review adapter owns execution-receipt verification,
-        implementer/reviewer independence, and exact packet/tree binding; this
-        daemon remains fail-closed until that adapter supplies a supported
-        verifier.
-        """
-
-        del (
-            task,
-            attempt,
-            implementation_commit,
-            merge_commit,
-            repository_tree_id,
+        if not validation_result or not validation_result.get("passed"):
+            return {}
+        source_events_path = (
+            Path(implementation_events_path)
+            if implementation_events_path is not None
+            else self.events_path
         )
-        return {}
+        provenance = implementer_provenance
+        if provenance is None:
+            branch = str(implementation_branch or "").strip()
+            if not branch:
+                return {}
+            provenance = self._recover_verified_implementation_provenance(
+                task=task,
+                branch_name=branch,
+                implementation_commit=implementation_commit,
+                implementation_attempt=attempt,
+                implementation_state_path=implementation_state_path,
+                implementation_events_path=source_events_path,
+            )
+        if provenance is None:
+            return {}
+        provider = str(implementer_provider or provenance.provider_id).strip()
+        if provider != provenance.provider_id:
+            return {}
+        outcome = perform_post_merge_independent_review(
+            repo_root=self.repo_root,
+            receipt_dir=(
+                self.state_path.parent / "post_merge_review_receipts"
+            ),
+            implementation_events_path=source_events_path,
+            task=task,
+            attempt=int(queue_attempt or attempt),
+            implementation_attempt=int(attempt),
+            baseline_commit=baseline_commit,
+            implementation_commit=implementation_commit,
+            merge_commit=merge_commit,
+            repository_tree_id=repository_tree_id,
+            validation_result=validation_result,
+            expected_changed_paths=list(expected_changed_paths),
+            implementer_provider=provider,
+            implementer_provenance=provenance,
+        )
+        if not outcome.event:
+            return {}
+        event_payload = dict(outcome.event)
+        event_type = str(event_payload.pop("type", "") or "")
+        if not event_type:
+            return {}
+        written = self._record_event(
+            event_type,
+            event_payload,
+            enrich=False,
+        )
+        return mint_gate_from_live_outcome(
+            outcome,
+            written,
+            events_path=self.events_path,
+        )
 
     def _apply_post_merge_acceptance_with_target_fence(
         self,
@@ -10130,9 +10437,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         task: PortalTask,
         attempt: int,
+        implementation_branch: str = "",
+        implementation_state_path: Path | None = None,
+        implementation_events_path: Path | None = None,
         implementation_commit: str,
         merge_commit: str,
         model_invocation_observed: bool,
+        queue_attempt: int | None = None,
+        baseline_commit: str = "",
+        expected_changed_paths: Sequence[str] = (),
+        implementer_provider: str = "",
     ) -> dict[str, Any]:
         """Apply ordinary fail-closed acceptance after a reconciled merge."""
 
@@ -10166,9 +10480,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         provider_review = self._provider_review_gate_evidence(
             task=task,
             attempt=attempt,
+            implementation_branch=implementation_branch,
+            implementation_state_path=implementation_state_path,
+            implementation_events_path=implementation_events_path,
             implementation_commit=implementation_commit,
             merge_commit=merge_commit,
             repository_tree_id=repository_tree_id,
+            queue_attempt=queue_attempt,
+            baseline_commit=baseline_commit,
+            expected_changed_paths=expected_changed_paths,
+            implementer_provider=implementer_provider,
+            validation_result=post_merge_validation,
         )
         acceptance = self._apply_post_merge_acceptance_with_target_fence(
             task=task,
@@ -10266,30 +10588,125 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "match_count": len(matching_tasks),
             }
         task = matching_tasks[0]
+        branch_name = str(request.branch_name or "")
+        implementation_commit = str(
+            request.commit_sha or metadata.get("implementation_commit") or ""
+        )
         queue_attempt = int(getattr(request, "attempt", 0) or 0)
         raw_implementation_attempt = int(
             metadata.get("implementation_attempt") or 0
         )
-        model_invocation_observed = bool(
-            metadata.get("model_invocation_observed")
+        expected_model_invocation = (
+            not self._task_uses_typed_local_execution(task)
         )
-        implementation_provider = str(
-            metadata.get("implementation_provider") or ""
-        ).strip()
-        if model_invocation_observed and (
-            raw_implementation_attempt <= 0
-            or not implementation_provider
+        raw_model_invocation = metadata.get("model_invocation_observed")
+        if raw_model_invocation is not None and (
+            not isinstance(raw_model_invocation, bool)
+            or raw_model_invocation != expected_model_invocation
         ):
             return {
                 "attempted": False,
                 "merged": False,
                 "returncode": 2,
-                "reason": "implementation_provenance_missing",
+                "reason": "model_invocation_policy_mismatch",
                 "task_id": task.task_id,
-                "queue_attempt": queue_attempt,
-                "implementation_attempt": raw_implementation_attempt,
-                "implementation_provider": implementation_provider,
+                "metadata_model_invocation_observed": raw_model_invocation,
+                "expected_model_invocation_observed": (
+                    expected_model_invocation
+                ),
             }
+        model_invocation_observed = expected_model_invocation
+        implementation_evidence_context = (
+            self._resolve_implementation_evidence_context(
+                source_repo_root=metadata.get("repo_root"),
+                source_state_path=metadata.get("state_path"),
+                source_events_path=metadata.get("events_path"),
+                require_explicit=model_invocation_observed,
+            )
+        )
+        if implementation_evidence_context is None:
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "implementation_evidence_context_invalid",
+                "task_id": task.task_id,
+            }
+        (
+            implementation_state_path,
+            implementation_events_path,
+        ) = implementation_evidence_context
+        implementation_state_path_record = (
+            self._implementation_evidence_path_record(
+                implementation_state_path
+            )
+        )
+        implementation_events_path_record = (
+            self._implementation_evidence_path_record(
+                implementation_events_path
+            )
+        )
+        implementation_provider = str(
+            metadata.get("implementation_provider") or ""
+        ).strip()
+        verified_implementer_provenance = None
+        if model_invocation_observed:
+            verified_implementer_provenance = (
+                self._recover_verified_implementation_provenance(
+                    task=task,
+                    branch_name=branch_name,
+                    implementation_commit=implementation_commit,
+                    implementation_attempt=raw_implementation_attempt,
+                    implementation_state_path=implementation_state_path,
+                    implementation_events_path=implementation_events_path,
+                )
+            )
+            if verified_implementer_provenance is None:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "implementation_provenance_missing",
+                    "task_id": task.task_id,
+                    "queue_attempt": queue_attempt,
+                    "implementation_attempt": raw_implementation_attempt,
+                    "implementation_provider": implementation_provider,
+                }
+            if (
+                raw_implementation_attempt > 0
+                and raw_implementation_attempt
+                != verified_implementer_provenance.implementation_attempt
+            ) or (
+                implementation_provider
+                and implementation_provider
+                != verified_implementer_provenance.provider_id
+            ):
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "implementation_provenance_mismatch",
+                    "task_id": task.task_id,
+                    "queue_attempt": queue_attempt,
+                    "metadata_implementation_attempt": (
+                        raw_implementation_attempt
+                    ),
+                    "verified_implementation_attempt": (
+                        verified_implementer_provenance.implementation_attempt
+                    ),
+                    "metadata_implementation_provider": (
+                        implementation_provider
+                    ),
+                    "verified_implementation_provider": (
+                        verified_implementer_provenance.provider_id
+                    ),
+                }
+            raw_implementation_attempt = (
+                verified_implementer_provenance.implementation_attempt
+            )
+            implementation_provider = (
+                verified_implementer_provenance.provider_id
+            )
         implementation_attempt = (
             raw_implementation_attempt or queue_attempt
         )
@@ -10343,10 +10760,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     {"commands": list(live_validation)}
                 ),
             }
-        branch_name = str(request.branch_name or "")
-        implementation_commit = str(
-            request.commit_sha or metadata.get("implementation_commit") or ""
-        )
         try:
             queued_protected_paths = normalize_implementation_protected_paths(
                 metadata.get("implementation_protected_paths"),
@@ -10701,6 +11114,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "queue_attempt": queue_attempt,
                             "implementation_attempt": implementation_attempt,
                             "implementation_provider": implementation_provider,
+                            "implementation_state_path": (
+                                implementation_state_path_record
+                            ),
+                            "implementation_events_path": (
+                                implementation_events_path_record
+                            ),
                             "branch": branch_name,
                             "baseline_ref": baseline_ref,
                             "implementation_commit": (
@@ -10709,10 +11128,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "merge_commit": live_target_commit,
                             "merge_integrated": True,
                             "authoritatively_completed": False,
-                            "model_invocation_observed": bool(
-                                metadata.get(
-                                    "model_invocation_observed"
-                                )
+                            "model_invocation_observed": (
+                                model_invocation_observed
                             ),
                             "validation_commands": list(
                                 queued_validation
@@ -10740,9 +11157,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     completion_daemon._provider_review_gate_evidence(
                         task=task,
                         attempt=implementation_attempt,
+                        implementation_branch=branch_name,
+                        implementation_state_path=(
+                            implementation_state_path
+                        ),
+                        implementation_events_path=(
+                            implementation_events_path
+                        ),
                         implementation_commit=implementation_commit,
                         merge_commit=completion_commit,
                         repository_tree_id=completion_repository_tree_id,
+                        queue_attempt=queue_attempt,
+                        baseline_commit=baseline_ref,
+                        expected_changed_paths=expected_changed_paths,
+                        implementer_provider=implementation_provider,
+                        validation_result=post_merge_validation,
+                        implementer_provenance=(
+                            verified_implementer_provenance
+                        ),
                     )
                 )
                 gate_evidence = (
@@ -10759,8 +11191,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         repository_tree_id=completion_repository_tree_id,
                         validation_result=post_merge_validation,
                         gate_evidence=gate_evidence,
-                        model_invocation_observed=bool(
-                            metadata.get("model_invocation_observed")
+                        model_invocation_observed=(
+                            model_invocation_observed
                         ),
                     )
                 )
@@ -10805,6 +11237,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "queue_attempt": queue_attempt,
                             "implementation_attempt": implementation_attempt,
                             "implementation_provider": implementation_provider,
+                            "implementation_state_path": (
+                                implementation_state_path_record
+                            ),
+                            "implementation_events_path": (
+                                implementation_events_path_record
+                            ),
                             "branch": branch_name,
                             "baseline_ref": baseline_ref,
                             "implementation_commit": (
@@ -10813,10 +11251,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "merge_commit": completion_commit,
                             "merge_integrated": True,
                             "authoritatively_completed": False,
-                            "model_invocation_observed": bool(
-                                metadata.get(
-                                    "model_invocation_observed"
-                                )
+                            "model_invocation_observed": (
+                                model_invocation_observed
                             ),
                             "validation_commands": list(
                                 queued_validation
@@ -24226,6 +24662,39 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 continue
             task = matching_tasks[0]
             board_identity = self._identity_for_task(task)
+            expected_model_invocation = (
+                not self._task_uses_typed_local_execution(task)
+            )
+            raw_model_invocation = event.get(
+                "model_invocation_observed"
+            )
+            if raw_model_invocation is not None and (
+                not isinstance(raw_model_invocation, bool)
+                or raw_model_invocation != expected_model_invocation
+            ):
+                result = {
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "queue_attempt": queue_attempt,
+                    "implementation_attempt": implementation_attempt,
+                    "branch": branch,
+                    "implementation_commit": implementation_commit,
+                    "resolved": False,
+                    "reason": "reconciliation_model_policy_mismatch",
+                    "event_model_invocation_observed": (
+                        raw_model_invocation
+                    ),
+                    "expected_model_invocation_observed": (
+                        expected_model_invocation
+                    ),
+                }
+                self._record_event(
+                    "merge_reconciliation_deferred",
+                    result,
+                )
+                results.append(result)
+                continue
+            model_invocation_observed = expected_model_invocation
             event_cid = str(
                 event.get("canonical_task_cid")
                 or event.get("canonical_task_id")
@@ -24261,7 +24730,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 self._record_event("merge_reconciliation_deferred", result)
                 results.append(result)
                 continue
-            if str(event.get("type") or "") == "merge_acceptance_pending":
+            event_type = str(event.get("type") or "")
+            pending_acceptance_event = bool(
+                event_type == "merge_acceptance_pending"
+                or (
+                    event_type == "merge_reconciled"
+                    and event.get("merge_integrated") is True
+                    and event.get("authoritatively_completed") is not True
+                )
+            )
+            if pending_acceptance_event:
                 pending_commands = event.get("validation_commands")
                 normalized_pending_commands = (
                     [str(command) for command in pending_commands]
@@ -24315,12 +24793,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 expected_changed_paths_id = str(
                     event.get("expected_changed_paths_id") or ""
                 )
-                model_assisted = bool(
-                    event.get(
-                        "model_invocation_observed",
-                        not self._task_uses_typed_local_execution(task),
-                    )
-                )
+                model_assisted = model_invocation_observed
                 expected_changed_paths = (
                     [str(path) for path in raw_expected_changed_paths]
                     if isinstance(raw_expected_changed_paths, list)
@@ -24368,6 +24841,54 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                     results.append(result)
                     continue
+            implementation_evidence_context = (
+                self._resolve_implementation_evidence_context(
+                    source_repo_root=self.repo_root,
+                    source_state_path=event.get(
+                        "implementation_state_path"
+                    ),
+                    source_events_path=event.get(
+                        "implementation_events_path"
+                    ),
+                    require_explicit=bool(
+                        model_invocation_observed
+                        and pending_acceptance_event
+                    ),
+                )
+            )
+            if implementation_evidence_context is None:
+                result = {
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "queue_attempt": queue_attempt,
+                    "implementation_attempt": implementation_attempt,
+                    "branch": branch,
+                    "implementation_commit": implementation_commit,
+                    "resolved": False,
+                    "reason": (
+                        "reconciliation_evidence_context_invalid"
+                    ),
+                }
+                self._record_event(
+                    "merge_reconciliation_deferred",
+                    result,
+                )
+                results.append(result)
+                continue
+            (
+                implementation_state_path,
+                implementation_events_path,
+            ) = implementation_evidence_context
+            implementation_state_path_record = (
+                self._implementation_evidence_path_record(
+                    implementation_state_path
+                )
+            )
+            implementation_events_path_record = (
+                self._implementation_evidence_path_record(
+                    implementation_events_path
+                )
+            )
             raw_changed_submodule_paths = event.get(
                 "changed_submodule_paths"
             )
@@ -24411,6 +24932,40 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 results.append(result)
                 continue
+            pending_validation_commands = event.get(
+                "validation_commands"
+            )
+            acceptance_recovery_binding = {
+                "queue_attempt": queue_attempt,
+                "implementation_attempt": implementation_attempt,
+                "implementation_provider": str(
+                    event.get("implementation_provider") or ""
+                ),
+                "implementation_state_path": (
+                    implementation_state_path_record
+                ),
+                "implementation_events_path": (
+                    implementation_events_path_record
+                ),
+                "model_invocation_observed": model_invocation_observed,
+                "baseline_ref": baseline_ref,
+                "validation_commands": (
+                    [str(command) for command in pending_validation_commands]
+                    if isinstance(pending_validation_commands, list)
+                    else []
+                ),
+                "queued_validation_plan_id": str(
+                    event.get("queued_validation_plan_id") or ""
+                ),
+                "expected_changed_paths": expected_changed_paths,
+                "expected_changed_paths_id": expected_changed_paths_id,
+                "changed_submodule_paths": sorted(
+                    changed_submodule_paths or ()
+                ),
+                "task_owned_submodule_integration_binding": event.get(
+                    "task_owned_submodule_integration_binding"
+                ),
+            }
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
                 # The parent commit can land before its daemon-owned submodule
                 # branches finish merging.  Do not interpret parent ancestry as
@@ -24438,22 +24993,33 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 merge_integrated = (
                     not failed_submodules and cleanup_cleaned
                 )
+                reconciled_merge_commit = (
+                    self._resolve_git_commit_in_repo(
+                        self.repo_root,
+                        target_branch,
+                    )
+                )
                 acceptance = (
                     self._apply_reconciled_merge_acceptance(
                         task=task,
                         attempt=attempt,
-                        implementation_commit=implementation_commit,
-                        merge_commit=self._resolve_git_commit_in_repo(
-                            self.repo_root,
-                            target_branch,
+                        implementation_branch=branch,
+                        implementation_state_path=(
+                            implementation_state_path
                         ),
-                        model_invocation_observed=bool(
-                            event.get(
-                                "model_invocation_observed",
-                                not self._task_uses_typed_local_execution(
-                                    task
-                                ),
-                            )
+                        implementation_events_path=(
+                            implementation_events_path
+                        ),
+                        implementation_commit=implementation_commit,
+                        merge_commit=reconciled_merge_commit,
+                        model_invocation_observed=(
+                            model_invocation_observed
+                        ),
+                        queue_attempt=queue_attempt,
+                        baseline_commit=baseline_ref,
+                        expected_changed_paths=expected_changed_paths,
+                        implementer_provider=str(
+                            event.get("implementation_provider") or ""
                         ),
                     )
                     if merge_integrated
@@ -24472,6 +25038,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "implementation_attempt": implementation_attempt,
                     "branch": branch,
                     "implementation_commit": implementation_commit,
+                    "merge_commit": reconciled_merge_commit,
                     "canonical_task_key": (
                         board_identity.canonical_task_key
                     ),
@@ -24484,6 +25051,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     ),
                     "resolved": resolved,
                     "merge_integrated": merge_integrated,
+                    "authoritatively_completed": (
+                        authoritatively_completed
+                    ),
+                    **acceptance_recovery_binding,
                     "reason": (
                         "submodule_merge_retry_failed"
                         if failed_submodules
@@ -24604,23 +25175,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             if merge_result.get("merged") and not cleanup_cleaned:
                 reason = "cleanup_retry_failed"
+            reconciled_merge_commit = str(
+                merge_result.get("merge_commit")
+                or self._resolve_git_commit_in_repo(
+                    self.repo_root,
+                    target_branch,
+                )
+            )
             acceptance = (
                 self._apply_reconciled_merge_acceptance(
                     task=task,
                     attempt=attempt,
-                    implementation_commit=implementation_commit,
-                    merge_commit=str(
-                        merge_result.get("merge_commit")
-                        or self._resolve_git_commit_in_repo(
-                            self.repo_root,
-                            target_branch,
-                        )
+                    implementation_branch=branch,
+                    implementation_state_path=(
+                        implementation_state_path
                     ),
-                    model_invocation_observed=bool(
-                        event.get(
-                            "model_invocation_observed",
-                            not self._task_uses_typed_local_execution(task),
-                        )
+                    implementation_events_path=(
+                        implementation_events_path
+                    ),
+                    implementation_commit=implementation_commit,
+                    merge_commit=reconciled_merge_commit,
+                    model_invocation_observed=(
+                        model_invocation_observed
+                    ),
+                    queue_attempt=queue_attempt,
+                    baseline_commit=baseline_ref,
+                    expected_changed_paths=expected_changed_paths,
+                    implementer_provider=str(
+                        event.get("implementation_provider") or ""
                     ),
                 )
                 if merge_integrated
@@ -24637,14 +25219,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result = {
                 "task_id": task_id,
                 "attempt": attempt,
+                "queue_attempt": queue_attempt,
+                "implementation_attempt": implementation_attempt,
                 "branch": branch,
                 "implementation_commit": implementation_commit,
+                "merge_commit": reconciled_merge_commit,
                 "canonical_task_key": board_identity.canonical_task_key,
                 "canonical_task_cid": board_identity.canonical_task_cid,
                 "merge_ref": merge_ref,
                 "merge_ref_source": merge_ref_source,
                 "resolved": resolved,
                 "merge_integrated": merge_integrated,
+                "authoritatively_completed": authoritatively_completed,
+                **acceptance_recovery_binding,
                 "reason": reason,
                 "merge_result": merge_result,
                 "cleanup_result": cleanup_result,
@@ -24798,7 +25385,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             or task_id in current_task_ids
                         )
                     ):
-                        candidates[(task_id, implementation_commit)] = event
+                        key = (task_id, implementation_commit)
+                        candidates[key] = {
+                            **candidates.get(key, {}),
+                            **event,
+                        }
                 elif implementation_commit and merge_reason == "baseline_not_ancestor_of_target":
                     abandoned_commits.add(implementation_commit)
                 elif implementation_commit and reconcile_reason == "stale_failed_merge_candidate":
@@ -24915,7 +25506,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if task_id in skip_task_ids:
                 continue
             implementation_commit = str(event.get("implementation_commit") or "")
-            if task_id and implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
+            acceptance_pending = bool(
+                event.get("merge_integrated") is True
+                and event.get("authoritatively_completed") is not True
+            )
+            if (
+                task_id
+                and implementation_commit
+                and (
+                    acceptance_pending
+                    or not self._git_ref_is_ancestor(
+                        implementation_commit,
+                        target_branch,
+                    )
+                )
+            ):
                 failures[task_id] = event
         return failures
 
@@ -28505,17 +29110,32 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self,
         event_type: str,
         payload: dict[str, Any],
+        *,
+        enrich: bool = True,
     ) -> dict[str, Any]:
         enriched = dict(payload)
-        task_source_identity = self._task_source_identity_record()
-        if task_source_identity is not None:
-            enriched.setdefault("task_source_identity", task_source_identity)
-        task_id = str(enriched.get("task_id") or "")
-        identity = self._task_identity_by_display_id.get(task_id)
-        if identity is not None:
-            enriched.setdefault("canonical_task_key", identity.canonical_task_key)
-            enriched.setdefault("canonical_task_cid", identity.canonical_task_cid)
-            enriched.setdefault("board_namespace", identity.board_namespace)
+        if enrich:
+            task_source_identity = self._task_source_identity_record()
+            if task_source_identity is not None:
+                enriched.setdefault(
+                    "task_source_identity",
+                    task_source_identity,
+                )
+            task_id = str(enriched.get("task_id") or "")
+            identity = self._task_identity_by_display_id.get(task_id)
+            if identity is not None:
+                enriched.setdefault(
+                    "canonical_task_key",
+                    identity.canonical_task_key,
+                )
+                enriched.setdefault(
+                    "canonical_task_cid",
+                    identity.canonical_task_cid,
+                )
+                enriched.setdefault(
+                    "board_namespace",
+                    identity.board_namespace,
+                )
         written = append_jsonl_event(
             self.events_path,
             event_type,

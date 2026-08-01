@@ -156,6 +156,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     pending_retry_budget_repair_sources,
     retry_budget_repair_validation_paths,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.post_merge_review import (
+    PostMergeReviewOutcome,
+    VerifiedImplementerProvenance,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     ObjectiveCompletionArtifactRefreshError,
     TodoImplementationSupervisor,
@@ -301,6 +305,38 @@ def _git(cwd: Path, *args: str) -> str:
     )
     assert result.returncode == 0, result.stderr or result.stdout
     return result.stdout.strip()
+
+
+def _verified_implementer_provenance(
+    *,
+    task_id: str,
+    implementation_attempt: int,
+    provider_id: str,
+    implementation_commit: str,
+    branch: str,
+) -> VerifiedImplementerProvenance:
+    return VerifiedImplementerProvenance(
+        task_id=task_id,
+        implementation_attempt=implementation_attempt,
+        provider_id=provider_id,
+        runner=f"{provider_id}_runner",
+        grok_binary="grok",
+        model="grok-4.5",
+        implementation_commit=implementation_commit,
+        branch=branch,
+        log_path=f"logs/{task_id.lower()}-{implementation_attempt}.log",
+        log_bytes=17,
+        log_sha256="a" * 64,
+        log_binding_scope="review_time_live_artifact",
+        log_event_anchored=False,
+        started_event_id="sha256:" + ("b" * 64),
+        started_event_sequence=10,
+        finished_event_id="sha256:" + ("c" * 64),
+        finished_event_sequence=11,
+        source_stream_id="sha256:" + ("d" * 64),
+        source_snapshot_id="baguqeera-test-snapshot",
+        provenance_id="baguqeera-test-provenance",
+    )
 
 
 def _seed_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -6863,7 +6899,10 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
     state_dir = tmp_path / "state"
     todo_path = repo / "todo.md"
     todo_path.write_text(
-        "## REF-040 Recover merge handoff\n\n- Status: todo\n- Completion: manual\n",
+        "## REF-040 Recover merge handoff\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Provider role: deterministic-only\n",
         encoding="utf-8",
     )
     daemon = TodoImplementationDaemon(
@@ -7018,6 +7057,7 @@ def test_merge_rejects_candidate_branch_movement_under_lock(tmp_path):
 )
 def test_merge_callback_runs_exact_post_merge_validation_before_acceptance(
     tmp_path,
+    monkeypatch,
     provider_role,
     model_invocation_observed,
     expected_authoritative,
@@ -7043,7 +7083,8 @@ def test_merge_callback_runs_exact_post_merge_validation_before_acceptance(
 """,
         encoding="utf-8",
     )
-    _git(repo, "add", "todo.md")
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", ".gitignore")
     _git(repo, "commit", "-m", "seed task")
     baseline = _git(repo, "rev-parse", "HEAD")
     branch_name = "implementation/ref-043-post-merge"
@@ -7057,7 +7098,7 @@ def test_merge_callback_runs_exact_post_merge_validation_before_acceptance(
     candidate = _git(repo, "rev-parse", "HEAD")
     _git(repo, "checkout", "main")
 
-    state_dir = tmp_path / "state"
+    state_dir = repo / "state"
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
         state_path=state_dir / "task_state.json",
@@ -7068,6 +7109,19 @@ def test_merge_callback_runs_exact_post_merge_validation_before_acceptance(
         worktree_submodule_paths=[],
     )
     request_identity = daemon._identity_for_task(daemon._load_tasks()[0])
+    if model_invocation_observed:
+        provenance = _verified_implementer_provenance(
+            task_id="REF-043",
+            implementation_attempt=1,
+            provider_id="grok_cli",
+            implementation_commit=candidate,
+            branch=branch_name,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_recover_verified_implementation_provenance",
+            lambda **_kwargs: provenance,
+        )
     request = SimpleNamespace(
         branch_name=branch_name,
         commit_sha=candidate,
@@ -7082,6 +7136,9 @@ def test_merge_callback_runs_exact_post_merge_validation_before_acceptance(
             "target_branch": daemon.resolved_merge_target_branch,
             "baseline_ref": baseline,
             "model_invocation_observed": model_invocation_observed,
+            "repo_root": str(repo),
+            "state_path": "state/task_state.json",
+            "events_path": "state/events.jsonl",
             "implementation_attempt": 1,
             "implementation_provider": (
                 "grok_cli"
@@ -7161,6 +7218,623 @@ def test_merge_callback_runs_exact_post_merge_validation_before_acceptance(
         assert reconciliation[-1]["reason"] == (
             "reconciliation_validation_plan_mismatch"
         )
+
+
+@pytest.mark.parametrize(
+    (
+        "ledger_attempt",
+        "ledger_provider",
+        "expected_reason",
+    ),
+    [
+        (3, "grok_cli", "validation_evidence_missing"),
+        (2, "grok_cli", "implementation_provenance_mismatch"),
+        (3, "codex_cli", "implementation_provenance_mismatch"),
+    ],
+)
+def test_model_merge_callback_verifies_populated_provenance_against_exact_request(
+    tmp_path,
+    monkeypatch,
+    ledger_attempt,
+    ledger_provider,
+    expected_reason,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """## REF-047 Verify populated implementation provenance
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Provider role: grok-implementation
+""",
+        encoding="utf-8",
+    )
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", ".gitignore")
+    _git(repo, "commit", "-m", "seed task")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-047-attempt-3"
+    _git(repo, "branch", branch_name, baseline)
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    identity = daemon._identity_for_task(task)
+    provenance = _verified_implementer_provenance(
+        task_id=task.task_id,
+        implementation_attempt=ledger_attempt,
+        provider_id=ledger_provider,
+        implementation_commit=baseline,
+        branch=branch_name,
+    )
+    recoveries: list[dict[str, object]] = []
+
+    def recover_provenance(**kwargs):
+        recoveries.append(dict(kwargs))
+        return provenance
+
+    monkeypatch.setattr(
+        daemon,
+        "_recover_verified_implementation_provenance",
+        recover_provenance,
+    )
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=baseline,
+        task_id=task.task_id,
+        priority="P0",
+        attempt=1,
+        canonical_task_id=identity.canonical_task_cid,
+        canonical_task_key=identity.canonical_task_key,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "model_invocation_observed": True,
+            "repo_root": str(repo),
+            "state_path": "state/task_state.json",
+            "events_path": "state/events.jsonl",
+            "implementation_attempt": 3,
+            "implementation_provider": "grok_cli",
+            "task": {
+                "task_id": task.task_id,
+                "title": task.title,
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert recoveries == [
+        {
+            "task": task,
+            "branch_name": branch_name,
+            "implementation_commit": baseline,
+            "implementation_attempt": 3,
+            "implementation_state_path": state_dir / "task_state.json",
+            "implementation_events_path": state_dir / "events.jsonl",
+        }
+    ]
+    assert result["attempted"] is False
+    assert result["merged"] is False
+    assert result["reason"] == expected_reason
+
+
+def test_cross_lane_model_merge_callback_uses_source_evidence_and_pends_review(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """## REF-048 Retry independent review without reimplementation
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Provider role: grok-implementation
+- Outputs: verified.txt
+- Validation: test -f verified.txt
+- Acceptance: Keep the integrated implementation pending until Codex approves.
+""",
+        encoding="utf-8",
+    )
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", ".gitignore")
+    _git(repo, "commit", "-m", "seed task")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-048-attempt-3"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "verified.txt").write_text(
+        "implementation attempt three\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "verified.txt")
+    _git(repo, "commit", "-m", "REF-048: add verified output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    lane_state_root = tmp_path / "lane-state"
+    state_dir = lane_state_root / "consumer-a"
+    source_state_dir = lane_state_root / "source-b"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    identity = daemon._identity_for_task(task)
+    provenance = _verified_implementer_provenance(
+        task_id=task.task_id,
+        implementation_attempt=3,
+        provider_id="grok_cli",
+        implementation_commit=candidate,
+        branch=branch_name,
+    )
+    recovery_calls: list[dict[str, object]] = []
+    review_calls: list[dict[str, object]] = []
+
+    def recover_provenance(**kwargs):
+        recovery_calls.append(dict(kwargs))
+        if (
+            kwargs["task"] == task
+            and kwargs["branch_name"] == branch_name
+            and kwargs["implementation_commit"] == candidate
+            and kwargs["implementation_attempt"] == 3
+        ):
+            return provenance
+        return None
+
+    def fail_independent_review(**kwargs):
+        review_calls.append(dict(kwargs))
+        return PostMergeReviewOutcome(
+            admitted=False,
+            reason_code="reviewer_execution_receipt_missing",
+            detail="injected reviewer transport failure",
+            retryable=True,
+            acceptance_pending=True,
+        )
+
+    monkeypatch.setattr(
+        daemon,
+        "_recover_verified_implementation_provenance",
+        recover_provenance,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "perform_post_merge_independent_review",
+        fail_independent_review,
+    )
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id=task.task_id,
+        priority="P0",
+        attempt=1,
+        canonical_task_id=identity.canonical_task_cid,
+        canonical_task_key=identity.canonical_task_key,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "model_invocation_observed": True,
+            "repo_root": str(repo),
+            "state_path": str(source_state_dir / "task_state.json"),
+            "events_path": str(source_state_dir / "events.jsonl"),
+            "implementation_attempt": 3,
+            "implementation_provider": "grok_cli",
+            "validation_proof": {
+                "passed": True,
+                "returncode": 0,
+                "selection": {"scope": "pre_merge"},
+                "proposal_gate": {"changed_paths": ["verified.txt"]},
+            },
+            "task": {
+                "task_id": task.task_id,
+                "title": task.title,
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+                "validation": ["test -f verified.txt"],
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert result["completion_authoritative"] is False
+    assert result["provider_review_evidence_present"] is False
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+    assert recovery_calls == [
+        {
+            "task": task,
+            "branch_name": branch_name,
+            "implementation_commit": candidate,
+            "implementation_attempt": 3,
+            "implementation_state_path": (
+                source_state_dir / "task_state.json"
+            ),
+            "implementation_events_path": source_state_dir / "events.jsonl",
+        }
+    ]
+    assert len(review_calls) == 1
+    review = review_calls[0]
+    assert review["task"] == task
+    assert (
+        review["implementation_events_path"]
+        == source_state_dir / "events.jsonl"
+    )
+    assert review["attempt"] == 1
+    assert review["implementation_attempt"] == 3
+    assert review["baseline_commit"] == baseline
+    assert review["implementation_commit"] == candidate
+    assert review["merge_commit"] == result["merge_commit"]
+    assert review["expected_changed_paths"] == ["verified.txt"]
+    assert review["implementer_provider"] == "grok_cli"
+    assert review["implementer_provenance"] is provenance
+
+    pending_events = [
+        event
+        for event in daemon._iter_events()
+        if event.get("type") == "merge_acceptance_pending"
+    ]
+    assert len(pending_events) == 1
+    pending = pending_events[0]
+    assert pending["attempt"] == 3
+    assert pending["queue_attempt"] == 1
+    assert pending["implementation_attempt"] == 3
+    assert pending["implementation_provider"] == "grok_cli"
+    assert pending["implementation_state_path"] == str(
+        source_state_dir / "task_state.json"
+    )
+    assert pending["implementation_events_path"] == str(
+        source_state_dir / "events.jsonl"
+    )
+    assert pending["branch"] == branch_name
+    assert pending["baseline_ref"] == baseline
+    assert pending["implementation_commit"] == candidate
+    assert pending["merge_commit"] == result["merge_commit"]
+    assert pending["validation_commands"] == ["test -f verified.txt"]
+    assert pending["expected_changed_paths"] == ["verified.txt"]
+    assert pending["expected_changed_paths_id"] == (
+        implementation_daemon_module.content_identity(
+            {"changed_paths": ["verified.txt"]}
+        )
+    )
+    assert daemon._failed_merge_candidates() == [pending]
+
+
+def test_restart_retains_exact_acceptance_pending_binding_after_review_failure(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """## REF-049 Preserve pending review recovery binding
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Provider role: grok-implementation
+- Outputs: artifact.txt
+- Validation: test -f artifact.txt
+- Acceptance: Retry review without rerunning implementation.
+""",
+        encoding="utf-8",
+    )
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", ".gitignore")
+    _git(repo, "commit", "-m", "seed task")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-049-attempt-3"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "artifact.txt").write_text(
+        "already integrated\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "artifact.txt")
+    _git(repo, "commit", "-m", "REF-049: implementation attempt three")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--ff-only", branch_name)
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    identity = daemon._identity_for_task(task)
+    validation_commands = ["test -f artifact.txt"]
+    expected_changed_paths = ["artifact.txt"]
+    validation_plan_id = implementation_daemon_module.content_identity(
+        {"commands": validation_commands}
+    )
+    expected_changed_paths_id = implementation_daemon_module.content_identity(
+        {"changed_paths": expected_changed_paths}
+    )
+    submodule_binding = {
+        "schema": (
+            implementation_daemon_module
+            .TASK_OWNED_SUBMODULE_INTEGRATION_BINDING_SCHEMA
+        ),
+        "root_target_commit": baseline,
+        "targets": [
+            {
+                "path": "external/ipfs_datasets",
+                "integration_branch": "agent/ui-ux-ir",
+                "integration_target": candidate,
+                "gitlink_baseline": baseline,
+                "expected_merge_mode": "ff-only",
+                "relation": "already-integrated-test-binding",
+            }
+        ],
+    }
+    pending = daemon._record_event(
+        "merge_acceptance_pending",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "attempt": 3,
+            "queue_attempt": 1,
+            "implementation_attempt": 3,
+            "implementation_provider": "grok_cli",
+            "implementation_state_path": "state/task_state.json",
+            "implementation_events_path": "state/events.jsonl",
+            "branch": branch_name,
+            "baseline_ref": baseline,
+            "implementation_commit": candidate,
+            "merge_commit": candidate,
+            "merge_integrated": True,
+            "authoritatively_completed": False,
+            "model_invocation_observed": True,
+            "validation_commands": validation_commands,
+            "queued_validation_plan_id": validation_plan_id,
+            "expected_changed_paths": expected_changed_paths,
+            "expected_changed_paths_id": expected_changed_paths_id,
+            "changed_submodule_paths": ["external/ipfs_datasets"],
+            "task_owned_submodule_integration_binding": submodule_binding,
+        },
+    )
+
+    restarted = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=[],
+    )
+    provenance = _verified_implementer_provenance(
+        task_id=task.task_id,
+        implementation_attempt=3,
+        provider_id="grok_cli",
+        implementation_commit=candidate,
+        branch=branch_name,
+    )
+    review_calls: list[dict[str, object]] = []
+    binding_parse_calls: list[dict[str, object]] = []
+
+    def recover_provenance(**kwargs):
+        assert kwargs == {
+            "task": task,
+            "branch_name": branch_name,
+            "implementation_commit": candidate,
+            "implementation_attempt": 3,
+            "implementation_state_path": state_dir / "task_state.json",
+            "implementation_events_path": state_dir / "events.jsonl",
+        }
+        return provenance
+
+    def fail_independent_review(**kwargs):
+        review_calls.append(dict(kwargs))
+        return PostMergeReviewOutcome(
+            admitted=False,
+            reason_code="reviewer_execution_receipt_missing",
+            detail="reviewer remains unavailable after restart",
+            retryable=True,
+            acceptance_pending=True,
+        )
+
+    def parse_submodule_binding(
+        raw_binding,
+        *,
+        baseline_ref,
+        changed_submodule_paths,
+    ):
+        binding_parse_calls.append(
+            {
+                "raw_binding": raw_binding,
+                "baseline_ref": baseline_ref,
+                "changed_submodule_paths": changed_submodule_paths,
+            }
+        )
+        return {}, ""
+
+    monkeypatch.setattr(
+        restarted,
+        "_recover_verified_implementation_provenance",
+        recover_provenance,
+    )
+    monkeypatch.setattr(
+        restarted,
+        "_parse_task_owned_submodule_integration_binding",
+        parse_submodule_binding,
+    )
+    monkeypatch.setattr(
+        restarted,
+        "_merge_submodule_branches_to_main",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        restarted,
+        "_cleanup_merged_worktree",
+        lambda *_args, **_kwargs: {"cleaned": True},
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "perform_post_merge_independent_review",
+        fail_independent_review,
+    )
+
+    reconciliation = restarted._reconcile_failed_merges()
+
+    assert len(reconciliation) == 1
+    result = reconciliation[0]
+    assert result["resolved"] is False
+    assert result["merge_integrated"] is True
+    assert result["authoritatively_completed"] is False
+    assert result["reason"] == "authoritative_acceptance_pending"
+    assert len(review_calls) == 1
+    assert review_calls[0]["attempt"] == 1
+    assert review_calls[0]["implementation_attempt"] == 3
+    assert binding_parse_calls == [
+        {
+            "raw_binding": submodule_binding,
+            "baseline_ref": baseline,
+            "changed_submodule_paths": {"external/ipfs_datasets"},
+        }
+    ]
+
+    reconciled_events = [
+        event
+        for event in restarted._iter_events()
+        if event.get("type") == "merge_reconciled"
+    ]
+    assert len(reconciled_events) == 1
+    superseding = reconciled_events[0]
+    assert superseding["sequence"] > pending["sequence"]
+    assert superseding["resolved"] is False
+    assert superseding["reason"] == "authoritative_acceptance_pending"
+
+    retained = restarted._failed_merge_candidates()
+    assert len(retained) == 1
+    retry = retained[0]
+    assert retry["type"] == "merge_reconciled"
+    assert retry["queue_attempt"] == 1
+    assert retry["implementation_attempt"] == 3
+    assert retry["implementation_provider"] == "grok_cli"
+    assert retry["model_invocation_observed"] is True
+    assert retry["baseline_ref"] == baseline
+    assert retry["validation_commands"] == validation_commands
+    assert retry["queued_validation_plan_id"] == validation_plan_id
+    assert retry["expected_changed_paths"] == expected_changed_paths
+    assert retry["expected_changed_paths_id"] == expected_changed_paths_id
+    assert retry["changed_submodule_paths"] == ["external/ipfs_datasets"]
+    assert (
+        retry["task_owned_submodule_integration_binding"]
+        == submodule_binding
+    )
+
+    TodoTaskState(
+        implementation_attempts={task.task_id: 3},
+        implementation_attempts_by_cid={
+            identity.canonical_task_cid: 3,
+        },
+        task_identities={task.task_id: identity.to_dict()},
+    ).save(state_dir / "task_state.json")
+    full_pass = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        implement=True,
+        worktree_submodule_paths=[],
+    )
+    implementation_calls: list[str] = []
+    monkeypatch.setattr(
+        full_pass,
+        "_recover_verified_implementation_provenance",
+        recover_provenance,
+    )
+    monkeypatch.setattr(
+        full_pass,
+        "_parse_task_owned_submodule_integration_binding",
+        parse_submodule_binding,
+    )
+    monkeypatch.setattr(
+        full_pass,
+        "_merge_submodule_branches_to_main",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        full_pass,
+        "_cleanup_merged_worktree",
+        lambda *_args, **_kwargs: {"cleaned": True},
+    )
+    monkeypatch.setattr(
+        full_pass,
+        "_run_implementation",
+        lambda selected, _state: implementation_calls.append(
+            selected.task_id
+        ),
+    )
+
+    pass_result = full_pass.run_once()
+
+    assert implementation_calls == []
+    assert pass_result["implementation_result"] is None
+    persisted = TodoTaskState.load(state_dir / "task_state.json")
+    assert persisted.implementation_attempts[task.task_id] == 3
+    assert (
+        persisted.implementation_attempts_by_cid[
+            identity.canonical_task_cid
+        ]
+        == 3
+    )
+    assert persisted.task_statuses[task.task_id] in {"blocked", "waiting"}
+    assert persisted.task_statuses[task.task_id] != "ready"
+    assert len(review_calls) == 2
 
 
 def test_post_merge_validation_fails_closed_on_submodule_init_failure(
@@ -7344,7 +8018,10 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
     state_dir = tmp_path / "state"
     todo_path = repo / "todo.md"
     todo_path.write_text(
-        "## REF-041 Accept resolver merge\n\n- Status: todo\n- Completion: manual\n",
+        "## REF-041 Accept resolver merge\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Provider role: deterministic-only\n",
         encoding="utf-8",
     )
     daemon = TodoImplementationDaemon(
@@ -7436,7 +8113,10 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
     state_dir = tmp_path / "state"
     todo_path = repo / "todo.md"
     todo_path.write_text(
-        "## REF-042 Verify nested merge\n\n- Status: todo\n- Completion: manual\n",
+        "## REF-042 Verify nested merge\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Provider role: deterministic-only\n",
         encoding="utf-8",
     )
     daemon = TodoImplementationDaemon(
@@ -10064,13 +10744,14 @@ def test_shared_merge_receipts_do_not_grant_board_completion_across_lanes(tmp_pa
     result = daemon.run_once()
     state = TodoTaskState.load(daemon.state_path)
 
-    assert result["active_task_id"] == "ACCEL-001"
+    assert result["active_task_id"] == "ACCEL-003"
     assert result["shared_completed_task_ids"] == ["ACCEL-001"]
     assert result["shared_active_merge_task_ids"] == ["ACCEL-002"]
     assert parse_task_file(todo_path, "## ACCEL-")[0].status == "todo"
-    assert state.task_statuses["ACCEL-001"] == "ready"
+    assert state.task_statuses["ACCEL-001"] == "waiting"
     assert state.task_statuses["ACCEL-002"] == "merge-queued"
     assert state.task_statuses["ACCEL-003"] == "ready"
+    assert state.ready_task_ids == ["ACCEL-003"]
 
 
 def test_bundle_runtime_taskboard_preserves_reviewed_shard_without_authoritative_completion(
@@ -10176,7 +10857,7 @@ def test_bundle_runtime_taskboard_preserves_reviewed_shard_without_authoritative
         "pending_task_ids": ["ACCEL-001"],
     }
     state = TodoTaskState.load(daemon.state_path)
-    assert state.task_statuses["ACCEL-001"] == "ready"
+    assert state.task_statuses["ACCEL-001"] == "waiting"
     assert state.task_statuses["ACCEL-002"] == "blocked"
     runtime_after_completion = lane.runtime_todo_path.read_bytes()
 
