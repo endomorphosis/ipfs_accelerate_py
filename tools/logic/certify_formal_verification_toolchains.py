@@ -57,6 +57,21 @@ RELEASE_CANDIDATE_GOAL_ID: Final = "FVT-G213"
 RELEASE_CANDIDATE_TASK_ID: Final = "FVT-066"
 RELEASE_CANDIDATE_MAX_STAGE: Final = "release_candidate"
 
+# Production-semantic elevation fan-in (FVT-G213 / FVT-081). Bound by the
+# receipt builder; the certificate only records the evidence paths.
+PRODUCTION_ELEVATION_FANIN_INTERFACE: Final = (
+    "ProductionSemanticElevationFanIn@1"
+)
+PRODUCTION_ELEVATION_FANIN_GOAL_ID: Final = "FVT-G213"
+PRODUCTION_ELEVATION_FANIN_TASK_ID: Final = "FVT-081"
+DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
+)
+DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE: Final = Path(
+    "test/integration/toolchains/"
+    "test_formal_verification_production_elevation_fanin.py"
+)
+
 # Lossless specialized receipt aggregation (FVT-G203 / FVT-065).
 # FVT-079 re-proves acceptance when path evidence already exists (objective
 # validation repair).
@@ -4612,6 +4627,19 @@ def build_certificate(
                 "claims_merge": False,
                 "claims_deployment": False,
             },
+            "production_semantic_elevation_fanin": {
+                "interface": PRODUCTION_ELEVATION_FANIN_INTERFACE,
+                "goal_id": PRODUCTION_ELEVATION_FANIN_GOAL_ID,
+                "task_id": PRODUCTION_ELEVATION_FANIN_TASK_ID,
+                "path": str(
+                    DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE
+                ).replace("\\", "/"),
+                "integration_test": str(
+                    DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE
+                ).replace("\\", "/"),
+                "claims_merge": False,
+                "claims_deployment": False,
+            },
         },
         "check_kinds_required": ["positive", "negative", "mutation", "replay"],
         "evidence": {
@@ -4629,6 +4657,12 @@ def build_certificate(
             "release_candidate": str(DEFAULT_RELEASE_CANDIDATE_RELATIVE).replace(
                 "\\", "/"
             ),
+            "production_elevation_fanin_integration_test": str(
+                DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE
+            ).replace("\\", "/"),
+            "production_elevation_fanin_receipt": str(
+                DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE
+            ).replace("\\", "/"),
             "lock": str(DEFAULT_LOCK_RELATIVE).replace("\\", "/"),
         },
         "certificate_digest_sha256": "",  # filled below
