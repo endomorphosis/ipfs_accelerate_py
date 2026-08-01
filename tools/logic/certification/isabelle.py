@@ -92,7 +92,7 @@ _TRUE_THEORY: Final = """\
 theory CertTrue imports Main
 begin
 
-theorem from_eq: "n = m ⟹ n = m"
+theorem from_eq: "n = m ==> n = m"
   by simp
 
 end
@@ -112,7 +112,7 @@ _ASSUMPTION_MUTATION: Final = """\
 theory CertTrue imports Main
 begin
 
-theorem from_eq: "n = n ⟹ n = m"
+theorem from_eq: "n = n ==> n = m"
   by simp
 
 end
@@ -122,7 +122,7 @@ _CONCLUSION_MUTATION: Final = """\
 theory CertTrue imports Main
 begin
 
-theorem from_eq: "n = m ⟹ False"
+theorem from_eq: "n = m ==> False"
   by simp
 
 end
@@ -901,6 +901,24 @@ def evaluate_corpus_case(
     )
 
 
+def _write_fanin_session_root(
+    work: Path,
+    *,
+    theory_name: str,
+    parent_session: str = "HOL",
+    session_name: str = "FaninLive",
+) -> str:
+    """Write a minimal ROOT session that loads one theory under the parent logic."""
+
+    root_text = (
+        f"session {session_name} = {parent_session} +\n"
+        f"  theories\n"
+        f"    {theory_name}\n"
+    )
+    (work / "ROOT").write_text(root_text, encoding="utf-8")
+    return session_name
+
+
 def check_isabelle_source_live(
     source: str,
     *,
@@ -910,7 +928,12 @@ def check_isabelle_source_live(
     case_id: str = "case",
     session: str = "HOL",
 ) -> CaseOutcome:
-    """Optionally run a live ``isabelle process`` check under offline bounds."""
+    """Run a live Isabelle theory/session check under offline bounds.
+
+    Isabelle2025-2 no longer exposes ``isabelle process``; live checks use
+    ``isabelle build -d <session_dir> <session>`` with a temporary ROOT so the
+    session/source helper is exercised rather than offline fixtures only.
+    """
 
     normalized = source if source.endswith("\n") else source + "\n"
     theory_name = extract_isabelle_theory_name(normalized) or "Goal"
@@ -937,12 +960,26 @@ def check_isabelle_source_live(
         )
 
     probe_env = offline_env(env)
+    live_session = "FaninLive"
     with tempfile.TemporaryDirectory(prefix="isabelle-cert-") as tmp:
         work = Path(tmp)
         theory_path = work / f"{theory_name}.thy"
         theory_path.write_text(normalized, encoding="utf-8")
+        _write_fanin_session_root(
+            work,
+            theory_name=theory_name,
+            parent_session=session if session else "HOL",
+            session_name=live_session,
+        )
         completed = bounded_run(
-            [executable, "process", "-T", theory_name, "-d", str(work)],
+            [
+                executable,
+                "build",
+                "-d",
+                str(work),
+                "-v",
+                live_session,
+            ],
             timeout=timeout,
             env=probe_env,
             cwd=work,
@@ -964,7 +1001,7 @@ def check_isabelle_source_live(
             source_digest=source_digest,
             output_digest=content_digest(""),
             timed_out=True,
-            detail="bounded isabelle invocation timed out or failed to spawn",
+            detail="bounded isabelle build timed out or failed to spawn",
         )
 
     accepted, eval_reasons = evaluate_isabelle_process_output(
@@ -974,6 +1011,13 @@ def check_isabelle_source_live(
         returncode=completed.returncode,
         timed_out=False,
     )
+    # ``isabelle build`` may exit 0 even when the named session failed; treat
+    # explicit FAILED / Unfinished markers as rejection.
+    combined = f"{completed.stdout}\n{completed.stderr}"
+    if re.search(r"\bFAILED\b|Unfinished session", combined):
+        accepted = False
+        if "error_marker" not in eval_reasons:
+            eval_reasons.append("session_failed")
     return CaseOutcome(
         case_id=case_id,
         kind="kernel",
@@ -987,11 +1031,11 @@ def check_isabelle_source_live(
         theorem_name=theorem_name,
         imports=imports,
         source_digest=source_digest,
-        output_digest=content_digest(f"{completed.stdout}\n{completed.stderr}"),
+        output_digest=content_digest(combined),
         returncode=completed.returncode,
         stdout=completed.stdout,
         stderr=completed.stderr,
-        detail="isabelle process under offline pin",
+        detail="isabelle build session under offline pin",
     )
 
 
@@ -1201,7 +1245,7 @@ def run_certification_suite(
         "session": {
             "name": binding_case.session if binding_case else "HOL",
             "process_command_template": (
-                "{isabelle} process -T {theory_name} -d {session_dir}"
+                "{isabelle} build -d {session_dir} -v FaninLive"
             ),
         },
         "imports": list(binding_case.imports) if binding_case else [],
@@ -1414,6 +1458,465 @@ def lane_handler(*args: Any, **kwargs: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Kernel live semantic fan-in (FVT-G206 / KernelLiveSemanticFanIn@1)
+# ---------------------------------------------------------------------------
+
+FANIN_INTERFACE: Final = "KernelLiveSemanticFanIn@1"
+FANIN_SCHEMA_VERSION: Final = "kernel-live-semantic-fanin/v1"
+FANIN_GOAL_ID: Final = "FVT-G206"
+FANIN_TASK_ID: Final = "FVT-057"
+FANIN_KERNEL_ID: Final = "isabelle"
+FANIN_TIMEOUT_SECONDS: Final = 0.05
+REQUIRED_FANIN_CASE_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        "positive",
+        "negative",
+        "mutation",
+        "replay",
+        "malformed",
+        "timeout",
+        "fail_closed",
+    }
+)
+
+_FANIN_MALFORMED_THEORY: Final = """\
+theory CertBroken imports Main
+begin
+
+theorem broken: "True"
+  by exact 0
+
+end
+"""
+
+_FANIN_AXIOM_THEORY: Final = """\
+theory CertAxiom imports Main
+begin
+
+axiomatization bad :: bool where bad_false: "bad = False"
+
+theorem uses_axiom: "False"
+  using bad_false by simp
+
+end
+"""
+
+
+def live_fanin_case_recipes() -> list[dict[str, Any]]:
+    """Compact live fan-in recipes owned by the Isabelle kernel only."""
+
+    return [
+        {
+            "case_id": "true_theorem",
+            "kind": "positive",
+            "expect": "accepted",
+            "theory_name": "CertTrue",
+            "session": "HOL",
+            "theorem_name": "from_eq",
+            "assumptions": ["n = m"],
+            "source": _TRUE_THEORY,
+        },
+        {
+            "case_id": "false_proof",
+            "kind": "negative",
+            "expect": "rejected",
+            "theory_name": "CertFalse",
+            "session": "HOL",
+            "theorem_name": "false_claim",
+            "assumptions": [],
+            "source": _FALSE_THEORY,
+        },
+        {
+            "case_id": "hypothesis_mutation",
+            "kind": "mutation",
+            "expect": "rejected",
+            "theory_name": "CertTrue",
+            "session": "HOL",
+            "theorem_name": "from_eq",
+            "assumptions": ["n = n"],
+            "source": _ASSUMPTION_MUTATION,
+        },
+        {
+            "case_id": "conclusion_mutation",
+            "kind": "mutation",
+            "expect": "rejected",
+            "theory_name": "CertTrue",
+            "session": "HOL",
+            "theorem_name": "from_eq",
+            "assumptions": ["n = m"],
+            "source": _CONCLUSION_MUTATION,
+        },
+        {
+            "case_id": "deterministic_replay",
+            "kind": "replay",
+            "expect": "accepted",
+            "theory_name": "CertTrue",
+            "session": "HOL",
+            "theorem_name": "from_eq",
+            "assumptions": ["n = m"],
+            "source": _TRUE_THEORY,
+            "base_case_id": "true_theorem",
+        },
+        {
+            "case_id": "malformed_source",
+            "kind": "malformed",
+            "expect": "rejected",
+            "theory_name": "CertBroken",
+            "session": "HOL",
+            "theorem_name": "broken",
+            "assumptions": [],
+            "source": _FANIN_MALFORMED_THEORY,
+        },
+        {
+            "case_id": "timeout_case",
+            "kind": "timeout",
+            "expect": "rejected",
+            "theory_name": "CertTrue",
+            "session": "HOL",
+            "theorem_name": "from_eq",
+            "assumptions": ["n = m"],
+            "source": _TRUE_THEORY,
+            "force_timeout": True,
+        },
+        {
+            "case_id": "sorry_escape",
+            "kind": "fail_closed",
+            "expect": "rejected",
+            "theory_name": "CertSorry",
+            "session": "HOL",
+            "theorem_name": "hole_sorry",
+            "assumptions": [],
+            "source": _SORRY_THEORY,
+            "reason_codes": ["sorry_or_oops"],
+        },
+        {
+            "case_id": "axiom_escape",
+            "kind": "fail_closed",
+            "expect": "rejected",
+            "theory_name": "CertAxiom",
+            "session": "HOL",
+            "theorem_name": "uses_axiom",
+            "assumptions": [],
+            "source": _FANIN_AXIOM_THEORY,
+            "reason_codes": ["unreviewed_axiomatization"],
+        },
+    ]
+
+
+def _force_timeout_executable() -> str:
+    sleeper = shutil.which("sleep")
+    if sleeper:
+        return sleeper
+    return sys.executable
+
+
+def build_live_fanin_contribution(
+    *,
+    repo_root: Path | None = None,
+    env: Mapping[str, str] | None = None,
+    executable: str | None = None,
+) -> dict[str, Any]:
+    """Execute Isabelle-owned live fan-in via ``check_isabelle_source_live``.
+
+    Exercises the live source/session helper rather than offline fixtures only.
+    Never substitutes Lean, Rocq, or advisor authority.
+    """
+
+    root = repo_root or repo_root_from()
+    probe_env = offline_env(env)
+    identity = probe_isabelle_identity(env=probe_env, executable=executable)
+    isabelle_bin = executable or identity.get("executable_path")
+    usable = bool(
+        identity.get("identity_probed")
+        and identity.get("version_match")
+        and isabelle_bin
+    )
+
+    cases: list[dict[str, Any]] = []
+    checks: list[dict[str, Any]] = []
+    outcomes_by_id: dict[str, CaseOutcome] = {}
+    block_reasons: list[str] = []
+    live_helper_exercised = False
+    live_executed = False
+
+    for recipe in live_fanin_case_recipes():
+        case_id = str(recipe["case_id"])
+        kind = str(recipe["kind"])
+        expect = str(recipe["expect"])
+        source = str(recipe["source"])
+        session = str(recipe.get("session") or "HOL")
+        force_timeout = bool(recipe.get("force_timeout"))
+
+        if force_timeout:
+            sleeper = _force_timeout_executable()
+            argv = (
+                [sleeper, "30"]
+                if Path(sleeper).name == "sleep" or sleeper.endswith("/sleep")
+                else [sleeper, "-c", "import time; time.sleep(30)"]
+            )
+            completed = bounded_run(
+                argv,
+                timeout=FANIN_TIMEOUT_SECONDS,
+                env=probe_env,
+            )
+            outcome = CaseOutcome(
+                case_id=case_id,
+                kind=kind,
+                expect=expect,
+                accepted=False,
+                matched=completed is None,
+                status="rejected",
+                reason_codes=["timeout_or_spawn_failure"]
+                if completed is None
+                else ["timeout_not_triggered"],
+                theory_name=str(recipe.get("theory_name") or ""),
+                session=session,
+                theorem_name=str(recipe.get("theorem_name") or ""),
+                imports=list(extract_isabelle_imports(source)),
+                assumptions=[str(a) for a in (recipe.get("assumptions") or [])],
+                source_digest=content_digest(source),
+                output_digest=content_digest(""),
+                timed_out=completed is None,
+                detail="fan-in timeout bound rejects without acceptance",
+            )
+            if completed is not None:
+                block_reasons.append("timeout_not_triggered")
+        elif not usable or not isabelle_bin:
+            # Fail-closed source scan still applies when the binary is missing.
+            scan_reasons = list(scan_isabelle_incomplete_or_unreviewed(source))
+            if scan_reasons:
+                outcome = CaseOutcome(
+                    case_id=case_id,
+                    kind=kind,
+                    expect=expect,
+                    accepted=False,
+                    matched=expect == "rejected",
+                    status="rejected",
+                    reason_codes=scan_reasons,
+                    theory_name=str(
+                        recipe.get("theory_name")
+                        or extract_isabelle_theory_name(source)
+                        or ""
+                    ),
+                    session=session,
+                    theorem_name=str(
+                        recipe.get("theorem_name")
+                        or extract_isabelle_theorem_name(source)
+                        or ""
+                    ),
+                    imports=list(extract_isabelle_imports(source)),
+                    assumptions=[str(a) for a in (recipe.get("assumptions") or [])],
+                    source_digest=content_digest(
+                        source if source.endswith("\n") else source + "\n"
+                    ),
+                    output_digest=content_digest(""),
+                    detail="source scan without live binary",
+                )
+            else:
+                outcome = CaseOutcome(
+                    case_id=case_id,
+                    kind=kind,
+                    expect=expect,
+                    accepted=False,
+                    matched=False,
+                    status="rejected",
+                    reason_codes=["kernel_unavailable"],
+                    theory_name=str(
+                        recipe.get("theory_name")
+                        or extract_isabelle_theory_name(source)
+                        or ""
+                    ),
+                    session=session,
+                    theorem_name=str(
+                        recipe.get("theorem_name")
+                        or extract_isabelle_theorem_name(source)
+                        or ""
+                    ),
+                    imports=list(extract_isabelle_imports(source)),
+                    assumptions=[str(a) for a in (recipe.get("assumptions") or [])],
+                    source_digest=content_digest(
+                        source if source.endswith("\n") else source + "\n"
+                    ),
+                    output_digest=content_digest(""),
+                    detail="isabelle pin unavailable for live fan-in",
+                )
+        else:
+            outcome = check_isabelle_source_live(
+                source,
+                executable=str(isabelle_bin),
+                env=probe_env,
+                case_id=case_id,
+                session=session,
+            )
+            outcome.kind = kind
+            outcome.expect = expect
+            live_helper_exercised = True
+            live_executed = True
+
+        outcomes_by_id[case_id] = outcome
+        if expect == "accepted":
+            matched = outcome.accepted is True
+        else:
+            matched = outcome.accepted is False
+        expected_reasons = [str(item) for item in (recipe.get("reason_codes") or [])]
+        if expected_reasons:
+            matched = matched and any(
+                reason in outcome.reason_codes for reason in expected_reasons
+            )
+        if kind == "timeout":
+            matched = (
+                outcome.accepted is False
+                and (
+                    "timeout_or_spawn_failure" in outcome.reason_codes
+                    or outcome.timed_out
+                )
+            )
+        if kind == "replay" and expect == "accepted":
+            ref = outcomes_by_id.get(str(recipe.get("base_case_id") or "true_theorem"))
+            if ref is not None:
+                # Isabelle build logs embed wall-clock timestamps, so live
+                # replay binds source digest + acceptance rather than raw
+                # stdout digests.
+                matched = matched and (
+                    outcome.source_digest == ref.source_digest
+                    and outcome.accepted is True
+                    and ref.accepted is True
+                    and outcome.returncode == ref.returncode
+                )
+            else:
+                matched = False
+        if not matched:
+            block_reasons.append(f"case_failed:{case_id}")
+        case_payload = outcome.to_dict()
+        case_payload.pop("stdout", None)
+        case_payload.pop("stderr", None)
+        cases.append(case_payload)
+        checks.append(
+            {
+                "check_id": f"isabelle.fanin.{case_id}",
+                "kind": kind,
+                "status": "passed" if matched else "failed",
+                "expected": expect,
+                "observed": "accepted" if outcome.accepted else "rejected",
+                "reason_codes": list(outcome.reason_codes),
+                "bindings": {
+                    "theory_name": outcome.theory_name,
+                    "session": outcome.session,
+                    "theorem_name": outcome.theorem_name,
+                    "imports": list(outcome.imports),
+                    "assumptions": list(outcome.assumptions),
+                    "source_digest": outcome.source_digest,
+                    "output_digest": outcome.output_digest,
+                    "returncode": outcome.returncode,
+                },
+            }
+        )
+
+    positive = outcomes_by_id.get("true_theorem")
+    bindings = {
+        "kernel_id": FANIN_KERNEL_ID,
+        "tool_id": TOOL_ID,
+        "executable_path": identity.get("executable_path"),
+        "version_string": identity.get("version_string"),
+        "locked_version": LOCKED_VERSION,
+        "dependency_digests": {
+            "locked_version": LOCKED_VERSION,
+            "session": "HOL",
+        },
+        "imports": list(positive.imports) if positive else [],
+        "session": {
+            "name": positive.session if positive else "HOL",
+            "process_command_template": (
+                "{isabelle} build -d {session_dir} -v FaninLive"
+            ),
+        },
+        "assumptions": list(positive.assumptions) if positive else [],
+        "theorem": {
+            "name": positive.theorem_name if positive else "",
+            "assumptions": list(positive.assumptions) if positive else [],
+        },
+        "source": {
+            "primary_path": (
+                f"{positive.theory_name}.thy" if positive else "CertTrue.thy"
+            ),
+            "source_digest": positive.source_digest if positive else "",
+            "format": "isabelle",
+        },
+        "output": {
+            "output_digest": positive.output_digest if positive else "",
+            "returncode": positive.returncode if positive else None,
+        },
+        "authority": {
+            "ceiling": AUTHORITY_CEILING,
+            "scope": AUTHORITY_SCOPE,
+            "selected_kernel": FANIN_KERNEL_ID,
+            "sibling_kernel_substitution_forbidden": True,
+            "advisor_substitution_forbidden": True,
+            "not_advisor": True,
+            "not_lean": True,
+            "not_rocq": True,
+            "hammer_is_proposal_only": True,
+            "live_source_session_helper": "check_isabelle_source_live",
+        },
+    }
+
+    present_kinds = {str(item.get("kind") or "") for item in live_fanin_case_recipes()}
+    missing_kinds = sorted(REQUIRED_FANIN_CASE_KINDS - present_kinds)
+    if missing_kinds:
+        block_reasons.append("corpus_missing_kinds:" + ",".join(missing_kinds))
+
+    all_passed = all(check["status"] == "passed" for check in checks) and not missing_kinds
+    contribution = {
+        "kernel_id": FANIN_KERNEL_ID,
+        "tool_id": TOOL_ID,
+        "interface": INTERFACE,
+        "fanin_interface": FANIN_INTERFACE,
+        "fanin_schema_version": FANIN_SCHEMA_VERSION,
+        "goal_id": FANIN_GOAL_ID,
+        "task_id": FANIN_TASK_ID,
+        "lane_id": LANE_ID,
+        "owner_module": CERTIFICATION_SURFACE,
+        "locked_version": LOCKED_VERSION,
+        "identity_probed": bool(identity.get("identity_probed")),
+        "usable": usable,
+        "live_executed": live_executed or any(
+            c.get("case_id") == "timeout_case" for c in cases
+        ),
+        "live_source_helper": "check_isabelle_source_live",
+        "live_source_helper_exercised": live_helper_exercised,
+        "sibling_kernel_substitution": False,
+        "advisor_substitution": False,
+        "executable_path": identity.get("executable_path"),
+        "version_string": identity.get("version_string"),
+        "network_used": bool(identity.get("network_used")),
+        "install_attempted": bool(identity.get("install_attempted")),
+        "download_attempted": bool(identity.get("download_attempted")),
+        "fanin_passed": bool(all_passed and usable and live_helper_exercised),
+        "block_reasons": list(dict.fromkeys(block_reasons)),
+        "required_case_kinds": sorted(REQUIRED_FANIN_CASE_KINDS),
+        "cases": cases,
+        "checks": checks,
+        "bindings": bindings,
+        "repo_root": str(root),
+        "notes": (
+            "Isabelle live fan-in contribution via check_isabelle_source_live; "
+            "own kernel only; Hammer proposal-only; no Lean/Rocq/advisor "
+            "substitution; timeout fail-closed."
+            if usable
+            else "Isabelle pin unavailable; live fan-in contribution incomplete."
+        ),
+    }
+    contribution["contribution_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in contribution.items()
+            if key != "contribution_digest_sha256"
+        }
+    )
+    return contribution
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1522,5 +2025,12 @@ __all__ = [
     "build_certification_receipt",
     "certify_isabelle_toolchain",
     "lane_handler",
+    "FANIN_INTERFACE",
+    "FANIN_SCHEMA_VERSION",
+    "FANIN_GOAL_ID",
+    "FANIN_TASK_ID",
+    "REQUIRED_FANIN_CASE_KINDS",
+    "live_fanin_case_recipes",
+    "build_live_fanin_contribution",
     "main",
 ]

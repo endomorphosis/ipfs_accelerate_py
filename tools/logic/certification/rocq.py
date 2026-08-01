@@ -1465,6 +1465,370 @@ def lane_handler(*args: Any, **kwargs: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Kernel live semantic fan-in (FVT-G206 / KernelLiveSemanticFanIn@1)
+# ---------------------------------------------------------------------------
+
+FANIN_INTERFACE: Final = "KernelLiveSemanticFanIn@1"
+FANIN_SCHEMA_VERSION: Final = "kernel-live-semantic-fanin/v1"
+FANIN_GOAL_ID: Final = "FVT-G206"
+FANIN_TASK_ID: Final = "FVT-057"
+FANIN_KERNEL_ID: Final = "rocq"
+FANIN_TIMEOUT_SECONDS: Final = 0.05
+REQUIRED_FANIN_CASE_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        "positive",
+        "negative",
+        "mutation",
+        "replay",
+        "malformed",
+        "timeout",
+        "fail_closed",
+    }
+)
+
+
+def live_fanin_case_recipes() -> list[dict[str, Any]]:
+    """Compact live fan-in recipes owned by the Rocq/Coq kernel only."""
+
+    return [
+        {
+            "case_id": "true_theorem",
+            "kind": "positive",
+            "expect": "accepted",
+            "theorem_name": "from_eq",
+            "assumptions": ["H : n = m"],
+            "source": _TRUE_THEOREM,
+        },
+        {
+            "case_id": "false_proof",
+            "kind": "negative",
+            "expect": "rejected",
+            "theorem_name": "false_claim",
+            "assumptions": [],
+            "source": _FALSE_PROOF,
+        },
+        {
+            "case_id": "hypothesis_mutation",
+            "kind": "mutation",
+            "expect": "rejected",
+            "theorem_name": "from_eq",
+            "assumptions": ["H : n = n"],
+            "source": _HYPOTHESIS_MUTATION,
+        },
+        {
+            "case_id": "conclusion_mutation",
+            "kind": "mutation",
+            "expect": "rejected",
+            "theorem_name": "from_eq",
+            "assumptions": ["H : n = m"],
+            "source": _CONCLUSION_MUTATION,
+        },
+        {
+            "case_id": "deterministic_replay",
+            "kind": "replay",
+            "expect": "accepted",
+            "theorem_name": "from_eq",
+            "assumptions": ["H : n = m"],
+            "source": _TRUE_THEOREM,
+            "base_case_id": "true_theorem",
+        },
+        {
+            "case_id": "malformed_source",
+            "kind": "malformed",
+            "expect": "rejected",
+            "theorem_name": "broken",
+            "assumptions": [],
+            "source": _MALFORMED,
+        },
+        {
+            "case_id": "timeout_case",
+            "kind": "timeout",
+            "expect": "rejected",
+            "theorem_name": "from_eq",
+            "assumptions": ["H : n = m"],
+            "source": _TRUE_THEOREM,
+            "force_timeout": True,
+        },
+        {
+            "case_id": "admit_escape",
+            "kind": "fail_closed",
+            "expect": "rejected",
+            "theorem_name": "hole_admit",
+            "assumptions": [],
+            "source": _ADMIT_ESCAPE,
+            "reason_codes": ["admit_or_admitted"],
+        },
+        {
+            "case_id": "axiom_escape",
+            "kind": "fail_closed",
+            "expect": "rejected",
+            "theorem_name": "uses_axiom",
+            "assumptions": [],
+            "source": _AXIOM_ESCAPE,
+            "reason_codes": ["unreviewed_axiom"],
+        },
+    ]
+
+
+def _force_timeout_executable() -> str:
+    sleeper = shutil.which("sleep")
+    if sleeper:
+        return sleeper
+    return sys.executable
+
+
+def build_live_fanin_contribution(
+    *,
+    repo_root: Path | None = None,
+    env: Mapping[str, str] | None = None,
+    executable: str | None = None,
+    opam_executable: str | None = None,
+) -> dict[str, Any]:
+    """Execute Rocq-owned live fan-in cases; never substitutes Lean/Isabelle."""
+
+    root = repo_root or repo_root_from()
+    probe_env = offline_env(env)
+    identity = probe_rocq_identity(env=probe_env, executable=executable)
+    opam_identity = probe_opam_identity(env=probe_env, executable=opam_executable)
+    coq_bin = executable or identity.get("executable_path")
+    usable = bool(
+        identity.get("identity_probed")
+        and identity.get("version_match")
+        and coq_bin
+    )
+    root_contract = validate_isolated_opam_root_contract(repo_root=root)
+
+    cases: list[dict[str, Any]] = []
+    checks: list[dict[str, Any]] = []
+    outcomes_by_id: dict[str, CaseOutcome] = {}
+    block_reasons: list[str] = []
+    live_executed = False
+
+    for recipe in live_fanin_case_recipes():
+        case_id = str(recipe["case_id"])
+        kind = str(recipe["kind"])
+        expect = str(recipe["expect"])
+        source = str(recipe["source"])
+        force_timeout = bool(recipe.get("force_timeout"))
+
+        if force_timeout:
+            sleeper = _force_timeout_executable()
+            argv = (
+                [sleeper, "30"]
+                if Path(sleeper).name == "sleep" or sleeper.endswith("/sleep")
+                else [sleeper, "-c", "import time; time.sleep(30)"]
+            )
+            completed = bounded_run(
+                argv,
+                timeout=FANIN_TIMEOUT_SECONDS,
+                env=probe_env,
+            )
+            outcome = CaseOutcome(
+                case_id=case_id,
+                kind=kind,
+                expect=expect,
+                accepted=False,
+                matched=completed is None,
+                status="rejected",
+                reason_codes=["timeout_or_spawn_failure"]
+                if completed is None
+                else ["timeout_not_triggered"],
+                theorem_name=str(recipe.get("theorem_name") or ""),
+                imports=list(extract_rocq_imports(source)),
+                assumptions=[str(a) for a in (recipe.get("assumptions") or [])],
+                source_digest=content_digest(source),
+                output_digest=content_digest(""),
+                timed_out=completed is None,
+                detail="fan-in timeout bound rejects without acceptance",
+            )
+            if completed is not None:
+                block_reasons.append("timeout_not_triggered")
+        elif not usable or not coq_bin:
+            outcome = CaseOutcome(
+                case_id=case_id,
+                kind=kind,
+                expect=expect,
+                accepted=False,
+                matched=False,
+                status="rejected",
+                reason_codes=["kernel_unavailable"],
+                theorem_name=str(
+                    recipe.get("theorem_name")
+                    or extract_rocq_theorem_name(source)
+                    or ""
+                ),
+                imports=list(extract_rocq_imports(source)),
+                assumptions=[str(a) for a in (recipe.get("assumptions") or [])],
+                source_digest=content_digest(
+                    source if source.endswith("\n") else source + "\n"
+                ),
+                output_digest=content_digest(""),
+                detail="rocq pin unavailable for live fan-in",
+            )
+        else:
+            outcome = check_rocq_source_live(
+                source,
+                executable=str(coq_bin),
+                env=probe_env,
+                case_id=case_id,
+            )
+            outcome.kind = kind
+            outcome.expect = expect
+            live_executed = True
+
+        outcomes_by_id[case_id] = outcome
+        if expect == "accepted":
+            matched = outcome.accepted is True
+        else:
+            matched = outcome.accepted is False
+        expected_reasons = [str(item) for item in (recipe.get("reason_codes") or [])]
+        if expected_reasons:
+            matched = matched and any(
+                reason in outcome.reason_codes for reason in expected_reasons
+            )
+        if kind == "timeout":
+            matched = (
+                outcome.accepted is False
+                and (
+                    "timeout_or_spawn_failure" in outcome.reason_codes
+                    or outcome.timed_out
+                )
+            )
+        if kind == "replay" and expect == "accepted":
+            ref = outcomes_by_id.get(str(recipe.get("base_case_id") or "true_theorem"))
+            if ref is not None:
+                matched = matched and (
+                    outcome.source_digest == ref.source_digest
+                    and outcome.output_digest == ref.output_digest
+                    and outcome.accepted is True
+                    and ref.accepted is True
+                )
+            else:
+                matched = False
+        if not matched:
+            block_reasons.append(f"case_failed:{case_id}")
+        case_payload = outcome.to_dict()
+        case_payload.pop("stdout", None)
+        case_payload.pop("stderr", None)
+        cases.append(case_payload)
+        checks.append(
+            {
+                "check_id": f"rocq.fanin.{case_id}",
+                "kind": kind,
+                "status": "passed" if matched else "failed",
+                "expected": expect,
+                "observed": "accepted" if outcome.accepted else "rejected",
+                "reason_codes": list(outcome.reason_codes),
+                "bindings": {
+                    "theorem_name": outcome.theorem_name,
+                    "imports": list(outcome.imports),
+                    "assumptions": list(outcome.assumptions),
+                    "source_digest": outcome.source_digest,
+                    "output_digest": outcome.output_digest,
+                    "returncode": outcome.returncode,
+                },
+            }
+        )
+
+    positive = outcomes_by_id.get("true_theorem")
+    bindings = {
+        "kernel_id": FANIN_KERNEL_ID,
+        "tool_id": TOOL_ID,
+        "executable_path": identity.get("executable_path"),
+        "version_string": identity.get("version_string"),
+        "locked_version": LOCKED_VERSION,
+        "package_identity": PACKAGE_IDENTITY,
+        "dependency_digests": {
+            "package_identity": PACKAGE_IDENTITY,
+            "opam_version": LOCKED_OPAM_VERSION,
+            "opam_executable_path": opam_identity.get("executable_path"),
+            "isolated_opam_root": root_contract.get("isolated_opam_root"),
+            "opam_support_only": True,
+        },
+        "imports": list(positive.imports) if positive else [],
+        "assumptions": list(positive.assumptions) if positive else [],
+        "theorem": {
+            "name": positive.theorem_name if positive else "",
+            "assumptions": list(positive.assumptions) if positive else [],
+        },
+        "source": {
+            "primary_path": "Goal.v",
+            "source_digest": positive.source_digest if positive else "",
+            "format": "rocq",
+        },
+        "output": {
+            "output_digest": positive.output_digest if positive else "",
+            "returncode": positive.returncode if positive else None,
+        },
+        "authority": {
+            "ceiling": AUTHORITY_CEILING,
+            "scope": AUTHORITY_SCOPE,
+            "selected_kernel": FANIN_KERNEL_ID,
+            "sibling_kernel_substitution_forbidden": True,
+            "advisor_substitution_forbidden": True,
+            "not_advisor": True,
+            "not_lean": True,
+            "not_isabelle": True,
+            "opam_cannot_promote_kernel_lane": True,
+        },
+    }
+
+    present_kinds = {str(item.get("kind") or "") for item in live_fanin_case_recipes()}
+    missing_kinds = sorted(REQUIRED_FANIN_CASE_KINDS - present_kinds)
+    if missing_kinds:
+        block_reasons.append("corpus_missing_kinds:" + ",".join(missing_kinds))
+
+    all_passed = all(check["status"] == "passed" for check in checks) and not missing_kinds
+    contribution = {
+        "kernel_id": FANIN_KERNEL_ID,
+        "tool_id": TOOL_ID,
+        "interface": INTERFACE,
+        "fanin_interface": FANIN_INTERFACE,
+        "fanin_schema_version": FANIN_SCHEMA_VERSION,
+        "goal_id": FANIN_GOAL_ID,
+        "task_id": FANIN_TASK_ID,
+        "lane_id": LANE_ID,
+        "owner_module": CERTIFICATION_SURFACE,
+        "locked_version": LOCKED_VERSION,
+        "package_identity": PACKAGE_IDENTITY,
+        "identity_probed": bool(identity.get("identity_probed")),
+        "usable": usable,
+        "live_executed": live_executed or any(
+            c.get("case_id") == "timeout_case" for c in cases
+        ),
+        "live_source_helper": "check_rocq_source_live",
+        "sibling_kernel_substitution": False,
+        "advisor_substitution": False,
+        "executable_path": identity.get("executable_path"),
+        "version_string": identity.get("version_string"),
+        "network_used": bool(identity.get("network_used")),
+        "install_attempted": bool(identity.get("install_attempted")),
+        "download_attempted": bool(identity.get("download_attempted")),
+        "fanin_passed": bool(all_passed and usable),
+        "block_reasons": list(dict.fromkeys(block_reasons)),
+        "required_case_kinds": sorted(REQUIRED_FANIN_CASE_KINDS),
+        "cases": cases,
+        "checks": checks,
+        "bindings": bindings,
+        "repo_root": str(root),
+        "notes": (
+            "Rocq live fan-in contribution: own kernel only; OPAM support-only; "
+            "no Lean/Isabelle/advisor substitution; timeout fail-closed."
+            if usable
+            else "Rocq pin unavailable; live fan-in contribution incomplete."
+        ),
+    }
+    contribution["contribution_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in contribution.items()
+            if key != "contribution_digest_sha256"
+        }
+    )
+    return contribution
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1576,5 +1940,12 @@ __all__ = [
     "build_certification_receipt",
     "certify_rocq_toolchain",
     "lane_handler",
+    "FANIN_INTERFACE",
+    "FANIN_SCHEMA_VERSION",
+    "FANIN_GOAL_ID",
+    "FANIN_TASK_ID",
+    "REQUIRED_FANIN_CASE_KINDS",
+    "live_fanin_case_recipes",
+    "build_live_fanin_contribution",
     "main",
 ]

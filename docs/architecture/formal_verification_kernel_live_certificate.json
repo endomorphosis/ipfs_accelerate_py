@@ -1,0 +1,1404 @@
+{
+  "all_kernels_passed": true,
+  "bindings": {
+    "kernels": {
+      "isabelle": {
+        "assumptions": [],
+        "executable_path": "isabelle",
+        "imports": [],
+        "output_digest": "c09daeaa6eec6a6fd12d97657d73dce129f1096c7559604b2977b7283933816b",
+        "session": {
+          "name": "HOL",
+          "process_command_template": "{isabelle} build -d {session_dir} -v FaninLive"
+        },
+        "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+        "theorem": {
+          "assumptions": [],
+          "name": "from_eq"
+        },
+        "version_string": "Isabelle2025-2"
+      },
+      "lean": {
+        "assumptions": [
+          "h : n = m"
+        ],
+        "executable_path": "lean",
+        "imports": [],
+        "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "session": null,
+        "source_digest": "cb6db498069bf6eb469d17d8b38ac84f00bd71999b325cb74b55acc8d825c9cb",
+        "theorem": {
+          "assumptions": [
+            "h : n = m"
+          ],
+          "name": "from_eq"
+        },
+        "version_string": "Lean (version 4.31.0, aarch64-unknown-linux-gnu, commit 68218e876d2a38b1985b8590fff244a83c321783, Release)"
+      },
+      "rocq": {
+        "assumptions": [],
+        "executable_path": "coqc",
+        "imports": [],
+        "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "session": null,
+        "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+        "theorem": {
+          "assumptions": [],
+          "name": "from_eq"
+        },
+        "version_string": "The Rocq Prover, version 9.1.1"
+      }
+    }
+  },
+  "block_reasons": [],
+  "description": "Live semantic fan-in for Lean, Rocq, and Isabelle: each installed proof kernel checks its own generated source and retains assumptions, imports/session, theorem, mutation, and output digests. No advisor or sibling kernel substitutes for the selected kernel.",
+  "evidence": {
+    "certificate": "docs/architecture/formal_verification_kernel_live_certificate.json",
+    "integration_test": "test/integration/toolchains/test_kernel_live_semantic_fanin.py",
+    "surfaces": [
+      "tools.logic.certification.lean",
+      "tools.logic.certification.rocq",
+      "tools.logic.certification.isabelle"
+    ]
+  },
+  "goal_id": "FVT-G206",
+  "interface": "KernelLiveSemanticFanIn@1",
+  "kernel_ids": [
+    "lean",
+    "rocq",
+    "isabelle"
+  ],
+  "kernels": {
+    "isabelle": {
+      "advisor_substitution": false,
+      "bindings": {
+        "assumptions": [],
+        "authority": {
+          "advisor_substitution_forbidden": true,
+          "ceiling": "kernel",
+          "hammer_is_proposal_only": true,
+          "live_source_session_helper": "check_isabelle_source_live",
+          "not_advisor": true,
+          "not_lean": true,
+          "not_rocq": true,
+          "scope": "kernel_proof_checking_only",
+          "selected_kernel": "isabelle",
+          "sibling_kernel_substitution_forbidden": true
+        },
+        "dependency_digests": {
+          "locked_version": "Isabelle2025-2",
+          "session": "HOL"
+        },
+        "executable_path": "isabelle",
+        "imports": [],
+        "kernel_id": "isabelle",
+        "locked_version": "Isabelle2025-2",
+        "output": {
+          "output_digest": "c09daeaa6eec6a6fd12d97657d73dce129f1096c7559604b2977b7283933816b",
+          "returncode": 0
+        },
+        "session": {
+          "name": "HOL",
+          "process_command_template": "{isabelle} build -d {session_dir} -v FaninLive"
+        },
+        "source": {
+          "format": "isabelle",
+          "primary_path": "CertTrue.thy",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b"
+        },
+        "theorem": {
+          "assumptions": [],
+          "name": "from_eq"
+        },
+        "tool_id": "isabelle",
+        "version_string": "Isabelle2025-2"
+      },
+      "block_reasons": [],
+      "cases": [
+        {
+          "accepted": true,
+          "assumptions": [],
+          "case_id": "true_theorem",
+          "detail": "isabelle build session under offline pin",
+          "expect": "accepted",
+          "imports": [],
+          "kind": "positive",
+          "matched": true,
+          "output_digest": "c09daeaa6eec6a6fd12d97657d73dce129f1096c7559604b2977b7283933816b",
+          "property": "",
+          "reason_codes": [],
+          "returncode": 0,
+          "session": "HOL",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "status": "accepted",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "false_proof",
+          "detail": "isabelle build session under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "negative",
+          "matched": true,
+          "output_digest": "84c9971cf74dd8a9b6713c3c03a0831fb59a524c46e3f705423ed17c9330a54e",
+          "property": "",
+          "reason_codes": [
+            "error_marker",
+            "failed_diagnostic",
+            "non_zero_exit"
+          ],
+          "returncode": 1,
+          "session": "HOL",
+          "source_digest": "14ce88591c070c0f5ce905cf28b29891558fa28ffc02af7f11ac1704539b4220",
+          "status": "rejected",
+          "theorem_name": "false_claim",
+          "theory_name": "CertFalse",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "hypothesis_mutation",
+          "detail": "isabelle build session under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "mutation",
+          "matched": true,
+          "output_digest": "b759c5e8568722a1f160a855e255719b590b97c4200fa98c272329267e8ac500",
+          "property": "",
+          "reason_codes": [
+            "error_marker",
+            "failed_diagnostic",
+            "non_zero_exit"
+          ],
+          "returncode": 1,
+          "session": "HOL",
+          "source_digest": "4b8685c536a317a6b4c23a4f834a04d594be7c2ac7e8dc3b9314d2b4562716c3",
+          "status": "rejected",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "conclusion_mutation",
+          "detail": "isabelle build session under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "mutation",
+          "matched": true,
+          "output_digest": "3a86f633c5bb3d60731970fc28db347a4d7d58e90a76a30eaa8b3ec8a8050bda",
+          "property": "",
+          "reason_codes": [
+            "error_marker",
+            "failed_diagnostic",
+            "non_zero_exit"
+          ],
+          "returncode": 1,
+          "session": "HOL",
+          "source_digest": "a13b10e51b3ed2c57df27e0678a89bc31ae735fe058606dbcc6c4bd49b3a524d",
+          "status": "rejected",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue",
+          "timed_out": false
+        },
+        {
+          "accepted": true,
+          "assumptions": [],
+          "case_id": "deterministic_replay",
+          "detail": "isabelle build session under offline pin",
+          "expect": "accepted",
+          "imports": [],
+          "kind": "replay",
+          "matched": true,
+          "output_digest": "da0e4dfa876d66a4be82d349a493b7f07da564ebe85d4e6739eabfb1ed06df9d",
+          "property": "",
+          "reason_codes": [],
+          "returncode": 0,
+          "session": "HOL",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "status": "accepted",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "malformed_source",
+          "detail": "isabelle build session under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "malformed",
+          "matched": true,
+          "output_digest": "b961db96f979541e5ce9f2f7d455313e20fd8f45a4114272228901abb5e89fa7",
+          "property": "",
+          "reason_codes": [
+            "error_marker",
+            "non_zero_exit"
+          ],
+          "returncode": 1,
+          "session": "HOL",
+          "source_digest": "050b5f52402f900dec1d9fc540482a54077a96251fed74de4be6cbcc825c25c2",
+          "status": "rejected",
+          "theorem_name": "broken",
+          "theory_name": "CertBroken",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [
+            "n = m"
+          ],
+          "case_id": "timeout_case",
+          "detail": "fan-in timeout bound rejects without acceptance",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "timeout",
+          "matched": true,
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "property": "",
+          "reason_codes": [
+            "timeout_or_spawn_failure"
+          ],
+          "returncode": null,
+          "session": "HOL",
+          "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+          "status": "rejected",
+          "theorem_name": "from_eq",
+          "theory_name": "CertTrue",
+          "timed_out": true
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "sorry_escape",
+          "detail": "source scan rejected incomplete or unreviewed constructs",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "fail_closed",
+          "matched": true,
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "property": "",
+          "reason_codes": [
+            "sorry_or_oops"
+          ],
+          "returncode": null,
+          "session": "HOL",
+          "source_digest": "bff98afb2b4d22731c66c21071ac57faf8152142d4dcfcd78da3f047158fafa8",
+          "status": "rejected",
+          "theorem_name": "hole_sorry",
+          "theory_name": "CertSorry",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "axiom_escape",
+          "detail": "source scan rejected incomplete or unreviewed constructs",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "fail_closed",
+          "matched": true,
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "property": "",
+          "reason_codes": [
+            "unreviewed_axiomatization"
+          ],
+          "returncode": null,
+          "session": "HOL",
+          "source_digest": "fd241faad153163945b674eceabfb12488b52b18748160c532f5c10832ef4454",
+          "status": "rejected",
+          "theorem_name": "uses_axiom",
+          "theory_name": "CertAxiom",
+          "timed_out": false
+        }
+      ],
+      "checks": [
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "c09daeaa6eec6a6fd12d97657d73dce129f1096c7559604b2977b7283933816b",
+            "returncode": 0,
+            "session": "HOL",
+            "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+            "theorem_name": "from_eq",
+            "theory_name": "CertTrue"
+          },
+          "check_id": "isabelle.fanin.true_theorem",
+          "expected": "accepted",
+          "kind": "positive",
+          "observed": "accepted",
+          "reason_codes": [],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "84c9971cf74dd8a9b6713c3c03a0831fb59a524c46e3f705423ed17c9330a54e",
+            "returncode": 1,
+            "session": "HOL",
+            "source_digest": "14ce88591c070c0f5ce905cf28b29891558fa28ffc02af7f11ac1704539b4220",
+            "theorem_name": "false_claim",
+            "theory_name": "CertFalse"
+          },
+          "check_id": "isabelle.fanin.false_proof",
+          "expected": "rejected",
+          "kind": "negative",
+          "observed": "rejected",
+          "reason_codes": [
+            "error_marker",
+            "failed_diagnostic",
+            "non_zero_exit"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "b759c5e8568722a1f160a855e255719b590b97c4200fa98c272329267e8ac500",
+            "returncode": 1,
+            "session": "HOL",
+            "source_digest": "4b8685c536a317a6b4c23a4f834a04d594be7c2ac7e8dc3b9314d2b4562716c3",
+            "theorem_name": "from_eq",
+            "theory_name": "CertTrue"
+          },
+          "check_id": "isabelle.fanin.hypothesis_mutation",
+          "expected": "rejected",
+          "kind": "mutation",
+          "observed": "rejected",
+          "reason_codes": [
+            "error_marker",
+            "failed_diagnostic",
+            "non_zero_exit"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "3a86f633c5bb3d60731970fc28db347a4d7d58e90a76a30eaa8b3ec8a8050bda",
+            "returncode": 1,
+            "session": "HOL",
+            "source_digest": "a13b10e51b3ed2c57df27e0678a89bc31ae735fe058606dbcc6c4bd49b3a524d",
+            "theorem_name": "from_eq",
+            "theory_name": "CertTrue"
+          },
+          "check_id": "isabelle.fanin.conclusion_mutation",
+          "expected": "rejected",
+          "kind": "mutation",
+          "observed": "rejected",
+          "reason_codes": [
+            "error_marker",
+            "failed_diagnostic",
+            "non_zero_exit"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "da0e4dfa876d66a4be82d349a493b7f07da564ebe85d4e6739eabfb1ed06df9d",
+            "returncode": 0,
+            "session": "HOL",
+            "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+            "theorem_name": "from_eq",
+            "theory_name": "CertTrue"
+          },
+          "check_id": "isabelle.fanin.deterministic_replay",
+          "expected": "accepted",
+          "kind": "replay",
+          "observed": "accepted",
+          "reason_codes": [],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "b961db96f979541e5ce9f2f7d455313e20fd8f45a4114272228901abb5e89fa7",
+            "returncode": 1,
+            "session": "HOL",
+            "source_digest": "050b5f52402f900dec1d9fc540482a54077a96251fed74de4be6cbcc825c25c2",
+            "theorem_name": "broken",
+            "theory_name": "CertBroken"
+          },
+          "check_id": "isabelle.fanin.malformed_source",
+          "expected": "rejected",
+          "kind": "malformed",
+          "observed": "rejected",
+          "reason_codes": [
+            "error_marker",
+            "non_zero_exit"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [
+              "n = m"
+            ],
+            "imports": [],
+            "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "returncode": null,
+            "session": "HOL",
+            "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
+            "theorem_name": "from_eq",
+            "theory_name": "CertTrue"
+          },
+          "check_id": "isabelle.fanin.timeout_case",
+          "expected": "rejected",
+          "kind": "timeout",
+          "observed": "rejected",
+          "reason_codes": [
+            "timeout_or_spawn_failure"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "returncode": null,
+            "session": "HOL",
+            "source_digest": "bff98afb2b4d22731c66c21071ac57faf8152142d4dcfcd78da3f047158fafa8",
+            "theorem_name": "hole_sorry",
+            "theory_name": "CertSorry"
+          },
+          "check_id": "isabelle.fanin.sorry_escape",
+          "expected": "rejected",
+          "kind": "fail_closed",
+          "observed": "rejected",
+          "reason_codes": [
+            "sorry_or_oops"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "returncode": null,
+            "session": "HOL",
+            "source_digest": "fd241faad153163945b674eceabfb12488b52b18748160c532f5c10832ef4454",
+            "theorem_name": "uses_axiom",
+            "theory_name": "CertAxiom"
+          },
+          "check_id": "isabelle.fanin.axiom_escape",
+          "expected": "rejected",
+          "kind": "fail_closed",
+          "observed": "rejected",
+          "reason_codes": [
+            "unreviewed_axiomatization"
+          ],
+          "status": "passed"
+        }
+      ],
+      "contribution_digest_sha256": "c590569991668af12b80682b8cc45f5a1a80f6da5457c27b3beecff5a3d25c45",
+      "download_attempted": false,
+      "executable_path": "isabelle",
+      "fanin_interface": "KernelLiveSemanticFanIn@1",
+      "fanin_passed": true,
+      "fanin_schema_version": "kernel-live-semantic-fanin/v1",
+      "goal_id": "FVT-G206",
+      "identity_probed": true,
+      "install_attempted": false,
+      "interface": "IsabelleToolchainCertification@1",
+      "kernel_id": "isabelle",
+      "lane_id": "kernel",
+      "live_executed": true,
+      "live_source_helper": "check_isabelle_source_live",
+      "live_source_helper_exercised": true,
+      "locked_version": "Isabelle2025-2",
+      "network_used": false,
+      "notes": "Isabelle live fan-in contribution via check_isabelle_source_live; own kernel only; Hammer proposal-only; no Lean/Rocq/advisor substitution; timeout fail-closed.",
+      "owner_module": "tools.logic.certification.isabelle",
+      "repo_root": ".",
+      "required_case_kinds": [
+        "fail_closed",
+        "malformed",
+        "mutation",
+        "negative",
+        "positive",
+        "replay",
+        "timeout"
+      ],
+      "sibling_kernel_substitution": false,
+      "task_id": "FVT-057",
+      "tool_id": "isabelle",
+      "usable": true,
+      "version_string": "Isabelle2025-2"
+    },
+    "lean": {
+      "advisor_substitution": false,
+      "bindings": {
+        "assumptions": [
+          "h : n = m"
+        ],
+        "authority": {
+          "advisor_substitution_forbidden": true,
+          "ceiling": "kernel",
+          "not_advisor": true,
+          "not_isabelle": true,
+          "not_rocq": true,
+          "scope": "kernel_proof_checking_only",
+          "selected_kernel": "lean",
+          "sibling_kernel_substitution_forbidden": true
+        },
+        "dependency_digests": {
+          "elan_toolchain": "leanprover/lean4:v4.31.0",
+          "installed_toolchains": [
+            "leanprover/lean4:v4.29.0",
+            "leanprover/lean4:v4.29.1",
+            "leanprover/lean4:v4.30.0",
+            "leanprover/lean4:v4.31.0",
+            "leanprover/lean4:v4.32.0",
+            "leanprover/lean4:v4.32.1",
+            "leanprover/lean4:v4.32.2"
+          ],
+          "selected_toolchain": "leanprover/lean4:v4.31.0"
+        },
+        "executable_path": "lean",
+        "imports": [],
+        "kernel_id": "lean",
+        "locked_toolchain": "leanprover/lean4:v4.31.0",
+        "locked_version": "v4.31.0",
+        "output": {
+          "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "returncode": 0
+        },
+        "source": {
+          "format": "lean",
+          "primary_path": "Main.lean",
+          "source_digest": "cb6db498069bf6eb469d17d8b38ac84f00bd71999b325cb74b55acc8d825c9cb"
+        },
+        "theorem": {
+          "assumptions": [
+            "h : n = m"
+          ],
+          "name": "from_eq"
+        },
+        "tool_id": "lean",
+        "version_string": "Lean (version 4.31.0, aarch64-unknown-linux-gnu, commit 68218e876d2a38b1985b8590fff244a83c321783, Release)"
+      },
+      "block_reasons": [],
+      "cases": [
+        {
+          "accepted": true,
+          "assumptions": [
+            "h : n = m"
+          ],
+          "case_id": "true_theorem",
+          "detail": "lean kernel compile under offline pin",
+          "expect": "accepted",
+          "imports": [],
+          "kind": "positive",
+          "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "reason_codes": [],
+          "returncode": 0,
+          "source_digest": "cb6db498069bf6eb469d17d8b38ac84f00bd71999b325cb74b55acc8d825c9cb",
+          "theorem_name": "from_eq"
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "false_proof",
+          "detail": "lean kernel compile under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "negative",
+          "output_digest": "dbf8506642d2e587eb57278efea53947e80e08b0f7533598c939b4e40559b01e",
+          "reason_codes": [
+            "kernel_rejected"
+          ],
+          "returncode": 1,
+          "source_digest": "9e11f3ad08604700b4d05b5440927c264b5e87b955dabb1594e1c54de2b9c316",
+          "theorem_name": "false_claim"
+        },
+        {
+          "accepted": false,
+          "assumptions": [
+            "h : n = n"
+          ],
+          "case_id": "hypothesis_mutation",
+          "detail": "lean kernel compile under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "mutation",
+          "output_digest": "511d1dbd4e8bd4e0043610bc05331f27ca8bdf60cbd789a45deb5a654fa158a3",
+          "reason_codes": [
+            "kernel_rejected"
+          ],
+          "returncode": 1,
+          "source_digest": "ef6dbd7cee06a0cdcff851790842f7a9e8d7b970dacdc87390dcfedd71e2389f",
+          "theorem_name": "from_eq"
+        },
+        {
+          "accepted": false,
+          "assumptions": [
+            "h : n = m"
+          ],
+          "case_id": "conclusion_mutation",
+          "detail": "lean kernel compile under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "mutation",
+          "output_digest": "409df5c8d03d348719e012684e0510ed71b8105c5d202bd393b4599403786638",
+          "reason_codes": [
+            "kernel_rejected"
+          ],
+          "returncode": 1,
+          "source_digest": "33ca5222eb44e2cf3a3a41bee0d820868bce4f41d30acd1ab634e87f19291705",
+          "theorem_name": "from_eq"
+        },
+        {
+          "accepted": true,
+          "assumptions": [
+            "h : n = m"
+          ],
+          "case_id": "deterministic_replay",
+          "detail": "lean kernel compile under offline pin",
+          "expect": "accepted",
+          "imports": [],
+          "kind": "replay",
+          "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "reason_codes": [],
+          "returncode": 0,
+          "source_digest": "cb6db498069bf6eb469d17d8b38ac84f00bd71999b325cb74b55acc8d825c9cb",
+          "theorem_name": "from_eq"
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "malformed_source",
+          "detail": "lean kernel compile under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "malformed",
+          "output_digest": "994bfbeffe9860908305ee9525394ca9a58d0f464a389a776124fe930eb8b61a",
+          "reason_codes": [
+            "kernel_rejected"
+          ],
+          "returncode": 1,
+          "source_digest": "2f26262d12bdd4f94bdacb26b0f2370514fe808ab10ee14bef8185628949263a",
+          "theorem_name": "broken"
+        },
+        {
+          "accepted": false,
+          "assumptions": [
+            "h : n = m"
+          ],
+          "case_id": "timeout_case",
+          "detail": "fan-in timeout bound rejects without acceptance",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "timeout",
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "reason_codes": [
+            "timeout_or_spawn_failure"
+          ],
+          "returncode": null,
+          "source_digest": "cb6db498069bf6eb469d17d8b38ac84f00bd71999b325cb74b55acc8d825c9cb",
+          "theorem_name": "from_eq"
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "admit_escape",
+          "detail": "source scan rejected incomplete or unsafe constructs",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "fail_closed",
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "reason_codes": [
+            "sorry_or_admit"
+          ],
+          "returncode": null,
+          "source_digest": "ff935fa682bbdae71ca3574472b93fcf21134163e6bf44f1e9556d08b8ab97fa",
+          "theorem_name": "hole_admit"
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "axiom_escape",
+          "detail": "source scan rejected incomplete or unsafe constructs",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "fail_closed",
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "reason_codes": [
+            "unsafe_or_unreviewed_axiom"
+          ],
+          "returncode": null,
+          "source_digest": "7a02c9328e7ef09395b1088a964bfc28676f55a8ac7446fdc6f4737f3c0f99a9",
+          "theorem_name": "uses_axiom"
+        }
+      ],
+      "checks": [
+        {
+          "bindings": {
+            "assumptions": [
+              "h : n = m"
+            ],
+            "imports": [],
+            "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "returncode": 0,
+            "source_digest": "cb6db498069bf6eb469d17d8b38ac84f00bd71999b325cb74b55acc8d825c9cb",
+            "theorem_name": "from_eq"
+          },
+          "check_id": "lean.fanin.true_theorem",
+          "expected": "accepted",
+          "kind": "positive",
+          "observed": "accepted",
+          "reason_codes": [],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "dbf8506642d2e587eb57278efea53947e80e08b0f7533598c939b4e40559b01e",
+            "returncode": 1,
+            "source_digest": "9e11f3ad08604700b4d05b5440927c264b5e87b955dabb1594e1c54de2b9c316",
+            "theorem_name": "false_claim"
+          },
+          "check_id": "lean.fanin.false_proof",
+          "expected": "rejected",
+          "kind": "negative",
+          "observed": "rejected",
+          "reason_codes": [
+            "kernel_rejected"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [
+              "h : n = n"
+            ],
+            "imports": [],
+            "output_digest": "511d1dbd4e8bd4e0043610bc05331f27ca8bdf60cbd789a45deb5a654fa158a3",
+            "returncode": 1,
+            "source_digest": "ef6dbd7cee06a0cdcff851790842f7a9e8d7b970dacdc87390dcfedd71e2389f",
+            "theorem_name": "from_eq"
+          },
+          "check_id": "lean.fanin.hypothesis_mutation",
+          "expected": "rejected",
+          "kind": "mutation",
+          "observed": "rejected",
+          "reason_codes": [
+            "kernel_rejected"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [
+              "h : n = m"
+            ],
+            "imports": [],
+            "output_digest": "409df5c8d03d348719e012684e0510ed71b8105c5d202bd393b4599403786638",
+            "returncode": 1,
+            "source_digest": "33ca5222eb44e2cf3a3a41bee0d820868bce4f41d30acd1ab634e87f19291705",
+            "theorem_name": "from_eq"
+          },
+          "check_id": "lean.fanin.conclusion_mutation",
+          "expected": "rejected",
+          "kind": "mutation",
+          "observed": "rejected",
+          "reason_codes": [
+            "kernel_rejected"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [
+              "h : n = m"
+            ],
+            "imports": [],
+            "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "returncode": 0,
+            "source_digest": "cb6db498069bf6eb469d17d8b38ac84f00bd71999b325cb74b55acc8d825c9cb",
+            "theorem_name": "from_eq"
+          },
+          "check_id": "lean.fanin.deterministic_replay",
+          "expected": "accepted",
+          "kind": "replay",
+          "observed": "accepted",
+          "reason_codes": [],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "994bfbeffe9860908305ee9525394ca9a58d0f464a389a776124fe930eb8b61a",
+            "returncode": 1,
+            "source_digest": "2f26262d12bdd4f94bdacb26b0f2370514fe808ab10ee14bef8185628949263a",
+            "theorem_name": "broken"
+          },
+          "check_id": "lean.fanin.malformed_source",
+          "expected": "rejected",
+          "kind": "malformed",
+          "observed": "rejected",
+          "reason_codes": [
+            "kernel_rejected"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [
+              "h : n = m"
+            ],
+            "imports": [],
+            "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "returncode": null,
+            "source_digest": "cb6db498069bf6eb469d17d8b38ac84f00bd71999b325cb74b55acc8d825c9cb",
+            "theorem_name": "from_eq"
+          },
+          "check_id": "lean.fanin.timeout_case",
+          "expected": "rejected",
+          "kind": "timeout",
+          "observed": "rejected",
+          "reason_codes": [
+            "timeout_or_spawn_failure"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "returncode": null,
+            "source_digest": "ff935fa682bbdae71ca3574472b93fcf21134163e6bf44f1e9556d08b8ab97fa",
+            "theorem_name": "hole_admit"
+          },
+          "check_id": "lean.fanin.admit_escape",
+          "expected": "rejected",
+          "kind": "fail_closed",
+          "observed": "rejected",
+          "reason_codes": [
+            "sorry_or_admit"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "returncode": null,
+            "source_digest": "7a02c9328e7ef09395b1088a964bfc28676f55a8ac7446fdc6f4737f3c0f99a9",
+            "theorem_name": "uses_axiom"
+          },
+          "check_id": "lean.fanin.axiom_escape",
+          "expected": "rejected",
+          "kind": "fail_closed",
+          "observed": "rejected",
+          "reason_codes": [
+            "unsafe_or_unreviewed_axiom"
+          ],
+          "status": "passed"
+        }
+      ],
+      "contribution_digest_sha256": "d226722000b316b0db9909095b3b52cca5d9ac373f6b15b0d0dc2035def32187",
+      "download_attempted": false,
+      "executable_path": "lean",
+      "fanin_interface": "KernelLiveSemanticFanIn@1",
+      "fanin_passed": true,
+      "fanin_schema_version": "kernel-live-semantic-fanin/v1",
+      "goal_id": "FVT-G206",
+      "identity_probed": true,
+      "install_attempted": false,
+      "interface": "LeanSemanticCertification@1",
+      "kernel_id": "lean",
+      "lane_id": "kernel",
+      "live_executed": true,
+      "live_source_helper": "check_lean_source",
+      "locked_toolchain": "leanprover/lean4:v4.31.0",
+      "locked_version": "v4.31.0",
+      "network_used": false,
+      "notes": "Lean live fan-in contribution: own kernel only; no Rocq/Isabelle/advisor substitution; timeout fail-closed.",
+      "owner_module": "tools.logic.certification.lean",
+      "repo_root": ".",
+      "required_case_kinds": [
+        "fail_closed",
+        "malformed",
+        "mutation",
+        "negative",
+        "positive",
+        "replay",
+        "timeout"
+      ],
+      "sibling_kernel_substitution": false,
+      "task_id": "FVT-057",
+      "tool_id": "lean",
+      "usable": true,
+      "version_string": "Lean (version 4.31.0, aarch64-unknown-linux-gnu, commit 68218e876d2a38b1985b8590fff244a83c321783, Release)"
+    },
+    "rocq": {
+      "advisor_substitution": false,
+      "bindings": {
+        "assumptions": [],
+        "authority": {
+          "advisor_substitution_forbidden": true,
+          "ceiling": "kernel",
+          "not_advisor": true,
+          "not_isabelle": true,
+          "not_lean": true,
+          "opam_cannot_promote_kernel_lane": true,
+          "scope": "kernel_proof_checking_only",
+          "selected_kernel": "rocq",
+          "sibling_kernel_substitution_forbidden": true
+        },
+        "dependency_digests": {
+          "isolated_opam_root": "repo-local-isolated-opam-root",
+          "opam_executable_path": "opam",
+          "opam_support_only": true,
+          "opam_version": "2.5.2",
+          "package_identity": "rocq-prover.9.1.1"
+        },
+        "executable_path": "coqc",
+        "imports": [],
+        "kernel_id": "rocq",
+        "locked_version": "9.1.1",
+        "output": {
+          "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "returncode": 0
+        },
+        "package_identity": "rocq-prover.9.1.1",
+        "source": {
+          "format": "rocq",
+          "primary_path": "Goal.v",
+          "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72"
+        },
+        "theorem": {
+          "assumptions": [],
+          "name": "from_eq"
+        },
+        "tool_id": "coq",
+        "version_string": "The Rocq Prover, version 9.1.1"
+      },
+      "block_reasons": [],
+      "cases": [
+        {
+          "accepted": true,
+          "assumptions": [],
+          "case_id": "true_theorem",
+          "detail": "coqc under offline pin",
+          "expect": "accepted",
+          "imports": [],
+          "kind": "positive",
+          "matched": true,
+          "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "reason_codes": [],
+          "returncode": 0,
+          "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+          "status": "accepted",
+          "theorem_name": "from_eq",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "false_proof",
+          "detail": "coqc under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "negative",
+          "matched": true,
+          "output_digest": "b324186a7a327ef434913e4483ed9dbb9a1dd7b262357e8ce159e0803f2ee937",
+          "reason_codes": [
+            "error_marker",
+            "non_zero_exit"
+          ],
+          "returncode": 1,
+          "source_digest": "803ef0ab8e0d02f10ebf946afab1db1da7bd2ca08c90006a77be57ce0ed6b570",
+          "status": "rejected",
+          "theorem_name": "false_claim",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "hypothesis_mutation",
+          "detail": "coqc under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "mutation",
+          "matched": true,
+          "output_digest": "32340fd54c653adabe2273c9d85ae9d73ebe359341c65c093ae53cbf217f5351",
+          "reason_codes": [
+            "error_marker",
+            "non_zero_exit"
+          ],
+          "returncode": 1,
+          "source_digest": "28a3a89ef7520a61b20e854507ec7b77e48ec029b70c5bf97078a6aefa1b4bbc",
+          "status": "rejected",
+          "theorem_name": "from_eq",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "conclusion_mutation",
+          "detail": "coqc under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "mutation",
+          "matched": true,
+          "output_digest": "7b10806fa6d5ead1a3a469bd3cc59710c4ee3367dea53210806414667444839c",
+          "reason_codes": [
+            "error_marker",
+            "non_zero_exit"
+          ],
+          "returncode": 1,
+          "source_digest": "64772bc2b349ccfe3b13d235a55a6b1ccf87f23486e5faa864c613d866f9da54",
+          "status": "rejected",
+          "theorem_name": "from_eq",
+          "timed_out": false
+        },
+        {
+          "accepted": true,
+          "assumptions": [],
+          "case_id": "deterministic_replay",
+          "detail": "coqc under offline pin",
+          "expect": "accepted",
+          "imports": [],
+          "kind": "replay",
+          "matched": true,
+          "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "reason_codes": [],
+          "returncode": 0,
+          "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+          "status": "accepted",
+          "theorem_name": "from_eq",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "malformed_source",
+          "detail": "coqc under offline pin",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "malformed",
+          "matched": true,
+          "output_digest": "98a4354affac72a387d75e194d7e76fb989fec5be65cc9037dd3de633d936486",
+          "reason_codes": [
+            "error_marker",
+            "non_zero_exit"
+          ],
+          "returncode": 1,
+          "source_digest": "2f9c84f0fa2f82d940edfa063391a4e9f7b5aca3d2e5606bcad1210792f2d1f7",
+          "status": "rejected",
+          "theorem_name": "broken",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [
+            "H : n = m"
+          ],
+          "case_id": "timeout_case",
+          "detail": "fan-in timeout bound rejects without acceptance",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "timeout",
+          "matched": true,
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "reason_codes": [
+            "timeout_or_spawn_failure"
+          ],
+          "returncode": null,
+          "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+          "status": "rejected",
+          "theorem_name": "from_eq",
+          "timed_out": true
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "admit_escape",
+          "detail": "source scan rejected incomplete or unsafe constructs",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "fail_closed",
+          "matched": true,
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "reason_codes": [
+            "admit_or_admitted"
+          ],
+          "returncode": null,
+          "source_digest": "34ae5bb0387f3316014b42ec7d48f2f2f1041a5330adf5af8703013f43536e46",
+          "status": "rejected",
+          "theorem_name": "hole_admit",
+          "timed_out": false
+        },
+        {
+          "accepted": false,
+          "assumptions": [],
+          "case_id": "axiom_escape",
+          "detail": "source scan rejected incomplete or unsafe constructs",
+          "expect": "rejected",
+          "imports": [],
+          "kind": "fail_closed",
+          "matched": true,
+          "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "reason_codes": [
+            "unreviewed_axiom"
+          ],
+          "returncode": null,
+          "source_digest": "5d4bfccaadd0cdc7c106fe94d77a970c0b5ebd6c93121c9d660965b389763bce",
+          "status": "rejected",
+          "theorem_name": "uses_axiom",
+          "timed_out": false
+        }
+      ],
+      "checks": [
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "returncode": 0,
+            "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+            "theorem_name": "from_eq"
+          },
+          "check_id": "rocq.fanin.true_theorem",
+          "expected": "accepted",
+          "kind": "positive",
+          "observed": "accepted",
+          "reason_codes": [],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "b324186a7a327ef434913e4483ed9dbb9a1dd7b262357e8ce159e0803f2ee937",
+            "returncode": 1,
+            "source_digest": "803ef0ab8e0d02f10ebf946afab1db1da7bd2ca08c90006a77be57ce0ed6b570",
+            "theorem_name": "false_claim"
+          },
+          "check_id": "rocq.fanin.false_proof",
+          "expected": "rejected",
+          "kind": "negative",
+          "observed": "rejected",
+          "reason_codes": [
+            "error_marker",
+            "non_zero_exit"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "32340fd54c653adabe2273c9d85ae9d73ebe359341c65c093ae53cbf217f5351",
+            "returncode": 1,
+            "source_digest": "28a3a89ef7520a61b20e854507ec7b77e48ec029b70c5bf97078a6aefa1b4bbc",
+            "theorem_name": "from_eq"
+          },
+          "check_id": "rocq.fanin.hypothesis_mutation",
+          "expected": "rejected",
+          "kind": "mutation",
+          "observed": "rejected",
+          "reason_codes": [
+            "error_marker",
+            "non_zero_exit"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "7b10806fa6d5ead1a3a469bd3cc59710c4ee3367dea53210806414667444839c",
+            "returncode": 1,
+            "source_digest": "64772bc2b349ccfe3b13d235a55a6b1ccf87f23486e5faa864c613d866f9da54",
+            "theorem_name": "from_eq"
+          },
+          "check_id": "rocq.fanin.conclusion_mutation",
+          "expected": "rejected",
+          "kind": "mutation",
+          "observed": "rejected",
+          "reason_codes": [
+            "error_marker",
+            "non_zero_exit"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "returncode": 0,
+            "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+            "theorem_name": "from_eq"
+          },
+          "check_id": "rocq.fanin.deterministic_replay",
+          "expected": "accepted",
+          "kind": "replay",
+          "observed": "accepted",
+          "reason_codes": [],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "98a4354affac72a387d75e194d7e76fb989fec5be65cc9037dd3de633d936486",
+            "returncode": 1,
+            "source_digest": "2f9c84f0fa2f82d940edfa063391a4e9f7b5aca3d2e5606bcad1210792f2d1f7",
+            "theorem_name": "broken"
+          },
+          "check_id": "rocq.fanin.malformed_source",
+          "expected": "rejected",
+          "kind": "malformed",
+          "observed": "rejected",
+          "reason_codes": [
+            "error_marker",
+            "non_zero_exit"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [
+              "H : n = m"
+            ],
+            "imports": [],
+            "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "returncode": null,
+            "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+            "theorem_name": "from_eq"
+          },
+          "check_id": "rocq.fanin.timeout_case",
+          "expected": "rejected",
+          "kind": "timeout",
+          "observed": "rejected",
+          "reason_codes": [
+            "timeout_or_spawn_failure"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "returncode": null,
+            "source_digest": "34ae5bb0387f3316014b42ec7d48f2f2f1041a5330adf5af8703013f43536e46",
+            "theorem_name": "hole_admit"
+          },
+          "check_id": "rocq.fanin.admit_escape",
+          "expected": "rejected",
+          "kind": "fail_closed",
+          "observed": "rejected",
+          "reason_codes": [
+            "admit_or_admitted"
+          ],
+          "status": "passed"
+        },
+        {
+          "bindings": {
+            "assumptions": [],
+            "imports": [],
+            "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "returncode": null,
+            "source_digest": "5d4bfccaadd0cdc7c106fe94d77a970c0b5ebd6c93121c9d660965b389763bce",
+            "theorem_name": "uses_axiom"
+          },
+          "check_id": "rocq.fanin.axiom_escape",
+          "expected": "rejected",
+          "kind": "fail_closed",
+          "observed": "rejected",
+          "reason_codes": [
+            "unreviewed_axiom"
+          ],
+          "status": "passed"
+        }
+      ],
+      "contribution_digest_sha256": "2e34bae8785605fa81528a228cd053bed5c5fbb03fbc8d74ac5a041302e957a4",
+      "download_attempted": false,
+      "executable_path": "coqc",
+      "fanin_interface": "KernelLiveSemanticFanIn@1",
+      "fanin_passed": true,
+      "fanin_schema_version": "kernel-live-semantic-fanin/v1",
+      "goal_id": "FVT-G206",
+      "identity_probed": true,
+      "install_attempted": false,
+      "interface": "RocqToolchainCertification@1",
+      "kernel_id": "rocq",
+      "lane_id": "kernel",
+      "live_executed": true,
+      "live_source_helper": "check_rocq_source_live",
+      "locked_version": "9.1.1",
+      "network_used": false,
+      "notes": "Rocq live fan-in contribution: own kernel only; OPAM support-only; no Lean/Isabelle/advisor substitution; timeout fail-closed.",
+      "owner_module": "tools.logic.certification.rocq",
+      "package_identity": "rocq-prover.9.1.1",
+      "repo_root": ".",
+      "required_case_kinds": [
+        "fail_closed",
+        "malformed",
+        "mutation",
+        "negative",
+        "positive",
+        "replay",
+        "timeout"
+      ],
+      "sibling_kernel_substitution": false,
+      "task_id": "FVT-057",
+      "tool_id": "coq",
+      "usable": true,
+      "version_string": "The Rocq Prover, version 9.1.1"
+    }
+  },
+  "lane_id": "kernel",
+  "notes": "All three kernels independently completed live semantic fan-in.",
+  "policy": {
+    "advisor_substitution_forbidden": true,
+    "isabelle_live_source_session_helper_required": true,
+    "no_download": true,
+    "no_install": true,
+    "no_network": true,
+    "own_kernel_only": true,
+    "required_case_kinds": [
+      "fail_closed",
+      "malformed",
+      "mutation",
+      "negative",
+      "positive",
+      "replay",
+      "timeout"
+    ],
+    "separate_kernel_authority": true,
+    "serialize_expensive_opam_isabelle_resources": true,
+    "sibling_kernel_substitution_forbidden": true
+  },
+  "production_certified": true,
+  "program": "formal-verification-tactician/kernel-live-semantics",
+  "promotion_blocked": false,
+  "receipt_digest_sha256": "5ea8b772ec7ce66b0c77b6e65b2f4f9fb13df85f5017acba13dd82b93913ee7e",
+  "repo_root": ".",
+  "schema_version": "kernel-live-semantic-fanin/v1",
+  "task_id": "FVT-057"
+}
