@@ -4115,8 +4115,181 @@ def _audit_platform_support(
     tool_population_valid = set(tools) == set(tools_index)
     if not tool_population_valid:
         failures.append("certificate_tool_population_mismatch")
+    semantic_lane_ids = [
+        str(item.get("lane_id") or "")
+        for item in semantic_results
+        if isinstance(item, Mapping)
+    ]
+    semantic_results_by_lane = {
+        str(item.get("lane_id") or ""): _safe_dict(item)
+        for item in semantic_results
+        if isinstance(item, Mapping)
+        and str(item.get("lane_id") or "")
+    }
+    if (
+        any(not lane_id for lane_id in semantic_lane_ids)
+        or len(semantic_lane_ids) != len(set(semantic_lane_ids))
+    ):
+        failures.append("semantic_lane_population_not_unique")
+    non_production_semantic_artifact_bindings: dict[
+        str, list[dict[str, Any]]
+    ] = {}
+    for raw_spec in certifier.SEMANTIC_CERTIFIER_SPECS:
+        spec = _safe_dict(raw_spec)
+        if spec.get("production_elevation_allowed") is not False:
+            continue
+        lane_id = str(spec.get("lane_id") or "")
+        result = _safe_dict(semantic_results_by_lane.get(lane_id))
+        receipt = result.get("receipt")
+        expected_tool_ids = {
+            str(item) for item in _safe_list(spec.get("tool_ids"))
+        }
+        raw_result_tool_ids = [
+            str(item) for item in _safe_list(result.get("tool_ids"))
+        ]
+        result_tool_ids = set(raw_result_tool_ids)
+        if (
+            result.get("status") != "ran"
+            or result.get("certified") is not True
+            or result.get("production_elevation_allowed") is not False
+            or result.get("evidence_class") != spec.get("evidence_class")
+            or result.get("interface") != spec.get("interface")
+            or result.get("certifier_family")
+            != spec.get("certifier_family")
+            or result.get("property_lane_id")
+            != spec.get("property_lane_id")
+            or len(raw_result_tool_ids) != len(result_tool_ids)
+            or result_tool_ids != expected_tool_ids
+            or not isinstance(receipt, Mapping)
+            or result.get("digest_sha256")
+            != certifier.content_digest(receipt)
+            or _safe_dict(result.get("receipt_integrity")).get("valid")
+            is not True
+            or _safe_dict(result.get("offline_observation")).get(
+                "satisfied"
+            )
+            is not True
+        ):
+            continue
+        per_tool = _safe_dict(result.get("per_tool"))
+        if set(str(tool_id) for tool_id in per_tool) != expected_tool_ids:
+            continue
+        for raw_tool_id in _safe_list(spec.get("tool_ids")):
+            tool_id = str(raw_tool_id)
+            tool_result = _safe_dict(per_tool.get(tool_id))
+            artifact_validation = _safe_dict(
+                tool_result.get("artifact_validation")
+            )
+            if (
+                tool_id not in result_tool_ids
+                or tool_result.get("certified") is not True
+                or artifact_validation.get("valid") is not True
+                or artifact_validation.get("has_production_binding")
+                is not False
+            ):
+                continue
+            identity = _safe_dict(tool_result.get("identity"))
+            for raw_artifact in _safe_list(identity.get("artifacts")):
+                if not isinstance(raw_artifact, Mapping):
+                    continue
+                artifact = dict(raw_artifact)
+                if (
+                    artifact.get("kind") == "semantic_executable"
+                    and artifact.get("artifact_class")
+                    == "generated_hermetic_shim"
+                ):
+                    non_production_semantic_artifact_bindings.setdefault(
+                        tool_id, []
+                    ).append(
+                        {
+                            "lane_id": lane_id,
+                            "artifact": artifact,
+                        }
+                    )
+
     reconstructed_tool_certs: dict[str, Any] = {}
-    live_artifact_failures: list[str] = []
+    semantic_artifact_population_failures: list[str] = []
+    for tool_id, bindings in sorted(
+        non_production_semantic_artifact_bindings.items()
+    ):
+        global_artifacts = [
+            dict(artifact)
+            for artifact in _safe_list(
+                _safe_dict(tools.get(tool_id)).get(
+                    "artifact_identities"
+                )
+            )
+            if isinstance(artifact, Mapping)
+        ]
+        seen_bindings: set[str] = set()
+        for binding in bindings:
+            artifact = binding["artifact"]
+            binding_key = json.dumps(
+                artifact,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+            population = sum(
+                candidate == artifact for candidate in global_artifacts
+            )
+            if binding_key in seen_bindings or population != 1:
+                semantic_artifact_population_failures.append(
+                    f"{tool_id}:{binding['lane_id']}:"
+                    "semantic_tool_artifact_population_mismatch"
+                )
+            seen_bindings.add(binding_key)
+    if semantic_artifact_population_failures:
+        failures.append("semantic_tool_artifact_population_mismatch")
+
+    primary_executable_binding_failures: list[str] = []
+    for tool_id, raw_tool in sorted(tools.items()):
+        tool = _safe_dict(raw_tool)
+        primary_artifacts = [
+            dict(artifact)
+            for artifact in _safe_list(tool.get("artifact_identities"))
+            if isinstance(artifact, Mapping)
+            and artifact.get("kind") == "executable"
+        ]
+        scalar_path = tool.get("executable_path")
+        scalar_digest = tool.get("executable_sha256")
+        scalar_class = tool.get("executable_artifact_class")
+        scalar_path_present = scalar_path not in (None, "")
+        scalar_digest_present = scalar_digest not in (None, "")
+        scalar_class_present = scalar_class not in (
+            None,
+            "",
+            "none",
+        )
+        scalars_present = bool(
+            scalar_path_present
+            or scalar_digest_present
+            or scalar_class_present
+        )
+        scalar_binding_valid = (
+            len(primary_artifacts) == 1
+            and scalar_path_present
+            and scalar_digest_present
+            and scalar_class_present
+            and primary_artifacts[0].get("path") == scalar_path
+            and primary_artifacts[0].get("sha256") == scalar_digest
+            and primary_artifacts[0].get("artifact_class")
+            == scalar_class
+        )
+        if (scalars_present and not scalar_binding_valid) or (
+            not scalars_present and primary_artifacts
+        ):
+            primary_executable_binding_failures.append(
+                f"{tool_id}:primary_executable_artifact_binding_mismatch"
+            )
+    if primary_executable_binding_failures:
+        failures.append("primary_executable_artifact_binding_mismatch")
+
+    live_artifact_failures: list[str] = [
+        *semantic_artifact_population_failures,
+        *primary_executable_binding_failures,
+    ]
+    non_production_artifact_omissions: list[dict[str, Any]] = []
     tool_field_names = set(
         certifier.ToolCertification.__dataclass_fields__
     )
@@ -4172,6 +4345,50 @@ def _audit_platform_support(
                     ):
                         matches.append(resolved_path)
                 if not matches:
+                    semantic_bindings = (
+                        non_production_semantic_artifact_bindings.get(
+                            tool_id, []
+                        )
+                    )
+                    semantic_binding_index = next(
+                        (
+                            index
+                            for index, binding in enumerate(
+                                semantic_bindings
+                            )
+                            if artifact == binding["artifact"]
+                        ),
+                        None,
+                    )
+                    semantic_binding = (
+                        semantic_bindings[semantic_binding_index]
+                        if semantic_binding_index is not None
+                        else None
+                    )
+                    if (
+                        artifact.get("kind") == "semantic_executable"
+                        and artifact.get("artifact_class")
+                        == "generated_hermetic_shim"
+                        and tool.get("production_certified") is False
+                        and semantic_binding is not None
+                    ):
+                        non_production_artifact_omissions.append(
+                            {
+                                "tool_id": tool_id,
+                                "lane_id": semantic_binding["lane_id"],
+                                "kind": artifact["kind"],
+                                "sha256": artifact.get("sha256"),
+                                "artifact_class": artifact[
+                                    "artifact_class"
+                                ],
+                                "basis": (
+                                    "exact_non_production_semantic_lane_"
+                                    "binding_without_live_managed_authority"
+                                ),
+                            }
+                        )
+                        semantic_bindings.pop(semantic_binding_index)
+                        continue
                     live_artifact_failures.append(
                         f"{tool_id}:artifact_live_identity_unavailable"
                     )
@@ -4281,6 +4498,21 @@ def _audit_platform_support(
         "supported_lists_valid": supported_lists_valid,
         "managed_blockers_and_ready_valid": blockers_and_ready_valid,
         "live_artifact_failures": live_artifact_failures,
+        "semantic_artifact_population_failures": sorted(
+            set(semantic_artifact_population_failures)
+        ),
+        "primary_executable_binding_failures": sorted(
+            set(primary_executable_binding_failures)
+        ),
+        "non_production_artifact_omissions": sorted(
+            non_production_artifact_omissions,
+            key=lambda item: (
+                str(item.get("tool_id") or ""),
+                str(item.get("lane_id") or ""),
+                str(item.get("kind") or ""),
+                str(item.get("sha256") or ""),
+            ),
+        ),
         "exception_tools_not_promoted": exception_tools_not_promoted,
         "supported_managed_capability_tool_ids": (
             supported_capabilities

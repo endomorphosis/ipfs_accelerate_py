@@ -663,6 +663,206 @@ def test_self_rehashed_receipt_platform_and_global_authority_forgery_fail_closed
     )
 
 
+def test_platform_audit_only_omits_exact_nonproduction_semantic_binding(
+    certifier,
+    builder,
+    certificate: dict[str, Any],
+) -> None:
+    checked = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=certificate,
+    )
+    audit = checked["platform_support_audit"]
+    assert audit["valid"] is True
+    assert audit["live_artifact_failures"] == []
+    runtime_lane = next(
+        lane
+        for lane in certificate["semantic_lane_results"]
+        if lane.get("lane_id") == "runtime_mtl_external"
+    )
+    semantic_artifact = next(
+        artifact
+        for artifact in runtime_lane["per_tool"]["runtime-mtl-external"][
+            "identity"
+        ]["artifacts"]
+        if artifact.get("kind") == "semantic_executable"
+    )
+    assert audit["non_production_artifact_omissions"] == [
+        {
+            "tool_id": "runtime-mtl-external",
+            "lane_id": "runtime_mtl_external",
+            "kind": "semantic_executable",
+            "sha256": semantic_artifact["sha256"],
+            "artifact_class": "generated_hermetic_shim",
+            "basis": (
+                "exact_non_production_semantic_lane_binding_without_"
+                "live_managed_authority"
+            ),
+        }
+    ]
+    runtime_tool = _tools(certificate)["runtime-mtl-external"]
+    assert runtime_tool["production_certified"] is False
+
+    forged_semantic = copy.deepcopy(certificate)
+    forged_runtime = _tools(forged_semantic)["runtime-mtl-external"]
+    forged_runtime["artifact_identities"].append(
+        {
+            "kind": "semantic_executable",
+            "path": "<host-path-redacted>",
+            "sha256": f"sha256:{'f' * 64}",
+            "artifact_class": "generated_hermetic_shim",
+        }
+    )
+    forged_semantic["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in forged_semantic.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    checked_semantic = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=forged_semantic,
+    )
+    forged_semantic_audit = checked_semantic["platform_support_audit"]
+    assert forged_semantic_audit["valid"] is False
+    assert (
+        "runtime-mtl-external:artifact_live_identity_unavailable"
+        in forged_semantic_audit["live_artifact_failures"]
+    )
+
+    forged_vendor = copy.deepcopy(certificate)
+    forged_runtime = _tools(forged_vendor)["runtime-mtl-external"]
+    vendor_artifact = next(
+        artifact
+        for artifact in forged_runtime["artifact_identities"]
+        if artifact.get("kind") == "executable"
+    )
+    vendor_artifact["sha256"] = f"sha256:{'e' * 64}"
+    forged_vendor["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in forged_vendor.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    checked_vendor = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=forged_vendor,
+    )
+    forged_vendor_audit = checked_vendor["platform_support_audit"]
+    assert forged_vendor_audit["valid"] is False
+    assert (
+        "runtime-mtl-external:artifact_live_identity_unavailable"
+        in forged_vendor_audit["live_artifact_failures"]
+    )
+
+    stale_lane = copy.deepcopy(certificate)
+    runtime_lane = next(
+        lane
+        for lane in stale_lane["semantic_lane_results"]
+        if lane.get("lane_id") == "runtime_mtl_external"
+    )
+    runtime_lane["certified"] = False
+    stale_lane["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in stale_lane.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    checked_stale_lane = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=stale_lane,
+    )
+    stale_lane_audit = checked_stale_lane["platform_support_audit"]
+    assert stale_lane_audit["valid"] is False
+    assert (
+        "runtime-mtl-external:artifact_live_identity_unavailable"
+        in stale_lane_audit["live_artifact_failures"]
+    )
+
+    for mutation in ("missing", "duplicate"):
+        forged_population = copy.deepcopy(certificate)
+        forged_runtime = _tools(forged_population)[
+            "runtime-mtl-external"
+        ]
+        artifacts = forged_runtime["artifact_identities"]
+        semantic_index = next(
+            index
+            for index, artifact in enumerate(artifacts)
+            if artifact == semantic_artifact
+        )
+        if mutation == "missing":
+            artifacts.pop(semantic_index)
+        else:
+            artifacts.append(copy.deepcopy(artifacts[semantic_index]))
+        forged_population["certificate_digest_sha256"] = (
+            certifier.content_digest(
+                {
+                    key: value
+                    for key, value in forged_population.items()
+                    if key != "certificate_digest_sha256"
+                }
+            )
+        )
+        checked_population = builder.build_role_aware_release_candidate(
+            repo_root=REPO_ROOT,
+            observed_at="2026-08-01T00:00:00Z",
+            role_aware_certificate=forged_population,
+        )
+        population_audit = checked_population["platform_support_audit"]
+        assert population_audit["valid"] is False
+        assert (
+            "semantic_tool_artifact_population_mismatch"
+            in population_audit["failures"]
+        )
+        assert population_audit[
+            "semantic_artifact_population_failures"
+        ] == [
+            "runtime-mtl-external:runtime_mtl_external:"
+            "semantic_tool_artifact_population_mismatch"
+        ]
+
+    for scalar_field, forged_value in (
+        ("executable_sha256", f"sha256:{'d' * 64}"),
+        ("executable_artifact_class", "native_or_managed_binary"),
+    ):
+        forged_scalar = copy.deepcopy(certificate)
+        forged_runtime = _tools(forged_scalar)[
+            "runtime-mtl-external"
+        ]
+        forged_runtime[scalar_field] = forged_value
+        forged_scalar["certificate_digest_sha256"] = (
+            certifier.content_digest(
+                {
+                    key: value
+                    for key, value in forged_scalar.items()
+                    if key != "certificate_digest_sha256"
+                }
+            )
+        )
+        checked_scalar = builder.build_role_aware_release_candidate(
+            repo_root=REPO_ROOT,
+            observed_at="2026-08-01T00:00:00Z",
+            role_aware_certificate=forged_scalar,
+        )
+        scalar_audit = checked_scalar["platform_support_audit"]
+        assert scalar_audit["valid"] is False
+        assert (
+            "primary_executable_artifact_binding_mismatch"
+            in scalar_audit["failures"]
+        )
+        assert scalar_audit["primary_executable_binding_failures"] == [
+            "runtime-mtl-external:"
+            "primary_executable_artifact_binding_mismatch"
+        ]
+
+
 def test_candidate_interface_and_stage_ceiling(
     candidate: dict[str, Any],
 ) -> None:
