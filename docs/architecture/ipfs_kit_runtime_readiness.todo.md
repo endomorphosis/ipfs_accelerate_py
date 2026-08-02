@@ -458,7 +458,7 @@ or write authority.
 
 ## KITA-014 Select one GraphRAG schema, engine, safe persistence, and lazy capability boundary
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
