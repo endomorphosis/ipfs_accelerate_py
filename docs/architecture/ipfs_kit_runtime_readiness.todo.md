@@ -1202,7 +1202,7 @@ or write authority.
 
 ## KITA-038 Reconcile backend names, aliases, schemas, factories, capabilities, and support tiers
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
