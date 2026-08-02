@@ -334,7 +334,7 @@ or write authority.
 
 ## KITA-010 Define one backend-scoped bucket catalog and policy contract
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
