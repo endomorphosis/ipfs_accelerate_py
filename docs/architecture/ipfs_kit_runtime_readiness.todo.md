@@ -396,7 +396,7 @@ or write authority.
 
 ## KITA-012 Consolidate bucket managers, tiering, import/export, and compensation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
