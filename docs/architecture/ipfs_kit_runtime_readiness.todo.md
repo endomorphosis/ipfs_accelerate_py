@@ -923,7 +923,7 @@ or write authority.
 
 ## KITA-029 Join bucket, WAL, index, cache, backend, and replica convergence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
