@@ -1264,7 +1264,7 @@ or write authority.
 
 ## KITA-040 Certify local-service and object-store backend families
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
