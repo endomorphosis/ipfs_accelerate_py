@@ -1140,7 +1140,7 @@ or write authority.
 
 ## KITA-036 Generate or validate Python sync async and CLI adapters
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
