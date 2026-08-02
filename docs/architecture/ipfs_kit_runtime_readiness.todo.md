@@ -520,7 +520,7 @@ or write authority.
 
 ## KITA-016 Add pluggable ANN, exact baseline, deterministic hybrid retrieval, and bounds
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
