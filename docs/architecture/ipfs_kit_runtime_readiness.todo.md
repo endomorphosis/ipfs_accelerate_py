@@ -1233,7 +1233,7 @@ or write authority.
 
 ## KITA-039 Build the common backend conformance kit and hermetic reference adapters
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
