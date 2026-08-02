@@ -1295,7 +1295,7 @@ or write authority.
 
 ## KITA-041 Implement or honestly classify decentralized, remote, archive, and legacy backend families
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
