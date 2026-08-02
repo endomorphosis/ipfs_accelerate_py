@@ -365,7 +365,7 @@ or write authority.
 
 ## KITA-011 Implement transactional bucket lifecycle and object operations
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
