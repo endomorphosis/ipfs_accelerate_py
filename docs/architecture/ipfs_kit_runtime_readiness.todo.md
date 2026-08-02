@@ -1109,7 +1109,7 @@ or write authority.
 
 ## KITA-035 Make version, exports, dependencies, extras, setup, requirements, and imports coherent
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
