@@ -489,7 +489,7 @@ or write authority.
 
 ## KITA-015 Implement durable rehydration, version history, incremental updates, and clean rebuild
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
