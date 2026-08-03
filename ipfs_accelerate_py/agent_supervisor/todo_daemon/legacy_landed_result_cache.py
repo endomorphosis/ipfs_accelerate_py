@@ -1514,12 +1514,13 @@ class LegacyLandedLeafResultCache:
             "proof_authoritative",
         }
         schema = manifest.get("schema")
-        expected_fields = (
-            common_fields
+        observed_fields = set(manifest)
+        allowed_fields = (
+            (common_fields, common_fields | {"replication_pin_requested"})
             if schema == LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA_V1
-            else common_fields | {"replication_pin_requested"}
+            else (common_fields | {"replication_pin_requested"},)
         )
-        if set(manifest) != expected_fields:
+        if observed_fields not in allowed_fields:
             raise LegacyLandedLeafCacheError("legacy cache snapshot shape is invalid")
         if (
             schema
@@ -1532,7 +1533,7 @@ class LegacyLandedLeafResultCache:
             or manifest.get("current_tree_id") != self.policy.current_tree_id
             or manifest.get("parquet_codec") != "raw"
             or (
-                schema == LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA
+                "replication_pin_requested" in manifest
                 and type(manifest.get("replication_pin_requested")) is not bool
             )
             or manifest.get("signed_records_only") is not True

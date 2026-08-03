@@ -528,6 +528,19 @@ def test_snapshot_inventory_is_exact_during_concurrent_insert_and_tamper_fails(
     assert version_one_cache.import_snapshot(
         version_one_cid, backend=backend
     ) == 1
+    version_one_with_pin = dict(snapshot.manifest)
+    version_one_with_pin["schema"] = (
+        cache_module.LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA_V1
+    )
+    version_one_with_pin_cid = backend.put_dag_json(version_one_with_pin).cid
+    version_one_pin_cache = LegacyLandedLeafResultCache(
+        tmp_path / "version-one-pin.duckdb",
+        policy=policy,
+        operator_key_path=key_path,
+    )
+    assert version_one_pin_cache.import_snapshot(
+        version_one_with_pin_cid, backend=backend
+    ) == 1
 
     storage._blocks[snapshot.parquet_cid] = b"tampered"  # noqa: SLF001
     empty = LegacyLandedLeafResultCache(
