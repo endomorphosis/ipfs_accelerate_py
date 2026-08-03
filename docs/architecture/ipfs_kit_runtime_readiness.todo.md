@@ -1326,7 +1326,7 @@ or write authority.
 
 ## KITA-042 Publish the joined backend support matrix and all-interface certification
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
