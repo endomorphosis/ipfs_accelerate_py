@@ -1982,11 +1982,6 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if receipt["certified"] else 1
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
-
 # ---------------------------------------------------------------------------
 # Vendor certification (FVT-G208 / HyperpropertyVendorToolchainCertification@1)
 # ---------------------------------------------------------------------------
@@ -2711,3 +2706,7 @@ __all__ = [
     "run_engine_case",
     "write_vendor_install_receipt",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
