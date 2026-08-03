@@ -584,11 +584,42 @@ def test_classify_provider_capacity_detects_grok_402_balance_exhausted() -> None
         'Grok Build usage balance exhausted",\n'
         '  "http_status": 402\n'
         "}\n"
+        "Grok CLI failed without a terminal-correlated native quota record; "
+        "Codex fallback is forbidden\n"
     )
     classified = classify_provider_capacity_failure(text)
     assert classified["exhausted"] is True
     assert "grok" in classified["providers"] or "provider" in classified["providers"]
     assert classified["reason"] == "provider_capacity_exhausted"
+
+
+@pytest.mark.parametrize(
+    "diagnostic",
+    (
+        "Grok CLI failed without a terminal-correlated native quota record; "
+        "Codex fallback is forbidden",
+        "Independent pinned Grok-4.5 verifier did not confirm quota; "
+        "Codex fallback is forbidden",
+        "The workspace changed while Grok quota was being verified; "
+        "Codex fallback is forbidden",
+    ),
+)
+def test_classify_provider_capacity_ignores_grok_policy_diagnostic(
+    diagnostic: str,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    text = (
+        "PermissionError: [Errno 13] Permission denied: "
+        "'/run/ipfs-accelerate/prompt.md'\n"
+        f"{diagnostic}\n"
+    )
+
+    classified = classify_provider_capacity_failure(text)
+
+    assert classified == {"exhausted": False, "providers": [], "reason": ""}
 
 
 def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:

@@ -355,6 +355,28 @@ PROVIDER_CAPACITY_PATTERNS = (
         ),
     ),
 )
+# These messages describe a quota-routing policy denial, not provider quota
+# evidence.  In particular, the first message follows any ordinary Grok
+# failure for which the runner correctly refuses Terra fallback.  Remove only
+# these runner-owned diagnostics before applying the legacy text classifiers;
+# an exact native 402/balance record elsewhere in the log remains eligible.
+PROVIDER_CAPACITY_NON_EVIDENCE_PATTERNS = (
+    re.compile(
+        r"Grok CLI failed without a terminal-correlated native quota\s+"
+        r"record;\s*Codex fallback is forbidden",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"Independent pinned Grok-4\.5 verifier did not confirm quota;\s*"
+        r"Codex fallback is forbidden",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"The workspace changed while Grok quota was being verified;\s*"
+        r"Codex fallback is forbidden",
+        re.IGNORECASE,
+    ),
+)
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 REQUIRE_TASK_EXECUTION_METADATA_ENV = (
     "IPFS_ACCELERATE_AGENT_REQUIRE_TASK_EXECUTION_METADATA"
@@ -2010,6 +2032,15 @@ def parse_timestamp(value: str) -> datetime | None:
     return parsed
 
 
+def _provider_capacity_evidence_text(text: str) -> str:
+    """Remove runner policy diagnostics which are not capacity evidence."""
+
+    evidence_text = text
+    for pattern in PROVIDER_CAPACITY_NON_EVIDENCE_PATTERNS:
+        evidence_text = pattern.sub("", evidence_text)
+    return evidence_text
+
+
 def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
     """Classify provider quota/capacity failures without treating them as code failures."""
 
@@ -2022,7 +2053,12 @@ def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
             "reason": "workspace_missing_before_provider",
         }
 
-    providers = [provider for provider, pattern in PROVIDER_CAPACITY_PATTERNS if pattern.search(text)]
+    evidence_text = _provider_capacity_evidence_text(text)
+    providers = [
+        provider
+        for provider, pattern in PROVIDER_CAPACITY_PATTERNS
+        if pattern.search(evidence_text)
+    ]
     unique_providers = list(dict.fromkeys(providers))
     return {
         "exhausted": bool(unique_providers),
@@ -6982,12 +7018,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 text = handle.read().decode("utf-8", errors="replace")
         except OSError:
             return {"exhausted": False, "providers": [], "reason": ""}
-        classified = classify_provider_capacity_failure(text)
+        evidence_text = _provider_capacity_evidence_text(text)
+        classified = classify_provider_capacity_failure(evidence_text)
         if not classified["exhausted"]:
             return classified
         evidence = [
             line.strip()
-            for line in text.splitlines()
+            for line in evidence_text.splitlines()
             if any(pattern.search(line) for _provider, pattern in PROVIDER_CAPACITY_PATTERNS)
         ]
         classified["evidence"] = evidence[-4:]
