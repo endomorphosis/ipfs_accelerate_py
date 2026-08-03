@@ -45,12 +45,23 @@ from ..planning.deterministic_doctor_transaction import (
     DETERMINISTIC_DOCTOR_TRANSACTION_INTERFACE,
     DeterministicDoctorTransactionError,
     DoctorCandidateTreeReceipt,
+    DoctorCheckoutLock,
+    DoctorGroupDisposition,
+    DoctorGroupReceipt,
     DoctorRollbackReceipt,
+    DoctorSandboxEnforcementLevel,
+    DoctorSandboxEnforcementReceipt,
+    DoctorSandboxPolicy,
+    DoctorStepDisposition,
+    DoctorStepReceipt,
     DoctorTransactionCheckpoint,
     DoctorTransactionDisposition,
     DoctorTransactionReason,
     DoctorTransactionReport,
+    DoctorWriterLease,
+    create_doctor_checkpoint,
 )
+from ..proof.change_propagation_edit_packet import PathBeforeHash
 from ..proof.formal_verification_contracts import content_identity
 
 
@@ -90,6 +101,9 @@ DOCTOR_REPROVE_SCHEMA: Final[str] = (
 )
 DOCTOR_STATIC_CHECKS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/static-checks@1"
+)
+DOCTOR_SECURITY_CHECKS_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/security-checks@1"
 )
 DOCTOR_COMPENSATING_ROLLBACK_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/compensating-rollback@1"
@@ -149,8 +163,16 @@ class DoctorFixedPointReason(str, Enum):
     REPROVE_FAILED = "reprove_failed"
     HAMMER_RECEIPT_MISSING = "hammer_receipt_missing"
     PREDICTION_STALE = "prediction_stale"
+    SECURITY_CHECK_FAILED = "security_check_failed"
+    FORBIDDEN_LOGIC_VIOLATION = "forbidden_logic_violation"
+    HYPERPROPERTY_FAILED = "hyperproperty_failed"
+    INTENT_SECURITY_GAP = "intent_security_gap"
     BOUND_EXHAUSTED = "fixed_point_bound_exhausted"
     OSCILLATION_DETECTED = "oscillation_detected"
+    UNCHANGED_RESIDUAL = "unchanged_residual"
+    CAPABILITY_LOST = "capability_lost"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    PREBUILT_EVIDENCE_REJECTED = "prebuilt_evidence_rejected"
     DRIFT_DETECTED = "drift_detected"
     FIXED_POINT_NOT_REACHED = "fixed_point_not_reached"
     PARTIAL_SCC_FORBIDDEN = "partial_scc_completion_forbidden"
@@ -175,6 +197,7 @@ class DoctorFixedPointStage(str, Enum):
     MEMORY_EFFECT_RESOURCE = "memory_effect_resource"
     REDELTA = "redelta"
     RECLOSE = "reclose"
+    SECURITY = "security"
     REPLAN = "replan"
     REPROVE = "reprove"
     RESIDUAL = "residual"
@@ -513,6 +536,88 @@ class DoctorStaticCheckEvidence:
 
 
 @dataclass(frozen=True)
+class DoctorSecurityCheckEvidence:
+    """IntentIR/SecurityIR/hyperproperty and code security facts for one iteration.
+
+    Live fixed-point always produces this block.  Pure validator unit tests may
+    omit it; when present it is mandatory for residual-free completion.
+    """
+
+    candidate_tree_id: str
+    code_security_fact_ids: tuple[str, ...]
+    intent_effect_ids: tuple[str, ...]
+    code_effect_ids: tuple[str, ...]
+    forbidden_logic_ids: tuple[str, ...]
+    security_finding_ids: tuple[str, ...]
+    vulnerability_ids: tuple[str, ...]
+    hyperproperty_receipt_ids: tuple[str, ...]
+    failed_hyperproperty_ids: tuple[str, ...]
+    security_report_id: str
+    all_passed: bool
+    receipt_id: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "candidate_tree_id",
+            _identifier(self.candidate_tree_id, "candidate_tree_id"),
+        )
+        for name in (
+            "code_security_fact_ids",
+            "intent_effect_ids",
+            "code_effect_ids",
+            "forbidden_logic_ids",
+            "security_finding_ids",
+            "vulnerability_ids",
+            "hyperproperty_receipt_ids",
+            "failed_hyperproperty_ids",
+        ):
+            object.__setattr__(self, name, _ids(getattr(self, name), name))
+        object.__setattr__(
+            self,
+            "security_report_id",
+            _identifier(self.security_report_id, "security_report_id")
+            if self.security_report_id
+            else "",
+        )
+        object.__setattr__(self, "all_passed", _bool(self.all_passed, "all_passed"))
+        if self.all_passed and (
+            self.forbidden_logic_ids
+            or self.vulnerability_ids
+            or self.failed_hyperproperty_ids
+        ):
+            raise DeterministicDoctorFixedPointError(
+                "all_passed security forbids open forbidden logic, "
+                "vulnerabilities, or failed hyperproperties"
+            )
+        rid = self.receipt_id.strip() if isinstance(self.receipt_id, str) else ""
+        object.__setattr__(
+            self,
+            "receipt_id",
+            rid or content_identity(self.to_dict(include_receipt_id=False)),
+        )
+
+    def to_dict(self, *, include_receipt_id: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": DOCTOR_SECURITY_CHECKS_SCHEMA,
+            "candidate_tree_id": self.candidate_tree_id,
+            "code_security_fact_ids": list(self.code_security_fact_ids),
+            "intent_effect_ids": list(self.intent_effect_ids),
+            "code_effect_ids": list(self.code_effect_ids),
+            "forbidden_logic_ids": list(self.forbidden_logic_ids),
+            "security_finding_ids": list(self.security_finding_ids),
+            "vulnerability_ids": list(self.vulnerability_ids),
+            "hyperproperty_receipt_ids": list(self.hyperproperty_receipt_ids),
+            "failed_hyperproperty_ids": list(self.failed_hyperproperty_ids),
+            "security_report_id": self.security_report_id,
+            "all_passed": self.all_passed,
+        }
+        if include_receipt_id:
+            payload["receipt_id"] = self.receipt_id
+        return payload
+
+
+@dataclass(frozen=True)
 class DoctorRedeltaEvidence:
     """Recomputed program contract deltas after candidate apply."""
 
@@ -772,6 +877,7 @@ class DoctorFixedPointIterationReceipt:
     residual_finding_ids: tuple[str, ...] = ()
     oscillation_fingerprint: str = ""
     requires_another_iteration: bool = False
+    security: DoctorSecurityCheckEvidence | None = None
     receipt_id: str = ""
 
     def __post_init__(self) -> None:
@@ -792,6 +898,12 @@ class DoctorFixedPointIterationReceipt:
                 raise DeterministicDoctorFixedPointError(
                     f"{name} must be {expected.__name__}"
                 )
+        if self.security is not None and not isinstance(
+            self.security, DoctorSecurityCheckEvidence
+        ):
+            raise DeterministicDoctorFixedPointError(
+                "security must be DoctorSecurityCheckEvidence"
+            )
         object.__setattr__(
             self,
             "residual_finding_ids",
@@ -827,6 +939,7 @@ class DoctorFixedPointIterationReceipt:
             or not self.static_checks.all_passed
             or not self.cache_invalidation.complete
             or not self.rebuild.clean_rebuild_equivalent
+            or (self.security is not None and not self.security.all_passed)
         )
         if self.requires_another_iteration and not residual:
             if not (
@@ -845,6 +958,7 @@ class DoctorFixedPointIterationReceipt:
 
     @property
     def residual_free(self) -> bool:
+        security_ok = self.security is None or self.security.all_passed
         return (
             not self.requires_another_iteration
             and not self.residual_finding_ids
@@ -856,6 +970,7 @@ class DoctorFixedPointIterationReceipt:
             and self.static_checks.all_passed
             and self.cache_invalidation.complete
             and self.rebuild.clean_rebuild_equivalent
+            and security_ok
         )
 
     def to_dict(self, *, include_receipt_id: bool = True) -> dict[str, Any]:
@@ -869,6 +984,9 @@ class DoctorFixedPointIterationReceipt:
             "reclose": self.reclose.to_dict(),
             "replan": self.replan.to_dict(),
             "reprove": self.reprove.to_dict(),
+            "security": (
+                self.security.to_dict() if self.security is not None else None
+            ),
             "residual_finding_ids": list(self.residual_finding_ids),
             "oscillation_fingerprint": self.oscillation_fingerprint,
             "requires_another_iteration": self.requires_another_iteration,
@@ -1410,7 +1528,21 @@ DoctorRestoreAdapter = Callable[[DoctorTransactionCheckpoint], bool]
 
 
 def _default_restore(checkpoint: DoctorTransactionCheckpoint) -> bool:
-    return True
+    """Static-validator restore probe.
+
+    Pure fixed-point validation has no filesystem context.  A live runner must
+    inject an independently verifying restore adapter (worktree root comparison).
+    Returning success here only acknowledges that a *compensating-rollback
+    receipt* can be sealed for unit tests of the pure validator; it is never
+    mutation authority and is rejected by
+    :class:`DeterministicDoctorLiveFixedPoint` unless replaced.
+    """
+
+    # Require a real checkpoint identity so an empty/forged adapter call fails.
+    if not isinstance(checkpoint, DoctorTransactionCheckpoint):
+        return False
+    checkpoint_id = getattr(checkpoint, "checkpoint_id", "") or ""
+    return bool(str(checkpoint_id).strip())
 
 
 @dataclass
@@ -1916,6 +2048,45 @@ class DeterministicDoctorFixedPointValidator:
             )
         )
 
+        # Security / IntentIR / hyperproperties (when live evidence is present).
+        if iteration.security is not None:
+            sec = iteration.security
+            if not sec.all_passed:
+                reasons.add(DoctorFixedPointReason.SECURITY_CHECK_FAILED.value)
+                if sec.forbidden_logic_ids:
+                    reasons.add(DoctorFixedPointReason.FORBIDDEN_LOGIC_VIOLATION.value)
+                if sec.failed_hyperproperty_ids:
+                    reasons.add(DoctorFixedPointReason.HYPERPROPERTY_FAILED.value)
+                if sec.vulnerability_ids:
+                    reasons.add(DoctorFixedPointReason.SECURITY_CHECK_FAILED.value)
+                if not sec.intent_effect_ids or not sec.code_effect_ids:
+                    reasons.add(DoctorFixedPointReason.INTENT_SECURITY_GAP.value)
+            stages.append(
+                DoctorStageResult(
+                    DoctorFixedPointStage.SECURITY,
+                    DoctorStageDisposition.PASSED
+                    if sec.all_passed
+                    else DoctorStageDisposition.FAILED,
+                    ()
+                    if sec.all_passed
+                    else tuple(
+                        sorted(
+                            r
+                            for r in reasons
+                            if r
+                            in {
+                                DoctorFixedPointReason.SECURITY_CHECK_FAILED.value,
+                                DoctorFixedPointReason.FORBIDDEN_LOGIC_VIOLATION.value,
+                                DoctorFixedPointReason.HYPERPROPERTY_FAILED.value,
+                                DoctorFixedPointReason.INTENT_SECURITY_GAP.value,
+                            }
+                        )
+                    ),
+                    sec.receipt_id,
+                    iteration=iteration.iteration,
+                )
+            )
+
         # Tree identity consistency across stage evidence.
         for block in (
             iteration.cache_invalidation,
@@ -1927,6 +2098,11 @@ class DeterministicDoctorFixedPointValidator:
         ):
             if block.candidate_tree_id != tree:
                 reasons.add(DoctorFixedPointReason.STALE_CANDIDATE_TREE.value)
+        if (
+            iteration.security is not None
+            and iteration.security.candidate_tree_id != tree
+        ):
+            reasons.add(DoctorFixedPointReason.STALE_CANDIDATE_TREE.value)
 
         # Drift vs plan roots tree.
         if tree != plan.roots.tree_id and (
@@ -2101,6 +2277,173 @@ class DeterministicDoctorFixedPointValidator:
         )
 
 
+def build_fixture_committed_transaction_report(
+    plan: DeterministicDoctorPlan,
+    *,
+    transaction_id: str = "txn:fixture-fp",
+    base_tree_cid: str = "tree:base",
+    candidate_tree_cid: str = "tree:candidate",
+    path_before_hashes: Sequence[PathBeforeHash] | None = None,
+    worktree_root_ref: str = "worktree:candidate-1",
+    lease_id: str = "lease:writer-1",
+    lock_id: str = "lock:1",
+    fence_id: str = "fence:1",
+) -> DoctorTransactionReport:
+    """Build a committed provisional transaction report for fixed-point unit tests.
+
+    Post-PDR-052, :meth:`DeterministicDoctorTransaction.execute` requires
+    independent effect verification and nonempty after-hash / tree / forest /
+    durable-effect evidence.  Pure fixed-point unit tests supply sealed stage
+    evidence rather than re-driving a live worktree, so this helper seals a
+    committed report with complete effect receipts without invoking the
+    default (fail-closed) applicator.
+    """
+
+    if not isinstance(plan, DeterministicDoctorPlan):
+        raise DeterministicDoctorFixedPointError(
+            "build_fixture_committed_transaction_report requires DeterministicDoctorPlan"
+        )
+    write_paths = tuple(
+        dict.fromkeys(path for step in plan.steps for path in step.write_paths)
+    )
+    if not write_paths:
+        write_paths = tuple(plan.permitted_write_paths) or ("pkg/fixture.py",)
+    if path_before_hashes is None:
+        path_before_hashes = tuple(
+            PathBeforeHash(
+                path=path,
+                before_hash=f"sha256:{path.replace('/', '-')}",
+            )
+            for path in write_paths
+        )
+    after_hashes = tuple(
+        PathBeforeHash(
+            path=item.path,
+            before_hash=f"sha256:after-{item.path.replace('/', '-')}",
+        )
+        for item in path_before_hashes
+    )
+    checkpoint = create_doctor_checkpoint(
+        plan,
+        path_before_hashes=path_before_hashes,
+        base_tree_cid=base_tree_cid,
+        candidate_tree_cid=candidate_tree_cid,
+        worktree_root_ref=worktree_root_ref,
+    )
+    step_receipts: list[DoctorStepReceipt] = []
+    group_receipts: list[DoctorGroupReceipt] = []
+    for step in plan.steps:
+        paths = step.write_paths or write_paths
+        before = tuple(
+            item for item in path_before_hashes if item.path in set(paths)
+        ) or tuple(
+            PathBeforeHash(path=p, before_hash=f"sha256:{p.replace('/', '-')}")
+            for p in paths
+        )
+        after = tuple(
+            PathBeforeHash(
+                path=item.path,
+                before_hash=f"sha256:after-{item.path.replace('/', '-')}",
+            )
+            for item in before
+        )
+        receipt = DoctorStepReceipt(
+            step_id=step.step_id,
+            disposition=DoctorStepDisposition.PASSED,
+            written_paths=paths,
+            observed_before_hashes=before,
+            observed_after_hashes=after,
+            changed_blob_cids=tuple(f"blob:{p}" for p in paths),
+            observed_tree_cid=candidate_tree_cid,
+            observed_forest_cid=f"forest:{candidate_tree_cid}",
+            durable_effect_ref=f"durable:{step.step_id}",
+            static_replay=True,
+        )
+        step_receipts.append(receipt)
+        group_receipts.append(
+            DoctorGroupReceipt(
+                group_id=f"group:singleton:{step.step_id}",
+                scc_id="",
+                step_ids=(step.step_id,),
+                disposition=DoctorGroupDisposition.PASSED,
+                step_receipts=(receipt,),
+            )
+        )
+    sandbox = DoctorSandboxPolicy(
+        sandbox_id=plan.roots.sandbox_id or "sandbox:fixture",
+        worktree_root_ref=worktree_root_ref,
+        permitted_paths=write_paths,
+        enforcement_level=DoctorSandboxEnforcementLevel.ENFORCED,
+    )
+    enforcement = DoctorSandboxEnforcementReceipt(
+        policy=sandbox,
+        enforcement_id=f"enforcement:{sandbox.sandbox_id}",
+        observed_capabilities=sandbox.required_capabilities,
+        platform_evidence_ref=f"platform:{sandbox.sandbox_id}",
+        enforced=True,
+    )
+    lock = DoctorCheckoutLock(
+        lock_id=lock_id,
+        holder_id="holder:fixture",
+        worktree_root_ref=worktree_root_ref,
+        base_tree_cid=base_tree_cid,
+        fence_id=fence_id,
+    )
+    lease = DoctorWriterLease(
+        lease_id=lease_id or plan.lease_id or "lease:writer-1",
+        fence_id=fence_id,
+        holder_id="holder:fixture",
+        permitted_write_paths=write_paths,
+        permitted_read_paths=write_paths,
+    )
+    candidate = DoctorCandidateTreeReceipt(
+        roots=plan.roots,
+        receipt_id=content_identity(
+            {
+                "schema": "doctor-fixture-candidate-tree@1",
+                "plan_id": plan.plan_id,
+                "candidate_tree_cid": candidate_tree_cid,
+            }
+        ),
+        plan_id=plan.plan_id,
+        plan_content_id=plan.content_id,
+        base_tree_cid=base_tree_cid,
+        candidate_tree_cid=candidate_tree_cid,
+        worktree_root_ref=worktree_root_ref,
+        sandbox_enforcement_id=enforcement.enforcement_id,
+        checkpoint_id=checkpoint.checkpoint_id,
+        lease_id=lease.lease_id,
+        lock_id=lock.lock_id,
+        written_paths=write_paths,
+        path_before_hashes=tuple(path_before_hashes),
+        group_receipts=tuple(group_receipts),
+        static_replay_only=True,
+        changed_blob_cids=tuple(f"blob:{p}" for p in write_paths),
+        observed_tree_cid=candidate_tree_cid,
+        observed_forest_cid=f"forest:{candidate_tree_cid}",
+        durable_effect_refs=tuple(f"durable:{s.step_id}" for s in plan.steps),
+    )
+    return DoctorTransactionReport(
+        roots=plan.roots,
+        transaction_id=transaction_id,
+        plan=plan,
+        checkpoint=checkpoint,
+        sandbox_enforcement=enforcement,
+        checkout_lock=lock,
+        lease=lease,
+        group_receipts=tuple(group_receipts),
+        candidate_tree=candidate,
+        rollback=None,
+        merge_cas=None,
+        reason_codes=(),
+        disposition=DoctorTransactionDisposition.COMMITTED,
+        committed=True,
+        partial_merge_allowed=False,
+        model_invocation_count=0,
+        provider_invocation_count=0,
+    )
+
+
 def validate_deterministic_doctor_fixed_point(
     plan: DeterministicDoctorPlan,
     transaction_report: DoctorTransactionReport,
@@ -2133,6 +2476,7 @@ __all__ = [
     "CONTRACT_VERSION",
     "DEFAULT_FIXED_POINT_BOUND",
     "DETERMINISTIC_DOCTOR_FIXED_POINT_INTERFACE",
+    "DOCTOR_SECURITY_CHECKS_SCHEMA",
     "PRODUCER_ID",
     "CandidateDoctorFixedPointEvidence",
     "DeterministicDoctorFixedPointError",
@@ -2151,9 +2495,11 @@ __all__ = [
     "DoctorRedeltaEvidence",
     "DoctorReplanEvidence",
     "DoctorReproveEvidence",
+    "DoctorSecurityCheckEvidence",
     "DoctorStageDisposition",
     "DoctorStageResult",
     "DoctorStaticCheckEvidence",
+    "build_fixture_committed_transaction_report",
     "daemon_require_doctor_fixed_point",
     "validate_deterministic_doctor_fixed_point",
 ]
