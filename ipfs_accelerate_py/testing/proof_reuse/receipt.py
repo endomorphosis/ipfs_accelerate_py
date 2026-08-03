@@ -92,12 +92,36 @@ DISQUALIFIER_INTERRUPTED: Final = "interrupted"
 DISQUALIFIER_TIMEOUT: Final = "timeout"
 DISQUALIFIER_TEARDOWN_FAILURE: Final = "teardown_failure"
 DISQUALIFIER_INCOMPLETE_TRACE: Final = "incomplete_trace"
+DISQUALIFIER_UNCONTROLLED_TRACE: Final = "uncontrolled_trace"
+DISQUALIFIER_OVERFLOWED_TRACE: Final = "overflowed_trace"
+DISQUALIFIER_EXCEPTIONAL_TRACE: Final = "exceptional_trace"
 DISQUALIFIER_LEAKED_RESOURCES: Final = "leaked_resources"
 DISQUALIFIER_FAIL: Final = "fail"
 DISQUALIFIER_ERROR: Final = "error"
 DISQUALIFIER_INCOMPLETE_PHASES: Final = "incomplete_phases"
 DISQUALIFIER_NOT_RUN: Final = "not_run"
 DISQUALIFIER_DISABLED: Final = "reuse_disabled"
+
+# Completeness-reason markers that permanently disqualify receipt admission.
+_TRACE_OVERFLOW_MARKERS: Final = frozenset({"overflow", "over_budget", "size_exceeded"})
+_TRACE_UNCONTROLLED_MARKERS: Final = frozenset(
+    {
+        "unsupported_event",
+        "private_event",
+        "uncontrolled",
+        "concurrent_trace",
+        "not_started",
+        "invalid_lifecycle",
+    }
+)
+_TRACE_EXCEPTIONAL_MARKERS: Final = frozenset(
+    {
+        "instrumentation_failure",
+        "exceptional",
+        "exception",
+        "internal_failure",
+    }
+)
 
 _MAX_DIAGNOSTIC_CHARS: Final = 128
 _MAX_DIAGNOSTIC_KEYS: Final = 16
@@ -447,6 +471,51 @@ def _trace_indicates_leaks(runtime_trace: Any) -> bool:
     return False
 
 
+def _reason_matches(reasons: set[str], markers: frozenset[str]) -> bool:
+    if reasons & markers:
+        return True
+    for reason in reasons:
+        if any(marker in reason for marker in markers):
+            return True
+    return False
+
+
+def _trace_authority_disqualifiers(runtime_trace: Any) -> Tuple[str, ...]:
+    """Extra disqualifiers for uncontrolled / overflowed / exceptional traces.
+
+    A complete boolean alone is insufficient: overflow, concurrent tracing,
+    private/unsupported events, and instrumentation failures must never mint a
+    reusable receipt even if a caller mislabels completeness.
+    """
+
+    if runtime_trace is None:
+        return ()
+    reasons = {reason.lower() for reason in _trace_completeness_reasons(runtime_trace)}
+    found: list[str] = []
+    if _reason_matches(reasons, _TRACE_OVERFLOW_MARKERS):
+        found.append(DISQUALIFIER_OVERFLOWED_TRACE)
+    if _reason_matches(reasons, _TRACE_UNCONTROLLED_MARKERS):
+        found.append(DISQUALIFIER_UNCONTROLLED_TRACE)
+    if _reason_matches(reasons, _TRACE_EXCEPTIONAL_MARKERS):
+        found.append(DISQUALIFIER_EXCEPTIONAL_TRACE)
+    # Health surface on RuntimeTestDependencyTrace@1.
+    health = getattr(runtime_trace, "health", None)
+    if health is None and isinstance(runtime_trace, Mapping):
+        health = runtime_trace.get("health")
+    if isinstance(health, Mapping):
+        if health.get("internal_failure_kinds"):
+            found.append(DISQUALIFIER_EXCEPTIONAL_TRACE)
+        if health.get("unsupported_event_kinds") or health.get("private_event_kinds"):
+            found.append(DISQUALIFIER_UNCONTROLLED_TRACE)
+        if health.get("dropped_event_count"):
+            try:
+                if int(health.get("dropped_event_count") or 0) > 0:
+                    found.append(DISQUALIFIER_OVERFLOWED_TRACE)
+            except (TypeError, ValueError):
+                found.append(DISQUALIFIER_OVERFLOWED_TRACE)
+    return _sorted_unique(found)
+
+
 def evaluate_complete_pass(
     phases: Mapping[str, PhaseCapture] | Mapping[str, PhaseOutcome] | None,
     *,
@@ -554,6 +623,8 @@ def evaluate_complete_pass(
             disqualifiers.append(DISQUALIFIER_INCOMPLETE_TRACE)
         if _trace_indicates_leaks(runtime_trace):
             disqualifiers.append(DISQUALIFIER_LEAKED_RESOURCES)
+        # Overflowed, uncontrolled, or exceptional observations never admit.
+        disqualifiers.extend(_trace_authority_disqualifiers(runtime_trace))
 
     unique = _sorted_unique(disqualifiers)
     all_pass = (
@@ -1536,10 +1607,13 @@ __all__ = [
     "DISQUALIFIER_INTERRUPTED",
     "DISQUALIFIER_LEAKED_RESOURCES",
     "DISQUALIFIER_NOT_RUN",
+    "DISQUALIFIER_OVERFLOWED_TRACE",
     "DISQUALIFIER_RERUN",
     "DISQUALIFIER_SKIP",
     "DISQUALIFIER_TEARDOWN_FAILURE",
     "DISQUALIFIER_TIMEOUT",
+    "DISQUALIFIER_UNCONTROLLED_TRACE",
+    "DISQUALIFIER_EXCEPTIONAL_TRACE",
     "DISQUALIFIER_XFAIL",
     "DISQUALIFIER_XPASS",
     "DeferredIssuanceEnvelope",

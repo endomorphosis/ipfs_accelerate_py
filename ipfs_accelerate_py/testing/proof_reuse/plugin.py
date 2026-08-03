@@ -31,6 +31,8 @@ IDENTITY_FACTORY_ATTRIBUTE = "_ipfs_proof_reuse_identity_factory"
 RUNTIME_PLUGIN_ATTRIBUTE = "_ipfs_proof_reuse_runtime_plugin"
 RUNTIME_TRACE_ATTRIBUTE = "_ipfs_proof_reuse_runtime_trace"
 RUNTIME_TRACE_CAPTURE_ATTRIBUTE = "_ipfs_proof_reuse_runtime_trace_capture"
+RUNTIME_LIFECYCLE_ATTRIBUTE = "_ipfs_proof_reuse_runtime_trace_lifecycle"
+CANDIDATE_PUBLICATION_ATTRIBUTE = "_ipfs_proof_reuse_candidate_publication"
 DEFERRED_REQUEST_ATTRIBUTE = "_ipfs_proof_reuse_deferred_request"
 EXECUTION_RECORDED_ATTRIBUTE = "_ipfs_proof_reuse_execution_recorded"
 DEFAULT_SERVICES_ATTRIBUTE = "_ipfs_proof_reuse_default_services"
@@ -483,7 +485,88 @@ class ProofReuseRuntimeComposition:
         except Exception:
             return None
 
+    def attach_runtime_lifecycle(self, item: Any) -> Any:
+        """Attach the cold-pass tracer lifecycle (PTR-146).
+
+        The lifecycle starts immediately before setup and stops only after
+        teardown.  It never re-invokes the test body.
+        """
+
+        existing = getattr(item, RUNTIME_LIFECYCLE_ATTRIBUTE, None)
+        if existing is not None:
+            return existing
+        try:
+            from .runtime_trace_lifecycle import attach_runtime_lifecycle
+
+            root = _config_root_path(self.config)
+            allowed_roots = {"repo": root} if root else None
+            lifecycle = attach_runtime_lifecycle(
+                item,
+                allowed_roots=allowed_roots,
+                capture_code_objects=False,
+            )
+            return lifecycle
+        except Exception:
+            metrics = getattr(self.config, METRICS_ATTRIBUTE, None)
+            if metrics is not None:
+                metrics.degraded(reason_code="runtime_trace_lifecycle_unavailable")
+            return None
+
+    def start_runtime_lifecycle(self, item: Any) -> Any:
+        """Start observation immediately before setup. Never raises."""
+
+        try:
+            lifecycle = self.attach_runtime_lifecycle(item)
+            if lifecycle is None:
+                return None
+            start = getattr(lifecycle, "start", None)
+            if callable(start):
+                start()
+            return lifecycle
+        except Exception:
+            metrics = getattr(self.config, METRICS_ATTRIBUTE, None)
+            if metrics is not None:
+                metrics.degraded(reason_code="runtime_trace_start_failed")
+            return None
+
+    def stop_runtime_lifecycle(self, item: Any) -> Any:
+        """Stop observation after teardown and attach the observed trace."""
+
+        try:
+            lifecycle = getattr(item, RUNTIME_LIFECYCLE_ATTRIBUTE, None)
+            if lifecycle is None:
+                return None
+            stop = getattr(lifecycle, "stop", None)
+            trace = stop() if callable(stop) else None
+            if trace is not None:
+                try:
+                    setattr(item, RUNTIME_TRACE_ATTRIBUTE, trace)
+                except Exception:
+                    pass
+            return trace
+        except Exception:
+            metrics = getattr(self.config, METRICS_ATTRIBUTE, None)
+            if metrics is not None:
+                metrics.degraded(reason_code="runtime_trace_stop_failed")
+            return None
+
     def note_phase(self, item: Any, report: Any) -> None:
+        # Cold-pass lifecycle (primary): record every phase outcome.
+        lifecycle = getattr(item, RUNTIME_LIFECYCLE_ATTRIBUTE, None)
+        if lifecycle is not None:
+            try:
+                note = getattr(lifecycle, "note_report", None)
+                if callable(note):
+                    note(report)
+                else:
+                    when = str(getattr(report, "when", ""))
+                    outcome = str(getattr(report, "outcome", ""))
+                    lifecycle.note_phase(when, outcome)
+            except Exception:
+                metrics = getattr(self.config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(reason_code="runtime_trace_lifecycle_failed")
+
         capture = getattr(item, RUNTIME_TRACE_CAPTURE_ATTRIBUTE, None)
         if capture is None:
             return
@@ -553,6 +636,34 @@ def _install_runtime_plugin(config: Any) -> None:
         return
 
     class _ProofReuseRuntimePlugin:
+        @pytest.hookimpl(hookwrapper=True, tryfirst=True)
+        def pytest_runtest_protocol(self, item: Any, nextitem: Any) -> Any:
+            # PTR-146: start the production tracer immediately before setup
+            # and stop only after teardown.  The body is invoked once by
+            # pytest itself; this wrapper never re-enters it.
+            try:
+                composition = getattr(config, COMPOSITION_ATTRIBUTE, None)
+                if not isinstance(composition, ProofReuseRuntimeComposition):
+                    composition = ProofReuseRuntimeComposition(config=config)
+                    setattr(config, COMPOSITION_ATTRIBUTE, composition)
+                proof_config = get_proof_reuse_config(config)
+                if proof_config.writes_receipts:
+                    composition.start_runtime_lifecycle(item)
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(reason_code="runtime_trace_start_failed")
+            outcome = yield
+            try:
+                composition = getattr(config, COMPOSITION_ATTRIBUTE, None)
+                if isinstance(composition, ProofReuseRuntimeComposition):
+                    composition.stop_runtime_lifecycle(item)
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(reason_code="runtime_trace_stop_failed")
+            return outcome
+
         @pytest.hookimpl(hookwrapper=True, trylast=True)
         def pytest_runtest_makereport(self, item: Any, call: Any) -> Any:
             outcome = yield
@@ -720,6 +831,8 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
             continue
         if proof_config.writes_receipts:
             composition.attach_post_pass_capture(item)
+            # PTR-146: prepare the cold-pass lifecycle for one protocol run.
+            composition.attach_runtime_lifecycle(item)
 
     coordinator = getattr(config, COORDINATOR_ATTRIBUTE, None)
     if not isinstance(coordinator, ProofReuseXdistCoordinator):
@@ -863,7 +976,23 @@ def _record_runtime_report(config: Any, item: Any, report: Any) -> None:
             "_ipfs_proof_reuse_execution_key",
             None,
         )
+    # Prefer the cold-pass lifecycle stop result (PTR-146).  The protocol
+    # wrapper stops after teardown; if a report arrives first, stop here.
     runtime_trace = getattr(item, RUNTIME_TRACE_ATTRIBUTE, None)
+    lifecycle = getattr(item, RUNTIME_LIFECYCLE_ATTRIBUTE, None)
+    if runtime_trace is None and lifecycle is not None:
+        try:
+            if not getattr(lifecycle, "stopped", False):
+                runtime_trace = composition.stop_runtime_lifecycle(item)
+            else:
+                runtime_trace = getattr(lifecycle, "trace", None) or getattr(
+                    lifecycle, "runtime_trace", None
+                )
+                if runtime_trace is not None:
+                    setattr(item, RUNTIME_TRACE_ATTRIBUTE, runtime_trace)
+        except Exception:
+            if metrics is not None:
+                metrics.degraded(reason_code="runtime_trace_stop_failed")
     capture = getattr(item, RUNTIME_TRACE_CAPTURE_ATTRIBUTE, None)
     if runtime_trace is None and capture is not None:
         # Prefer the complete observed post-pass capture when the item did not
@@ -878,15 +1007,51 @@ def _record_runtime_report(config: Any, item: Any, report: Any) -> None:
         except Exception:
             runtime_trace = capture
 
-    result = finalize_test_pass_receipt(
-        collector,
-        locator=locator,
-        execution_key=execution_key,
-        runtime_trace=runtime_trace,
-        writes_receipts=False,
-        require_runtime_trace=True,
-        item=item,
-    )
+    # PTR-146: compile final execution key from the complete observed trace,
+    # finalize the receipt bound to that key, and assemble the candidate
+    # publication envelope.  Incomplete / skipped / failed paths publish
+    # nothing authoritative.
+    result = None
+    try:
+        from .candidate_publication import finalize_cold_pass_publication
+        from .collection_seed import ITEM_COLLECTION_SEED_ATTRIBUTE
+
+        seed = getattr(item, ITEM_COLLECTION_SEED_ATTRIBUTE, None)
+        static_cid = ""
+        forest_cid = ""
+        if seed is not None:
+            static_cid = str(getattr(seed, "static_trace_root_cid", "") or "")
+            forest_cid = str(getattr(seed, "forest_id", "") or "")
+        result, _completed, publication = finalize_cold_pass_publication(
+            collector=collector,
+            runtime_trace=runtime_trace,
+            locator=locator,
+            seed_execution_key=execution_key,
+            repository_forest_cid=forest_cid,
+            static_trace_root_cid=static_cid,
+            require_runtime_trace=True,
+            item=item,
+        )
+        if publication is not None:
+            try:
+                setattr(item, CANDIDATE_PUBLICATION_ATTRIBUTE, publication)
+            except Exception:
+                pass
+    except Exception:
+        if metrics is not None:
+            metrics.degraded(reason_code="cold_pass_publication_failed")
+        result = None
+
+    if result is None:
+        result = finalize_test_pass_receipt(
+            collector,
+            locator=locator,
+            execution_key=execution_key,
+            runtime_trace=runtime_trace,
+            writes_receipts=False,
+            require_runtime_trace=True,
+            item=item,
+        )
     if result.admitted and result.receipt is not None:
         deferred = composition.build_public_deferred_envelope(
             item,
@@ -1062,6 +1227,8 @@ __all__ = [
     "PROVIDER_SERVICE_ATTRIBUTE",
     "ProofReuseItemMetadata",
     "ProofReuseRuntimeComposition",
+    "CANDIDATE_PUBLICATION_ATTRIBUTE",
+    "RUNTIME_LIFECYCLE_ATTRIBUTE",
     "RUNTIME_PLUGIN_ATTRIBUTE",
     "RUNTIME_TRACE_ATTRIBUTE",
     "RUNTIME_TRACE_CAPTURE_ATTRIBUTE",
