@@ -13,15 +13,16 @@ lower packages. This package **composes** them; it does not re-implement the
 control plane.
 
 **Status today:** leaf resolvers, broker, registry, contracts, lint/explain,
-steering contracts, and verified IPLD helpers are **landed** / **implemented**.
-The high-level `Supervisor.open()` / product CLI / MCP lifecycle is **planned**
-/ **not yet** exported (`ENTRYPOINT_LAZY_FACADE_EXPORTS` is empty).
+steering contracts, and verified IPLD helpers are **landed** / **implemented**
+(`landed|implemented` in the runtime guide matrix). The high-level
+`Supervisor.open()` / product CLI / MCP lifecycle is **planned** / **not yet**
+exported (`planned|not yet`; `ENTRYPOINT_LAZY_FACADE_EXPORTS` is empty).
 
 ## When to use this package
 
 - You are adding prompt-only inference receipts, run-handle storage, or steering
-  classification.  
-- You are wiring a future Python/CLI/MCP facade that must stay cold on import.  
+  classification.
+- You are wiring a future Python/CLI/MCP facade that must stay cold on import.
 - You need to keep prompt bodies, credentials, and UCANs out of durable records.
 
 Do **not** put ordinary control operations, taskboard parsers, or daemon loops
@@ -32,7 +33,7 @@ here—use `control/`, `task_sources/`, and `todo_daemon/` respectively.
 | Module | Role | Status |
 | --- | --- | --- |
 | `contracts` | Closed invocation, receipt, profile, launch, run, result schemas | **Landed** (eager package export) |
-| `target_resolver` | Repository, checkout, scope, dirty-tree resolution | **Landed** |
+| `target_resolver` | Repository, checkout, scope, dirty-tree resolution (`RepositoryTargetResolver`) | **Landed** |
 | `state_resolver` | Platform state root, namespace, run-candidate classification | **Landed** |
 | `objective_resolver` | Objective, plan, task-source, output binding | **Landed** |
 | `authority_resolver` | Principal, policy, authority source, effect ceiling | **Landed** |
@@ -40,8 +41,8 @@ here—use `control/`, `task_sources/`, and `todo_daemon/` respectively.
 | `profile_resolver` | Precedence merge → `TargetResolutionReceipt` + profile | **Landed** |
 | `inference_explain` | Body-free human/JSON provenance for receipts | **Landed** |
 | `plan_lint` | Read-only goal/task/profile lint | **Landed** |
-| `prompt_broker` | Transient, capability-protected prompt bodies | **Landed** |
-| `run_registry` | Durable handles, CAS heads, restart reconstruction | **Landed** |
+| `prompt_broker` | Transient, capability-protected prompt bodies (`PromptBodyBroker`) | **Landed** |
+| `run_registry` | Durable handles, CAS heads, restart reconstruction (`RunRegistry`) | **Landed** |
 | `steering_contracts` | Steering request/event/result + closed classification | **Landed** (apply path **planned**) |
 | `verified_ipld_backend` | Strict CIDv1/IPLD admission and rehash verification | **Landed** |
 | Lazy `Supervisor` / CLI / MCP facades | Product lifecycle | **Planned** / **not yet** |
@@ -59,6 +60,9 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.prompt_broker import (
 )
 from ipfs_accelerate_py.agent_supervisor.entrypoints.run_registry import (
     RunRegistry,
+)
+from ipfs_accelerate_py.agent_supervisor.entrypoints.steering_contracts import (
+    classify_steering_instruction,
 )
 ```
 
@@ -85,22 +89,24 @@ starts.
 | Contracts / receipts / run registry | CIDs, opaque refs, handles, decision provenance | Prompt bodies, capability tokens, raw UCANs, API keys |
 | Prompt broker | Process memory or encrypted artifacts under capability | Writing body or token into ordinary state/logs |
 | Launch profile | Env **names**, credential **handles** | Embedding secret values in argv or profile CID payload |
+| Steering surfaces | Instruction CIDs/refs, closed intent kinds | Durable `transient_instruction_body` bytes |
 
 See [PROMPT_FIRST_RUNTIME.md](../PROMPT_FIRST_RUNTIME.md) for the full durable
 versus transient table, resolver precedence, CAS/restart semantics, and the
-landed-versus-planned product matrix.
+`landed|implemented` versus `planned|not yet` product matrix.
 
 ## Extension notes
 
-1. Keep the package DAG acyclic ([package map](../PACKAGE_MAP.md)).  
+1. Keep the package DAG acyclic ([package map](../PACKAGE_MAP.md)).
 2. New facade symbols must be **lazy** and listed in
-   `ENTRYPOINT_LAZY_FACADE_EXPORTS` with cold-import tests.  
+   `ENTRYPOINT_LAZY_FACADE_EXPORTS` with cold-import tests.
 3. Use **semantic** symbol names; do not name public APIs after board prefixes
-   (ASE-… IDs are historical evidence only).  
+   (ASE-… IDs are historical evidence only).
 4. Update this page and the runtime guide when modules move from planned to
-   landed—**source and tests** are the status authority, not the ASE board.  
+   landed—**source and tests** are the status authority, not the ASE board.
 5. Add focused tests under `test/api/` next to existing
    `test_agent_supervisor_*_resolver.py` / broker / registry suites.
+6. Never store credentials, bearer UCANs, or prompt bodies in durable contracts.
 
 ## Program evidence (optional)
 
