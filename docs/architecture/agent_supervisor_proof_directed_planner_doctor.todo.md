@@ -1054,7 +1054,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-082 Gate baseline/challenger rollout with quality-safe Pareto and anti-gaming checks
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
