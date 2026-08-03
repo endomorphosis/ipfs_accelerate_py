@@ -207,6 +207,8 @@ def _read_optional_deps(pyproject_path: Path) -> dict[str, list[str]]:
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text() if (this_directory / "README.md").exists() else ""
 
+# Optional ErgoAI Java API Eclipse Temurin JDK is a reviewed external lazy
+# dependency (tool_id=temurin-jdk) and is intentionally not a pip requirement.
 install_requires = _read_requirements(this_directory / "requirements.txt")
 _require_contract_repair_distributions(install_requires)
 extras_require = _read_optional_deps(this_directory / "pyproject.toml")
