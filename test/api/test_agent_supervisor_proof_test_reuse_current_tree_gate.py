@@ -1,4 +1,4 @@
-"""Final current-tree authority gate coverage for PTR-102."""
+"""Final current-tree authority gate coverage for PTR-122."""
 
 from __future__ import annotations
 
@@ -11,12 +11,23 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement.proof_reuse_benchmark 
     ProofReuseBenchmarkReceipt,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tree_gate import (
+    FINAL_GATE_ACCEPTANCE_CRITERION,
+    FINAL_GATE_GOAL_ID,
+    FINAL_GATE_SATISFIED_REQUIREMENTS,
+    FINAL_GATE_TASK_ID,
+    REQUIRED_CHILD_GOAL_IDS,
+    REQUIRED_PTR_TASK_IDS,
+    REQUIRED_SUPERVISOR_LANE_IDS,
+    ROOT_ACCEPTANCE_CRITERION,
     ROOT_EVIDENCE_REQUIREMENTS,
     ROOT_GOAL_ID,
+    ROOT_SATISFIED_REQUIREMENTS,
     ProofTestReuseCompletionEvidence,
     ProofTestReuseCurrentTreeGate,
     ProofTestReuseCurrentTreeGateDecision,
     ProofTestReuseCurrentTreeGateError,
+    ProofTestReusePersistedGateBundle,
+    verify_persisted_current_tree_gate_bundle,
 )
 from ipfs_accelerate_py.testing.proof_reuse.rollout import (
     ProofReusePromotionEvidence,
@@ -30,24 +41,62 @@ NOW_SECONDS = 1_800_000_000.0
 NOW_MS = int(NOW_SECONDS * 1000)
 FRESH_FROM = NOW_MS - 60_000
 FRESH_UNTIL = NOW_MS + 60_000
-TASKS = frozenset({"PTR-001", "PTR-102"})
-GOALS = frozenset({"PTR-G010", "PTR-G110"})
+
+# Small sealed subset for unit tests; production default is the full board.
+TASKS = frozenset(
+    {
+        "PTR-001",
+        "PTR-102",
+        "PTR-108",
+        "PTR-109",
+        "PTR-110",
+        "PTR-111",
+        "PTR-112",
+        "PTR-120",
+        "PTR-121",
+        "PTR-122",
+        "PTR-130",
+    }
+)
+GOALS = frozenset(
+    {
+        "PTR-G010",
+        "PTR-G020",
+        "PTR-G030",
+        "PTR-G040",
+        "PTR-G050",
+        "PTR-G060",
+        "PTR-G070",
+        "PTR-G080",
+        "PTR-G090",
+        "PTR-G100",
+    }
+)
 POPULATIONS = frozenset(
     {"mutation", "storage-security-concurrency", "cross-repository"}
 )
 ANALYZERS = frozenset(
     {"static-dependency", "runtime-dependency", "reuse-eligibility"}
 )
+LANES = frozenset({"ptr_lane_0", "ptr_lane_1", "ptr_lane_2"})
+
+GIT_TREE = "tree:current"
+FOREST = "forest:current"
+COMPLETION_TREE = "completion-tree:current"
+G110_OBJECTIVE_REVISION = "objective:g110-current"
+ROOT_OBJECTIVE_REVISION = "objective:g000-current"
+GRAPH_OBJECTIVE_REVISION = "objective:graph-current"
 
 
 def _bound_record(**values):
     result = {
         "repository_id": "repository:current",
-        "tree_id": "tree:current",
+        "tree_id": GIT_TREE,
         "commit_id": "commit:current",
         "gitlink_state_cid": "gitlinks:recursive-current",
         "gitlink_closure_complete": True,
-        "repository_forest_cid": "forest:current",
+        "repository_forest_cid": FOREST,
+        "objective_completion_tree_id": COMPLETION_TREE,
         "capability_cid": "capability:current",
         "verifying_key_cid": "key:current",
         "circuit_cid": "circuit:current",
@@ -113,6 +162,28 @@ def _retrospective_provenance(gate):
     }
 
 
+def _supervisor_health(gate):
+    return _bound_record(
+        policy_cid=gate.policy_cid,
+        config_cid="config:proof-backed-test-reuse-v1",
+        configuration_revision="config:proof-backed-test-reuse-v1",
+        lane_count=3,
+        all_lanes_healthy=True,
+        evidence_cid="supervisor-health:current",
+        lanes=[
+            {
+                "lane_id": lane_id,
+                "healthy": True,
+                "authority": "authoritative",
+                "repository_id": gate.repository_id,
+                "tree_id": gate.tree_id,
+                "repository_forest_cid": gate.repository_forest_cid,
+            }
+            for lane_id in sorted(LANES)
+        ],
+    )
+
+
 @pytest.fixture()
 def gate():
     policy = ProofReuseRolloutPolicy(
@@ -126,19 +197,23 @@ def gate():
     )
     return ProofTestReuseCurrentTreeGate(
         repository_id="repository:current",
-        tree_id="tree:current",
+        tree_id=GIT_TREE,
         commit_id="commit:current",
         gitlink_state_cid="gitlinks:recursive-current",
-        repository_forest_cid="forest:current",
+        repository_forest_cid=FOREST,
+        objective_completion_tree_id=COMPLETION_TREE,
         capability_cid="capability:current",
         verifying_key_cid="key:current",
         circuit_cid="circuit:current",
-        objective_revision="objective:current",
+        objective_revision=GRAPH_OBJECTIVE_REVISION,
+        g110_objective_revision=G110_OBJECTIVE_REVISION,
+        root_objective_revision=ROOT_OBJECTIVE_REVISION,
         rollout_policy=policy,
         required_task_ids=TASKS,
         required_child_goal_ids=GOALS,
         required_adversarial_populations=POPULATIONS,
         required_analyzers=ANALYZERS,
+        required_supervisor_lane_ids=LANES,
         clock=lambda: NOW_SECONDS,
     )
 
@@ -233,7 +308,7 @@ def valid_packet(gate, monkeypatch):
             policy_cid=gate.policy_cid,
             objective_revision=gate.objective_revision,
             task_ids=sorted(TASKS),
-            goal_ids=sorted(GOALS | {ROOT_GOAL_ID}),
+            goal_ids=sorted(GOALS | {ROOT_GOAL_ID, FINAL_GATE_GOAL_ID}),
         ),
         "task_evidence": task_evidence,
         "child_goal_evidence": goals,
@@ -242,12 +317,15 @@ def valid_packet(gate, monkeypatch):
         "benchmark_evidence": _bound_record(
             policy_cid=gate.policy_cid,
             receipt=benchmark_receipt,
+            evidence_cid="benchmark:current",
         ),
         "rollout_evidence": _bound_record(
             policy_cid=gate.policy_cid,
             decision=decision,
             promotion_evidence=promotion,
+            evidence_cid="rollout:current",
         ),
+        "supervisor_health_evidence": _supervisor_health(gate),
     }
 
 
@@ -264,25 +342,236 @@ def _replace_rollout_promotion(packet, promotion, **decision_changes):
     )
 
 
+def test_production_population_includes_repair_and_closeout_tasks():
+    for task_id in (
+        "PTR-108",
+        "PTR-109",
+        "PTR-110",
+        "PTR-111",
+        "PTR-112",
+        "PTR-120",
+        "PTR-121",
+        "PTR-122",
+        "PTR-130",
+    ):
+        assert task_id in REQUIRED_PTR_TASK_IDS
+    assert FINAL_GATE_TASK_ID == "PTR-122"
+    assert FINAL_GATE_GOAL_ID not in REQUIRED_CHILD_GOAL_IDS
+    assert REQUIRED_CHILD_GOAL_IDS == {
+        "PTR-G010",
+        "PTR-G020",
+        "PTR-G030",
+        "PTR-G040",
+        "PTR-G050",
+        "PTR-G060",
+        "PTR-G070",
+        "PTR-G080",
+        "PTR-G090",
+        "PTR-G100",
+    }
+    assert REQUIRED_SUPERVISOR_LANE_IDS == {
+        "ptr_lane_0",
+        "ptr_lane_1",
+        "ptr_lane_2",
+    }
+
+
+def test_gate_rejects_g110_as_child_premise_configuration():
+    policy = ProofReuseRolloutPolicy(
+        policy_id="policy:ptr",
+        policy_revision="revision:1",
+        approved_stages=(ProofReuseRolloutStage.OFF, ProofReuseRolloutStage.READ),
+    )
+    with pytest.raises(ProofTestReuseCurrentTreeGateError, match="self-reference"):
+        ProofTestReuseCurrentTreeGate(
+            repository_id="repository:current",
+            tree_id=GIT_TREE,
+            commit_id="commit:current",
+            gitlink_state_cid="gitlinks:recursive-current",
+            repository_forest_cid=FOREST,
+            objective_completion_tree_id=COMPLETION_TREE,
+            capability_cid="capability:current",
+            verifying_key_cid="key:current",
+            circuit_cid="circuit:current",
+            objective_revision=GRAPH_OBJECTIVE_REVISION,
+            rollout_policy=policy,
+            required_task_ids=TASKS,
+            required_child_goal_ids=GOALS | {FINAL_GATE_GOAL_ID},
+            required_adversarial_populations=POPULATIONS,
+            required_analyzers=ANALYZERS,
+            clock=lambda: NOW_SECONDS,
+        )
+
+
+def test_gate_rejects_collapsed_identity_domains():
+    policy = ProofReuseRolloutPolicy(
+        policy_id="policy:ptr",
+        policy_revision="revision:1",
+        approved_stages=(ProofReuseRolloutStage.OFF, ProofReuseRolloutStage.READ),
+    )
+    with pytest.raises(ProofTestReuseCurrentTreeGateError, match="distinct"):
+        ProofTestReuseCurrentTreeGate(
+            repository_id="repository:current",
+            tree_id=GIT_TREE,
+            commit_id="commit:current",
+            gitlink_state_cid="gitlinks:recursive-current",
+            repository_forest_cid=GIT_TREE,
+            objective_completion_tree_id=COMPLETION_TREE,
+            capability_cid="capability:current",
+            verifying_key_cid="key:current",
+            circuit_cid="circuit:current",
+            objective_revision=GRAPH_OBJECTIVE_REVISION,
+            rollout_policy=policy,
+            required_task_ids=TASKS,
+            required_child_goal_ids=GOALS,
+            required_adversarial_populations=POPULATIONS,
+            required_analyzers=ANALYZERS,
+            clock=lambda: NOW_SECONDS,
+        )
+
+
 def test_success_emits_only_root_completion_evidence(gate, valid_packet):
     decision = _evaluate(gate, valid_packet)
 
     assert decision.passed is True
     assert decision.reason_codes == ()
-    assert isinstance(decision.completion_evidence, ProofTestReuseCompletionEvidence)
-    assert decision.completion_evidence.goal_id == "PTR-G000"
-    assert decision.completion_evidence.producing_task_id == "PTR-102"
-    assert decision.completion_evidence.repository_forest_cid == "forest:current"
-    assert decision.completion_evidence.policy_cid == gate.policy_cid
-    assert (
-        decision.completion_evidence.satisfied_requirements
-        == ROOT_EVIDENCE_REQUIREMENTS
+    assert decision.final_gate_completion_evidence is not None
+    assert decision.root_completion_evidence is not None
+    assert decision.completion_evidence is decision.root_completion_evidence
+
+    g110 = decision.final_gate_completion_evidence
+    g000 = decision.root_completion_evidence
+
+    assert g110.goal_id == FINAL_GATE_GOAL_ID
+    assert g110.acceptance_criterion == FINAL_GATE_ACCEPTANCE_CRITERION
+    assert g110.satisfied_requirements == FINAL_GATE_SATISFIED_REQUIREMENTS
+    assert g110.producing_task_id == "PTR-122"
+    assert g110.objective_revision == G110_OBJECTIVE_REVISION
+    assert g110.objective_completion_tree_id == COMPLETION_TREE
+    assert g110.repository_forest_cid == FOREST
+    assert g110.tree_id == GIT_TREE
+
+    assert g000.goal_id == ROOT_GOAL_ID
+    assert g000.acceptance_criterion == ROOT_ACCEPTANCE_CRITERION
+    assert g000.satisfied_requirements == ROOT_SATISFIED_REQUIREMENTS
+    assert g000.producing_task_id == "PTR-122"
+    assert g000.objective_revision == ROOT_OBJECTIVE_REVISION
+
+    # Must not claim other root requirements by implication.
+    assert g000.satisfied_requirements == (
+        "ptr/cross-repository-current-tree-gate@1",
     )
-    assert decision.completion_evidence.fresh_until_ms == FRESH_UNTIL
-    assert (
-        decision.completion_evidence.as_completion_evidence().provenance_cid
-        == decision.completion_evidence.evidence_id
+    assert "ptr/zero-false-authoritative-skip@1" not in g000.satisfied_requirements
+    assert "ptr/warm-reuse-benchmark@1" not in g000.satisfied_requirements
+    assert "ptr/supervisor-launch-health@1" not in g000.satisfied_requirements
+    assert "ptr/final-current-tree-gate@1" not in g000.satisfied_requirements
+    assert g110.satisfied_requirements == ("ptr/final-current-tree-gate@1",)
+    assert "ptr/cross-repository-current-tree-gate@1" not in g110.satisfied_requirements
+
+    # Declared root requirement catalogue remains documented separately.
+    assert ROOT_EVIDENCE_REQUIREMENTS == (
+        "ptr/cross-repository-current-tree-gate@1",
+        "ptr/zero-false-authoritative-skip@1",
+        "ptr/warm-reuse-benchmark@1",
+        "ptr/supervisor-launch-health@1",
     )
+
+
+
+def test_success_emits_separate_g110_and_g000_evidence(gate, valid_packet):
+    """Alias retained for PTR-122 dual-evidence documentation clarity."""
+    return test_success_emits_only_root_completion_evidence(gate, valid_packet)
+
+
+def test_generic_adapter_uses_allowed_producer_channel_and_freshness(
+    gate, valid_packet
+):
+    decision = _evaluate(gate, valid_packet)
+    for evidence in (
+        decision.final_gate_completion_evidence,
+        decision.root_completion_evidence,
+    ):
+        assert evidence is not None
+        projected = evidence.as_completion_evidence()
+        assert projected.producer_kind == "task"
+        assert projected.producing_task_or_scan == "PTR-122"
+        assert projected.producer_channel == evidence.producer_channel
+        assert projected.channel_proof_revision == evidence.channel_proof_revision
+        assert projected.objective_revision == evidence.objective_revision
+        assert projected.provenance_cid == evidence.evidence_id
+        assert projected.validation_passed is True
+        assert projected.observed_at is not None
+        assert projected.fresh_until is not None
+        receipt = projected.validation_receipt
+        assert isinstance(receipt, dict)
+        assert receipt["producer_channel"] == evidence.producer_channel
+        assert receipt["channel_proof_revision"] == evidence.channel_proof_revision
+        assert isinstance(receipt["channel_proof"], dict)
+        assert receipt["channel_proof"]["channel"] == evidence.producer_channel
+        assert receipt["channel_proof"]["goal_id"] == evidence.goal_id
+        assert projected.metadata["goal_id"] == evidence.goal_id
+        assert projected.metadata["evidence_source_policy"]["satisfies"] is True
+        # Evidence CID is strict CIDv1 dag-json form.
+        assert evidence.evidence_id.startswith("b")
+        assert ":" not in evidence.evidence_id
+
+
+def test_child_goal_self_reference_is_rejected(gate, valid_packet):
+    packet = deepcopy(valid_packet)
+    packet["child_goal_evidence"].append(
+        _bound_record(
+            policy_cid=gate.policy_cid,
+            goal_id=FINAL_GATE_GOAL_ID,
+            status="verified_complete",
+            provenance_cid="goal-evidence:g110-self",
+        )
+    )
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is False
+    assert decision.final_gate_completion_evidence is None
+    assert decision.root_completion_evidence is None
+    assert any(
+        "unexpected_child_goal" in reason or "self_reference" in reason
+        for reason in decision.reason_codes
+    )
+
+
+def test_supervisor_health_is_required(gate, valid_packet):
+    packet = deepcopy(valid_packet)
+    packet["supervisor_health_evidence"] = {}
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is False
+    assert any(
+        "supervisor_health" in reason for reason in decision.reason_codes
+    )
+
+
+def test_unhealthy_supervisor_lane_fails_closed(gate, valid_packet):
+    packet = deepcopy(valid_packet)
+    packet["supervisor_health_evidence"]["lanes"][0]["healthy"] = False
+    packet["supervisor_health_evidence"]["all_lanes_healthy"] = True
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is False
+    assert any(
+        "supervisor_lane_unhealthy" in reason for reason in decision.reason_codes
+    )
+
+
+def test_stale_supervisor_health_fails_closed(gate, valid_packet):
+    packet = deepcopy(valid_packet)
+    packet["supervisor_health_evidence"]["observed_at_ms"] = NOW_MS - 120_000
+    packet["supervisor_health_evidence"]["fresh_until_ms"] = NOW_MS - 1
+
+    decision = _evaluate(gate, packet)
+
+    assert decision.passed is False
+    assert "supervisor_health_stale" in decision.reason_codes
 
 
 @pytest.mark.parametrize(
@@ -342,7 +631,8 @@ def test_task_provenance_union_rejects_missing_unknown_or_unsuccessful_members(
     decision = _evaluate(gate, packet)
 
     assert decision.passed is False
-    assert decision.completion_evidence is None
+    assert decision.final_gate_completion_evidence is None
+    assert decision.root_completion_evidence is None
     assert any(reason_fragment in reason for reason in decision.reason_codes)
 
 
@@ -355,7 +645,7 @@ def test_quarantine_cannot_be_disguised_as_completed_managed_merge(
     decision = _evaluate(gate, packet)
 
     assert decision.passed is False
-    assert decision.completion_evidence is None
+    assert decision.root_completion_evidence is None
     assert any(
         "quarantined_task" in reason for reason in decision.reason_codes
     )
@@ -409,7 +699,7 @@ def test_retrospective_integration_requires_ancestry_rerun_and_policy_evidence(
     decision = _evaluate(gate, packet)
 
     assert decision.passed is False
-    assert decision.completion_evidence is None
+    assert decision.root_completion_evidence is None
     assert any(reason_fragment in reason for reason in decision.reason_codes)
 
 
@@ -474,7 +764,8 @@ def test_gate_fails_closed_without_emitting_evidence(
     decision = _evaluate(gate, packet)
 
     assert decision.passed is False
-    assert decision.completion_evidence is None
+    assert decision.final_gate_completion_evidence is None
+    assert decision.root_completion_evidence is None
     assert any(reason_fragment in reason for reason in decision.reason_codes)
 
 
@@ -486,6 +777,7 @@ def test_gate_fails_closed_without_emitting_evidence(
         ("capability_cid", "capability_cid_mismatch"),
         ("verifying_key_cid", "verifying_key_cid_mismatch"),
         ("circuit_cid", "circuit_cid_mismatch"),
+        ("objective_completion_tree_id", "objective_completion_tree_id_mismatch"),
     ],
 )
 def test_every_identity_is_bound_across_evidence(
@@ -497,7 +789,7 @@ def test_every_identity_is_bound_across_evidence(
     decision = _evaluate(gate, packet)
 
     assert decision.passed is False
-    assert decision.completion_evidence is None
+    assert decision.root_completion_evidence is None
     assert any(reason_fragment in reason for reason in decision.reason_codes)
 
 
@@ -514,7 +806,7 @@ def test_historical_or_unverified_benchmark_is_not_authority(
 
     assert not decision.passed
     assert "benchmark_not_reverified" in decision.reason_codes
-    assert decision.completion_evidence is None
+    assert decision.root_completion_evidence is None
 
 
 def test_rollout_decision_is_evidence_not_simulated_authority(
@@ -527,7 +819,7 @@ def test_rollout_decision_is_evidence_not_simulated_authority(
 
     assert not decision.passed
     assert "rollout_non_authoritative" in decision.reason_codes
-    assert decision.completion_evidence is None
+    assert decision.root_completion_evidence is None
 
 
 def test_explicit_false_current_tree_flag_is_valid_pre_default_readiness(
@@ -556,7 +848,7 @@ def test_rollout_cannot_preclaim_the_gate_result(gate, valid_packet):
     decision = _evaluate(gate, packet)
 
     assert decision.passed is False
-    assert decision.completion_evidence is None
+    assert decision.root_completion_evidence is None
     assert "rollout_current_tree_gate_preclaimed" in decision.reason_codes
 
 
@@ -576,7 +868,7 @@ def test_rollout_readiness_must_be_fresh_by_its_own_timestamp(
     decision = _evaluate(gate, packet)
 
     assert decision.passed is False
-    assert decision.completion_evidence is None
+    assert decision.root_completion_evidence is None
     assert "rollout_readiness_stale" in decision.reason_codes
 
 
@@ -598,14 +890,14 @@ def test_eligible_default_decision_is_not_pre_default_readiness(
     decision = _evaluate(gate, packet)
 
     assert decision.passed is False
-    assert decision.completion_evidence is None
+    assert decision.root_completion_evidence is None
     assert "rollout_readiness_not_pre_default" in decision.reason_codes
 
 
 def test_failed_decision_cannot_be_forged_with_completion_evidence(
     gate, valid_packet
 ):
-    evidence = _evaluate(gate, valid_packet).completion_evidence
+    evidence = _evaluate(gate, valid_packet).root_completion_evidence
     assert evidence is not None
 
     with pytest.raises(ProofTestReuseCurrentTreeGateError):
@@ -613,8 +905,71 @@ def test_failed_decision_cannot_be_forged_with_completion_evidence(
             passed=False,
             reason_codes=("forged",),
             evaluated_at_ms=NOW_MS,
-            completion_evidence=evidence,
+            root_completion_evidence=evidence,
         )
 
     with pytest.raises(ProofTestReuseCurrentTreeGateError):
-        replace(evidence, goal_id="PTR-G110")
+        ProofTestReuseCurrentTreeGateDecision(
+            passed=True,
+            reason_codes=(),
+            evaluated_at_ms=NOW_MS,
+            final_gate_completion_evidence=None,
+            root_completion_evidence=evidence,
+        )
+
+    with pytest.raises(ProofTestReuseCurrentTreeGateError):
+        replace(evidence, goal_id="PTR-G050")
+
+
+def test_persisted_bundle_deserializes_and_replays_gate(gate, valid_packet):
+    decision = _evaluate(gate, valid_packet)
+    assert decision.passed is True
+
+    bundle = gate.persist_bundle(decision, evaluate_packet=valid_packet)
+    payload = bundle.to_dict()
+    restored = ProofTestReusePersistedGateBundle.from_dict(payload)
+
+    assert restored.producing_task_id == "PTR-122"
+    assert restored.git_tree_id == GIT_TREE
+    assert restored.repository_forest_cid == FOREST
+    assert restored.objective_completion_tree_id == COMPLETION_TREE
+    assert restored.decision.passed is True
+    assert (
+        restored.decision.final_gate_completion_evidence.acceptance_criterion
+        == FINAL_GATE_ACCEPTANCE_CRITERION
+    )
+    assert (
+        restored.decision.root_completion_evidence.acceptance_criterion
+        == ROOT_ACCEPTANCE_CRITERION
+    )
+
+    replayed = verify_persisted_current_tree_gate_bundle(
+        restored,
+        rollout_policy=gate.rollout_policy,
+        clock=lambda: NOW_SECONDS,
+        required_task_ids=TASKS,
+        required_child_goal_ids=GOALS,
+        required_adversarial_populations=POPULATIONS,
+        required_analyzers=ANALYZERS,
+    )
+    assert replayed.passed is True
+    assert (
+        replayed.final_gate_completion_evidence.evidence_id
+        == decision.final_gate_completion_evidence.evidence_id
+    )
+    assert (
+        replayed.root_completion_evidence.evidence_id
+        == decision.root_completion_evidence.evidence_id
+    )
+
+
+def test_persisted_bundle_rejects_tampered_premise_cid(gate, valid_packet):
+    decision = _evaluate(gate, valid_packet)
+    bundle = gate.persist_bundle(decision, evaluate_packet=valid_packet)
+    payload = bundle.to_dict()
+    payload["retained_premise_bytes"] = {
+        "baguqeera" + "0" * 50: '{"tampered":true}',
+    }
+    # Construction itself fails closed when retained bytes do not match CID.
+    with pytest.raises(ProofTestReuseCurrentTreeGateError, match="premise"):
+        ProofTestReusePersistedGateBundle.from_dict(payload)

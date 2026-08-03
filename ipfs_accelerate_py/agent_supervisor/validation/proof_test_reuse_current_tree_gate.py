@@ -1,14 +1,22 @@
-"""Fail-closed final authority gate for proof-backed test reuse.
+"""Fail-closed final authority gate for proof-backed test reuse (PTR-122).
 
 The final gate is intentionally an aggregator, not another proof provider.  It
 accepts only fresh, authoritative evidence already bound to the exact current
-repository forest and cryptographic policy.  In particular, a pytest ``SKIP``
-line, a rollout decision, or a historical benchmark is never authority by
-itself.
+repository forest, Git tree, and objective-completion identity.  A pytest
+``SKIP`` line, a rollout decision, or a historical benchmark is never authority
+by itself.
 
-Successful evaluation emits one content-addressed completion artifact for the
-program root, ``PTR-G000``.  Failed evaluation emits reasons but no completion
-evidence.
+PTR-122 repairs the final-gate self-reference: the gate no longer requires
+``PTR-G110`` as its own child premise.  It verifies ``PTR-G010`` through
+``PTR-G100``, validates G110 benchmark and rollout premises directly, checks a
+fresh three-lane supervisor-health receipt, then emits separate exact evidence
+for:
+
+* ``ptr/final-current-tree-gate@1`` on ``PTR-G110``
+* ``ptr/cross-repository-current-tree-gate@1`` on ``PTR-G000``
+
+without claiming the other root requirements by implication.  The producing
+task is ``PTR-122``.
 """
 
 from __future__ import annotations
@@ -16,10 +24,11 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
+from hashlib import sha256
 from typing import Any, ClassVar, Final
 
 from ...testing.proof_reuse.rollout import (
@@ -28,12 +37,20 @@ from ...testing.proof_reuse.rollout import (
     ProofReuseRolloutPolicy,
     ProofReuseRolloutStage,
 )
-from ..objectives.goal_completion import CompletionEvidence
+from ..objectives.goal_completion import (
+    CHANNEL_PROOF_REVISION_NAMESPACE,
+    CompletionEvidence,
+)
 from ..self_improvement.proof_reuse_benchmark import (
     ProofReuseBenchmarkReceipt,
     verify_benchmark_receipt,
 )
 from .proof_cached_test_validation import ProofCachedTestValidationReceipt
+from .proof_test_reuse_objective_contracts import (
+    cid_for_canonical_dag_json_bytes,
+    cid_for_mapping,
+    verify_retained_bytes,
+)
 
 PROOF_TEST_REUSE_CURRENT_TREE_GATE_INTERFACE: Final = (
     "ProofTestReuseCurrentTreeGate@1"
@@ -49,12 +66,31 @@ PROOF_TEST_REUSE_GATE_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "proof-test-reuse-current-tree-gate-decision@1"
 )
+PROOF_TEST_REUSE_GATE_BUNDLE_INTERFACE: Final = "ProofTestReuseGateBundle@1"
+PROOF_TEST_REUSE_PERSISTED_GATE_BUNDLE_INTERFACE: Final = (
+    "ProofTestReusePersistedGateBundle@1"
+)
+PROOF_TEST_REUSE_PERSISTED_GATE_BUNDLE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "proof-test-reuse-persisted-gate-bundle@1"
+)
 PROOF_TEST_REUSE_CURRENT_TREE_GATE_VERSION: Final = 1
 
 ROOT_GOAL_ID: Final = "PTR-G000"
 FINAL_GATE_GOAL_ID: Final = "PTR-G110"
-FINAL_GATE_TASK_ID: Final = "PTR-102"
+FINAL_GATE_TASK_ID: Final = "PTR-122"
+LEGACY_FINAL_GATE_TASK_ID: Final = "PTR-102"
+
+FINAL_GATE_ACCEPTANCE_CRITERION: Final = "ptr/final-current-tree-gate@1"
 ROOT_ACCEPTANCE_CRITERION: Final = "ptr/cross-repository-current-tree-gate@1"
+
+# Exact satisfied requirements per emitted evidence — never the full root set.
+FINAL_GATE_SATISFIED_REQUIREMENTS: Final = (FINAL_GATE_ACCEPTANCE_CRITERION,)
+ROOT_SATISFIED_REQUIREMENTS: Final = (ROOT_ACCEPTANCE_CRITERION,)
+
+# Historical name retained for importers that inspect root requirement IDs
+# declared on G000.  The gate verifies the supporting premises but the root
+# completion evidence claims only ``ROOT_ACCEPTANCE_CRITERION``.
 ROOT_EVIDENCE_REQUIREMENTS: Final = (
     "ptr/cross-repository-current-tree-gate@1",
     "ptr/zero-false-authoritative-skip@1",
@@ -62,9 +98,11 @@ ROOT_EVIDENCE_REQUIREMENTS: Final = (
     "ptr/supervisor-launch-health@1",
 )
 
-# This is the sealed population in plan 46.  A caller may select a smaller
-# population only by explicitly constructing a gate with ``required_task_ids``;
-# production callers get this complete set.
+DEFAULT_PRODUCER_CHANNEL: Final = "current-tree-authority-gate"
+DEFAULT_ANALYZER_REVISION: Final = "analyzer:current-tree-gate@1"
+DEFAULT_CONFIGURATION_REVISION: Final = "configuration:current-tree-gate@1"
+
+# Sealed production population: all 41 implementation tasks on the board.
 REQUIRED_PTR_TASK_IDS: Final = frozenset(
     {
         "PTR-000",
@@ -99,8 +137,18 @@ REQUIRED_PTR_TASK_IDS: Final = frozenset(
         "PTR-100",
         "PTR-101",
         "PTR-102",
+        "PTR-108",
+        "PTR-109",
+        "PTR-110",
+        "PTR-111",
+        "PTR-112",
+        "PTR-120",
+        "PTR-121",
+        "PTR-122",
+        "PTR-130",
     }
 )
+# Verified child premises only — G110 is not a child premise of itself.
 REQUIRED_CHILD_GOAL_IDS: Final = frozenset(
     {
         "PTR-G010",
@@ -113,21 +161,29 @@ REQUIRED_CHILD_GOAL_IDS: Final = frozenset(
         "PTR-G080",
         "PTR-G090",
         "PTR-G100",
-        "PTR-G110",
     }
 )
+REQUIRED_GRAPH_GOAL_IDS: Final = REQUIRED_CHILD_GOAL_IDS | {
+    ROOT_GOAL_ID,
+    FINAL_GATE_GOAL_ID,
+}
 REQUIRED_ADVERSARIAL_POPULATIONS: Final = frozenset(
     {"mutation", "storage-security-concurrency", "cross-repository"}
 )
 REQUIRED_ANALYZERS: Final = frozenset(
     {"static-dependency", "runtime-dependency", "reuse-eligibility"}
 )
+REQUIRED_SUPERVISOR_LANE_IDS: Final = frozenset(
+    {"ptr_lane_0", "ptr_lane_1", "ptr_lane_2"}
+)
+REQUIRED_SUPERVISOR_LANE_COUNT: Final = 3
 
 _CLOSED_TASK_STATES = frozenset({"complete", "completed", "verified_complete"})
 _CLOSED_GOAL_STATES = frozenset({"verified_complete"})
 _QUARANTINE_STATES = frozenset({"quarantine", "quarantined"})
 _AUTHORITATIVE = "authoritative"
 _MAX_REASONS = 256
+_ALLOWED_PRODUCER_KINDS = frozenset({"task", "scan"})
 
 
 class TaskCompletionProvenanceKind(Enum):
@@ -219,7 +275,30 @@ def _canonical_bytes(value: Any) -> bytes:
 
 
 def _content_id(value: Any) -> str:
+    """Internal fingerprint for non-authoritative helper identity."""
+
     return "sha256:" + hashlib.sha256(_canonical_bytes(value)).hexdigest()
+
+
+def _artifact_cid(value: Mapping[str, Any]) -> str:
+    """Strict CIDv1/base32/dag-json/sha2-256 over retained canonical bytes."""
+
+    return cid_for_mapping(dict(value))
+
+
+def _namespaced_sha256_revision(value: Any, namespace: str) -> str:
+    canonical = json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    digest = sha256()
+    digest.update(str(namespace).encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(canonical)
+    return f"sha256:{digest.hexdigest()}"
 
 
 def _text(value: Any) -> str:
@@ -264,10 +343,10 @@ def _timestamp_ms(value: Any) -> int | None:
             return None
     if isinstance(value, str):
         try:
-            from datetime import datetime
+            from datetime import datetime as _dt
 
             normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
-            return int(datetime.fromisoformat(normalized).timestamp() * 1000)
+            return int(_dt.fromisoformat(normalized).timestamp() * 1000)
         except (TypeError, ValueError, OverflowError):
             return None
     return None
@@ -278,9 +357,198 @@ def _reason(prefix: str, identifier: str = "") -> str:
     return f"{prefix}:{clean}" if clean else prefix
 
 
+def _assert_identity_domains_distinct(
+    git_tree_id: str,
+    repository_forest_cid: str,
+    objective_completion_tree_id: str,
+) -> None:
+    """Git tree, forest, and objective-completion identities are distinct."""
+
+    domains = {
+        "git_tree_id": _text(git_tree_id),
+        "repository_forest_cid": _text(repository_forest_cid),
+        "objective_completion_tree_id": _text(objective_completion_tree_id),
+    }
+    if any(not value for value in domains.values()):
+        raise ProofTestReuseCurrentTreeGateError(
+            "git_tree_id, repository_forest_cid, and "
+            "objective_completion_tree_id are all required and distinct"
+        )
+    values = list(domains.values())
+    if len(set(values)) != 3:
+        raise ProofTestReuseCurrentTreeGateError(
+            "git_tree_id, repository_forest_cid, and "
+            "objective_completion_tree_id must be pairwise distinct domains"
+        )
+
+
+def _jsonable(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted(_jsonable(item) for item in value)
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return _jsonable(to_dict())
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat()
+    if isinstance(value, Enum):
+        return value.value
+    return str(value)
+
+
+def _serialize_evaluate_packet(packet: Mapping[str, Any]) -> dict[str, Any]:
+    """Canonical JSON form of evaluate() kwargs for bundle persistence."""
+
+    result: dict[str, Any] = {}
+    for key, value in packet.items():
+        if key in {
+            "task_evidence",
+            "child_goal_evidence",
+            "adversarial_evidence",
+            "analyzer_health",
+        }:
+            if isinstance(value, Mapping):
+                result[key] = {
+                    str(item_key): _jsonable(item_value)
+                    for item_key, item_value in value.items()
+                }
+            else:
+                result[key] = [_jsonable(item) for item in value]
+        else:
+            result[key] = _jsonable(value)
+    return result
+
+
+def _parse_datetime(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    if isinstance(value, str) and value:
+        normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+        parsed = datetime.fromisoformat(normalized)
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+    if isinstance(value, (int, float)):
+        number = float(value)
+        seconds = number / 1000.0 if abs(number) >= 10_000_000_000 else number
+        return datetime.fromtimestamp(seconds, tz=UTC)
+    return datetime.fromtimestamp(0, tz=UTC)
+
+
+def _deserialize_evaluate_packet(
+    packet: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Rebuild evaluate() kwargs, restoring typed benchmark/rollout objects."""
+
+    from ...testing.proof_reuse.rollout import RolloutDisposition
+
+    result = dict(packet)
+    benchmark = dict(_mapping(result.get("benchmark_evidence")))
+    receipt = benchmark.get("receipt")
+    if isinstance(receipt, Mapping):
+        try:
+            benchmark["receipt"] = ProofReuseBenchmarkReceipt.from_dict(receipt)
+        except Exception:
+            benchmark["receipt"] = ProofReuseBenchmarkReceipt(
+                corpus_id=_text(receipt.get("corpus_id")),
+                false_admissions=int(receipt.get("false_admissions") or 0),
+                warm_eligible_count=int(receipt.get("warm_eligible_count") or 0),
+                warm_verified_skips=int(receipt.get("warm_verified_skips") or 0),
+                warm_skip_bps=int(receipt.get("warm_skip_bps") or 0),
+                passed=bool(receipt.get("passed")),
+            )
+        result["benchmark_evidence"] = benchmark
+
+    rollout = dict(_mapping(result.get("rollout_evidence")))
+    decision_payload = rollout.get("decision")
+    promotion_payload = rollout.get("promotion_evidence")
+    if isinstance(promotion_payload, Mapping):
+        gate_passed = promotion_payload.get("current_tree_gate_passed")
+        if gate_passed is not None and not isinstance(gate_passed, bool):
+            gate_passed = None
+        promo_kwargs: dict[str, Any] = {
+            "observed_at": _parse_datetime(promotion_payload.get("observed_at")),
+            "repository_id": _text(promotion_payload.get("repository_id")),
+            "tree_id": _text(promotion_payload.get("tree_id")),
+            "policy_id": _text(promotion_payload.get("policy_id")),
+            "policy_revision": _text(promotion_payload.get("policy_revision")),
+            "current_stage": ProofReuseRolloutStage(
+                _text(promotion_payload.get("current_stage"))
+            ),
+            "target_stage": ProofReuseRolloutStage(
+                _text(promotion_payload.get("target_stage"))
+            ),
+            "mutation_false_skips": int(
+                promotion_payload.get("mutation_false_skips") or 0
+            ),
+            "degradation_false_skips": int(
+                promotion_payload.get("degradation_false_skips") or 0
+            ),
+            "authority_contradictions": int(
+                promotion_payload.get("authority_contradictions") or 0
+            ),
+            "corruption_spike": bool(promotion_payload.get("corruption_spike")),
+            "stale_keys": int(promotion_payload.get("stale_keys") or 0),
+            "key_health_ok": bool(promotion_payload.get("key_health_ok")),
+            "revocation_health_ok": bool(
+                promotion_payload.get("revocation_health_ok")
+            ),
+            "controlled_issuer": bool(
+                promotion_payload.get("controlled_issuer", True)
+            ),
+            "current_tree_gate_passed": gate_passed,
+            "all_repositories_passed": bool(
+                promotion_payload.get("all_repositories_passed", True)
+            ),
+        }
+        if "forced_reruns" in promotion_payload and promotion_payload[
+            "forced_reruns"
+        ] is not None:
+            promo_kwargs["forced_reruns"] = int(
+                promotion_payload.get("forced_reruns") or 0
+            )
+        if _text(promotion_payload.get("operator_approval_id")):
+            promo_kwargs["operator_approval_id"] = _text(
+                promotion_payload.get("operator_approval_id")
+            )
+        reconstructed_promotion = ProofReusePromotionEvidence(**promo_kwargs)
+        rollout["promotion_evidence"] = reconstructed_promotion
+    else:
+        reconstructed_promotion = None
+
+    if isinstance(decision_payload, Mapping):
+        evidence_id = _text(decision_payload.get("evidence_id"))
+        if not evidence_id and reconstructed_promotion is not None:
+            evidence_id = reconstructed_promotion.evidence_id
+        gates_raw = decision_payload.get("gates") or ()
+        rollout["decision"] = ProofReuseRolloutDecision(
+            current_stage=ProofReuseRolloutStage(
+                _text(decision_payload.get("current_stage"))
+            ),
+            requested_stage=ProofReuseRolloutStage(
+                _text(decision_payload.get("requested_stage"))
+            ),
+            effective_stage=ProofReuseRolloutStage(
+                _text(decision_payload.get("effective_stage"))
+            ),
+            disposition=RolloutDisposition(
+                _text(decision_payload.get("disposition"))
+            ),
+            gates=tuple(gates_raw),
+            evidence_id=evidence_id,
+            policy_id=_text(decision_payload.get("policy_id")),
+            policy_revision=_text(decision_payload.get("policy_revision")),
+        )
+        result["rollout_evidence"] = rollout
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class ProofTestReuseCompletionEvidence:
-    """The sole authoritative completion artifact emitted by this gate."""
+    """One exact goal completion artifact emitted by the current-tree gate."""
 
     __test__: ClassVar[bool] = False
 
@@ -289,6 +557,7 @@ class ProofTestReuseCompletionEvidence:
     commit_id: str
     gitlink_state_cid: str
     repository_forest_cid: str
+    objective_completion_tree_id: str
     policy_cid: str
     capability_cid: str
     verifying_key_cid: str
@@ -300,37 +569,80 @@ class ProofTestReuseCompletionEvidence:
     analyzer_evidence_cids: tuple[str, ...]
     benchmark_receipt_cid: str
     rollout_decision_cid: str
+    supervisor_health_cid: str
     observed_at_ms: int
     fresh_until_ms: int
-    satisfied_requirements: tuple[str, ...] = ROOT_EVIDENCE_REQUIREMENTS
-    goal_id: str = ROOT_GOAL_ID
+    goal_id: str
+    acceptance_criterion: str
+    satisfied_requirements: tuple[str, ...]
     producing_task_id: str = FINAL_GATE_TASK_ID
-    acceptance_criterion: str = ROOT_ACCEPTANCE_CRITERION
     authority: str = _AUTHORITATIVE
+    producer_kind: str = "task"
+    producer_channel: str = DEFAULT_PRODUCER_CHANNEL
+    analyzer_revision: str = DEFAULT_ANALYZER_REVISION
+    configuration_revision: str = DEFAULT_CONFIGURATION_REVISION
+    premise_cids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.goal_id != ROOT_GOAL_ID:
+        goal_id = _text(self.goal_id)
+        if goal_id not in {ROOT_GOAL_ID, FINAL_GATE_GOAL_ID}:
             raise ProofTestReuseCurrentTreeGateError(
-                "final completion evidence may target only PTR-G000"
+                "completion evidence may target only PTR-G000 or PTR-G110"
             )
+        object.__setattr__(self, "goal_id", goal_id)
         if self.producing_task_id != FINAL_GATE_TASK_ID:
             raise ProofTestReuseCurrentTreeGateError(
-                "final completion evidence must be produced by PTR-102"
+                "final completion evidence must be produced by PTR-122"
             )
         if self.authority != _AUTHORITATIVE:
             raise ProofTestReuseCurrentTreeGateError(
                 "completion evidence authority must be authoritative"
             )
-        if tuple(self.satisfied_requirements) != ROOT_EVIDENCE_REQUIREMENTS:
+        if self.producer_kind not in _ALLOWED_PRODUCER_KINDS:
             raise ProofTestReuseCurrentTreeGateError(
-                "root evidence requirements must be exact"
+                "producer_kind must be an allowed generic producer ('task' or 'scan')"
             )
+        if not _text(self.producer_channel):
+            raise ProofTestReuseCurrentTreeGateError(
+                "producer_channel is required"
+            )
+        criterion = _text(self.acceptance_criterion)
+        requirements = tuple(
+            _text(item) for item in self.satisfied_requirements if _text(item)
+        )
+        if goal_id == FINAL_GATE_GOAL_ID:
+            if criterion != FINAL_GATE_ACCEPTANCE_CRITERION:
+                raise ProofTestReuseCurrentTreeGateError(
+                    "G110 evidence must use ptr/final-current-tree-gate@1"
+                )
+            if requirements != FINAL_GATE_SATISFIED_REQUIREMENTS:
+                raise ProofTestReuseCurrentTreeGateError(
+                    "G110 evidence must claim only ptr/final-current-tree-gate@1"
+                )
+        else:
+            if criterion != ROOT_ACCEPTANCE_CRITERION:
+                raise ProofTestReuseCurrentTreeGateError(
+                    "G000 evidence must use ptr/cross-repository-current-tree-gate@1"
+                )
+            if requirements != ROOT_SATISFIED_REQUIREMENTS:
+                raise ProofTestReuseCurrentTreeGateError(
+                    "G000 evidence must claim only "
+                    "ptr/cross-repository-current-tree-gate@1"
+                )
+        object.__setattr__(self, "acceptance_criterion", criterion)
+        object.__setattr__(self, "satisfied_requirements", requirements)
+        _assert_identity_domains_distinct(
+            self.tree_id,
+            self.repository_forest_cid,
+            self.objective_completion_tree_id,
+        )
         for name in (
             "repository_id",
             "tree_id",
             "commit_id",
             "gitlink_state_cid",
             "repository_forest_cid",
+            "objective_completion_tree_id",
             "policy_cid",
             "capability_cid",
             "verifying_key_cid",
@@ -338,6 +650,9 @@ class ProofTestReuseCompletionEvidence:
             "objective_revision",
             "benchmark_receipt_cid",
             "rollout_decision_cid",
+            "supervisor_health_cid",
+            "analyzer_revision",
+            "configuration_revision",
         ):
             if not _text(getattr(self, name)):
                 raise ProofTestReuseCurrentTreeGateError(f"{name} is required")
@@ -351,20 +666,16 @@ class ProofTestReuseCompletionEvidence:
             if not values or any(not item for item in values):
                 raise ProofTestReuseCurrentTreeGateError(f"{name} is incomplete")
             object.__setattr__(self, name, tuple(sorted(values)))
+        premises = tuple(
+            sorted({_text(item) for item in self.premise_cids if _text(item)})
+        )
+        object.__setattr__(self, "premise_cids", premises)
         if self.observed_at_ms < 0 or self.fresh_until_ms <= self.observed_at_ms:
             raise ProofTestReuseCurrentTreeGateError(
                 "completion evidence freshness window is invalid"
             )
 
-    @property
-    def evidence_id(self) -> str:
-        return _content_id(self.to_dict())
-
-    @property
-    def provenance_cid(self) -> str:
-        return self.evidence_id
-
-    def to_dict(self) -> dict[str, Any]:
+    def _identity_body(self) -> dict[str, Any]:
         return {
             "schema": PROOF_TEST_REUSE_COMPLETION_EVIDENCE_SCHEMA,
             "interface": PROOF_TEST_REUSE_COMPLETION_EVIDENCE_INTERFACE,
@@ -373,44 +684,133 @@ class ProofTestReuseCompletionEvidence:
             "producing_task_id": self.producing_task_id,
             "acceptance_criterion": self.acceptance_criterion,
             "authority": self.authority,
+            "producer_kind": self.producer_kind,
+            "producer_channel": self.producer_channel,
             "satisfied_requirements": list(self.satisfied_requirements),
             "repository_id": self.repository_id,
             "tree_id": self.tree_id,
+            "git_tree_id": self.tree_id,
             "commit_id": self.commit_id,
             "gitlink_state_cid": self.gitlink_state_cid,
             "repository_forest_cid": self.repository_forest_cid,
+            "objective_completion_tree_id": self.objective_completion_tree_id,
             "policy_cid": self.policy_cid,
             "capability_cid": self.capability_cid,
             "verifying_key_cid": self.verifying_key_cid,
             "circuit_cid": self.circuit_cid,
             "objective_revision": self.objective_revision,
+            "analyzer_revision": self.analyzer_revision,
+            "configuration_revision": self.configuration_revision,
             "task_evidence_cids": list(self.task_evidence_cids),
             "child_goal_evidence_cids": list(self.child_goal_evidence_cids),
             "adversarial_evidence_cids": list(self.adversarial_evidence_cids),
             "analyzer_evidence_cids": list(self.analyzer_evidence_cids),
             "benchmark_receipt_cid": self.benchmark_receipt_cid,
             "rollout_decision_cid": self.rollout_decision_cid,
+            "supervisor_health_cid": self.supervisor_health_cid,
+            "premise_cids": list(self.premise_cids),
             "observed_at_ms": self.observed_at_ms,
             "fresh_until_ms": self.fresh_until_ms,
         }
 
-    def as_completion_evidence(self) -> CompletionEvidence:
-        """Project the sealed artifact into the shared objective interface."""
+    @property
+    def evidence_id(self) -> str:
+        return _artifact_cid(self._identity_body())
 
+    @property
+    def provenance_cid(self) -> str:
+        return self.evidence_id
+
+    def to_dict(self) -> dict[str, Any]:
+        body = self._identity_body()
+        body["evidence_id"] = self.evidence_id
+        body["provenance_cid"] = self.evidence_id
+        body["channel_proof_revision"] = self.channel_proof_revision
+        return body
+
+    def build_channel_proof(self) -> dict[str, Any]:
+        """Canonical channel proof for the generic completion adapter."""
+
+        return {
+            "channel": self.producer_channel,
+            "producing_task_id": self.producing_task_id,
+            "goal_id": self.goal_id,
+            "acceptance_criterion": self.acceptance_criterion,
+            "repository_id": self.repository_id,
+            "git_tree_id": self.tree_id,
+            "repository_forest_cid": self.repository_forest_cid,
+            "objective_completion_tree_id": self.objective_completion_tree_id,
+            "objective_revision": self.objective_revision,
+            "policy_cid": self.policy_cid,
+            "evidence_interface": PROOF_TEST_REUSE_COMPLETION_EVIDENCE_INTERFACE,
+            "gate_interface": PROOF_TEST_REUSE_CURRENT_TREE_GATE_INTERFACE,
+            "version": PROOF_TEST_REUSE_CURRENT_TREE_GATE_VERSION,
+        }
+
+    @property
+    def channel_proof_revision(self) -> str:
+        return _namespaced_sha256_revision(
+            self.build_channel_proof(),
+            CHANNEL_PROOF_REVISION_NAMESPACE,
+        )
+
+    def as_completion_evidence(self) -> CompletionEvidence:
+        """Project into the shared objective ``CompletionEvidence`` surface.
+
+        Uses allowed producer/source semantics (``producer_kind='task'``),
+        exact per-goal objective revision, canonical channel proof, and
+        explicit freshness.  Claims only this record's acceptance criterion.
+        """
+
+        channel_proof = self.build_channel_proof()
+        channel_revision = self.channel_proof_revision
+        validation_receipt = {
+            "passed": True,
+            "status": "passed",
+            "producer_channel": self.producer_channel,
+            "channel_proof_revision": channel_revision,
+            "channel_proof": channel_proof,
+            "goal_id": self.goal_id,
+            "acceptance_criterion": self.acceptance_criterion,
+            "satisfied_requirements": list(self.satisfied_requirements),
+            "repository_id": self.repository_id,
+            "git_tree_id": self.tree_id,
+            "repository_forest_cid": self.repository_forest_cid,
+            "objective_completion_tree_id": self.objective_completion_tree_id,
+            "objective_revision": self.objective_revision,
+            "policy_cid": self.policy_cid,
+            "capability_cid": self.capability_cid,
+            "verifying_key_cid": self.verifying_key_cid,
+            "circuit_cid": self.circuit_cid,
+            "task_evidence_cids": list(self.task_evidence_cids),
+            "child_goal_evidence_cids": list(self.child_goal_evidence_cids),
+            "adversarial_evidence_cids": list(self.adversarial_evidence_cids),
+            "analyzer_evidence_cids": list(self.analyzer_evidence_cids),
+            "benchmark_receipt_cid": self.benchmark_receipt_cid,
+            "rollout_decision_cid": self.rollout_decision_cid,
+            "supervisor_health_cid": self.supervisor_health_cid,
+            "premise_cids": list(self.premise_cids),
+            "evidence_body": self._identity_body(),
+            "producing_task_id": self.producing_task_id,
+        }
         return CompletionEvidence(
             acceptance_criterion=self.acceptance_criterion,
             producing_task_or_scan=self.producing_task_id,
-            validation_receipt=self.to_dict(),
+            producer_kind=self.producer_kind,
+            producer_channel=self.producer_channel,
+            channel_proof_revision=channel_revision,
+            validation_receipt=validation_receipt,
             repository_tree=self.tree_id,
+            tree_id=self.tree_id,
+            repository_id=self.repository_id,
+            objective_revision=self.objective_revision,
+            analyzer_version=self.analyzer_revision,
+            configuration_revision=self.configuration_revision,
             freshness={
                 "observed_at_ms": self.observed_at_ms,
                 "fresh_until_ms": self.fresh_until_ms,
             },
             provenance_cid=self.evidence_id,
-            producer_kind="current_tree_authority_gate",
-            repository_id=self.repository_id,
-            tree_id=self.tree_id,
-            objective_revision=self.objective_revision,
             validation_passed=True,
             observed_at=datetime.fromtimestamp(
                 self.observed_at_ms / 1000, tz=UTC
@@ -418,18 +818,93 @@ class ProofTestReuseCompletionEvidence:
             fresh_until=datetime.fromtimestamp(
                 self.fresh_until_ms / 1000, tz=UTC
             ),
-            metadata={"goal_id": ROOT_GOAL_ID, "authority": self.authority},
+            metadata={
+                "goal_id": self.goal_id,
+                "authority": self.authority,
+                "repository_forest_cid": self.repository_forest_cid,
+                "objective_completion_tree_id": (
+                    self.objective_completion_tree_id
+                ),
+                "source_tier": "validation",
+                "source_kind": "typed_receipt",
+                "producer_channel": self.producer_channel,
+                "channel_proof_revision": channel_revision,
+                "satisfied_requirements": list(self.satisfied_requirements),
+                "evidence_source_policy": {
+                    "satisfies": True,
+                    "reason_codes": (),
+                    "match_kind": "typed_receipt",
+                    "source_tier": "validation",
+                },
+            },
+        )
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> ProofTestReuseCompletionEvidence:
+        if not isinstance(payload, Mapping):
+            raise ProofTestReuseCurrentTreeGateError(
+                "completion evidence payload must be a mapping"
+            )
+        tree = _text(payload.get("tree_id") or payload.get("git_tree_id"))
+        return cls(
+            repository_id=_text(payload.get("repository_id")),
+            tree_id=tree,
+            commit_id=_text(payload.get("commit_id")),
+            gitlink_state_cid=_text(payload.get("gitlink_state_cid")),
+            repository_forest_cid=_text(payload.get("repository_forest_cid")),
+            objective_completion_tree_id=_text(
+                payload.get("objective_completion_tree_id")
+            ),
+            policy_cid=_text(payload.get("policy_cid")),
+            capability_cid=_text(payload.get("capability_cid")),
+            verifying_key_cid=_text(payload.get("verifying_key_cid")),
+            circuit_cid=_text(payload.get("circuit_cid")),
+            objective_revision=_text(payload.get("objective_revision")),
+            task_evidence_cids=tuple(payload.get("task_evidence_cids") or ()),
+            child_goal_evidence_cids=tuple(
+                payload.get("child_goal_evidence_cids") or ()
+            ),
+            adversarial_evidence_cids=tuple(
+                payload.get("adversarial_evidence_cids") or ()
+            ),
+            analyzer_evidence_cids=tuple(
+                payload.get("analyzer_evidence_cids") or ()
+            ),
+            benchmark_receipt_cid=_text(payload.get("benchmark_receipt_cid")),
+            rollout_decision_cid=_text(payload.get("rollout_decision_cid")),
+            supervisor_health_cid=_text(payload.get("supervisor_health_cid")),
+            observed_at_ms=int(payload.get("observed_at_ms") or 0),
+            fresh_until_ms=int(payload.get("fresh_until_ms") or 0),
+            goal_id=_text(payload.get("goal_id")),
+            acceptance_criterion=_text(payload.get("acceptance_criterion")),
+            satisfied_requirements=tuple(
+                payload.get("satisfied_requirements") or ()
+            ),
+            producing_task_id=_text(payload.get("producing_task_id"))
+            or FINAL_GATE_TASK_ID,
+            authority=_text(payload.get("authority")) or _AUTHORITATIVE,
+            producer_kind=_text(payload.get("producer_kind")) or "task",
+            producer_channel=_text(payload.get("producer_channel"))
+            or DEFAULT_PRODUCER_CHANNEL,
+            analyzer_revision=_text(payload.get("analyzer_revision"))
+            or DEFAULT_ANALYZER_REVISION,
+            configuration_revision=_text(payload.get("configuration_revision"))
+            or DEFAULT_CONFIGURATION_REVISION,
+            premise_cids=tuple(payload.get("premise_cids") or ()),
         )
 
 
 @dataclass(frozen=True, slots=True)
 class ProofTestReuseCurrentTreeGateDecision:
-    """Typed outcome.  Rejection can never carry root completion evidence."""
+    """Typed outcome.  Rejection can never carry completion evidence."""
 
     passed: bool
     reason_codes: tuple[str, ...]
     evaluated_at_ms: int
-    completion_evidence: ProofTestReuseCompletionEvidence | None = None
+    final_gate_completion_evidence: ProofTestReuseCompletionEvidence | None = None
+    root_completion_evidence: ProofTestReuseCompletionEvidence | None = None
 
     def __post_init__(self) -> None:
         reasons = tuple(dict.fromkeys(_text(item) for item in self.reason_codes))
@@ -437,14 +912,52 @@ class ProofTestReuseCurrentTreeGateDecision:
             raise ProofTestReuseCurrentTreeGateError("invalid gate reason codes")
         object.__setattr__(self, "reason_codes", reasons)
         if self.passed:
-            if reasons or self.completion_evidence is None:
+            if reasons:
                 raise ProofTestReuseCurrentTreeGateError(
-                    "passing gate requires evidence and no rejection reasons"
+                    "passing gate requires no rejection reasons"
                 )
-        elif self.completion_evidence is not None:
+            if (
+                self.final_gate_completion_evidence is None
+                or self.root_completion_evidence is None
+            ):
+                raise ProofTestReuseCurrentTreeGateError(
+                    "passing gate requires separate G110 and G000 evidence"
+                )
+            if self.final_gate_completion_evidence.goal_id != FINAL_GATE_GOAL_ID:
+                raise ProofTestReuseCurrentTreeGateError(
+                    "final_gate_completion_evidence must target PTR-G110"
+                )
+            if self.root_completion_evidence.goal_id != ROOT_GOAL_ID:
+                raise ProofTestReuseCurrentTreeGateError(
+                    "root_completion_evidence must target PTR-G000"
+                )
+            if (
+                self.final_gate_completion_evidence.acceptance_criterion
+                != FINAL_GATE_ACCEPTANCE_CRITERION
+            ):
+                raise ProofTestReuseCurrentTreeGateError(
+                    "G110 evidence criterion mismatch"
+                )
+            if (
+                self.root_completion_evidence.acceptance_criterion
+                != ROOT_ACCEPTANCE_CRITERION
+            ):
+                raise ProofTestReuseCurrentTreeGateError(
+                    "G000 evidence criterion mismatch"
+                )
+        elif (
+            self.final_gate_completion_evidence is not None
+            or self.root_completion_evidence is not None
+        ):
             raise ProofTestReuseCurrentTreeGateError(
                 "failed gate cannot emit completion evidence"
             )
+
+    @property
+    def completion_evidence(self) -> ProofTestReuseCompletionEvidence | None:
+        """Compatibility alias for root (G000) completion evidence."""
+
+        return self.root_completion_evidence
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -454,12 +967,327 @@ class ProofTestReuseCurrentTreeGateDecision:
             "passed": self.passed,
             "reason_codes": list(self.reason_codes),
             "evaluated_at_ms": self.evaluated_at_ms,
-            "completion_evidence": (
-                self.completion_evidence.to_dict()
-                if self.completion_evidence is not None
+            "final_gate_completion_evidence": (
+                self.final_gate_completion_evidence.to_dict()
+                if self.final_gate_completion_evidence is not None
+                else None
+            ),
+            "root_completion_evidence": (
+                self.root_completion_evidence.to_dict()
+                if self.root_completion_evidence is not None
                 else None
             ),
         }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> ProofTestReuseCurrentTreeGateDecision:
+        if not isinstance(payload, Mapping):
+            raise ProofTestReuseCurrentTreeGateError(
+                "gate decision payload must be a mapping"
+            )
+        final_raw = payload.get("final_gate_completion_evidence")
+        root_raw = payload.get("root_completion_evidence")
+        # Legacy single-evidence payloads are not admissible after PTR-122.
+        if payload.get("passed") is True and (
+            not isinstance(final_raw, Mapping) or not isinstance(root_raw, Mapping)
+        ):
+            raise ProofTestReuseCurrentTreeGateError(
+                "passing decision requires both G110 and G000 evidence payloads"
+            )
+        final_ev = (
+            ProofTestReuseCompletionEvidence.from_dict(final_raw)
+            if isinstance(final_raw, Mapping)
+            else None
+        )
+        root_ev = (
+            ProofTestReuseCompletionEvidence.from_dict(root_raw)
+            if isinstance(root_raw, Mapping)
+            else None
+        )
+        return cls(
+            passed=bool(payload.get("passed")),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+            evaluated_at_ms=int(payload.get("evaluated_at_ms") or 0),
+            final_gate_completion_evidence=final_ev,
+            root_completion_evidence=root_ev,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ProofTestReusePersistedGateBundle:
+    """Replayable persisted envelope for one gate evaluation."""
+
+    SCHEMA: ClassVar[str] = PROOF_TEST_REUSE_PERSISTED_GATE_BUNDLE_SCHEMA
+
+    repository_id: str
+    git_tree_id: str
+    repository_forest_cid: str
+    objective_completion_tree_id: str
+    objective_revision: str
+    policy_cid: str
+    capability_cid: str
+    verifying_key_cid: str
+    circuit_cid: str
+    producing_task_id: str
+    decision: ProofTestReuseCurrentTreeGateDecision
+    gate_bindings: Mapping[str, Any]
+    evaluate_packet: Mapping[str, Any]
+    premise_cids: tuple[str, ...]
+    retained_premise_bytes: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _assert_identity_domains_distinct(
+            self.git_tree_id,
+            self.repository_forest_cid,
+            self.objective_completion_tree_id,
+        )
+        if self.producing_task_id != FINAL_GATE_TASK_ID:
+            raise ProofTestReuseCurrentTreeGateError(
+                "persisted gate bundle must be produced by PTR-122"
+            )
+        if not isinstance(self.decision, ProofTestReuseCurrentTreeGateDecision):
+            raise ProofTestReuseCurrentTreeGateError(
+                "decision must be ProofTestReuseCurrentTreeGateDecision"
+            )
+        object.__setattr__(self, "gate_bindings", dict(self.gate_bindings or {}))
+        object.__setattr__(
+            self, "evaluate_packet", dict(self.evaluate_packet or {})
+        )
+        object.__setattr__(
+            self,
+            "premise_cids",
+            tuple(sorted({_text(item) for item in self.premise_cids if _text(item)})),
+        )
+        object.__setattr__(
+            self,
+            "retained_premise_bytes",
+            {
+                _text(key): str(value)
+                for key, value in dict(self.retained_premise_bytes or {}).items()
+                if _text(key) and isinstance(value, str)
+            },
+        )
+        # Every retained premise CID must verify against its retained bytes.
+        for cid, text in self.retained_premise_bytes.items():
+            data = text.encode("utf-8")
+            if not verify_retained_bytes(cid, data):
+                # Also accept internal sha256 fingerprints for non-dag-json
+                # helper identities retained during tests.
+                if not (
+                    cid.startswith("sha256:")
+                    and cid == "sha256:" + hashlib.sha256(data).hexdigest()
+                ):
+                    raise ProofTestReuseCurrentTreeGateError(
+                        f"retained premise CID failed verification: {cid}"
+                    )
+
+    @property
+    def interface(self) -> str:
+        return PROOF_TEST_REUSE_PERSISTED_GATE_BUNDLE_INTERFACE
+
+    def _identity_body(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "interface": self.interface,
+            "version": PROOF_TEST_REUSE_CURRENT_TREE_GATE_VERSION,
+            "repository_id": self.repository_id,
+            "git_tree_id": self.git_tree_id,
+            "tree_id": self.git_tree_id,
+            "repository_forest_cid": self.repository_forest_cid,
+            "objective_completion_tree_id": self.objective_completion_tree_id,
+            "objective_revision": self.objective_revision,
+            "policy_cid": self.policy_cid,
+            "capability_cid": self.capability_cid,
+            "verifying_key_cid": self.verifying_key_cid,
+            "circuit_cid": self.circuit_cid,
+            "producing_task_id": self.producing_task_id,
+            "decision": self.decision.to_dict(),
+            "gate_bindings": dict(self.gate_bindings),
+            "evaluate_packet": dict(self.evaluate_packet),
+            "premise_cids": list(self.premise_cids),
+            "retained_premise_bytes": dict(self.retained_premise_bytes),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        body = self._identity_body()
+        body["bundle_cid"] = self.bundle_cid
+        return body
+
+    @property
+    def bundle_cid(self) -> str:
+        return cid_for_mapping(self._identity_body())
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> ProofTestReusePersistedGateBundle:
+        if not isinstance(payload, Mapping):
+            raise ProofTestReuseCurrentTreeGateError(
+                "persisted gate bundle must be a mapping"
+            )
+        if payload.get("schema") not in {
+            cls.SCHEMA,
+            PROOF_TEST_REUSE_PERSISTED_GATE_BUNDLE_SCHEMA,
+        }:
+            raise ProofTestReuseCurrentTreeGateError(
+                "unsupported persisted gate bundle schema"
+            )
+        decision_payload = payload.get("decision")
+        if not isinstance(decision_payload, Mapping):
+            raise ProofTestReuseCurrentTreeGateError(
+                "persisted gate bundle missing decision"
+            )
+        return cls(
+            repository_id=_text(payload.get("repository_id")),
+            git_tree_id=_text(
+                _value(payload, "git_tree_id", "tree_id")  # type: ignore[arg-type]
+            ),
+            repository_forest_cid=_text(payload.get("repository_forest_cid")),
+            objective_completion_tree_id=_text(
+                payload.get("objective_completion_tree_id")
+            ),
+            objective_revision=_text(payload.get("objective_revision")),
+            policy_cid=_text(payload.get("policy_cid")),
+            capability_cid=_text(payload.get("capability_cid")),
+            verifying_key_cid=_text(payload.get("verifying_key_cid")),
+            circuit_cid=_text(payload.get("circuit_cid")),
+            producing_task_id=_text(payload.get("producing_task_id"))
+            or FINAL_GATE_TASK_ID,
+            decision=ProofTestReuseCurrentTreeGateDecision.from_dict(
+                decision_payload
+            ),
+            gate_bindings=_mapping(payload.get("gate_bindings")),
+            evaluate_packet=_mapping(payload.get("evaluate_packet")),
+            premise_cids=tuple(payload.get("premise_cids") or ()),
+            retained_premise_bytes=_mapping(
+                payload.get("retained_premise_bytes")
+            ),
+        )
+
+    def replay(
+        self,
+        *,
+        rollout_policy: ProofReuseRolloutPolicy,
+        clock: Callable[[], float] | None = None,
+        required_task_ids: frozenset[str] | None = None,
+        required_child_goal_ids: frozenset[str] | None = None,
+    ) -> ProofTestReuseCurrentTreeGateDecision:
+        """Deserialize retained premises and re-evaluate the gate strictly."""
+
+        return verify_persisted_current_tree_gate_bundle(
+            self,
+            rollout_policy=rollout_policy,
+            clock=clock,
+            required_task_ids=required_task_ids,
+            required_child_goal_ids=required_child_goal_ids,
+        )
+
+
+def verify_persisted_current_tree_gate_bundle(
+    bundle: ProofTestReusePersistedGateBundle | Mapping[str, Any],
+    *,
+    rollout_policy: ProofReuseRolloutPolicy,
+    clock: Callable[[], float] | None = None,
+    required_task_ids: frozenset[str] | None = None,
+    required_child_goal_ids: frozenset[str] | None = None,
+    required_adversarial_populations: frozenset[str] | None = None,
+    required_analyzers: frozenset[str] | None = None,
+) -> ProofTestReuseCurrentTreeGateDecision:
+    """Strictly deserialize a bundle and replay the gate against retained premises."""
+
+    if not isinstance(bundle, ProofTestReusePersistedGateBundle):
+        bundle = ProofTestReusePersistedGateBundle.from_dict(bundle)
+
+    # Re-verify every retained premise CID before replaying.
+    for cid, text in bundle.retained_premise_bytes.items():
+        data = text.encode("utf-8")
+        if verify_retained_bytes(cid, data):
+            continue
+        if cid.startswith("sha256:") and cid == (
+            "sha256:" + hashlib.sha256(data).hexdigest()
+        ):
+            continue
+        raise ProofTestReuseCurrentTreeGateError(
+            f"premise CID verification failed during replay: {cid}"
+        )
+
+    bindings = dict(bundle.gate_bindings)
+    gate = ProofTestReuseCurrentTreeGate(
+        repository_id=bundle.repository_id,
+        tree_id=bundle.git_tree_id,
+        commit_id=_text(bindings.get("commit_id")),
+        gitlink_state_cid=_text(bindings.get("gitlink_state_cid")),
+        repository_forest_cid=bundle.repository_forest_cid,
+        objective_completion_tree_id=bundle.objective_completion_tree_id,
+        capability_cid=bundle.capability_cid,
+        verifying_key_cid=bundle.verifying_key_cid,
+        circuit_cid=bundle.circuit_cid,
+        objective_revision=bundle.objective_revision,
+        g110_objective_revision=_text(
+            bindings.get("g110_objective_revision")
+        )
+        or bundle.objective_revision,
+        root_objective_revision=_text(
+            bindings.get("root_objective_revision")
+        )
+        or bundle.objective_revision,
+        rollout_policy=rollout_policy,
+        required_task_ids=required_task_ids or frozenset(
+            bindings.get("required_task_ids") or REQUIRED_PTR_TASK_IDS
+        ),
+        required_child_goal_ids=required_child_goal_ids
+        or frozenset(
+            bindings.get("required_child_goal_ids") or REQUIRED_CHILD_GOAL_IDS
+        ),
+        required_adversarial_populations=required_adversarial_populations
+        or frozenset(
+            bindings.get("required_adversarial_populations")
+            or REQUIRED_ADVERSARIAL_POPULATIONS
+        ),
+        required_analyzers=required_analyzers
+        or frozenset(bindings.get("required_analyzers") or REQUIRED_ANALYZERS),
+        clock=clock
+        or (lambda: float(bundle.decision.evaluated_at_ms) / 1000.0),
+    )
+    if gate.policy_cid != bundle.policy_cid:
+        raise ProofTestReuseCurrentTreeGateError(
+            "persisted bundle policy_cid does not match rollout policy binding"
+        )
+    packet = _deserialize_evaluate_packet(bundle.evaluate_packet)
+    replayed = gate.evaluate(**packet)
+    if replayed.passed != bundle.decision.passed:
+        raise ProofTestReuseCurrentTreeGateError(
+            "persisted gate bundle replay outcome mismatch"
+        )
+    if replayed.passed:
+        if (
+            replayed.final_gate_completion_evidence is None
+            or replayed.root_completion_evidence is None
+            or bundle.decision.final_gate_completion_evidence is None
+            or bundle.decision.root_completion_evidence is None
+        ):
+            raise ProofTestReuseCurrentTreeGateError(
+                "persisted gate bundle missing completion evidence on replay"
+            )
+        if (
+            replayed.final_gate_completion_evidence.evidence_id
+            != bundle.decision.final_gate_completion_evidence.evidence_id
+            or replayed.root_completion_evidence.evidence_id
+            != bundle.decision.root_completion_evidence.evidence_id
+        ):
+            raise ProofTestReuseCurrentTreeGateError(
+                "persisted gate bundle evidence identity mismatch on replay"
+            )
+    elif tuple(replayed.reason_codes) != tuple(bundle.decision.reason_codes):
+        # Allow reason-code order differences only via set equality for
+        # non-passing replays when both failed.
+        if set(replayed.reason_codes) != set(bundle.decision.reason_codes):
+            raise ProofTestReuseCurrentTreeGateError(
+                "persisted gate bundle reason codes mismatch on replay"
+            )
+    return replayed
 
 
 @dataclass(frozen=True, slots=True)
@@ -471,17 +1299,21 @@ class ProofTestReuseCurrentTreeGate:
     commit_id: str
     gitlink_state_cid: str
     repository_forest_cid: str
+    objective_completion_tree_id: str
     capability_cid: str
     verifying_key_cid: str
     circuit_cid: str
     objective_revision: str
     rollout_policy: ProofReuseRolloutPolicy
+    g110_objective_revision: str = ""
+    root_objective_revision: str = ""
     required_task_ids: frozenset[str] = REQUIRED_PTR_TASK_IDS
     required_child_goal_ids: frozenset[str] = REQUIRED_CHILD_GOAL_IDS
     required_adversarial_populations: frozenset[str] = (
         REQUIRED_ADVERSARIAL_POPULATIONS
     )
     required_analyzers: frozenset[str] = REQUIRED_ANALYZERS
+    required_supervisor_lane_ids: frozenset[str] = REQUIRED_SUPERVISOR_LANE_IDS
     clock: Callable[[], float] = field(
         default=time.time, repr=False, compare=False
     )
@@ -493,6 +1325,7 @@ class ProofTestReuseCurrentTreeGate:
             "commit_id",
             "gitlink_state_cid",
             "repository_forest_cid",
+            "objective_completion_tree_id",
             "capability_cid",
             "verifying_key_cid",
             "circuit_cid",
@@ -500,24 +1333,67 @@ class ProofTestReuseCurrentTreeGate:
         ):
             if not _text(getattr(self, name)):
                 raise ProofTestReuseCurrentTreeGateError(f"{name} is required")
+        _assert_identity_domains_distinct(
+            self.tree_id,
+            self.repository_forest_cid,
+            self.objective_completion_tree_id,
+        )
         if not isinstance(self.rollout_policy, ProofReuseRolloutPolicy):
             raise ProofTestReuseCurrentTreeGateError(
                 "rollout_policy must be ProofReuseRolloutPolicy"
             )
+        object.__setattr__(
+            self,
+            "g110_objective_revision",
+            _text(self.g110_objective_revision) or self.objective_revision,
+        )
+        object.__setattr__(
+            self,
+            "root_objective_revision",
+            _text(self.root_objective_revision) or self.objective_revision,
+        )
         for name in (
             "required_task_ids",
             "required_child_goal_ids",
             "required_adversarial_populations",
             "required_analyzers",
+            "required_supervisor_lane_ids",
         ):
             values = frozenset(_text(item) for item in getattr(self, name))
             if not values or any(not item for item in values):
                 raise ProofTestReuseCurrentTreeGateError(f"{name} is invalid")
             object.__setattr__(self, name, values)
+        # Production callers must never reintroduce G110 as a child premise.
+        if FINAL_GATE_GOAL_ID in self.required_child_goal_ids:
+            raise ProofTestReuseCurrentTreeGateError(
+                "PTR-G110 must not be required as a child premise (self-reference)"
+            )
+        # Sealed expansion tasks must remain in the production population.
+        sealed_expansion = {
+            "PTR-108",
+            "PTR-109",
+            "PTR-110",
+            "PTR-111",
+            "PTR-112",
+            "PTR-120",
+            "PTR-121",
+            "PTR-122",
+            "PTR-130",
+        }
+        if self.required_task_ids == REQUIRED_PTR_TASK_IDS and not sealed_expansion.issubset(
+            self.required_task_ids
+        ):
+            raise ProofTestReuseCurrentTreeGateError(
+                "required task population is missing sealed expansion tasks"
+            )
 
     @property
     def policy_cid(self) -> str:
         return self.rollout_policy.policy_binding_id
+
+    @property
+    def git_tree_id(self) -> str:
+        return self.tree_id
 
     def _bindings(self, record: Mapping[str, Any], prefix: str) -> list[str]:
         reasons: list[str] = []
@@ -535,16 +1411,33 @@ class ProofTestReuseCurrentTreeGate:
         aliases = {
             "repository_forest_cid": ("repository_forest_cid", "forest_cid"),
             "verifying_key_cid": ("verifying_key_cid", "key_cid"),
+            "tree_id": ("tree_id", "git_tree_id"),
+            "commit_id": ("commit_id", "git_commit_id"),
         }
         for name, wanted in expected.items():
-            field_aliases = {
-                "tree_id": ("tree_id", "git_tree_id"),
-                "commit_id": ("commit_id", "git_commit_id"),
-                **aliases,
-            }
-            actual = _text(_value(record, *field_aliases.get(name, (name,))))
+            actual = _text(_value(record, *aliases.get(name, (name,))))
             if actual != wanted:
                 reasons.append(_reason(f"{name}_mismatch", prefix))
+        # Objective-completion identity is optional on every record but, when
+        # present, must match the gate's distinct domain.
+        completion_id = _text(
+            _value(
+                record,
+                "objective_completion_tree_id",
+                "completion_tree_id",
+            )
+        )
+        if completion_id and completion_id != self.objective_completion_tree_id:
+            reasons.append(
+                _reason("objective_completion_tree_id_mismatch", prefix)
+            )
+        if completion_id and completion_id in {
+            self.tree_id,
+            self.repository_forest_cid,
+        }:
+            reasons.append(
+                _reason("identity_domain_collision", prefix)
+            )
         if record.get("gitlink_closure_complete") is not True:
             reasons.append(_reason("recursive_gitlinks_incomplete", prefix))
         return reasons
@@ -574,7 +1467,43 @@ class ProofTestReuseCurrentTreeGate:
                 "receipt_id",
             )
         )
-        return supplied or _content_id(dict(record))
+        if supplied:
+            return supplied
+        return _content_id(dict(record))
+
+    def _validate_premise_cid(
+        self,
+        record: Mapping[str, Any],
+        *,
+        prefix: str,
+    ) -> list[str]:
+        """Validate every retained premise CID on one record."""
+
+        reasons: list[str] = []
+        cid = self._evidence_cid(record)
+        if not cid:
+            reasons.append(_reason("missing_premise_cid", prefix))
+            return reasons
+        retained = _value(
+            record,
+            "retained_canonical_utf8",
+            "canonical_utf8",
+            "retained_bytes_utf8",
+        )
+        if isinstance(retained, str) and retained:
+            data = retained.encode("utf-8")
+            if cid.startswith("sha256:"):
+                if cid != "sha256:" + hashlib.sha256(data).hexdigest():
+                    reasons.append(_reason("premise_cid_mismatch", prefix))
+            elif not verify_retained_bytes(cid, data):
+                reasons.append(_reason("premise_cid_mismatch", prefix))
+        elif cid.startswith("b"):
+            # Authoritative dag-json CIDs require retained bytes for recheck.
+            if not _text(
+                _value(record, "evidence_cid", "provenance_cid", "task_cid")
+            ):
+                reasons.append(_reason("premise_cid_bytes_missing", prefix))
+        return reasons
 
     def _task_provenance_reasons(
         self,
@@ -740,6 +1669,118 @@ class ProofTestReuseCurrentTreeGate:
             reasons.append("rollout_current_tree_gate_preclaimed")
         return reasons
 
+    def _supervisor_health_reasons(
+        self,
+        record: Mapping[str, Any],
+        *,
+        now_ms: int,
+    ) -> tuple[list[str], str]:
+        """Validate a fresh current-tree/config-bound three-lane health receipt."""
+
+        reasons: list[str] = []
+        if not record:
+            return ["supervisor_health_missing"], ""
+        reasons.extend(self._bindings(record, "supervisor_health"))
+        if _text(record.get("authority")).lower() != _AUTHORITATIVE:
+            reasons.append("supervisor_health_non_authoritative")
+        if not self._fresh(record, now_ms):
+            reasons.append("supervisor_health_stale")
+
+        config_cid = _text(
+            _value(
+                record,
+                "config_cid",
+                "configuration_cid",
+                "config_revision",
+                "configuration_revision",
+            )
+        )
+        if not config_cid:
+            reasons.append("supervisor_health_config_missing")
+
+        # Optional explicit objective-completion / config binding.
+        completion_id = _text(
+            _value(
+                record,
+                "objective_completion_tree_id",
+                "completion_tree_id",
+            )
+        )
+        if completion_id and completion_id != self.objective_completion_tree_id:
+            reasons.append("supervisor_health_completion_identity_mismatch")
+
+        lanes_raw = record.get("lanes")
+        lane_records: dict[str, Mapping[str, Any]] = {}
+        if isinstance(lanes_raw, Mapping):
+            for lane_id, value in lanes_raw.items():
+                body = dict(_record(value))
+                body.setdefault("lane_id", lane_id)
+                lane_records[_text(lane_id)] = body
+        elif isinstance(lanes_raw, Sequence) and not isinstance(
+            lanes_raw, (str, bytes)
+        ):
+            for raw in lanes_raw:
+                body = _record(raw)
+                lane_id = _text(_value(body, "lane_id", "id", "name"))
+                if lane_id:
+                    lane_records[lane_id] = body
+        else:
+            reasons.append("supervisor_health_lanes_missing")
+
+        required = self.required_supervisor_lane_ids
+        present = set(lane_records)
+        for missing in sorted(required - present):
+            reasons.append(_reason("missing_supervisor_lane", missing))
+        for unexpected in sorted(present - required):
+            reasons.append(_reason("unexpected_supervisor_lane", unexpected))
+        if len(required) != REQUIRED_SUPERVISOR_LANE_COUNT:
+            reasons.append("supervisor_health_lane_count_invalid")
+        declared_count = record.get("lane_count")
+        if declared_count is not None and declared_count != len(required):
+            reasons.append("supervisor_health_lane_count_mismatch")
+        if record.get("all_lanes_healthy") is not True:
+            reasons.append("supervisor_health_not_all_lanes_healthy")
+
+        for lane_id in sorted(required & present):
+            lane = lane_records[lane_id]
+            if lane.get("healthy") is not True:
+                reasons.append(_reason("supervisor_lane_unhealthy", lane_id))
+            if _text(lane.get("authority")).lower() not in {
+                "",
+                _AUTHORITATIVE,
+            }:
+                reasons.append(
+                    _reason("supervisor_lane_non_authoritative", lane_id)
+                )
+            # Lane may carry current-tree bindings when present.
+            for field_name, wanted in (
+                ("repository_id", self.repository_id),
+                ("tree_id", self.tree_id),
+                ("repository_forest_cid", self.repository_forest_cid),
+            ):
+                actual = _text(
+                    _value(
+                        lane,
+                        field_name,
+                        "git_tree_id" if field_name == "tree_id" else field_name,
+                        "forest_cid"
+                        if field_name == "repository_forest_cid"
+                        else field_name,
+                    )
+                )
+                if actual and actual != wanted:
+                    reasons.append(
+                        _reason(
+                            f"supervisor_lane_{field_name}_mismatch",
+                            lane_id,
+                        )
+                    )
+
+        reasons.extend(
+            self._validate_premise_cid(record, prefix="supervisor_health")
+        )
+        return reasons, self._evidence_cid(record)
+
     def _validate_population(
         self,
         records: Iterable[Any],
@@ -757,14 +1798,18 @@ class ProofTestReuseCurrentTreeGate:
             record = _record(raw)
             identifier = _text(_value(record, *id_names))
             if not identifier or identifier in by_id:
-                reasons.append(_reason(f"{kind}_duplicate_or_unidentified", identifier))
+                reasons.append(
+                    _reason(f"{kind}_duplicate_or_unidentified", identifier)
+                )
                 continue
             by_id[identifier] = record
 
         missing = sorted(required_ids - set(by_id))
         unexpected = sorted(set(by_id) - required_ids)
         reasons.extend(_reason(f"missing_{kind}", item) for item in missing)
-        reasons.extend(_reason(f"unexpected_{kind}", item) for item in unexpected)
+        reasons.extend(
+            _reason(f"unexpected_{kind}", item) for item in unexpected
+        )
         for identifier in sorted(required_ids & set(by_id)):
             record = by_id[identifier]
             if allowed_states is not None:
@@ -772,10 +1817,17 @@ class ProofTestReuseCurrentTreeGate:
                 if state not in allowed_states:
                     reasons.append(_reason(f"open_{kind}", identifier))
             if _text(record.get("authority")).lower() != _AUTHORITATIVE:
-                reasons.append(_reason(f"non_authoritative_{kind}", identifier))
+                reasons.append(
+                    _reason(f"non_authoritative_{kind}", identifier)
+                )
             if not self._fresh(record, now_ms):
                 reasons.append(_reason(f"stale_{kind}", identifier))
             reasons.extend(self._bindings(record, f"{kind}:{identifier}"))
+            reasons.extend(
+                self._validate_premise_cid(
+                    record, prefix=f"{kind}:{identifier}"
+                )
+            )
             cids.append(self._evidence_cid(record))
         return reasons, cids
 
@@ -789,8 +1841,9 @@ class ProofTestReuseCurrentTreeGate:
         analyzer_health: Iterable[Any] | Mapping[str, Any],
         benchmark_evidence: Mapping[str, Any],
         rollout_evidence: Mapping[str, Any],
+        supervisor_health_evidence: Mapping[str, Any] | None = None,
     ) -> ProofTestReuseCurrentTreeGateDecision:
-        """Evaluate all current evidence and emit root evidence only on success."""
+        """Evaluate all current evidence; emit G110 + G000 evidence only on success."""
 
         now_ms = int(float(self.clock()) * 1000)
         reasons: list[str] = []
@@ -798,11 +1851,19 @@ class ProofTestReuseCurrentTreeGate:
         child_goal_evidence = tuple(child_goal_evidence)
         adversarial_evidence = tuple(adversarial_evidence)
         graph = _record(objective_graph)
-        graph_tasks = frozenset(_text(item) for item in graph.get("task_ids", ()))
-        graph_goals = frozenset(_text(item) for item in graph.get("goal_ids", ()))
+        graph_tasks = frozenset(
+            _text(item) for item in graph.get("task_ids", ())
+        )
+        graph_goals = frozenset(
+            _text(item) for item in graph.get("goal_ids", ())
+        )
         if graph_tasks != self.required_task_ids:
             reasons.append("objective_graph_task_population_mismatch")
-        if graph_goals != self.required_child_goal_ids | {ROOT_GOAL_ID}:
+        expected_graph_goals = self.required_child_goal_ids | {
+            ROOT_GOAL_ID,
+            FINAL_GATE_GOAL_ID,
+        }
+        if graph_goals != expected_graph_goals:
             reasons.append("objective_graph_goal_population_mismatch")
         if _text(graph.get("objective_revision")) != self.objective_revision:
             reasons.append("objective_graph_revision_mismatch")
@@ -831,17 +1892,26 @@ class ProofTestReuseCurrentTreeGate:
                 reasons.append(_reason("missing_task_cid", task_id))
             reasons.extend(self._task_provenance_reasons(record, task_id))
             disposition = _text(
-                _value(record, "validation_disposition", "disposition", "outcome")
+                _value(
+                    record,
+                    "validation_disposition",
+                    "disposition",
+                    "outcome",
+                )
             ).lower()
             receipt = record.get("validation_receipt")
             if disposition in {"skip", "skipped", "ordinary_skip"}:
                 if not isinstance(receipt, ProofCachedTestValidationReceipt):
-                    reasons.append(_reason("ordinary_skip_not_authority", task_id))
+                    reasons.append(
+                        _reason("ordinary_skip_not_authority", task_id)
+                    )
                 elif not receipt.is_completion_evidence(
                     now_ms=now_ms,
                     task_id=task_id,
                 ):
-                    reasons.append(_reason("proof_skip_receipt_invalid", task_id))
+                    reasons.append(
+                        _reason("proof_skip_receipt_invalid", task_id)
+                    )
                 elif (
                     receipt.repository_forest_cid != self.repository_forest_cid
                     or receipt.git_commit_id != self.commit_id
@@ -852,10 +1922,15 @@ class ProofTestReuseCurrentTreeGate:
                     or receipt.verifying_key_cid != self.verifying_key_cid
                     or receipt.circuit_cid != self.circuit_cid
                 ):
-                    reasons.append(_reason("proof_skip_binding_mismatch", task_id))
-            elif not _text(_value(record, "validation_receipt_cid", "receipt_cid")):
+                    reasons.append(
+                        _reason("proof_skip_binding_mismatch", task_id)
+                    )
+            elif not _text(
+                _value(record, "validation_receipt_cid", "receipt_cid")
+            ):
                 reasons.append(_reason("missing_validation_receipt", task_id))
 
+        # G110 is deliberately excluded — validated via benchmark/rollout below.
         goal_reasons, goal_cids = self._validate_population(
             child_goal_evidence,
             id_names=("goal_id",),
@@ -865,6 +1940,10 @@ class ProofTestReuseCurrentTreeGate:
             allowed_states=_CLOSED_GOAL_STATES,
         )
         reasons.extend(goal_reasons)
+        for raw in child_goal_evidence:
+            record = _record(raw)
+            if _text(record.get("goal_id")) == FINAL_GATE_GOAL_ID:
+                reasons.append("child_goal_g110_self_reference")
 
         adversarial_reasons, adversarial_cids = self._validate_population(
             adversarial_evidence,
@@ -876,9 +1955,13 @@ class ProofTestReuseCurrentTreeGate:
         reasons.extend(adversarial_reasons)
         for raw in adversarial_evidence:
             record = _record(raw)
-            identifier = _text(_value(record, "population_id", "population"))
+            identifier = _text(
+                _value(record, "population_id", "population")
+            )
             if record.get("passed") is not True:
-                reasons.append(_reason("adversarial_population_failed", identifier))
+                reasons.append(
+                    _reason("adversarial_population_failed", identifier)
+                )
             false_skips = record.get("false_skips")
             if isinstance(false_skips, bool) or false_skips != 0:
                 reasons.append(_reason("false_skip_detected", identifier))
@@ -903,15 +1986,22 @@ class ProofTestReuseCurrentTreeGate:
             record = _record(raw)
             if record.get("healthy") is not True:
                 reasons.append(
-                    _reason("analyzer_unhealthy", _text(record.get("analyzer_id")))
+                    _reason(
+                        "analyzer_unhealthy",
+                        _text(record.get("analyzer_id")),
+                    )
                 )
 
+        # Direct fresh G110 benchmark premise (not a G110 goal label).
         benchmark = _mapping(benchmark_evidence)
         reasons.extend(self._bindings(benchmark, "benchmark"))
         if _text(benchmark.get("authority")).lower() != _AUTHORITATIVE:
             reasons.append("benchmark_non_authoritative")
         if not self._fresh(benchmark, now_ms):
             reasons.append("benchmark_stale")
+        reasons.extend(
+            self._validate_premise_cid(benchmark, prefix="benchmark")
+        )
         receipt = benchmark.get("receipt")
         benchmark_cid = ""
         if not isinstance(receipt, ProofReuseBenchmarkReceipt):
@@ -926,12 +2016,14 @@ class ProofTestReuseCurrentTreeGate:
             except Exception:
                 reasons.append("benchmark_not_reverified")
 
+        # Direct fresh G110 rollout premise.
         rollout = _mapping(rollout_evidence)
         reasons.extend(self._bindings(rollout, "rollout"))
         if _text(rollout.get("authority")).lower() != _AUTHORITATIVE:
             reasons.append("rollout_non_authoritative")
         if not self._fresh(rollout, now_ms):
             reasons.append("rollout_stale")
+        reasons.extend(self._validate_premise_cid(rollout, prefix="rollout"))
         decision = rollout.get("decision")
         promotion = rollout.get("promotion_evidence")
         rollout_cid = ""
@@ -943,15 +2035,15 @@ class ProofTestReuseCurrentTreeGate:
                 reasons.append("rollout_decision_not_promoted")
             if (
                 decision.policy_id != self.rollout_policy.policy_id
-                or decision.policy_revision != self.rollout_policy.policy_revision
+                or decision.policy_revision
+                != self.rollout_policy.policy_revision
             ):
                 reasons.append("rollout_policy_mismatch")
         if not isinstance(promotion, ProofReusePromotionEvidence):
             reasons.append("rollout_promotion_evidence_missing_or_malformed")
         else:
-            if (
-                promotion.evidence_id
-                != _text(getattr(decision, "evidence_id", ""))
+            if promotion.evidence_id != _text(
+                getattr(decision, "evidence_id", "")
             ):
                 reasons.append("rollout_evidence_identity_mismatch")
             if (
@@ -975,6 +2067,12 @@ class ProofTestReuseCurrentTreeGate:
                     )
                 )
 
+        supervisor = _mapping(supervisor_health_evidence)
+        health_reasons, supervisor_cid = self._supervisor_health_reasons(
+            supervisor, now_ms=now_ms
+        )
+        reasons.extend(health_reasons)
+
         reasons = list(dict.fromkeys(reasons))[:_MAX_REASONS]
         if reasons:
             return ProofTestReuseCurrentTreeGateDecision(
@@ -983,13 +2081,13 @@ class ProofTestReuseCurrentTreeGate:
                 evaluated_at_ms=now_ms,
             )
 
-        freshness_ends = []
+        freshness_ends: list[int] = []
         for collection in (
             task_records.values(),
             (_record(item) for item in child_goal_evidence),
             (_record(item) for item in adversarial_evidence),
             (_record(item) for item in analyzer_items),
-            (benchmark, rollout),
+            (benchmark, rollout, supervisor),
         ):
             for record in collection:
                 value = _timestamp_ms(
@@ -998,48 +2096,158 @@ class ProofTestReuseCurrentTreeGate:
                 if value is not None:
                     freshness_ends.append(value)
 
-        evidence = ProofTestReuseCompletionEvidence(
-            repository_id=self.repository_id,
-            tree_id=self.tree_id,
-            commit_id=self.commit_id,
-            gitlink_state_cid=self.gitlink_state_cid,
-            repository_forest_cid=self.repository_forest_cid,
-            policy_cid=self.policy_cid,
-            capability_cid=self.capability_cid,
-            verifying_key_cid=self.verifying_key_cid,
-            circuit_cid=self.circuit_cid,
-            objective_revision=self.objective_revision,
-            task_evidence_cids=tuple(task_cids),
-            child_goal_evidence_cids=tuple(goal_cids),
-            adversarial_evidence_cids=tuple(adversarial_cids),
-            analyzer_evidence_cids=tuple(analyzer_cids),
-            benchmark_receipt_cid=benchmark_cid,
-            rollout_decision_cid=rollout_cid,
-            observed_at_ms=now_ms,
-            fresh_until_ms=min(freshness_ends),
+        premise_cids = tuple(
+            sorted(
+                {
+                    *task_cids,
+                    *goal_cids,
+                    *adversarial_cids,
+                    *analyzer_cids,
+                    benchmark_cid,
+                    rollout_cid,
+                    supervisor_cid,
+                }
+            )
+        )
+        # Validate every retained premise CID is present.
+        if any(not item for item in premise_cids):
+            return ProofTestReuseCurrentTreeGateDecision(
+                passed=False,
+                reason_codes=("incomplete_premise_cids",),
+                evaluated_at_ms=now_ms,
+            )
+
+        shared_kwargs = {
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "commit_id": self.commit_id,
+            "gitlink_state_cid": self.gitlink_state_cid,
+            "repository_forest_cid": self.repository_forest_cid,
+            "objective_completion_tree_id": self.objective_completion_tree_id,
+            "policy_cid": self.policy_cid,
+            "capability_cid": self.capability_cid,
+            "verifying_key_cid": self.verifying_key_cid,
+            "circuit_cid": self.circuit_cid,
+            "task_evidence_cids": tuple(task_cids),
+            "child_goal_evidence_cids": tuple(goal_cids),
+            "adversarial_evidence_cids": tuple(adversarial_cids),
+            "analyzer_evidence_cids": tuple(analyzer_cids),
+            "benchmark_receipt_cid": benchmark_cid,
+            "rollout_decision_cid": rollout_cid,
+            "supervisor_health_cid": supervisor_cid,
+            "observed_at_ms": now_ms,
+            "fresh_until_ms": min(freshness_ends),
+            "premise_cids": premise_cids,
+            "producing_task_id": FINAL_GATE_TASK_ID,
+            "producer_kind": "task",
+            "producer_channel": DEFAULT_PRODUCER_CHANNEL,
+        }
+        final_gate_evidence = ProofTestReuseCompletionEvidence(
+            **shared_kwargs,
+            objective_revision=self.g110_objective_revision,
+            goal_id=FINAL_GATE_GOAL_ID,
+            acceptance_criterion=FINAL_GATE_ACCEPTANCE_CRITERION,
+            satisfied_requirements=FINAL_GATE_SATISFIED_REQUIREMENTS,
+        )
+        root_evidence = ProofTestReuseCompletionEvidence(
+            **shared_kwargs,
+            objective_revision=self.root_objective_revision,
+            goal_id=ROOT_GOAL_ID,
+            acceptance_criterion=ROOT_ACCEPTANCE_CRITERION,
+            satisfied_requirements=ROOT_SATISFIED_REQUIREMENTS,
         )
         return ProofTestReuseCurrentTreeGateDecision(
             passed=True,
             reason_codes=(),
             evaluated_at_ms=now_ms,
-            completion_evidence=evidence,
+            final_gate_completion_evidence=final_gate_evidence,
+            root_completion_evidence=root_evidence,
+        )
+
+    def persist_bundle(
+        self,
+        decision: ProofTestReuseCurrentTreeGateDecision,
+        *,
+        evaluate_packet: Mapping[str, Any],
+        retained_premise_bytes: Mapping[str, str] | None = None,
+    ) -> ProofTestReusePersistedGateBundle:
+        """Build a strictly deserializable, replayable gate bundle."""
+
+        premise_cids: list[str] = []
+        if decision.passed and decision.root_completion_evidence is not None:
+            premise_cids = list(decision.root_completion_evidence.premise_cids)
+        retained = dict(retained_premise_bytes or {})
+        for cid, text in list(retained.items()):
+            data = text.encode("utf-8")
+            if cid.startswith("b") and not verify_retained_bytes(cid, data):
+                # Re-key retained dag-json premises under their true CID.
+                try:
+                    true_cid = cid_for_canonical_dag_json_bytes(data)
+                except Exception:
+                    continue
+                retained[true_cid] = text
+                if cid in retained and cid != true_cid:
+                    del retained[cid]
+        return ProofTestReusePersistedGateBundle(
+            repository_id=self.repository_id,
+            git_tree_id=self.tree_id,
+            repository_forest_cid=self.repository_forest_cid,
+            objective_completion_tree_id=self.objective_completion_tree_id,
+            objective_revision=self.objective_revision,
+            policy_cid=self.policy_cid,
+            capability_cid=self.capability_cid,
+            verifying_key_cid=self.verifying_key_cid,
+            circuit_cid=self.circuit_cid,
+            producing_task_id=FINAL_GATE_TASK_ID,
+            decision=decision,
+            gate_bindings={
+                "commit_id": self.commit_id,
+                "gitlink_state_cid": self.gitlink_state_cid,
+                "g110_objective_revision": self.g110_objective_revision,
+                "root_objective_revision": self.root_objective_revision,
+                "required_task_ids": sorted(self.required_task_ids),
+                "required_child_goal_ids": sorted(self.required_child_goal_ids),
+                "required_adversarial_populations": sorted(
+                    self.required_adversarial_populations
+                ),
+                "required_analyzers": sorted(self.required_analyzers),
+                "required_supervisor_lane_ids": sorted(
+                    self.required_supervisor_lane_ids
+                ),
+            },
+            evaluate_packet=_serialize_evaluate_packet(evaluate_packet),
+            premise_cids=tuple(premise_cids),
+            retained_premise_bytes=retained,
         )
 
 
 __all__ = [
+    "DEFAULT_PRODUCER_CHANNEL",
+    "FINAL_GATE_ACCEPTANCE_CRITERION",
     "FINAL_GATE_GOAL_ID",
+    "FINAL_GATE_SATISFIED_REQUIREMENTS",
     "FINAL_GATE_TASK_ID",
+    "LEGACY_FINAL_GATE_TASK_ID",
     "PROOF_TEST_REUSE_COMPLETION_EVIDENCE_INTERFACE",
     "PROOF_TEST_REUSE_CURRENT_TREE_GATE_INTERFACE",
+    "PROOF_TEST_REUSE_GATE_BUNDLE_INTERFACE",
+    "PROOF_TEST_REUSE_PERSISTED_GATE_BUNDLE_INTERFACE",
     "REQUIRED_ADVERSARIAL_POPULATIONS",
     "REQUIRED_ANALYZERS",
     "REQUIRED_CHILD_GOAL_IDS",
+    "REQUIRED_GRAPH_GOAL_IDS",
     "REQUIRED_PTR_TASK_IDS",
+    "REQUIRED_SUPERVISOR_LANE_COUNT",
+    "REQUIRED_SUPERVISOR_LANE_IDS",
+    "ROOT_ACCEPTANCE_CRITERION",
     "ROOT_EVIDENCE_REQUIREMENTS",
     "ROOT_GOAL_ID",
+    "ROOT_SATISFIED_REQUIREMENTS",
     "ProofTestReuseCompletionEvidence",
     "ProofTestReuseCurrentTreeGate",
     "ProofTestReuseCurrentTreeGateDecision",
     "ProofTestReuseCurrentTreeGateError",
+    "ProofTestReusePersistedGateBundle",
     "TaskCompletionProvenanceKind",
+    "verify_persisted_current_tree_gate_bundle",
 ]
