@@ -6387,10 +6387,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             time.monotonic() - self._last_safety_reconciliation_monotonic
             >= DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS
         )
+        task_retry_due = False
+        if "observation_window" in wake_kinds:
+            task_retry_schedule = self._selectable_task_retry_schedule()
+            task_retry_due = bool(task_retry_schedule) and not bool(
+                task_retry_schedule.get("active", False)
+            )
         preflight_unchanged = (
             source_digest == self._runtime_last_source_digest
             and not forced_wake_kinds
             and not safety_reconciliation_due
+            and not task_retry_due
         )
         if preflight_unchanged:
             provider_retry_schedule = self._provider_capacity_backoff_schedule()
@@ -6795,6 +6802,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             unresolved_merge_failures,
             recent_outcomes,
         )
+        selected_provider_backoff: dict[str, Any] = {}
+        if (
+            self.implement
+            and selected is not None
+            and resolved_statuses.get(selected.task_id) == "ready"
+            and unresolved_merge_failures.get(selected.task_id) is None
+            and not self._task_has_recent_no_change_outcome(
+                selected.task_id,
+                recent_outcomes,
+            )
+            and not self._task_uses_typed_local_execution(selected)
+        ):
+            selected_provider_backoff = (
+                self._active_provider_capacity_backoff()
+            )
         selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
         if selected is None and attempt_limit_idle_reason:
             selection_scope["selection_idle_reason"] = attempt_limit_idle_reason
@@ -6879,7 +6901,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         state.last_merge_commit = previous.last_merge_commit
         state.last_merge_returncode = previous.last_merge_returncode
         state.last_merge_error = previous.last_merge_error
-        if selected is not None:
+        if selected is not None and not selected_provider_backoff:
             if state.active_task_id != selected.task_id:
                 state.active_task_started_at = now
                 state.last_progress_at = now
@@ -6901,6 +6923,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             state.recommended_task_id = selected.task_id
             state.recommended_actions = self._build_recommended_actions(selected)
             state.selection_idle_reason = ""
+        elif selected_provider_backoff:
+            # A capacity-deferred task is selectable but not actively owned by
+            # an implementation process.  Keep the post-deferral idle
+            # projection stable across repository/validation reconciliation so
+            # those actionable wakes do not manufacture task selections.
+            state.active_task_id = ""
+            state.active_task_key = ""
+            state.active_task_cid = ""
+            state.active_task_title = ""
+            state.active_task_track = ""
+            state.active_task_started_at = ""
+            self._clear_active_execution_state(state)
+            state.recommended_task_id = ""
+            state.recommended_actions = []
+            state.selection_idle_reason = "provider_capacity_backoff"
         else:
             state.active_task_id = ""
             state.active_task_key = ""
@@ -7091,7 +7128,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["write_count"] += int(checkpoint_result["write_count"])
         self._runtime_last_source_digest = (
             final_source_digest
-            if implementation_result is None or provider_capacity_deferral_result
+            if (
+                implementation_result is None
+                or provider_capacity_deferral_result
+                or provider_backoff_result
+            )
             else ""
         )
         self._runtime_last_result = self._runtime_result_projection(result)
@@ -7224,6 +7265,39 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _active_provider_capacity_backoff(self) -> dict[str, Any]:
         schedule = self._provider_capacity_backoff_schedule()
         return schedule if schedule.get("active", False) else {}
+
+    def _provider_capacity_backoff_result(
+        self,
+        task: PortalTask,
+        state: PortalTaskState,
+        schedule: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return a non-consuming capacity deferral without event amplification.
+
+        ``implementation_provider_exhausted`` is the durable event which owns
+        the retry latch.  Re-emitting ``implementation_skipped`` for every
+        lease/repository/validation reconciliation adds no evidence and can
+        feed a multi-lane wake loop, so active-latch observations remain
+        result-only.
+        """
+
+        provider_backoff = dict(
+            schedule
+            if schedule is not None
+            else self._active_provider_capacity_backoff()
+        )
+        if not provider_backoff:
+            return {}
+        return {
+            "skipped": True,
+            "deferred": True,
+            "reason": "provider_capacity_backoff",
+            "task_id": task.task_id,
+            "attempt": self._task_attempt(state, task),
+            "provider_call_allowed": False,
+            "attempt_consumed": False,
+            **provider_backoff,
+        }
 
     def _selectable_task_retry_schedule(self) -> dict[str, Any]:
         """Return the earliest cooldown for durable ready work in this lane."""
@@ -7520,15 +7594,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             else self._active_provider_capacity_backoff()
         )
         if provider_backoff:
-            result = {
-                "skipped": True,
-                "reason": "provider_capacity_backoff",
-                "task_id": task.task_id,
-                "attempt": self._task_attempt(state, task),
-                **provider_backoff,
-            }
-            self._record_event("implementation_skipped", result)
-            return result
+            return self._provider_capacity_backoff_result(
+                task,
+                state,
+                provider_backoff,
+            )
         inflight = self._find_live_inflight_implementation()
         if inflight is not None:
             result = {
@@ -13021,6 +13091,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # charge back.
         self._record_task_attempt(state, task, attempt)
         state.save(self.state_path)
+        # Persistent selection history represents work which actually crossed
+        # the implementation-start boundary. Merely projecting a selectable
+        # task (including while provider capacity is latched) must not inflate
+        # attempt metrics or continuously rewrite the queue.
+        self.task_queue.record_selection(identity.canonical_task_cid)
+        self.task_queue.save()
 
     def _mark_active_phase(
         self,
@@ -30115,10 +30191,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 task.task_id,
             )
 
-        selected = sorted(ready, key=sort_key)[0]
-        # Record selection in persistent queue
-        self.task_queue.record_selection(self._canonical_ref(selected))
-        return selected
+        return sorted(ready, key=sort_key)[0]
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
         enriched = dict(payload)

@@ -9703,7 +9703,10 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(
     assert persisted.implementation_attempts == {}
     assert daemon._find_live_inflight_implementation() is None
     assert second["skipped"] is True
+    assert second["deferred"] is True
     assert second["reason"] == "provider_capacity_backoff"
+    assert second["attempt_consumed"] is False
+    assert second["provider_call_allowed"] is False
     events = [
         json.loads(line)
         for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()
@@ -9741,6 +9744,8 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
         "printf \"ERROR: You've hit your usage limit.\\n\"\nexit 1\n",
         encoding="utf-8",
     )
+    lease_manifest_path = repo / "lease-heartbeat.json"
+    lease_manifest_path.write_text('{"revision":0}\n', encoding="utf-8")
     state_dir = repo / "state"
     state_path = state_dir / "task_state.json"
     events_path = state_dir / "events.jsonl"
@@ -9761,12 +9766,17 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
         task_header_prefix="## ACCEL-",
         implement=True,
         implementation_command="bash quota.sh",
+        external_reservation_manifest_paths=(lease_manifest_path,),
     )
 
     first = daemon.run_once()
     first_retry_at = first["implementation_result"]["retry_at"]
     state_after_failure = state_path.read_bytes()
     events_after_failure = events_path.read_bytes()
+    queue_path = state_dir / "task_queue.json"
+    queue_after_failure = queue_path.read_bytes()
+    queue_key = daemon.task_queue.resolve_key("ACCEL-001")
+    assert daemon.task_queue.entries[queue_key].attempt_count == 1
 
     second = daemon.run_once()
 
@@ -9777,6 +9787,7 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     assert second["write_count"] == 0
     assert state_path.read_bytes() == state_after_failure
     assert events_path.read_bytes() == events_after_failure
+    assert queue_path.read_bytes() == queue_after_failure
 
     third = daemon.run_once()
 
@@ -9786,6 +9797,126 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     assert 0 < third["next_wake_after_seconds"] <= second["next_wake_after_seconds"]
     assert state_path.read_bytes() == state_after_failure
     assert events_path.read_bytes() == events_after_failure
+    assert queue_path.read_bytes() == queue_after_failure
+
+    load_calls = 0
+    source_head_calls = 0
+    original_load_tasks = daemon._load_tasks
+    original_runtime_source_head = daemon._runtime_source_head
+
+    def counted_load_tasks():
+        nonlocal load_calls
+        load_calls += 1
+        return original_load_tasks()
+
+    def counted_runtime_source_head():
+        nonlocal source_head_calls
+        source_head_calls += 1
+        return original_runtime_source_head()
+
+    monkeypatch.setattr(daemon, "_load_tasks", counted_load_tasks)
+    monkeypatch.setattr(
+        daemon,
+        "_runtime_source_head",
+        counted_runtime_source_head,
+    )
+
+    # Lease sources also carry merge, fencing, claim, maintenance, and external
+    # reservation state.  They therefore remain actionable even while the
+    # provider latch is active, but must not manufacture another attempt or
+    # grow the task/event/queue streams when the resulting projection is idle.
+    for revision in range(1, 6):
+        previous_load_calls = load_calls
+        previous_source_head_calls = source_head_calls
+        lease_manifest_path.write_text(
+            json.dumps({"revision": revision}) + "\n",
+            encoding="utf-8",
+        )
+        daemon._pending_runtime_wake_events.append({"kind": "lease"})
+        lease_wake = daemon.run_once()
+        assert lease_wake["wake_kinds"] == ["lease"]
+        assert load_calls > previous_load_calls
+        assert source_head_calls > previous_source_head_calls
+        assert lease_wake["implementation_result"]["deferred"] is True
+        assert (
+            lease_wake["implementation_result"]["reason"]
+            == "provider_capacity_backoff"
+        )
+        assert lease_wake["unchanged"] is True
+        assert state_path.read_bytes() == state_after_failure
+        assert events_path.read_bytes() == events_after_failure
+        assert queue_path.read_bytes() == queue_after_failure
+
+    # An observation wake must reconcile a selectable task whose cooldown is
+    # already due; otherwise typed/local work could starve behind an unrelated
+    # provider-capacity latch.
+    previous_load_calls = load_calls
+    previous_source_head_calls = source_head_calls
+    daemon._pending_runtime_wake_events.append(
+        {"kind": "observation_window"}
+    )
+    observation = daemon.run_once()
+    assert observation["implementation_result"]["deferred"] is True
+    assert observation["unchanged"] is True
+    assert load_calls > previous_load_calls
+    assert source_head_calls > previous_source_head_calls
+
+    # Repository, validation, task-board, policy, provider-capacity, and child
+    # wakes remain actionable. A no-op reconciliation of the same deferred
+    # task may report the latch in its return value, but cannot manufacture a
+    # selection attempt or duplicate durable event.
+    actionable_kinds = (
+        "repository",
+        "validation",
+        "task_board",
+        "policy",
+        "provider_capacity",
+        "child_process",
+        "objective",
+    )
+    for kind in actionable_kinds:
+        previous_load_calls = load_calls
+        previous_source_head_calls = source_head_calls
+        daemon._pending_runtime_wake_events.append({"kind": kind})
+        actionable = daemon.run_once()
+        assert load_calls > previous_load_calls
+        assert source_head_calls > previous_source_head_calls
+        assert actionable["wake_kinds"] == [kind]
+        assert actionable["implementation_result"]["deferred"] is True
+        assert (
+            actionable["implementation_result"]["reason"]
+            == "provider_capacity_backoff"
+        )
+        assert actionable["implementation_result"]["attempt_consumed"] is False
+        assert (
+            actionable["implementation_result"]["provider_call_allowed"]
+            is False
+        )
+        assert actionable["unchanged"] is True
+        assert queue_path.read_bytes() == queue_after_failure
+
+    # The normal unchanged-head shortcut must not disable the independent
+    # safety pass.
+    daemon._last_safety_reconciliation_monotonic = (
+        time.monotonic()
+        - implementation_daemon_module.DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS
+        - 1.0
+    )
+    daemon._pending_runtime_wake_events.append(
+        {"kind": "observation_window"}
+    )
+    previous_load_calls = load_calls
+    previous_source_head_calls = source_head_calls
+    safety_reconciliation = daemon.run_once()
+    assert load_calls > previous_load_calls
+    assert source_head_calls > previous_source_head_calls
+    assert safety_reconciliation["implementation_result"]["deferred"] is True
+    assert safety_reconciliation["unchanged"] is True
+
+    assert daemon.task_queue.entries[queue_key].attempt_count == 1
+    assert state_path.read_bytes() == state_after_failure
+    assert events_path.read_bytes() == events_after_failure
+    assert queue_path.read_bytes() == queue_after_failure
 
 
 def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
