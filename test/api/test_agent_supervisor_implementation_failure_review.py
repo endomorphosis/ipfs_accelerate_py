@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 from ipfs_accelerate_py.agent_supervisor.implementation_failure_review import (
     FAILURE_REVIEW_SCHEMA,
@@ -895,6 +898,70 @@ def test_daemon_normalize_bounds_json_escapes_and_is_canonical() -> None:
     assert forward["failure_review"]["missing_expected_outputs"] == [
         "src/prover.py"
     ]
+
+
+def test_daemon_normalize_failure_compacts_oversized_review_without_raising() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    changed_paths = [
+        f"tests/fixtures/uspto/private_import/path-{index:03d}.txt"
+        for index in range(300)
+    ]
+    failure_review = {
+        "receipt_id": "review-receipt-1",
+        "decision": "reject",
+        "reason_codes": ["hard_deny_findings"],
+        "finding_codes": ["secret_change_forbidden"],
+        "denied_paths": changed_paths,
+        "guidance_markdown": "repair guidance " * 4_000,
+        "next_attempt_prompt_addendum": "use synthetic canaries " * 2_000,
+    }
+
+    normalized = PortalImplementationDaemon._normalize_implementation_failure(
+        {
+            "kind": "validation_failure",
+            "reason": "proposal_gate_failed",
+            "returncode": 1,
+            "failure_review": failure_review,
+            "next_attempt_prompt_addendum": failure_review[
+                "next_attempt_prompt_addendum"
+            ],
+            "validation_result": {
+                "passed": False,
+                "returncode": 1,
+                "reason": "proposal_gate_failed",
+                "failure_review": failure_review,
+                "proposal_gate": {
+                    "accepted": False,
+                    "reason_codes": ["secret_change_forbidden"],
+                    "authorized_paths": changed_paths,
+                    "denied_paths": changed_paths,
+                    "proposal_id": "proposal-1",
+                    "policy_id": "policy-1",
+                    "receipt_id": "proposal-receipt-1",
+                    "repository_tree_id": "tree-1",
+                },
+            },
+        }
+    )
+
+    assert normalized["truncated"] is True
+    assert normalized["reason"] == "proposal_gate_failed"
+    assert normalized["failure_review"]["receipt_id"] == "review-receipt-1"
+    assert normalized["failure_review"]["finding_codes"] == [
+        "secret_change_forbidden"
+    ]
+    assert normalized["proposal_gate"]["proposal_id"] == "proposal-1"
+    assert len(normalized["source_failure_sha256"]) == 64
+    assert len(
+        json.dumps(
+            normalized,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ) <= 16_384
 
 
 def test_directory_outputs_satisfied_by_descendant_changes() -> None:

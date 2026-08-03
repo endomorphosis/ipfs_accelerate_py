@@ -44598,9 +44598,249 @@ class PortalImplementationDaemon:
         if not selected:
             selected = {"kind": "implementation_failure", "reason": "unknown"}
         encoded = canonical_json(selected).encode("utf-8")
-        if len(encoded) > 16_384:
-            raise ValueError("normalized implementation failure exceeds 16 KiB")
-        return selected
+        if len(encoded) <= 16_384:
+            return selected
+
+        source_failure_sha256 = hashlib.sha256(encoded).hexdigest()
+
+        def bounded_text(value: Any, *, limit: int) -> str:
+            text = str(value or "").strip()
+            if len(text.encode("utf-8")) <= limit:
+                return text
+            marker = "...<truncated>"
+            budget = max(0, limit - len(marker.encode("utf-8")))
+            prefix = text.encode("utf-8")[:budget].decode(
+                "utf-8",
+                errors="ignore",
+            )
+            return prefix.rstrip() + marker
+
+        def bounded_strings(
+            value: Any,
+            *,
+            count: int = 16,
+            width: int = 512,
+        ) -> list[str]:
+            if isinstance(value, Sequence) and not isinstance(
+                value,
+                (str, bytes, bytearray),
+            ):
+                candidates = value
+            elif value not in (None, ""):
+                candidates = (value,)
+            else:
+                candidates = ()
+            result: list[str] = []
+            for item in candidates[:count]:
+                text = bounded_text(item, limit=width)
+                if text and text not in result:
+                    result.append(text)
+            return result
+
+        def compact_review(value: Any) -> dict[str, Any]:
+            if not isinstance(value, Mapping):
+                return {}
+            compact: dict[str, Any] = {}
+            for name in (
+                "receipt_id",
+                "task_id",
+                "attempt",
+                "decision",
+                "accepted",
+                "policy_version",
+            ):
+                raw = value.get(name)
+                if raw in (None, "", (), [], {}):
+                    continue
+                compact[name] = (
+                    raw
+                    if isinstance(raw, (bool, int))
+                    else bounded_text(raw, limit=512)
+                )
+            for name in (
+                "reason_codes",
+                "finding_codes",
+                "missing_expected_outputs",
+                "out_of_scope_paths",
+                "justified_paths",
+                "denied_paths",
+                "contract_gap_paths",
+                "failed_commands",
+            ):
+                values = bounded_strings(value.get(name))
+                if values:
+                    compact[name] = values
+            addendum = bounded_text(
+                value.get("next_attempt_prompt_addendum"),
+                limit=2_048,
+            )
+            if addendum:
+                compact["next_attempt_prompt_addendum"] = addendum
+            return compact
+
+        compact: dict[str, Any] = {
+            "truncated": True,
+            "source_failure_sha256": source_failure_sha256,
+        }
+        for name in (
+            "kind",
+            "reason",
+            "returncode",
+            "exception_type",
+            "phase",
+            "counterexample_id",
+            "timeout_reason",
+        ):
+            raw = selected.get(name)
+            if raw in (None, "", (), [], {}):
+                continue
+            compact[name] = (
+                raw
+                if isinstance(raw, (bool, int))
+                else bounded_text(raw, limit=512)
+            )
+        for name in (
+            "counterexample_ids",
+            "reason_codes",
+            "failed_commands",
+            "failing_checks",
+            "missing_outputs",
+        ):
+            values = bounded_strings(selected.get(name))
+            if values:
+                compact[name] = values
+        for name in (
+            "next_attempt_prompt_addendum",
+            "validation_environment_guidance",
+        ):
+            text = bounded_text(selected.get(name), limit=2_048)
+            if text:
+                compact[name] = text
+        review = compact_review(selected.get("failure_review"))
+        if review:
+            compact["failure_review"] = review
+
+        validation = selected.get("validation")
+        if isinstance(validation, Mapping):
+            compact_validation: dict[str, Any] = {}
+            for name in ("passed", "returncode", "reason"):
+                raw = validation.get(name)
+                if raw in (None, "", (), [], {}):
+                    continue
+                compact_validation[name] = (
+                    raw
+                    if isinstance(raw, (bool, int))
+                    else bounded_text(raw, limit=512)
+                )
+            for name in ("reason_codes", "failed_commands"):
+                values = bounded_strings(validation.get(name))
+                if values:
+                    compact_validation[name] = values
+            validation_review = compact_review(
+                validation.get("failure_review")
+            )
+            if validation_review:
+                compact_validation["failure_review"] = validation_review
+            if compact_validation:
+                compact["validation"] = compact_validation
+
+        for field_name in ("proposal_gate", "scope_adjudication"):
+            source = selected.get(field_name)
+            if not isinstance(source, Mapping):
+                continue
+            projection: dict[str, Any] = {}
+            for name in (
+                "accepted",
+                "proposal_id",
+                "policy_id",
+                "receipt_id",
+                "repository_tree_id",
+            ):
+                raw = source.get(name)
+                if raw in (None, "", (), [], {}):
+                    continue
+                projection[name] = (
+                    raw
+                    if isinstance(raw, (bool, int))
+                    else bounded_text(raw, limit=512)
+                )
+            for name in (
+                "reason_codes",
+                "authorized_paths",
+                "denied_paths",
+            ):
+                values = bounded_strings(source.get(name))
+                if values:
+                    projection[name] = values
+            if projection:
+                compact[field_name] = projection
+
+        checkpoint = selected.get("checkpoint_manifest")
+        if isinstance(checkpoint, Mapping):
+            checkpoint_projection = {
+                name: checkpoint[name]
+                for name in (
+                    "schema",
+                    "manifest_cid",
+                    "file_count",
+                    "total_size_bytes",
+                    "truncated",
+                )
+                if checkpoint.get(name) not in (None, "", (), [], {})
+            }
+            if checkpoint_projection:
+                compact["checkpoint_manifest"] = checkpoint_projection
+
+        compact_encoded = canonical_json(compact).encode("utf-8")
+        if len(compact_encoded) <= 16_384:
+            return compact
+
+        # The compact projection above is intentionally generous enough for
+        # normal rescue guidance.  This final projection guarantees the hard
+        # persistence bound even when every retained collection is adversarially
+        # wide, while preserving the typed reason and proposal identities.
+        minimal = {
+            key: compact[key]
+            for key in (
+                "kind",
+                "reason",
+                "returncode",
+                "exception_type",
+                "phase",
+                "timeout_reason",
+                "source_failure_sha256",
+            )
+            if key in compact
+        }
+        minimal["truncated"] = True
+        minimal["reason_codes"] = bounded_strings(
+            compact.get("reason_codes"),
+            count=8,
+            width=256,
+        )
+        proposal_gate = compact.get("proposal_gate")
+        if isinstance(proposal_gate, Mapping):
+            minimal_proposal_gate = {
+                name: proposal_gate[name]
+                for name in (
+                    "accepted",
+                    "proposal_id",
+                    "policy_id",
+                    "receipt_id",
+                    "repository_tree_id",
+                )
+                if proposal_gate.get(name) not in (None, "", (), [], {})
+            }
+            minimal_reason_codes = bounded_strings(
+                proposal_gate.get("reason_codes"),
+                count=8,
+                width=256,
+            )
+            if minimal_reason_codes:
+                minimal_proposal_gate["reason_codes"] = minimal_reason_codes
+            if minimal_proposal_gate:
+                minimal["proposal_gate"] = minimal_proposal_gate
+        return minimal
 
     @staticmethod
     def _implementation_context_file_stem(task: PortalTask) -> str:
