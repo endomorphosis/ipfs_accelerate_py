@@ -19,11 +19,15 @@ entire objective heaps into context.
 4. **Taskboards are machine identity** — keep `## PREFIX-123` headers intact;
    do not renumber foreign tasks.
 5. **Prefer domain imports** — import from `agent_supervisor.<domain>…`, not
-   retired flat module paths.
+   retired flat module paths (for example
+   `agent_supervisor.prompt.prompt_workflow`, not a flat `prompt_workflow`).
 6. **Isolation** — work in the assigned worktree/branch; do not “fix” the
    operator’s dirty main checkout as a side effect.
 7. **Evidence is typed** — tests ≠ solver candidates ≠ kernel proofs ≠
    attestations.
+8. **Product vocabulary first** — packages and operations name the system;
+   board prefixes schedule work. Do not invent public APIs named after ticket
+   prefixes.
 
 ## Where truth lives
 
@@ -34,6 +38,7 @@ entire objective heaps into context.
 | Domain packages under `agent_supervisor/` | Implementation |
 | Receipts / DuckDB / event logs | What actually ran |
 | Sealed `*_PLAN.md` | Human design; often protected |
+| Architecture hub docs | CONTROL_PLANE, EXECUTION_AND_RECOVERY, PACKAGE_MAP |
 
 ## Default implementation providers
 
@@ -42,19 +47,31 @@ When launching or diagnosing lanes (ops may override):
 | Path | Default |
 | --- | --- |
 | Grok Build | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok`, model `grok-4.5` |
-| Codex | `IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra` |
+| Codex | `IPFS_ACCELERATE_AGENT_CODEX_MODEL` set to the operator-chosen model |
+
+## Control and prompt surfaces (do not invent ops)
+
+Closed catalog members include read, proposal, and mutation operations. Prompt
+bootstrap/rescue use the shared catalog:
+
+- proposal: `workflow_preview`, `rescue_preview`
+- mutation: `workflow_materialize`, `restart`, `rescue`
+
+Operator detail:
+[AGENT_SUPERVISOR_GUIDE.md](../../guides/AGENT_SUPERVISOR_GUIDE.md).
+Do not bypass `SupervisorControlService` with ad-hoc shell orchestration.
 
 ## Codebase-proof loop (semantic)
 
 If the task is about proof-carrying code change:
 
-1. Catalog / claim contracts  
-2. Compile obligations + cache keys  
-3. Prove via trust-aware cache (lookup before provider)  
-4. Query open/satisfied/refuted/impact/proof_delta  
-5. Build obligation-first context; on retry use proof_delta + cache hits  
-6. Materialize edit packet + validation commands  
-7. Re-prove; fail closed on missing/stale receipts  
+1. Catalog / claim contracts
+2. Compile obligations + cache keys
+3. Prove via trust-aware cache (lookup before provider)
+4. Query open/satisfied/refuted/impact/proof_delta
+5. Build obligation-first context; on retry use proof_delta + cache hits
+6. Materialize edit packet + validation commands
+7. Re-prove; fail closed on missing/stale receipts
 
 ## If you need X
 
@@ -63,25 +80,29 @@ If the task is about proof-carrying code change:
 | Mental model | [Philosophy](../AGENT_SUPERVISOR_PHILOSOPHY.md) |
 | How to extend the code | [Developer guide](DEVELOPER_GUIDE.md) |
 | Package placement | [Package map](PACKAGE_MAP.md) |
+| Control contracts | [CONTROL_PLANE.md](CONTROL_PLANE.md) |
+| Lanes / recovery | [EXECUTION_AND_RECOVERY.md](EXECUTION_AND_RECOVERY.md) |
+| Prompt-first composition | [PROMPT_FIRST_RUNTIME.md](PROMPT_FIRST_RUNTIME.md) |
 | Board prefix meaning | [Programs](PROGRAMS.md) |
 | Operator commands | [Guide](../../guides/AGENT_SUPERVISOR_GUIDE.md) |
 | Deep contracts | [Architecture](../AGENT_SUPERVISOR_ARCHITECTURE.md) |
-| Control operations | `control` package + discovery manifests |
 | Doc hub | [README.md](README.md) |
 
 ## Done means
 
-- Acceptance criteria in the task body are met  
-- Declared validation command passes in the worktree  
-- Only predicted/owned files changed (plus unavoidable locksteps)  
-- No protected-path mutations  
+- Acceptance criteria in the task body are met
+- Declared validation command passes in the worktree
+- Only predicted/owned files changed (plus unavoidable locksteps)
+- No protected-path mutations
 - Board status updates only if the task/completion policy allows and does not
-  trip protected-path validation  
+  trip protected-path validation
 
 ## Do not
 
-- Invent public APIs named after ticket prefixes  
-- Treat “tests passed locally” as kernel-level proof  
+- Invent public APIs named after ticket prefixes
+- Treat “tests passed locally” as kernel-level proof
 - Expand scope to “while I’m here” refactors outside `Predicted files` /
-  `Outputs`  
-- Rewrite foreign programs’ boards to make your task look complete  
+  `Outputs`
+- Rewrite foreign programs’ boards to make your task look complete
+- Use a board ticket or sealed plan as the primary product name for a package
+  or operation
