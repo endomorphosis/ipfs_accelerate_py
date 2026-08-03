@@ -86,6 +86,7 @@ _SAFE_REASON_CODES: Final = frozenset(
         "over_budget",
         "plugin_unavailable",
         "policy_mismatch",
+        "positive_v4_publication_pending_ptr155",
         "private_material",
         "proof_cache_hit",
         "proof_verified",

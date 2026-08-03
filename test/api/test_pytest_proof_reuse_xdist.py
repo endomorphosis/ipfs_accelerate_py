@@ -184,6 +184,18 @@ def test_worker_metrics_reject_private_data_disguised_as_reason_code() -> None:
         ProofReuseMetricsSnapshot.from_dict(payload)
 
 
+def test_pending_ptr155_reason_is_privacy_safe_and_transportable() -> None:
+    metrics = ProofReuseSessionMetrics()
+    metrics.deferred(reason_code="positive_v4_publication_pending_ptr155")
+
+    payload = metrics.snapshot().to_dict()
+
+    assert payload["reasons"] == {
+        "positive_v4_publication_pending_ptr155": 1,
+    }
+    assert ProofReuseMetricsSnapshot.from_dict(payload).reasons == payload["reasons"]
+
+
 def test_metric_worker_packet_is_merged_exactly_once() -> None:
     controller_metrics = ProofReuseSessionMetrics()
     controller = ProofReuseXdistCoordinator.controller(

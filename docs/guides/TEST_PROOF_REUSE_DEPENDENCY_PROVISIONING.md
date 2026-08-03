@@ -83,7 +83,7 @@ groth16_inputs = bootstrap.inspect_groth16_runtime()
 `bootstrap.installer.dependency_plan()["nltk_data"]["resource_allowlist"]`.
 The downloader runs in a bounded subprocess under thread and file locks.
 
-The datasets verifier provisioner reads a closed 56-file manifest directly
+The datasets verifier provisioner reads a closed 57-file manifest directly
 from the exact reviewed Git commit, verifies every blob and the aggregate
 digest, and atomically materializes it under an owner-private,
 content-addressed target. It invokes no pip or VCS installer, executes no
@@ -124,8 +124,9 @@ these independently:
 - `IPFS_TEST_PROOF_REUSE_GROTH16_ENDPOINT`: optional HTTP(S) proving endpoint.
 - `IPFS_DATASETS_GROTH16_BINARY`: explicit operator-supplied native binary.
 - `GROTH16_BACKEND_ARTIFACTS_ROOT`: versioned proving/verifying key root.
-- `IPFS_TEST_PROOF_REUSE_GROTH16_CIRCUIT_REF`: explicit binding such as
-  `knowledge_of_axioms@v2`.
+- `IPFS_TEST_PROOF_REUSE_GROTH16_CIRCUIT_REF`: an operator-reviewed test-pass
+  v4 circuit binding, such as `test_pass@v4`; the generic
+  `knowledge_of_axioms@*` family never grants test-certificate authority.
 
 `inspect_groth16_runtime()` performs no network call or subprocess. Its
 `ready=false` result identifies which binary/endpoint, keys, or circuit binding
