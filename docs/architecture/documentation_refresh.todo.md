@@ -661,7 +661,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-027 Publish glossary, architecture hub and documentation manifest
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
