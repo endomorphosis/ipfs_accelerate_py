@@ -636,6 +636,93 @@ def checkout_repository_id(repo_root: Path) -> str:
     )
 
 
+def _verified_checkout_repository_id(repo_root: Path) -> str | None:
+    """Return a repository identity only when Git proves the common directory.
+
+    ``checkout_repository_id`` intentionally retains its historical Git-less
+    fallback for callers that need a stable local namespace.  Lease ownership
+    is a stricter safety boundary: treating that fallback as proof could make
+    two sibling worktrees appear unrelated when Git is unavailable and allow
+    one process to steal the other's live common-directory lease.
+    """
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except (OSError, ValueError):
+        return None
+    stdout = result.stdout or ""
+    if result.returncode != 0 or not stdout.strip():
+        return None
+    common_dir = Path(stdout.strip())
+    if not common_dir.is_absolute():
+        common_dir = repo_root / common_dir
+    try:
+        identity_source = str(common_dir.resolve(strict=True))
+    except (OSError, RuntimeError):
+        return None
+    return (
+        "repository:"
+        + content_identity(
+            {
+                "kind": "local-git-common-directory",
+                "path": identity_source,
+            }
+        )
+    )
+
+
+def checkout_lock_repository_matches(
+    metadata: Mapping[str, Any],
+    expected_repo_root: Path,
+) -> bool | None:
+    """Compare lock authority by physical Git repository.
+
+    ``True`` and ``False`` are conclusive matches and mismatches. ``None``
+    means Git could not prove the relationship.  Lease liveness callers must
+    treat that uncertainty as active so they fail closed instead of clearing
+    an incumbent lock.
+
+    New records carry ``repository_id``.  Legacy records fall back to proving
+    the common Git identity of their exact checkout path, allowing a live
+    record written by one linked worktree to remain valid in every sibling.
+    """
+
+    expected_repository_id = _verified_checkout_repository_id(expected_repo_root)
+    repository_id = str(metadata.get("repository_id") or "")
+    if expected_repository_id is not None and repository_id:
+        return repository_id == expected_repository_id
+    legacy_root = str(
+        metadata.get("worktree_root")
+        or metadata.get("repo_root")
+        or ""
+    ).strip()
+    if not legacy_root:
+        return None
+    try:
+        if Path(legacy_root).resolve() == expected_repo_root.resolve():
+            # Exact-checkout metadata remains safe for Git-less test repos and
+            # legacy single-worktree deployments. Different paths are not a
+            # mismatch unless Git can prove they are different repositories:
+            # they may be siblings observed during a transient Git failure.
+            return True
+    except (OSError, RuntimeError):
+        return None
+    if expected_repository_id is None:
+        return None
+    observed_repository_id = _verified_checkout_repository_id(
+        Path(legacy_root)
+    )
+    if observed_repository_id is None:
+        return None
+    return observed_repository_id == expected_repository_id
+
+
 def merge_target_queue_dir(
     repo_root: Path,
     target_branch: str,
@@ -676,24 +763,40 @@ def checkout_lock_metadata(
 ) -> dict[str, Any]:
     """Build JSON-serializable metadata for a checkout mutation lock."""
 
+    worktree_root = str(repo_root.resolve())
+    # Do not persist the Git-less namespace fallback as repository authority.
+    # A blank identity makes upgraded liveness checks fail closed until Git
+    # can prove the relationship from ``worktree_root``.
+    repository_id = _verified_checkout_repository_id(repo_root) or ""
     payload: dict[str, Any] = {
         "kind": kind,
         "pid": os.getpid(),
         "owner_script": owner_script if owner_script is not None else Path(sys.argv[0]).name,
-        "repo_root": str(repo_root.resolve()),
+        # Keep the historical field empty during the rolling migration.
+        # Older daemons compare a nonempty repo_root by exact path and would
+        # otherwise steal a live lease written from a sibling worktree.
+        "repo_root": "",
+        "worktree_root": worktree_root,
+        "repository_id": repository_id,
         "task_id": task_id,
         "attempt": int(attempt or 0),
         "branch": branch,
     }
     if extra:
         payload.update(extra)
+    # Repository authority is derived from the actual checkout and must not
+    # be replaceable through caller-provided supplemental metadata.
+    payload["repo_root"] = ""
+    payload["worktree_root"] = worktree_root
+    payload["repository_id"] = repository_id
     if not str(payload.get("lease_id") or ""):
         payload["lease_id"] = content_identity(
             {
                 "kind": "checkout-mutation-lease",
                 "pid": os.getpid(),
                 "thread_id": threading.get_ident(),
-                "repo_root": payload["repo_root"],
+                "repository_id": repository_id,
+                "worktree_root": worktree_root,
                 "task_id": task_id,
                 "attempt": int(attempt or 0),
                 "branch": branch,
@@ -1120,13 +1223,18 @@ def checkout_lock_owner_is_active(
     kind = str(metadata.get("kind") or "")
     if kind and kind != expected_kind:
         return False
-    repo_root = str(metadata.get("repo_root") or "")
-    if expected_repo_root is not None and repo_root:
-        try:
-            if Path(repo_root).resolve() != expected_repo_root.resolve():
-                return False
-        except OSError:
+    if expected_repo_root is not None:
+        repository_match = checkout_lock_repository_matches(
+            metadata,
+            expected_repo_root,
+        )
+        if repository_match is False:
             return False
+        if repository_match is None:
+            # Repository identity is part of lease ownership. An inability to
+            # prove it must preserve the incumbent record, even when its PID
+            # is unavailable, so uncertainty cannot become lock theft.
+            return True
     # A protected mutation recovery record is an intentionally retained
     # durable fence, not an ordinary process lease.  Its owning daemon may
     # have exited after changing a generated board.  Preserve it so the next

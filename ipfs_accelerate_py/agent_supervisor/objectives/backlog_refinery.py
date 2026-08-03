@@ -2008,8 +2008,12 @@ def generated_dirty_commit_blocker(repo: Path) -> dict[str, Any] | None:
             )
         except (TypeError, ValueError):
             lock_pid = 0
-        lock_repo_root = (
-            str(lock_metadata.get("repo_root") or "").strip()
+        lock_worktree_root = (
+            str(
+                lock_metadata.get("worktree_root")
+                or lock_metadata.get("repo_root")
+                or ""
+            ).strip()
             if isinstance(lock_metadata, Mapping)
             else ""
         )
@@ -2019,8 +2023,8 @@ def generated_dirty_commit_blocker(repo: Path) -> dict[str, Any] | None:
             and str(lock_metadata.get("operation") or "")
             == "generated_dirty_repair"
             and lock_pid == os.getpid()
-            and bool(lock_repo_root)
-            and Path(lock_repo_root).resolve() == repo.resolve()
+            and bool(lock_worktree_root)
+            and Path(lock_worktree_root).resolve() == repo.resolve()
         )
         if owned_generated_repair:
             return None
