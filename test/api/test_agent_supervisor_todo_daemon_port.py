@@ -1177,10 +1177,11 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
         repo_root=repo,
     )
 
-    # Hermetic against ambient agent-lane provider force (grok_cli) and PATH.
-    monkeypatch.delenv(
+    # This test exercises the explicit Codex/Copilot route; auto is
+    # intentionally Grok-only until typed quota exhaustion.
+    monkeypatch.setenv(
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        raising=False,
+        "codex",
     )
     monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
     monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
@@ -1590,10 +1591,11 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
         repo_root=repo,
     )
 
-    # Hermetic against ambient agent-lane provider force (grok_cli) and PATH.
-    monkeypatch.delenv(
+    # This test exercises the explicit Codex/Copilot route; auto is
+    # intentionally Grok-only until typed quota exhaustion.
+    monkeypatch.setenv(
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        raising=False,
+        "copilot",
     )
     monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
     monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
@@ -9458,13 +9460,15 @@ def test_shared_merge_receipts_do_not_grant_board_completion_across_lanes(tmp_pa
     result = daemon.run_once()
     state = TodoTaskState.load(daemon.state_path)
 
-    assert result["active_task_id"] == "ACCEL-001"
+    assert result["active_task_id"] == "ACCEL-003"
     assert result["shared_completed_task_ids"] == ["ACCEL-001"]
     assert result["shared_active_merge_task_ids"] == ["ACCEL-002"]
     assert parse_task_file(todo_path, "## ACCEL-")[0].status == "todo"
-    assert state.task_statuses["ACCEL-001"] == "ready"
+    assert state.task_statuses["ACCEL-001"] == "waiting"
     assert state.task_statuses["ACCEL-002"] == "merge-queued"
     assert state.task_statuses["ACCEL-003"] == "ready"
+    assert state.completed_task_ids == []
+    assert state.waiting_task_ids == ["ACCEL-001", "ACCEL-002"]
 
 
 def test_bundle_runtime_taskboard_preserves_reviewed_shard_without_authoritative_completion(
@@ -9570,8 +9574,11 @@ def test_bundle_runtime_taskboard_preserves_reviewed_shard_without_authoritative
         "pending_task_ids": ["ACCEL-001"],
     }
     state = TodoTaskState.load(daemon.state_path)
-    assert state.task_statuses["ACCEL-001"] == "ready"
+    assert result["active_task_id"] == ""
+    assert state.task_statuses["ACCEL-001"] == "waiting"
     assert state.task_statuses["ACCEL-002"] == "blocked"
+    assert state.completed_task_ids == []
+    assert state.waiting_task_ids == ["ACCEL-001"]
     runtime_after_completion = lane.runtime_todo_path.read_bytes()
 
     reused = materialize_bundle_lane_taskboard(lane, repo_root=repo)

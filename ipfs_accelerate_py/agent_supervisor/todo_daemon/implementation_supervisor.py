@@ -7805,10 +7805,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help=(
             "Command used by the daemon for implementation. The default route "
-            "prefers an authenticated Grok CLI and immediately falls back to "
-            "Codex when Grok exits nonzero. When Grok is not preflight-ready, "
-            "Codex (then authenticated Copilot) is used. Explicit Grok "
-            "selection does not fall back."
+            "requires an authenticated Grok CLI (grok-4.5 by default). Only a "
+            "verified native Grok quota-exhaustion event may invoke the pinned "
+            "gpt-5.6-terra medium fallback; other failures and predispatch "
+            "unavailability fail closed. Explicit Grok selection has no "
+            "fallback."
         ),
     )
     parser.add_argument(

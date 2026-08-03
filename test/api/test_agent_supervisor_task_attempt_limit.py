@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     build_arg_parser as build_bundle_arg_parser,
     implementation_supervisor_command,
@@ -15,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
+    _projection_is_quiescent_for_heartbeat_fallback,
     parse_args as parse_supervisor_args,
     supervisor_config_from_args,
 )

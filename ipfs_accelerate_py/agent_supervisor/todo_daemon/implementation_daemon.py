@@ -1472,6 +1472,8 @@ _CODEX_CONTEXT_WINDOW_ENV = "IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW"
 _CODEX_REASONING_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 _CODEX_MAX_THREADS_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_THREADS"
 _CODEX_MAX_DEPTH_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH"
+CODEX_QUOTA_FALLBACK_MODEL = "gpt-5.6-terra"
+CODEX_QUOTA_FALLBACK_REASONING_EFFORT = "medium"
 _COPILOT_MODEL_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MODEL"
 _COPILOT_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_EFFORT"
 _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
@@ -1513,6 +1515,50 @@ def _codex_implementation_command(
         command.extend(
             ["-c", f'model_reasoning_effort="{codex_reasoning}"']
         )
+    if codex_max_threads:
+        command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
+    if codex_max_depth:
+        command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
+    command.append("-")
+    return command
+
+
+def _codex_quota_fallback_command(
+    *,
+    codex: str,
+    workspace_path: Path,
+    codex_context_window: int | None = None,
+) -> list[str]:
+    """Build the exact fallback authorized only by a typed Grok quota event.
+
+    The model and reasoning policy deliberately do not inherit general Codex
+    environment overrides, so another lane cannot silently widen this route.
+    """
+
+    codex_context = (
+        str(codex_context_window)
+        if codex_context_window is not None
+        else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+    )
+    codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
+    codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
+    command = [
+        codex,
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        str(workspace_path.resolve()),
+        "-m",
+        CODEX_QUOTA_FALLBACK_MODEL,
+    ]
+    if codex_context:
+        command.extend(["-c", f"model_context_window={codex_context}"])
+    command.extend(
+        [
+            "-c",
+            f'model_reasoning_effort="{CODEX_QUOTA_FALLBACK_REASONING_EFFORT}"',
+        ]
+    )
     if codex_max_threads:
         command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
     if codex_max_depth:
@@ -6375,6 +6421,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "reason": "authoritative_completion_evidence_required",
                 "pending_task_ids": stale_merged_completed_task_ids,
             }
+        pending_acceptance_task_ids = set(stale_merged_completed_task_ids)
 
         previous_completed = set(previous.completed_task_ids)
         completed_set: set[str] = set()
@@ -6481,6 +6528,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 and task.task_id not in dependency_reopened_task_ids
             ):
                 resolved_statuses[task.task_id] = "blocked"
+                continue
+            if task.task_id in pending_acceptance_task_ids:
+                # Integration is implementation evidence, not board
+                # completion. Park the task for operator acceptance without
+                # satisfying dependencies or selecting it for another attempt.
+                resolved_statuses[task.task_id] = "waiting"
                 continue
             if task.task_id in shared_active_merge_task_ids:
                 # Pending or processing on the shared merge train remains
@@ -24473,8 +24526,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         }
         force_codex = provider in {"codex", "copilot", "openai"}
 
-        # Prefer only when the binary is actually resolvable so an auth-only
-        # readiness signal does not block auto-fallback to codex/copilot.
+        # Explicit providers retain their explicit semantics. The default
+        # route is stricter: Grok must be ready before dispatch and only a
+        # native quota-exhaustion event may authorize its Terra fallback.
         if force_grok:
             if not grok_ready:
                 raise RuntimeError(
@@ -24502,7 +24556,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     [
                         "--codex-fallback-command-json",
                         json.dumps(
-                            _codex_implementation_command(
+                            _codex_quota_fallback_command(
                                 codex=codex,
                                 workspace_path=workspace_path,
                                 codex_context_window=codex_context_window,
@@ -24512,6 +24566,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     ]
                 )
             return command
+
+        if provider == "auto":
+            raise RuntimeError(
+                "Default implementation routing requires an installed, "
+                "authenticated Grok CLI. Codex is permitted only after a "
+                "verified Grok quota-exhaustion event."
+            )
 
         if force_goose_meta:
             if not goose_meta_ready:
@@ -27178,11 +27239,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--implementation-command",
         default="",
         help=(
-            "Command used for implementation. The default route prefers an "
-            "authenticated Grok CLI and immediately falls back to Codex when "
-            "Grok exits nonzero. When Grok is not preflight-ready, Codex (then "
-            "authenticated Copilot) is used. Explicit Grok selection does not "
-            "fall back."
+            "Command used for implementation. The default route requires an "
+            "authenticated Grok CLI (grok-4.5 by default). Only a verified "
+            "native Grok quota-exhaustion event may invoke the pinned "
+            "gpt-5.6-terra medium fallback; other failures and predispatch "
+            "unavailability fail closed. Explicit Grok selection has no "
+            "fallback."
         ),
     )
     parser.add_argument(

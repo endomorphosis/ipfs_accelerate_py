@@ -254,6 +254,10 @@ def test_daemon_explicit_merge_resolver_overrides_default(tmp_path: Path, monkey
 
 
 def test_daemon_resolves_relative_worktree_root_for_runner_workspace(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "codex",
+    )
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.shutil.which",
         lambda name: "/usr/bin/codex" if name == "codex" else None,
