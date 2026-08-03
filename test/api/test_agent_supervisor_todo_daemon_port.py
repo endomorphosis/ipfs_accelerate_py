@@ -29916,11 +29916,6 @@ def test_offline_authority_submodule_setup_never_repairs_or_fetches(
     )
     monkeypatch.setattr(
         daemon,
-        "_create_local_submodule_worktree",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        daemon,
         "_run_git",
         lambda *_args, **_kwargs: pytest.fail(
             "offline setup attempted git submodule update"
@@ -29929,12 +29924,317 @@ def test_offline_authority_submodule_setup_never_repairs_or_fetches(
 
     with pytest.raises(
         RuntimeError,
-        match="offline authority revalidation submodule setup failed",
+        match="offline submodule source unavailable: external/dependency",
     ):
         daemon._initialize_worktree_submodules(
             worktree,
             offline_local_only=True,
         )
+
+
+def test_offline_authority_explicit_submodule_missing_ref_is_fatal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    repo = tmp_path / "repo"
+    worktree = tmp_path / "worktree"
+    source = repo / "external" / "dependency"
+    source.mkdir(parents=True)
+    worktree.mkdir()
+    _git(source, "init")
+    _git(source, "checkout", "-b", "main")
+    _git(source, "config", "user.name", "Test User")
+    _git(source, "config", "user.email", "test@example.invalid")
+    (source / "dependency.txt").write_text("cached\n", encoding="utf-8")
+    _git(source, "add", "dependency.txt")
+    _git(source, "commit", "-m", "cached dependency")
+    (worktree / ".gitmodules").write_text(
+        (
+            '[submodule "external/dependency"]\n'
+            "    path = external/dependency\n"
+            "    url = ../dependency\n"
+        ),
+        encoding="utf-8",
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["external/dependency"],
+    )
+    missing_ref = "a" * 40
+    monkeypatch.setattr(
+        daemon,
+        "_submodule_gitlink_ref",
+        lambda *_args, **_kwargs: missing_ref,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_discover_local_submodule_source",
+        lambda *_args, **_kwargs: None,
+    )
+    real_run = implementation_daemon_module.subprocess.run
+
+    def no_network_or_submodule_update(command, *args, **kwargs):
+        normalized = [str(part) for part in command]
+        assert normalized[:2] != ["git", "fetch"]
+        assert normalized[:3] != ["git", "submodule", "update"]
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        no_network_or_submodule_update,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="offline submodule gitlink unavailable: external/dependency",
+    ):
+        daemon._initialize_worktree_submodules(
+            worktree,
+            branch_name="implementation/offline-explicit-missing-ref",
+            offline_local_only=True,
+        )
+
+    assert _git(source, "status", "--short") == ""
+    assert not daemon._is_git_worktree(worktree / "external" / "dependency")
+    events = _nested_submodule_guard_events(daemon)
+    missing = [
+        event for event in events if event["type"] == "submodule_gitlink_ref_missing"
+    ]
+    deferred = [
+        event for event in events if event["type"] == "nested_submodule_worktree_deferred"
+    ]
+    assert len(missing) == 1
+    assert missing[0]["missing_ref"] == missing_ref
+    assert missing[0]["fetch_attempted"] is False
+    assert missing[0]["fallback_used"] is False
+    assert len(deferred) == 1
+    assert deferred[0]["reason"] == "gitlink_ref_unavailable"
+    assert deferred[0]["offline_local_only"] is True
+
+
+def test_offline_authority_nested_setup_short_circuits_before_cache_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    (nested / ".gitmodules").write_text(
+        (
+            '[submodule "libs/child"]\n'
+            "    path = libs/child\n"
+            "    url = https://example.invalid/dependencies/child.git\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_submodule_gitlink_ref",
+        lambda *_args, **_kwargs: pytest.fail(
+            "offline nested setup inspected a gitlink"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_nested_submodule_candidate_identities",
+        lambda *_args, **_kwargs: pytest.fail(
+            "offline nested setup inspected candidate identities"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_discover_local_submodule_source",
+        lambda *_args, **_kwargs: pytest.fail(
+            "offline nested setup attempted local cache discovery"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "offline nested setup attempted worktree creation"
+        ),
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/offline-authority",
+        parent_relative="components/parent",
+        offline_local_only=True,
+        _ancestor_identities=frozenset(),
+        _configured_identities=frozenset(),
+    )
+
+    assert not (nested / "libs" / "child").exists()
+    skipped = [
+        event
+        for event in _nested_submodule_guard_events(daemon)
+        if event["type"] == "offline_nested_submodule_initialization_skipped"
+    ]
+    assert len(skipped) == 1
+    assert skipped[0]["reason"] == "explicit_authority_dependencies_only"
+    assert skipped[0]["parent_relative"] == "components/parent"
+    assert skipped[0]["declared_submodule_count"] == 1
+    assert skipped[0]["declared_submodule_paths"] == ["libs/child"]
+    assert skipped[0]["declared_submodule_paths_omitted"] == 0
+    assert skipped[0]["nested_creator_invoked"] is False
+    assert skipped[0]["nested_discovery_invoked"] is False
+    assert skipped[0]["recursive_initialization_attempted"] is False
+    assert skipped[0]["fetch_attempted"] is False
+    assert skipped[0]["fallback_used"] is False
+
+
+def test_offline_authority_nested_skip_evidence_is_bounded_and_deterministic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    limit = implementation_daemon_module.MAX_NESTED_SUBMODULE_GUARD_EVENTS
+    declared = [f"dependencies/child-{index:03d}" for index in range(limit + 3)]
+    (nested / ".gitmodules").write_text(
+        "".join(
+            (
+                f'[submodule "child-{index:03d}"]\n'
+                f"    path = {path}\n"
+                f"    url = https://example.invalid/{path}.git\n"
+            )
+            for index, path in reversed(list(enumerate(declared)))
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "offline nested setup attempted worktree creation"
+        ),
+    )
+
+    for _ in range(2):
+        daemon._initialize_nested_worktree_submodules(
+            nested,
+            branch_name="implementation/offline-evidence",
+            parent_relative="components/parent",
+            offline_local_only=True,
+        )
+
+    skipped = [
+        event
+        for event in _nested_submodule_guard_events(daemon)
+        if event["type"] == "offline_nested_submodule_initialization_skipped"
+    ]
+    assert len(skipped) == 2
+    expected_manifest = hashlib.sha256(
+        json.dumps(
+            sorted(declared),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    for event in skipped:
+        assert event["declared_submodule_count"] == limit + 3
+        assert event["declared_submodule_paths"] == sorted(declared)[:limit]
+        assert event["declared_submodule_paths_omitted"] == 3
+        assert event["declared_submodule_manifest_sha256"] == expected_manifest
+        assert event["max_recorded_paths"] == limit
+
+
+def test_offline_authority_initializes_exact_parent_but_skips_cached_nested_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    repo, child, leaf = _seed_parent_with_nested_submodules(tmp_path)
+    expected_child_ref = _git(repo, "rev-parse", "HEAD:libs/child")
+    assert Path(_git(leaf, "rev-parse", "--show-toplevel")) == leaf
+
+    branch_name = "implementation/offline-authority-parent"
+    worktree = tmp_path / "authority-worktree"
+    _git(repo, "worktree", "add", "-b", branch_name, str(worktree), "main")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    creation_calls: list[tuple[Path, str, str | None]] = []
+    original_create = daemon._create_local_submodule_worktree
+
+    def tracked_create(
+        candidate: Path,
+        relative: str,
+        **kwargs,
+    ) -> bool:
+        creation_calls.append(
+            (candidate, relative, kwargs.get("source_relative"))
+        )
+        return original_create(candidate, relative, **kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        tracked_create,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_discover_local_submodule_source",
+        lambda *_args, **_kwargs: pytest.fail(
+            "offline nested setup consulted a populated local cache"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_nested_submodule_candidate_identities",
+        lambda *_args, **_kwargs: pytest.fail(
+            "offline nested setup inspected cached candidate identities"
+        ),
+    )
+    real_run = implementation_daemon_module.subprocess.run
+
+    def no_network_or_submodule_update(command, *args, **kwargs):
+        normalized = [str(part) for part in command]
+        assert normalized[:2] != ["git", "fetch"]
+        assert normalized[:3] != ["git", "submodule", "update"]
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        no_network_or_submodule_update,
+    )
+
+    daemon._initialize_worktree_submodules(
+        worktree,
+        branch_name=branch_name,
+        offline_local_only=True,
+    )
+
+    target_child = worktree / "libs" / "child"
+    target_leaf = target_child / "vendor" / "leaf"
+    assert creation_calls == [(worktree, "libs/child", None)]
+    assert daemon._is_git_worktree(target_child)
+    assert _git(target_child, "rev-parse", "HEAD") == expected_child_ref
+    assert not daemon._is_git_worktree(target_leaf)
+    assert _git(worktree, "status", "--porcelain=v1", "--ignore-submodules=none") == ""
+    skipped = [
+        event
+        for event in _nested_submodule_guard_events(daemon)
+        if event["type"] == "offline_nested_submodule_initialization_skipped"
+    ]
+    assert len(skipped) == 1
+    assert skipped[0]["parent_relative"] == "libs/child"
+    assert skipped[0]["declared_submodule_count"] == 1
+    assert skipped[0]["declared_submodule_paths"] == ["vendor/leaf"]
+    assert skipped[0]["nested_creator_invoked"] is False
+    assert skipped[0]["nested_discovery_invoked"] is False
+    assert skipped[0]["fetch_attempted"] is False
+    assert skipped[0]["fallback_used"] is False
 
 
 def test_offline_submodule_ref_resolution_never_fetches_or_falls_back(

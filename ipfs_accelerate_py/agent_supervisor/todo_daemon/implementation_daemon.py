@@ -24905,6 +24905,51 @@ class PortalImplementationDaemon:
                     )
                 )
 
+    def _record_offline_nested_submodule_skip(
+        self,
+        worktree_path: Path,
+        *,
+        parent_relative: str,
+    ) -> None:
+        """Record the cache-independent authority policy for nested gitlinks."""
+
+        declared = sorted(set(self._declared_submodule_paths(worktree_path)))
+        manifest = json.dumps(
+            declared,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        recorded = declared[:MAX_NESTED_SUBMODULE_GUARD_EVENTS]
+        self._record_event(
+            "offline_nested_submodule_initialization_skipped",
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "offline-nested-submodule-skip@1"
+                ),
+                "reason": "explicit_authority_dependencies_only",
+                "parent_relative": self._bounded_submodule_guard_text(
+                    parent_relative
+                ),
+                "declared_submodule_count": len(declared),
+                "declared_submodule_paths": [
+                    self._bounded_submodule_guard_text(path)
+                    for path in recorded
+                ],
+                "declared_submodule_paths_omitted": len(declared) - len(recorded),
+                "declared_submodule_manifest_sha256": hashlib.sha256(
+                    manifest
+                ).hexdigest(),
+                "max_recorded_paths": MAX_NESTED_SUBMODULE_GUARD_EVENTS,
+                "offline_local_only": True,
+                "nested_creator_invoked": False,
+                "nested_discovery_invoked": False,
+                "recursive_initialization_attempted": False,
+                "fetch_attempted": False,
+                "fallback_used": False,
+            },
+        )
+
     def _validate_submodule_init(self, target: Path, relative: str) -> dict[str, Any]:
         """Validate that a submodule was properly initialized in a worktree."""
         if not target.exists():
@@ -24942,6 +24987,18 @@ class PortalImplementationDaemon:
         _configured_identities: frozenset[str] | None = None,
         _guard_state: dict[str, int | bool] | None = None,
     ) -> None:
+        if offline_local_only:
+            # Authority renewal must not depend on which transitive git
+            # objects happen to exist in a host cache.  Only the explicitly
+            # configured top-level dependencies are materialized; the exact
+            # validation command decides whether their uninitialized nested
+            # gitlinks are sufficient.
+            self._record_offline_nested_submodule_skip(
+                worktree_path,
+                parent_relative=parent_relative,
+            )
+            return
+
         ancestor_identities = _ancestor_identities
         if ancestor_identities is None:
             ancestor_identities = frozenset(
