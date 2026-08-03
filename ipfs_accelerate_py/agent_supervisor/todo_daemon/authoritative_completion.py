@@ -18,6 +18,11 @@ from ..task_sources.taskboard_store import (
     locked_taskboard,
     replace_locked_taskboard,
 )
+from .legacy_landed_review import (
+    LegacyLandedReviewPolicy,
+    LegacyLandedReviewResult,
+    verify_legacy_landed_review_result,
+)
 from .post_merge_validation import (
     POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
     verify_post_merge_validation_evidence,
@@ -1156,6 +1161,80 @@ class AuthoritativeCompletionMixin:
             verification="ed25519_full_receipt_reconstruction",
         )
 
+    def _verified_legacy_landed_review_gate_evidence(
+        self,
+        *,
+        task: Any,
+        implementation_commit: str,
+        merge_commit: str,
+        repository_tree_id: str,
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Derive the migration review gate only from daemon-pinned trust roots."""
+
+        policy = getattr(self, "legacy_landed_review_policy", None)
+        trusted_keys = getattr(
+            self, "legacy_landed_review_trusted_public_keys", None
+        )
+        raw_result = evidence.get("legacy_landed_review_result")
+        if (
+            not isinstance(policy, LegacyLandedReviewPolicy)
+            or not policy.enabled
+            or not isinstance(trusted_keys, Mapping)
+            or not isinstance(raw_result, Mapping)
+        ):
+            return None
+        try:
+            result = LegacyLandedReviewResult.from_dict(raw_result)
+            task_policy = policy.task(str(getattr(task, "task_id", "") or ""))
+            identity = self._identity_for_task(task)
+        except (TypeError, ValueError):
+            return None
+        expected_tree_id = f"git-tree:{policy.current_tree_id}"
+        if (
+            result.policy_id != policy.policy_id
+            or result.task_id != task_policy.task_id
+            or identity.canonical_task_key != task_policy.canonical_task_key
+            or identity.canonical_task_cid != task_policy.canonical_task_cid
+            or implementation_commit != task_policy.implementation_commit
+            or merge_commit != policy.current_head
+            or repository_tree_id != expected_tree_id
+        ):
+            return None
+        failures = verify_legacy_landed_review_result(
+            result,
+            repo_root=getattr(self, "repo_root", None),
+            policy=policy,
+            trusted_public_keys={
+                str(key): value
+                for key, value in trusted_keys.items()
+                if str(key) and isinstance(value, (bytes, str))
+            },
+        )
+        if failures or result.attestation is None:
+            return None
+        return bound_gate_evidence(
+            "provider_review",
+            task_id=task_policy.task_id,
+            implementation_commit=implementation_commit,
+            merge_commit=merge_commit,
+            repository_tree_id=repository_tree_id,
+            satisfied=True,
+            review_presence="independent",
+            provider_result_admitted=True,
+            review_receipt_id=result.attestation.attestation_id,
+            issuer_key_id=result.attestation.issuer_key_id,
+            policy_id=policy.policy_id,
+            manifest_id=result.attestation.manifest_id,
+            review_aggregate_id=result.attestation.review_aggregate_id,
+            route_kind="legacy_landed_fresh_dual_review",
+            historical_provider="unverified",
+            provider_execution_receipt_synthesized=False,
+            legacy_evidence_completion_authoritative=False,
+            legacy_evidence_proof_authoritative=False,
+            verification="ed25519_full_legacy_repository_reconstruction",
+        )
+
     def build_task_implementation_receipt(
         self,
         task: Any,
@@ -1288,13 +1367,21 @@ class AuthoritativeCompletionMixin:
                 model_invocation_observed=False,
             )
         else:
-            provider_review = self._verified_provider_review_gate_evidence(
+            provider_review = self._verified_legacy_landed_review_gate_evidence(
                 task=task,
                 implementation_commit=implementation_commit,
                 merge_commit=merge_commit,
                 repository_tree_id=repository_tree_id,
                 evidence=evidence,
             )
+            if provider_review is None:
+                provider_review = self._verified_provider_review_gate_evidence(
+                    task=task,
+                    implementation_commit=implementation_commit,
+                    merge_commit=merge_commit,
+                    repository_tree_id=repository_tree_id,
+                    evidence=evidence,
+                )
             if provider_review is not None:
                 evidence["provider_review"] = provider_review
 

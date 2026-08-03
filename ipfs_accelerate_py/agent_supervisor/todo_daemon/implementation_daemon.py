@@ -168,8 +168,10 @@ from .legacy_landed_attestation import LegacyLandedReviewAuthority
 from .legacy_landed_provider_cli import build_legacy_landed_cli_provider_pair
 from .legacy_landed_review import (
     LegacyLandedReviewPolicy,
+    LegacyLandedReviewResult,
     LegacyLandedReviewService,
     load_legacy_landed_review_policy,
+    verify_legacy_landed_review_result,
 )
 from .production_provider_cli import (
     DEFAULT_CONTEXT_BUDGET_TOKENS as DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS,
@@ -2969,6 +2971,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self.legacy_landed_review_policy: LegacyLandedReviewPolicy | None = None
         self.legacy_landed_review_trusted_public_keys: dict[str, bytes] = {}
         self._legacy_landed_review_service: LegacyLandedReviewService | None = None
+        self._legacy_landed_review_results_by_task: dict[
+            str, LegacyLandedReviewResult
+        ] = {}
         if (
             legacy_landed_review_policy_path is not None
             and legacy_landed_review_key_path is not None
@@ -10696,6 +10701,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
 
     def _production_reviewed_effect_required(self, task: PortalTask) -> bool:
+        if self._verified_current_legacy_landed_review_result(task) is not None:
+            return False
         return bool(
             isinstance(
                 getattr(self, "production_provider_policy", None),
@@ -10703,6 +10710,139 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             and not self._task_uses_typed_local_execution(task)
         )
+
+    def _verified_current_legacy_landed_review_result(
+        self,
+        task: PortalTask,
+    ) -> LegacyLandedReviewResult | None:
+        """Reverify the in-memory migration result against daemon trust roots."""
+
+        results = getattr(self, "_legacy_landed_review_results_by_task", {})
+        result = results.get(task.task_id) if isinstance(results, Mapping) else None
+        policy = getattr(self, "legacy_landed_review_policy", None)
+        if result is None or policy is None or not policy.enabled:
+            return None
+        try:
+            task_policy = policy.task(task.task_id)
+            identity = self._identity_for_task(task)
+        except (TypeError, ValueError):
+            return None
+        if (
+            identity.canonical_task_key != task_policy.canonical_task_key
+            or identity.canonical_task_cid != task_policy.canonical_task_cid
+        ):
+            return None
+        failures = verify_legacy_landed_review_result(
+            result,
+            repo_root=self.repo_root,
+            policy=policy,
+            trusted_public_keys=getattr(
+                self, "legacy_landed_review_trusted_public_keys", {}
+            ),
+        )
+        return None if failures else result
+
+    def _run_legacy_landed_review_for_guard(
+        self,
+        task: PortalTask,
+        *,
+        landed_guard: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Invoke the bounded migration service only for an exact landed guard."""
+
+        self._legacy_landed_review_results_by_task.pop(task.task_id, None)
+        service = self._legacy_landed_review_service
+        policy = self.legacy_landed_review_policy
+        if service is None or policy is None:
+            return {
+                "status": "unavailable",
+                "reason_code": "legacy_landed_review_not_configured",
+                "task_id": task.task_id,
+            }
+        if (
+            landed_guard.get("guarded") is not True
+            or landed_guard.get("workspace_clean") is not True
+            or str(landed_guard.get("baseline_ref") or "")
+            != policy.current_head
+            or str(landed_guard.get("repository_tree_id") or "")
+            != f"git-tree:{policy.current_tree_id}"
+        ):
+            return {
+                "status": "rejected",
+                "reason_code": "legacy_landed_guard_binding_mismatch",
+                "policy_id": policy.policy_id,
+                "task_id": task.task_id,
+            }
+        try:
+            task_policy = policy.task(task.task_id)
+            identity = self._identity_for_task(task)
+        except (TypeError, ValueError):
+            return {
+                "status": "rejected",
+                "reason_code": "legacy_landed_task_identity_invalid",
+                "policy_id": policy.policy_id,
+                "task_id": task.task_id,
+            }
+        if (
+            identity.canonical_task_key != task_policy.canonical_task_key
+            or identity.canonical_task_cid != task_policy.canonical_task_cid
+        ):
+            return {
+                "status": "rejected",
+                "reason_code": "legacy_landed_task_identity_mismatch",
+                "policy_id": policy.policy_id,
+                "task_id": task.task_id,
+            }
+        result = service.review(task.task_id)
+        failures = (
+            verify_legacy_landed_review_result(
+                result,
+                repo_root=self.repo_root,
+                policy=policy,
+                trusted_public_keys=(
+                    self.legacy_landed_review_trusted_public_keys
+                ),
+            )
+            if result.reviewed
+            else ()
+        )
+        admitted = result.reviewed and not failures
+        if result.reviewed and failures:
+            payload = {
+                "status": "rejected",
+                "reason_code": "legacy_landed_review_admission_failed",
+                "reason_codes": list(failures),
+                "policy_id": policy.policy_id,
+                "task_id": task.task_id,
+            }
+        elif admitted:
+            self._legacy_landed_review_results_by_task[task.task_id] = result
+            payload = result.to_dict()
+        else:
+            payload = result.to_dict()
+        self._record_event(
+            "legacy_landed_review_finished",
+            {
+                "task_id": task.task_id,
+                "status": str(payload.get("status") or ""),
+                "reason_code": str(payload.get("reason_code") or ""),
+                "reason_codes": list(payload.get("reason_codes") or ()),
+                "policy_id": policy.policy_id,
+                "attestation_id": (
+                    result.attestation.attestation_id
+                    if admitted and result.attestation is not None
+                    else ""
+                ),
+                "manifest_id": (
+                    result.attestation.manifest_id
+                    if admitted and result.attestation is not None
+                    else ""
+                ),
+                "completion_authoritative": False,
+                "proof_authoritative": False,
+            },
+        )
+        return payload
 
     def _verify_production_reviewed_effect_after_validation(
         self,
@@ -11195,24 +11335,41 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     guard_clean = bool(
                         production_landed_guard.get("workspace_clean")
                     )
+                    legacy_review = self._run_legacy_landed_review_for_guard(
+                        task,
+                        landed_guard=production_landed_guard,
+                    )
+                    legacy_reviewed = legacy_review.get("status") == "reviewed"
                     production_route_payload = {
-                        "returncode": 0 if guard_clean else 1,
-                        "pending": True,
-                        "disposition": "provider_review_pending",
+                        "returncode": 0 if guard_clean and legacy_reviewed else 1,
+                        "pending": not legacy_reviewed,
+                        "disposition": (
+                            "legacy_landed_review_attested"
+                            if legacy_reviewed
+                            else "provider_review_pending"
+                        ),
                         "disposition_reason": str(
-                            production_landed_guard.get("reason") or ""
+                            legacy_review.get("reason_code")
+                            or production_landed_guard.get("reason")
+                            or ""
                         ),
                         "event": {
-                            "provider_result_admitted": False,
-                            "review_presence": ReviewPresence.ABSENT.value,
+                            "provider_result_admitted": legacy_reviewed,
+                            "review_presence": (
+                                ReviewPresence.INDEPENDENT.value
+                                if legacy_reviewed
+                                else ReviewPresence.ABSENT.value
+                            ),
                             "write_performed": False,
                             "raw_model_command_invoked": False,
                             "typed_packet_route_only": True,
+                            "legacy_landed_review_attested": legacy_reviewed,
                             "landed_task_guard": dict(
                                 production_landed_guard
                             ),
                         },
                         "landed_task_guard": dict(production_landed_guard),
+                        "legacy_landed_review_result": legacy_review,
                         "raw_model_command_invoked": False,
                         "typed_packet_route_only": True,
                     }
@@ -11222,6 +11379,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "task_id": task.task_id,
                             "attempt": int(attempt),
                             **production_landed_guard,
+                            "legacy_landed_review_status": str(
+                                legacy_review.get("status") or ""
+                            ),
+                            "legacy_landed_review_reason_code": str(
+                                legacy_review.get("reason_code") or ""
+                            ),
                         },
                     )
                     completed = subprocess.CompletedProcess(
@@ -12133,6 +12296,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 not deterministic_only and implementation_started
             )
             if no_change_completion:
+                legacy_landed_result = (
+                    self._verified_current_legacy_landed_review_result(task)
+                )
                 implementation_binding_recovery = (
                     self._recover_no_change_implementation_binding(
                         task,
@@ -12187,7 +12353,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             **implementation_binding_recovery,
                         },
                     )
-                else:
+                elif legacy_landed_result is None:
                     acceptance_result = {
                         "updated": False,
                         "authoritatively_completed": False,
@@ -12207,6 +12373,63 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             **implementation_binding_recovery,
                         },
                     )
+                if legacy_landed_result is not None:
+                    legacy_attestation = legacy_landed_result.attestation
+                    if legacy_attestation is None:
+                        acceptance_result = {
+                            "updated": False,
+                            "authoritatively_completed": False,
+                            "completion_authoritative": False,
+                            "reason": "legacy_landed_review_attestation_missing",
+                        }
+                    else:
+                        acceptance_implementation_commit = (
+                            legacy_attestation.implementation_commit
+                        )
+                        acceptance_gate_evidence = {
+                            **dict(acceptance_gate_evidence or {}),
+                            "legacy_landed_review_result": (
+                                legacy_landed_result.to_dict()
+                            ),
+                        }
+                        acceptance_validation_result = (
+                            self._validate_exact_post_merge_commit(
+                                task,
+                                target_commit=completion_commit,
+                                repository_tree_id=(
+                                    f"git-tree:{completion_tree}"
+                                    if completion_tree
+                                    else ""
+                                ),
+                            )
+                        )
+                        model_invocation_observed = True
+                        state.last_implementation_commit = (
+                            acceptance_implementation_commit
+                        )
+                        self._record_event(
+                            "legacy_landed_review_acceptance_prepared",
+                            {
+                                "task_id": task.task_id,
+                                "attempt": attempt,
+                                "policy_id": legacy_landed_result.policy_id,
+                                "attestation_id": (
+                                    legacy_attestation.attestation_id
+                                ),
+                                "implementation_commit": (
+                                    acceptance_implementation_commit
+                                ),
+                                "merge_commit": completion_commit,
+                                "repository_tree_id": (
+                                    f"git-tree:{completion_tree}"
+                                    if completion_tree
+                                    else ""
+                                ),
+                                "fresh_post_merge_validation": True,
+                                "completion_authoritative": False,
+                                "proof_authoritative": False,
+                            },
+                        )
             if not acceptance_result:
                 acceptance_result = (
                     self.apply_post_merge_authoritative_acceptance(

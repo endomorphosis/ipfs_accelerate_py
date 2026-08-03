@@ -1782,6 +1782,88 @@ class LegacyLandedReviewResult:
             "proof_authoritative": False,
         }
 
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> LegacyLandedReviewResult:
+        """Parse the closed public result envelope used at admission."""
+
+        payload = _strict_json_object(canonical_json_bytes(value))
+        if set(payload) != {
+            "status",
+            "reason_code",
+            "policy_id",
+            "task_id",
+            "attestation",
+            "manifest",
+            "review_aggregate",
+            "scope_adjudication_receipt",
+            "validation_receipts",
+            "historical_provider",
+            "provider_execution_receipt",
+            "completion_authoritative",
+            "proof_authoritative",
+        }:
+            raise ValueError("legacy landed review result shape is invalid")
+        if payload.get("historical_provider") != HISTORICAL_PROVIDER_UNVERIFIED:
+            raise ValueError("legacy historical provider must remain unverified")
+        if payload.get("provider_execution_receipt") is not None:
+            raise ValueError("legacy result cannot contain a provider receipt")
+        if payload.get("completion_authoritative") is not False:
+            raise ValueError("legacy result cannot claim completion authority")
+        if payload.get("proof_authoritative") is not False:
+            raise ValueError("legacy result cannot claim proof authority")
+        status = payload.get("status")
+        if status not in {"disabled", "rejected", "reviewed"}:
+            raise ValueError("legacy landed review result status is invalid")
+        for field in ("reason_code", "policy_id", "task_id"):
+            if not isinstance(payload.get(field), str) or not payload[field].strip():
+                raise ValueError(f"legacy landed review result {field} is invalid")
+        validations = payload.get("validation_receipts")
+        if not isinstance(validations, list) or any(
+            not isinstance(item, Mapping) for item in validations
+        ):
+            raise ValueError("legacy validation receipt collection is invalid")
+        raw_attestation = payload.get("attestation")
+        attestation = (
+            LegacyLandedReviewAttestation.from_dict(raw_attestation)
+            if isinstance(raw_attestation, Mapping)
+            else None
+        )
+        manifest = payload.get("manifest")
+        aggregate = payload.get("review_aggregate")
+        scope = payload.get("scope_adjudication_receipt")
+        reviewed_shape = (
+            attestation is not None
+            and isinstance(manifest, Mapping)
+            and isinstance(aggregate, Mapping)
+            and (scope is None or isinstance(scope, Mapping))
+            and bool(validations)
+        )
+        if status == "reviewed" and not reviewed_shape:
+            raise ValueError("reviewed legacy result evidence is incomplete")
+        if status != "reviewed" and any(
+            item is not None for item in (raw_attestation, manifest, aggregate, scope)
+        ):
+            raise ValueError("non-reviewed legacy result contains evidence")
+        if status != "reviewed" and validations:
+            raise ValueError("non-reviewed legacy result contains validations")
+        return cls(
+            status=status,
+            reason_code=payload["reason_code"].strip(),
+            policy_id=payload["policy_id"].strip(),
+            task_id=payload["task_id"].strip(),
+            attestation=attestation,
+            manifest=dict(manifest) if isinstance(manifest, Mapping) else None,
+            review_aggregate=(
+                dict(aggregate) if isinstance(aggregate, Mapping) else None
+            ),
+            scope_adjudication_receipt=(
+                dict(scope) if isinstance(scope, Mapping) else None
+            ),
+            validation_receipts=tuple(dict(item) for item in validations),
+        )
+
 
 class LegacyLandedReviewService:
     """One operator-pinned, no-caller-overrides migration review service."""
@@ -2041,9 +2123,20 @@ def verify_legacy_landed_review_result(
     failures: list[str] = []
     if not result.reviewed or result.attestation is None:
         return ("legacy_landed_review_result_not_reviewed",)
+    resolved_repo = Path(repo_root).resolve()
+    try:
+        if (
+            not _repo_is_clean(resolved_repo)
+            or _repo_head(resolved_repo) != policy.current_head
+            or _tree_id(resolved_repo, policy.current_head)
+            != policy.current_tree_id
+        ):
+            return ("legacy_landed_review_repository_fence_failed",)
+    except (LegacyLandedReviewError, OSError, ValueError):
+        return ("legacy_landed_review_repository_fence_failed",)
     try:
         task = policy.task(result.task_id)
-        binding = inspect_legacy_repository_binding(repo_root, policy, task)
+        binding = inspect_legacy_repository_binding(resolved_repo, policy, task)
         rebuilt_manifest = build_legacy_landed_byte_manifest(policy, binding)
     except (LegacyLandedReviewError, ValueError):
         return ("legacy_landed_review_repository_reverification_failed",)

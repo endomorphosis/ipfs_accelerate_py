@@ -26,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import legacy_landed_review as legacy
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
+    PortalTask,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     parse_args as parse_daemon_args,
@@ -664,6 +665,101 @@ def test_daemon_loads_only_a_strict_paired_legacy_policy_and_key(
     )
     assert daemon._legacy_landed_review_service is not None  # noqa: SLF001
     assert set(daemon.legacy_landed_review_trusted_public_keys) == {issuer}
+
+
+def test_guarded_legacy_review_is_reverified_at_authoritative_provider_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    todo_path = tmp_path / "runtime.todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    key_path = tmp_path / "operator.key"
+    _private, issuer = _private_key_file(key_path)
+    policy_path = tmp_path / "operator-policy.json"
+    _write_policy(policy_path, _policy_payload(issuer_key_id=issuer))
+    _fake_repo(monkeypatch)
+
+    def validate(
+        argv: tuple[str, ...], _repo: Path, _timeout: int
+    ) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(list(argv), 0, b"passed", b"")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        implement=True,
+        production_provider_policy="grok-implement-codex-independent-review",
+        production_provider_review_authority_key_path=(
+            tmp_path / "production-review.key"
+        ),
+        legacy_landed_review_policy_path=policy_path,
+        legacy_landed_review_key_path=key_path,
+    )
+    service = legacy.LegacyLandedReviewService(
+        repo_root=tmp_path,
+        operator_policy_path=policy_path,
+        operator_key_path=key_path,
+        grok_invoker=_ApprovingProvider(),
+        codex_invoker=_ApprovingProvider(),
+        validation_invoker=validate,
+        clock_ms=iter(range(1_000, 2_000)).__next__,
+    )
+    daemon._legacy_landed_review_service = service  # noqa: SLF001
+    task_policy = service.policy.task("ASE-005")
+    task = PortalTask(
+        task_id=task_policy.task_id,
+        title="Audited legacy task",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="migration",
+        outputs=list(task_policy.paths),
+        validation=["python -m pytest -q"],
+        acceptance="exact landed bytes receive independent review",
+        canonical_task_key=task_policy.canonical_task_key,
+        canonical_task_cid=task_policy.canonical_task_cid,
+    )
+    payload = daemon._run_legacy_landed_review_for_guard(  # noqa: SLF001
+        task,
+        landed_guard={
+            "guarded": True,
+            "workspace_clean": True,
+            "baseline_ref": HEAD,
+            "repository_tree_id": f"git-tree:{TREE}",
+        },
+    )
+    assert payload["status"] == "reviewed"
+    result = legacy.LegacyLandedReviewResult.from_dict(payload)
+    assert result.reviewed
+    assert daemon._production_reviewed_effect_required(task) is False  # noqa: SLF001
+
+    gate = daemon._verified_legacy_landed_review_gate_evidence(  # noqa: SLF001
+        task=task,
+        implementation_commit=task_policy.implementation_commit,
+        merge_commit=HEAD,
+        repository_tree_id=f"git-tree:{TREE}",
+        evidence={"legacy_landed_review_result": payload},
+    )
+    assert gate is not None
+    assert gate["route_kind"] == "legacy_landed_fresh_dual_review"
+    assert gate["provider_result_admitted"] is True
+    assert gate["provider_execution_receipt_synthesized"] is False
+
+    tampered = copy.deepcopy(payload)
+    tampered["manifest"]["leaves"][0]["payload"] = "AAAA"
+    assert (
+        daemon._verified_legacy_landed_review_gate_evidence(  # noqa: SLF001
+            task=task,
+            implementation_commit=task_policy.implementation_commit,
+            merge_commit=HEAD,
+            repository_tree_id=f"git-tree:{TREE}",
+            evidence={"legacy_landed_review_result": tampered},
+        )
+        is None
+    )
 
 
 def test_cli_adapters_send_exact_envelope_and_observe_no_fallback_effective_child(
