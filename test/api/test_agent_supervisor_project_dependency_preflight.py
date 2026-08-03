@@ -23,6 +23,8 @@ from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight
     project_dependency_preflight_backoff_seconds,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
+    ValidationDependencyScope,
+    validation_command_dependency_scope,
     validation_command_repository_root,
 )
 
@@ -189,6 +191,89 @@ dependencies = "hypercorn>=0.16.0"
     assert receipt["passed"] is False
     assert receipt["reason"] == ("project_dependency_contract_collection_failed")
     assert receipt["projects"][0]["reason"] == ("pep621_dependencies_must_be_static_strings")
+
+
+def test_literal_file_validation_is_dependency_neutral(
+    tmp_path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    artifact = project / "discovery.md"
+    artifact.write_text("ready\n", encoding="utf-8")
+    (project / "pyproject.toml").write_text(
+        """
+[project]
+name = "project"
+version = "1.0.0"
+dependencies = ["definitely-missing-validation-runtime==9.9.9"]
+""".strip(),
+        encoding="utf-8",
+    )
+    command = f"test -f {artifact}"
+
+    receipt = preflight_validation_project_dependencies(
+        project,
+        [command],
+        probe_runner=lambda *_args, **_kwargs: pytest.fail(
+            "a literal file predicate must not probe Python metadata"
+        ),
+    )
+
+    assert receipt["passed"] is True
+    assert receipt["applicable"] is False
+    assert receipt["reason"] == "validation_commands_dependency_neutral"
+    assert receipt["automatic_install_attempted"] is False
+    assert receipt["validation_roots"] == [""]
+    assert receipt["project_roots"] == []
+    assert receipt["projects"] == []
+    assert receipt["dependency_neutral_command_count"] == 1
+    neutral = receipt["dependency_neutral_commands"][0]
+    assert neutral["command_index"] == 0
+    assert neutral["root"] == ""
+    assert neutral["scope"] == "dependency_neutral"
+    assert neutral["command_sha256"]
+    assert command not in json.dumps(receipt)
+
+
+def test_dependency_neutral_and_python_commands_use_strongest_root_scope(
+    tmp_path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "artifact.txt").write_text("ready\n", encoding="utf-8")
+    (project / "pyproject.toml").write_text(
+        """
+[project]
+name = "project"
+version = "1.0.0"
+dependencies = ["definitely-missing-validation-runtime==9.9.9"]
+""".strip(),
+        encoding="utf-8",
+    )
+    payloads: list[dict[str, object]] = []
+
+    def passing_probe(payload, **_kwargs):
+        payloads.append(payload)
+        return {
+            "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+            "passed": True,
+            "reason": "project_dependencies_satisfied",
+            "projects": [],
+        }
+
+    receipt = preflight_validation_project_dependencies(
+        project,
+        ["test -f artifact.txt", "python -c 'pass'"],
+        probe_runner=passing_probe,
+    )
+
+    assert receipt["passed"] is True
+    assert receipt["applicable"] is True
+    assert receipt["project_roots"] == [""]
+    assert receipt["dependency_neutral_command_count"] == 1
+    assert payloads[0]["projects"][0]["requirements"] == [
+        "definitely-missing-validation-runtime==9.9.9"
+    ]
 
 
 def test_preflight_fails_closed_when_approved_probe_is_unavailable(
@@ -916,6 +1001,52 @@ def test_ordinary_shell_arguments_do_not_change_inferred_repository_root(
     command,
 ) -> None:
     assert validation_command_repository_root(command) == ""
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "test -f artifact.txt",
+        "test -e /tmp/receipt.json",
+        "test -d 'directory with spaces'",
+        "[ -r artifact.txt ]",
+        "cd child && test -s artifact.txt",
+    ],
+)
+def test_literal_file_predicates_are_dependency_neutral(command) -> None:
+    assert validation_command_dependency_scope(command) is (
+        ValidationDependencyScope.DEPENDENCY_NEUTRAL
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python -c 'pass'",
+        "python -m pytest -q",
+        "test -f artifact.txt && python -c 'pass'",
+        "test -f artifact.txt || true",
+        "./test -f artifact.txt",
+        "env MODE=check test -f artifact.txt",
+        "command test -f artifact.txt",
+        "test ! -f artifact.txt",
+        "test -f '$ARTIFACT'",
+        "test -f \"$(python -c 'print(1)')\"",
+        "test -f artifact.txt &&",
+        "test -f artifact.txt ||",
+        "test -f artifact.txt ;",
+        "test -f artifact.txt &",
+        "bash -c 'test -f artifact.txt'",
+        "cd child && test -f artifact.txt && python -c 'pass'",
+        "cd child && test -f artifact.txt &&",
+    ],
+)
+def test_dynamic_mixed_and_unknown_commands_remain_project_required(
+    command,
+) -> None:
+    assert validation_command_dependency_scope(command) is (
+        ValidationDependencyScope.PROJECT_REQUIRED
+    )
 
 
 def test_quoted_pytest_module_selects_validation_extra(tmp_path) -> None:

@@ -29,7 +29,11 @@ from typing import Any
 
 _CHILD_PROBE_MODE = __name__ == "__main__" and "--probe" in sys.argv[1:]
 if not _CHILD_PROBE_MODE:
-    from .validation_commands import validation_command_repository_root
+    from .validation_commands import (
+        ValidationDependencyScope,
+        validation_command_dependency_scope,
+        validation_command_repository_root,
+    )
     from .validation_runtime import (
         build_validation_environment,
         sealed_validation_python_runner,
@@ -1923,8 +1927,10 @@ def _preflight_validation_project_dependencies(
     """Compare static PEP-621 requirements with the approved interpreter."""
 
     workspace = Path(workspace_path)
-    roots: list[str] = []
+    validation_roots: list[str] = []
+    project_roots: list[str] = []
     pytest_roots: set[str] = set()
+    dependency_neutral_commands: list[dict[str, Any]] = []
     invalid_commands: list[dict[str, Any]] = []
     for index, command in enumerate(validation_commands):
         command_text = str(command)
@@ -1938,8 +1944,23 @@ def _preflight_validation_project_dependencies(
                 }
             )
             continue
-        if root not in roots:
-            roots.append(root)
+        if root not in validation_roots:
+            validation_roots.append(root)
+        dependency_scope = validation_command_dependency_scope(command_text)
+        if dependency_scope is ValidationDependencyScope.DEPENDENCY_NEUTRAL:
+            dependency_neutral_commands.append(
+                {
+                    "command_index": index,
+                    "command_sha256": hashlib.sha256(
+                        command_text.encode("utf-8")
+                    ).hexdigest(),
+                    "root": root,
+                    "scope": dependency_scope.value,
+                }
+            )
+            continue
+        if root not in project_roots:
+            project_roots.append(root)
         if _validation_command_invokes_pytest(command_text):
             pytest_roots.add(root)
 
@@ -1949,7 +1970,7 @@ def _preflight_validation_project_dependencies(
             relative_root,
             pytest_invoked=relative_root in pytest_roots,
         )
-        for relative_root in roots
+        for relative_root in project_roots
     ]
     static_projects = [
         project
@@ -1966,8 +1987,11 @@ def _preflight_validation_project_dependencies(
         "automatic_install_attempted": False,
         "probe_scope": "installed_distribution_metadata",
         "validation_command_count": len(validation_commands),
-        "project_roots": roots,
+        "validation_roots": validation_roots,
+        "project_roots": project_roots,
         "projects": [_public_project_contract(project) for project in projects],
+        "dependency_neutral_command_count": len(dependency_neutral_commands),
+        "dependency_neutral_commands": dependency_neutral_commands,
         "invalid_commands": invalid_commands,
     }
     if invalid_commands or collection_failures:
@@ -1987,7 +2011,11 @@ def _preflight_validation_project_dependencies(
             "reason": (
                 "no_declared_validation_commands"
                 if not validation_commands
-                else "no_static_pep621_dependencies"
+                else (
+                    "validation_commands_dependency_neutral"
+                    if len(dependency_neutral_commands) == len(validation_commands)
+                    else "no_static_pep621_dependencies"
+                )
             ),
         }
     else:

@@ -31589,6 +31589,99 @@ def test_implementation_daemon_dispatches_provider_after_dependency_preflight_pa
     )
 
 
+def test_implementation_daemon_dispatches_provider_for_dependency_neutral_validation(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / "pyproject.toml").write_text(
+        """
+[project]
+name = "dependency-neutral-fixture"
+version = "1.0.0"
+dependencies = ["definitely-missing-validation-runtime==9.9.9"]
+""".strip(),
+        encoding="utf-8",
+    )
+    _git(repo, "add", "README.md", "pyproject.toml")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Use a dependency-neutral file validation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+        validation=["test -f README.md"],
+    )
+    provider_calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+
+    def provider(command, *_args, **_kwargs):
+        provider_calls.append(tuple(command))
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        provider,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert provider_calls
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is True
+    preflight = result["workspace_setup"][
+        "validation_project_dependency_preflight"
+    ]
+    assert preflight["passed"] is True
+    assert preflight["applicable"] is False
+    assert preflight["reason"] == "validation_commands_dependency_neutral"
+    assert preflight["project_roots"] == []
+    assert preflight["dependency_neutral_command_count"] == 1
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert not any(
+        event["type"] == "validation_project_dependency_preflight_failed"
+        for event in events
+    )
+
+
 def test_non_ephemeral_implementation_defers_dependency_drift_without_provider_or_attempt(
     tmp_path,
     monkeypatch,
