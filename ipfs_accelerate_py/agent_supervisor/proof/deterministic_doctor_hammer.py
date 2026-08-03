@@ -33,11 +33,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
+import subprocess
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Final, Protocol
 
@@ -102,6 +106,9 @@ from .doctor_proof_cache import (
     DoctorIdentityBinding,
     DoctorProofCacheGate,
     DoctorProofCacheKey,
+    DoctorSealedReceiptError,
+    DoctorSealedReceiptRef,
+    DoctorSealedReceiptStore,
 )
 from .formal_verification_contracts import (
     AssuranceLevel,
@@ -140,7 +147,6 @@ from .tactician_hammer_obligations import (
     TranslatorCapabilityBinding,
 )
 
-
 # ---------------------------------------------------------------------------
 # Schemas / constants
 # ---------------------------------------------------------------------------
@@ -161,6 +167,27 @@ DOCTOR_HAMMER_BOUNDS_SCHEMA: Final[str] = (
 NATIVE_RECONSTRUCTION_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/native-reconstruction-receipt@1"
 )
+DOCTOR_REVIEWED_THEOREM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/doctor-reviewed-theorem@1"
+)
+DOCTOR_EXACT_LOWERING_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/doctor-exact-lowering@1"
+)
+DOCTOR_PINNED_EXECUTABLE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/doctor-pinned-executable@1"
+)
+DOCTOR_NATIVE_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/doctor-native-execution-receipt@1"
+)
+DOCTOR_KERNEL_REPLAY_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/doctor-kernel-replay-receipt@1"
+)
+DOCTOR_AUTHORITATIVE_PROOF_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/doctor-authoritative-proof-receipt@1"
+)
+DOCTOR_AUTHORITATIVE_PROOF_INTERFACE: Final[str] = (
+    "DoctorAuthoritativeProofReceipt@1"
+)
 DOCTOR_REPAIR_CANDIDATE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/doctor-repair-candidate@1"
 )
@@ -175,6 +202,8 @@ MAX_CANDIDATES: Final[int] = 64
 MAX_OBLIGATIONS: Final[int] = 256
 MAX_REASON_CODES: Final[int] = 64
 MAX_PREMISES: Final[int] = 256
+MAX_THEOREM_BYTES: Final[int] = 262_144
+MAX_NATIVE_OUTPUT_BYTES: Final[int] = 262_144
 
 HARD_MAX_CEGIS_ROUNDS: Final[int] = 64
 HARD_MAX_CEGIS_REPEATED_STATES: Final[int] = 8
@@ -283,6 +312,35 @@ class DoctorHammerReasonCode(str, Enum):
     RESOURCE_UNENFORCEABLE = "resource_unenforceable"
     CANCELLED = "cancelled"
     ADMISSION_REJECTED = "admission_rejected"
+    THEOREM_BODY_REQUIRED = "semantic_theorem_body_required"
+    THEOREM_NOT_REVIEWED = "theorem_not_reviewed"
+    EXACT_LOWERING_REQUIRED = "exact_lowering_required"
+    EXECUTABLE_NOT_PINNED = "executable_not_pinned"
+    EXECUTABLE_SUBSTITUTED = "executable_substituted"
+    NATIVE_EXECUTION_FAILED = "native_execution_failed"
+    KERNEL_REPLAY_FAILED = "kernel_replay_failed"
+    SEALED_RECEIPT_REQUIRED = "sealed_typed_receipt_required"
+    SEALED_RECEIPT_INVALID = "sealed_receipt_invalid"
+    WRONG_THEOREM = "wrong_theorem"
+    WRONG_PROPERTY = "wrong_property"
+    WRONG_TOOLCHAIN = "wrong_toolchain"
+    WRONG_POLICY = "wrong_policy"
+    TEST_INJECTION_REJECTED = "test_injection_rejected"
+
+
+class DoctorProofAuthorityDisposition(str, Enum):
+    """Whether a sealed proof can participate in a separate mutation gate."""
+
+    VERIFIED = "verified"
+    ABSTAINED = "abstained"
+    REJECTED = "rejected"
+
+
+class DoctorExecutableRole(str, Enum):
+    """Native executable roles; kernel replay is a separate process role."""
+
+    SOLVER = "solver"
+    KERNEL = "kernel"
 
 
 class NativeReconstructionDisposition(str, Enum):
@@ -414,6 +472,40 @@ def _stable_id(prefix: str, payload: Any) -> str:
         }
     )
     return f"{prefix}:{material}"
+
+
+def _verify_claimed_identity(
+    payload: Mapping[str, Any],
+    typed: CanonicalContract,
+    *,
+    field_names: Sequence[str] = ("content_id", "cid"),
+) -> None:
+    """Reject retained claimed identities that disagree with decoded bytes."""
+
+    for field_name in field_names:
+        claimed = payload.get(field_name)
+        if claimed is not None and claimed != typed.content_id:
+            raise DoctorHammerAuthorityError(
+                f"{field_name} does not match the canonical receipt preimage"
+            )
+
+
+def _require_contract_header(
+    payload: Mapping[str, Any],
+    expected_schema: str,
+    *,
+    expected_interface: str = "",
+) -> None:
+    declared_schema = payload.get("schema")
+    if declared_schema not in (None, expected_schema):
+        raise DoctorHammerAuthorityError("receipt schema does not match its type")
+    declared_version = payload.get("contract_version")
+    if declared_version not in (None, CONTRACT_VERSION):
+        raise DoctorHammerAuthorityError("receipt contract version is unsupported")
+    if expected_interface:
+        declared_interface = payload.get("interface")
+        if declared_interface not in (None, expected_interface):
+            raise DoctorHammerAuthorityError("receipt interface does not match its type")
 
 
 def _assert_body_free(value: Any, field_name: str = "record") -> None:
@@ -741,7 +833,9 @@ class DoctorRepairCandidate(CanonicalContract):
         values.pop("contract_version", None)
         values.pop("content_id", None)
         values.pop("cid", None)
-        return cls(**values)
+        typed = cls(**values)
+        _verify_claimed_identity(payload, typed)
+        return typed
 
     @classmethod
     def from_hypothesis(
@@ -761,6 +855,965 @@ class DoctorRepairCandidate(CanonicalContract):
             construction_ref=hypothesis.construction_ref,
             premise_ids=hypothesis.selected_premise_ids,
         )
+
+
+@dataclass(frozen=True)
+class DoctorReviewedTheorem(CanonicalContract):
+    """Reviewed semantic theorem body bound to current proof-authority roots."""
+
+    SCHEMA: ClassVar[str] = DOCTOR_REVIEWED_THEOREM_SCHEMA
+
+    roots: ProgramLogicAuthorityRoots
+    theorem_id: str
+    property_id: str
+    claim_id: str
+    consequence_ref: str
+    theorem_body: str
+    body_format: str
+    premise_ids: tuple[str, ...]
+    assumption_ids: tuple[str, ...]
+    review_receipt_id: str
+    translator_id: str
+    toolchain_id: str
+    policy_id: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "roots", _roots(self.roots))
+        for name in (
+            "theorem_id",
+            "property_id",
+            "claim_id",
+            "consequence_ref",
+            "body_format",
+            "review_receipt_id",
+            "translator_id",
+            "toolchain_id",
+            "policy_id",
+        ):
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
+        if not isinstance(self.theorem_body, str) or not self.theorem_body.strip():
+            raise DoctorHammerAuthorityError("reviewed theorem body must be nonempty")
+        encoded = self.theorem_body.encode("utf-8")
+        if len(encoded) > MAX_THEOREM_BYTES:
+            raise DoctorHammerBoundsError("reviewed theorem body exceeds bound")
+        if self.body_format.casefold() not in {
+            "lean4",
+            "smtlib2",
+            "rocq",
+            "isabelle",
+            "doctor-logic-ir",
+        }:
+            raise DoctorHammerAuthorityError("unsupported semantic theorem format")
+        # Identity-only text is not a theorem.  The reviewed body must contain
+        # the exact named semantic anchors and at least one relation/operator.
+        required_markers = (
+            self.theorem_id,
+            self.property_id,
+            self.claim_id,
+            self.consequence_ref,
+        )
+        if any(marker not in self.theorem_body for marker in required_markers):
+            raise DoctorHammerAuthorityError(
+                "reviewed theorem body does not bind its theorem/property/claim/consequence"
+            )
+        if not any(
+            marker in self.theorem_body
+            for marker in ("=", "->", "→", "∀", "forall ", ":=", "⊢")
+        ):
+            raise DoctorHammerAuthorityError(
+                "reviewed theorem body is identity-only rather than semantic"
+            )
+        object.__setattr__(
+            self,
+            "premise_ids",
+            _ids(self.premise_ids, "premise_ids", required=True),
+        )
+        object.__setattr__(
+            self,
+            "assumption_ids",
+            _ids(self.assumption_ids, "assumption_ids", required=True),
+        )
+        expected = (
+            ("translator_id", self.roots.translator_id),
+            ("toolchain_id", self.roots.toolchain_id),
+            ("policy_id", self.roots.policy_id),
+        )
+        for name, root_value in expected:
+            if getattr(self, name) != root_value:
+                raise DoctorHammerAuthorityError(
+                    f"reviewed theorem {name} does not match current roots"
+                )
+
+    @property
+    def theorem_cid(self) -> str:
+        return self.content_id
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTRACT_VERSION,
+            "roots": self.roots.to_dict(),
+            "theorem_id": self.theorem_id,
+            "property_id": self.property_id,
+            "claim_id": self.claim_id,
+            "consequence_ref": self.consequence_ref,
+            "theorem_body": self.theorem_body,
+            "body_format": self.body_format,
+            "premise_ids": list(self.premise_ids),
+            "assumption_ids": list(self.assumption_ids),
+            "review_receipt_id": self.review_receipt_id,
+            "translator_id": self.translator_id,
+            "toolchain_id": self.toolchain_id,
+            "policy_id": self.policy_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DoctorReviewedTheorem":
+        if not isinstance(payload, Mapping):
+            raise DoctorHammerError("reviewed theorem must be an object")
+        _require_contract_header(payload, cls.SCHEMA)
+        values = dict(payload)
+        if isinstance(values.get("roots"), Mapping):
+            values["roots"] = ProgramLogicAuthorityRoots.from_dict(values["roots"])
+        for drop in ("schema", "contract_version", "content_id", "cid"):
+            values.pop(drop, None)
+        typed = cls(**values)
+        _verify_claimed_identity(payload, typed)
+        return typed
+
+
+@dataclass(frozen=True)
+class DoctorExactLoweringReceipt(CanonicalContract):
+    """Exact reviewed-theorem lowering retained for native replay."""
+
+    SCHEMA: ClassVar[str] = DOCTOR_EXACT_LOWERING_SCHEMA
+
+    roots: ProgramLogicAuthorityRoots
+    lowering_id: str
+    theorem_cid: str
+    theorem_id: str
+    property_id: str
+    claim_id: str
+    consequence_ref: str
+    premise_ids: tuple[str, ...]
+    assumption_ids: tuple[str, ...]
+    logic_ir_statement: str
+    native_statement: str
+    translator_id: str
+    toolchain_id: str
+    policy_id: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "roots", _roots(self.roots))
+        for name in (
+            "lowering_id",
+            "theorem_cid",
+            "theorem_id",
+            "property_id",
+            "claim_id",
+            "consequence_ref",
+            "translator_id",
+            "toolchain_id",
+            "policy_id",
+        ):
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
+        object.__setattr__(
+            self,
+            "premise_ids",
+            _ids(self.premise_ids, "premise_ids", required=True),
+        )
+        object.__setattr__(
+            self,
+            "assumption_ids",
+            _ids(self.assumption_ids, "assumption_ids", required=True),
+        )
+        for name in ("logic_ir_statement", "native_statement"):
+            statement = getattr(self, name)
+            if not isinstance(statement, str) or not statement.strip():
+                raise DoctorHammerAuthorityError(f"{name} is required")
+            if len(statement.encode("utf-8")) > MAX_THEOREM_BYTES:
+                raise DoctorHammerBoundsError(f"{name} exceeds bound")
+            if any(
+                marker not in statement
+                for marker in (
+                    self.theorem_id,
+                    self.property_id,
+                    self.claim_id,
+                    self.consequence_ref,
+                )
+            ):
+                raise DoctorHammerAuthorityError(
+                    f"{name} does not preserve exact theorem bindings"
+                )
+        for name, root_value in (
+            ("translator_id", self.roots.translator_id),
+            ("toolchain_id", self.roots.toolchain_id),
+            ("policy_id", self.roots.policy_id),
+        ):
+            if getattr(self, name) != root_value:
+                raise DoctorHammerAuthorityError(
+                    f"lowering {name} does not match current roots"
+                )
+        expected_id = _stable_id(
+            "doctor-exact-lowering",
+            {
+                "theorem_cid": self.theorem_cid,
+                "theorem_id": self.theorem_id,
+                "property_id": self.property_id,
+                "claim_id": self.claim_id,
+                "consequence_ref": self.consequence_ref,
+                "premise_ids": list(self.premise_ids),
+                "assumption_ids": list(self.assumption_ids),
+                "logic_ir_statement": self.logic_ir_statement,
+                "native_statement": self.native_statement,
+                "translator_id": self.translator_id,
+                "toolchain_id": self.toolchain_id,
+                "policy_id": self.policy_id,
+            },
+        )
+        if self.lowering_id != expected_id:
+            raise DoctorHammerAuthorityError(
+                "lowering_id does not match the exact lowering preimage"
+            )
+
+    @classmethod
+    def create(
+        cls,
+        theorem: DoctorReviewedTheorem,
+        *,
+        logic_ir_statement: str,
+        native_statement: str,
+    ) -> "DoctorExactLoweringReceipt":
+        if not isinstance(theorem, DoctorReviewedTheorem):
+            raise DoctorHammerAuthorityError(
+                "exact lowering requires DoctorReviewedTheorem"
+            )
+        preimage = {
+            "theorem_cid": theorem.content_id,
+            "theorem_id": theorem.theorem_id,
+            "property_id": theorem.property_id,
+            "claim_id": theorem.claim_id,
+            "consequence_ref": theorem.consequence_ref,
+            "premise_ids": list(theorem.premise_ids),
+            "assumption_ids": list(theorem.assumption_ids),
+            "logic_ir_statement": logic_ir_statement,
+            "native_statement": native_statement,
+            "translator_id": theorem.translator_id,
+            "toolchain_id": theorem.toolchain_id,
+            "policy_id": theorem.policy_id,
+        }
+        return cls(
+            roots=theorem.roots,
+            lowering_id=_stable_id("doctor-exact-lowering", preimage),
+            theorem_cid=theorem.content_id,
+            theorem_id=theorem.theorem_id,
+            property_id=theorem.property_id,
+            claim_id=theorem.claim_id,
+            consequence_ref=theorem.consequence_ref,
+            premise_ids=theorem.premise_ids,
+            assumption_ids=theorem.assumption_ids,
+            logic_ir_statement=logic_ir_statement,
+            native_statement=native_statement,
+            translator_id=theorem.translator_id,
+            toolchain_id=theorem.toolchain_id,
+            policy_id=theorem.policy_id,
+        )
+
+    def verify_theorem(self, theorem: DoctorReviewedTheorem) -> None:
+        if not isinstance(theorem, DoctorReviewedTheorem):
+            raise DoctorHammerAuthorityError("lowering theorem must be typed")
+        bindings = (
+            self.theorem_cid == theorem.content_id,
+            self.roots.content_id == theorem.roots.content_id,
+            self.theorem_id == theorem.theorem_id,
+            self.property_id == theorem.property_id,
+            self.claim_id == theorem.claim_id,
+            self.consequence_ref == theorem.consequence_ref,
+            self.premise_ids == theorem.premise_ids,
+            self.assumption_ids == theorem.assumption_ids,
+            self.translator_id == theorem.translator_id,
+            self.toolchain_id == theorem.toolchain_id,
+            self.policy_id == theorem.policy_id,
+        )
+        if not all(bindings):
+            raise DoctorHammerAuthorityError(
+                "exact lowering does not bind the reviewed theorem"
+            )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTRACT_VERSION,
+            "roots": self.roots.to_dict(),
+            "lowering_id": self.lowering_id,
+            "theorem_cid": self.theorem_cid,
+            "theorem_id": self.theorem_id,
+            "property_id": self.property_id,
+            "claim_id": self.claim_id,
+            "consequence_ref": self.consequence_ref,
+            "premise_ids": list(self.premise_ids),
+            "assumption_ids": list(self.assumption_ids),
+            "logic_ir_statement": self.logic_ir_statement,
+            "native_statement": self.native_statement,
+            "translator_id": self.translator_id,
+            "toolchain_id": self.toolchain_id,
+            "policy_id": self.policy_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DoctorExactLoweringReceipt":
+        if not isinstance(payload, Mapping):
+            raise DoctorHammerError("exact lowering receipt must be an object")
+        _require_contract_header(payload, cls.SCHEMA)
+        values = dict(payload)
+        if isinstance(values.get("roots"), Mapping):
+            values["roots"] = ProgramLogicAuthorityRoots.from_dict(values["roots"])
+        for drop in ("schema", "contract_version", "content_id", "cid"):
+            values.pop(drop, None)
+        typed = cls(**values)
+        _verify_claimed_identity(payload, typed)
+        return typed
+
+
+@dataclass(frozen=True)
+class DoctorPinnedExecutable(CanonicalContract):
+    """Digest-pinned native executable and immutable command prefix."""
+
+    SCHEMA: ClassVar[str] = DOCTOR_PINNED_EXECUTABLE_SCHEMA
+
+    role: DoctorExecutableRole
+    executable_path: str
+    executable_sha256: str
+    argv: tuple[str, ...]
+    verifier_id: str
+    toolchain_id: str
+    environment_id: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "role", _enum(self.role, DoctorExecutableRole, "role")
+        )
+        path = _text(self.executable_path, "executable_path")
+        if not os.path.isabs(path):
+            raise DoctorHammerAuthorityError("pinned executable path must be absolute")
+        object.__setattr__(self, "executable_path", os.path.realpath(path))
+        digest = _identifier(self.executable_sha256, "executable_sha256")
+        if not digest.startswith("sha256:") or len(digest) != 71:
+            raise DoctorHammerAuthorityError(
+                "executable_sha256 must be a complete sha256 digest"
+            )
+        try:
+            int(digest[7:], 16)
+        except ValueError as exc:
+            raise DoctorHammerAuthorityError(
+                "executable_sha256 must be hexadecimal"
+            ) from exc
+        object.__setattr__(self, "executable_sha256", digest.casefold())
+        if isinstance(self.argv, (str, bytes)) or not isinstance(self.argv, Sequence):
+            raise DoctorHammerError("argv must be a sequence")
+        normalized_argv: list[str] = []
+        for item in self.argv:
+            if not isinstance(item, str) or "\x00" in item:
+                raise DoctorHammerError("argv items must be NUL-free strings")
+            if len(item.encode("utf-8")) > MAX_TEXT_BYTES:
+                raise DoctorHammerBoundsError("argv item exceeds bound")
+            normalized_argv.append(item)
+        object.__setattr__(self, "argv", tuple(normalized_argv))
+        for name in ("verifier_id", "toolchain_id", "environment_id"):
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
+
+    @property
+    def command_id(self) -> str:
+        return content_identity(
+            {
+                "executable_sha256": self.executable_sha256,
+                "argv": list(self.argv),
+                "role": self.role.value,
+            }
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTRACT_VERSION,
+            "role": self.role.value,
+            "executable_path": self.executable_path,
+            "executable_sha256": self.executable_sha256,
+            "argv": list(self.argv),
+            "verifier_id": self.verifier_id,
+            "toolchain_id": self.toolchain_id,
+            "environment_id": self.environment_id,
+            "command_id": self.command_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DoctorPinnedExecutable":
+        if not isinstance(payload, Mapping):
+            raise DoctorHammerError("pinned executable must be an object")
+        _require_contract_header(payload, cls.SCHEMA)
+        values = dict(payload)
+        claimed_command = values.pop("command_id", None)
+        for drop in ("schema", "contract_version", "content_id", "cid"):
+            values.pop(drop, None)
+        typed = cls(**values)
+        if claimed_command is not None and claimed_command != typed.command_id:
+            raise DoctorHammerAuthorityError("pinned command_id was forged")
+        _verify_claimed_identity(payload, typed)
+        return typed
+
+
+@dataclass(frozen=True)
+class DoctorNativeExecutionReceipt(CanonicalContract):
+    """Actual solver process result over the exact reviewed lowering."""
+
+    SCHEMA: ClassVar[str] = DOCTOR_NATIVE_EXECUTION_RECEIPT_SCHEMA
+
+    roots: ProgramLogicAuthorityRoots
+    theorem_cid: str
+    lowering_cid: str
+    property_id: str
+    consequence_ref: str
+    premise_ids: tuple[str, ...]
+    executable_pin_cid: str
+    executable_sha256: str
+    command_id: str
+    stdin_cid: str
+    stdout_cid: str
+    stderr_cid: str
+    transcript_cid: str
+    proof_object: str
+    proof_object_cid: str
+    exit_code: int
+    executed: bool
+    toolchain_id: str
+    policy_id: str
+    environment_id: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "roots", _roots(self.roots))
+        for name in (
+            "theorem_cid",
+            "lowering_cid",
+            "property_id",
+            "consequence_ref",
+            "executable_pin_cid",
+            "executable_sha256",
+            "command_id",
+            "stdin_cid",
+            "stdout_cid",
+            "stderr_cid",
+            "transcript_cid",
+            "proof_object_cid",
+            "toolchain_id",
+            "policy_id",
+            "environment_id",
+        ):
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
+        object.__setattr__(
+            self,
+            "premise_ids",
+            _ids(self.premise_ids, "premise_ids", required=True),
+        )
+        object.__setattr__(self, "executed", _bool(self.executed, "executed"))
+        if isinstance(self.exit_code, bool) or not isinstance(self.exit_code, int):
+            raise DoctorHammerError("exit_code must be an integer")
+        if not isinstance(self.proof_object, str) or not self.proof_object:
+            raise DoctorHammerAuthorityError("native proof object is required")
+        if len(self.proof_object.encode("utf-8")) > MAX_NATIVE_OUTPUT_BYTES:
+            raise DoctorHammerBoundsError("native proof object exceeds bound")
+        if self.proof_object_cid != content_identity(
+            {"proof_object": self.proof_object}
+        ):
+            raise DoctorHammerAuthorityError("native proof object CID mismatch")
+        if not self.executed or self.exit_code != 0:
+            raise DoctorHammerAuthorityError(
+                "native execution receipt must come from a successful process"
+            )
+        for name, root_value in (
+            ("toolchain_id", self.roots.toolchain_id),
+            ("policy_id", self.roots.policy_id),
+            ("environment_id", self.roots.environment_id),
+        ):
+            if getattr(self, name) != root_value:
+                raise DoctorHammerAuthorityError(
+                    f"native execution {name} does not match current roots"
+                )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTRACT_VERSION,
+            "roots": self.roots.to_dict(),
+            "theorem_cid": self.theorem_cid,
+            "lowering_cid": self.lowering_cid,
+            "property_id": self.property_id,
+            "consequence_ref": self.consequence_ref,
+            "premise_ids": list(self.premise_ids),
+            "executable_pin_cid": self.executable_pin_cid,
+            "executable_sha256": self.executable_sha256,
+            "command_id": self.command_id,
+            "stdin_cid": self.stdin_cid,
+            "stdout_cid": self.stdout_cid,
+            "stderr_cid": self.stderr_cid,
+            "transcript_cid": self.transcript_cid,
+            "proof_object": self.proof_object,
+            "proof_object_cid": self.proof_object_cid,
+            "exit_code": self.exit_code,
+            "executed": self.executed,
+            "toolchain_id": self.toolchain_id,
+            "policy_id": self.policy_id,
+            "environment_id": self.environment_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DoctorNativeExecutionReceipt":
+        if not isinstance(payload, Mapping):
+            raise DoctorHammerError("native execution receipt must be an object")
+        _require_contract_header(payload, cls.SCHEMA)
+        values = dict(payload)
+        if isinstance(values.get("roots"), Mapping):
+            values["roots"] = ProgramLogicAuthorityRoots.from_dict(values["roots"])
+        for drop in ("schema", "contract_version", "content_id", "cid"):
+            values.pop(drop, None)
+        typed = cls(**values)
+        _verify_claimed_identity(payload, typed)
+        return typed
+
+
+@dataclass(frozen=True)
+class DoctorKernelReplayReceipt(CanonicalContract):
+    """Independent kernel process replay of a sealed native proof object."""
+
+    SCHEMA: ClassVar[str] = DOCTOR_KERNEL_REPLAY_RECEIPT_SCHEMA
+
+    roots: ProgramLogicAuthorityRoots
+    theorem_cid: str
+    lowering_cid: str
+    native_receipt_cid: str
+    property_id: str
+    consequence_ref: str
+    premise_ids: tuple[str, ...]
+    proof_object_cid: str
+    executable_pin_cid: str
+    executable_sha256: str
+    command_id: str
+    stdin_cid: str
+    stdout_cid: str
+    stderr_cid: str
+    transcript_cid: str
+    exit_code: int
+    executed: bool
+    kernel_verified: bool
+    kernel_id: str
+    toolchain_id: str
+    policy_id: str
+    environment_id: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "roots", _roots(self.roots))
+        for name in (
+            "theorem_cid",
+            "lowering_cid",
+            "native_receipt_cid",
+            "property_id",
+            "consequence_ref",
+            "proof_object_cid",
+            "executable_pin_cid",
+            "executable_sha256",
+            "command_id",
+            "stdin_cid",
+            "stdout_cid",
+            "stderr_cid",
+            "transcript_cid",
+            "kernel_id",
+            "toolchain_id",
+            "policy_id",
+            "environment_id",
+        ):
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
+        object.__setattr__(
+            self,
+            "premise_ids",
+            _ids(self.premise_ids, "premise_ids", required=True),
+        )
+        object.__setattr__(self, "executed", _bool(self.executed, "executed"))
+        object.__setattr__(
+            self,
+            "kernel_verified",
+            _bool(self.kernel_verified, "kernel_verified"),
+        )
+        if isinstance(self.exit_code, bool) or not isinstance(self.exit_code, int):
+            raise DoctorHammerError("exit_code must be an integer")
+        if not self.executed or self.exit_code != 0 or not self.kernel_verified:
+            raise DoctorHammerAuthorityError(
+                "kernel replay must be independently executed and verified"
+            )
+        for name, root_value in (
+            ("toolchain_id", self.roots.toolchain_id),
+            ("policy_id", self.roots.policy_id),
+            ("environment_id", self.roots.environment_id),
+        ):
+            if getattr(self, name) != root_value:
+                raise DoctorHammerAuthorityError(
+                    f"kernel replay {name} does not match current roots"
+                )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTRACT_VERSION,
+            "roots": self.roots.to_dict(),
+            "theorem_cid": self.theorem_cid,
+            "lowering_cid": self.lowering_cid,
+            "native_receipt_cid": self.native_receipt_cid,
+            "property_id": self.property_id,
+            "consequence_ref": self.consequence_ref,
+            "premise_ids": list(self.premise_ids),
+            "proof_object_cid": self.proof_object_cid,
+            "executable_pin_cid": self.executable_pin_cid,
+            "executable_sha256": self.executable_sha256,
+            "command_id": self.command_id,
+            "stdin_cid": self.stdin_cid,
+            "stdout_cid": self.stdout_cid,
+            "stderr_cid": self.stderr_cid,
+            "transcript_cid": self.transcript_cid,
+            "exit_code": self.exit_code,
+            "executed": self.executed,
+            "kernel_verified": self.kernel_verified,
+            "kernel_id": self.kernel_id,
+            "toolchain_id": self.toolchain_id,
+            "policy_id": self.policy_id,
+            "environment_id": self.environment_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DoctorKernelReplayReceipt":
+        if not isinstance(payload, Mapping):
+            raise DoctorHammerError("kernel replay receipt must be an object")
+        _require_contract_header(payload, cls.SCHEMA)
+        values = dict(payload)
+        if isinstance(values.get("roots"), Mapping):
+            values["roots"] = ProgramLogicAuthorityRoots.from_dict(values["roots"])
+        for drop in ("schema", "contract_version", "content_id", "cid"):
+            values.pop(drop, None)
+        typed = cls(**values)
+        _verify_claimed_identity(payload, typed)
+        return typed
+
+
+@dataclass(frozen=True)
+class DoctorAuthoritativeProofReceipt(CanonicalContract):
+    """Mutation-gate proof authority reconstructed from sealed native evidence."""
+
+    SCHEMA: ClassVar[str] = DOCTOR_AUTHORITATIVE_PROOF_RECEIPT_SCHEMA
+
+    roots: ProgramLogicAuthorityRoots
+    receipt_id: str
+    disposition: DoctorProofAuthorityDisposition
+    reason_codes: tuple[str, ...]
+    theorem: DoctorReviewedTheorem | None = None
+    lowering: DoctorExactLoweringReceipt | None = None
+    solver_pin: DoctorPinnedExecutable | None = None
+    kernel_pin: DoctorPinnedExecutable | None = None
+    native_execution: DoctorNativeExecutionReceipt | None = None
+    kernel_replay: DoctorKernelReplayReceipt | None = None
+    native_store_ref: DoctorSealedReceiptRef | None = None
+    kernel_store_ref: DoctorSealedReceiptRef | None = None
+    authority_store_ref: DoctorSealedReceiptRef | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    authority_store: DoctorSealedReceiptStore | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    selected_consequence_ref: str = ""
+    eligible_consequence_refs: tuple[str, ...] = ()
+    property_id: str = ""
+    toolchain_id: str = ""
+    policy_id: str = ""
+    uniqueness_satisfied: bool = False
+    producer_id: str = PRODUCER_ID
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "roots", _roots(self.roots))
+        object.__setattr__(self, "receipt_id", _identifier(self.receipt_id, "receipt_id"))
+        object.__setattr__(
+            self,
+            "disposition",
+            _enum(self.disposition, DoctorProofAuthorityDisposition, "disposition"),
+        )
+        object.__setattr__(
+            self, "reason_codes", _ids(self.reason_codes, "reason_codes", required=True)
+        )
+        for name in (
+            "selected_consequence_ref",
+            "property_id",
+            "toolchain_id",
+            "policy_id",
+            "producer_id",
+        ):
+            object.__setattr__(
+                self, name, _text(getattr(self, name), name, required=False)
+            )
+        object.__setattr__(
+            self,
+            "eligible_consequence_refs",
+            _ids(self.eligible_consequence_refs, "eligible_consequence_refs"),
+        )
+        object.__setattr__(
+            self,
+            "uniqueness_satisfied",
+            _bool(self.uniqueness_satisfied, "uniqueness_satisfied"),
+        )
+        if self.disposition is DoctorProofAuthorityDisposition.VERIFIED:
+            required_types = (
+                (self.theorem, DoctorReviewedTheorem, "theorem"),
+                (self.lowering, DoctorExactLoweringReceipt, "lowering"),
+                (self.solver_pin, DoctorPinnedExecutable, "solver_pin"),
+                (self.kernel_pin, DoctorPinnedExecutable, "kernel_pin"),
+                (
+                    self.native_execution,
+                    DoctorNativeExecutionReceipt,
+                    "native_execution",
+                ),
+                (
+                    self.kernel_replay,
+                    DoctorKernelReplayReceipt,
+                    "kernel_replay",
+                ),
+                (
+                    self.native_store_ref,
+                    DoctorSealedReceiptRef,
+                    "native_store_ref",
+                ),
+                (
+                    self.kernel_store_ref,
+                    DoctorSealedReceiptRef,
+                    "kernel_store_ref",
+                ),
+            )
+            for value, expected_type, name in required_types:
+                if type(value) is not expected_type:
+                    raise DoctorHammerAuthorityError(
+                        f"verified authoritative proof requires typed {name}"
+                    )
+            assert self.theorem is not None
+            assert self.lowering is not None
+            assert self.solver_pin is not None
+            assert self.kernel_pin is not None
+            assert self.native_execution is not None
+            assert self.kernel_replay is not None
+            assert self.native_store_ref is not None
+            assert self.kernel_store_ref is not None
+            if (
+                self.authority_store_ref is not None
+                and type(self.authority_store_ref) is not DoctorSealedReceiptRef
+            ):
+                raise DoctorHammerAuthorityError(
+                    "authority_store_ref must be a sealed typed reference"
+                )
+            if (
+                self.authority_store is not None
+                and type(self.authority_store) is not DoctorSealedReceiptStore
+            ):
+                raise DoctorHammerAuthorityError(
+                    "authority_store must be the concrete sealed store"
+                )
+            self.lowering.verify_theorem(self.theorem)
+            if self.solver_pin.role is not DoctorExecutableRole.SOLVER:
+                raise DoctorHammerAuthorityError("solver pin has wrong role")
+            if self.kernel_pin.role is not DoctorExecutableRole.KERNEL:
+                raise DoctorHammerAuthorityError("kernel pin has wrong role")
+            if (
+                self.solver_pin.content_id == self.kernel_pin.content_id
+                or self.solver_pin.command_id == self.kernel_pin.command_id
+                or self.solver_pin.verifier_id == self.kernel_pin.verifier_id
+            ):
+                raise DoctorHammerAuthorityError(
+                    "kernel replay must use an independent pinned verifier command"
+                )
+            if not self.uniqueness_satisfied:
+                raise DoctorHammerAuthorityError(
+                    "authoritative proof requires unique consequence"
+                )
+            if self.eligible_consequence_refs != (
+                self.selected_consequence_ref,
+            ):
+                raise DoctorHammerAuthorityError(
+                    "authoritative proof requires exactly one eligible consequence"
+                )
+            bindings = (
+                self.roots.content_id == self.theorem.roots.content_id,
+                self.selected_consequence_ref == self.theorem.consequence_ref,
+                self.property_id == self.theorem.property_id,
+                self.toolchain_id == self.roots.toolchain_id,
+                self.policy_id == self.roots.policy_id,
+                self.solver_pin.toolchain_id == self.toolchain_id,
+                self.kernel_pin.toolchain_id == self.toolchain_id,
+                self.native_execution.theorem_cid == self.theorem.content_id,
+                self.native_execution.lowering_cid == self.lowering.content_id,
+                self.native_execution.property_id == self.property_id,
+                self.native_execution.consequence_ref
+                == self.selected_consequence_ref,
+                self.native_execution.premise_ids == self.theorem.premise_ids,
+                self.native_execution.executable_pin_cid
+                == self.solver_pin.content_id,
+                self.kernel_replay.theorem_cid == self.theorem.content_id,
+                self.kernel_replay.lowering_cid == self.lowering.content_id,
+                self.kernel_replay.native_receipt_cid
+                == self.native_execution.content_id,
+                self.kernel_replay.property_id == self.property_id,
+                self.kernel_replay.consequence_ref
+                == self.selected_consequence_ref,
+                self.kernel_replay.premise_ids == self.theorem.premise_ids,
+                self.kernel_replay.proof_object_cid
+                == self.native_execution.proof_object_cid,
+                self.kernel_replay.executable_pin_cid == self.kernel_pin.content_id,
+                self.native_store_ref.receipt_cid
+                == self.native_execution.content_id,
+                self.kernel_store_ref.receipt_cid == self.kernel_replay.content_id,
+                self.native_store_ref.store_id == self.kernel_store_ref.store_id,
+                self.native_store_ref.authority_id
+                == self.kernel_store_ref.authority_id,
+            )
+            if not all(bindings):
+                raise DoctorHammerAuthorityError(
+                    "authoritative proof evidence bindings do not match"
+                )
+        else:
+            if self.uniqueness_satisfied:
+                raise DoctorHammerAuthorityError(
+                    "non-verified authoritative proof cannot claim uniqueness"
+                )
+
+    @property
+    def is_admitted(self) -> bool:
+        """Compatibility spelling; exact type remains mandatory at consumers."""
+
+        return self.disposition is DoctorProofAuthorityDisposition.VERIFIED
+
+    @property
+    def mutation_capable(self) -> bool:
+        if (
+            not self.is_admitted
+            or type(self.authority_store_ref) is not DoctorSealedReceiptRef
+            or type(self.authority_store) is not DoctorSealedReceiptStore
+            or self.authority_store_ref.receipt_cid != self.content_id
+            or self.authority_store_ref.receipt_schema != self.SCHEMA
+        ):
+            return False
+        try:
+            reloaded = self.authority_store.reload(
+                self.authority_store_ref,
+                DoctorAuthoritativeProofReceipt,
+            )
+        except (DoctorSealedReceiptError, OSError, ValueError):
+            return False
+        return reloaded.content_id == self.content_id
+
+    @property
+    def write_authority(self) -> bool:
+        # A proof is one required mutation input, never the mutation permit.
+        return False
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": CONTRACT_VERSION,
+            "interface": DOCTOR_AUTHORITATIVE_PROOF_INTERFACE,
+            "roots": self.roots.to_dict(),
+            "receipt_id": self.receipt_id,
+            "disposition": self.disposition.value,
+            "reason_codes": list(self.reason_codes),
+            "theorem": self.theorem.to_dict() if self.theorem is not None else None,
+            "lowering": self.lowering.to_dict() if self.lowering is not None else None,
+            "solver_pin": (
+                self.solver_pin.to_dict() if self.solver_pin is not None else None
+            ),
+            "kernel_pin": (
+                self.kernel_pin.to_dict() if self.kernel_pin is not None else None
+            ),
+            "native_execution": (
+                self.native_execution.to_dict()
+                if self.native_execution is not None
+                else None
+            ),
+            "kernel_replay": (
+                self.kernel_replay.to_dict()
+                if self.kernel_replay is not None
+                else None
+            ),
+            "native_store_ref": (
+                self.native_store_ref.to_dict()
+                if self.native_store_ref is not None
+                else None
+            ),
+            "kernel_store_ref": (
+                self.kernel_store_ref.to_dict()
+                if self.kernel_store_ref is not None
+                else None
+            ),
+            "selected_consequence_ref": self.selected_consequence_ref,
+            "eligible_consequence_refs": list(self.eligible_consequence_refs),
+            "property_id": self.property_id,
+            "toolchain_id": self.toolchain_id,
+            "policy_id": self.policy_id,
+            "uniqueness_satisfied": self.uniqueness_satisfied,
+            "write_authority": False,
+            "producer_id": self.producer_id,
+        }
+
+    def to_record(self) -> dict[str, Any]:
+        """Return the canonical receipt plus its non-recursive store envelope."""
+
+        record = super().to_record()
+        record["authority_store_ref"] = (
+            self.authority_store_ref.to_dict()
+            if self.authority_store_ref is not None
+            else None
+        )
+        return record
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DoctorAuthoritativeProofReceipt":
+        if not isinstance(payload, Mapping):
+            raise DoctorHammerError("authoritative proof receipt must be an object")
+        _require_contract_header(
+            payload,
+            cls.SCHEMA,
+            expected_interface=DOCTOR_AUTHORITATIVE_PROOF_INTERFACE,
+        )
+        values = dict(payload)
+        if isinstance(values.get("roots"), Mapping):
+            values["roots"] = ProgramLogicAuthorityRoots.from_dict(values["roots"])
+        typed_fields: tuple[tuple[str, type[Any]], ...] = (
+            ("theorem", DoctorReviewedTheorem),
+            ("lowering", DoctorExactLoweringReceipt),
+            ("solver_pin", DoctorPinnedExecutable),
+            ("kernel_pin", DoctorPinnedExecutable),
+            ("native_execution", DoctorNativeExecutionReceipt),
+            ("kernel_replay", DoctorKernelReplayReceipt),
+            ("native_store_ref", DoctorSealedReceiptRef),
+            ("kernel_store_ref", DoctorSealedReceiptRef),
+            ("authority_store_ref", DoctorSealedReceiptRef),
+        )
+        for name, kind in typed_fields:
+            raw = values.get(name)
+            if isinstance(raw, Mapping):
+                values[name] = kind.from_dict(raw)
+        claimed_write = values.pop("write_authority", False)
+        if claimed_write is not False:
+            raise DoctorHammerAuthorityError(
+                "authoritative proof cannot claim a mutation permit"
+            )
+        for drop in (
+            "schema",
+            "contract_version",
+            "content_id",
+            "cid",
+            "interface",
+        ):
+            values.pop(drop, None)
+        typed = cls(**values)
+        _verify_claimed_identity(payload, typed)
+        return typed
 
 
 @dataclass(frozen=True)
@@ -1200,6 +2253,12 @@ class DoctorRepairProofReceipt(CanonicalContract):
         return self.disposition is DoctorHammerDisposition.ADMITTED
 
     @property
+    def mutation_capable(self) -> bool:
+        """Legacy/provider-assisted receipts are diagnostic-only."""
+
+        return False
+
+    @property
     def is_refuted(self) -> bool:
         return self.disposition is DoctorHammerDisposition.REFUTED
 
@@ -1277,7 +2336,9 @@ class DoctorRepairProofReceipt(CanonicalContract):
             )
         for drop in ("schema", "contract_version", "content_id", "cid", "interface"):
             values.pop(drop, None)
-        return cls(**values)
+        typed = cls(**values)
+        _verify_claimed_identity(payload, typed)
+        return typed
 
 
 # ---------------------------------------------------------------------------
@@ -1595,6 +2656,8 @@ class DeterministicDoctorHammer:
         loader: IsolatedHammerLoader | None = None,
         coordination_fn: _CoordinationFn | None = None,
         resource_enforcement: ResourceEnforcementReport | None = None,
+        authoritative_store: DoctorSealedReceiptStore | None = None,
+        trusted_executable_pins: Sequence[DoctorPinnedExecutable] = (),
     ) -> None:
         if bounds is None:
             self._bounds = DoctorHammerBounds()
@@ -1622,6 +2685,22 @@ class DeterministicDoctorHammer:
         self._resource_enforcement = (
             resource_enforcement or probe_resource_enforcement()
         )
+        if (
+            authoritative_store is not None
+            and type(authoritative_store) is not DoctorSealedReceiptStore
+        ):
+            raise DoctorHammerAuthorityError(
+                "authoritative_store must be the concrete sealed store"
+            )
+        self._authoritative_store = authoritative_store
+        trusted: dict[str, DoctorPinnedExecutable] = {}
+        for pin in trusted_executable_pins:
+            if type(pin) is not DoctorPinnedExecutable:
+                raise DoctorHammerAuthorityError(
+                    "trusted executable pins must be typed, not mappings"
+                )
+            trusted[pin.content_id] = pin
+        self._trusted_executable_pins = MappingProxyType(trusted)
         self._lock = threading.RLock()
         self._cancelled = threading.Event()
         # Diagnostic counters only — hard-zero on every receipt.
@@ -1718,6 +2797,502 @@ class DeterministicDoctorHammer:
     prove = verify
     check = verify
     run = verify
+
+    def verify_authoritative(
+        self,
+        theorem: DoctorReviewedTheorem,
+        lowering: DoctorExactLoweringReceipt,
+        *,
+        solver_pin: DoctorPinnedExecutable,
+        kernel_pin: DoctorPinnedExecutable,
+        current_roots: ProgramLogicAuthorityRoots,
+        eligible_consequence_refs: Sequence[str],
+    ) -> DoctorAuthoritativeProofReceipt:
+        """Execute, seal, reload, and independently replay one exact theorem.
+
+        This is intentionally separate from :meth:`verify`.  Legacy Hammer
+        candidate receipts and all ``prebuilt_*`` parameters remain useful for
+        shadow diagnostics but cannot enter this mutation-capable path.
+        """
+
+        roots = (
+            current_roots
+            if isinstance(current_roots, ProgramLogicAuthorityRoots)
+            else None
+        )
+        if roots is None:
+            return self._authority_failure(
+                self._unknown_roots(),
+                DoctorProofAuthorityDisposition.REJECTED,
+                DoctorHammerReasonCode.MALFORMED_INPUT,
+            )
+        if type(theorem) is not DoctorReviewedTheorem:
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.REJECTED,
+                DoctorHammerReasonCode.THEOREM_BODY_REQUIRED,
+            )
+        if type(lowering) is not DoctorExactLoweringReceipt:
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.REJECTED,
+                DoctorHammerReasonCode.EXACT_LOWERING_REQUIRED,
+            )
+        if (
+            type(solver_pin) is not DoctorPinnedExecutable
+            or type(kernel_pin) is not DoctorPinnedExecutable
+        ):
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.REJECTED,
+                DoctorHammerReasonCode.EXECUTABLE_NOT_PINNED,
+            )
+        if type(self._authoritative_store) is not DoctorSealedReceiptStore:
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.ABSTAINED,
+                DoctorHammerReasonCode.SEALED_RECEIPT_REQUIRED,
+            )
+        if theorem.roots.content_id != roots.content_id:
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.REJECTED,
+                DoctorHammerReasonCode.STALE_ROOTS,
+            )
+        try:
+            lowering.verify_theorem(theorem)
+        except DoctorHammerError:
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.REJECTED,
+                DoctorHammerReasonCode.EXACT_LOWERING_REQUIRED,
+            )
+        consequences = _ids(
+            eligible_consequence_refs,
+            "eligible_consequence_refs",
+            required=True,
+        )
+        if consequences != (theorem.consequence_ref,):
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.REJECTED,
+                DoctorHammerReasonCode.MULTIPLE_ELIGIBLE,
+            )
+        if (
+            solver_pin.role is not DoctorExecutableRole.SOLVER
+            or kernel_pin.role is not DoctorExecutableRole.KERNEL
+            or solver_pin.content_id == kernel_pin.content_id
+            or solver_pin.command_id == kernel_pin.command_id
+            or solver_pin.verifier_id == kernel_pin.verifier_id
+        ):
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.REJECTED,
+                DoctorHammerReasonCode.KERNEL_REPLAY_FAILED,
+            )
+        if (
+            self._trusted_executable_pins.get(solver_pin.content_id) != solver_pin
+            or self._trusted_executable_pins.get(kernel_pin.content_id) != kernel_pin
+        ):
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.REJECTED,
+                DoctorHammerReasonCode.EXECUTABLE_NOT_PINNED,
+            )
+        for pin in (solver_pin, kernel_pin):
+            if (
+                pin.toolchain_id != roots.toolchain_id
+                or pin.environment_id != roots.environment_id
+            ):
+                return self._authority_failure(
+                    roots,
+                    DoctorProofAuthorityDisposition.REJECTED,
+                    DoctorHammerReasonCode.WRONG_TOOLCHAIN,
+                )
+        try:
+            native = self._execute_solver(theorem, lowering, solver_pin)
+            native_ref = self._authoritative_store.append(native)
+            reloaded_native = self._authoritative_store.reload(
+                native_ref, DoctorNativeExecutionReceipt
+            )
+            kernel = self._execute_kernel(
+                theorem,
+                lowering,
+                reloaded_native,
+                kernel_pin,
+            )
+            kernel_ref = self._authoritative_store.append(kernel)
+            reloaded_kernel = self._authoritative_store.reload(
+                kernel_ref, DoctorKernelReplayReceipt
+            )
+        except FileNotFoundError:
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.ABSTAINED,
+                DoctorHammerReasonCode.KERNEL_UNAVAILABLE,
+            )
+        except subprocess.TimeoutExpired:
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.ABSTAINED,
+                DoctorHammerReasonCode.TIMEOUT,
+            )
+        except (
+            DoctorHammerError,
+            DoctorSealedReceiptError,
+            OSError,
+            ValueError,
+            json.JSONDecodeError,
+        ):
+            return self._authority_failure(
+                roots,
+                DoctorProofAuthorityDisposition.REJECTED,
+                DoctorHammerReasonCode.KERNEL_REPLAY_FAILED,
+            )
+
+        receipt_id = _stable_id(
+            "doctor-authoritative-proof",
+            {
+                "roots": roots.content_id,
+                "theorem": theorem.content_id,
+                "lowering": lowering.content_id,
+                "native": reloaded_native.content_id,
+                "kernel": reloaded_kernel.content_id,
+                "native_entry": native_ref.entry_id,
+                "kernel_entry": kernel_ref.entry_id,
+                "consequence": theorem.consequence_ref,
+            },
+        )
+        receipt = DoctorAuthoritativeProofReceipt(
+            roots=roots,
+            receipt_id=receipt_id,
+            disposition=DoctorProofAuthorityDisposition.VERIFIED,
+            reason_codes=(DoctorHammerReasonCode.OK.value,),
+            theorem=theorem,
+            lowering=lowering,
+            solver_pin=solver_pin,
+            kernel_pin=kernel_pin,
+            native_execution=reloaded_native,
+            kernel_replay=reloaded_kernel,
+            native_store_ref=native_ref,
+            kernel_store_ref=kernel_ref,
+            selected_consequence_ref=theorem.consequence_ref,
+            eligible_consequence_refs=(theorem.consequence_ref,),
+            property_id=theorem.property_id,
+            toolchain_id=roots.toolchain_id,
+            policy_id=roots.policy_id,
+            uniqueness_satisfied=True,
+        )
+        # The final authority envelope itself is also sealed and strictly
+        # reloaded; its embedded evidence refs bind the replayable lineage.
+        final_ref = self._authoritative_store.append(receipt)
+        reloaded_receipt = self._authoritative_store.reload(
+            final_ref, DoctorAuthoritativeProofReceipt
+        )
+        return replace(
+            reloaded_receipt,
+            authority_store_ref=final_ref,
+            authority_store=self._authoritative_store,
+        )
+
+    def reverify_authoritative(
+        self,
+        receipt: DoctorAuthoritativeProofReceipt,
+        *,
+        current_roots: ProgramLogicAuthorityRoots,
+    ) -> DoctorAuthoritativeProofReceipt:
+        """Freshly reload sealed evidence and rerun the independent kernel."""
+
+        if (
+            type(receipt) is not DoctorAuthoritativeProofReceipt
+            or type(current_roots) is not ProgramLogicAuthorityRoots
+            or type(self._authoritative_store) is not DoctorSealedReceiptStore
+            or receipt.disposition is not DoctorProofAuthorityDisposition.VERIFIED
+            or receipt.roots.content_id != current_roots.content_id
+            or type(receipt.authority_store_ref) is not DoctorSealedReceiptRef
+            or receipt.authority_store_ref.receipt_cid != receipt.content_id
+            or receipt.authority_store_ref.receipt_schema != receipt.SCHEMA
+        ):
+            raise DoctorHammerAuthorityError(
+                "authoritative receipt/current roots/store are not exact"
+            )
+        assert receipt.native_store_ref is not None
+        assert receipt.kernel_store_ref is not None
+        assert receipt.authority_store_ref is not None
+        assert receipt.native_execution is not None
+        assert receipt.kernel_replay is not None
+        assert receipt.theorem is not None
+        assert receipt.lowering is not None
+        assert receipt.kernel_pin is not None
+        stored_authority = self._authoritative_store.reload(
+            receipt.authority_store_ref, DoctorAuthoritativeProofReceipt
+        )
+        if stored_authority.content_id != receipt.content_id:
+            raise DoctorHammerAuthorityError(
+                "sealed authoritative proof envelope was substituted"
+            )
+        native = self._authoritative_store.reload(
+            receipt.native_store_ref, DoctorNativeExecutionReceipt
+        )
+        stored_kernel = self._authoritative_store.reload(
+            receipt.kernel_store_ref, DoctorKernelReplayReceipt
+        )
+        if (
+            native.content_id != receipt.native_execution.content_id
+            or stored_kernel.content_id != receipt.kernel_replay.content_id
+        ):
+            raise DoctorHammerAuthorityError("sealed proof evidence was substituted")
+        replayed = self._execute_kernel(
+            receipt.theorem,
+            receipt.lowering,
+            native,
+            receipt.kernel_pin,
+        )
+        if replayed.content_id != stored_kernel.content_id:
+            raise DoctorHammerAuthorityError(
+                "fresh kernel replay differs from sealed replay"
+            )
+        restored = DoctorAuthoritativeProofReceipt.from_dict(receipt.to_record())
+        return replace(
+            restored,
+            authority_store=self._authoritative_store,
+        )
+
+    @staticmethod
+    def _unknown_roots() -> ProgramLogicAuthorityRoots:
+        return ProgramLogicAuthorityRoots(
+            repository_id="repository:unknown",
+            objective_id="objective:unknown",
+            trace_id="trace:unknown",
+            change_id="change:unknown",
+            consumer_id="consumer:unknown",
+            forest_id="forest:unknown",
+            tree_id="tree:unknown",
+            overlay_id="overlay:unknown",
+            graph_id="graph:unknown",
+            index_id="index:unknown",
+            corpus_id="corpus:unknown",
+            model_id="model:none",
+            translator_id="translator:unknown",
+            toolchain_id="toolchain:unknown",
+            policy_id="policy:unknown",
+            environment_id="environment:unknown",
+        )
+
+    def _authority_failure(
+        self,
+        roots: ProgramLogicAuthorityRoots,
+        disposition: DoctorProofAuthorityDisposition,
+        reason: DoctorHammerReasonCode,
+    ) -> DoctorAuthoritativeProofReceipt:
+        return DoctorAuthoritativeProofReceipt(
+            roots=roots,
+            receipt_id=_stable_id(
+                "doctor-authoritative-proof",
+                {
+                    "roots": roots.content_id,
+                    "disposition": disposition.value,
+                    "reason": reason.value,
+                },
+            ),
+            disposition=disposition,
+            reason_codes=(reason.value,),
+        )
+
+    @staticmethod
+    def _executable_digest(pin: DoctorPinnedExecutable) -> str:
+        path = Path(pin.executable_path)
+        info = path.stat()
+        if not stat.S_ISREG(info.st_mode) or not os.access(path, os.X_OK):
+            raise DoctorHammerAuthorityError("pinned executable is not executable")
+        # Reject provider/user-writable deployment roots.  Symlinks have
+        # already been resolved by DoctorPinnedExecutable.
+        for ancestor in (path, *path.parents):
+            ancestor_info = ancestor.stat()
+            if ancestor_info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                raise DoctorHammerAuthorityError(
+                    "pinned executable has a group/world-writable ancestor"
+                )
+            if (
+                ancestor_info.st_uid == os.geteuid()
+                and ancestor_info.st_mode & stat.S_IWUSR
+            ):
+                raise DoctorHammerAuthorityError(
+                    "pinned executable is in a provider-writable deployment"
+                )
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        actual = "sha256:" + digest
+        if actual != pin.executable_sha256:
+            raise DoctorHammerAuthorityError("pinned executable digest changed")
+        return actual
+
+    def _run_pinned(
+        self,
+        pin: DoctorPinnedExecutable,
+        request: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        actual_digest = self._executable_digest(pin)
+        stdin = canonical_json(dict(request)).encode("utf-8")
+        completed = subprocess.run(
+            (pin.executable_path, *pin.argv),
+            input=stdin,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=max(1.0, self._bounds.wall_time_ms / 1000.0),
+            env={
+                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin",
+                "HOME": "/nonexistent",
+                "LANG": "C.UTF-8",
+                "LC_ALL": "C.UTF-8",
+            },
+            cwd="/",
+        )
+        if (
+            len(completed.stdout) > MAX_NATIVE_OUTPUT_BYTES
+            or len(completed.stderr) > MAX_NATIVE_OUTPUT_BYTES
+        ):
+            raise DoctorHammerBoundsError("native verifier output exceeds bound")
+        if completed.returncode != 0:
+            raise DoctorHammerAuthorityError("native verifier process failed")
+        try:
+            output = json.loads(completed.stdout.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DoctorHammerAuthorityError(
+                "native verifier output is not canonical JSON"
+            ) from exc
+        if not isinstance(output, dict):
+            raise DoctorHammerAuthorityError(
+                "native verifier output must be an object"
+            )
+        if canonical_json(output).encode("utf-8") != completed.stdout:
+            raise DoctorHammerAuthorityError(
+                "native verifier output must be canonical JSON"
+            )
+        transcript = {
+            "executable_sha256": actual_digest,
+            "command_id": pin.command_id,
+            "stdin_cid": content_identity({"bytes_hex": stdin.hex()}),
+            "stdout_cid": content_identity(
+                {"bytes_hex": completed.stdout.hex()}
+            ),
+            "stderr_cid": content_identity(
+                {"bytes_hex": completed.stderr.hex()}
+            ),
+            "exit_code": completed.returncode,
+        }
+        transcript["transcript_cid"] = content_identity(transcript)
+        return output, transcript
+
+    def _execute_solver(
+        self,
+        theorem: DoctorReviewedTheorem,
+        lowering: DoctorExactLoweringReceipt,
+        pin: DoctorPinnedExecutable,
+    ) -> DoctorNativeExecutionReceipt:
+        request = {
+            "interface": "DoctorNativeSolverRequest@1",
+            "roots": theorem.roots.to_dict(),
+            "theorem": theorem.to_dict(),
+            "lowering": lowering.to_dict(),
+        }
+        output, transcript = self._run_pinned(pin, request)
+        expected = {
+            "status": "proved",
+            "theorem_cid": theorem.content_id,
+            "lowering_cid": lowering.content_id,
+            "property_id": theorem.property_id,
+            "consequence_ref": theorem.consequence_ref,
+            "premise_ids": list(theorem.premise_ids),
+        }
+        if any(output.get(name) != value for name, value in expected.items()):
+            raise DoctorHammerAuthorityError(
+                "native solver transcript does not bind the exact theorem"
+            )
+        proof_object = output.get("proof_object")
+        if not isinstance(proof_object, str) or not proof_object:
+            raise DoctorHammerAuthorityError("native solver returned no proof object")
+        return DoctorNativeExecutionReceipt(
+            roots=theorem.roots,
+            theorem_cid=theorem.content_id,
+            lowering_cid=lowering.content_id,
+            property_id=theorem.property_id,
+            consequence_ref=theorem.consequence_ref,
+            premise_ids=theorem.premise_ids,
+            executable_pin_cid=pin.content_id,
+            executable_sha256=pin.executable_sha256,
+            command_id=pin.command_id,
+            stdin_cid=str(transcript["stdin_cid"]),
+            stdout_cid=str(transcript["stdout_cid"]),
+            stderr_cid=str(transcript["stderr_cid"]),
+            transcript_cid=str(transcript["transcript_cid"]),
+            proof_object=proof_object,
+            proof_object_cid=content_identity({"proof_object": proof_object}),
+            exit_code=int(transcript["exit_code"]),
+            executed=True,
+            toolchain_id=theorem.roots.toolchain_id,
+            policy_id=theorem.roots.policy_id,
+            environment_id=theorem.roots.environment_id,
+        )
+
+    def _execute_kernel(
+        self,
+        theorem: DoctorReviewedTheorem,
+        lowering: DoctorExactLoweringReceipt,
+        native: DoctorNativeExecutionReceipt,
+        pin: DoctorPinnedExecutable,
+    ) -> DoctorKernelReplayReceipt:
+        request = {
+            "interface": "DoctorKernelReplayRequest@1",
+            "roots": theorem.roots.to_dict(),
+            "theorem": theorem.to_dict(),
+            "lowering": lowering.to_dict(),
+            "native_receipt": native.to_dict(),
+        }
+        output, transcript = self._run_pinned(pin, request)
+        expected = {
+            "status": "kernel_verified",
+            "theorem_cid": theorem.content_id,
+            "lowering_cid": lowering.content_id,
+            "native_receipt_cid": native.content_id,
+            "property_id": theorem.property_id,
+            "consequence_ref": theorem.consequence_ref,
+            "premise_ids": list(theorem.premise_ids),
+            "proof_object_cid": native.proof_object_cid,
+        }
+        if any(output.get(name) != value for name, value in expected.items()):
+            raise DoctorHammerAuthorityError(
+                "kernel transcript does not bind the sealed native proof"
+            )
+        kernel_id = output.get("kernel_id")
+        if not isinstance(kernel_id, str) or not kernel_id:
+            raise DoctorHammerAuthorityError(
+                "kernel transcript omitted kernel identity"
+            )
+        return DoctorKernelReplayReceipt(
+            roots=theorem.roots,
+            theorem_cid=theorem.content_id,
+            lowering_cid=lowering.content_id,
+            native_receipt_cid=native.content_id,
+            property_id=theorem.property_id,
+            consequence_ref=theorem.consequence_ref,
+            premise_ids=theorem.premise_ids,
+            proof_object_cid=native.proof_object_cid,
+            executable_pin_cid=pin.content_id,
+            executable_sha256=pin.executable_sha256,
+            command_id=pin.command_id,
+            stdin_cid=str(transcript["stdin_cid"]),
+            stdout_cid=str(transcript["stdout_cid"]),
+            stderr_cid=str(transcript["stderr_cid"]),
+            transcript_cid=str(transcript["transcript_cid"]),
+            exit_code=int(transcript["exit_code"]),
+            executed=True,
+            kernel_verified=True,
+            kernel_id=kernel_id,
+            toolchain_id=theorem.roots.toolchain_id,
+            policy_id=theorem.roots.policy_id,
+            environment_id=theorem.roots.environment_id,
+        )
 
     # -- implementation ---------------------------------------------------
 
@@ -2036,12 +3611,19 @@ class DeterministicDoctorHammer:
                     obligation_compilation=obligation_compilation,
                 )
             # Check root agreement with current plan roots.
-            if typed_key.tree.logical_id not in {
-                roots.tree_id,
-                plan.roots.tree_id,
-            } and typed_key.tree.logical_id != roots.tree_id:
-                # Soft: logical_id should match tree id when bound that way.
-                pass
+            if typed_key.tree.logical_id != roots.tree_id:
+                return self._terminal(
+                    roots=roots,
+                    finding_id=plan.finding_id,
+                    plan_receipt_id=plan.receipt_id,
+                    disposition=DoctorHammerDisposition.ABSTAINED,
+                    reasons=(DoctorHammerReasonCode.CACHE_STALE.value,),
+                    isolation_report=isolation_report,
+                    isolation_adequate=isolation_ok,
+                    import_isolation=import_isolation,
+                    permit_id=permit_id,
+                    obligation_compilation=obligation_compilation,
+                )
             if typed_key.environment.logical_id not in {
                 roots.environment_id,
                 "",
@@ -2672,6 +4254,28 @@ class DeterministicDoctorHammer:
             final = self._cache_gate.revalidate_for_commit(cache_key)
             cache_audits.append(final.audit.to_dict())
             cache_revalidated = True
+            if final.disposition is not DoctorCacheDisposition.HIT:
+                return self._terminal(
+                    roots=roots,
+                    finding_id=plan.finding_id,
+                    plan_receipt_id=plan.receipt_id,
+                    disposition=DoctorHammerDisposition.ABSTAINED,
+                    reasons=(DoctorHammerReasonCode.CACHE_REJECTED.value,),
+                    isolation_report=isolation_report,
+                    isolation_adequate=isolation_ok,
+                    import_isolation=import_isolation,
+                    permit_id=permit_id,
+                    obligation_compilation=obligation_compilation,
+                    cache_audits=cache_audits,
+                    cache_revalidated=True,
+                    native_reconstruction=chosen_recon,
+                    hammer_receipts=hammer_receipts,
+                    hammer_outcomes=hammer_outcomes,
+                    countermodel_receipts=countermodel_receipts,
+                    cegis_receipt=cegis_receipt,
+                    admission_decision=decision,
+                    eligible_consequence_refs=tuple(unique_refs),
+                )
 
         receipt_id = _stable_id(
             "doctor-repair-proof",
@@ -2829,7 +4433,9 @@ class DeterministicDoctorHammer:
         if not obligation_compilation.native_binding_ids:
             return None
         # Synthesize a minimal binding that still carries exact identities.
-        from ..analysis.program_logic_prediction_contracts import SemanticRoundTripReceipt
+        from ..analysis.program_logic_prediction_contracts import (
+            SemanticRoundTripReceipt,
+        )
 
         obligation_id = (
             obligation_compilation.obligation_ids[0]
@@ -3409,16 +5015,26 @@ def build_default_obligation_context(
 __all__ = [
     "CONTRACT_VERSION",
     "DETERMINISTIC_DOCTOR_HAMMER_INTERFACE",
+    "DOCTOR_AUTHORITATIVE_PROOF_INTERFACE",
     "DOCTOR_REPAIR_OBLIGATION_COMPILER_INTERFACE",
+    "DoctorAuthoritativeProofReceipt",
+    "DoctorExactLoweringReceipt",
+    "DoctorExecutableRole",
     "DoctorHammerBounds",
     "DoctorHammerDisposition",
     "DoctorHammerError",
+    "DoctorHammerAuthorityError",
     "DoctorHammerReasonCode",
+    "DoctorKernelReplayReceipt",
+    "DoctorNativeExecutionReceipt",
     "DoctorObligationCompilationDisposition",
+    "DoctorPinnedExecutable",
+    "DoctorProofAuthorityDisposition",
     "DoctorRepairCandidate",
     "DoctorRepairObligationCompilation",
     "DoctorRepairObligationCompiler",
     "DoctorRepairProofReceipt",
+    "DoctorReviewedTheorem",
     "DeterministicDoctorHammer",
     "NativeReconstructionDisposition",
     "NativeReconstructionReceipt",
