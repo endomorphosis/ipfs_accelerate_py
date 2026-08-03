@@ -13044,6 +13044,204 @@ def test_provider_declared_retry_reset_and_explicit_command_attribution(
     assert grok_daemon._active_provider_capacity_backoff() == {}
 
 
+def test_auto_provider_skips_active_grok_latch_and_uses_codex(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 0, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "auto",
+    )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["grok"],
+            "retry_at": "2026-08-03T01:00:00+00:00",
+        },
+    )
+
+    assert daemon._active_provider_capacity_backoff() == {}
+    command = daemon._build_implementation_command(repo)
+
+    assert command[0] == "/usr/local/bin/codex"
+    assert "grok_cli_runner.py" not in " ".join(command)
+
+
+def test_explicit_grok_provider_keeps_its_capacity_latch_fail_closed(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 0, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok",
+    )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["grok"],
+            "retry_at": "2026-08-03T01:00:00+00:00",
+        },
+    )
+
+    backoff = daemon._active_provider_capacity_backoff()
+
+    assert backoff["active"] is True
+    assert backoff["providers"] == ["grok"]
+
+
+def test_auto_provider_backs_off_when_all_available_families_are_latched(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 0, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "auto",
+    )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["grok"],
+            "retry_at": "2026-08-03T01:00:00+00:00",
+        },
+    )
+    daemon._record_event(
+        "implementation_started",
+        {"command": ["/usr/local/bin/codex", "exec"]},
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["codex"],
+            "retry_at": "2026-08-03T00:30:00+00:00",
+        },
+    )
+
+    backoff = daemon._active_provider_capacity_backoff()
+
+    assert backoff["active"] is True
+    assert backoff["retry_at"] == "2026-08-03T00:30:00+00:00"
+    assert backoff["providers"] == ["grok", "codex"]
+    with pytest.raises(
+        RuntimeError,
+        match="All available automatic implementation providers",
+    ):
+        daemon._build_implementation_command(repo)
+
+
 @pytest.mark.parametrize(
     "retry_line",
     (

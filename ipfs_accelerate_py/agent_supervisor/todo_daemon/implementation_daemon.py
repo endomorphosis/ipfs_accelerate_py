@@ -365,6 +365,20 @@ PROVIDER_CAPACITY_PATTERNS = (
         ),
     ),
 )
+PROVIDER_CAPACITY_FAMILY_ALIASES = {
+    "grok": "grok",
+    "xai": "grok",
+    "codex": "codex",
+    "copilot": "copilot",
+    "goose": "goose",
+    "meta": "goose",
+    "meta_spark": "goose",
+    "provider": "provider",
+    "infrastructure": "infrastructure",
+}
+GLOBAL_PROVIDER_CAPACITY_FAMILIES = frozenset(
+    {"provider", "infrastructure"}
+)
 PROVIDER_DECLARED_RETRY_AT_PATTERN = re.compile(
     r"\btry\s+again\s+at\s+"
     r"(?P<month>[A-Za-z]{3,9})\.?\s+"
@@ -2134,6 +2148,13 @@ def _provider_labels_from_implementation_command(
             if provider not in labels:
                 labels.append(provider)
     return labels
+
+
+def _provider_capacity_family(label: Any) -> str:
+    """Normalize one provider label to its independently latched family."""
+
+    normalized = str(label or "").strip().lower().replace("-", "_")
+    return PROVIDER_CAPACITY_FAMILY_ALIASES.get(normalized, normalized)
 
 
 def classify_provider_capacity_failure(
@@ -9383,44 +9404,250 @@ class PortalImplementationDaemon:
             labels.update({"codex", "copilot", "provider"})
         return labels or {"provider"}
 
-    def _provider_capacity_backoff_schedule(self) -> dict[str, Any]:
+    def _provider_capacity_latch_states(self) -> dict[str, dict[str, Any]]:
+        """Return the latest durable cooldown state for each provider family.
+
+        A later dispatch clears only the family named by its concrete command.
+        This preserves an active Grok latch while an automatic lane tries
+        Codex/Copilot, instead of either globally blocking the lane or
+        immediately selecting Grok again.
+        """
+
+        now = _provider_capacity_now()
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        else:
+            now = now.astimezone(timezone.utc)
+        states: dict[str, dict[str, Any]] = {}
+        for event in self._iter_events():
+            event_type = str(event.get("type") or "")
+            if event_type == "implementation_started":
+                for label in _provider_labels_from_implementation_command(
+                    event.get("command") or ()
+                ):
+                    states.pop(_provider_capacity_family(label), None)
+                continue
+            if event_type != "implementation_provider_exhausted":
+                continue
+            retry_at = parse_timestamp(str(event.get("retry_at") or ""))
+            if retry_at is None:
+                continue
+            retry_at = retry_at.astimezone(timezone.utc)
+            for label in event.get("providers") or ():
+                family = _provider_capacity_family(label)
+                if not family:
+                    continue
+                states[family] = {
+                    "active": retry_at > now,
+                    "family": family,
+                    "retry_at": retry_at.isoformat(),
+                    "retry_after_seconds": max(
+                        0.0,
+                        (retry_at - now).total_seconds(),
+                    ),
+                    "providers": list(event.get("providers") or []),
+                }
+        return states
+
+    def _auto_implementation_provider_families(self) -> tuple[str, ...]:
+        """Return available automatic provider families in dispatch order."""
+
+        families: list[str] = []
+
+        def add(family: str) -> None:
+            if family not in families:
+                families.append(family)
+
+        grok_ready = _grok_cli_available()
+        if grok_ready and _grok_binary():
+            add("grok")
+        codex = shutil.which("codex")
+        copilot = shutil.which("copilot")
+        if codex:
+            add("codex")
+        if copilot and _copilot_has_auth():
+            add("copilot")
+        if grok_ready:
+            add("grok")
+        if _goose_meta_spark_available() and _goose_binary():
+            add("goose")
+        return tuple(families)
+
+    @staticmethod
+    def _provider_family_has_active_latch(
+        family: str,
+        states: Mapping[str, Mapping[str, Any]],
+    ) -> bool:
+        return bool(
+            states.get(family, {}).get("active", False)
+            or any(
+                states.get(global_family, {}).get("active", False)
+                for global_family in GLOBAL_PROVIDER_CAPACITY_FAMILIES
+            )
+        )
+
+    @staticmethod
+    def _provider_capacity_schedule_from_states(
+        states: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        if not states:
+            return {}
+        active_states = [
+            item for item in states if item.get("active", False)
+        ]
+        selected = min(
+            active_states or list(states),
+            key=lambda item: str(item.get("retry_at") or ""),
+        )
+        providers: list[str] = []
+        for item in states:
+            for provider in item.get("providers") or ():
+                normalized = str(provider or "").strip().lower()
+                if normalized and normalized not in providers:
+                    providers.append(normalized)
+        return {
+            "active": bool(active_states),
+            "retry_at": str(selected.get("retry_at") or ""),
+            "retry_after_seconds": float(
+                selected.get("retry_after_seconds") or 0.0
+            ),
+            "providers": providers,
+        }
+
+    def _provider_capacity_backoff_schedule(
+        self,
+        *,
+        provider_families: Sequence[str] | None = None,
+        allow_family_fallback: bool | None = None,
+    ) -> dict[str, Any]:
         """Return the latest invocation-bound provider retry schedule, if any.
 
         Includes expired schedules (``active`` false) so ``run_once`` can wake
         when a prior capacity latch becomes due without waiting on other events.
-        Provider labels isolate codex/goose/grok latches from each other.
+        Automatic selection skips a provider-specific active latch whenever an
+        unlatched family is available. Explicit selections remain fail closed.
         """
 
-        now = _provider_capacity_now()
-        current_labels = self._current_implementation_provider_labels()
-        for event in reversed(self._iter_events()):
-            event_type = str(event.get("type") or "")
-            if event_type == "implementation_provider_exhausted":
-                retry_at = parse_timestamp(str(event.get("retry_at") or ""))
-                if retry_at is None:
-                    return {}
-                exhausted = {
-                    str(item).strip().lower()
-                    for item in list(event.get("providers") or [])
-                    if str(item).strip()
-                }
-                # A codex quota latch must not block goose/grok (and vice versa).
-                if exhausted and not (exhausted & current_labels):
-                    continue
-                return {
-                    "active": retry_at > now,
-                    "retry_at": retry_at.isoformat(),
-                    "retry_after_seconds": max(
-                        0.0, (retry_at - now).total_seconds()
-                    ),
-                    "providers": list(event.get("providers") or []),
-                }
-            if event_type in {"implementation_started", "implementation_finished"}:
-                return {}
-        return {}
+        states = self._provider_capacity_latch_states()
+        if not states:
+            return {}
+
+        explicit_command = self.implementation_command or os.environ.get(
+            "IMPLEMENTATION_DAEMON_COMMAND",
+            "",
+        ).strip()
+        fixed_unknown_command = False
+        if provider_families is None:
+            command_labels = _provider_labels_from_implementation_command(
+                explicit_command
+            )
+            if explicit_command:
+                provider_families = tuple(
+                    dict.fromkeys(
+                        _provider_capacity_family(label)
+                        for label in command_labels
+                    )
+                )
+                fixed_unknown_command = not provider_families
+                allow_family_fallback = False
+            else:
+                configured = (
+                    os.environ.get(
+                        IMPLEMENTATION_PROVIDER_ENV,
+                        "",
+                    ).strip().lower()
+                    or "auto"
+                )
+                if configured == "auto":
+                    provider_families = (
+                        self._auto_implementation_provider_families()
+                    )
+                    allow_family_fallback = True
+                else:
+                    provider_families = tuple(
+                        dict.fromkeys(
+                            _provider_capacity_family(label)
+                            for label in self._current_implementation_provider_labels()
+                            if label != "provider"
+                        )
+                    )
+                    allow_family_fallback = False
+        families = tuple(
+            dict.fromkeys(
+                _provider_capacity_family(item)
+                for item in (provider_families or ())
+                if _provider_capacity_family(item)
+            )
+        )
+        allow_family_fallback = bool(allow_family_fallback)
+        global_states = [
+            states[family]
+            for family in GLOBAL_PROVIDER_CAPACITY_FAMILIES
+            if family in states
+        ]
+        active_global_states = [
+            item for item in global_states if item.get("active", False)
+        ]
+        if active_global_states:
+            return self._provider_capacity_schedule_from_states(
+                active_global_states
+            )
+        if fixed_unknown_command:
+            return self._provider_capacity_schedule_from_states(
+                list(states.values())
+            )
+
+        family_states = [
+            states[family]
+            for family in families
+            if family in states
+        ]
+        if not allow_family_fallback:
+            return self._provider_capacity_schedule_from_states(
+                [*global_states, *family_states]
+            )
+        if not families:
+            return self._provider_capacity_schedule_from_states(global_states)
+
+        all_families_latched = all(
+            self._provider_family_has_active_latch(family, states)
+            for family in families
+        )
+        if all_families_latched:
+            return self._provider_capacity_schedule_from_states(
+                [
+                    item
+                    for item in family_states
+                    if item.get("active", False)
+                ]
+            )
+
+        # Preserve the expired marker only long enough for the event-driven
+        # loop to observe that a previously global stall is now due.
+        expired_due = [
+            item
+            for item in [*global_states, *family_states]
+            if not item.get("active", False)
+        ]
+        return self._provider_capacity_schedule_from_states(expired_due)
 
     def _active_provider_capacity_backoff(self) -> dict[str, Any]:
         schedule = self._provider_capacity_backoff_schedule()
+        return schedule if schedule.get("active", False) else {}
+
+    def _active_provider_capacity_backoff_for_task(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Apply task-owned provider authority before automatic fallback."""
+
+        declared = self._task_declared_implementation_provider(task)
+        if not declared:
+            return self._active_provider_capacity_backoff()
+        schedule = self._provider_capacity_backoff_schedule(
+            provider_families=(_provider_capacity_family(declared),),
+            allow_family_fallback=False,
+        )
         return schedule if schedule.get("active", False) else {}
 
     def _selectable_task_retry_schedule(self) -> dict[str, Any]:
@@ -9600,7 +9827,7 @@ class PortalImplementationDaemon:
         provider_backoff = (
             {}
             if deterministic_only
-            else self._active_provider_capacity_backoff()
+            else self._active_provider_capacity_backoff_for_task(task)
         )
         if provider_backoff:
             result = {
@@ -39150,6 +39377,19 @@ class PortalImplementationDaemon:
             "spark",
         }
         force_codex = provider in {"codex", "copilot", "openai"}
+        automatic_latches = (
+            self._provider_capacity_latch_states()
+            if provider == "auto" and not declared_provider
+            else {}
+        )
+
+        def automatic_family_allowed(family: str) -> bool:
+            return not automatic_latches or not (
+                self._provider_family_has_active_latch(
+                    family,
+                    automatic_latches,
+                )
+            )
 
         # Prefer only when the binary is actually resolvable so an auth-only
         # readiness signal does not block auto-fallback to codex/copilot.
@@ -39165,6 +39405,7 @@ class PortalImplementationDaemon:
             prefer_grok
             and grok_ready
             and _grok_binary()
+            and automatic_family_allowed("grok")
             and not force_codex
             and not force_goose_meta
         ):
@@ -39188,14 +39429,20 @@ class PortalImplementationDaemon:
             if task is not None
             else None
         )
-        if copilot and _copilot_has_auth():
+        codex_allowed = bool(codex and automatic_family_allowed("codex"))
+        copilot_allowed = bool(
+            copilot
+            and _copilot_has_auth()
+            and automatic_family_allowed("copilot")
+        )
+        if copilot_allowed:
             return _copilot_fallback_command(
-                codex=codex,
-                copilot=copilot,
+                codex=codex if codex_allowed else None,
+                copilot=str(copilot),
                 workspace_path=workspace_path,
                 codex_context_window=codex_context_window,
             )
-        if codex:
+        if codex_allowed:
             # Build codex command with full capability flags
             codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
             codex_context = (
@@ -39229,10 +39476,15 @@ class PortalImplementationDaemon:
                 cmd.extend(["-c", f"agents.max_depth={codex_max_depth}"])
             cmd.append("-")
             return cmd
-        if grok_ready:
+        if grok_ready and automatic_family_allowed("grok"):
             return _grok_cli_command(workspace_path=workspace_path)
-        if goose_meta_ready:
+        if goose_meta_ready and automatic_family_allowed("goose"):
             return _goose_meta_spark_command(workspace_path=workspace_path)
+        if provider == "auto" and automatic_latches:
+            raise RuntimeError(
+                "All available automatic implementation providers are in "
+                "capacity cooldown"
+            )
         raise RuntimeError(
             "No implementation command configured. Install the Grok Build CLI "
             "(`grok` with auth), goose (with Meta Spark credentials), codex, or "
