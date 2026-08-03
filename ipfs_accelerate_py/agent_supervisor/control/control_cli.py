@@ -7,9 +7,12 @@ identical to Python and MCP callers and avoids translating control operations
 into shell commands.
 
 Prompt-workflow commands (``workflow-preview``, ``workflow-create``,
-``restart``, ``rescue-preview``, ``rescue``) accept the same closed catalog
-parameters as Python/MCP.  Convenience flags never log raw prompt bodies and
-prefer file/stdin sources so sensitive text does not appear in process listings.
+``restart``, ``rescue-preview``, ``rescue``) and plan create/steer commands
+(``plan-create-preview``, ``plan-create``, ``plan-steer-preview``,
+``plan-steer``) accept the same closed catalog parameters as Python/MCP.
+Convenience flags never log raw prompt bodies and prefer file/stdin sources so
+sensitive text does not appear in process listings.  Previews are forced to
+dry-run; apply requires normal permit/lease/fence/idempotency/expected effects.
 """
 
 from __future__ import annotations
@@ -89,6 +92,10 @@ COMMAND_OPERATIONS: dict[str, Operation] = {
     "artifact": Operation.ARTIFACT_QUERY,
     "preview": Operation.OBJECTIVE_PREVIEW,
     "plan": Operation.PLAN,
+    "plan-create-preview": Operation.PLAN_CREATE_PREVIEW,
+    "plan-create": Operation.PLAN_CREATE_APPLY,
+    "plan-steer-preview": Operation.PLAN_STEER_PREVIEW,
+    "plan-steer": Operation.PLAN_STEER_APPLY,
     "refine": Operation.OBJECTIVE_REFINE,
     "reconcile": Operation.OBJECTIVE_RECONCILE,
     "refill": Operation.BACKLOG_REFILL,
@@ -114,6 +121,13 @@ PROMPT_WORKFLOW_CLI_COMMANDS: tuple[str, ...] = (
     "restart",
     "rescue-preview",
     "rescue",
+)
+
+PLAN_CONTROL_CLI_COMMANDS: tuple[str, ...] = (
+    "plan-create-preview",
+    "plan-create",
+    "plan-steer-preview",
+    "plan-steer",
 )
 
 # Usage-governance CLI commands (thin adapters; not Operation catalog members).
@@ -144,6 +158,15 @@ _PROMPT_SURFACE_OPERATIONS: frozenset[Operation] = frozenset(
         Operation.RESTART,
         Operation.RESCUE_PREVIEW,
         Operation.RESCUE,
+    }
+)
+
+_PLAN_SURFACE_OPERATIONS: frozenset[Operation] = frozenset(
+    {
+        Operation.PLAN_CREATE_PREVIEW,
+        Operation.PLAN_CREATE_APPLY,
+        Operation.PLAN_STEER_PREVIEW,
+        Operation.PLAN_STEER_APPLY,
     }
 )
 
@@ -350,7 +373,51 @@ def _add_request_arguments(
     )
     if operation in _PROMPT_SURFACE_OPERATIONS:
         _add_prompt_surface_arguments(parser, operation)
+    if operation in _PLAN_SURFACE_OPERATIONS:
+        _add_plan_surface_arguments(parser, operation)
     parser.set_defaults(agent_operation=operation.value)
+
+
+def _add_plan_surface_arguments(
+    parser: argparse.ArgumentParser, operation: Operation
+) -> None:
+    """Register thin plan create/steer convenience flags (closed catalog)."""
+
+    if operation in {
+        Operation.PLAN_CREATE_PREVIEW,
+        Operation.PLAN_STEER_PREVIEW,
+    }:
+        parser.add_argument(
+            "--mode",
+            help="Optional plan mode token (deterministic / model-assisted).",
+        )
+    if operation in {
+        Operation.PLAN_CREATE_APPLY,
+        Operation.PLAN_STEER_APPLY,
+    }:
+        parser.add_argument(
+            "--preview-ref",
+            dest="preview_ref",
+            help="Preview receipt reference for authorized apply.",
+        )
+        parser.add_argument(
+            "--preview-root",
+            dest="preview_root",
+            help="Preview plan root for authorized apply.",
+        )
+        parser.add_argument(
+            "--markdown-path",
+            help="Root-relative Markdown task projection path.",
+        )
+        parser.add_argument(
+            "--duckdb-path",
+            help="Root-relative DuckDB task projection path.",
+        )
+        parser.add_argument(
+            "--output-mode",
+            choices=("markdown", "duckdb", "both"),
+            help="Materialization projection mode: markdown, duckdb, or both.",
+        )
 
 
 def _add_prompt_surface_arguments(
@@ -878,6 +945,34 @@ def _resolve_prompt_source_from_args(
     return {"kind": "stdin", "content_cid": source.prompt_cid}
 
 
+def _merge_plan_convenience_parameters(
+    args: argparse.Namespace,
+    parameters: MutableMapping[str, Any],
+) -> None:
+    """Fold thin plan create/steer convenience flags into catalog parameters."""
+
+    def _set(key: str, value: Any) -> None:
+        if key in parameters:
+            raise AgentCLIError(
+                f"{key} was supplied both directly and in --parameters-json"
+            )
+        parameters[key] = value
+
+    mode = getattr(args, "mode", None)
+    if mode is not None:
+        _set("mode", str(mode))
+    for key in (
+        "preview_ref",
+        "preview_root",
+        "markdown_path",
+        "duckdb_path",
+        "output_mode",
+    ):
+        value = getattr(args, key, None)
+        if value is not None:
+            _set(key, str(value))
+
+
 def _merge_prompt_convenience_parameters(
     args: argparse.Namespace,
     parameters: MutableMapping[str, Any],
@@ -1064,7 +1159,9 @@ def build_agent_request(
         _merge_prompt_convenience_parameters(
             args, parameters, stdin_stream=stdin_stream
         )
-    elif "prompt_source" in parameters:
+    if operation in _PLAN_SURFACE_OPERATIONS:
+        _merge_plan_convenience_parameters(args, parameters)
+    elif "prompt_source" in parameters and operation not in _PROMPT_SURFACE_OPERATIONS:
         # Non-prompt operations must not smuggle prompt bodies through params.
         parameters["prompt_source"] = _normalize_prompt_source(
             parameters["prompt_source"]
@@ -1090,7 +1187,13 @@ def build_agent_request(
     authorization = _authorization(args)
     dry_run = bool(args.dry_run)
     # Preview operations are always dry-run proposals.
-    if operation in {Operation.WORKFLOW_PREVIEW, Operation.RESCUE_PREVIEW}:
+    if operation in {
+        Operation.WORKFLOW_PREVIEW,
+        Operation.RESCUE_PREVIEW,
+        Operation.PLAN_CREATE_PREVIEW,
+        Operation.PLAN_STEER_PREVIEW,
+        Operation.OBJECTIVE_PREVIEW,
+    }:
         dry_run = True
     if operation in MUTATION_OPERATIONS and not dry_run:
         direct_guard_arguments = (

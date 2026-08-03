@@ -4429,7 +4429,22 @@ class SupervisorControlService:
         self._state_roots = _normalize_allowlist(states, label="state allowlist")
         if backend is not None and handlers:
             raise ValueError("supply backend or handlers, not both")
-        self._backend = backend or RepositorySupervisorBackend(handlers)
+        if backend is None:
+            # Default control service binds live create/steer (+ workflow alias)
+            # handlers so those operations are no longer reported unavailable.
+            # Domain imports happen only at execute time (provider-free import).
+            from ..prompt.plan_supervisor_service import (
+                build_default_plan_control_handlers,
+            )
+
+            merged_handlers: dict[Any, Any] = dict(
+                build_default_plan_control_handlers()
+            )
+            if handlers:
+                merged_handlers.update(dict(handlers))
+            self._backend = RepositorySupervisorBackend(merged_handlers)
+        else:
+            self._backend = backend
         self._lease_validator = lease_validator
         self._authorization_validator = authorization_validator
         self._identity_validator = identity_validator
@@ -5639,6 +5654,18 @@ class SupervisorControlService:
 
     def plan(self, request: OperationRequest) -> OperationResult:
         return self._operation(Operation.PLAN, request)
+
+    def plan_create_preview(self, request: OperationRequest) -> OperationResult:
+        return self._operation(Operation.PLAN_CREATE_PREVIEW, request)
+
+    def plan_create_apply(self, request: OperationRequest) -> OperationResult:
+        return self._operation(Operation.PLAN_CREATE_APPLY, request)
+
+    def plan_steer_preview(self, request: OperationRequest) -> OperationResult:
+        return self._operation(Operation.PLAN_STEER_PREVIEW, request)
+
+    def plan_steer_apply(self, request: OperationRequest) -> OperationResult:
+        return self._operation(Operation.PLAN_STEER_APPLY, request)
 
     def workflow_preview(self, request: OperationRequest) -> OperationResult:
         return self._operation(Operation.WORKFLOW_PREVIEW, request)
@@ -7755,6 +7782,16 @@ class SupervisorClient:
     ) -> OperationResult:
         return self._read(Operation.PLAN, parameters, **values)
 
+    def plan_create_preview(
+        self, parameters: Union[Mapping[str, Any], None] = None, **values: Any
+    ) -> OperationResult:
+        return self._read(Operation.PLAN_CREATE_PREVIEW, parameters, **values)
+
+    def plan_steer_preview(
+        self, parameters: Union[Mapping[str, Any], None] = None, **values: Any
+    ) -> OperationResult:
+        return self._read(Operation.PLAN_STEER_PREVIEW, parameters, **values)
+
     def workflow_preview(
         self, parameters: Union[Mapping[str, Any], None] = None, **values: Any
     ) -> OperationResult:
@@ -7779,6 +7816,12 @@ class SupervisorClient:
         return self._authorized(Operation.BACKLOG_REFILL, request)
 
     refill = backlog_refill
+
+    def plan_create_apply(self, request: OperationRequest) -> OperationResult:
+        return self._authorized(Operation.PLAN_CREATE_APPLY, request)
+
+    def plan_steer_apply(self, request: OperationRequest) -> OperationResult:
+        return self._authorized(Operation.PLAN_STEER_APPLY, request)
 
     def workflow_materialize(
         self, request: OperationRequest

@@ -9,6 +9,13 @@ Prompt bodies are transient inputs.  A :class:`PromptSource` serializes only a
 CID, byte count, source kind, redacted metadata, and (where applicable) a
 bounded path or opaque artifact handle.  Consequently prompt text and secrets
 cannot accidentally become durable workflow receipts.
+
+PDR-032: ``workflow_preview`` / ``workflow_materialize`` remain first-class
+catalog operations (identity-preserving aliases).  They share the create-plan
+pipeline through :mod:`plan_supervisor_service` without redefining authority.
+Use :func:`get_plan_supervisor_service` for the shared facade; allowlists and
+mutation gates stay in the control plane and are never widened by prompt or
+repository text.
 """
 
 from __future__ import annotations
@@ -6132,6 +6139,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     return run_prompt_workflow_cli(argv)
 
 
+def get_plan_supervisor_service() -> Any:
+    """Lazy accessor for the shared PlanSupervisorService@1 control facade.
+
+    Import is deferred so this contracts module remains provider-free at import
+    time.  Workflow alias identity is preserved by the control catalog; this
+    helper only returns the shared create/steer service used by Python/CLI/MCP.
+    """
+
+    from .plan_supervisor_service import (
+        get_plan_supervisor_service as _get,
+    )
+
+    return _get()
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
 
@@ -6235,6 +6257,7 @@ __all__ = [
     "build_prompt_workflow_arg_parser",
     "canonical_prompt_workflow_bytes",
     "decode_prompt_workflow_request",
+    "get_plan_supervisor_service",
     "main",
     "prompt_workflow_cid",
     "run_prompt_workflow_cli",
