@@ -1,12 +1,12 @@
 # Documentation drift audit (2026-08)
 
-**Status:** frozen current-tree inventory (Wave 0 evidence)  
-**Program:** `ipfs-accelerate-documentation-refresh-v1`  
-**Task:** `DOC-001` / goal `DOC-G011`  
-**Audit date (UTC):** 2026-08-03  
-**Tree under audit (HEAD):** `c30aa28fc1696ef6216b1b67310a10a1ece104a7`  
-**Plan baseline commit:** `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15`  
-  (`Fix scoped bundle retry and receipt draining`, 2026-08-03)  
+**Status:** frozen current-tree inventory (Wave 0 evidence)
+**Program:** `ipfs-accelerate-documentation-refresh-v1`
+**Task:** `DOC-001` / goal `DOC-G011`
+**Audit date (UTC):** 2026-08-03
+**Tree under audit (HEAD):** `df284b01dc66e448aaef3fae66930681ddd8e689`
+**Plan baseline commit:** `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15`
+  (`Fix scoped bundle retry and receipt draining`, 2026-08-03)
 **Published documentation baselines named in navigation:**
 
 | Marker | Source |
@@ -19,6 +19,12 @@ It records what the checked-out tree *actually contains*, which maintained
 pages disagree with that tree, and which later `DOC-*` tasks own the fix.
 It is **not** an architecture guide and does **not** mark any subsystem
 “done.”
+
+**Required coverage (acceptance map):** prompt-entrypoint primitives; contract
+assurance; **merge-versus-acceptance**; model catalog; endpoint usage;
+CID/backend semantics; MCP compatibility; cross-repository changes;
+incorrect module/test paths; installation case collision. Old board status
+is never treated as current behavior authority.
 
 ## Authority and non-authority
 
@@ -73,11 +79,14 @@ test -f ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion
 git diff --check
 ```
 
-Between `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15` and HEAD there is one
-documentation-program commit (the refresh plan, objectives, and board). The
-behavioral drift described below is against the **July published baselines**
-and the **current tree at baseline/HEAD**, not against a fictional clean
-pre-supervisor tree.
+Between `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15` and this HEAD the
+documentation-program commits include the refresh plan/objectives/board
+(`c30aa28fc`), Wave 0 guide conventions (`DOC-003`), lifecycle policy
+(`DOC-002`), and the first freeze of this audit (`DOC-001`). Those peer
+Wave 0 files are **not** behavior authority for product runtime claims.
+The behavioral drift described below is against the **July published
+baselines** and the **current source tree**, not against a fictional clean
+pre-supervisor tree and not against ASE/AICAT board status rows.
 
 ## Tree shape at audit time (inventory)
 
@@ -86,10 +95,10 @@ Approximate maintained Markdown volume on this checkout:
 | Area | Role | ~`.md` count |
 | --- | --- | --- |
 | `docs/guides/` | Task-oriented user/operator journeys | 121 |
-| `docs/architecture/` | Plans, hubs, objective heaps, boards, some current architecture | 99 |
+| `docs/architecture/` | Plans, hubs, objective heaps, boards, some current architecture | 100 |
 | `docs/archive/` | Explicitly historical | 67 |
 | `docs/development_history/` | Delivery/session history | 60 |
-| `docs/features/`, `docs/api/`, `docs/project/`, top-level `docs/*.md` | Mixed current / historical / migration | remainder of ~467 total |
+| `docs/features/`, `docs/api/`, `docs/project/`, top-level `docs/*.md` | Mixed current / historical / migration | remainder of ~470 total |
 
 Code surfaces that grew after the July documentation baselines and still lack
 matching *maintained architecture guides* (plans exist; product guides do not):
@@ -120,18 +129,21 @@ fix. They do not claim that task has run.
 
 ## Finding 1 — Installation case collision (P0)
 
-**Symptom.** Two distinct tracked files differ only by case:
+**Symptom.** Two distinct tracked files differ only by case (plus a third
+compatibility path):
 
-| Path | Blob (this tree) | Content role |
-| --- | --- | --- |
-| `docs/guides/getting-started/installation.md` | `8e18aa3693445b8c986ee31fb8fc773c5e1856ec` | Maintained installation guide (~172 lines) |
-| `docs/guides/getting-started/INSTALLATION.md` | `321fea6a90680d466beeed5dc4d2e1d833af8b6e` | Stub redirect to `installation.md` (~736 lines of legacy still present as alternate blob history; current file is a short “moved” stub) |
-| `docs/guides/getting-started/INSTALLATION_GUIDE.md` | (third path) | Compatibility pointer to `installation.md` |
+| Path | Blob (this tree) | Lines | Content role |
+| --- | ---: | ---: | --- |
+| `docs/guides/getting-started/installation.md` | `8e18aa3693445b8c986ee31fb8fc773c5e1856ec` | 172 | Maintained installation guide (canonical) |
+| `docs/guides/getting-started/INSTALLATION.md` | `321fea6a90680d466beeed5dc4d2e1d833af8b6e` | 736 | Four-line “This document moved” notice **followed by the full legacy installation body** (still present; not a short stub) |
+| `docs/guides/getting-started/INSTALLATION_GUIDE.md` | `0ce77664ad1324c93fe81ef165a79803c098c779` | 9 | Compatibility pointer to `installation.md` |
 
 On case-insensitive filesystems (macOS default, Windows), Git cannot
 faithfully materialize both `installation.md` and `INSTALLATION.md`. Checkout
 behavior is platform-dependent; agents and humans can silently edit the wrong
-file.
+file or see only one of the two blobs. The uppercase file’s retained legacy
+body also still cites paths such as `python -m pytest tests/` (wrong suite
+root; live suites are under `test/`).
 
 **Evidence that the program already expects removal of the uppercase file:**
 `DOC-021` validation in the operator board includes
@@ -141,7 +153,7 @@ file.
 (also linked from `docs/INDEX.md`, `docs/README.md`, and
 `DOCUMENTATION_CURRENT_STATE.md`).
 
-**Owner:** `DOC-021` (installation/quickstart refresh).  
+**Owner:** `DOC-021` (installation/quickstart refresh).
 **Do not** treat either filename as proof of install correctness; verify
 against `pyproject.toml` extras and console scripts.
 
@@ -301,7 +313,10 @@ lifecycle rules in `DOC-002`.
 
 ---
 
-## Finding 6 — Merge versus acceptance (P0)
+## Finding 6 — Merge-versus-acceptance (P0)
+
+**Topic name (acceptance):** merge-versus-acceptance — merge evidence is not
+acceptance authority.
 
 **Source of truth:**
 `ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py`
@@ -311,10 +326,12 @@ The module docstring states the binding invariant:
 - An implementation commit, merge-queue status, or Git ancestry relationship
   is evidence that **code landed**.
 - **None** of those facts authorizes task-board completion.
-- Acceptance states include `implemented_merged_but_pending`,
-  `authoritatively_completed`, and `acceptance_reopened`.
-- Gate kinds include `merge`, `freshness`, `semantic`, `proof`,
-  `provider_review`, and `deterministic_only`.
+- Acceptance states (constants on this tree):
+  - `implemented_merged_but_pending` (`ACCEPTANCE_STATE_MERGED_PENDING`)
+  - `authoritatively_completed` (`ACCEPTANCE_STATE_AUTHORITATIVE`)
+  - `acceptance_reopened` (`ACCEPTANCE_STATE_REOPENED`)
+- Gate kinds (`AUTHORITATIVE_COMPLETION_GATE_KINDS`): `merge`, `freshness`,
+  `semantic`, `proof`, `provider_review`, `deterministic_only`.
 
 Supporting surfaces: `merge/merge_resolver.py`, `merge/merge_queue.py`,
 `validation/proposal_validation.py`, tests such as
@@ -382,16 +399,17 @@ user-facing notes in `DOC-023`/`DOC-025` as needed.
 
 ## Finding 9 — CID / backend semantics (P1)
 
-**Source anchors on this tree:**
+**Source anchors on this tree** (paths under `ipfs_accelerate_py/` unless noted):
 
 | Concern | Path |
 | --- | --- |
-| Supervisor coordination CIDs | `entrypoints/verified_ipld_backend.py` (strict CIDv1, sha2-256, raw/dag-json; HF synthetic CIDs not admitted) |
+| Supervisor coordination CIDs | `agent_supervisor/entrypoints/verified_ipld_backend.py` (strict CIDv1, sha2-256, raw/dag-json; HF synthetic CIDs not admitted) |
 | Multiformats helpers | `agent_supervisor/multiformats_identity.py`, `ipfs_multiformats.py` |
 | Backend router roles | `ipfs_backend_router.py` (filesystem, HF cache, `ipfs_kit_py`, Kubo-compatible) |
 | MCP artifacts | `mcp_server/cid_artifacts.py` |
 | MCP++ CID/UCAN | `mcplusplus_module/cid_ucan.py` |
 | Catalog/usage content IDs | `model_catalog/identity.py`, `endpoint_usage/identity.py` (`canonical_cid`, `content_cid`) |
+| Run/state persistence (related) | `agent_supervisor/entrypoints/run_registry.py`, state resolvers; not a substitute for a distributed-runtime guide |
 
 **Doc drift:**
 
@@ -527,8 +545,10 @@ after architecture and journey tasks land. Until then, treat July dates as
 3. Replace flat supervisor module basenames with package-qualified paths in
    overview and objective-graph notes.
 4. Always state MCP canonical (`mcp_server`) vs facade (`mcp`) in operator docs.
-5. Never use ASE/board `completed` as proof of presence; check the tree.
-6. Do not collapse merge into acceptance; cite authoritative completion states.
+5. Never use ASE/board `completed` as proof of presence; check the tree
+   (board status is not current behavior authority).
+6. Enforce merge-versus-acceptance: do not collapse merge into acceptance;
+   cite authoritative completion states and gate kinds.
 7. Disclose version disagreement (`0.0.45` packaging vs `0.4.0` `__version__`)
    instead of quoting one number as universal.
 
