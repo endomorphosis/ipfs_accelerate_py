@@ -70,6 +70,9 @@ logger = logging.getLogger(__name__)
 COORDINATION_COMPACTION_INTERVAL_CYCLES = 10
 COORDINATION_COMPACTION_MIN_BYTES = 64 * 1024 * 1024
 SCHEDULER_GC_INTERVAL_CYCLES = 10
+_TASK_ATTEMPT_LIMIT_IDLE_REASON = (
+    "all_selectable_ready_tasks_reached_max_task_attempts"
+)
 BUNDLE_TASKBOARD_INPUT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@1"
 )
@@ -2982,6 +2985,34 @@ def _lane_launch_policy_error(lane: BundleLaneSpec) -> str:
     return ""
 
 
+def _receipt_drained_execution_slice(lane: BundleLaneSpec) -> bool:
+    """Return whether durable member receipts drained the entire lane slice."""
+
+    payload = lane.queue_payload
+    if (
+        lane.task_ids
+        or not isinstance(payload, dict)
+        or payload.get("claimable") is not False
+        or payload.get("external_active_member_fence") is True
+        or "execution_slice_task_cids" not in payload
+        or "execution_slice_task_ids" not in payload
+        or _string_list(payload.get("execution_slice_task_cids"))
+        or _string_list(payload.get("execution_slice_task_ids"))
+    ):
+        return False
+    completed_ids = set(_string_list(payload.get("completed_member_task_ids")))
+    completed_cids = set(_string_list(payload.get("completed_member_task_cids")))
+    tasks = _mapping_list(payload.get("tasks"))
+    if not tasks or not (completed_ids or completed_cids):
+        return False
+    return all(
+        str(task.get("task_id") or "") in completed_ids
+        or str(task.get("canonical_task_cid") or task.get("task_cid") or "")
+        in completed_cids
+        for task in tasks
+    )
+
+
 def launch_bundle_lanes(
     lanes: Sequence[BundleLaneSpec],
     *,
@@ -3920,6 +3951,61 @@ class DynamicBundleScheduler:
             for task in selected
         )
 
+    @staticmethod
+    def _receipt_backed_attempt_limit_disposition(
+        lane: BundleLaneSpec,
+        projection: Mapping[str, Any],
+    ) -> str:
+        """Return ``blocked`` for an idle slice already fenced by its wrapper.
+
+        The implementation daemon and the bundle coordinator have independent
+        attempt budgets.  Once a scoped wrapper publishes a durable blocked
+        receipt because the daemon exhausted its task attempts, later
+        coordination attempts may consume their remaining budget without
+        spawning the same exhausted daemon again.  Requiring both the receipt
+        and exact idle state keeps an ordinary transiently idle worker alive.
+        """
+
+        release_reason = str(projection.get("release_reason") or "")
+        if not (
+            release_reason.startswith("receipt:")
+            and release_reason.endswith(":blocked")
+        ):
+            return ""
+        if not lane.task_ids:
+            return ""
+        state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ""
+        if not isinstance(state, Mapping):
+            return ""
+        if (
+            str(state.get("selection_idle_reason") or "")
+            != _TASK_ATTEMPT_LIMIT_IDLE_REASON
+            or state.get("implementation_in_progress") is not False
+            or str(state.get("active_task_id") or "").strip()
+            or state.get("selectable_ready_count") != 0
+        ):
+            return ""
+        statuses = state.get("task_statuses")
+        if not isinstance(statuses, Mapping):
+            return ""
+        expected_ids = {
+            str(task_id).strip()
+            for task_id in lane.task_ids
+            if str(task_id).strip()
+        }
+        terminal_or_limited = {"ready", "complete", "completed", "blocked", "on_hold"}
+        if not expected_ids or any(
+            str(statuses.get(task_id) or "").strip().lower()
+            not in terminal_or_limited
+            for task_id in expected_ids
+        ):
+            return ""
+        return "blocked"
+
     def _disposition(self, lane: BundleLaneSpec) -> str:
         value = self._lane_disposition(lane)
         if value is True:
@@ -4547,8 +4633,23 @@ class DynamicBundleScheduler:
                     if self._projection_state(item) == "accepted"
                     and str(item.get("task_cid") or "")
                 }
+                # Receipt overlays intentionally leave fully drained bundle
+                # records in discovery so they remain visible to planning, but
+                # those records must never be registered, claimed, or launched.
+                # Other non-launchable records (for example an external active
+                # fence) remain registered so their blocked state is observable.
                 registered: list[BundleLaneSpec] = []
-                for lane in (item for item in discovered if item.queue_payload):
+                receipt_drained_completion_task_cids: set[str] = set()
+                for lane in (
+                    item
+                    for item in discovered
+                    if item.queue_payload
+                    and not (
+                        _receipt_drained_execution_slice(item)
+                        and self._disposition(item) != "completed"
+                    )
+                ):
+                    receipt_drained = _receipt_drained_execution_slice(lane)
                     accepted = accepted_by_task_cid.get(lane.task_cid)
                     if accepted is not None:
                         # Preserve the immutable payload of work that is still
@@ -4564,27 +4665,47 @@ class DynamicBundleScheduler:
                         )
                         continue
                     adapted = coordinator.register_bundle(lane.queue_payload)
-                    registered.append(
-                        replace(
-                            lane,
-                            task_cid=str(adapted["task_cid"]),
-                            goal_cid=str(adapted["goal_cid"]),
-                            subgoal_cid=str(adapted["subgoal_cid"]),
-                        )
+                    registered_lane = replace(
+                        lane,
+                        task_cid=str(adapted["task_cid"]),
+                        goal_cid=str(adapted["goal_cid"]),
+                        subgoal_cid=str(adapted["subgoal_cid"]),
                     )
+                    registered.append(registered_lane)
+                    if receipt_drained and self._disposition(registered_lane) == "completed":
+                        receipt_drained_completion_task_cids.add(
+                            registered_lane.task_cid
+                        )
 
                 for lane in registered:
-                    if lane.task_cid in self._running or self._disposition(lane):
+                    if lane.task_cid in self._running:
+                        continue
+                    disposition = self._disposition(lane)
+                    if disposition:
+                        if (
+                            disposition == "completed"
+                            and lane.task_cid
+                            in receipt_drained_completion_task_cids
+                        ):
+                            coordinator.requeue_exhausted_blocked(
+                                lane.task_cid,
+                                reason="receipt_drained_completion",
+                            )
                         continue
                     if self._authoritative_lane_has_open_work(lane):
                         coordinator.requeue_completed(
                             lane.task_cid,
                             reason="bundle_board_reopened",
                         )
-                    coordinator.requeue_exhausted_blocked(
-                        lane.task_cid,
-                        reason="bundle_board_reopened",
-                    )
+                    current_projection = coordinator.task_state(lane.task_cid) or {}
+                    if not self._receipt_backed_attempt_limit_disposition(
+                        lane,
+                        current_projection,
+                    ):
+                        coordinator.requeue_exhausted_blocked(
+                            lane.task_cid,
+                            reason="bundle_board_reopened",
+                        )
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
                     *self._running.keys(),
@@ -4594,6 +4715,11 @@ class DynamicBundleScheduler:
                     task_cids=current_task_cids,
                     include_claimability=True,
                 )
+                decision_projection_by_task_cid = {
+                    str(item.get("task_cid") or ""): item
+                    for item in decision_projection
+                    if str(item.get("task_cid") or "")
+                }
                 decision_snapshot = self._build_scheduler_snapshot(registered, decision_projection)
                 registered_by_task_cid = {
                     lane.task_cid: lane for lane in registered
@@ -4627,7 +4753,13 @@ class DynamicBundleScheduler:
                     for running in self._running.values()
                 }
                 dispositions = {
-                    lane.task_cid: self._disposition(lane)
+                    lane.task_cid: (
+                        self._disposition(lane)
+                        or self._receipt_backed_attempt_limit_disposition(
+                            lane,
+                            decision_projection_by_task_cid.get(lane.task_cid, {}),
+                        )
+                    )
                     for lane in registered
                     if lane.task_cid not in self._running and lane.task_cid in snapshot_ready
                     and lane.bundle_key not in running_by_bundle_key

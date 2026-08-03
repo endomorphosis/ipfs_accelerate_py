@@ -1220,6 +1220,89 @@ def test_receipt_drained_slice_is_not_registered_or_relaunched(
         assert coordinator.list_tasks() == []
 
 
+def test_receipt_drained_completion_settles_exhausted_blocked_bundle(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    shard = repo / "bundles" / "t-1.todo.md"
+    shard.parent.mkdir(parents=True)
+    shard.write_text(
+        "## T-1 Immutable source task\n\n"
+        "- Status: todo\n",
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+    discovered = scheduler._plan()[0]
+    member = discovered.queue_payload["tasks"][0]
+    member_cid = str(member["canonical_task_cid"])
+
+    with LeaseCoordinator(scheduler.coordination_path) as coordinator:
+        registered = coordinator.register_bundle(discovered.queue_payload)
+        discovered = replace(
+            discovered,
+            task_cid=str(registered["task_cid"]),
+            goal_cid=str(registered["goal_cid"]),
+            subgoal_cid=str(registered["subgoal_cid"]),
+        )
+        for expected_attempt in range(1, 4):
+            grant = coordinator.claim_ready(
+                scheduler.claimant_did,
+                requested_lease_ms=5_000,
+                eligible_task_cids=(discovered.task_cid,),
+            )
+            assert grant is not None
+            assert grant.attempt == expected_attempt
+            coordinator.receipt(
+                grant,
+                status="failed",
+                failure_class="blocked",
+            )
+        assert coordinator.task_state(discovered.task_cid)["state"] == "blocked"
+
+    materialize_bundle_lane_taskboard(discovered, repo_root=repo)
+    assert discovered.runtime_todo_path is not None
+    runtime_text = discovered.runtime_todo_path.read_text(encoding="utf-8")
+    discovered.runtime_todo_path.write_text(
+        runtime_text.replace("- Status: todo", "- Status: completed"),
+        encoding="utf-8",
+    )
+    drained = replace(
+        discovered,
+        task_ids=[],
+        claimable=False,
+        queue_payload={
+            **discovered.queue_payload,
+            "completed_member_task_cids": [member_cid],
+            "completed_member_task_ids": ["T-1"],
+            "ready_member_task_cids": [],
+            "ready_member_task_ids": [],
+            "execution_slice_task_cids": [],
+            "execution_slice_task_ids": [],
+            "claimable": False,
+        },
+    )
+    scheduler._plan = lambda: [drained]  # type: ignore[method-assign]
+
+    manifest = scheduler.reconcile_once()
+
+    assert launcher.starts == []
+    assert manifest["counts"]["active"] == 0
+    assert manifest["counts"]["blocked"] == 0
+    assert manifest["counts"]["completed"] == 1
+    assert manifest["scheduler_decisions"][0]["decision"] == "settled"
+    assert manifest["scheduler_decisions"][0]["reason"] == "completed"
+    with LeaseCoordinator(scheduler.coordination_path) as coordinator:
+        state = coordinator.task_state(discovered.task_cid)
+        receipts = coordinator.list_receipts(discovered.task_cid)
+    assert state is not None
+    assert state["state"] == "completed"
+    assert len(receipts) == 4
+    assert receipts[-1]["receipt"]["status"] == "succeeded"
+
+
 def test_completed_bundle_reopens_when_authoritative_board_has_work(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"
