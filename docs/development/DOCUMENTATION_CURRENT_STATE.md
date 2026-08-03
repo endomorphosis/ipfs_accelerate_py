@@ -17,8 +17,9 @@ do not exist.
 [DOCUMENTATION_VALIDATION_2026_08.md](DOCUMENTATION_VALIDATION_2026_08.md);
 `docs/README.md`; `docs/INDEX.md`; `pyproject.toml`; live package layout.
 **Last verified:** 2026-08-03; navigation and maintained-surface inventory
-revalidated after integrating `origin/main`. Exact merge identity and current
-test results:
+revalidated after integrating `origin/main`, plus a post-closeout revalidation
+of the AI Service Catalog and HF model-server Reference pages and a fix for
+stale unified-CLI help examples. Exact merge identity and current test results:
 [DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md](DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md).
 **Freshness triggers:** new Current guide; ADR accept/supersede; package or
 entrypoint renames; top-level navigation changes; packaging version
@@ -50,7 +51,7 @@ markers; their remaining inventory and routing classifications are unchanged.
 | Direct AI CLI (`ipfs_accelerate`) | `ipfs_accelerate_py/ai_inference_cli.py` | Inspect `ipfs_accelerate --help` (separate parser) |
 | Canonical MCP runtime | `ipfs_accelerate_py/mcp_server/` | [MCP setup](../guides/MCP_SETUP_GUIDE.md), [MCP runtime](../architecture/MCP_RUNTIME.md) |
 | MCP compatibility facade | `ipfs_accelerate_py/mcp/` | Labelled in MCP guides; not the primary operator entry |
-| HF model server | `ipfs_accelerate_py/hf_model_server/` | [HF model server](../features/hf-model-server/README.md) (**Reference**; revalidation pending) |
+| HF model server | `ipfs_accelerate_py/hf_model_server/` | [HF model server](../features/hf-model-server/README.md) (**Reference**; revalidated 2026-08-03) |
 | Model catalog / routing | `model_catalog/`, `endpoint_usage/`, routers | [MODEL_SERVICE_ROUTING.md](../architecture/MODEL_SERVICE_ROUTING.md) |
 | Agent supervisor | `ipfs_accelerate_py/agent_supervisor/` | [Supervisor guide](../guides/AGENT_SUPERVISOR_GUIDE.md), [hub](../architecture/agent_supervisor/README.md) |
 | IPFS / P2P | `ipfs_backend_router.py`, `p2p_tasks/`, workflow modules | [DISTRIBUTED_RUNTIME.md](../architecture/DISTRIBUTED_RUNTIME.md), [P2P guide](../guides/p2p/README.md) |
@@ -105,7 +106,7 @@ code win.
 | [GLOSSARY.md](../architecture/GLOSSARY.md) | Shared product vocabulary |
 | [AGENT_SUPERVISOR_PHILOSOPHY.md](../architecture/AGENT_SUPERVISOR_PHILOSOPHY.md), [PACKAGE_MAP.md](../architecture/agent_supervisor/PACKAGE_MAP.md), [PROGRAMS.md](../architecture/agent_supervisor/PROGRAMS.md) | Supervisor orientation |
 | [AGENT_SUPERVISOR_ARCHITECTURE.md](../architecture/AGENT_SUPERVISOR_ARCHITECTURE.md) | Deep architecture map |
-| [AI_SERVICE_CATALOG.md](../architecture/AI_SERVICE_CATALOG.md) | Catalog identity plane; metadata revalidation pending |
+| [AI_SERVICE_CATALOG.md](../architecture/AI_SERVICE_CATALOG.md) | Catalog identity plane; schema/precedence revalidated 2026-08-03 |
 | [decisions/](../architecture/decisions/README.md) | Accepted ADRs (*why*, not sole *what*) |
 | [NESTED_PACKAGES.md](../NESTED_PACKAGES.md) | Gitlink inventory |
 
@@ -132,14 +133,17 @@ pages must **name both sides** until a code/test task reconciles them.
 | Blocker | Evidence | Owner |
 | --- | --- | --- |
 | Package version string disagreement | `pyproject.toml` / `setup.py` report `0.0.45`; `ipfs_accelerate_py.__version__` is `0.4.0` | packaging / package maintainers |
-| Stale unified-CLI help examples | The live `ipfs-accelerate` choices exclude `inference`, `queue`, and `network`, but its help epilog still advertises all three; each exits 2 as an invalid choice | CLI maintainers |
 | Optional capability stacks | CUDA, IPFS, P2P, external LLMs, provers may be absent after a successful import | subsystem maintainers; docs use capability language |
 | Nested product gitlinks | Submodule / gitlink trees may be empty offline | integration maintainers; [NESTED_PACKAGES.md](../NESTED_PACKAGES.md) |
 | No full-tree link CI gate | Weekly documentation-maintenance workflow is not a required PR link checker | documentation governance / CI (see [DOCUMENTATION_MAINTENANCE.md](DOCUMENTATION_MAINTENANCE.md)) |
 
+**Resolved (2026-08-03 revalidation):** the unified CLI module docstring and
+parser epilog no longer advertise unregistered `inference` / `queue` /
+`network` examples. Historical docs and completion reports may still mention
+those strings; the live `choices=` set rejects them.
+
 The second console script, `ipfs_accelerate`, intentionally uses the separate
-`ai_inference_cli:main` parser. That split is a documented interface boundary,
-not evidence that the stale examples in the unified CLI are valid.
+`ai_inference_cli:main` parser. That split is a documented interface boundary.
 Documentation tasks must not invent a single version string or merge the two
 CLI surfaces in prose.
 

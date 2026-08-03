@@ -7,7 +7,7 @@
 `ipfs_accelerate_py/cli.py`;
 `ipfs_accelerate_py/agent_supervisor/control/control_cli.py`; CLI contract tests
 under `test/`
-**Last-verified:** 2026-08-03 @ b128cceef
+**Last-verified:** 2026-08-03 @ 2bf2cebd3 (CLI epilog/docstring revalidated after help-text fix)
 
 The supported product entry point is `ipfs-accelerate`. The module form is
 useful when testing the checkout directly or when the console script is not on
@@ -171,7 +171,7 @@ The current parser does **not** register top-level `inference`, `hardware`,
 `workflow`, `network`, `queue`, or `p2p` groups. Invoking them fails with an
 invalid-choice error listing only the groups in the table above.
 
-Some older guides and the CLI epilog still mention examples such as:
+Historical guides and completion reports may still mention examples such as:
 
 ```text
 ipfs-accelerate inference generate --prompt "Hello world"
@@ -179,7 +179,7 @@ ipfs-accelerate queue status
 ipfs-accelerate network status
 ```
 
-Treat those as stale help text, not as supported entry points. Use:
+Those top-level groups are **not** registered. Prefer:
 
 - AI groups (`text`, `audio`, `vision`, …) or the Python routers for inference-like work
 - `mcp` for service/dashboard operation (including optional queue/P2P hosting behind MCP flags and env)
@@ -187,7 +187,9 @@ Treat those as stale help text, not as supported entry points. Use:
 
 The live source of truth is `ipfs-accelerate --help` (or
 `python -m ipfs_accelerate_py.cli --help`) plus the
-[documentation index](../../INDEX.md).
+[documentation index](../../INDEX.md). The unified CLI module docstring and
+parser epilog were aligned to registered groups on the post-DOC-028 revalidation
+pass so `--help` examples no longer advertise the removed top-level names.
 
 ## Related documentation
 

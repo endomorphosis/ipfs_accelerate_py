@@ -214,11 +214,11 @@ state. Use `ipfs-accelerate models --help` for cold parser discovery. Catalog
 output does not prove that a provider, credential, network service, or model
 weight is available.
 
-The parser epilog still mentions historical examples such as
-`ipfs-accelerate inference …`, `queue …`, and `network …`. Those strings are
-**not** registered command groups; the live `choices=` set rejects them. Use
-the groups listed above, the MCP server, or Python APIs for those capabilities.
-Full CLI reference: [CLI guide](../guides/cli/README_CLI.md).
+Historical prose may still mention `ipfs-accelerate inference …`, `queue …`,
+or `network …`. Those strings are **not** registered command groups; the live
+`choices=` set rejects them. The unified CLI epilog now shows only registered
+examples. Use the groups listed above, the MCP server, or Python APIs for those
+capabilities. Full CLI reference: [CLI guide](../guides/cli/README_CLI.md).
 
 ## MCP server
 

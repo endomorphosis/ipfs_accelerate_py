@@ -2,18 +2,17 @@
 """
 IPFS Accelerate CLI Tool
 
-This is the main CLI tool for IPFS Accelerate that provides a unified interface
-for all functionality including MCP server management, inference operations,
-file operations, and more.
+Unified hyphenated entry point (`ipfs-accelerate`) for MCP, agent-supervisor
+control, modality helpers, and model-manager operations. The live top-level
+groups are registered in `main()`; invoke `--help` for the authoritative list.
 
 Usage:
     ipfs-accelerate mcp start               # Start MCP server
     ipfs-accelerate mcp dashboard           # Start MCP server dashboard
     ipfs-accelerate mcp status              # Check MCP server status
-    ipfs-accelerate inference generate      # Run text generation
-    ipfs-accelerate files add               # Add files to IPFS
-    ipfs-accelerate network status          # Check network status
-    ipfs-accelerate models list             # List available models
+    ipfs-accelerate agent capabilities --help
+    ipfs-accelerate text --ai-help          # Text modality command tree
+    ipfs-accelerate models list --output-json
     ipfs-accelerate --help                  # Show help for all commands
 """
 
@@ -2592,10 +2591,9 @@ Examples:
   ipfs-accelerate agent pause --request-file authorized-pause.json --output-json
   ipfs-accelerate mcp start --dashboard --open-browser
   ipfs-accelerate mcp status
-  ipfs-accelerate inference generate --prompt "Hello world"
+  ipfs-accelerate text --ai-help
   ipfs-accelerate models list --output-json
-  ipfs-accelerate queue status
-  ipfs-accelerate network status
+  ipfs-accelerate --output-json models search "embedding"
             """
         )
         
