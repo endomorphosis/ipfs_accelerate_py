@@ -8065,8 +8065,10 @@ def _run_semantic_lane_certifiers_with_prebuilt(
         if eligible_live_tool_ids:
             entry["evidence_class"] = "live_specialized_semantic_receipt"
         elif eligible_vendor_tool_ids:
+            differential_spec = CHECKED_VENDOR_FANIN_SPECS.get(lane_id, {})
             entry["evidence_class"] = str(
                 checked_vendor_fanin.get("evidence_class")
+                or differential_spec.get("evidence_class")
                 or spec["evidence_class"]
             )
         entry["receipt_integrity"] = _validate_semantic_receipt_integrity(

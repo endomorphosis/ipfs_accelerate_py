@@ -630,18 +630,20 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
             receipt["deployment_blockers"]
         )
     assert (
-        receipt["acceptance"]["supported_managed_capabilities_ready"] is False
+        receipt["acceptance"]["supported_managed_capabilities_ready"] is True
     )
-    assert "supported_managed_capabilities_ready" in receipt["deployment_blockers"]
+    assert "supported_managed_capabilities_ready" not in (
+        receipt["deployment_blockers"]
+    )
     assert receipt["acceptance"]["supervisor_evidence_bound"] is False
     assert "supervisor_evidence_bound" in receipt["deployment_blockers"]
     assert (
         receipt["acceptance"]["lean_runtime_mtl_authorization_elevated"]
-        is False
+        is True
     )
-    assert "lean_runtime_mtl_authorization_elevated" in receipt[
-        "deployment_blockers"
-    ]
+    assert "lean_runtime_mtl_authorization_elevated" not in (
+        receipt["deployment_blockers"]
+    )
     present_elevations = set(
         receipt["acceptance"]["required_elevations_present"]
     )
@@ -651,6 +653,8 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
     required_present = present_elevations & REQUIRED_ELEVATIONS
     assert missing_elevations == REQUIRED_ELEVATIONS - required_present
     assert not required_present & missing_elevations
+    assert required_present == REQUIRED_ELEVATIONS
+    assert not missing_elevations
     assert receipt["acceptance"]["hard_zero_gates_clear"] is False
     assert "hard_zero_gates_clear" in receipt["deployment_blockers"]
     assert receipt["source"]["attestation_excluded_from_source_tree"] is True
