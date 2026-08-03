@@ -7,7 +7,8 @@ import logging
 import platform
 import os
 from typing import Dict, Any
-from fastmcp import FastMCP
+
+FastMCP = Any
 
 logger = logging.getLogger("ipfs_accelerate_mcp.resources.system_info")
 

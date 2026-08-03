@@ -32,16 +32,9 @@ def _log_optional_dependency(message: str) -> None:
     else:
         logger.warning(message)
 
-# Try imports with fallbacks
-try:
-    if _is_pytest():
-        raise ImportError("Using mock MCP under pytest")
-    from fastmcp import FastMCP, Context
-except ImportError:
-    try:
-        from ipfs_accelerate_py.mcp.mock_mcp import FastMCP, Context
-    except ImportError:
-        from mock_mcp import FastMCP, Context
+from ..fastmcp_compat import resolve_fastmcp_types
+
+FastMCP, Context = resolve_fastmcp_types()
 
 # Import shared operations
 try:

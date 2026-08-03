@@ -20,16 +20,9 @@ from typing import Dict, Any, List, Optional, cast, Union
 # Set up logging
 logger = logging.getLogger(__name__)
 
-# Try imports with fallbacks
-try:
-    if os.environ.get("PYTEST_CURRENT_TEST") is not None:
-        raise ImportError("Using mock MCP under pytest")
-    from fastmcp import FastMCP, Context
-except ImportError:
-    try:
-        from ipfs_accelerate_py.mcp.mock_mcp import FastMCP, Context
-    except ImportError:
-        from mock_mcp import FastMCP, Context
+from ..fastmcp_compat import resolve_fastmcp_types
+
+FastMCP, Context = resolve_fastmcp_types()
 
 # Import from the types module
 from typing import TYPE_CHECKING

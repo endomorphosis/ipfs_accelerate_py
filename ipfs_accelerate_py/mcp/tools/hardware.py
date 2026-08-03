@@ -17,7 +17,7 @@ import logging
 import platform
 import warnings
 from contextlib import contextmanager
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Literal, Optional, List, Union
 
 # Set up logging
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.hardware")
@@ -270,7 +270,10 @@ def get_basic_hardware_info(include_detailed: bool = False) -> Dict[str, Any]:
     
     return hardware_info
 
-def test_hardware(accelerator: str = "all", test_level: str = "basic") -> Dict[str, Any]:
+def test_hardware(
+    accelerator: Literal["cuda", "cpu", "webgpu", "webnn", "all"] = "all",
+    test_level: Literal["basic", "comprehensive"] = "basic",
+) -> Dict[str, Any]:
     """
     Test available hardware accelerators
     
@@ -421,7 +424,7 @@ def perform_basic_hardware_test(accelerator: str = "all", test_level: str = "bas
 
 def recommend_hardware(
     model_name: str,
-    task: str = "inference",
+    task: Literal["inference", "training", "fine-tuning"] = "inference",
     consider_available_only: bool = True
 ) -> Dict[str, Any]:
     """

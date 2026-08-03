@@ -4,7 +4,8 @@ This guide provides instructions for installing and setting up the IPFS Accelera
 
 ## Prerequisites
 
-- Python 3.8 or higher
+- Python 3.8 or higher. Python 3.10+ is required for the audited FastMCP
+  2.14.7 transport; Python 3.8/3.9 use the built-in Standalone transport.
 - pip (Python package installer)
 - git (for cloning repositories)
 
@@ -27,16 +28,12 @@ pip install -r mcp/requirements.txt
 The IPFS Accelerate MCP server is built on the FastMCP framework. Install it using pip:
 
 ```bash
-pip install fastmcp
+pip install "fastmcp==2.14.7; python_version >= '3.10'"
 ```
 
-If you want to install the development version from source:
-
-```bash
-git clone https://github.com/model-context-protocol/fastmcp.git
-cd fastmcp
-pip install -e .
-```
+Do not install an arbitrary FastMCP development checkout. The runtime accepts
+only distribution metadata and import files belonging to FastMCP 2.14.7; an
+unpinned editable checkout or the current development branch will be rejected.
 
 ### 3. Test the installation
 
@@ -124,7 +121,8 @@ If you encounter import errors, ensure that:
 
 1. The `ipfs_accelerate_py` package is in your Python path
 2. All dependencies are installed
-3. You're using a compatible Python version (3.8+)
+3. You're using Python 3.10+ for FastMCP, or intentionally using the
+   Standalone transport on Python 3.8/3.9
 
 ### Connection Issues
 

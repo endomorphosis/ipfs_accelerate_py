@@ -519,11 +519,11 @@ pip_install_requirements_wheelhouse_aware() {
   local venv_dir="$1" requirements_file="$2"
   local constraints_file=""
 
-  # Prevent the curated base set from upgrading runtime-critical pins.
-  # In particular: ipfshttpclient requires urllib3<2.
+  # Keep the curated base set inside the root HTTP compatibility range.
+  # Vendored ipfs_datasets_py tightens the lower bound to >=2.5 when present.
   if [[ "$venv_dir" == "$VENV_DIR" && "$requirements_file" == "$REPO_ROOT/install/requirements_base.txt" ]]; then
     constraints_file="$(mktemp)"
-    echo "urllib3<2" >"$constraints_file"
+    echo "urllib3>=2,<3" >"$constraints_file"
   fi
 
   # Normal path: just install the requirements file.
@@ -653,10 +653,10 @@ build_wheelhouse() {
 
   if [[ -f "$REPO_ROOT/install/requirements_base.txt" ]]; then
     log "Wheel: install/requirements_base.txt"
-    # Keep urllib3 pinned <2 for the runtime wheelhouse.
+    # Keep urllib3 inside the root runtime compatibility range.
     local base_constraints
     base_constraints="$(mktemp)"
-    echo "urllib3<2" >"$base_constraints"
+    echo "urllib3>=2,<3" >"$base_constraints"
     if ! pip_wheel_with_common_args "$venv_dir" -c "$base_constraints" -r "$REPO_ROOT/install/requirements_base.txt" -w "$WHEELHOUSE_DIR"; then
       if [[ "$FROM_SOURCE_STRICT" == "1" ]]; then
         rm -f "$base_constraints"
@@ -1071,7 +1071,7 @@ main() {
 
     # Do NOT install the project package into the heavy test venv.
     # The heavy test stack (e.g. selenium) can legitimately conflict with the
-    # project's runtime pins (notably urllib3<2 for ipfshttpclient).
+    # project's runtime pins (notably urllib3>=2,<3).
     # Keeping this venv as "tools/tests only" avoids pip check conflicts.
     pip_check "$TEST_VENV_DIR"
   else

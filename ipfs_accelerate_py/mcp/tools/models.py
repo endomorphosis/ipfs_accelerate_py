@@ -11,7 +11,7 @@ This module provides MCP tools for model search, recommendation, and management.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from dataclasses import asdict, is_dataclass
 
 # Set up logging
@@ -250,7 +250,9 @@ def get_model_stats_tool() -> Dict[str, Any]:
         }
 
 
-def list_hf_inference_models_tool(model_kind: Optional[str] = None) -> Dict[str, Any]:
+def list_hf_inference_models_tool(
+    model_kind: Optional[Literal["llm", "embedding"]] = None,
+) -> Dict[str, Any]:
     """List curated HF inference provider models from model manager metadata."""
     try:
         from ipfs_datasets_py.utils.model_manager import list_hf_inference_models
@@ -299,7 +301,7 @@ def get_hf_inference_model_metadata_tool(model_id: str) -> Dict[str, Any]:
 
 
 def build_hf_inference_ipld_document_tool(
-    model_kind: Optional[str] = None,
+    model_kind: Optional[Literal["llm", "embedding"]] = None,
     include_generated_at: bool = True,
 ) -> Dict[str, Any]:
     """Build HF inference model registry as an IPLD-friendly document."""
@@ -327,7 +329,7 @@ def build_hf_inference_ipld_document_tool(
 
 
 def get_hf_inference_ipld_cid_tool(
-    model_kind: Optional[str] = None,
+    model_kind: Optional[Literal["llm", "embedding"]] = None,
     base: str = 'base32',
     codec: str = 'raw',
     mh_type: str = 'sha2-256',
@@ -361,7 +363,7 @@ def get_hf_inference_ipld_cid_tool(
 
 
 def publish_hf_inference_ipld_to_ipfs_tool(
-    model_kind: Optional[str] = None,
+    model_kind: Optional[Literal["llm", "embedding"]] = None,
     pin: bool = True,
     backend: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -635,7 +637,9 @@ def register_model_tools(mcp) -> None:
                 return get_model_stats_tool()
 
             @mcp.tool()
-            def list_hf_inference_models(model_kind: Optional[str] = None) -> Dict[str, Any]:
+            def list_hf_inference_models(
+                model_kind: Optional[Literal["llm", "embedding"]] = None,
+            ) -> Dict[str, Any]:
                 """List curated HF inference provider models from model manager metadata"""
                 return list_hf_inference_models_tool(model_kind)
 
@@ -646,7 +650,7 @@ def register_model_tools(mcp) -> None:
 
             @mcp.tool()
             def build_hf_inference_ipld_document(
-                model_kind: Optional[str] = None,
+                model_kind: Optional[Literal["llm", "embedding"]] = None,
                 include_generated_at: bool = True,
             ) -> Dict[str, Any]:
                 """Build HF inference model registry as an IPLD-friendly document"""
@@ -654,7 +658,7 @@ def register_model_tools(mcp) -> None:
 
             @mcp.tool()
             def get_hf_inference_ipld_cid(
-                model_kind: Optional[str] = None,
+                model_kind: Optional[Literal["llm", "embedding"]] = None,
                 base: str = 'base32',
                 codec: str = 'raw',
                 mh_type: str = 'sha2-256',
@@ -664,7 +668,7 @@ def register_model_tools(mcp) -> None:
 
             @mcp.tool()
             def publish_hf_inference_ipld_to_ipfs(
-                model_kind: Optional[str] = None,
+                model_kind: Optional[Literal["llm", "embedding"]] = None,
                 pin: bool = True,
                 backend: Optional[str] = None,
             ) -> Dict[str, Any]:

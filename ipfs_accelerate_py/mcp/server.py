@@ -4,15 +4,20 @@ IPFS Accelerate MCP Server
 This module provides the MCP server for IPFS Accelerate.
 """
 
+from __future__ import annotations
+
 import os
 import sys
 import json
-import json
+import importlib
+import importlib.metadata
+import importlib.util
+import hashlib
 import logging
 import argparse
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Dict, Any, Optional, List, Union, Callable
+from typing import Dict, Any, Optional, List, Tuple, Union, Callable
 
 # Set up logging
 logging.basicConfig(
@@ -21,18 +26,189 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ipfs_accelerate_mcp.server")
 
-# Ensure minimal runtime dependencies when allowed
-try:
-    from ..utils.auto_install import ensure_packages
-    ensure_packages({
-        "fastapi": "fastapi",
-        "uvicorn": "uvicorn",
-        # FastMCP is optional; try to make it available if user permits
-        "fastmcp": "fastmcp",
-    })
-except Exception:
-    # Best-effort; server can still run in standalone mode
-    pass
+FASTMCP_VERSION = "2.14.7"
+FASTMCP_REQUIREMENT = (
+    f"fastmcp=={FASTMCP_VERSION}; python_version >= '3.10'"
+)
+FASTAPI_REQUIREMENT = "fastapi>=0.110.0,<1.0.0"
+UVICORN_LEGACY_REQUIREMENT = (
+    "uvicorn>=0.27.0,<0.35.0; python_version < '3.10'"
+)
+UVICORN_REQUIREMENT = (
+    "uvicorn>=0.35.0,<1.0.0; python_version >= '3.10'"
+)
+WEBSOCKETS_LEGACY_REQUIREMENT = (
+    "websockets==10.4; python_version < '3.10'"
+)
+WEBSOCKETS_REQUIREMENT = "websockets>=15.0.1; python_version >= '3.10'"
+
+
+def _exception_receipt(error: BaseException) -> str:
+    """Return a secret-safe diagnostic receipt for an exception."""
+
+    try:
+        detail = str(error)
+    except Exception:
+        detail = "<unprintable>"
+    payload = (
+        f"{type(error).__module__}.{type(error).__qualname__}:{detail}"
+    ).encode("utf-8", errors="replace")
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def _safe_exception_summary(context: str, error: BaseException) -> str:
+    """Describe an exception without exposing its potentially secret text."""
+
+    error_type = type(error).__name__
+    if not error_type.isidentifier():
+        error_type = "Error"
+    return f"{context} ({error_type}; receipt={_exception_receipt(error)})"
+
+
+def _ensure_mcp_runtime_dependencies() -> Dict[str, str]:
+    """Lazily ensure optional server dependencies on explicit first use."""
+
+    from ..utils.auto_install import ensure_distributions, ensure_packages
+
+    packages = {
+        "fastapi": FASTAPI_REQUIREMENT,
+        "uvicorn": (
+            UVICORN_REQUIREMENT
+            if sys.version_info >= (3, 10)
+            else UVICORN_LEGACY_REQUIREMENT
+        ),
+        "websockets": (
+            WEBSOCKETS_REQUIREMENT
+            if sys.version_info >= (3, 10)
+            else WEBSOCKETS_LEGACY_REQUIREMENT
+        ),
+    }
+    if sys.version_info >= (3, 10):
+        fastmcp_status = ensure_distributions(
+            {"fastmcp": FASTMCP_REQUIREMENT}
+        )
+    else:
+        fastmcp_status = {}
+    return {**ensure_packages(packages), **fastmcp_status}
+
+
+def _import_fastmcp_v2() -> Tuple[Optional[Any], str]:
+    """Load the supported FastMCP distribution without mutating import state."""
+
+    if sys.version_info < (3, 10):
+        return None, "FastMCP 2.14.7 requires Python 3.10 or newer"
+
+    try:
+        distribution = importlib.metadata.distribution("fastmcp")
+    except importlib.metadata.PackageNotFoundError:
+        return None, "FastMCP is not installed"
+    except Exception as error:
+        return None, _safe_exception_summary(
+            "FastMCP metadata could not be read",
+            error,
+        )
+
+    installed_version = str(getattr(distribution, "version", "") or "")
+
+    if installed_version != FASTMCP_VERSION:
+        return (
+            None,
+            f"unsupported FastMCP version {installed_version}; "
+            f"required version is {FASTMCP_VERSION}",
+        )
+
+    distribution_files = getattr(distribution, "files", None)
+    if not distribution_files:
+        return None, "FastMCP distribution does not expose an auditable file list"
+    try:
+        owned_files = {
+            os.path.realpath(os.fspath(distribution.locate_file(path)))
+            for path in distribution_files
+        }
+    except Exception as error:
+        return None, _safe_exception_summary(
+            "FastMCP distribution files could not be audited",
+            error,
+        )
+
+    try:
+        import_spec = importlib.util.find_spec("fastmcp")
+    except Exception as error:
+        return None, _safe_exception_summary(
+            "FastMCP import origin could not be resolved",
+            error,
+        )
+    pre_import_origin = getattr(import_spec, "origin", None)
+    if not pre_import_origin:
+        return None, "FastMCP import origin is unavailable"
+    resolved_pre_import_origin = os.path.realpath(os.fspath(pre_import_origin))
+    if resolved_pre_import_origin not in owned_files:
+        return None, "FastMCP import origin is not owned by the audited distribution"
+
+    try:
+        module = importlib.import_module("fastmcp")
+    except Exception as error:
+        return None, _safe_exception_summary(
+            f"FastMCP {FASTMCP_VERSION} could not be imported",
+            error,
+        )
+
+    module_version = str(getattr(module, "__version__", "") or "")
+    if module_version != FASTMCP_VERSION:
+        return (
+            None,
+            "FastMCP module/distribution version mismatch "
+            f"({module_version or 'missing'} != {FASTMCP_VERSION})",
+        )
+
+    post_import_spec = getattr(module, "__spec__", None)
+    post_import_origin = getattr(post_import_spec, "origin", None)
+    module_file = getattr(module, "__file__", None)
+    if not post_import_origin or not module_file:
+        return None, "FastMCP module origin is unavailable after import"
+    resolved_post_import_origin = os.path.realpath(os.fspath(post_import_origin))
+    resolved_module_file = os.path.realpath(os.fspath(module_file))
+    if (
+        resolved_post_import_origin != resolved_pre_import_origin
+        or resolved_module_file != resolved_pre_import_origin
+        or resolved_post_import_origin not in owned_files
+    ):
+        return None, "FastMCP module origin changed during import"
+    return module, ""
+
+
+def _import_fastmcp_v2_with_repair() -> Tuple[Optional[Any], str]:
+    """Retry an audited import after an explicitly authorized dependency repair."""
+
+    module, reason = _import_fastmcp_v2()
+    if module is not None or not reason.startswith(
+        f"FastMCP {FASTMCP_VERSION} could not be imported"
+    ):
+        return module, reason
+
+    from ..utils.auto_install import ensure_distributions
+
+    repair_status = ensure_distributions(
+        {"fastmcp": FASTMCP_REQUIREMENT},
+        force=True,
+    ).get("fastmcp")
+    if repair_status != "installed":
+        return module, reason
+    return _import_fastmcp_v2()
+
+
+def _repair_fastmcp_v2_runtime() -> Tuple[Optional[Any], str]:
+    """Make one authorized exact-pin repair attempt after a wiring failure."""
+
+    from ..utils.auto_install import ensure_distributions
+
+    repair_status = ensure_distributions(
+        {"fastmcp": FASTMCP_REQUIREMENT},
+        force=True,
+    ).get("fastmcp")
+    if repair_status != "installed":
+        return None, "FastMCP runtime repair was not authorized or did not succeed"
+    return _import_fastmcp_v2()
 
 class StandaloneMCP:
     """
@@ -201,10 +377,20 @@ class StandaloneMCP:
         if ctx not in {"", "server", "worker"}:
             ctx = ""
 
+        from .fastmcp_compat import canonical_function_input_schema
+
+        canonical_schema = canonical_function_input_schema(tool_function)
+        published_schema = (
+            canonical_schema
+            if canonical_schema is not None
+            else input_schema
+            or {"type": "object", "properties": {}, "required": []}
+        )
+
         self.tools[name] = {
             "function": tool_function,
             "description": description,
-            "input_schema": input_schema or {"type": "object", "properties": {}, "required": []},
+            "input_schema": published_schema,
             "category": category,
             "runtime": runtime,
             # Tool routing metadata used by p2p call_tool.
@@ -240,55 +426,12 @@ class StandaloneMCP:
             tool_name = str(name or func.__name__)
             tool_desc = description if description is not None else (func.__doc__ or "No description")
             
-            # Create a simple input schema from the function signature
-            import inspect
-            sig = inspect.signature(func)
-            properties = {}
-            required = []
-            
-            for param_name, param in sig.parameters.items():
-                # Skip self/cls parameters
-                if param_name in ('self', 'cls'):
-                    continue
-                    
-                # Determine type hint if available
-                param_type = "string"  # default
-                if param.annotation != inspect.Parameter.empty:
-                    ann = param.annotation
-                    # Check for typing generics by examining __origin__
-                    origin = getattr(ann, '__origin__', None)
-                    
-                    if ann is int:
-                        param_type = "integer"
-                    elif ann is float:
-                        param_type = "number"
-                    elif ann is bool:
-                        param_type = "boolean"
-                    elif ann is list or origin is list:
-                        param_type = "array"
-                    elif ann is dict or origin is dict:
-                        param_type = "object"
-                
-                properties[param_name] = {"type": param_type}
-                
-                # Add to required if no default value
-                if param.default == inspect.Parameter.empty:
-                    required.append(param_name)
-            
-            derived_schema = {
-                "type": "object",
-                "properties": properties,
-                "required": required,
-            }
-
-            schema = input_schema if isinstance(input_schema, dict) else derived_schema
-            
             # Register the tool
             self.register_tool(
                 name=tool_name,
                 function=func,
                 description=str(tool_desc),
-                input_schema=schema,
+                input_schema=input_schema,
                 execution_context=execution_context,
                 tags=tags,
             )
@@ -592,9 +735,15 @@ class StandaloneMCP:
                 app.add_api_route(normalized, lambda: _server_info(), methods=["GET"], include_in_schema=False)
             
             # Debug: Print all registered routes
-            logger.debug(f"FastAPI app created for standalone MCP with routes:")
+            logger.debug("FastAPI app created for standalone MCP with routes:")
             for route in app.routes:
-                logger.debug(f"Route: {route.path} {route.methods if hasattr(route, 'methods') else ''}")
+                route_path = getattr(
+                    route,
+                    "path",
+                    getattr(route, "prefix", type(route).__name__),
+                )
+                route_methods = getattr(route, "methods", "")
+                logger.debug("Route: %s %s", route_path, route_methods)
             
             return app
         
@@ -617,7 +766,7 @@ class StandaloneMCP:
         Returns:
             Pydantic model
         """
-        from pydantic import create_model, Field
+        from pydantic import BaseModel, create_model, Field
         
         if "properties" not in schema:
             return create_model(name, __base__=BaseModel)
@@ -627,7 +776,12 @@ class StandaloneMCP:
         
         for prop_name, prop_schema in schema["properties"].items():
             field_type = self._get_field_type(prop_schema)
-            default = None if prop_name in required else prop_schema.get("default", ...)
+            if prop_name in required:
+                default = ...
+            elif "default" in prop_schema:
+                default = prop_schema["default"]
+            else:
+                default = None
             description = prop_schema.get("description", "")
             
             fields[prop_name] = (field_type, Field(default=default, description=description))
@@ -644,6 +798,16 @@ class StandaloneMCP:
         Returns:
             Python type
         """
+        if isinstance(schema.get("anyOf"), list):
+            option_types = [
+                self._get_field_type(option)
+                for option in schema["anyOf"]
+                if isinstance(option, dict)
+            ]
+            if option_types:
+                return Union[tuple(option_types)]
+            return Any
+
         if "type" not in schema:
             return Any
         
@@ -660,7 +824,12 @@ class StandaloneMCP:
         elif schema_type == "array":
             return List[self._get_field_type(schema.get("items", {}))]
         elif schema_type == "object":
+            value_schema = schema.get("additionalProperties")
+            if isinstance(value_schema, dict):
+                return Dict[str, self._get_field_type(value_schema)]
             return Dict[str, Any]
+        elif schema_type == "null":
+            return type(None)
         else:
             return Any
 
@@ -714,88 +883,216 @@ class IPFSAccelerateMCPServer:
         This function sets up the MCP server with all tools and resources.
         """
         logger.info(f"Setting up IPFS Accelerate MCP Server: {self.name}")
-        
+
+        fastmcp_ready = False
         try:
-            # Try to import FastMCP
-            def _import_fastmcp_site_first():
-                original = list(sys.path)
-                try:
-                    site_paths = [p for p in original if ('site-packages' in p or 'dist-packages' in p)]
-                    other_paths = [p for p in original if p not in site_paths]
-                    # Prioritize site-packages before repo root to avoid local mcp shadowing
-                    sys.path[:] = site_paths + other_paths
-                    import importlib
-                    return importlib.import_module('fastmcp')
-                except Exception:
-                    return None
-                finally:
-                    sys.path[:] = original
-
-            fm = _import_fastmcp_site_first()
-            if fm is not None and hasattr(fm, 'FastMCP'):
-                FastMCP = getattr(fm, 'FastMCP')
-                # Create FastMCP instance
-                self.mcp = FastMCP(name=self.name)
-                # Create FastAPI app
-                self.fastapi_app = self.mcp.create_fastapi_app(
-                    title="IPFS Accelerate MCP API",
-                    description="API for the IPFS Accelerate MCP Server",
-                    version="0.1.0",
-                    docs_url="/docs",
-                    redoc_url="/redoc",
-                    mount_path=self.mount_path
-                )
-                logger.info("Using FastMCP implementation")
-                self._using_fastmcp = True
-            else:
-                # Use standalone implementation
-                logger.warning("FastMCP not available, using standalone implementation")
-                self.mcp = StandaloneMCP(name=self.name)
-                
-                # Create FastAPI app
-                self.fastapi_app = self.mcp.create_fastapi_app(
-                    title="IPFS Accelerate MCP API",
-                    description="API for the IPFS Accelerate MCP Server",
-                    version="0.1.0",
-                    docs_url="/docs",
-                    redoc_url="/redoc",
-                    mount_path=self.mount_path
-                )
-                
-                self._using_fastmcp = False
-            
-            # Enable CORS for external API consumers (configurable via MCP_CORS_ORIGINS)
+            dependency_reason = ""
             try:
-                from fastapi.middleware.cors import CORSMiddleware
-
-                allowed = os.getenv("MCP_CORS_ORIGINS", "*")
-                allow_origins = [o.strip() for o in allowed.split(",") if o.strip()] or ["*"]
-
-                self.fastapi_app.add_middleware(
-                    CORSMiddleware,
-                    allow_origins=allow_origins,
-                    allow_credentials=True,
-                    allow_methods=["*"],
-                    allow_headers=["*"],
+                dependency_status = _ensure_mcp_runtime_dependencies()
+                logger.debug("MCP first-use dependency status: %s", dependency_status)
+                unavailable = sorted(
+                    name
+                    for name, status in dependency_status.items()
+                    if status not in {"ok", "installed"}
                 )
-                logger.info(f"CORS enabled for MCP API (origins: {allow_origins})")
-            except Exception as e:
-                logger.warning(f"CORS not enabled (missing dependency or error): {e}")
+                if unavailable:
+                    dependency_reason = (
+                        "MCP runtime dependency contract is unsatisfied: "
+                        + ", ".join(unavailable)
+                    )
+            except Exception as dependency_error:
+                dependency_reason = _safe_exception_summary(
+                    "MCP first-use dependency check failed",
+                    dependency_error,
+                )
+                logger.warning(
+                    "%s; fallbacks remain available",
+                    dependency_reason,
+                )
 
-            # Register tools
-            self._register_tools()
-            
-            # Register resources
-            self._register_resources()
-            
-            # Register prompts
-            self._register_prompts()
-            
+            if dependency_reason:
+                fastmcp_module, import_reason = None, dependency_reason
+            else:
+                fastmcp_module, import_reason = _import_fastmcp_v2_with_repair()
+            fastmcp_ready, wiring_reason = self._try_setup_fastmcp_v2(
+                fastmcp_module
+            )
+            if not fastmcp_ready and fastmcp_module is not None:
+                repaired_module, repair_reason = _repair_fastmcp_v2_runtime()
+                if repaired_module is not None:
+                    fastmcp_ready, wiring_reason = self._try_setup_fastmcp_v2(
+                        repaired_module
+                    )
+                elif repair_reason:
+                    logger.debug("FastMCP wiring repair unavailable: %s", repair_reason)
+            if not fastmcp_ready:
+                self._setup_standalone(import_reason or wiring_reason)
+
+            if fastmcp_ready:
+                fallback_reason = ""
+                try:
+                    self._register_components()
+                except Exception as registration_error:
+                    fallback_reason = (
+                        "FastMCP compatibility registration raised "
+                        f"{type(registration_error).__name__}"
+                    )
+                else:
+                    from .fastmcp_compat import get_registration_failures
+
+                    failures = get_registration_failures(self.mcp)
+                    if failures:
+                        sample = ", ".join(
+                            f"{failure['kind']}:{failure['name_sha256'][:12]} "
+                            f"({failure['error_type']})"
+                            for failure in failures[:5]
+                        )
+                        fallback_reason = (
+                            "FastMCP rejected compatibility registrations: "
+                            + sample
+                        )
+
+                if fallback_reason:
+                    self._setup_standalone(fallback_reason)
+                    fastmcp_ready = False
+                    self._register_components()
+            else:
+                self._register_components()
+
+            self._enable_cors()
+
+            if fastmcp_ready:
+                # Do not advertise the FastMCP transport until its ASGI app and
+                # every required compatibility registration have succeeded.
+                self._using_fastmcp = True
+                logger.info("Using FastMCP %s implementation", FASTMCP_VERSION)
+
             logger.info(f"IPFS Accelerate MCP Server set up: {self.server_url}")
-        
+
         except Exception as e:
-            logger.error(f"Error setting up MCP server: {e}")
+            if fastmcp_ready:
+                self._using_fastmcp = False
+                self.mcp = None
+                self.fastapi_app = None
+            logger.error("%s", _safe_exception_summary("Error setting up MCP server", e))
             raise
+
+    def _register_components(self) -> None:
+        """Register all required legacy compatibility components."""
+
+        self._register_tools()
+        self._register_resources()
+        self._register_prompts()
+
+    def _enable_cors(self) -> None:
+        """Enable the optional CORS middleware on the selected ASGI app."""
+
+        try:
+            from fastapi.middleware.cors import CORSMiddleware
+
+            allowed = os.getenv("MCP_CORS_ORIGINS", "*")
+            allow_origins = [
+                origin.strip()
+                for origin in allowed.split(",")
+                if origin.strip()
+            ] or ["*"]
+            self.fastapi_app.add_middleware(
+                CORSMiddleware,
+                allow_origins=allow_origins,
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            )
+            logger.info("CORS enabled for MCP API (origins: %s)", allow_origins)
+        except Exception as error:
+            logger.warning(
+                "%s",
+                _safe_exception_summary("CORS not enabled", error),
+            )
+
+    def _try_setup_fastmcp_v2(self, fastmcp_module: Any) -> Tuple[bool, str]:
+        """Wire a FastMCP 2 ASGI app, returning an explicit fallback reason."""
+
+        if fastmcp_module is None:
+            return False, "FastMCP is unavailable"
+
+        fastmcp_class = getattr(fastmcp_module, "FastMCP", None)
+        if fastmcp_class is None:
+            return False, "FastMCP module does not expose FastMCP"
+
+        reported_version = str(getattr(fastmcp_module, "__version__", "") or "")
+        if reported_version and reported_version != FASTMCP_VERSION:
+            return False, f"unsupported FastMCP version {reported_version}"
+
+        try:
+            candidate = fastmcp_class(name=self.name)
+
+            # The legacy registries use register_* methods. Apply all adapters
+            # before any tool, resource, or prompt registration can occur.
+            from .fastmcp_compat import (
+                ensure_register_prompt_compat,
+                ensure_register_resource_compat,
+                ensure_register_tool_compat,
+            )
+
+            for compatibility_shim in (
+                ensure_register_tool_compat,
+                ensure_register_resource_compat,
+                ensure_register_prompt_compat,
+            ):
+                candidate = compatibility_shim(candidate)
+
+            missing_methods = [
+                method_name
+                for method_name in (
+                    "register_tool",
+                    "register_resource",
+                    "register_prompt",
+                )
+                if not callable(getattr(candidate, method_name, None))
+            ]
+            if missing_methods:
+                return (
+                    False,
+                    "FastMCP compatibility shims did not provide "
+                    + ", ".join(missing_methods),
+                )
+
+            http_app_factory = getattr(candidate, "http_app", None)
+            if not callable(http_app_factory):
+                return False, "FastMCP does not expose the v2 http_app API"
+
+            app = http_app_factory(path=self.mount_path or "/")
+            if app is None or not callable(app):
+                return False, "FastMCP http_app did not return an ASGI application"
+        except Exception as error:
+            return False, _safe_exception_summary(
+                "FastMCP v2 wiring failed",
+                error,
+            )
+
+        # Stage the FastMCP objects for registration. setup() makes the public
+        # transport claim only after all required registration calls succeed.
+        self.mcp = candidate
+        self.fastapi_app = app
+        return True, ""
+
+    def _setup_standalone(self, reason: str) -> None:
+        """Create the explicit standalone fallback application."""
+
+        logger.warning("%s; using standalone MCP implementation", reason)
+        standalone = StandaloneMCP(name=self.name)
+        app = standalone.create_fastapi_app(
+            title="IPFS Accelerate MCP API",
+            description="API for the IPFS Accelerate MCP Server",
+            version="0.1.0",
+            docs_url="/docs",
+            redoc_url="/redoc",
+            mount_path=self.mount_path,
+        )
+        self.mcp = standalone
+        self.fastapi_app = app
+        self._using_fastmcp = False
     
     def run(self) -> None:
         """
@@ -910,8 +1207,7 @@ class IPFSAccelerateMCPServer:
         
         except Exception as e:
             logger.error(f"Error registering prompts with MCP server: {e}")
-            # Don't raise here, as prompts are optional
-            pass
+            raise
 
 def main() -> None:
     """

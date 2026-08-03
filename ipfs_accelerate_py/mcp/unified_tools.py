@@ -15,7 +15,7 @@ Architecture:
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 logger = logging.getLogger("ipfs_accelerate_mcp.unified_tools")
 
@@ -127,7 +127,11 @@ def register_github_tools(mcp: Any) -> None:
             "error": result.error
         }
     
-    def github_list_prs(repo: str, state: str = "open", limit: int = 30) -> Dict[str, Any]:
+    def github_list_prs(
+        repo: str,
+        state: Literal["open", "closed", "merged", "all"] = "open",
+        limit: int = 30,
+    ) -> Dict[str, Any]:
         """
         List GitHub pull requests.
         
@@ -166,7 +170,11 @@ def register_github_tools(mcp: Any) -> None:
             "error": result.error
         }
     
-    def github_list_issues(repo: str, state: str = "open", limit: int = 30) -> Dict[str, Any]:
+    def github_list_issues(
+        repo: str,
+        state: Literal["open", "closed", "all"] = "open",
+        limit: int = 30,
+    ) -> Dict[str, Any]:
         """
         List GitHub issues.
         
@@ -483,7 +491,10 @@ def register_hardware_tools(mcp: Any) -> None:
             "platform": result.platform_info
         }
     
-    def hardware_test(accelerator: str = "all", test_level: str = "basic") -> Dict[str, Any]:
+    def hardware_test(
+        accelerator: Literal["cuda", "cpu", "all"] = "all",
+        test_level: Literal["basic", "comprehensive"] = "basic",
+    ) -> Dict[str, Any]:
         """
         Test hardware accelerators.
         
@@ -500,7 +511,7 @@ def register_hardware_tools(mcp: Any) -> None:
     
     def hardware_recommend(
         model_name: str,
-        task: str = "inference",
+        task: Literal["inference", "training", "fine-tuning"] = "inference",
         consider_available_only: bool = True
     ) -> Dict[str, Any]:
         """
@@ -768,8 +779,8 @@ def register_runner_tools(mcp: Any) -> None:
             "type": "object",
             "properties": {
                 "owner": {"type": "string", "description": "GitHub owner (user or org) to monitor"},
-                "poll_interval": {"type": "number", "default": 120, "description": "Poll interval in seconds"},
-                "max_runners": {"type": "number", "default": 10, "description": "Maximum concurrent runners"},
+                "poll_interval": {"type": "integer", "default": 120, "description": "Poll interval in seconds"},
+                "max_runners": {"type": "integer", "default": 10, "description": "Maximum concurrent runners"},
                 "runner_image": {"type": "string", "default": "myoung34/github-runner:latest"},
                 "background": {"type": "boolean", "default": True, "description": "Run in background"}
             }

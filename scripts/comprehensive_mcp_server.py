@@ -20,21 +20,23 @@ import logging
 import os
 import sys
 import tempfile
+from functools import partial
 from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
 import json
 from datetime import datetime
 
-# Import FastMCP with fallback
-try:
-    from fastmcp import FastMCP
-    HAVE_FASTMCP = True
-except ImportError:
-    HAVE_FASTMCP = False
-    print("⚠️ FastMCP not available. Installing...")
+# Resolve only the audited FastMCP build; the shared loader validates metadata
+# and origin before executing package code.
+from ipfs_accelerate_py.mcp.server import _import_fastmcp_v2
+
+_fastmcp_module, _fastmcp_reason = _import_fastmcp_v2()
+FastMCP = getattr(_fastmcp_module, "FastMCP", None)
+HAVE_FASTMCP = callable(FastMCP)
+if not HAVE_FASTMCP:
+    print("⚠️ FastMCP 2.14.7 is unavailable. Running without MCP transport.")
 
 # Import the Model Manager components
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 try:
     from ipfs_accelerate_py.model_manager import (
         ModelManager, ModelMetadata, IOSpec, ModelType, DataType,
@@ -62,22 +64,24 @@ def _run_async_from_sync(async_fn, *args, **kwargs):
     - If an async library is running in this thread (e.g. notebooks), runs the
       call in a dedicated helper thread.
     """
+    call = partial(async_fn, *args, **kwargs)
+
     try:
-        return anyio.from_thread.run(async_fn, *args, **kwargs)
+        return anyio.from_thread.run(call)
     except RuntimeError:
         pass
 
     try:
         sniffio.current_async_library()
     except sniffio.AsyncLibraryNotFoundError:
-        return anyio.run(async_fn, *args, **kwargs)
+        return anyio.run(call)
 
     result = []
     error = []
 
     def _thread_main() -> None:
         try:
-            result.append(anyio.run(async_fn, *args, **kwargs))
+            result.append(anyio.run(call))
         except BaseException as exc:  # noqa: BLE001
             error.append(exc)
 
@@ -177,13 +181,39 @@ class ComprehensiveMCPServer:
     
     def _install_dependencies(self):
         """Install missing dependencies with graceful error handling."""
+        auto_install = os.environ.get("IPFS_ACCEL_AUTO_INSTALL", "").strip().lower()
+        if sys.version_info < (3, 10):
+            logger.warning("FastMCP requires Python 3.10+; automatic setup skipped")
+            return
+        if auto_install not in {"1", "true", "yes"}:
+            logger.warning(
+                "Automatic dependency setup is disabled; set "
+                "IPFS_ACCEL_AUTO_INSTALL=1 to authorize it"
+            )
+            return
+
         try:
             import subprocess
             
             # Install FastMCP
             logger.info("Installing FastMCP...")
-            subprocess.run([sys.executable, "-m", "pip", "install", "fastmcp"], 
+            fastmcp_install = subprocess.run([
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "fastmcp==2.14.7; python_version >= '3.10'",
+            ],
                          check=False, capture_output=True)
+            if fastmcp_install.returncode != 0:
+                logger.warning("FastMCP installation failed, running in demo mode")
+                return
+
+            installed_module, _ = _import_fastmcp_v2()
+            installed_class = getattr(installed_module, "FastMCP", None)
+            if not callable(installed_class):
+                logger.warning("FastMCP validation failed after installation")
+                return
             
             # Install Playwright for browser automation
             logger.info("Installing Playwright...")
@@ -198,12 +228,12 @@ class ComprehensiveMCPServer:
             # Attempt to import FastMCP again
             try:
                 global FastMCP, HAVE_FASTMCP
-                from fastmcp import FastMCP
+                FastMCP = installed_class
                 HAVE_FASTMCP = True
                 
                 self.mcp = FastMCP(
                     name="Comprehensive AI Model Manager",
-                    description="Complete AI inference platform supporting 211+ model types"
+                    instructions="Complete AI inference platform supporting 211+ model types"
                 )
                 self._register_all_tools()
                 logger.info("Successfully installed dependencies and created MCP server")
@@ -707,9 +737,9 @@ class ComprehensiveMCPServer:
         
         # Import the enhanced inference tools
         try:
-            import sys
-            sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'ipfs_accelerate_py', 'mcp', 'tools'))
-            from enhanced_inference import register_tools as register_enhanced_tools
+            from ipfs_accelerate_py.mcp.tools.enhanced_inference import (
+                register_tools as register_enhanced_tools,
+            )
             
             # Register the enhanced tools
             register_enhanced_tools(self.mcp)
@@ -1212,7 +1242,10 @@ class ComprehensiveMCPServer:
         logger.info(f"Supporting {sum(len(models) for models in self.available_model_types.values())} model types")
         
         try:
-            await self.mcp.run(transport=transport, host=host, port=port)
+            transport_kwargs = {"transport": transport}
+            if transport != "stdio":
+                transport_kwargs.update({"host": host, "port": port})
+            await self.mcp.run_async(**transport_kwargs)
         except KeyboardInterrupt:
             logger.info("Server interrupted")
         except Exception as e:

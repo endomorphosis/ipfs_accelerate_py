@@ -77,11 +77,14 @@ def get_version_info() -> Dict[str, Any]:
             mcp_version = "0.1.0"  # Default version
         
         # Get FastMCP version
-        try:
-            import fastmcp
-            fastmcp_version = getattr(fastmcp, "__version__", "unknown")
-        except ImportError:
-            fastmcp_version = "unknown"
+        from ..server import _import_fastmcp_v2
+
+        fastmcp_module, _ = _import_fastmcp_v2()
+        fastmcp_version = (
+            getattr(fastmcp_module, "__version__", "unknown")
+            if fastmcp_module is not None
+            else "unknown"
+        )
         
         # Build version info
         version_info = {

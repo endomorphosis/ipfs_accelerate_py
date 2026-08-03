@@ -64,6 +64,47 @@ async def _to_thread(fn):
         return await trio.to_thread.run_sync(fn, cancellable=True)
 
 
+def _tool_function(entry: Any) -> Any:
+    """Unwrap a legacy compatibility record to its callable."""
+
+    if isinstance(entry, dict):
+        return entry.get("function") or entry.get("func")
+    return entry
+
+
+def _tool_public_metadata(name: str, entry: Any) -> dict[str, Any]:
+    """Normalize object and compatibility-dict tools for listing APIs."""
+
+    metadata: dict[str, Any] = {"name": name}
+    if isinstance(entry, dict):
+        description = entry.get("description")
+        schema = entry.get("input_schema") or entry.get("inputSchema")
+    else:
+        description = getattr(entry, "description", None)
+        schema = getattr(entry, "inputSchema", None)
+        if schema is None:
+            schema = getattr(entry, "input_schema", None)
+    if description is not None:
+        metadata["description"] = description
+    if schema is not None:
+        metadata["inputSchema"] = schema
+    return metadata
+
+
+async def _invoke_tool_entry(entry: Any, params: dict[str, Any]) -> Any:
+    """Invoke a sync or async tool without blocking Trio's event loop."""
+
+    function = _tool_function(entry)
+    if not callable(function):
+        raise TypeError("Registered tool entry is not callable")
+    if inspect.iscoroutinefunction(function):
+        return await function(**params)
+    result = await _to_thread(lambda: function(**params))
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Rate Limiter (Token Bucket)
 # ---------------------------------------------------------------------------
@@ -341,10 +382,33 @@ class TrioMCPServer:
         self._started = False
         self._catalog_service_name: Optional[str] = None
         self._catalog_peer_id: Optional[str] = None
+        self._using_fastmcp_registry = False
+        # Trio serves MCP++ routes through its custom FastAPI transport. It does
+        # not claim FastMCP's native HTTP transport.
+        self._using_fastmcp = False
+        self._transport_mode = "custom-fastapi"
 
         logger.info(f"Initialized TrioMCPServer: {self.config.name}")
 
-    def setup(self) -> None:
+    def _create_fastmcp_registry(self, fastmcp_module: Any) -> Any:
+        """Create one audited FastMCP registry with all compatibility shims."""
+
+        candidate = fastmcp_module.FastMCP(name=self.config.name)
+        from ipfs_accelerate_py.mcp_server.fastmcp_compat import (
+            ensure_register_prompt_compat,
+            ensure_register_resource_compat,
+            ensure_register_tool_compat,
+        )
+
+        for shim in (
+            ensure_register_tool_compat,
+            ensure_register_resource_compat,
+            ensure_register_prompt_compat,
+        ):
+            candidate = shim(candidate)
+        return candidate
+
+    def setup(self, *, _force_standalone: bool = False) -> None:
         """Set up the MCP server with tools and resources.
 
         This initializes the MCP instance and registers all configured tools.
@@ -353,30 +417,89 @@ class TrioMCPServer:
         logger.info(f"Setting up TrioMCPServer: {self.config.name}")
 
         try:
-            # Try to import FastMCP
-            try:
-                from fastmcp import FastMCP
+            fastmcp_reason = "standalone explicitly requested"
+            fastmcp_module = None
+            if not _force_standalone:
+                from ipfs_accelerate_py.mcp.server import (
+                    _ensure_mcp_runtime_dependencies,
+                    _import_fastmcp_v2_with_repair,
+                )
 
-                self.mcp = FastMCP(name=self.config.name)
-                logger.info("Using FastMCP for Trio server")
-                # FastMCP lacks register_tool/.tools; attach compat shims so the
-                # dict-based MCP++ dispatch paths work uniformly.
                 try:
-                    from ipfs_accelerate_py.mcp_server.fastmcp_compat import (
-                        ensure_register_tool_compat,
-                        ensure_register_resource_compat,
+                    dependency_status = _ensure_mcp_runtime_dependencies()
+                    unavailable = sorted(
+                        name
+                        for name, status in dependency_status.items()
+                        if status not in {"ok", "installed"}
+                    )
+                    if unavailable:
+                        fastmcp_reason = (
+                            "MCP runtime dependency contract is unsatisfied: "
+                            + ", ".join(unavailable)
+                        )
+                    else:
+                        fastmcp_module, fastmcp_reason = (
+                            _import_fastmcp_v2_with_repair()
+                        )
+                except Exception as error:
+                    from ipfs_accelerate_py.mcp.server import _safe_exception_summary
+
+                    fastmcp_reason = _safe_exception_summary(
+                        "Trio first-use dependency check failed",
+                        error,
+                    )
+                    logger.warning(
+                        "%s; fallback remains available",
+                        fastmcp_reason,
                     )
 
-                    ensure_register_tool_compat(self.mcp)
-                    ensure_register_resource_compat(self.mcp)
-                except Exception as e:
-                    logger.debug(f"FastMCP compat shims not applied: {e}")
-            except ImportError:
-                # Fallback to standalone implementation from the main mcp module
-                logger.warning("FastMCP not available, using standalone implementation")
+            if fastmcp_module is not None:
+                try:
+                    self.mcp = self._create_fastmcp_registry(fastmcp_module)
+                    self._using_fastmcp_registry = True
+                    logger.info(
+                        "Using audited FastMCP 2.14.7 registry with custom Trio transport"
+                    )
+                except Exception as error:
+                    from ipfs_accelerate_py.mcp.server import _safe_exception_summary
+
+                    fastmcp_reason = _safe_exception_summary(
+                        "FastMCP registry compatibility failed",
+                        error,
+                    )
+                    from ipfs_accelerate_py.mcp.server import (
+                        _repair_fastmcp_v2_runtime,
+                    )
+
+                    repaired_module, repair_reason = _repair_fastmcp_v2_runtime()
+                    if repaired_module is not None:
+                        try:
+                            self.mcp = self._create_fastmcp_registry(repaired_module)
+                            self._using_fastmcp_registry = True
+                            logger.info(
+                                "Using repaired audited FastMCP 2.14.7 registry "
+                                "with custom Trio transport"
+                            )
+                        except Exception as retry_error:
+                            fastmcp_reason = _safe_exception_summary(
+                                "FastMCP registry compatibility retry failed",
+                                retry_error,
+                            )
+                    elif repair_reason:
+                        logger.debug(
+                            "FastMCP registry repair unavailable: %s",
+                            repair_reason,
+                        )
+
+            if self.mcp is None:
+                logger.warning(
+                    "%s; using standalone MCP registry with custom Trio transport",
+                    fastmcp_reason,
+                )
                 from ipfs_accelerate_py.mcp_server.server import StandaloneMCP
 
                 self.mcp = StandaloneMCP(name=self.config.name)
+                self._using_fastmcp_registry = False
 
             # Register P2P tools if enabled
             if self.config.enable_p2p_tools:
@@ -392,6 +515,10 @@ class TrioMCPServer:
                 register_all_tools(self.mcp, include_p2p_taskqueue_tools=False)
                 logger.info("Registered core ipfs_accelerate_py MCP tools")
             except Exception as e:
+                if self._using_fastmcp_registry:
+                    raise RuntimeError(
+                        "required core MCP tool registration failed"
+                    ) from e
                 logger.warning(f"Core MCP tools not registered: {e}")
 
             # Register core resources for parity with the primary MCP server.
@@ -401,6 +528,10 @@ class TrioMCPServer:
                 register_all_resources(self.mcp)
                 logger.info("Registered core ipfs_accelerate_py MCP resources")
             except Exception as e:
+                if self._using_fastmcp_registry:
+                    raise RuntimeError(
+                        "required core MCP resource registration failed"
+                    ) from e
                 logger.warning(f"Core MCP resources not registered: {e}")
 
             # Register default prompts for parity (prompts are optional).
@@ -408,12 +539,9 @@ class TrioMCPServer:
                 if self.mcp is None:
                     raise RuntimeError("MCP server not initialized")
 
-                try:
-                    from ipfs_accelerate_py.mcp_server.fastmcp_compat import ensure_register_prompt_compat
+                from ipfs_accelerate_py.mcp_server.fastmcp_compat import ensure_register_prompt_compat
 
-                    ensure_register_prompt_compat(self.mcp)
-                except Exception as e:
-                    logger.debug(f"FastMCP prompt compatibility shim not applied: {e}")
+                ensure_register_prompt_compat(self.mcp)
 
                 self.mcp.register_prompt(
                     name="ipfs_help",
@@ -445,13 +573,39 @@ class TrioMCPServer:
             except Exception as e:
                 logger.debug(f"Core MCP prompts not registered: {e}")
 
+            if self._using_fastmcp_registry:
+                from ipfs_accelerate_py.mcp.fastmcp_compat import (
+                    get_registration_failures,
+                )
+
+                failures = get_registration_failures(self.mcp)
+                if failures:
+                    logger.warning(
+                        "FastMCP registry rejected %d compatibility registration(s); "
+                        "retrying with standalone registry",
+                        len(failures),
+                    )
+                    self.mcp = None
+                    self._using_fastmcp_registry = False
+                    return self.setup(_force_standalone=True)
+
             # Create FastAPI app for ASGI
             self.fastapi_app = self._create_fastapi_app()
 
             logger.info(f"TrioMCPServer setup complete: {self.config.name}")
 
         except Exception as e:
-            logger.error(f"Error setting up TrioMCPServer: {e}")
+            if self._using_fastmcp_registry:
+                from ipfs_accelerate_py.mcp.server import _safe_exception_summary
+
+                logger.warning(
+                    "%s; retrying with standalone registry",
+                    _safe_exception_summary("FastMCP Trio setup failed", e),
+                )
+                self.mcp = None
+                self._using_fastmcp_registry = False
+                return self.setup(_force_standalone=True)
+            logger.error("Error setting up standalone TrioMCPServer: %s", type(e).__name__)
             raise
 
     def _register_p2p_tools(self) -> None:
@@ -683,14 +837,7 @@ class TrioMCPServer:
                 tools = []
                 if hasattr(self.mcp, 'tools'):
                     for name, tool in self.mcp.tools.items():
-                        tool_info = {"name": name}
-                        if hasattr(tool, 'description'):
-                            tool_info["description"] = tool.description
-                        if hasattr(tool, 'inputSchema'):
-                            tool_info["inputSchema"] = tool.inputSchema
-                        elif hasattr(tool, 'input_schema'):
-                            tool_info["inputSchema"] = tool.input_schema
-                        tools.append(tool_info)
+                        tools.append(_tool_public_metadata(name, tool))
                 return {"tools": tools}
 
             @app.get("/metrics")
@@ -753,7 +900,8 @@ class TrioMCPServer:
             # Auto-populate repository if empty
             if len(repo._descriptors) == 0 and tools:
                 for tool_name in tools:
-                    tool_fn = self.mcp.tools[tool_name] if hasattr(self.mcp, 'tools') else None
+                    tool_entry = self.mcp.tools[tool_name] if hasattr(self.mcp, 'tools') else None
+                    tool_fn = _tool_function(tool_entry)
                     # Extract schema from tool function if available
                     input_schema = {}
                     if tool_fn and hasattr(tool_fn, '__annotations__'):
@@ -816,7 +964,7 @@ class TrioMCPServer:
 
             async def _execute(m, p):
                 if hasattr(self.mcp, 'tools') and m in self.mcp.tools:
-                    return await self.mcp.tools[m](**p)
+                    return await _invoke_tool_entry(self.mcp.tools[m], p)
                 raise ValueError(f"Tool not found: {m}")
 
             envelope = await execute_with_envelope(
@@ -1745,14 +1893,7 @@ class TrioMCPServer:
                     req = _json.loads(body.decode("utf-8"))
                     async def _exec(m, p):
                         if hasattr(self.mcp, 'tools') and m in self.mcp.tools:
-                            entry = self.mcp.tools[m]
-                            tool = entry.get("function") if isinstance(entry, dict) else entry
-                            if not callable(tool):
-                                raise TypeError(f"Tool is not callable: {m}")
-                            result = tool(**p)
-                            if inspect.isawaitable(result):
-                                return await result
-                            return result
+                            return await _invoke_tool_entry(self.mcp.tools[m], p)
                         raise ValueError(f"Tool not found: {m}")
                     envelope = await execute_with_envelope(
                         method=req.get("method", ""), params=req.get("params", {}),
