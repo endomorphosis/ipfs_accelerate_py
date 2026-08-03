@@ -378,6 +378,9 @@ _JAVA_VERSION_RE = re.compile(
     r'(?im)^\s*(?:openjdk|java)\s+version\s+"'
     r'(?P<version>\d+(?:[._+\-][^"]*)?)"'
 )
+_SOUFFLE_VERSION_LINE_RE = re.compile(
+    r"^Version: (?P<version>\d+(?:\.\d+)+)$"
+)
 JAVA_OPTION_ENV_VARS: Final = (
     "_JAVA_OPTIONS",
     "JAVA_TOOL_OPTIONS",
@@ -437,6 +440,17 @@ def first_nonempty_line(text: str) -> str:
         if stripped:
             return stripped
     return ""
+
+
+def parse_souffle_version_banner(banner: str | None) -> str | None:
+    """Return the sole canonical version from Soufflé's framed banner."""
+
+    versions = [
+        match.group("version")
+        for line in (banner or "").splitlines()
+        if (match := _SOUFFLE_VERSION_LINE_RE.fullmatch(line.strip()))
+    ]
+    return versions[0] if len(versions) == 1 else None
 
 
 def parse_java_version_banner(banner: str | None) -> str | None:
@@ -1922,6 +1936,18 @@ def _relocated_state_manifest_binding(
     regenerated launchers.
     """
 
+    datasets_root = repo_root_from() / "ipfs_datasets_py"
+    datasets_text = str(datasets_root)
+    if datasets_text not in sys.path:
+        sys.path.insert(0, datasets_text)
+    from ipfs_datasets_py.logic.backends.installers import state_model
+
+    return state_model.validate_relocated_managed_manifest(
+        root,
+        managed_identity=managed,
+        approved_root_prefixes=APPROVED_IMMUTABLE_DEPLOYMENT_ROOTS,
+    )
+
     failures: list[str] = []
     current_root = root.resolve()
     if not _path_under_approved_immutable_root(current_root):
@@ -2431,6 +2457,16 @@ def probe_tool_identity(
             else f'java version "{quoted}" (major {major})'
         )
         result["java_major"] = major
+        result["identity_probed"] = True
+        result["installed"] = True
+        return result
+
+    if tool_id == "souffle":
+        souffle_version = parse_souffle_version_banner(combined)
+        if souffle_version is None:
+            result["probe_error"] = "souffle_version_banner_unreadable"
+            return result
+        result["version_string"] = f"Souffle Version: {souffle_version}"
         result["identity_probed"] = True
         result["installed"] = True
         return result

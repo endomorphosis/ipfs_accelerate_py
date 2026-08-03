@@ -344,6 +344,68 @@ def test_certifier_java_probe_rejects_unquoted_banner_and_strips_hostile_env(
     assert forged["probe_error"] == "java_version_banner_unreadable"
 
 
+def test_souffle_probe_reads_canonical_version_beyond_banner_frame(
+    certifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    banner = """\
+----------------------------------------------------------------------------
+Version: 2.4.1
+Word size: 32 bits
+Options enabled: ffi sqlite
+----------------------------------------------------------------------------
+"""
+    assert certifier.parse_souffle_version_banner(banner) == "2.4.1"
+    assert (
+        certifier.parse_souffle_version_banner(
+            banner + "\nVersion: 9.9.9\n"
+        )
+        is None
+    )
+    assert (
+        certifier.parse_souffle_version_banner(
+            "Version: 2.4.1 reviewed locally"
+        )
+        is None
+    )
+
+    monkeypatch.setattr(
+        certifier,
+        "resolve_executable",
+        lambda _candidates, **_kwargs: "/bin/true",
+    )
+    monkeypatch.setattr(
+        certifier,
+        "bounded_run",
+        lambda argv, **_kwargs: certifier.subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout=banner,
+            stderr="",
+        ),
+    )
+    result = certifier.probe_tool_identity(
+        {
+            "tool_id": "souffle",
+            "availability": "managed_pin",
+            "executable_candidates": ["souffle"],
+            "offline_probe": {"argv": ["--version"]},
+        },
+        env={},
+    )
+
+    assert result["identity_probed"] is True
+    assert result["installed"] is True
+    assert result["version_string"] == "Souffle Version: 2.4.1"
+    assert (
+        certifier.detect_locked_version_mismatch(
+            "2.4.1",
+            result["version_string"],
+        )
+        is False
+    )
+
+
 # ---------------------------------------------------------------------------
 # PATH resolution + dry-run executes nothing
 # ---------------------------------------------------------------------------

@@ -150,6 +150,9 @@ CHECK_TIMEOUT_SECONDS: Final = 30.0
 LIVE_CASE_TIMEOUT_SECONDS: Final = 45.0
 LIVE_TIMEOUT_CASE_WALL_SECONDS: Final = 0.05
 LIVE_BOUND_LENGTH: Final = 5
+APPROVED_IMMUTABLE_DEPLOYMENT_ROOTS: Final[tuple[Path, ...]] = (
+    Path("/opt"),
+)
 
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 
@@ -620,6 +623,18 @@ def _managed_identity(
             java_executable=java.executable,
         )
     )
+    if identity.get("manifest_valid") is not True:
+        relocation = installer.validate_relocated_managed_manifest(
+            path.parent.parent,
+            managed_identity=identity,
+            approved_root_prefixes=APPROVED_IMMUTABLE_DEPLOYMENT_ROOTS,
+        )
+        identity["manifest_relocation_binding"] = relocation
+        identity["manifest_relocation_valid"] = (
+            relocation.get("valid") is True
+        )
+        if relocation.get("valid") is True:
+            identity["usable"] = True
     identity["java_runtime"] = java.to_dict()
     return identity
 
