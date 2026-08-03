@@ -1553,7 +1553,7 @@ or write authority.
 
 ## KITA-050 Resolve merge retry-budget failure for KITA-042
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
