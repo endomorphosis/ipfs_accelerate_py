@@ -14,6 +14,7 @@ would be generated now.
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import os
 import stat
@@ -26,6 +27,7 @@ from typing import Any, Final
 from ..proof.formal_verification_contracts import canonical_json_bytes
 from .legacy_landed_attestation import LegacyLandedReviewAuthority
 from .legacy_landed_review import (
+    MAX_POLICY_BYTES,
     build_exact_eight_legacy_landed_policy,
     load_legacy_landed_review_policy,
 )
@@ -114,18 +116,54 @@ def _git_head(repo_root: Path) -> str:
 
 def _read_existing_policy_bytes(path: Path) -> bytes | None:
     try:
-        info = os.lstat(path)
-    except FileNotFoundError:
-        return None
-    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
-        raise ValueError("legacy policy target is unsafe")
-    if hasattr(os, "geteuid") and info.st_uid != os.geteuid():
-        raise ValueError("legacy policy owner is invalid")
-    if info.st_nlink != 1:
-        raise ValueError("legacy policy cannot be hard-linked")
-    if stat.S_IMODE(info.st_mode) & 0o077:
-        raise ValueError("legacy policy permissions must be 0600 or stricter")
-    return path.read_bytes()
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0),
+        )
+    except OSError as exc:
+        if exc.errno == errno.ENOENT:
+            return None
+        if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
+            raise ValueError("legacy policy target is unsafe") from exc
+        raise
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("legacy policy target is unsafe")
+        if hasattr(os, "geteuid") and before.st_uid != os.geteuid():
+            raise ValueError("legacy policy owner is invalid")
+        if before.st_nlink != 1:
+            raise ValueError("legacy policy cannot be hard-linked")
+        if stat.S_IMODE(before.st_mode) & 0o077:
+            raise ValueError(
+                "legacy policy permissions must be 0600 or stricter"
+            )
+        if before.st_size > MAX_POLICY_BYTES:
+            raise ValueError("legacy policy is too large")
+        raw = b""
+        while len(raw) <= MAX_POLICY_BYTES:
+            chunk = os.read(
+                descriptor,
+                min(65536, MAX_POLICY_BYTES + 1 - len(raw)),
+            )
+            if not chunk:
+                break
+            raw += chunk
+        after = os.fstat(descriptor)
+        if (
+            len(raw) > MAX_POLICY_BYTES
+            or before.st_size != len(raw)
+            or after.st_size != before.st_size
+            or after.st_mtime_ns != before.st_mtime_ns
+            or after.st_ctime_ns != before.st_ctime_ns
+        ):
+            raise ValueError("legacy policy changed while being read")
+        return raw
+    finally:
+        os.close(descriptor)
 
 
 def _publish_policy_once(path: Path, payload: bytes) -> bool:
