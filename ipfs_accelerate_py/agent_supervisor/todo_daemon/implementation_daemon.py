@@ -173,10 +173,14 @@ from ..validation.validation_commands import (
 from ..validation.validation_runtime import (
     FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
+    VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA,
+    VALIDATION_PYTHON_MODULES_ENV,
     ValidationPythonLauncherReceipt,
     ValidationRuntimeError,
     canonical_validation_environment_contract,
     formal_toolchain_deployment_manifest,
+    preflight_validation_python_modules,
+    private_validation_environment,
     sealed_validation_python_runner,
     validation_python_launcher_environment,
     validation_shell_command,
@@ -334,7 +338,9 @@ TASK_ATTEMPT_LIMIT_IDLE_REASON = (
 )
 VALIDATION_MAX_WORKERS_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_MAX_WORKERS"
 VALIDATION_RESOURCE_BUDGET_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_RESOURCE_BUDGET"
+VALIDATION_PYTHON_MODULES_METADATA_KEY = "validation python modules"
 DEFAULT_VALIDATION_MAX_WORKERS = 2
+VALIDATION_PYTHON_PREFLIGHT_BACKOFF_SECONDS = 300
 MAX_MERGE_PROOF_METADATA_ITEMS = 256
 MAX_MERGE_PROOF_METADATA_DEPTH = 8
 MAX_MERGE_PROOF_METADATA_TEXT = 4096
@@ -2508,6 +2514,26 @@ def task_additional_allowed_paths(task: PortalTask) -> tuple[str, ...]:
     return normalize_exact_authorized_paths(
         task.metadata.get("allowed paths", "")
     )
+
+
+def task_validation_python_modules(task: PortalTask) -> tuple[str, ...]:
+    """Return task-declared interpreter-level validation imports.
+
+    The taskboard already carries arbitrary reviewed metadata.  Use one narrow
+    normalized key so tasks can declare extra installed modules without
+    treating validation command text as dependency-install authority.
+    Syntax and bounds are enforced by the validation runtime preflight.
+    """
+
+    modules: list[str] = []
+    for key, value in task.metadata.items():
+        if (
+            normalize_task_metadata_key(key)
+            != VALIDATION_PYTHON_MODULES_METADATA_KEY
+        ):
+            continue
+        modules.extend(split_csv(str(value)))
+    return tuple(dict.fromkeys(modules))
 
 
 @dataclass(frozen=True)
@@ -9003,7 +9029,22 @@ class PortalImplementationDaemon:
                 }
                 self._record_event("implementation_skipped", implementation_result)
             else:
-                implementation_result = self._run_implementation(selected, state)
+                validation_python_preflight = (
+                    self._validation_python_dependency_preflight(selected)
+                )
+                if validation_python_preflight.get("passed") is not True:
+                    implementation_result = (
+                        self._defer_validation_python_dependency_preflight(
+                            selected,
+                            state,
+                            validation_python_preflight,
+                        )
+                    )
+                else:
+                    implementation_result = self._run_implementation(
+                        selected,
+                        state,
+                    )
         provider_backoff_result = bool(
             implementation_result
             and implementation_result.get("reason") == "provider_capacity_backoff"
@@ -9016,6 +9057,7 @@ class PortalImplementationDaemon:
                 "provider_capacity_exhausted",
                 "provider_capacity_backoff",
                 "resource_claim_lock_exists",
+                "validation_python_dependency_preflight_failed",
             }
         )
         if state_written or completion_receipt_writes or (
@@ -27917,31 +27959,9 @@ class PortalImplementationDaemon:
                 ),
                 "infrastructure_failure": False,
             }
-        with tempfile.TemporaryDirectory(
-            prefix="ipfs-accelerate-validation-home-"
-        ) as temporary_home:
-            home_path = Path(temporary_home)
-            child_environment = dict(environment)
-            child_environment.update(
-                {
-                    "HOME": str(home_path),
-                    "XDG_CACHE_HOME": str(home_path / ".cache"),
-                    "XDG_CONFIG_HOME": str(home_path / ".config"),
-                    "XDG_DATA_HOME": str(home_path / ".local" / "share"),
-                    "XDG_STATE_HOME": str(home_path / ".local" / "state"),
-                }
-            )
-            for key in (
-                "XDG_CACHE_HOME",
-                "XDG_CONFIG_HOME",
-                "XDG_DATA_HOME",
-                "XDG_STATE_HOME",
-            ):
-                Path(child_environment[key]).mkdir(
-                    mode=0o700,
-                    parents=True,
-                    exist_ok=True,
-                )
+        with private_validation_environment(
+            environment
+        ) as child_environment:
             try:
                 with validation_python_launcher_environment(
                     child_environment
@@ -40107,6 +40127,110 @@ class PortalImplementationDaemon:
         )
         return command_environment
 
+    def _validation_python_dependency_preflight(
+        self,
+        task: PortalTask,
+    ) -> dict[str, object]:
+        """Probe the exact authoritative Python before provider dispatch."""
+
+        additional_modules = task_validation_python_modules(task)
+        try:
+            return preflight_validation_python_modules(
+                additional_modules,
+            )
+        except ValidationRuntimeError as exc:
+            return {
+                "schema": VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA,
+                "passed": False,
+                "reason": "validation_python_module_preflight_invalid",
+                "required_modules": [
+                    "pytest",
+                    *additional_modules,
+                ],
+                "missing_modules": [],
+                "failed_modules": {},
+                "exception_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+                "action": (
+                    "repair the configured validation Python/module contract "
+                    "before restarting the supervisor"
+                ),
+            }
+
+    def _defer_validation_python_dependency_preflight(
+        self,
+        task: PortalTask,
+        state: PortalTaskState,
+        receipt: Mapping[str, object],
+    ) -> dict[str, Any]:
+        """Persist an actionable non-consuming dependency deferral."""
+
+        attempt = self._task_attempt(state, task)
+        canonical_task_cid = self._canonical_ref(task)
+        self.task_queue.defer(
+            canonical_task_cid,
+            VALIDATION_PYTHON_PREFLIGHT_BACKOFF_SECONDS,
+            reason="validation_python_dependency_preflight_failed",
+        )
+        self.task_queue.save()
+        current = PortalTaskState.load(self.state_path)
+        owns_idle_projection = (
+            current.active_task_id == task.task_id
+            and current.active_task_cid == canonical_task_cid
+            and not current.implementation_in_progress
+        )
+        if owns_idle_projection:
+            self._clear_active_execution_state(current, clear_task=True)
+            current.selectable_ready_task_ids = [
+                task_id
+                for task_id in current.selectable_ready_task_ids
+                if task_id != task.task_id
+            ]
+            current.selectable_ready_count = len(
+                current.selectable_ready_task_ids
+            )
+            current.eligible_ready_task_ids = [
+                task_id
+                for task_id in current.eligible_ready_task_ids
+                if task_id != task.task_id
+            ]
+            current.eligible_ready_count = len(
+                current.eligible_ready_task_ids
+            )
+            current.selection_idle_reason = (
+                "validation_python_dependency_preflight_failed"
+            )
+            current.save(self.state_path)
+            state.__dict__.update(asdict(current))
+        result: dict[str, Any] = {
+            "skipped": True,
+            "deferred": True,
+            "reason": "validation_python_dependency_preflight_failed",
+            "task_id": task.task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": attempt,
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "infrastructure_failure": True,
+            "backoff_seconds": (
+                VALIDATION_PYTHON_PREFLIGHT_BACKOFF_SECONDS
+            ),
+            "active_task_cleared": owns_idle_projection,
+            "validation_python_preflight": dict(receipt),
+        }
+        for key in (
+            "required_modules",
+            "missing_modules",
+            "failed_modules",
+            "python_executable",
+            "action",
+        ):
+            value = receipt.get(key)
+            if value not in (None, "", (), [], {}):
+                result[key] = value
+        self._record_event("implementation_retry_deferred", result)
+        return result
+
     def _implementation_progress_observer(
         self,
         state: PortalTaskState,
@@ -41356,6 +41480,10 @@ class PortalImplementationDaemon:
         python = json.dumps(
             str(contract["python_interpreter"]), ensure_ascii=True
         )
+        required_python_modules = json.dumps(
+            list(contract["required_python_modules"]),
+            ensure_ascii=True,
+        )
         override = json.dumps(
             str(contract["path_override_environment_variable"]),
             ensure_ascii=True,
@@ -41370,6 +41498,13 @@ class PortalImplementationDaemon:
             "inherited `PATH` is ignored.\n"
             f"- The canonical Python interpreter target is exactly {python}; "
             "the validation runner may expose it through a sealed launcher.\n"
+            "- Before an implementation attempt or model dispatch, that exact "
+            "interpreter must import "
+            f"{required_python_modules} through the private validation "
+            "environment. Operators may add interpreter-level requirements "
+            f"with `${VALIDATION_PYTHON_MODULES_ENV}`; a task may add them "
+            f"with `{VALIDATION_PYTHON_MODULES_METADATA_KEY}` metadata. "
+            "Missing imports defer without consuming the task attempt.\n"
             "- Each validation command receives a fresh private `HOME` whose "
             "directory name starts with "
             "`ipfs-accelerate-validation-home-`. Its XDG paths are exactly "
