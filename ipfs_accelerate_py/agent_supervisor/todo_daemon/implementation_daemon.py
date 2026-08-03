@@ -8707,6 +8707,19 @@ class PortalImplementationDaemon:
                 )
             )
         }
+        admission_resource_reserved_ready_task_ids = {
+            task.task_id
+            for task in execution_tasks
+            if (
+                task.task_id in representative_task_ids
+                and (
+                    not self.strict_task_sharding
+                    or self._task_belongs_to_shard(task.task_id)
+                )
+                and resolved_statuses.get(task.task_id) == "ready"
+                and task.task_id in resource_reserved_task_ids
+            )
+        }
         external_task_reservations = self._external_task_reservations(tasks)
         for task_id, reservation in external_task_reservations.items():
             active_task_claims.setdefault(task_id, reservation)
@@ -8786,10 +8799,9 @@ class PortalImplementationDaemon:
         selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
         if selected is None and attempt_limit_idle_reason:
             selection_scope["selection_idle_reason"] = attempt_limit_idle_reason
-        elif selected is None and any(
-            resolved_statuses.get(task.task_id) == "ready"
-            and task.task_id in resource_reserved_task_ids
-            for task in execution_tasks
+        elif (
+            selected is None
+            and admission_resource_reserved_ready_task_ids
         ):
             selection_scope["selection_idle_reason"] = (
                 "all_selectable_ready_tasks_deferred_by_resource_claim"

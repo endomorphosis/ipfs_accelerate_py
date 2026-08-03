@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
@@ -10,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
+    PortalTask,
     PortalTaskState,
     parse_args as parse_daemon_args,
 )
@@ -40,6 +42,7 @@ def _write_cross_shard_board(path: Path) -> None:
 - Completion: manual
 - Priority: P1
 - Track: ops
+- Outputs: modules/alpha/src/ready.py
 """,
         encoding="utf-8",
     )
@@ -99,6 +102,81 @@ def test_strict_task_sharding_disables_cross_lane_ready_fallback(
     assert "task_shard_ready_fallback" not in (
         strict_dir / "events.jsonl"
     ).read_text(encoding="utf-8")
+
+
+def test_strict_shard_idle_reason_ignores_cross_shard_resource_claim(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    board = tmp_path / "todo.md"
+    _write_cross_shard_board(board)
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon.process_command_line",
+        lambda _pid: f"python -m pytest {Path(sys.argv[0]).name}",
+    )
+    common = {
+        "todo_path": board,
+        "repo_root": tmp_path,
+        "task_header_prefix": "## ACCEL-",
+        "task_shard_count": 2,
+        "strict_task_sharding": True,
+        "worktree_submodule_paths": ("modules/alpha",),
+    }
+    holder = PortalImplementationDaemon(
+        **common,
+        task_shard_index=1,
+        state_path=tmp_path / "holder" / "state.json",
+        strategy_path=tmp_path / "holder" / "strategy.json",
+        events_path=tmp_path / "holder" / "events.jsonl",
+    )
+    observer = PortalImplementationDaemon(
+        **common,
+        task_shard_index=0,
+        state_path=tmp_path / "observer" / "state.json",
+        strategy_path=tmp_path / "observer" / "strategy.json",
+        events_path=tmp_path / "observer" / "events.jsonl",
+    )
+    borrower = PortalImplementationDaemon(
+        **{**common, "strict_task_sharding": False},
+        task_shard_index=0,
+        state_path=tmp_path / "borrower" / "state.json",
+        strategy_path=tmp_path / "borrower" / "strategy.json",
+        events_path=tmp_path / "borrower" / "events.jsonl",
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Ready task in shard one",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/ready.py"],
+    )
+    claims, unavailable, reason, _existing = (
+        holder._acquire_implementation_resource_claims(
+            task,
+            attempt=1,
+            started_at="2026-08-03T00:00:00+00:00",
+        )
+    )
+    assert unavailable == ""
+    assert reason == "acquired"
+
+    try:
+        result = observer.run_once()
+        borrower_result = borrower.run_once()
+    finally:
+        assert holder._release_implementation_resource_claims(claims)
+
+    assert result["resource_reserved_task_ids"] == ["ACCEL-001"]
+    assert result["active_task_id"] == ""
+    assert result["selection_idle_reason"] == (
+        "no_shard_selectable_ready_tasks"
+    )
+    assert borrower_result["selection_idle_reason"] == (
+        "all_selectable_ready_tasks_deferred_by_resource_claim"
+    )
 
 
 def test_daemon_cli_and_builder_propagate_strict_task_sharding(
