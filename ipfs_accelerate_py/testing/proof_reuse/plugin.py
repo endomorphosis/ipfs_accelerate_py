@@ -27,6 +27,7 @@ DEPENDENCY_INSTALLER_ATTRIBUTE = "_ipfs_proof_reuse_dependency_installer"
 SERVICE_RESOLVER_ATTRIBUTE = "_ipfs_proof_reuse_service_resolver"
 SERVICE_RESOLUTION_ATTRIBUTE = "_ipfs_proof_reuse_service_resolution"
 IDENTITY_SERVICES_ATTRIBUTE = "_ipfs_proof_reuse_identity_services"
+IDENTITY_FACTORY_ATTRIBUTE = "_ipfs_proof_reuse_identity_factory"
 RUNTIME_PLUGIN_ATTRIBUTE = "_ipfs_proof_reuse_runtime_plugin"
 RUNTIME_TRACE_ATTRIBUTE = "_ipfs_proof_reuse_runtime_trace"
 RUNTIME_TRACE_CAPTURE_ATTRIBUTE = "_ipfs_proof_reuse_runtime_trace_capture"
@@ -366,12 +367,62 @@ class ProofReuseRuntimeComposition:
     def interface(self) -> str:
         return PROOF_REUSE_RUNTIME_COMPOSITION_INTERFACE
 
+    def ensure_identity_factory(self) -> Any:
+        """Return the session-scoped default identity factory (PTR-143).
+
+        The factory supplies :meth:`obtain_static_identity` for locator-first
+        collection seeds.  Hermetic shells without a repository root keep
+        ``None`` so unit tests observe typed fail-open diagnostics rather than
+        a fabricated forest.
+        """
+
+        existing = getattr(self.config, IDENTITY_FACTORY_ATTRIBUTE, None)
+        if existing is not None:
+            return existing
+        root = _config_root_path(self.config)
+        if root is None:
+            return None
+        try:
+            from .default_identity_services import DefaultIdentityServiceFactory
+
+            proof_config = get_proof_reuse_config(self.config)
+            factory = DefaultIdentityServiceFactory(
+                mode=proof_config.mode,
+                root_path=root,
+                config=self.config,
+            )
+            setattr(self.config, IDENTITY_FACTORY_ATTRIBUTE, factory)
+            # Also materialize the services bundle for full assembly upgrades.
+            if getattr(self.config, IDENTITY_SERVICES_ATTRIBUTE, None) is None:
+                setattr(
+                    self.config,
+                    IDENTITY_SERVICES_ATTRIBUTE,
+                    factory.build_services(),
+                )
+            return factory
+        except Exception:
+            metrics = getattr(self.config, METRICS_ATTRIBUTE, None)
+            if metrics is not None:
+                metrics.degraded(reason_code="identity_factory_unavailable")
+            return None
+
     def ensure_identity_services(self) -> Any:
         """Return session-scoped identity defaults without item registries."""
 
         existing = getattr(self.config, IDENTITY_SERVICES_ATTRIBUTE, None)
         if existing is not None:
             return existing
+        factory = self.ensure_identity_factory()
+        if factory is not None:
+            try:
+                services = factory.build_services()
+                setattr(self.config, IDENTITY_SERVICES_ATTRIBUTE, services)
+                return services
+            except Exception:
+                metrics = getattr(self.config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(reason_code="identity_services_unavailable")
+                return None
         root = _config_root_path(self.config)
         if root is None:
             # Hermetic shells without a root keep an empty provider bundle so
@@ -616,6 +667,12 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
     # identities are detected by the assembler and left untouched.  Explicit
     # injections remain authoritative; otherwise a root-scoped default factory
     # supplies session-memoized providers without per-test registries.
+    #
+    # PTR-143: collection first attaches a locator-first collection seed and
+    # stable locator without runtime evidence, fixture calls, or a final
+    # execution key.  Full assembly may later upgrade when runtime evidence is
+    # available; it never fabricates that evidence at collection.
+    from .collection_seed import assemble_and_attach_collection_seed
     from .item_identity import (
         ItemIdentityAssemblyServices,
         assemble_and_attach_item_identity,
@@ -627,6 +684,9 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
         setattr(config, COMPOSITION_ATTRIBUTE, composition)
 
     metrics = getattr(config, METRICS_ATTRIBUTE, None)
+    identity_factory = getattr(config, IDENTITY_FACTORY_ATTRIBUTE, None)
+    if identity_factory is None:
+        identity_factory = composition.ensure_identity_factory()
     identity_services = getattr(config, IDENTITY_SERVICES_ATTRIBUTE, None)
     if not isinstance(identity_services, ItemIdentityAssemblyServices):
         defaults = composition.ensure_identity_services()
@@ -639,6 +699,20 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
         if metadata is None or metadata.disabled:
             continue
         try:
+            # Locator-first static seed: no runtime trace, no execution key.
+            assemble_and_attach_collection_seed(
+                item,
+                factory=identity_factory,
+                services=identity_services,
+                mode=proof_config.mode,
+            )
+        except Exception:
+            if metrics is not None:
+                metrics.degraded(reason_code="collection_seed_failed")
+        try:
+            # Full assembly remains for explicit runtime-evidence injection and
+            # upgrades from an intermediate collection seed.  Without runtime
+            # evidence it fails open to RUN and attaches no lookup request.
             assemble_and_attach_item_identity(item, identity_services)
         except Exception:
             if metrics is not None:
@@ -977,6 +1051,7 @@ __all__ = [
     "DISABLED_MARKER",
     "EFFECTS_MARKER",
     "EXECUTION_RECORDED_ATTRIBUTE",
+    "IDENTITY_FACTORY_ATTRIBUTE",
     "IDENTITY_SERVICES_ATTRIBUTE",
     "ISSUER_SERVICE_ATTRIBUTE",
     "ITEM_METADATA_ATTRIBUTE",

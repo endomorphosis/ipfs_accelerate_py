@@ -11,6 +11,19 @@ the collected item.  Session-scoped providers supply the current repository
 forest, complete fixture/dependency inventory, policy inputs, and (if one
 exists) fresh controlled-preflight runtime evidence.
 
+Locator-first collection seeds (PTR-143)
+----------------------------------------
+
+Stable locator and static collection seeds are attached by
+``collection_seed.LocatorFirstItemIdentityAssembler`` *before* any runtime
+trace exists.  That path uses
+``DefaultIdentityServiceFactory.obtain_static_identity`` and never fabricates a
+final execution key.  This module's full assembler may upgrade a seed into a
+lookup request only when fresh runtime evidence is available.  A locator
+paired with ``ITEM_COLLECTION_SEED_ATTRIBUTE`` is therefore not treated as an
+identity conflict; a manual locator/execution key without that seed remains an
+authoritative override.
+
 Important admission limitation
 ------------------------------
 
@@ -62,6 +75,9 @@ ITEM_LOCATOR_ATTRIBUTE: Final = "_ipfs_proof_reuse_locator"
 ITEM_EXECUTION_KEY_ATTRIBUTE: Final = "_ipfs_proof_reuse_execution_key"
 ITEM_ELIGIBILITY_ATTRIBUTE: Final = "_ipfs_proof_reuse_eligibility"
 ITEM_POLICY_ATTRIBUTE: Final = "_ipfs_proof_reuse_policy"
+# Locator-first collection seed (PTR-143).  Intermediate static identity only;
+# never skip authority and never a final execution key.
+ITEM_COLLECTION_SEED_ATTRIBUTE: Final = "_ipfs_proof_reuse_collection_seed"
 
 _MAX_SOURCE_BYTES: Final = 8 * 1_048_576
 _MAX_FIXTURES: Final = 512
@@ -860,14 +876,25 @@ def _disabled(item: Any) -> bool:
 
 
 def _existing_identity(item: Any) -> bool:
-    return any(
-        getattr(item, name, None) is not None
-        for name in (
-            ITEM_LOCATOR_ATTRIBUTE,
-            ITEM_EXECUTION_KEY_ATTRIBUTE,
-            "_ipfs_proof_reuse_lookup_request",
-        )
-    )
+    """True when authoritative identity is already attached.
+
+    A locator-first collection seed (PTR-143) is an intermediate static state:
+    it may already hold a stable locator without a final execution key.  That
+    intermediate state is not treated as a conflict so full assembly can still
+    upgrade to a lookup request when runtime evidence becomes available.
+    Manual/injected identity (execution key, lookup request, or a locator
+    without our collection seed) remains an authoritative override.
+    """
+
+    if getattr(item, ITEM_EXECUTION_KEY_ATTRIBUTE, None) is not None:
+        return True
+    if getattr(item, "_ipfs_proof_reuse_lookup_request", None) is not None:
+        return True
+    locator = getattr(item, ITEM_LOCATOR_ATTRIBUTE, None)
+    if locator is None:
+        return False
+    # Locator without a collection seed is treated as an explicit injection.
+    return getattr(item, ITEM_COLLECTION_SEED_ATTRIBUTE, None) is None
 
 
 def _attach(item: Any, result: AutomaticItemIdentityAssembly) -> bool:
@@ -1333,7 +1360,12 @@ __all__ = (
     "CURRENT_ITEM_INPUTS_INTERFACE",
     "CURRENT_RUNTIME_TRACE_EVIDENCE_INTERFACE",
     "CURRENT_RUNTIME_TRACE_EVIDENCE_SCHEMA",
+    "ITEM_COLLECTION_SEED_ATTRIBUTE",
+    "ITEM_ELIGIBILITY_ATTRIBUTE",
+    "ITEM_EXECUTION_KEY_ATTRIBUTE",
     "ITEM_IDENTITY_RESULT_ATTRIBUTE",
+    "ITEM_LOCATOR_ATTRIBUTE",
+    "ITEM_POLICY_ATTRIBUTE",
     "AutomaticItemIdentityAssembler",
     "AutomaticItemIdentityAssembly",
     "CurrentInputCompleteness",

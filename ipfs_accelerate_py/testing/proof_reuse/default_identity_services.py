@@ -1187,8 +1187,12 @@ class DefaultIdentityServiceFactory:
             )
         if not components.reusable:
             # Still return the partial artifacts for diagnostics; locator may
-            # still be compiled for stable node addressing.
-            locator_partial = self._compile_locator(facts, descriptor)
+            # still be compiled for stable node addressing.  Parameterized
+            # nodes bind the exact parameter-value CID even when other
+            # components are non-reusable.
+            locator_partial = self._compile_locator(
+                facts, descriptor, components=components
+            )
             return DefaultItemStaticIdentity(
                 reason=DefaultIdentityReason.COMPONENTS_NON_REUSABLE,
                 stage="components",
@@ -1204,7 +1208,9 @@ class DefaultIdentityServiceFactory:
                 },
             )
 
-        locator_artifact = self._compile_locator(facts, descriptor)
+        locator_artifact = self._compile_locator(
+            facts, descriptor, components=components
+        )
         if (
             locator_artifact is None
             or not getattr(locator_artifact, "reusable", False)
@@ -1240,7 +1246,21 @@ class DefaultIdentityServiceFactory:
             diagnostics={},
         )
 
-    def _compile_locator(self, facts: Any, descriptor: Any) -> Any:
+    def _compile_locator(
+        self,
+        facts: Any,
+        descriptor: Any,
+        *,
+        components: Any = None,
+    ) -> Any:
+        """Compile a stable locator, binding the exact parameter-value CID.
+
+        Parameterized nodes require ``parameter_values_cid`` (or an explicit
+        non-reusable reason) on :class:`TestLocatorKey`.  The CID is taken
+        from the already-compiled identity components so collection seeds and
+        later warm lookup share the same parameter binding.
+        """
+
         compiler = (
             self._override_compiler
             if self._override_compiler is not None
@@ -1255,6 +1275,23 @@ class DefaultIdentityServiceFactory:
         if not isinstance(compiler, TestExecutionIdentityCompiler):
             return None
         policy = self.session_identity().policy_inputs()
+
+        parameter_values_cid = ""
+        non_reusable_reason = ""
+        if getattr(facts, "parameterized", False):
+            if components is not None:
+                parameter_values_cid = str(
+                    getattr(components, "parameter_cid", "") or ""
+                )
+            if not parameter_values_cid:
+                reasons = tuple(
+                    getattr(components, "non_reusable_reasons", ()) or ()
+                )
+                if reasons:
+                    non_reusable_reason = str(reasons[0])[:256]
+                else:
+                    non_reusable_reason = "parameter_values_cid_unavailable"
+
         return compiler.compile_locator(
             repository_id=descriptor.repository_id,
             package_identity=descriptor.descriptor_cid,
@@ -1262,7 +1299,8 @@ class DefaultIdentityServiceFactory:
             node_id=facts.node_id,
             collection_schema_version=policy.collection_schema_version,
             parameter_id=facts.parameter_id,
-            parameter_values_cid="",
+            parameter_values_cid=parameter_values_cid,
+            non_reusable_reason=non_reusable_reason,
             selection_semantics="exact_node",
             metadata={
                 "factory_interface": DEFAULT_IDENTITY_SERVICE_FACTORY_INTERFACE,
