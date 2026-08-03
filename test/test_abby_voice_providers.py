@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import io
 import json
+import wave
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Mapping, Optional, Sequence, Tuple
 
 import pytest
 
+from ipfs_accelerate_py import voice_providers
+from ipfs_accelerate_py.voice_providers import abby as abby_module
 from ipfs_accelerate_py.router_deps import RouterDeps
 from ipfs_accelerate_py.voice_providers.abby import (
     AbbyProviderError,
@@ -18,6 +22,9 @@ from ipfs_accelerate_py.voice_providers.abby import (
     HTTPResponse,
     HuggingFaceWhisperHTTPProvider,
     IndexTTSHTTPProvider,
+    PUBLICUS_INDEXTTS_MODEL,
+    PUBLICUS_INDEXTTS_SPACE_URL,
+    PublicusIndexTTSProvider,
 )
 from ipfs_accelerate_py.voice_router import (
     VoiceProviderCapabilities,
@@ -28,7 +35,17 @@ from ipfs_accelerate_py.voice_router import (
     register_voice_provider,
 )
 
-WAV_AUDIO = b"RIFF\x14\x00\x00\x00WAVEfmt abby-audio"
+def _fixture_wav() -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8_000)
+        audio.writeframes((1_000).to_bytes(2, "little", signed=True))
+    return output.getvalue()
+
+
+WAV_AUDIO = _fixture_wav()
 
 
 class RecordingTransport:
@@ -45,6 +62,85 @@ class RecordingTransport:
             raise outcome
         assert isinstance(outcome, HTTPResponse)
         return outcome
+
+
+class FakePublicusSpaceClient:
+    def __init__(
+        self,
+        endpoint: str,
+        timeout: float,
+        headers_factory,
+        *,
+        wait_outcome: Optional[object] = None,
+    ) -> None:
+        self.endpoint = endpoint
+        self.timeout = timeout
+        self.headers = dict(headers_factory())
+        self.wait_outcome = wait_outcome
+        self.uploads: List[Tuple[str, bytes, str]] = []
+        self.resolved_api_names: List[str] = []
+        self.queue_calls: List[Tuple[int, Tuple[object, ...]]] = []
+        self.fetches: List[object] = []
+        self.closed = False
+
+    def get_config(self) -> Mapping[str, object]:
+        return {"dependencies": "fake"}
+
+    def resolve_fn_index(
+        self, api_name: str, config: Mapping[str, object]
+    ) -> int:
+        assert config == {"dependencies": "fake"}
+        self.resolved_api_names.append(api_name)
+        return 7 if api_name == "/gen_batch" else 6
+
+    def lookup_dependency_input_count(
+        self, fn_index: int, config: Mapping[str, object]
+    ) -> int:
+        assert fn_index in {6, 7}
+        assert config == {"dependencies": "fake"}
+        return 25
+
+    def upload_file(self, name: str, data: bytes, mime_type: str) -> object:
+        self.uploads.append((name, data, mime_type))
+        return [{"path": "/tmp/gradio/reference.wav"}]
+
+    def queue_join(self, fn_index: int, data: Sequence[object]) -> str:
+        self.queue_calls.append((fn_index, tuple(data)))
+        return "session"
+
+    def wait_for_queue_result(self, session_hash: str, **kwargs: object) -> object:
+        assert session_hash == "session"
+        assert kwargs["timeout_seconds"] == self.timeout
+        if isinstance(self.wait_outcome, BaseException):
+            raise self.wait_outcome
+        if self.wait_outcome is not None:
+            return self.wait_outcome
+        fn_index = self.queue_calls[-1][0]
+        if fn_index == 7:
+            return {
+                "data": [
+                    {"path": "/tmp/gradio/preview.wav"},
+                    [
+                        {"path": "/tmp/gradio/one.wav"},
+                        {"path": "/tmp/gradio/two.wav"},
+                    ],
+                    {"path": "/tmp/gradio/audio.zip"},
+                ]
+            }
+        return {"data": [{"path": "/tmp/gradio/single.wav"}]}
+
+    def fetch_file(self, reference: object) -> Tuple[bytes, str]:
+        self.fetches.append(reference)
+        path = (
+            str(reference.get("path", ""))
+            if isinstance(reference, Mapping)
+            else str(reference)
+        )
+        marker = path.rsplit("/", 1)[-1].encode("ascii")
+        return WAV_AUDIO + marker, "audio/wav"
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class FakeClock:
@@ -99,10 +195,26 @@ def json_response(value: object, status: int = 200) -> HTTPResponse:
 def test_abby_provider_import_and_builtin_capabilities_are_lazy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS", raising=False)
-    monkeypatch.delenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URL", raising=False)
-    monkeypatch.delenv("WALLET_INDEXTTS_SPACE_URL", raising=False)
-    monkeypatch.delenv("WALLET_INDEXTTS_FALLBACK_SPACE_URL", raising=False)
+    for variable in (
+        "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS",
+        "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URL",
+        "WALLET_INDEXTTS_SPACE_URL",
+        "WALLET_INDEXTTS_FALLBACK_SPACE_URL",
+        "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_TOKEN",
+        "HF_TOKEN",
+        "HUGGINGFACEHUB_API_TOKEN",
+        "HUGGING_FACE_HUB_TOKEN",
+        "HUGGINGFACE_TOKEN",
+        "IPFS_DATASETS_PY_HF_API_TOKEN",
+        "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_TIMEOUT_SECONDS",
+        "IPFS_ACCELERATE_PY_ABBY_TIMEOUT_SECONDS",
+    ):
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setattr(
+        abby_module,
+        "_cached_huggingface_token",
+        lambda: "cached-hub-token",
+    )
 
     tts_capabilities = get_voice_provider_capabilities("indextts")
     stt_capabilities = get_voice_provider_capabilities("abby_hf_whisper")
@@ -113,11 +225,214 @@ def test_abby_provider_import_and_builtin_capabilities_are_lazy(
 
     provider = get_voice_provider("abby_indextts", use_cache=False)
     assert isinstance(provider, IndexTTSHTTPProvider)
-    assert provider.endpoints == ()
-    with pytest.raises(AbbyProviderError, match="no configured endpoint"):
-        provider.synthesize("hello")
+    assert isinstance(provider, PublicusIndexTTSProvider)
+    assert voice_providers.PublicusIndexTTSProvider is IndexTTSHTTPProvider
+    assert provider.endpoints == (PUBLICUS_INDEXTTS_SPACE_URL,)
+    assert provider.default_model == PUBLICUS_INDEXTTS_MODEL
+    assert provider.backend == "publicus_gradio"
+    assert provider.authenticated
+    assert provider._authorization_headers()["X-HF-Bill-To"] == "Publicus"
+    assert provider.policy.timeout_seconds == 900
+    assert dict(provider.gradio_contract)["input_count"] == 25
+
+
+def test_publicus_group_billing_can_be_explicitly_disabled() -> None:
+    provider = IndexTTSHTTPProvider(
+        token="private-token",
+        bill_to="",
+    )
+
+    assert provider._authorization_headers() == {
+        "Authorization": "Bearer private-token"
+    }
+
+
+def test_explicit_hf_token_avoids_cached_token_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HF_TOKEN", "explicit-token")
+
+    def forbidden() -> str:
+        raise AssertionError("cached Hub token should not be consulted")
+
+    monkeypatch.setattr(abby_module, "_cached_huggingface_token", forbidden)
+    provider = IndexTTSHTTPProvider.from_environment()
+    assert provider.authenticated
+
+
+def test_publicus_single_contract_is_authenticated_and_receipt_is_private() -> None:
+    clients: List[FakePublicusSpaceClient] = []
+
+    def factory(endpoint, timeout, headers_factory):
+        client = FakePublicusSpaceClient(endpoint, timeout, headers_factory)
+        clients.append(client)
+        return client
+
+    provider = IndexTTSHTTPProvider(
+        token="private-hf-token",
+        bill_to="publicus",
+        reference_audio=b"RIFF-reference-voice",
+        voice_description="calm, clear voice",
+        policy=AbbyResiliencePolicy(timeout_seconds=13, max_retries=0),
+        space_client_factory=factory,
+    )
+
+    audio = provider.synthesize("Call 211 for help.")
+
+    assert audio == WAV_AUDIO + b"single.wav"
+    assert len(clients) == 1
+    client = clients[0]
+    assert client.endpoint == PUBLICUS_INDEXTTS_SPACE_URL
+    assert client.headers == {
+        "Authorization": "Bearer private-hf-token",
+        "X-HF-Bill-To": "publicus",
+    }
+    assert client.resolved_api_names == ["/gen_single"]
+    fn_index, data = client.queue_calls[0]
+    assert fn_index == 6
+    assert len(data) == 25
+    assert data[0] == "Same as the voice reference"
+    assert data[2] == "Call 211 for help."
+    assert data[13] == "calm, clear voice"
+    assert data[16] == 0
+    assert client.closed
     assert provider.last_receipt is not None
-    assert provider.last_receipt.error_code == "provider_not_configured"
+    encoded_receipt = json.dumps(provider.last_receipt.to_dict())
+    assert "private-hf-token" not in encoded_receipt
+    assert "Call 211 for help." not in encoded_receipt
+    assert "reference-voice" not in encoded_receipt
+
+
+def test_publicus_batch_uses_fn7_and_reuses_upload_across_client_sessions() -> None:
+    clients: List[FakePublicusSpaceClient] = []
+
+    def factory(endpoint, timeout, headers_factory):
+        client = FakePublicusSpaceClient(endpoint, timeout, headers_factory)
+        clients.append(client)
+        return client
+
+    provider = IndexTTSHTTPProvider(
+        token="batch-token",
+        reference_audio=b"RIFF-reference-voice",
+        policy=AbbyResiliencePolicy(timeout_seconds=20, max_retries=0),
+        space_client_factory=factory,
+    )
+
+    outputs = provider.synthesize_batch(["first response", "second response"])
+    single = provider.synthesize("third response")
+
+    assert outputs == (
+        WAV_AUDIO + b"one.wav",
+        WAV_AUDIO + b"two.wav",
+    )
+    assert single == WAV_AUDIO + b"single.wav"
+    assert len(clients) == 2
+    batch_client, single_client = clients
+    assert len(batch_client.uploads) == 1
+    assert single_client.uploads == []
+    batch_fn_index, batch_data = batch_client.queue_calls[0]
+    assert batch_fn_index == 7
+    assert batch_client.resolved_api_names == ["/gen_batch"]
+    assert len(batch_data) == 25
+    assert json.loads(str(batch_data[2])) == [
+        "first response",
+        "second response",
+    ]
+    assert batch_data[16] == 2
+    assert batch_client.fetches == [
+        {"path": "/tmp/gradio/one.wav"},
+        {"path": "/tmp/gradio/two.wav"},
+    ]
+    assert single_client.resolved_api_names == ["/gen_single"]
+    assert all(client.closed for client in clients)
+
+
+@pytest.mark.parametrize(
+    "queue_error",
+    [
+        TimeoutError("ZeroGPU queue timed out"),
+        RuntimeError(
+            "FileNotFoundError: [Errno 2] No such file or directory: "
+            "'/tmp/gradio/expired/reference.wav'"
+        ),
+    ],
+    ids=("timeout", "stale-gradio-upload"),
+)
+def test_publicus_retry_reuploads_reference_after_queue_failure(
+    queue_error: Exception,
+) -> None:
+    clients: List[FakePublicusSpaceClient] = []
+    outcomes = [queue_error, None]
+
+    def factory(endpoint, timeout, headers_factory):
+        client = FakePublicusSpaceClient(
+            endpoint,
+            timeout,
+            headers_factory,
+            wait_outcome=outcomes[len(clients)],
+        )
+        clients.append(client)
+        return client
+
+    provider = IndexTTSHTTPProvider(
+        token="retry-token",
+        reference_audio=b"RIFF-reference-voice",
+        policy=AbbyResiliencePolicy(
+            timeout_seconds=30,
+            max_retries=1,
+            backoff_seconds=0,
+        ),
+        space_client_factory=factory,
+    )
+
+    assert provider.synthesize("retry me") == WAV_AUDIO + b"single.wav"
+    assert len(clients) == 2
+    assert [len(client.uploads) for client in clients] == [1, 1]
+    assert all(client.closed for client in clients)
+    assert provider.last_receipt is not None
+    assert provider.last_receipt.status == "degraded"
+    assert "retry-token" not in json.dumps(provider.last_receipt.to_dict())
+
+
+def test_publicus_failure_falls_back_to_compatible_generic_http_endpoint() -> None:
+    clients: List[FakePublicusSpaceClient] = []
+
+    def factory(endpoint, timeout, headers_factory):
+        client = FakePublicusSpaceClient(
+            endpoint,
+            timeout,
+            headers_factory,
+            wait_outcome=RuntimeError("Space unavailable"),
+        )
+        clients.append(client)
+        return client
+
+    generic_transport = RecordingTransport(
+        [json_response({"audioBase64": base64.b64encode(WAV_AUDIO).decode()})]
+    )
+    provider = IndexTTSHTTPProvider(
+        [
+            PUBLICUS_INDEXTTS_SPACE_URL,
+            "https://tts.example.test/generate",
+        ],
+        token="fallback-token",
+        reference_audio=b"RIFF-reference-voice",
+        policy=AbbyResiliencePolicy(timeout_seconds=10, max_retries=0),
+        space_client_factory=factory,
+        transport=generic_transport,
+    )
+
+    assert provider.synthesize("fallback response") == WAV_AUDIO
+    assert len(clients) == 1
+    assert generic_transport.calls[0][0].url == (
+        "https://tts.example.test/generate"
+    )
+    assert provider.last_receipt is not None
+    assert provider.last_receipt.status == "degraded"
+    assert provider.last_receipt.selected_endpoint == (
+        "https://tts.example.test/generate"
+    )
+    assert "fallback-token" not in json.dumps(provider.last_receipt.to_dict())
 
 
 def test_indextts_adapter_normalizes_wire_request_and_base64_response() -> None:

@@ -32,12 +32,18 @@ from ..analysis.contract_mismatch_analyzer import (
     FindingLifecycle,
     MismatchState,
 )
+from ..analysis.contract_repair_contracts import (
+    DecisionDisposition,
+    RepairStrategy,
+    RepairTargetDecision,
+)
 from ..context.context_contracts import (
     ContextBudget,
     ContextCapsule,
     ContextReference,
     ContextTier,
 )
+from ..planning.repair_target_admission import AdmissionResult
 from .code_edit_packet import (
     CodeEditPacket as BaseCodeEditPacket,
     build_code_edit_packet,
@@ -55,6 +61,11 @@ MCP_CONTRACT_EDIT_RETRY_SCHEMA: Final = (
 )
 MCP_CONTRACT_EDIT_PACKET_VERSION: Final = "1"
 MCP_CONTRACT_EDIT_PACKET_CONTRACT_VERSION: Final = 1
+# Explicit, opt-in @2 decision path.  Default materialization remains @1 so
+# legacy callers keep exact affected_paths equality semantics.
+MCP_CONTRACT_EDIT_PACKET_DECISION_VERSION: Final = 2
+WRITE_PATH_AUTHORITY_AFFECTED_PATHS: Final = "finding_affected_paths"
+WRITE_PATH_AUTHORITY_TARGET_DECISION: Final = "repair_target_decision"
 
 UNTRUSTED_DATA_LABEL: Final = "untrusted_repository_data"
 DATA_NOT_INSTRUCTIONS: Final = "data_not_instructions"
@@ -76,6 +87,9 @@ class ContractEditPacketReason(str, Enum):
     PATH_SCOPE_MISMATCH = "path_scope_mismatch"
     REQUIRED_CORE_MISSING = "required_core_missing"
     TOKEN_BUDGET_EXCEEDED = "token_budget_exceeded"
+    DECISION_REQUIRED = "decision_required"
+    DECISION_NOT_ADMITTED = "decision_not_admitted"
+    DECISION_SCOPE_MISMATCH = "decision_scope_mismatch"
     MALFORMED = "malformed"
 
 
@@ -872,6 +886,50 @@ class ContractEditRetryPacket:
         return cls.from_dict(payload)
 
 
+def _require_admitted_decision(
+    *,
+    target_decision: RepairTargetDecision | None,
+    admission: AdmissionResult | None,
+) -> RepairTargetDecision:
+    """Return the single admitted decision that may set @2 write authority."""
+
+    decision: RepairTargetDecision | None = None
+    if admission is not None:
+        if not isinstance(admission, AdmissionResult):
+            raise ContractEditPacketError(
+                "admission must be AdmissionResult",
+                reason_code=ContractEditPacketReason.DECISION_REQUIRED,
+            )
+        decision = admission.decision
+    if target_decision is not None:
+        if not isinstance(target_decision, RepairTargetDecision):
+            raise ContractEditPacketError(
+                "target_decision must be RepairTargetDecision",
+                reason_code=ContractEditPacketReason.DECISION_REQUIRED,
+            )
+        if decision is not None and decision.content_id != target_decision.content_id:
+            raise ContractEditPacketError(
+                "admission and target_decision identities differ",
+                reason_code=ContractEditPacketReason.DECISION_SCOPE_MISMATCH,
+            )
+        decision = target_decision
+    if decision is None:
+        raise ContractEditPacketError(
+            "packet_version 2 requires an admitted RepairTargetDecision",
+            reason_code=ContractEditPacketReason.DECISION_REQUIRED,
+        )
+    if (
+        decision.disposition is not DecisionDisposition.ADMITTED
+        or decision.strategy in {RepairStrategy.REJECT, RepairStrategy.AMBIGUOUS}
+        or not decision.permitted_write_paths
+    ):
+        raise ContractEditPacketError(
+            "only a current admitted non-abstaining decision may set write paths",
+            reason_code=ContractEditPacketReason.DECISION_NOT_ADMITTED,
+        )
+    return decision
+
+
 def materialize_contract_edit_packet(
     finding: ContractFinding | Mapping[str, Any],
     *,
@@ -895,8 +953,18 @@ def materialize_contract_edit_packet(
     caller: str = "agent-supervisor:contract-edit-materializer",
     max_input_tokens: int = MAX_PACKET_INPUT_TOKENS,
     tokenizer: Callable[[str], Any] | None = None,
+    packet_version: int = 1,
+    target_decision: RepairTargetDecision | None = None,
+    admission: AdmissionResult | None = None,
 ) -> McpContractEditPacket:
-    """Materialize one current finding into a minimal implementation packet."""
+    """Materialize one current finding into a minimal implementation packet.
+
+    ``packet_version=1`` (default) preserves legacy semantics: write paths must
+    equal ``finding.affected_paths`` exactly.  ``packet_version=2`` is the
+    explicit proof-gated cutover: write paths are taken only from an admitted
+    ``RepairTargetDecision`` (or ``AdmissionResult``) and may diverge from the
+    finding's historical affected paths (e.g. rename-to-moved-file).
+    """
 
     item = _finding(finding)
     _assert_finding_current(
@@ -923,26 +991,76 @@ def materialize_contract_edit_packet(
             "max_input_tokens must be between 1 and 8,192",
             reason_code=ContractEditPacketReason.TOKEN_BUDGET_EXCEEDED,
         )
+    if isinstance(packet_version, bool) or not isinstance(packet_version, int):
+        raise ContractEditPacketError(
+            "packet_version must be 1 or 2",
+            reason_code=ContractEditPacketReason.MALFORMED,
+        )
+    if packet_version not in (1, MCP_CONTRACT_EDIT_PACKET_DECISION_VERSION):
+        raise ContractEditPacketError(
+            "packet_version must be 1 or 2",
+            reason_code=ContractEditPacketReason.MALFORMED,
+        )
+    # Binding a decision always selects the @2 write-authority path; callers
+    # cannot half-upgrade by passing a decision under version 1.
+    if target_decision is not None or admission is not None:
+        packet_version = MCP_CONTRACT_EDIT_PACKET_DECISION_VERSION
 
     affected_paths = tuple(item.affected_paths)
-    selected_write = _paths(
-        affected_paths if write_paths is None else write_paths,
-        "write_paths",
-    )
-    if selected_write != affected_paths:
-        raise ContractEditPacketError(
-            "write_paths must exactly match the finding's affected paths",
-            reason_code=ContractEditPacketReason.PATH_SCOPE_MISMATCH,
+    decision: RepairTargetDecision | None = None
+    write_authority = WRITE_PATH_AUTHORITY_AFFECTED_PATHS
+    decision_id = ""
+    if packet_version == MCP_CONTRACT_EDIT_PACKET_DECISION_VERSION:
+        decision = _require_admitted_decision(
+            target_decision=target_decision, admission=admission
         )
-    selected_read = _paths(
-        affected_paths if read_paths is None else read_paths,
-        "read_paths",
-    )
-    if not set(affected_paths).issubset(selected_read):
-        raise ContractEditPacketError(
-            "read_paths must include every affected path",
-            reason_code=ContractEditPacketReason.PATH_SCOPE_MISMATCH,
+        write_authority = WRITE_PATH_AUTHORITY_TARGET_DECISION
+        decision_id = decision.content_id
+        selected_write = _paths(decision.permitted_write_paths, "write_paths")
+        if write_paths is not None:
+            requested_write = _paths(write_paths, "write_paths")
+            if requested_write != selected_write:
+                raise ContractEditPacketError(
+                    "write_paths must exactly equal the admitted decision allowlist",
+                    reason_code=ContractEditPacketReason.DECISION_SCOPE_MISMATCH,
+                )
+        decision_reads = _paths(decision.permitted_read_paths, "read_paths")
+        if read_paths is None:
+            # Decision read authority is exact; diagnostic finding paths may be
+            # added only as additional reads when the caller supplies them.
+            selected_read = decision_reads
+        else:
+            selected_read = _paths(read_paths, "read_paths")
+            if not set(decision_reads).issubset(selected_read):
+                raise ContractEditPacketError(
+                    "read_paths must include every decision read path",
+                    reason_code=ContractEditPacketReason.DECISION_SCOPE_MISMATCH,
+                )
+            # Write scope remains decision-only; extra reads cannot mint writes.
+            if not set(selected_write).issubset(selected_read):
+                raise ContractEditPacketError(
+                    "read_paths must include every decision write path",
+                    reason_code=ContractEditPacketReason.DECISION_SCOPE_MISMATCH,
+                )
+    else:
+        selected_write = _paths(
+            affected_paths if write_paths is None else write_paths,
+            "write_paths",
         )
+        if selected_write != affected_paths:
+            raise ContractEditPacketError(
+                "write_paths must exactly match the finding's affected paths",
+                reason_code=ContractEditPacketReason.PATH_SCOPE_MISMATCH,
+            )
+        selected_read = _paths(
+            affected_paths if read_paths is None else read_paths,
+            "read_paths",
+        )
+        if not set(affected_paths).issubset(selected_read):
+            raise ContractEditPacketError(
+                "read_paths must include every affected path",
+                reason_code=ContractEditPacketReason.PATH_SCOPE_MISMATCH,
+            )
 
     validations = _commands(validation_commands, "validation_commands")
     reproof = _commands(reproof_commands, "reproof_commands")
@@ -967,6 +1085,14 @@ def materialize_contract_edit_packet(
         "affected_symbols": list(item.affected_symbols),
         "impact_truncated": item.impact_truncated,
     }
+    if decision is not None:
+        default_slice = {
+            **default_slice,
+            "decision_write_paths": list(selected_write),
+            "decision_read_paths": list(decision.permitted_read_paths),
+            "selected_candidate_id": decision.selected_candidate_id,
+            "strategy": decision.strategy.value,
+        }
     selected_slice = _labeled_data(
         compact_slice if compact_slice is not None else default_slice,
         source="bounded_contract_slice",
@@ -995,7 +1121,7 @@ def materialize_contract_edit_packet(
     )
     handles = _coerce_handles((*cas_handles, *expansion_handles))
 
-    goal = {
+    goal: dict[str, Any] = {
         "task_id": selected_task,
         "finding_id": item.finding_id,
         "finding_record_id": item.record_id,
@@ -1019,21 +1145,35 @@ def materialize_contract_edit_packet(
                 for reason in evidence.reason_codes
             }
         ),
+        "packet_version": packet_version,
     }
+    if decision_id:
+        goal["decision_id"] = decision_id
+        goal["selected_strategy"] = decision.strategy.value if decision else ""
+        goal["selected_candidate_id"] = (
+            decision.selected_candidate_id if decision else ""
+        )
     authority = {
         "provider_semantic_authority": False,
         "artifact_bodies_embedded": False,
         "expansion_requires_handle": True,
         "untrusted_data_label": UNTRUSTED_DATA_LABEL,
         "untrusted_text_treatment": DATA_NOT_INSTRUCTIONS,
+        "write_path_authority": write_authority,
+        "packet_version": packet_version,
     }
+    if decision_id:
+        authority["decision_id"] = decision_id
     scope = {
         "read_paths": list(selected_read),
         "write_paths": list(selected_write),
         "path_allowlists_exact": True,
         "dependency_ids": list(dependencies),
         "mandatory_dependency_ids": list(mandatory),
+        "write_path_authority": write_authority,
     }
+    if decision_id:
+        scope["decision_id"] = decision_id
     acceptance = {
         "expected_postcondition": postcondition,
         "validation_commands": list(validations),
@@ -1256,6 +1396,7 @@ __all__ = [
     "FIXTURE_MEDIAN_TARGET_TOKENS",
     "MAX_PACKET_INPUT_TOKENS",
     "MCP_CONTRACT_EDIT_PACKET_CONTRACT_VERSION",
+    "MCP_CONTRACT_EDIT_PACKET_DECISION_VERSION",
     "MCP_CONTRACT_EDIT_PACKET_INTERFACE",
     "MCP_CONTRACT_EDIT_PACKET_SCHEMA",
     "MCP_CONTRACT_EDIT_PACKET_VERSION",
@@ -1264,6 +1405,8 @@ __all__ = [
     "McpContractEditPacket",
     "McpContractEditPacketError",
     "UNTRUSTED_DATA_LABEL",
+    "WRITE_PATH_AUTHORITY_AFFECTED_PATHS",
+    "WRITE_PATH_AUTHORITY_TARGET_DECISION",
     "build_contract_edit_retry",
     "build_mcp_contract_edit_packet",
     "build_proof_delta_retry",

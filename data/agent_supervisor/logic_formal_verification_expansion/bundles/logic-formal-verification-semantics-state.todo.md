@@ -1,0 +1,135 @@
+# Objective Bundle: logic-formal-verification/semantics-state
+
+Source todo: docs/architecture/logic_formal_verification_expansion.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## LFV-010 Close objective gap: Add event, trace, LTL, LTLf, MTL, CTL, and CTL-star semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: temporal-semantics
+- Depends on: LFV-005, LFV-009
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/trace.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/temporal.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-010-objective-gap-cacb4964edb7.md
+- Bundle: logic-formal-verification/semantics-state
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-semantics-state.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 9
+- Parallel lane: logic-formal-verification/semantics-state
+- Conflict policy: Own trace/temporal leaf modules and tests; adapt existing event/temporal types by explicit conversion without modifying them.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/trace.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/temporal.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/trace.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/temporal.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py
+- Interfaces: TraceIR@1, TemporalFormula@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G023
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/397f5a5505a46366e8aa0f42061f96409d1f6cf89bfa2e0b4f737712d7d78d31
+- Canonical task CID: baguqeerahf7vuvifurrwn2fkb5bamh4wicor63hytp5c4c2pon3rfv6xruyq
+- Semantic identity: objective-evidence-obligation/v1/534902092f941bc6e4d0c69c98729db1bcf883f0c6929ff674a992eeae20ba7c
+- Acceptance subset: Finite-prefix, infinite-trace, and branching-time semantics are non-interchangeable, time units and interval boundaries are canonical, monitorable fragments are declared, CTL/CTL-star remain declaration/translation-only until a conformant semantics-preserving backend exists, clean prefixes never imply global proof.
+- Preconditions: objective goal LFV-G023 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/trace.py, satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/temporal.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/trace.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/temporal.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/LFV-G023
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/534902092f941bc6e4d0c69c98729db1bcf883f0c6929ff674a992eeae20ba7c
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/trace.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/temporal.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py
+- Embedding query: Define typed events, clocks, finite and infinite traces, path quantification, temporal formulas, intervals, observation policies, and monitorability.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/trace.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/temporal.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py
+- Surplus group: objective/LFV-G023
+- Merge key: 9723f14c3d826b55
+- Merge family: objective/LFV-G023
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 18503bcb3bd2ea3a
+- Acceptance: Objective scan filed this gap for LFV-G023. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-010-objective-gap-cacb4964edb7.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/trace.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/temporal.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## LFV-012 Close objective gap: Add state, transition, action-system, and Kripke semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: state-semantics
+- Depends on: LFV-005, LFV-009
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/state.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-012-objective-gap-3711a2a9ff93.md
+- Bundle: logic-formal-verification/semantics-state
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-semantics-state.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 11
+- Parallel lane: logic-formal-verification/semantics-state
+- Conflict policy: Own state/transition leaf modules and tests; do not emit TLA, execute a model checker, or edit shared exports.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/state.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/state.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py
+- Interfaces: StateTransitionIR@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G022
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/b9b30f895c1ce12a363ab453f73348194d51a430dceb6ecfa23db860d9fff851
+- Canonical task CID: baguqeeraxgzq7ck4dtqsunr2wrj7om2idfgvdjbq3tvw5t5chw4gbwp77biq
+- Semantic identity: objective-evidence-obligation/v1/e6c88a59cfd84c7c0b1344e0a48bb903583b3f22ea6bc7ae91617bc391876fbc
+- Acceptance subset: State schemas are typed and deterministic, actions expose read/write frames, initial/next/invariant/fairness roles are distinct, finite bounds are explicit, invalid or ambiguous transitions fail closed.
+- Preconditions: objective goal LFV-G022 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/state.py, satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/state.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/LFV-G022
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/e6c88a59cfd84c7c0b1344e0a48bb903583b3f22ea6bc7ae91617bc391876fbc
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/state.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py
+- Embedding query: Represent typed state variables, initial states, actions, transition relations, fairness, invariants, variants, labels, and Kripke structures independently of TLA or SMT syntax.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/state.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py
+- Surplus group: objective/LFV-G022
+- Merge key: db471bd3f94e730f
+- Merge family: objective/LFV-G022
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 40189112d5b84d65
+- Acceptance: Objective scan filed this gap for LFV-G022. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-012-objective-gap-3711a2a9ff93.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/state.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

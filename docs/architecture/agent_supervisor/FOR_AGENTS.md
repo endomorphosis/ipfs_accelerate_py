@@ -63,17 +63,20 @@ When launching or diagnosing lanes:
 
 | Stage | Current contract |
 | --- | --- |
-| Provider selection | Leave `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` unset or use `auto` |
+| Provider selection | Set `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok_quota_codex` |
 | Primary | Authenticated Grok Build, exact model `grok-4.5` |
-| Allowed fallback | Exact `gpt-5.6-terra`, reasoning `medium`, only after the exact durable Grok 402 balance-exhausted record |
+| Quota-only fallback | Exact `gpt-5.6-terra`, reasoning `medium`, only after independently signed Grok quota authority on the associated fresh retry |
+| Legacy compatibility | Unset / `auto` is availability-based and is not the quota-authority policy |
 | All other failures | Fail closed; do not fall back |
 
 Explicit `provider=grok` forces Grok with **no** fallback. Explicit
 `provider=codex` / `provider=openai` is a direct provider selection, not the
 quota-only fallback. Do not turn a generic error string, authentication error,
-or missing Grok binary into fallback authority.
+or missing Grok binary into fallback authority. Codex model/reasoning
+environment overrides apply to direct Codex selection, not either pinned
+quota fallback.
 
-The quota-routed default always runs Grok in a capability-restricted outer
+The legacy in-runner `auto` path runs Grok in a capability-restricted outer
 container. Only the active worktree and Grok's ephemeral state are writable,
 and peer-provider credentials, configuration, binaries, and runtime sockets
 are withheld. Explicit Grok selection may use the native custom sandbox where
@@ -87,6 +90,18 @@ parent observes an unchanged workspace fingerprint, the primary session's
 official terminal record identifies quota exhaustion, and a separate,
 tool-free `grok-4.5` probe confirms it. Treat stdout, model text, a changed
 workspace, missing isolation, and ambiguous termination as denial—not quota.
+This compatibility path is not the production supervisor quota-authority
+policy.
+
+The `grok_quota_codex` policy uses the authoritative handoff boundary: it
+persists daemon-verified quota authority, defers and releases the Grok attempt,
+then permits Terra only for the corresponding retry in a fresh fenced
+worktree. The accepted hyphenated and `_fallback` / `-fallback` spellings are
+compatibility aliases for this policy, not broader fallback cascades.
+The runner's private receipt, stdout, model text, exit status, generic 402/429
+text, and the legacy in-runner probe are only candidates; none can bypass the
+daemon's independently signed, invocation/task/account/pool-bound verifier.
+The supervisor must not attach `--codex-fallback-command-json` to this policy.
 
 ## Control and prompt surfaces (do not invent ops)
 

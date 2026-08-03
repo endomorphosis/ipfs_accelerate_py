@@ -1,0 +1,79 @@
+{
+  "authoritative": false,
+  "bundle": "vfs-assurance/root",
+  "completion_authoritative": false,
+  "evidence_claim_references": [
+    "vfs/repository-forest-receipt@1"
+  ],
+  "evidence_id": "repository-forest:sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+  "fixture_cid": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+  "forest": {
+    "fixture_cid": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+    "fixture_id": "fixture:vfs-adversarial-e2e@1",
+    "fixture_revision": "fixture-revision:1",
+    "forest_id": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+    "repositories": [
+      {
+        "content_cid": "sha256:4790626fc95f8be249f1a983d255c2ecd28a19571196cf8fcc0784fd22981bfd",
+        "exhaustive": true,
+        "repository_id": "repository:ipfs-accelerate-py@fixture",
+        "tree_id": "sha256:31db96185d07b13c287a5fc57a8b18bc3dbac55624d16645244b8ae810890bc1"
+      },
+      {
+        "content_cid": "sha256:ed6b56276e0a950a9aee6dfa60dcf48e0396b3681a735da6eb74152119ac8749",
+        "exhaustive": true,
+        "repository_id": "repository:ipfs-datasets-py@fixture",
+        "tree_id": "sha256:a4acedaecc8e1a09a49d87100e95a00c4df5993666d86982c7432c069c8223fb"
+      },
+      {
+        "content_cid": "sha256:bc7121120c78b7652aa2763a09d08e7ef0c4e38170d2a887d9c24e959abcbdb5",
+        "exhaustive": true,
+        "repository_id": "repository:ipfs-kit-py@fixture",
+        "tree_id": "sha256:50556e729691d30e540b9dfebfd987cda275f151c656b31b46b8c54fff28feb3"
+      },
+      {
+        "content_cid": "sha256:5deca18543def51bb411892bcd55c6fee2dfab7004d3c66445445bce3838311c",
+        "exhaustive": true,
+        "repository_id": "repository:swissknife@fixture",
+        "tree_id": "sha256:d21372dd4885907449b3b83caf074961bd6a93a19fa0fd42a87ed9156db15282"
+      }
+    ],
+    "repository_count": 4
+  },
+  "forest_id": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+  "goal_id": "VFS-G132",
+  "goal_packet": "goal_packet/vfs_symbolic_assurance/general/7414e86c1a7c",
+  "invariants": [
+    "sibling roots never share Git authority",
+    "path escape fails closed",
+    "portable forest CID excludes host locators",
+    "external SwissKnife is read-only in the initial policy"
+  ],
+  "policy_id": "policy:vfs-symbolic-rollout@1",
+  "policy_revision": "sha256:frozen-vfs-symbolic-policy",
+  "producers": [
+    "ipfs_accelerate_py/agent_supervisor/repository_forest.py",
+    "ipfs_accelerate_py/agent_supervisor/repository_forest_manifest.py",
+    "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py"
+  ],
+  "receipt_id": "repository-forest:sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+  "repository_id": "repository:ipfs-accelerate-py@fixture",
+  "repository_tree": "sha256:31db96185d07b13c287a5fc57a8b18bc3dbac55624d16645244b8ae810890bc1",
+  "requirement_id": "vfs/repository-forest-receipt@1",
+  "requirement_ids": [
+    "vfs/repository-forest-receipt@1"
+  ],
+  "safe_for_completion_reasoning": false,
+  "schema": "vfs/repository-forest-receipt@1",
+  "schema_version": 1,
+  "source_path": "data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/receipts/repository_forest_receipt.receipt.json",
+  "status": "nominated",
+  "task_id": "VFS-055",
+  "track": "vfs-symbolic-assurance",
+  "tree_id": "sha256:31db96185d07b13c287a5fc57a8b18bc3dbac55624d16645244b8ae810890bc1",
+  "validation_surfaces": [
+    "test/api/test_agent_supervisor_repository_forest.py",
+    "test/api/test_agent_supervisor_repository_forest_manifest.py",
+    "test/api/test_vfs_symbolic_assurance_e2e.py"
+  ]
+}

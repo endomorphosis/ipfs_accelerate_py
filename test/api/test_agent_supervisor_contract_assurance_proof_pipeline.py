@@ -593,20 +593,7 @@ export const IPFS_KIT_INTERFACE: MCPPPInterfaceDescriptor = {
 
 
 def test_index_repository_contracts_exposes_proof_cache_flag() -> None:
-    from external.ipfs_accelerate.scripts import index_repository_contracts as script
-
-    # Prefer package path used by the script itself.
-    import importlib.util
-
-    script_path = Path(
-        "external/ipfs_accelerate/scripts/index_repository_contracts.py"
-    ).resolve()
-    spec = importlib.util.spec_from_file_location(
-        "index_repository_contracts_under_test", script_path
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    from scripts import index_repository_contracts as module
 
     assert module.PROOF_PIPELINE_EVIDENCE == EVIDENCE_ID
     parser = module.build_arg_parser()

@@ -27,9 +27,9 @@ import re
 import shutil
 import sys
 import tempfile
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
-
+from typing import Any
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 if str(_PACKAGE_ROOT) not in sys.path:
@@ -67,10 +67,12 @@ from ipfs_accelerate_py.agent_supervisor.analysis.repository_snapshot import (  
     default_scope_policy_path,
     load_scope_policy,
 )
-
+from ipfs_accelerate_py.agent_supervisor.integrations.contract_repair_dependencies import (  # noqa: E402
+    PINNED_TYPESCRIPT_VERSION,
+)
 
 # Reviewed SwissKnife toolchain identity for the authoritative handoff.
-DEFAULT_TYPESCRIPT_VERSION = "5.9.3"
+DEFAULT_TYPESCRIPT_VERSION = PINNED_TYPESCRIPT_VERSION
 HANDOFF_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/sca-repository-index-handoff@1"
 )

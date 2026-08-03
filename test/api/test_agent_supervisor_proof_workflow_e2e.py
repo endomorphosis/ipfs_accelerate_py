@@ -377,7 +377,7 @@ def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
         track="G11",
         validation=[],
         acceptance="proof workflow completes exactly once",
-        board_namespace="proof-e2e",
+        board_namespace="todo.md",
     )
     calls: dict[str, int] = {}
     lock = threading.Lock()
@@ -400,7 +400,11 @@ def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
     todo_path.write_text(
         "- [ ] Task checkbox-999: REF-E2E proof-aware implementation\n\n"
         "## REF-E2E proof-aware implementation\n\n"
-        "- Status: todo\n",
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Priority: P0\n"
+        "- Track: G11\n"
+        "- Acceptance: proof workflow completes exactly once\n",
         encoding="utf-8",
     )
     daemons = [

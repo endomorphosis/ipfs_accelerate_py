@@ -5,7 +5,6 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MergeQueue,
     MergeQueueFenceError,
@@ -241,6 +240,33 @@ def test_deferred_claim_persists_cooldown_without_consuming_retry(
     assert reclaimed.attempt == 1
     assert reclaimed.failure_count == 0
     assert reclaimed.retry_not_before == 0.0
+
+
+@pytest.mark.parametrize("delay", [float("nan"), float("inf"), 3601.0])
+def test_defer_rejects_unbounded_cooldown(
+    tmp_path: Path,
+    delay: float,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/unbounded-cooldown",
+        task_id="UNBOUNDED-COOLDOWN",
+        commit_sha="e" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:cooldown-validation")
+    assert claimed is not None
+
+    with pytest.raises(ValueError, match="deferral delay"):
+        queue.defer(
+            claimed,
+            reason="lock_exists",
+            delay_seconds=delay,
+        )
+
+    stored = queue.get(request.request_id)
+    assert stored is not None
+    assert stored.status == "processing"
+    assert stored.claim_token == claimed.claim_token
 
 
 def test_failed_validation_is_quarantined_with_a_durable_receipt(

@@ -86,6 +86,12 @@ def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
     config = supervisor_config_from_args(parsed, repo_root=tmp_path)
     command = PortalImplementationSupervisor(config)._build_daemon_command()
 
+    assert command[:4] == [
+        sys.executable,
+        "-P",
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+    ]
     assert config.merge_target_branch == target_branch
     assert command[command.index("--merge-target-branch") + 1] == target_branch
 
@@ -225,7 +231,14 @@ def test_daemon_uses_explicit_merge_target_branch_and_rejects_missing_branch(tmp
 
 
 def test_daemon_uses_packaged_merge_resolver_by_default(tmp_path: Path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
+
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND", raising=False)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/usr/local/bin/codex",
+    )
     expected = default_llm_merge_resolver_command()
     route = shlex.split(expected)
     assert route[:3] == [
@@ -251,6 +264,27 @@ def test_daemon_uses_packaged_merge_resolver_by_default(tmp_path: Path, monkeypa
 
     assert daemon.llm_merge_resolver_command == expected
     assert parse_args([]).llm_merge_resolver_command == expected
+
+
+def test_packaged_merge_resolver_omits_fallback_without_trusted_codex(
+    monkeypatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
+
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "",
+    )
+
+    route = shlex.split(default_llm_merge_resolver_command())
+
+    assert route[route.index("--model") + 1] == "grok-4.5"
+    assert "--codex-fallback-command-json" not in route
 
 
 def test_daemon_explicit_merge_resolver_overrides_default(tmp_path: Path, monkeypatch):

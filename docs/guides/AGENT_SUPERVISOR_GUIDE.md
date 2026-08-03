@@ -102,35 +102,39 @@ default route is deliberately narrower than a general provider cascade:
 
 | Role | Variable | Recommended value |
 | --- | --- | --- |
-| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | Leave unset or set `auto` for the quota-gated default route |
+| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `grok_quota_codex` for Grok-first, quota-only Terra fallback |
+| Legacy selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | Unset / `auto` is availability-based, not quota-authority routing |
 | Primary model | `IPFS_ACCELERATE_AGENT_GROK_MODEL` | Exact `grok-4.5` |
 | Grok binary | `IPFS_ACCELERATE_AGENT_GROK_BIN` | path to `grok` (e.g. `~/.local/bin/grok`) |
 | Grok permissions | `IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE` | `bypassPermissions` for unattended lanes |
-| Quota-only fallback | daemon-owned; not an operator model override | Exact `gpt-5.6-terra`, reasoning `medium` |
+| Quota-only fallback | runtime-owned; not an operator model override | Exact `gpt-5.6-terra`, reasoning `medium` |
+| Direct Codex model | `IPFS_ACCELERATE_AGENT_CODEX_MODEL` | `gpt-5.6-terra`; affects explicit `codex` / `openai` selection only |
+| Direct Codex reasoning | `IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT` | `medium`; affects explicit `codex` / `openai` selection only |
 
 Example `implementation.env` for a runtime directory:
 
 ```bash
-# Leave IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER unset (the default is auto).
+export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok_quota_codex
 export IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.5
 export IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE=bypassPermissions
 export IPFS_ACCELERATE_AGENT_GROK_BIN="${HOME}/.local/bin/grok"
+
+# Optional direct-Codex defaults; these do not control the quota fallback.
+# export IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra
+# export IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT=medium
 ```
 
 Notes:
 
-- `auto` requires an installed, authenticated Grok CLI before dispatch and
-  requires the primary model to be exactly `grok-4.5` when the fallback is
-  attached. Predispatch unavailability fails closed.
-- The runner may invoke Codex only after Grok's durable terminal record has
-  the exact observed 402 balance-exhausted failure, mapped internally to
-  `usage_pool_exhausted`. Other typed labels remain diagnostic and do not grant
-  fallback authority without a validated durable format. The primary claim
-  must agree with a fresh, tool-free `grok-4.5` quota probe. Model output and
-  streamed stdout do not grant fallback authority. The fallback command is
-  pinned to `gpt-5.6-terra` with `medium` reasoning; general Codex
-  model/reasoning environment overrides do not redefine this fallback.
-- The quota-routed default always runs Grok in a capability-restricted outer
+- `grok_quota_codex` requires an installed, authenticated Grok CLI before
+  dispatch and pins the primary model to exactly `grok-4.5`. Predispatch
+  unavailability fails closed.
+- The runner's typed receipt, reserved exit status, stdout, and model output
+  are untrusted quota candidates. Only the daemon's independently signed,
+  invocation/task/account/pool-bound verifier may authorize the associated
+  fresh retry. That retry is pinned to `gpt-5.6-terra` with `medium` reasoning;
+  general Codex model/reasoning overrides cannot redefine it.
+- The legacy in-runner `auto` path runs Grok in a capability-restricted outer
   container; explicit Grok selection may use the native custom sandbox where
   it is enforceable. Only the active worktree and Grok's ephemeral state are
   writable. Its fixed tool surface permits repository read/search/edit
@@ -142,10 +146,21 @@ Notes:
   content/mode/symlink fingerprint to remain unchanged. If the capability
   boundary or cleanup watchdog cannot be established, dispatch fails closed
   before provider work starts. Validation commands run later in the
-  supervisor, outside the model capability boundary.
+  supervisor, outside the model capability boundary. This compatibility path
+  is not the production supervisor quota-authority policy.
 - Explicit `provider=grok` forces Grok and deliberately omits fallback.
   Explicit `provider=codex` or `provider=openai` selects Codex directly and is
   not the quota-exhaustion fallback route.
+- `provider=grok_quota_codex` requires authenticated Grok before the first
+  dispatch and also pins the implementation model to `grok-4.5`. Unlike
+  availability-based `auto`, it persists independently verified quota authority,
+  defers and releases the Grok attempt, and selects direct Codex only for the
+  associated retry in a fresh fenced worktree. That retry is pinned to
+  `gpt-5.6-terra` with `medium` reasoning and never cascades to Copilot. Missing
+  Grok auth/binary, generic errors, timeouts, malformed output, policy
+  rejection, and validation failure do not authorize fallback. Once the quota
+  authority expires, Grok becomes primary again. The hyphenated policy name
+  and its `_fallback` / `-fallback` spellings are compatibility aliases.
 - Source the env **before** starting multi-supervisor / daemons; children
   inherit process environment and do not re-read files unless you wire that
   yourself.

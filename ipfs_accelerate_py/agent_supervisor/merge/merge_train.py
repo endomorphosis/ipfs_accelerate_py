@@ -21,6 +21,7 @@ import hashlib
 import inspect
 import json
 import marshal
+import math
 import os
 import shutil
 import subprocess
@@ -44,9 +45,19 @@ from ..proof.formal_verification_policy import (
     RiskLevel,
     default_formal_verification_policy,
 )
-from .checkout_lock import checkout_repository_id
-from .merge_queue import MergeQueue, MergeQueueFenceError, MergeRequest
-
+from .checkout_lock import (
+    checkout_lock_owner_is_active,
+    checkout_mutation_lock_path,
+    checkout_repository_id,
+    read_checkout_mutation_lease,
+)
+from .merge_queue import (
+    MAX_MERGE_QUEUE_DEFERRAL_SECONDS,
+    MAX_MERGE_QUEUE_RECORDED_DEFERRALS,
+    MergeQueue,
+    MergeQueueFenceError,
+    MergeRequest,
+)
 
 MergeCallback = Callable[[MergeRequest], Mapping[str, Any]]
 PreflightCallback = Callable[..., Mapping[str, Any] | bool]
@@ -90,6 +101,10 @@ PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
 PARALLEL_GATE_CACHE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/parallel-gate-cache@1"
 )
+INTEGRATED_QUARANTINE_RECOVERY_LIMIT: Final = 32
+INTEGRATED_HANDOFF_MAX_PATHS: Final = 64
+INTEGRATED_HANDOFF_MAX_PATH_BYTES: Final = 1024
+INTEGRATED_HANDOFF_MAX_PATH_COMPONENTS: Final = 64
 DISTRIBUTED_LANE_PUBLICATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/distributed-lane-publication@1"
 )
@@ -99,6 +114,19 @@ DISTRIBUTED_LANE_ADMISSION_SCHEMA: Final = (
 _DISTRIBUTED_PUBLICATION_METADATA_KEY: Final = "distributed_publication"
 _PARALLEL_ACCEPTANCE_RECEIPT_SEAL: Final = object()
 DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS: Final = 30.0
+DEFAULT_MAX_MERGE_LOCK_DEFERRALS: Final = (
+    MAX_MERGE_QUEUE_RECORDED_DEFERRALS
+)
+MERGE_LOCK_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        # The implementation daemon wraps checkout-mutation acquisition
+        # reasons before returning them across the merge-callback boundary.
+        "checkout_mutation_lock_exists",
+        # Retain compatibility with specialised/direct callbacks that expose
+        # the underlying checkout-lock reason without the daemon prefix.
+        "lock_exists",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -750,6 +778,222 @@ def conflict_fingerprint(
     return hashlib.sha256(payload.encode("utf-8", errors="surrogateescape")).hexdigest()
 
 
+def integrated_candidate_handoff_proof(
+    repo_root: Path | str,
+    *,
+    candidate_commit: str,
+    target_commit: str,
+    changed_submodule_paths: Any,
+) -> dict[str, Any]:
+    """Prove parent and declared nested handoff ancestry without mutation."""
+
+    root = Path(repo_root).resolve()
+    candidate = str(candidate_commit or "").strip().casefold()
+    target = str(target_commit or "").strip().casefold()
+    receipts: list[dict[str, Any]] = []
+
+    def run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def failure(reason: str, **details: Any) -> dict[str, Any]:
+        return {
+            "passed": False,
+            "reason": reason,
+            "candidate_commit": candidate,
+            "target_commit": target,
+            "paths": receipts,
+            **details,
+        }
+
+    def exact_commit(repo: Path, commit: str) -> bool:
+        value = str(commit or "").strip().casefold()
+        if (
+            len(value) not in {40, 64}
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            return False
+        resolved = run(repo, "rev-parse", "--verify", f"{value}^{{commit}}")
+        return (
+            resolved.returncode == 0
+            and resolved.stdout.strip().casefold() == value
+        )
+
+    def tree_entry(
+        repo: Path,
+        ref: str,
+        relative: str,
+    ) -> tuple[str, str] | None:
+        result = run(repo, "ls-tree", ref, "--", relative)
+        if result.returncode != 0:
+            return None
+        for line in result.stdout.splitlines():
+            metadata, separator, path = line.partition("\t")
+            fields = metadata.split()
+            if separator and path == relative and len(fields) >= 3:
+                return fields[0], fields[2]
+        return None
+
+    if not exact_commit(root, candidate) or not exact_commit(root, target):
+        return failure("parent_commit_unavailable")
+    ancestry = run(root, "merge-base", "--is-ancestor", candidate, target)
+    if ancestry.returncode != 0:
+        return failure(
+            "parent_candidate_not_integrated"
+            if ancestry.returncode == 1
+            else "parent_ancestry_unavailable",
+            returncode=ancestry.returncode,
+            stderr=ancestry.stderr[-2000:],
+        )
+    if (
+        not isinstance(changed_submodule_paths, Sequence)
+        or isinstance(changed_submodule_paths, (str, bytes, bytearray))
+    ):
+        return failure("changed_submodule_scope_missing")
+    if len(changed_submodule_paths) > INTEGRATED_HANDOFF_MAX_PATHS:
+        return failure("changed_submodule_scope_too_large")
+    paths = [
+        str(path).strip("/")
+        for path in changed_submodule_paths
+        if str(path).strip("/")
+    ]
+    if (
+        len(paths) != len(changed_submodule_paths)
+        or len(set(paths)) != len(paths)
+        or any(
+            Path(path).is_absolute()
+            or any(part in {"", ".", ".."} for part in path.split("/"))
+            or any(ord(character) < 32 for character in path)
+            or len(
+                path.encode("utf-8", errors="surrogatepass")
+            )
+            > INTEGRATED_HANDOFF_MAX_PATH_BYTES
+            or len(path.split("/"))
+            > INTEGRATED_HANDOFF_MAX_PATH_COMPONENTS
+            for path in paths
+        )
+    ):
+        return failure("changed_submodule_paths_malformed")
+
+    for declared_path in paths:
+        repo = root
+        candidate_ref = candidate
+        target_ref = target
+        remaining = declared_path.split("/")
+        chain: list[dict[str, Any]] = []
+        while remaining:
+            boundary: tuple[int, str, str, str] | None = None
+            for width in range(1, len(remaining) + 1):
+                relative = "/".join(remaining[:width])
+                candidate_entry = tree_entry(repo, candidate_ref, relative)
+                target_entry = tree_entry(repo, target_ref, relative)
+                if candidate_entry is None and target_entry is None:
+                    continue
+                if (
+                    candidate_entry is None
+                    or target_entry is None
+                    or candidate_entry[0] != target_entry[0]
+                ):
+                    return failure(
+                        "changed_submodule_gitlink_mismatch",
+                        failed_path=declared_path,
+                        relative=relative,
+                    )
+                if candidate_entry[0] == "160000":
+                    boundary = (
+                        width,
+                        relative,
+                        candidate_entry[1],
+                        target_entry[1],
+                    )
+                    break
+            if boundary is None:
+                return failure(
+                    "changed_submodule_gitlink_missing",
+                    failed_path=declared_path,
+                )
+            width, relative, candidate_gitlink, target_gitlink = boundary
+            source = repo.joinpath(*remaining[:width])
+            if any(
+                repo.joinpath(*remaining[:count]).is_symlink()
+                for count in range(1, width + 1)
+            ):
+                return failure(
+                    "changed_submodule_repository_symlinked",
+                    failed_path=declared_path,
+                    repository_path=str(source),
+                )
+            try:
+                source = source.resolve(strict=True)
+                source.relative_to(repo)
+            except (FileNotFoundError, OSError, ValueError):
+                return failure(
+                    "changed_submodule_repository_unavailable",
+                    failed_path=declared_path,
+                    repository_path=str(source),
+                )
+            inside = run(source, "rev-parse", "--is-inside-work-tree")
+            if (
+                inside.returncode != 0
+                or inside.stdout.strip() != "true"
+                or not exact_commit(source, candidate_gitlink)
+                or not exact_commit(source, target_gitlink)
+            ):
+                return failure(
+                    "changed_submodule_commit_unavailable",
+                    failed_path=declared_path,
+                    repository_path=str(source),
+                )
+            ancestry = run(
+                source,
+                "merge-base",
+                "--is-ancestor",
+                candidate_gitlink,
+                target_gitlink,
+            )
+            if ancestry.returncode != 0:
+                return failure(
+                    "changed_submodule_gitlink_not_integrated"
+                    if ancestry.returncode == 1
+                    else "changed_submodule_ancestry_unavailable",
+                    failed_path=declared_path,
+                    repository_path=str(source),
+                    candidate_gitlink=candidate_gitlink,
+                    target_gitlink=target_gitlink,
+                    returncode=ancestry.returncode,
+                )
+            chain.append(
+                {
+                    "repository_path": str(source),
+                    "relative": relative,
+                    "candidate_gitlink": candidate_gitlink,
+                    "target_gitlink": target_gitlink,
+                    "relationship": (
+                        "equal"
+                        if candidate_gitlink == target_gitlink
+                        else "ancestor"
+                    ),
+                }
+            )
+            remaining = remaining[width:]
+            repo = source
+            candidate_ref = candidate_gitlink
+            target_ref = target_gitlink
+        receipts.append({"path": declared_path, "passed": True, "chain": chain})
+    return {
+        "passed": True,
+        "reason": "candidate_handoff_integrated",
+        "candidate_commit": candidate,
+        "target_commit": target,
+        "paths": receipts,
+    }
+
+
 class MergeTrain:
     """Consume queued merge candidates serially and durably.
 
@@ -764,6 +1008,8 @@ class MergeTrain:
         max_attempts: Last failure count at which a request is quarantined.
         merge_lock_deferral_seconds: Durable cooldown applied when a live
             repository merge lock prevents the callback from attempting work.
+        max_merge_lock_deferrals: Maximum verified lock-contention cooldowns
+            before contention begins consuming the bounded failure budget.
         merge_callback: Optional specialised merger.  It receives the claimed
             request and returns a merge-result mapping.
         state_dir: Train receipts/lease/worktrees directory.  Defaults beneath
@@ -788,6 +1034,7 @@ class MergeTrain:
         resolver: Any = None,
         max_attempts: int = 3,
         merge_lock_deferral_seconds: float = DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS,
+        max_merge_lock_deferrals: int = DEFAULT_MAX_MERGE_LOCK_DEFERRALS,
         merge_callback: MergeCallback | None = None,
         state_dir: Path | str | None = None,
         git_timeout_seconds: float = 600.0,
@@ -840,10 +1087,26 @@ class MergeTrain:
                 )
         self.resolver = resolver
         self.max_attempts = max(1, int(max_attempts))
+        merge_lock_deferral_seconds = float(merge_lock_deferral_seconds)
+        if not math.isfinite(merge_lock_deferral_seconds):
+            raise ValueError("merge lock deferral cooldown must be finite")
+        if merge_lock_deferral_seconds > MAX_MERGE_QUEUE_DEFERRAL_SECONDS:
+            raise ValueError(
+                "merge lock deferral cooldown exceeds the durable queue limit"
+            )
         self.merge_lock_deferral_seconds = max(
             1.0,
-            float(merge_lock_deferral_seconds),
+            merge_lock_deferral_seconds,
         )
+        self.max_merge_lock_deferrals = int(max_merge_lock_deferrals)
+        if not (
+            1
+            <= self.max_merge_lock_deferrals
+            <= MAX_MERGE_QUEUE_RECORDED_DEFERRALS
+        ):
+            raise ValueError(
+                "max merge lock deferrals must fit the durable deferral history"
+            )
         self.merge_callback = merge_callback
         self.decision_runtime = decision_runtime
         self.decision_runtime_cancellation = decision_runtime_cancellation
@@ -1056,6 +1319,7 @@ class MergeTrain:
             if not acquired:
                 return None
             self._recover_abandoned_claims()
+            self._recover_integrated_quarantines()
             self._cleanup_abandoned_worktrees()
             request = self._dequeue()
             if request is None:
@@ -1090,6 +1354,7 @@ class MergeTrain:
             if not acquired:
                 return results
             self._recover_abandoned_claims()
+            self._recover_integrated_quarantines()
             self._cleanup_abandoned_worktrees()
             while max_items is None or len(results) < int(max_items):
                 request = self._dequeue()
@@ -1141,6 +1406,7 @@ class MergeTrain:
             if not acquired:
                 return results
             self._recover_abandoned_claims()
+            self._recover_integrated_quarantines()
             self._cleanup_abandoned_worktrees()
             while limit is None or len(results) < limit:
                 remaining = (
@@ -2701,6 +2967,79 @@ class MergeTrain:
             return 0
         return int(recover() or 0)
 
+    def _request_matches_exact_target(self, request: MergeRequest) -> bool:
+        """Return whether a request is explicitly bound to this train target."""
+
+        try:
+            repository_id = checkout_repository_id(self.repo_root)
+        except (OSError, RuntimeError, ValueError):
+            return False
+        return bool(
+            request.has_target_binding
+            and request.target_repository_id == repository_id
+            and request.target_branch == self.target_branch
+        )
+
+    def _quarantined_candidate_is_integrated(
+        self,
+        request: MergeRequest,
+    ) -> bool:
+        """Prove the exact parent and declared nested handoff are integrated."""
+
+        if not self._request_matches_exact_target(request):
+            return False
+        candidate = str(request.commit_sha or "").strip().casefold()
+        if (
+            len(candidate) not in {40, 64}
+            or any(character not in "0123456789abcdef" for character in candidate)
+        ):
+            return False
+        target = self._target_commit()
+        if not target:
+            return False
+        proof = integrated_candidate_handoff_proof(
+            self.repo_root,
+            candidate_commit=candidate,
+            target_commit=target,
+            changed_submodule_paths=request.metadata.get(
+                "changed_submodule_paths"
+            ),
+        )
+        return proof.get("passed") is True
+
+    def _recover_integrated_quarantines(self) -> int:
+        """Revive only quarantines already integrated into this exact target.
+
+        Recovery runs under the merge train consumer lease.  It performs no
+        target mutation and is capped so a corrupt or legacy queue cannot turn
+        one supervisor tick into an unbounded database/Git scan.
+        """
+
+        snapshot = getattr(self.queue, "quarantined_requests", None)
+        revive = getattr(self.queue, "revive_quarantined", None)
+        if not callable(snapshot) or not callable(revive):
+            return 0
+        recovered = 0
+        for request in snapshot(
+            limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
+        ):
+            if not self._quarantined_candidate_is_integrated(request):
+                continue
+            revived = revive(
+                request.request_id,
+                reason=(
+                    "merge train proved quarantined candidate already "
+                    "integrated into exact target"
+                ),
+                reset_failures=True,
+            )
+            if (
+                isinstance(revived, MergeRequest)
+                and revived.status == "pending"
+            ):
+                recovered += 1
+        return recovered
+
     def _worktree_disk_usage(self) -> tuple[int, int]:
         """Return allocated bytes and child count beneath the train root."""
 
@@ -3107,7 +3446,11 @@ class MergeTrain:
                     )
                 return self._finish_success(
                     request,
-                    status="merged" if callback_result.get("merged") else "already_merged",
+                    status=(
+                        "already_merged"
+                        if callback_result.get("already_merged")
+                        else "merged"
+                    ),
                     canonical=canonical,
                     candidate=candidate,
                     target=self._target_commit() or target,
@@ -3134,16 +3477,35 @@ class MergeTrain:
                 lock_owner_pid = int(callback_result.get("lock_owner_pid") or 0)
             except (TypeError, ValueError):
                 lock_owner_pid = 0
-            if (
-                callback_result.get("attempted") is False
-                and callback_reason == "lock_exists"
-                and lock_owner_pid > 0
-            ):
+            contention_evidence = self._verified_merge_lock_contention(
+                callback_result,
+                reason=callback_reason,
+                lock_owner_pid=lock_owner_pid,
+            )
+            if contention_evidence:
+                prior_deferrals = self._merge_lock_deferral_count(request)
+                if prior_deferrals >= self.max_merge_lock_deferrals:
+                    return self._finish_failure(
+                        request,
+                        reason="merge_lock_deferral_limit_exceeded",
+                        details={
+                            "merge_result": callback_result,
+                            "merge_lock_contention": contention_evidence,
+                            "prior_lock_deferrals": prior_deferrals,
+                            "max_merge_lock_deferrals": (
+                                self.max_merge_lock_deferrals
+                            ),
+                        },
+                        started_at=started_at,
+                        retryable=True,
+                    )
                 return self._finish_deferral(
                     request,
                     reason=callback_reason,
                     details={
                         "merge_result": callback_result,
+                        "merge_lock_contention": contention_evidence,
+                        "lock_deferral_count": prior_deferrals + 1,
                         **(
                             {
                                 "proof_gate": proof_gate_receipt,
@@ -4319,6 +4681,104 @@ class MergeTrain:
                 f"fenced-{request.request_id}", result
             )
         return result
+
+    def _verified_merge_lock_contention(
+        self,
+        callback_result: Mapping[str, Any],
+        *,
+        reason: str,
+        lock_owner_pid: int,
+    ) -> dict[str, Any]:
+        """Bind callback contention to the exact live repository lease."""
+
+        if (
+            callback_result.get("attempted") is not False
+            or reason not in MERGE_LOCK_CONTENTION_REASONS
+            or lock_owner_pid <= 0
+        ):
+            return {}
+        expected_path = checkout_mutation_lock_path(self.repo_root).resolve(
+            strict=False
+        )
+        callback_path_text = str(callback_result.get("lock_path") or "")
+        if not callback_path_text:
+            return {}
+        try:
+            callback_path = Path(callback_path_text).resolve(strict=False)
+        except (OSError, RuntimeError):
+            return {}
+        if callback_path != expected_path:
+            return {}
+        lease = read_checkout_mutation_lease(expected_path)
+        if lease is None:
+            return {}
+        metadata = dict(lease.metadata)
+        try:
+            metadata_pid = int(metadata.get("pid") or 0)
+            metadata_repo_root = Path(
+                str(metadata.get("repo_root") or "")
+            ).resolve(strict=False)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return {}
+        if (
+            str(metadata.get("kind") or "") != "merge"
+            or metadata_pid != lock_owner_pid
+            or metadata_repo_root != self.repo_root
+        ):
+            return {}
+        callback_bindings = (
+            ("lock_owner_lease_id", "lease_id"),
+            ("lock_owner_task_id", "task_id"),
+            ("lock_owner_branch", "branch"),
+        )
+        for callback_key, metadata_key in callback_bindings:
+            callback_value = str(callback_result.get(callback_key) or "")
+            if callback_value and callback_value != str(
+                metadata.get(metadata_key) or ""
+            ):
+                return {}
+        # Use the shared daemon liveness semantics without importing the full
+        # implementation daemon (which consumes MergeTrain lazily).
+        from ..todo_daemon.core import pid_alive, process_args
+
+        if not checkout_lock_owner_is_active(
+            metadata,
+            expected_kind="merge",
+            expected_repo_root=self.repo_root,
+            process_command_line=process_args,
+            process_is_running=pid_alive,
+        ):
+            return {}
+        confirmed = read_checkout_mutation_lease(expected_path)
+        if (
+            confirmed is None
+            or confirmed.device != lease.device
+            or confirmed.inode != lease.inode
+            or confirmed.lease_id != lease.lease_id
+        ):
+            return {}
+        return {
+            "verified": True,
+            "lock_path": str(expected_path),
+            "lock_owner_pid": metadata_pid,
+            "lock_owner_lease_id": lease.lease_id,
+            "lock_owner_task_id": str(metadata.get("task_id") or ""),
+            "lock_owner_branch": str(metadata.get("branch") or ""),
+            "target_repository_id": checkout_repository_id(self.repo_root),
+        }
+
+    @staticmethod
+    def _merge_lock_deferral_count(request: MergeRequest) -> int:
+        raw_deferrals = request.metadata.get("deferrals")
+        if not isinstance(raw_deferrals, list):
+            return 0
+        return sum(
+            1
+            for entry in raw_deferrals
+            if isinstance(entry, Mapping)
+            and str(entry.get("reason") or "")
+            in MERGE_LOCK_CONTENTION_REASONS
+        )
 
     def _finish_deferral(
         self,

@@ -1,0 +1,141 @@
+# Objective Bundle: formal-verification-tactician/lean-certification
+
+Source todo: docs/architecture/formal_verification_tactician_readiness.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## FVT-040 Close objective gap: Semantically certify the pinned Lean kernel
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-reference
+- Depends on: FVT-037
+- Outputs: tools/logic/certification/lean.py, test/fixtures/formal_verification/toolchains/lean/manifest.json, test/integration/toolchains/test_lean_semantic_certification.py
+- Validation: ELAN_TOOLCHAIN=leanprover/lean4:v4.31.0 ELAN_NO_AUTO_INSTALL=1 python -m pytest test/integration/toolchains/test_lean_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k lean -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-040-objective-gap-094e638121d6.md
+- Bundle: formal-verification-tactician/lean-certification
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-lean-certification.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 39
+- Parallel lane: formal-verification-tactician/lean-certification
+- Conflict policy: Own the Lean lane handler, corpus, and focused test; do not edit the central certificate or select/download a different Elan toolchain.
+- Predicted files: tools/logic/certification/lean.py, test/fixtures/formal_verification/toolchains/lean/manifest.json, test/integration/toolchains/test_lean_semantic_certification.py
+- Changed paths:
+- Context paths: tools/logic/certification/lean.py, test/fixtures/formal_verification/toolchains/lean/manifest.json, test/integration/toolchains/test_lean_semantic_certification.py
+- AST symbols: tools/logic/certification/lean.py, test/integration/toolchains/test_lean_semantic_certification.py
+- Interfaces: LeanSemanticCertification@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G101
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/8a2184c59addce7341922e8799d5d1e2cc39d7753d1d1bdafe9bacd6ac8aeca4
+- Canonical task CID: baguqeerariqyjrm23xhhgqmsf2dztvor4lgdtv3vhuorxwx6townnlek5ssa
+- Semantic identity: objective-evidence-obligation/v1/cedea382286420a4d07b96372c6b4b5b62bc40c56770b9a5df36610e8a9f8162
+- Acceptance subset: Exact Lean v4.31.0 compiles a true theorem, rejects false and malformed proofs, rejects hypothesis/conclusion mutations, and replays deterministically, imports, source tree, theorem, assumptions, toolchain, and output are bound, sorry, admit, unsafe escape, shim mismatch, install, download, and network use fail closed, the resulting authority is kernel proof checking only.
+- Preconditions: objective goal FVT-G101 is schedulable
+- Effects: satisfy evidence requirement: tools/logic/certification/lean.py, satisfy evidence requirement: test/integration/toolchains/test_lean_semantic_certification.py
+- Evidence subset: tools/logic/certification/lean.py, test/integration/toolchains/test_lean_semantic_certification.py
+- Resource class: cpu-proof-type-check
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-type-check
+- Merge fate: objective/FVT-G101
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/cedea382286420a4d07b96372c6b4b5b62bc40c56770b9a5df36610e8a9f8162
+- Missing evidence: tools/logic/certification/lean.py, test/integration/toolchains/test_lean_semantic_certification.py
+- Embedding query: Promote the already usable locked Lean toolchain only after real kernel semantics, rejection behavior, and deterministic replay are certified.
+- AST query: tools/logic/certification/lean.py, test/integration/toolchains/test_lean_semantic_certification.py
+- Surplus group: objective/FVT-G101
+- Merge key: 7662133c9bf3f129
+- Merge family: objective/FVT-G101
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 9af70cf8078af663
+- Acceptance: Objective scan filed this gap for FVT-G101. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-040-objective-gap-094e638121d6.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (tools/logic/certification/lean.py, test/integration/toolchains/test_lean_semantic_certification.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-070 FVT: Semantically certify the pinned Lean kernel
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-reference
+- Depends on: FVT-037
+- Outputs: tools/logic/certification/lean.py, test/fixtures/formal_verification/toolchains/lean/manifest.json, test/integration/toolchains/test_lean_semantic_certification.py
+- Validation: ELAN_TOOLCHAIN=leanprover/lean4:v4.31.0 ELAN_NO_AUTO_INSTALL=1 python -m pytest test/integration/toolchains/test_lean_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k lean -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-070-objective-gap-0fe3261673c9.md
+- Bundle: formal-verification-tactician/lean-certification
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-lean-certification.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 2
+- Parallel lane: formal-verification-tactician/lean-certification
+- Conflict policy: Own the Lean lane handler, corpus, and focused test; do not edit the central certificate or select/download a different Elan toolchain.
+- Predicted files: tools/logic/certification/lean.py, test/fixtures/formal_verification/toolchains/lean/manifest.json, test/integration/toolchains/test_lean_semantic_certification.py
+- Changed paths:
+- Context paths: tools/logic/certification/lean.py, test/fixtures/formal_verification/toolchains/lean/manifest.json, test/integration/toolchains/test_lean_semantic_certification.py
+- AST symbols: tools/logic/certification/lean.py, test/integration/toolchains/test_lean_semantic_certification.py
+- Interfaces: LeanSemanticCertification@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G101
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/688d2ebcfa232301b45907ccefdb779d6257dfdd0747c763fe6b63c7b9b2096b
+- Canonical task CID: baguqeerancgs5ph2emrqdncza7go7w3xtvrfpx65a5d4oy76nnr4ponsbfvq
+- Semantic identity: objective-evidence-obligation/v1/71e3b96ae138816dbffeb2d604b74e5ec8a058d711f63b08176c61880c4058a8
+- Acceptance subset: Exact Lean v4.31.0 compiles a true theorem, rejects false and malformed proofs, rejects hypothesis/conclusion mutations, and replays deterministically, imports, source tree, theorem, assumptions, toolchain, and output are bound, sorry, admit, unsafe escape, shim mismatch, install, download, and network use fail closed, the resulting authority is kernel proof checking only.
+- Preconditions: objective goal FVT-G101 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-proof-type-check
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-proof-type-check
+- Merge fate: objective/FVT-G101
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/71e3b96ae138816dbffeb2d604b74e5ec8a058d711f63b08176c61880c4058a8
+- Missing evidence: objective validation repair
+- Embedding query: Promote the already usable locked Lean toolchain only after real kernel semantics, rejection behavior, and deterministic replay are certified.
+- AST query: tools/logic/certification/lean.py, test/integration/toolchains/test_lean_semantic_certification.py
+- Surplus group: objective/FVT-G101
+- Merge key: 018042ea69f64772
+- Merge family: objective/FVT-G101
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: ac4e26f728062df0
+- Acceptance: Objective scan filed this gap for FVT-G101. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-070-objective-gap-0fe3261673c9.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

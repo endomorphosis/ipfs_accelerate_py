@@ -1,0 +1,2389 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/deterministic-doctor-fixture-manifest@1",
+  "corpus_id": "deterministic-doctor-adversarial-v1",
+  "description": "Hermetic deterministic-doctor recipes covering positive analytical repairs and adversarial fail-closed controls. Seeded truth may define expected outcomes; metrics, retrieval ranks, and observed implementations never grant production authority. Zero LLM or remote model-provider invocation.",
+  "artifact_roles": [
+    "delta",
+    "consumers",
+    "graph",
+    "value_sources",
+    "retrieval",
+    "proof",
+    "plan",
+    "sandbox",
+    "fixed_point"
+  ],
+  "cases": [
+    {
+      "id": "renamed-moved-symbol",
+      "scenario": "renamed_moved_symbol",
+      "family": "positive_analytical",
+      "expected": {
+        "diagnosis": "rename_move",
+        "disposition": "supported",
+        "repair": "analytical",
+        "fixed_point": "reached",
+        "completion": "success",
+        "reason_codes": [
+          "symbol_rename_equivalence",
+          "all_resolved_callers_updated"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:bb1509b8fd8430ca28f43198822cd5cfef12b952e6919ec57f9793aa21ac5dbc",
+          "content": {
+            "path": "delta/rename.json",
+            "kind": "rename_move",
+            "before": "pkg.old_mod.process",
+            "after": "pkg.new_mod.handle",
+            "symbol_id": "symbol:process"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:e6e999dcf40a87f4358aded48ce3dd8ef3fef4234e9ecb417b24598e686fc8e0",
+          "content": {
+            "path": "consumers/rename_callers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/client.py:run"
+              },
+              {
+                "kind": "import",
+                "site": "src/api.py:import"
+              }
+            ],
+            "obligations": 2,
+            "mandatory_callers": 2
+          }
+        },
+        "graph": {
+          "content_id": "sha256:0540a955478a4cd65ed90670ecd52d3ec84cca9f9e8f3cf8cf9ce97f6624e19e",
+          "content": {
+            "path": "graph/rename.json",
+            "edges": [
+              "direct",
+              "import"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:9753acaae45eeeb5216daeb7828bbdbe17de58a5e14c85cdebeff100aa13b66b",
+          "content": {
+            "path": "value_sources/rename.json",
+            "candidates": [
+              {
+                "name": "handle",
+                "proved": true,
+                "unique": true,
+                "kind": "symbol"
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:979970f8d3f0290e855ba6baf2ede5e0638633098526bd3c03a48fa8882c0da1",
+          "content": {
+            "path": "retrieval/rename.json",
+            "vector_hits": [],
+            "kg_edges": [
+              "rename_edge"
+            ],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:f7e00c736d4d2f480ac45daae650dbdb37aefa306dfe17a27f5bb939dd2b2e68",
+          "content": {
+            "path": "proof/rename.json",
+            "verdict": "reconstructed",
+            "operator": "rename_symbol",
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:12e0826f30a1db26672542b4cfd44825ae50ad6b66974fc927f71e8078e53882",
+          "content": {
+            "path": "plan/rename.json",
+            "transform": "rename_move_symbol",
+            "atomic": true,
+            "admitted": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:e171d6697947cb15996b389ab2cfe8a95b743fbf6e6def09172b9d1d3cf08483",
+          "content": {
+            "path": "sandbox/rename.json",
+            "enforced": true,
+            "write_scope": [
+              "pkg/old_mod.py",
+              "pkg/new_mod.py",
+              "src/client.py",
+              "src/api.py"
+            ],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:b642b949aa408d530634c301f9dc8050dd53a7a568f26861b4ad2aefce530d1a",
+          "content": {
+            "path": "fixed_point/rename.json",
+            "iterations": 1,
+            "residual_findings": 0,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "import-export-registration",
+      "scenario": "import_export_registration",
+      "family": "positive_analytical",
+      "expected": {
+        "diagnosis": "import_export_registration",
+        "disposition": "supported",
+        "repair": "analytical",
+        "fixed_point": "reached",
+        "completion": "success",
+        "reason_codes": [
+          "reexport_updated",
+          "registry_entry_rewritten"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:767b14dd6aeab8ed7802b26d11c140cef7cfa91b25100e84159b93282ae93373",
+          "content": {
+            "path": "delta/registration.json",
+            "kind": "import_export_registration",
+            "before": "from pkg.legacy import Worker",
+            "after": "from pkg.current import Worker",
+            "registry": "PLUGIN_REGISTRY"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:39e9948dd9ce9362d075076bf1275d5636dd8a5c9a74e713615d9890624e8cf9",
+          "content": {
+            "path": "consumers/registration.json",
+            "resolved": [
+              {
+                "kind": "import",
+                "site": "pkg/__init__.py"
+              },
+              {
+                "kind": "export",
+                "site": "pkg/public_api.py"
+              },
+              {
+                "kind": "registration",
+                "site": "pkg/plugins.py:register"
+              }
+            ],
+            "obligations": 3,
+            "mandatory_callers": 3
+          }
+        },
+        "graph": {
+          "content_id": "sha256:12fd329763e0508643ed95e382fbd3caa5606a3cc0ca5779b10be8918690d8cf",
+          "content": {
+            "path": "graph/registration.json",
+            "edges": [
+              "import",
+              "export",
+              "registration"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:a47f12de4963afaa6c5617c549c11be5970ec33fa45149aa8d8a4becea545490",
+          "content": {
+            "path": "value_sources/registration.json",
+            "candidates": [
+              {
+                "name": "Worker",
+                "proved": true,
+                "unique": true,
+                "kind": "export"
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:aeed8656efba7a57acff60dfbacc9119dbb2b2c029e1525ef23307012fd867b2",
+          "content": {
+            "path": "retrieval/registration.json",
+            "vector_hits": [],
+            "kg_edges": [
+              "export_edge"
+            ],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:d7ca53785ca53136a0c8b8f272bd2b450a6ee540c6392c0f4497c2855ff86939",
+          "content": {
+            "path": "proof/registration.json",
+            "verdict": "reconstructed",
+            "operator": "rewrite_import_export_registration",
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:b859b6c99d799422c593b5f7c587aa0560bca1ec27b6b9a353f03d2da2b50748",
+          "content": {
+            "path": "plan/registration.json",
+            "transform": "import_export_registration",
+            "atomic": true,
+            "admitted": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:a692f55a392ae7beaa25c7ac8a2d4ddb94e739207939f7ac42287eedafa2ed34",
+          "content": {
+            "path": "sandbox/registration.json",
+            "enforced": true,
+            "write_scope": [
+              "pkg/__init__.py",
+              "pkg/public_api.py",
+              "pkg/plugins.py"
+            ],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:02f850f3b650e041849c5d926c84863a389d5614feadcbd72ec389a589ff90cd",
+          "content": {
+            "path": "fixed_point/registration.json",
+            "iterations": 1,
+            "residual_findings": 0,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "two-to-three-argument-callers",
+      "scenario": "two_to_three_argument_callers",
+      "family": "positive_analytical",
+      "expected": {
+        "diagnosis": "arity_change",
+        "disposition": "supported",
+        "repair": "analytical",
+        "fixed_point": "reached",
+        "completion": "success",
+        "reason_codes": [
+          "each_two_arg_caller_gets_obligation",
+          "compatible_default_does_not_discharge_others"
+        ],
+        "caller_kinds": [
+          "direct",
+          "aliased",
+          "wrapped",
+          "method"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:9a3c4545d5d9a52c598279b29ba7bfb43afbfa38a336c13565b88de994d1e94c",
+          "content": {
+            "path": "delta/arity.json",
+            "kind": "parameter_add",
+            "before": "process(left: A, right: B) -> R",
+            "after": "process(left: A, right: B, context: C) -> R"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:e101942ebc27854267fb710228a4ee53b360d9c559c2324ae4e103a63c17eed8",
+          "content": {
+            "path": "consumers/arity.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/client.py:run",
+                "args": 2
+              },
+              {
+                "kind": "aliased",
+                "site": "src/alias_api.py:handle",
+                "args": 2
+              },
+              {
+                "kind": "wrapped",
+                "site": "src/wrapper.py:proxy",
+                "args": 2
+              },
+              {
+                "kind": "method",
+                "site": "src/service.py:Service.run",
+                "args": 2
+              }
+            ],
+            "obligations": 4,
+            "mandatory_callers": 4,
+            "one_compatible_cannot_discharge_others": true
+          }
+        },
+        "graph": {
+          "content_id": "sha256:81d9a14329c3350a77cd5af37cccef4d18997d6d770c9864ac5760fc313c2748",
+          "content": {
+            "path": "graph/arity.json",
+            "edges": [
+              "direct",
+              "alias",
+              "wrapper",
+              "method_dispatch"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:c330553fbcf0edbbd2fbe0f976ec06b5259aae88afc111802fdfb3df365dfcca",
+          "content": {
+            "path": "value_sources/context.json",
+            "candidates": [
+              {
+                "name": "request_context",
+                "proved": true,
+                "unique": true,
+                "kind": "local"
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:9dc14963d6808a8e097a06eff9653bb3c6dc6f5925c9dda485cc417a46cf8e79",
+          "content": {
+            "path": "retrieval/arity.json",
+            "vector_hits": [],
+            "kg_edges": [],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:73834b05510d68bb23d5f48e45684a9f9e340be2791f4ff367226ff4cae4e12d",
+          "content": {
+            "path": "proof/arity.json",
+            "verdict": "reconstructed",
+            "operator": "add_argument_from_unique_source",
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:55d222b87aeae31d0c3d9f33f4e6e6356dc7f17d7fb24dfad0ce83c521711794",
+          "content": {
+            "path": "plan/arity.json",
+            "transform": "add_argument_from_unique_source",
+            "atomic": true,
+            "admitted": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:6326ec59e5364adb3e6f853d71978df53aa08f8c81df89ab398f714e56da4fef",
+          "content": {
+            "path": "sandbox/arity.json",
+            "enforced": true,
+            "write_scope": [
+              "src/client.py",
+              "src/alias_api.py",
+              "src/wrapper.py",
+              "src/service.py"
+            ],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:130fe6430e1dbe4b3d3c80e880cc4ee8a7aa2cd723c16d5b4a16a396942fc60c",
+          "content": {
+            "path": "fixed_point/arity.json",
+            "iterations": 1,
+            "residual_findings": 0,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "constructor-factory-context-threading",
+      "scenario": "constructor_factory_context_threading",
+      "family": "positive_analytical",
+      "expected": {
+        "diagnosis": "constructor_threading",
+        "disposition": "supported",
+        "repair": "analytical",
+        "fixed_point": "reached",
+        "completion": "success",
+        "reason_codes": [
+          "factory_threads_context",
+          "constructor_site_updated"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:02d7724f5a5010ae08cb2b4f3aabc05170768fd797406236dc57ea5659c2743b",
+          "content": {
+            "path": "delta/ctor.json",
+            "kind": "constructor_parameter_add",
+            "before": "Service(config: Config)",
+            "after": "Service(config: Config, context: Context)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:ff7583b6050d0f0dc9fa0957c00d2fd92fa4032c488a122c868cdc64c3a0e8f3",
+          "content": {
+            "path": "consumers/ctor.json",
+            "resolved": [
+              {
+                "kind": "constructor",
+                "site": "src/app.py:main"
+              },
+              {
+                "kind": "factory",
+                "site": "src/factory.py:make_service"
+              },
+              {
+                "kind": "di",
+                "site": "src/container.py:bind"
+              }
+            ],
+            "obligations": 3,
+            "mandatory_callers": 3,
+            "thread_chain": [
+              "container",
+              "factory",
+              "Service.__init__"
+            ]
+          }
+        },
+        "graph": {
+          "content_id": "sha256:0b327fa8a0ec0bc8510c8dec3d3efd60e9a7bbf9d2305af905dacb4fe100c140",
+          "content": {
+            "path": "graph/ctor.json",
+            "edges": [
+              "constructor",
+              "factory",
+              "di"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:d4a4aa6ee0b2ae6b3319eb42f880368af0e455c4190e3912ce479ec293603499",
+          "content": {
+            "path": "value_sources/ctor.json",
+            "candidates": [
+              {
+                "name": "app_context",
+                "proved": true,
+                "unique": true,
+                "kind": "factory_arg"
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:647377f77477ba7bcdc0beca4a7bd5f75e4a90880b23936fd02e0e75531ea395",
+          "content": {
+            "path": "retrieval/ctor.json",
+            "vector_hits": [],
+            "kg_edges": [
+              "ctor_edge"
+            ],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:7d6d31303ea9e9c777a6c7108e94145521e7a87b987722aa5a97b74d354d998f",
+          "content": {
+            "path": "proof/ctor.json",
+            "verdict": "reconstructed",
+            "operator": "thread_constructor_context",
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:0c2d7cfcd7594035475ea13decb26844e94ae6f60dd52831cac385985d38e5c8",
+          "content": {
+            "path": "plan/ctor.json",
+            "transform": "constructor_factory_context_threading",
+            "atomic": true,
+            "admitted": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:2c9e7d105b9a4dbae05a0cea996af7f88a4f4c3ce7ed615b3ad76a48b8ca6ab8",
+          "content": {
+            "path": "sandbox/ctor.json",
+            "enforced": true,
+            "write_scope": [
+              "src/app.py",
+              "src/factory.py",
+              "src/container.py"
+            ],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:311c2eef305dcd6ee630774e18e3f849a432bf5e0608750ff1fc0e7cedbccabb",
+          "content": {
+            "path": "fixed_point/ctor.json",
+            "iterations": 1,
+            "residual_findings": 0,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "adapter-schema-serializer-manifest-artifact",
+      "scenario": "adapter_schema_serializer_manifest_artifact",
+      "family": "positive_analytical",
+      "expected": {
+        "diagnosis": "finite_schema_artifact",
+        "disposition": "supported",
+        "repair": "analytical",
+        "fixed_point": "reached",
+        "completion": "success",
+        "reason_codes": [
+          "adapter_schema_rewritten",
+          "serializer_and_manifest_aligned"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:6d9fd0f3b9af91d511b6d01906f7d69c1f830a4b517f3b6d868a0c85dc025c4b",
+          "content": {
+            "path": "delta/schema.json",
+            "kind": "schema_field_add",
+            "before": "Message{id, body}",
+            "after": "Message{id, body, tenant}",
+            "artifacts": [
+              "adapter",
+              "schema",
+              "serializer",
+              "manifest"
+            ]
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:3ca5d3697b5a17ad82bdbcd4033774c120822b6e279990e7d68f5b8a6ba5cfdb",
+          "content": {
+            "path": "consumers/schema.json",
+            "resolved": [
+              {
+                "kind": "adapter",
+                "site": "adapters/msg.py"
+              },
+              {
+                "kind": "schema",
+                "site": "schemas/message.json"
+              },
+              {
+                "kind": "serializer",
+                "site": "serdes/message.py"
+              },
+              {
+                "kind": "manifest",
+                "site": "manifests/message.yaml"
+              },
+              {
+                "kind": "artifact",
+                "site": "artifacts/message.capnp"
+              }
+            ],
+            "obligations": 5,
+            "mandatory_callers": 5
+          }
+        },
+        "graph": {
+          "content_id": "sha256:121cf6cf584a558edb9379c2dc55b18a7a536cfbbd57c2dc94e9adc0bc92afeb",
+          "content": {
+            "path": "graph/schema.json",
+            "edges": [
+              "adapter",
+              "schema",
+              "serializer",
+              "manifest",
+              "artifact"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:1544fd877f2ba9d8bffc4e70b989422b2684d360c4a274b007a65fa874524daf",
+          "content": {
+            "path": "value_sources/schema.json",
+            "candidates": [
+              {
+                "name": "tenant_id",
+                "proved": true,
+                "unique": true,
+                "kind": "schema_field"
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:4a3d9a51a46988cdc78357acdd27c952a27f186ab26db609e397729b364d3b15",
+          "content": {
+            "path": "retrieval/schema.json",
+            "vector_hits": [],
+            "kg_edges": [
+              "schema_edge"
+            ],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:8fd8bbbc4af85cda76da04a53aceae69aa9cb392d8f0cea9eb81c2ceac59c2c6",
+          "content": {
+            "path": "proof/schema.json",
+            "verdict": "reconstructed",
+            "operator": "finite_schema_artifact_repair",
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:0500fe25cb0f86293a9f76727f4619b74abf41964a6bbba5ae7506ec726301ce",
+          "content": {
+            "path": "plan/schema.json",
+            "transform": "adapter_schema_serializer_manifest_artifact",
+            "atomic": true,
+            "admitted": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:93799de8c54359d048802a95438000de99938150217a247237d8637db46d4913",
+          "content": {
+            "path": "sandbox/schema.json",
+            "enforced": true,
+            "write_scope": [
+              "adapters/msg.py",
+              "schemas/message.json",
+              "serdes/message.py",
+              "manifests/message.yaml",
+              "artifacts/message.capnp"
+            ],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:cb0d74de04ce191e1293e02490e5dfbfca1f7b0174f6be11d11c7fe1b00ee811",
+          "content": {
+            "path": "fixed_point/schema.json",
+            "iterations": 1,
+            "residual_findings": 0,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "same-type-wrong-value",
+      "scenario": "same_type_wrong_value",
+      "family": "adversarial_value",
+      "expected": {
+        "diagnosis": "wrong_value",
+        "disposition": "abstain",
+        "repair": "none",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "same_type_insufficient",
+          "information_content_mismatch"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:572336385c0452aa2b668d9256edae71420900ac2073722a145b16b646b74534",
+          "content": {
+            "path": "delta/wrong_value.json",
+            "kind": "parameter_add",
+            "before": "authorize(user: UserId) -> Token",
+            "after": "authorize(user: UserId, session: SessionId) -> Token"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:1a64779716d2b0db67772499598af1f25bba1c85b8842580872f7c4f666ab508",
+          "content": {
+            "path": "consumers/wrong_value.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/auth.py:check",
+                "args": 1
+              }
+            ],
+            "obligations": 1,
+            "mandatory_callers": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:ae60da43f5374184f5929d8b4c80c5077fdde49f406efab51ace15213511c0db",
+          "content": {
+            "path": "graph/wrong_value.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:037f2d7421975f0fca69f123fe554913b5846fc0d84f67b4b306b9a5a20d2383",
+          "content": {
+            "path": "value_sources/wrong_value.json",
+            "candidates": [
+              {
+                "name": "request_id",
+                "type": "SessionId",
+                "same_type": true,
+                "information_content": "request_correlation_not_session",
+                "proved": false,
+                "refuted": true
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:f33919085ac4d288929ede199b47982d9f4a9b5200c6608d0515944bf14adbd6",
+          "content": {
+            "path": "retrieval/wrong_value.json",
+            "vector_hits": [
+              {
+                "id": "request_id",
+                "score": 0.99
+              }
+            ],
+            "kg_edges": [],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:30e030af3ecb6736a8a4b9b497e54361747ee8d1de4dcf985a099fad21bfde47",
+          "content": {
+            "path": "proof/wrong_value.json",
+            "verdict": "refuted",
+            "operator": null,
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:5947466866146d50c7d58ed930b1c47cc6a3d76e6872f0f8164b3fe58e7ca69e",
+          "content": {
+            "path": "plan/wrong_value.json",
+            "transform": null,
+            "atomic": false,
+            "admitted": false,
+            "abstain": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:1d034265e0cd0984887d51d4f26bc7c3046855e2db9d3f16cdfc423c0e9f9254",
+          "content": {
+            "path": "sandbox/wrong_value.json",
+            "enforced": true,
+            "write_scope": [],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:ef56949b498b715408efc7508489127a9f0b3e5e760a218c0dc7395782b22868",
+          "content": {
+            "path": "fixed_point/wrong_value.json",
+            "iterations": 0,
+            "residual_findings": 1,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "vector-collision",
+      "scenario": "vector_collision",
+      "family": "adversarial_retrieval",
+      "expected": {
+        "diagnosis": "vector_collision",
+        "disposition": "abstain",
+        "repair": "none",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "vector_collision_non_authoritative",
+          "require_independent_proof"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:b5aeff5afe027dacb67dfc52843a979fffcfc9109c4c8233bc81b56d7c4fcb00",
+          "content": {
+            "path": "delta/vector.json",
+            "kind": "parameter_add",
+            "before": "emit(event: Event)",
+            "after": "emit(event: Event, tenant: TenantId)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:fcd4d3419b0e86e97938e68a76113c5c33da219fee19a8611aa56da05bcdfede",
+          "content": {
+            "path": "consumers/vector.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/pipe.py:forward"
+              }
+            ],
+            "obligations": 1,
+            "mandatory_callers": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:7e145bd2bf2ed3bb9de43d04cd6d73c3946751368dcdc63f38f2c6ee17ae1f43",
+          "content": {
+            "path": "graph/vector.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:836343a63cce0454ebf28aff0de5c746f42c0f805ee8e17407b3b542625de57c",
+          "content": {
+            "path": "value_sources/vector.json",
+            "candidates": [
+              {
+                "name": "tenant_id",
+                "proved": false,
+                "unique": false
+              },
+              {
+                "name": "tenant_name",
+                "proved": false,
+                "unique": false
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:86bad7bfcc9813fa4104ac96fa5205ddf84a3a12fd06369e6316622db1e5d686",
+          "content": {
+            "path": "retrieval/vector.json",
+            "vector_hits": [
+              {
+                "id": "tenant_id",
+                "score": 0.97,
+                "collision": true
+              },
+              {
+                "id": "tenant_name",
+                "score": 0.97,
+                "collision": true
+              }
+            ],
+            "kg_edges": [],
+            "embedding_mode": "vector",
+            "semantic_authority": false,
+            "vector_promoted": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:b42ba9a833a43891d14a35734aa320691f8d0eaad95c3ab4083df78f94c5c7ae",
+          "content": {
+            "path": "proof/vector.json",
+            "verdict": "ambiguous",
+            "operator": null,
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:5771f1aee859a8f260adfd6698fdc4b604a260581ba4c6be7020c7fff4c5982e",
+          "content": {
+            "path": "plan/vector.json",
+            "transform": null,
+            "atomic": false,
+            "admitted": false,
+            "abstain": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:459c6b39f3eed735e9d52c25465b2e22863f3d209d541a9f3fedcec1fe85ab55",
+          "content": {
+            "path": "sandbox/vector.json",
+            "enforced": true,
+            "write_scope": [],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:46224dcc6b3cd4e94af05525b0db4919f8876c5a15de201313b43ee171922d66",
+          "content": {
+            "path": "fixed_point/vector.json",
+            "iterations": 0,
+            "residual_findings": 1,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "kg-omission",
+      "scenario": "kg_omission",
+      "family": "adversarial_retrieval",
+      "expected": {
+        "diagnosis": "kg_omission",
+        "disposition": "abstain",
+        "repair": "none",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "kg_edge_missing",
+          "kg_non_authoritative"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:a788185ef8ec15b3a2a6985c7397e5e1c38a3fdcdbba90e2a37c57fe3105814a",
+          "content": {
+            "path": "delta/kg.json",
+            "kind": "parameter_add",
+            "before": "ship(order: Order)",
+            "after": "ship(order: Order, warehouse: WarehouseId)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:2c8d9aa8c8061f0178628dc7dd85751d3e3c1a7b90858ab764be2999a3851b54",
+          "content": {
+            "path": "consumers/kg.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/fulfill.py:dispatch"
+              }
+            ],
+            "obligations": 1,
+            "mandatory_callers": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:7b6382a12f03dd99eacd021189a09edcaf58de315a498d100a09e0e0c9936d0f",
+          "content": {
+            "path": "graph/kg.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:edfa7750d5cec589787ff88f98ca2bf785ef67afa3d28153ed1acfe41dc10604",
+          "content": {
+            "path": "value_sources/kg.json",
+            "candidates": []
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:185770911fabeef6edaa3e94621fdcaec633e47c56a30b1f9cccf00d899c3db4",
+          "content": {
+            "path": "retrieval/kg.json",
+            "vector_hits": [],
+            "kg_edges": [],
+            "kg_omitted_edge": "warehouse_binding",
+            "embedding_mode": "exact",
+            "semantic_authority": false,
+            "kg_promoted": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:bf5f95edd6970352728c63f09ce4e8e347e1ccd780fb4a0d086855fdd707d2f5",
+          "content": {
+            "path": "proof/kg.json",
+            "verdict": "unsupported",
+            "operator": null,
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:5793656bdb231acd3a4e763bba6ea44e16fcd3b228a049639118a10b869ddd4a",
+          "content": {
+            "path": "plan/kg.json",
+            "transform": null,
+            "atomic": false,
+            "admitted": false,
+            "abstain": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:1bf6b7c1c31f9752ca094aef7094e516e67c400bdc19c4a71a97d9c25b8ba2f0",
+          "content": {
+            "path": "sandbox/kg.json",
+            "enforced": true,
+            "write_scope": [],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:178a05bcf144db1daa7d43b0f9c38c908b9190a29cb5c76dbd9bcbaf4ebde0b5",
+          "content": {
+            "path": "fixed_point/kg.json",
+            "iterations": 0,
+            "residual_findings": 1,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "constant-embedding-fallback",
+      "scenario": "constant_embedding_fallback",
+      "family": "adversarial_retrieval",
+      "expected": {
+        "diagnosis": "embedding_degraded",
+        "disposition": "abstain",
+        "repair": "none",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "constant_embedding_fallback_detected",
+          "embedding_lane_disabled"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:9bb00f68aa446ed85e3b7cc8121223b6ff8df18ffc7a64ce49b627dfa8f87b8e",
+          "content": {
+            "path": "delta/embed.json",
+            "kind": "parameter_add",
+            "before": "route(msg: Msg)",
+            "after": "route(msg: Msg, region: Region)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:5389b7f9a7b5d54349eda6eb8c49f472aa676dcd7a52412681b63c181ca61615",
+          "content": {
+            "path": "consumers/embed.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/router.py:send"
+              }
+            ],
+            "obligations": 1,
+            "mandatory_callers": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:572df114e1d63ecd35643f2aec9efc9b9da4b2bd097aef5fd5174368adeb34f8",
+          "content": {
+            "path": "graph/embed.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:843f37ccdadeff818da48e4339de638d0b79f2b2a3e105bb43d7163b126901df",
+          "content": {
+            "path": "value_sources/embed.json",
+            "candidates": [
+              {
+                "name": "region",
+                "proved": false,
+                "unique": false
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:d4f48eaa2cea966fc181f5fee3e5e23bc69d24ae3f8c2a11fc509cd5eea29bc6",
+          "content": {
+            "path": "retrieval/embed.json",
+            "vector_hits": [
+              {
+                "id": "any",
+                "score": 0.0,
+                "constant": true
+              }
+            ],
+            "kg_edges": [],
+            "embedding_mode": "constant_fallback",
+            "embedding_finite": false,
+            "semantic_authority": false,
+            "lane_disabled": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:428e2600e0d9e7a2bdac73302908d3bf5db0fa3e799d2ee129bbe2b1e98d1387",
+          "content": {
+            "path": "proof/embed.json",
+            "verdict": "unsupported",
+            "operator": null,
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:15b7b16af7a32fa55cf18994c1554fe0072d3396a798660ee410c52f78c95f39",
+          "content": {
+            "path": "plan/embed.json",
+            "transform": null,
+            "atomic": false,
+            "admitted": false,
+            "abstain": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:072cdff70e3a94b7f496099ca996ac0c9bab4b62a5d1fb2b8bf82a97ba011ae3",
+          "content": {
+            "path": "sandbox/embed.json",
+            "enforced": true,
+            "write_scope": [],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:9a00d55d86f97da533a4725efa75297b4ef3f3308dcbfaf78b8101c445060c90",
+          "content": {
+            "path": "fixed_point/embed.json",
+            "iterations": 0,
+            "residual_findings": 1,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "stale-corrupt-forged-cid-cache",
+      "scenario": "stale_corrupt_forged_cid_cache",
+      "family": "adversarial_cache",
+      "expected": {
+        "diagnosis": "stale_forged_cache",
+        "disposition": "abstain",
+        "repair": "none",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "stale_proof_cid_rejected",
+          "forged_cache_entry_quarantined"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:24486d427a7171f563fef61919cc6ee2d472586d405498cfcf8a969f1e0a902b",
+          "content": {
+            "path": "delta/stale.json",
+            "kind": "parameter_add",
+            "tree_id": "tree:current",
+            "claimed_tree_id": "tree:stale",
+            "before": "f(a)",
+            "after": "f(a, b)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:c0cdf217634aa6f5941b34c8eb9f50def25ebfbe95350f3236b093274c952594",
+          "content": {
+            "path": "consumers/stale.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/x.py:call"
+              }
+            ],
+            "obligations": 1,
+            "mandatory_callers": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:c899c18ce15cbab2bb16e32ca03bac5a2a6f51878e8c7cfd03ee19b1a046665e",
+          "content": {
+            "path": "graph/stale.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "stale": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:21cbda2332e098acd58faf43f325aac75fdbe4e99536bc70538141796ae85ed7",
+          "content": {
+            "path": "value_sources/stale.json",
+            "candidates": [
+              {
+                "name": "b",
+                "proved": true,
+                "unique": true
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:f4e86af369e1fc26f8ac7abba102609c414467206f85bd6d4094e3804463db56",
+          "content": {
+            "path": "retrieval/stale.json",
+            "vector_hits": [],
+            "kg_edges": [],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:5622236d1b097e4760f3fb7d92faa32b539300a67a189fa785e69949cff99ffc",
+          "content": {
+            "path": "proof/stale.json",
+            "verdict": "stale",
+            "operator": null,
+            "cache_status": "forged",
+            "claimed_cid": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "current_cid": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:d250df07137310ba6842087da518ab771b8b70c8b3fb420170fd94dbb84d6a4c",
+          "content": {
+            "path": "plan/stale.json",
+            "transform": null,
+            "atomic": false,
+            "admitted": false,
+            "abstain": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:f5037d01ada511650e1d99548946af1e76401771209807be1ee23a18344b08e3",
+          "content": {
+            "path": "sandbox/stale.json",
+            "enforced": true,
+            "write_scope": [],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:9a1948d7dd5fd6f3008a1b86b2bfd603ecc49745ac6ae1be4c8aea5f017ad9fa",
+          "content": {
+            "path": "fixed_point/stale.json",
+            "iterations": 0,
+            "residual_findings": 1,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "solver-lie-countermodel",
+      "scenario": "solver_lie_countermodel",
+      "family": "adversarial_proof",
+      "expected": {
+        "diagnosis": "solver_lie",
+        "disposition": "abstain",
+        "repair": "none",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "raw_countermodel_not_authoritative",
+          "reconstruction_required"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:ca5c2724f948bcf3ef62828916661dd2b5d5f3ec9a6acec5a5111bda0453945f",
+          "content": {
+            "path": "delta/solver.json",
+            "kind": "parameter_add",
+            "before": "check(x)",
+            "after": "check(x, y)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:370588f7e3e7511e7e951d0e3d9ada7a730db2db4b69b370c03f59e7dbf7ee51",
+          "content": {
+            "path": "consumers/solver.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/check.py:run"
+              }
+            ],
+            "obligations": 1,
+            "mandatory_callers": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:eabc4d4bc8a2254809589650a13e339eacaceb581ebaf2c3ee566340a11aaf6d",
+          "content": {
+            "path": "graph/solver.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:c85a723a3bbe442d37a8049e8d6a81bd8312a907f2ff638ac6cf06eb7e0463ab",
+          "content": {
+            "path": "value_sources/solver.json",
+            "candidates": [
+              {
+                "name": "y",
+                "proved": false,
+                "unique": false
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:97e81f4e3d2de0f97cc46662088decfe0733d3c82c63cd89d7527b8a26582cb8",
+          "content": {
+            "path": "retrieval/solver.json",
+            "vector_hits": [],
+            "kg_edges": [],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:4ea0ad1dcfc99d4bb08f72912d407c5796d8cda622b7909ae3f984abc55d241f",
+          "content": {
+            "path": "proof/solver.json",
+            "verdict": "raw_countermodel",
+            "operator": null,
+            "cache_status": "fresh",
+            "solver_claimed_sat": true,
+            "reconstructed": false,
+            "validated_countermodel": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:ac3145198b82e32da48dd4f3a3a1ba37220717a95815b4d92801032c953deb4d",
+          "content": {
+            "path": "plan/solver.json",
+            "transform": null,
+            "atomic": false,
+            "admitted": false,
+            "abstain": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:34424e899667a295049de22ff4595bd3314e033621730a99f58b4525972c2dde",
+          "content": {
+            "path": "sandbox/solver.json",
+            "enforced": true,
+            "write_scope": [],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:c6f61c776d8b4c3021a113224074ded6c069ba3de4e9bf552417fcfdb5be590c",
+          "content": {
+            "path": "fixed_point/solver.json",
+            "iterations": 0,
+            "residual_findings": 1,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "incomplete-ast-impact-scc",
+      "scenario": "incomplete_ast_impact_scc",
+      "family": "adversarial_impact",
+      "expected": {
+        "diagnosis": "incomplete_impact",
+        "disposition": "abstain",
+        "repair": "none",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "incomplete_ast",
+          "open_scc",
+          "impact_not_closed"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:cf814fcfb87811ed4b9c4dde341b44ca7c070574a37bbcc95c5216feb1e39dfe",
+          "content": {
+            "path": "delta/scc.json",
+            "kind": "parameter_add",
+            "before": "cycle_a(x)",
+            "after": "cycle_a(x, y)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:ff27c9cf75d36fbba97123a458a5a1061f4c6a24cc678940a84b60ce0e5124ad",
+          "content": {
+            "path": "consumers/scc.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/a.py:a"
+              },
+              {
+                "kind": "direct",
+                "site": "src/b.py:b"
+              }
+            ],
+            "obligations": 3,
+            "mandatory_callers": 3,
+            "missing_resolved": [
+              "src/c.py:c"
+            ]
+          }
+        },
+        "graph": {
+          "content_id": "sha256:0b123f29df5a0c04e123301c6da43a3725b6f5651ce55ddbdeefcc344f457700",
+          "content": {
+            "path": "graph/scc.json",
+            "edges": [
+              "a->b",
+              "b->a"
+            ],
+            "complete": false,
+            "scc": [
+              "a",
+              "b",
+              "c"
+            ],
+            "unknown_frontier": [
+              "c"
+            ]
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:865dc4489a206452f8df206c9a7cafb4585fdb5551cab4be8fc43ee587b3fcf0",
+          "content": {
+            "path": "value_sources/scc.json",
+            "candidates": [
+              {
+                "name": "y",
+                "proved": false,
+                "unique": false
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:8edc6758d6f9d65c059773191d44c5e075974a863b84658dcfb2cdc382c0e8fa",
+          "content": {
+            "path": "retrieval/scc.json",
+            "vector_hits": [],
+            "kg_edges": [],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:492df35298abfd4bb3808867394fec5f6594ffecaf5da0c38522da98e6e21aaf",
+          "content": {
+            "path": "proof/scc.json",
+            "verdict": "unsupported",
+            "operator": null,
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:54d731e08f53fa14751258ade3173e21c7e89bdd29c2370a70c9bc752510e3b1",
+          "content": {
+            "path": "plan/scc.json",
+            "transform": null,
+            "atomic": false,
+            "admitted": false,
+            "abstain": true,
+            "partial_allowed": false
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:0ea0a237b58f11c56609f53fcd13e7b34be19527b7b81647698ff2e0d2f3e330",
+          "content": {
+            "path": "sandbox/scc.json",
+            "enforced": true,
+            "write_scope": [],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:dd1a47622874917b767dce43583359eb423ccfb90a6aae1ea67e332d4f9c8d59",
+          "content": {
+            "path": "fixed_point/scc.json",
+            "iterations": 0,
+            "residual_findings": 1,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "dynamic-generated-native-ffi-public-schema-cross-root",
+      "scenario": "dynamic_generated_native_ffi_public_schema_cross_root",
+      "family": "adversarial_frontier",
+      "expected": {
+        "diagnosis": "open_frontier",
+        "disposition": "abstain",
+        "repair": "none",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "dynamic_dispatch_frontier",
+          "generated_client_frontier",
+          "native_ffi_frontier",
+          "public_schema_cross_root",
+          "new_dependency_complex_behavior"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:bc031c1bff69b4b68e19635474bd6c59a014305aec8e8d77ef4d9c80e6277b51",
+          "content": {
+            "path": "delta/frontier.json",
+            "kind": "signature_change",
+            "before": "invoke(cmd)",
+            "after": "invoke(cmd, opts)",
+            "cross_root": true,
+            "new_dependency": "external.sdk.v2"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:22b54894592f9e063593907c630970a04aaba3650e45b5b7947f97584471efb8",
+          "content": {
+            "path": "consumers/frontier.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/local.py:call"
+              }
+            ],
+            "obligations": 1,
+            "mandatory_callers": 1,
+            "frontier": [
+              "dynamic_getattr",
+              "generated_sdk_client",
+              "native_extension",
+              "ffi_bridge",
+              "public_schema_consumer",
+              "cross_root_repo"
+            ]
+          }
+        },
+        "graph": {
+          "content_id": "sha256:8192d3e46a4fd833c5b116827d723aa5a20b9098cf8090b69e3d5f0b70d8a581",
+          "content": {
+            "path": "graph/frontier.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": false,
+            "unknown_frontier": [
+              "dynamic",
+              "generated",
+              "native",
+              "ffi",
+              "public_schema",
+              "cross_root",
+              "new_dependency"
+            ]
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:f96f49cc4fb318d57fbda4cf2541b1a5e630355684cc90a390fcb525fc0fda35",
+          "content": {
+            "path": "value_sources/frontier.json",
+            "candidates": [],
+            "complex_behavior_required": true
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:65ae5ee830763ebed8c66d8c9655b4ba297bd5fb4eea3b8f379ed3407fa21534",
+          "content": {
+            "path": "retrieval/frontier.json",
+            "vector_hits": [],
+            "kg_edges": [],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:be762e6de74eef2777ef933fad5278bb090a2d7b2d290399b941083adf270728",
+          "content": {
+            "path": "proof/frontier.json",
+            "verdict": "unsupported",
+            "operator": null,
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:ccb24ee73842e57164a30e4cb4d573bce3465c92ea47fc72950dde8b59de3db2",
+          "content": {
+            "path": "plan/frontier.json",
+            "transform": null,
+            "atomic": false,
+            "admitted": false,
+            "abstain": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:0fb30ab2ab27b44e3ee2a7ed235ac132e73c03527549e98ae28fbfdbc48461f5",
+          "content": {
+            "path": "sandbox/frontier.json",
+            "enforced": true,
+            "write_scope": [],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:f8a258db1cc84f994ed4844cfec4e4c71f1b03b1c65e54c958c73ebec1755087",
+          "content": {
+            "path": "fixed_point/frontier.json",
+            "iterations": 0,
+            "residual_findings": 1,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "sandbox-escape",
+      "scenario": "sandbox_escape",
+      "family": "adversarial_sandbox",
+      "expected": {
+        "diagnosis": "sandbox_escape",
+        "disposition": "abstain",
+        "repair": "none",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "path_escape_rejected",
+          "out_of_scope_write_blocked"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:8ad175ac8b02e0ffb099b1b4cee5e559b0abd50b023c1d6bad34b2a053c231e2",
+          "content": {
+            "path": "delta/escape.json",
+            "kind": "parameter_add",
+            "before": "write(path)",
+            "after": "write(path, mode)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:33ad305142c1d655f9719292b70683eb13a6724ab190cb0fb1eb9c3c50475024",
+          "content": {
+            "path": "consumers/escape.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/io.py:write"
+              }
+            ],
+            "obligations": 1,
+            "mandatory_callers": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:a9b567b9170448d6bf66e46329c9c5058cd601d4d11955ec47f91391d46d401a",
+          "content": {
+            "path": "graph/escape.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:2e632b9c6bb28145af26cf7a199427e69abb35feb36b095502f546bfc9161612",
+          "content": {
+            "path": "value_sources/escape.json",
+            "candidates": [
+              {
+                "name": "mode",
+                "proved": true,
+                "unique": true
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:4374204aa4c59a83fbaeeb2ab96fd84d60f986c29d4e93ff732a51514c7cf1a5",
+          "content": {
+            "path": "retrieval/escape.json",
+            "vector_hits": [],
+            "kg_edges": [],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:87f24d855da9c3f87aa1d867224f2b8a37db4cb19d87a77c3e85c52a73562b6e",
+          "content": {
+            "path": "proof/escape.json",
+            "verdict": "reconstructed",
+            "operator": "add_argument_from_unique_source",
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:2416ed3193383a3d500e1c51094b1424d9ed18629269870ab2d324ad4f88da34",
+          "content": {
+            "path": "plan/escape.json",
+            "transform": "add_argument_from_unique_source",
+            "atomic": true,
+            "admitted": false,
+            "abstain": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:0b85a8b9699cb3cf308c1b4ee4c64a029aa2e1692885dcc69ad9878aefe1ac6e",
+          "content": {
+            "path": "sandbox/escape.json",
+            "enforced": true,
+            "write_scope": [
+              "src/io.py"
+            ],
+            "escape_attempt": true,
+            "escape_path": "../secrets/key.pem",
+            "escape_blocked": true
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:fd0e7e793284f022951768f4c4fd25e424657f8f1d0f9c6578217864de291a20",
+          "content": {
+            "path": "fixed_point/escape.json",
+            "iterations": 0,
+            "residual_findings": 1,
+            "oscillating": false
+          }
+        }
+      }
+    },
+    {
+      "id": "crash-rollback",
+      "scenario": "crash_rollback",
+      "family": "adversarial_transaction",
+      "expected": {
+        "diagnosis": "crash_mid_transaction",
+        "disposition": "rolled_back",
+        "repair": "none",
+        "fixed_point": "incomplete",
+        "completion": "rollback",
+        "reason_codes": [
+          "crash_injected",
+          "compensating_rollback",
+          "no_partial_commit"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:d7ff809974bf81d254a12d5a97846524578b9c57e3a4a512c71f1d6255680de0",
+          "content": {
+            "path": "delta/crash.json",
+            "kind": "parameter_add",
+            "before": "batch(a, b)",
+            "after": "batch(a, b, c)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:86078e120f3012c73d3d030834c93f5111ad0c315878df92c68dc7113451e4a1",
+          "content": {
+            "path": "consumers/crash.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/a.py:a"
+              },
+              {
+                "kind": "direct",
+                "site": "src/b.py:b"
+              }
+            ],
+            "obligations": 2,
+            "mandatory_callers": 2
+          }
+        },
+        "graph": {
+          "content_id": "sha256:321c6e442a5baf38700ff56420ce84c96f037ec23963e5323d7e59461b9696bf",
+          "content": {
+            "path": "graph/crash.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:6c4726948fff1c865a95bc0a9adc468edb31e1bb411c6c9fd368348baab7be3a",
+          "content": {
+            "path": "value_sources/crash.json",
+            "candidates": [
+              {
+                "name": "c",
+                "proved": true,
+                "unique": true
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:69b56770289e5ec814305c7c9f61bbefbcce63d1f24e4f71bdd9dc765f157318",
+          "content": {
+            "path": "retrieval/crash.json",
+            "vector_hits": [],
+            "kg_edges": [],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:f7a796841d01e7b4e869c18995d9c82a579c31854ce1422bd65c867370e0b623",
+          "content": {
+            "path": "proof/crash.json",
+            "verdict": "reconstructed",
+            "operator": "add_argument_from_unique_source",
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:56c057a494c910dc7f999bda22eb12281d5f9bbdd6e4ba9c7a5bf16bba37573e",
+          "content": {
+            "path": "plan/crash.json",
+            "transform": "add_argument_from_unique_source",
+            "atomic": true,
+            "admitted": true,
+            "partial_failure": true,
+            "crash_after_first_file": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:17b077a4af92d42cea61c41c704232b96ea2f26b63c01cab628da4dc6c895e15",
+          "content": {
+            "path": "sandbox/crash.json",
+            "enforced": true,
+            "write_scope": [
+              "src/a.py",
+              "src/b.py"
+            ],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:779794bae2c6ab2a4c6957a2e1c6d22cef44301c6f1777100c496ca703b42be2",
+          "content": {
+            "path": "fixed_point/crash.json",
+            "iterations": 0,
+            "residual_findings": 1,
+            "oscillating": false,
+            "rollback_success": true,
+            "partial_commit": false
+          }
+        }
+      }
+    },
+    {
+      "id": "oscillation",
+      "scenario": "oscillation",
+      "family": "adversarial_fixed_point",
+      "expected": {
+        "diagnosis": "oscillation",
+        "disposition": "abstain",
+        "repair": "none",
+        "fixed_point": "oscillating",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "oscillation_detected",
+          "false_fixed_point_refused"
+        ],
+        "stages": [
+          "diagnose",
+          "retrieve",
+          "prove",
+          "transform",
+          "impact",
+          "transaction",
+          "rollback",
+          "fixed_point"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "static_evidence"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "embedding_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true,
+        "model_invocation_forbidden": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:157e7782734e16772f2d50ae58f2945975f51b6d8f938367db9f883d53f90720",
+          "content": {
+            "path": "delta/osc.json",
+            "kind": "parameter_add",
+            "before": "ping(x)",
+            "after": "ping(x, y)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:651a964d5cc680b5dbe4a72fc4ad18cce9ce0c9a401a15deee1796fb88b88ea1",
+          "content": {
+            "path": "consumers/osc.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/ping.py:ping"
+              },
+              {
+                "kind": "direct",
+                "site": "src/pong.py:pong"
+              }
+            ],
+            "obligations": 2,
+            "mandatory_callers": 2
+          }
+        },
+        "graph": {
+          "content_id": "sha256:7b33725c721224a6463ed4cf41ed1d292130547ca50f104af479a95b04c6cafa",
+          "content": {
+            "path": "graph/osc.json",
+            "edges": [
+              "ping->pong",
+              "pong->ping"
+            ],
+            "complete": true,
+            "unknown_frontier": [],
+            "post_repair_new_delta": true
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:e55b1889f3ad74714c91c10ba8308562ba71ca816e65f4d1d5f232562ee34608",
+          "content": {
+            "path": "value_sources/osc.json",
+            "candidates": [
+              {
+                "name": "y",
+                "proved": true,
+                "unique": true
+              }
+            ]
+          }
+        },
+        "retrieval": {
+          "content_id": "sha256:e9576464bd869fb3cd612f4ead627be06883234b0ad00ca6719640d7f272ed6c",
+          "content": {
+            "path": "retrieval/osc.json",
+            "vector_hits": [],
+            "kg_edges": [],
+            "embedding_mode": "exact",
+            "semantic_authority": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:c9ee5e1df249f1d869fac5fddbeff2ca2b7816a786a6d348039c5d345599046f",
+          "content": {
+            "path": "proof/osc.json",
+            "verdict": "reconstructed",
+            "operator": "add_argument_from_unique_source",
+            "cache_status": "fresh"
+          }
+        },
+        "plan": {
+          "content_id": "sha256:02e5da3b6328d66967e358c6c68ea655ec2e70144d836a3163917b81c97a92d0",
+          "content": {
+            "path": "plan/osc.json",
+            "transform": "add_argument_from_unique_source",
+            "atomic": true,
+            "admitted": true
+          }
+        },
+        "sandbox": {
+          "content_id": "sha256:97c5e4250911f311cda77a4c52ba835ba564b7b93511d95bc23f88236a0fbe54",
+          "content": {
+            "path": "sandbox/osc.json",
+            "enforced": true,
+            "write_scope": [
+              "src/ping.py",
+              "src/pong.py"
+            ],
+            "escape_attempt": false
+          }
+        },
+        "fixed_point": {
+          "content_id": "sha256:2cc8500bcc452939e1c80cb25aa0cc3fc940672cf3de108a130b4957024710fc",
+          "content": {
+            "path": "fixed_point/osc.json",
+            "iterations": 3,
+            "residual_findings": 1,
+            "oscillating": true,
+            "claimed_complete": false
+          }
+        }
+      }
+    }
+  ]
+}

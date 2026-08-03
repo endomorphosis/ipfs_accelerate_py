@@ -1,0 +1,2209 @@
+{
+  "evaluation_count": 41,
+  "evaluations": [
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G005",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-001:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "tools/logic/verify_submodule_alignment.py",
+            "test/api/test_logic_submodule_alignment.py"
+          ],
+          "predicted_symbols": [
+            "tools/logic/verify_submodule_alignment.py",
+            "test/api/test_logic_submodule_alignment.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Align and continuously verify the datasets submodule",
+          "validation_commands": [
+            "python -m pytest test/api/test_logic_submodule_alignment.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_logic_submodule_alignment.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-001",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G010",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-002:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/docs/logic/software_verification_capability_inventory.md",
+            "ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/docs/logic/software_verification_capability_inventory.md",
+            "ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Produce an executable capability census and maturity matrix",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-002",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G011",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-003:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/docs/logic/logic_api_v1_compatibility.md",
+            "ipfs_datasets_py/tests/fixtures/logic/api_v1/manifest.json",
+            "ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/docs/logic/logic_api_v1_compatibility.md",
+            "ipfs_datasets_py/tests/fixtures/logic/api_v1/manifest.json",
+            "ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Freeze the existing public logic and proof-authority surface",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-003",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G012",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-004:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/families/models.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/families/registry.py",
+            "ipfs_datasets_py/tests/unit/logic/families/test_registry.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/families/models.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/families/registry.py",
+            "ipfs_datasets_py/tests/unit/logic/families/test_registry.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Define the canonical logic-family and provider-capability taxonomy",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/families/test_registry.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/families/test_registry.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-004",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G020",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-005:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/ir.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/properties.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_ir.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/ir.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/properties.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_ir.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Create the shared software-verification IR and property vocabulary",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_ir.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_ir.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-005",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G013",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-006:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/results.py",
+            "ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/results.py",
+            "ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Generalize typed backend results and authority normalization",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-006",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G014",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-007:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py",
+            "ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py",
+            "ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Build one bounded external-tool process lifecycle",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-007",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G015",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-008:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/provider.py",
+            "ipfs_accelerate_py/agent_supervisor/logic_provider_contract.py",
+            "test/api/test_logic_provider_contract.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/provider.py",
+            "ipfs_accelerate_py/agent_supervisor/logic_provider_contract.py",
+            "test/api/test_logic_provider_contract.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Reconcile datasets and supervisor provider contracts",
+          "validation_commands": [
+            "python -m pytest test/api/test_logic_provider_contract.py ipfs_datasets_py/tests/unit/logic/backends -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_logic_provider_contract.py ipfs_datasets_py/tests/unit/logic/backends -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-008",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G021",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-009:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/translations.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/receipts.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_translations.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/translations.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/receipts.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_translations.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Implement loss-aware cross-logic translation receipts",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_translations.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_translations.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-009",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G023",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-010:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/trace.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/temporal.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/trace.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/temporal.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Add event, trace, LTL, LTLf, MTL, CTL, and CTL-star semantics",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_temporal.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-010",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G024",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-011:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/program.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/contracts.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_program.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/program.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/contracts.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_program.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Add program, CFG, contract, Hoare, and dynamic-logic semantics",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_program.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_program.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-011",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G022",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-012:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/state.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/state.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Add state, transition, action-system, and Kripke semantics",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_state.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-012",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G028",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-013:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/authorization.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_authorization.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/authorization.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_authorization.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Add authorization, Datalog, and SecPAL-style semantics",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_authorization.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_authorization.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-013",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G029",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-014:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/protocol.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_protocol.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/protocol.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_protocol.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Add symbolic cryptographic-protocol semantics",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_protocol.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_protocol.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-014",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G025",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-015:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/vc.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_vc.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/vc.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_vc.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Generate weakest preconditions and verification conditions",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_vc.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_vc.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-015",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G026",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-016:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/heap.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/separation.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_separation.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/heap.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/separation.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_separation.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Add separation, heap, ownership, and resource logic",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_separation.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_separation.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-016",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G030",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-017:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/hyperproperties.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/hyperproperties.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Add hyperproperty and information-flow semantics",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-017",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G027",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-018:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/concurrency.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/refinement.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_concurrency_refinement.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/concurrency.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/refinement.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/test_concurrency_refinement.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Add concurrency, rely-guarantee, session, and refinement semantics",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_concurrency_refinement.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_concurrency_refinement.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-018",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G031",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-019:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/source_adapters.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/domain_adapters.py",
+            "ipfs_datasets_py/tests/integration/logic/test_software_verification_domain_lowering.py",
+            "ipfs_accelerate_py/agent_supervisor/program_ast_adapters.py",
+            "ipfs_accelerate_py/agent_supervisor/code_security_facts.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/source_adapters.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/domain_adapters.py",
+            "ipfs_datasets_py/tests/integration/logic/test_software_verification_domain_lowering.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Build source and domain adapters into the shared IR",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_software_verification_domain_lowering.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_software_verification_domain_lowering.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-019",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G040",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-020:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/smt/compiler.py",
+            "ipfs_datasets_py/tests/unit/logic/backends/smt/test_semantic_compiler.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/smt/compiler.py",
+            "ipfs_datasets_py/tests/unit/logic/backends/smt/test_semantic_compiler.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Implement the shared semantic SMT compiler",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/backends/smt/test_semantic_compiler.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/backends/smt/test_semantic_compiler.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-020",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G045",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-021:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/monitoring/runtime_mtl.py",
+            "ipfs_datasets_py/typescript/logic-runtime-mtl/package.json",
+            "ipfs_datasets_py/typescript/logic-runtime-mtl/package-lock.json",
+            "ipfs_datasets_py/typescript/logic-runtime-mtl/tsconfig.json",
+            "ipfs_datasets_py/typescript/logic-runtime-mtl/src/index.ts",
+            "ipfs_datasets_py/typescript/logic-runtime-mtl/test/runtime_mtl.test.ts",
+            "ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/monitoring/runtime_mtl.py",
+            "ipfs_datasets_py/typescript/logic-runtime-mtl/package.json",
+            "ipfs_datasets_py/typescript/logic-runtime-mtl/tsconfig.json",
+            "ipfs_datasets_py/typescript/logic-runtime-mtl/src/index.ts",
+            "ipfs_datasets_py/typescript/logic-runtime-mtl/test/runtime_mtl.test.ts",
+            "ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Build generic runtime MTL with portable TypeScript parity",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py -q && npm --prefix ipfs_datasets_py/typescript/logic-runtime-mtl test"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py -q && npm --prefix ipfs_datasets_py/typescript/logic-runtime-mtl test exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-021",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G049",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-022:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel/lean.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel/rocq.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel/wasm.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel/lean.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel/rocq.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel/wasm.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Normalize Lean and Rocq/Coq kernel-checking backends",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-022",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G044",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-023:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/tla/compiler.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/tla/runners.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_tla_model_checkers.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/tla/compiler.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/tla/runners.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_tla_model_checkers.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Generalize TLA+, TLC, and Apalache state-model checking",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_tla_model_checkers.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_tla_model_checkers.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-023",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G047",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-024:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/protocol/tamarin.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/protocol/proverif.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/protocol/tamarin.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/protocol/proverif.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Implement Tamarin and ProVerif protocol backends",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-024",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G062",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-025:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/cache_protocol.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/proof_corpus/backend_store.py",
+            "ipfs_datasets_py/tests/integration/logic/test_backend_cache_corpus.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/cache_protocol.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/proof_corpus/backend_store.py",
+            "ipfs_datasets_py/tests/integration/logic/test_backend_cache_corpus.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Unify exact caches with the immutable proof corpus",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_backend_cache_corpus.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_backend_cache_corpus.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-025",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G048",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-026:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/hyperproperties/adapters.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/hyperproperties/adapters.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Implement HyperLTL, AutoHyper, and MCHyper backends",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-026",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G046",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-027:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/datalog/adapters.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/datalog/adapters.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Implement Datalog and SecPAL-style authorization backends",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-027",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G042",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-028:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/atp/adapters.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_atp_legacy_adapters.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/atp/adapters.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_atp_legacy_adapters.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Normalize Vampire, E, DCEC, TDFOL, and legacy prover adapters",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_atp_legacy_adapters.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_atp_legacy_adapters.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-028",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G060",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-029:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/autoencoder_advisor.py",
+            "ipfs_datasets_py/tests/unit/logic/formalization/test_autoencoder_advisor.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/autoencoder_advisor.py",
+            "ipfs_datasets_py/tests/unit/logic/formalization/test_autoencoder_advisor.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Generalize the autoencoder into a bounded formalization advisor",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/formalization/test_autoencoder_advisor.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/formalization/test_autoencoder_advisor.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-029",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G041",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-030:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/smt/differential.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/z3/compiler.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/cvc5/compiler.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_z3_cvc5_software_verification.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/smt/differential.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_z3_cvc5_software_verification.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Run shared verification conditions through Z3 and CVC5",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_z3_cvc5_software_verification.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_z3_cvc5_software_verification.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-030",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G082",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-031:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchains.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/integration/bridges/prover_installer.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py",
+            "ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchains.py",
+            "ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Harden installers, resources, isolation, and adversarial behavior",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-031",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G050",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-032:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/hammers/backend.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel/isabelle.py",
+            "ipfs_datasets_py/tests/integration/logic/hammers/test_canonical_backend.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/hammers/backend.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel/isabelle.py",
+            "ipfs_datasets_py/tests/integration/logic/hammers/test_canonical_backend.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Integrate Isabelle and Hammer reconstruction as canonical backends",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/hammers/test_canonical_backend.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/hammers/test_canonical_backend.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-032",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G061",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-033:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/proposal_advisors.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/prover_router.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/integration/symbolic/neurosymbolic/reasoning_coordinator.py",
+            "ipfs_datasets_py/tests/integration/logic/test_proposal_advisors.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/proposal_advisors.py",
+            "ipfs_datasets_py/tests/integration/logic/test_proposal_advisors.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Normalize Leanstral and SymAI as untrusted proposal providers",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_proposal_advisors.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_proposal_advisors.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-033",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G063",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-034:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/bridge/proof_receipt_attestation.py",
+            "ipfs_datasets_py/tests/integration/logic/test_proof_receipt_attestation.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/bridge/proof_receipt_attestation.py",
+            "ipfs_datasets_py/tests/integration/logic/test_proof_receipt_attestation.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Bind production ZKP attestations to trusted proof receipts",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_proof_receipt_attestation.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_proof_receipt_attestation.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-034",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G043",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-035:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/portfolio.py",
+            "ipfs_datasets_py/tests/unit/logic/backends/test_portfolio.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/portfolio.py",
+            "ipfs_datasets_py/tests/unit/logic/backends/test_portfolio.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Build deterministic property-specific prover portfolios",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_portfolio.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_portfolio.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-035",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G070",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-036:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/api.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/__init__.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/submodule_registry.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/registry.py",
+            "ipfs_datasets_py/tests/unit/logic/test_verification_api.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+            "ipfs_datasets_py/tests/unit/logic/test_verification_api.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Expose the stable Python software-verification API",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_api.py ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_api.py ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-036",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G072",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-037:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_accelerate_py/agent_supervisor/canonical_logic_adapter.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/analysis_operation_registry.py",
+            "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+            "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+            "ipfs_accelerate_py/agent_supervisor/proof/prover_matrix_registry.py",
+            "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py",
+            "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+            "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+            "test/api/test_agent_supervisor_canonical_logic.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_accelerate_py/agent_supervisor/canonical_logic_adapter.py",
+            "test/api/test_agent_supervisor_canonical_logic.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Adapt the agent supervisor to the canonical logic platform",
+          "validation_commands": [
+            "python -m pytest test/api/test_agent_supervisor_canonical_logic.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_agent_supervisor_canonical_logic.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-037",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G071",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-038:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/cli.py",
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_verification.py",
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_tools/__init__.py",
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/__init__.py",
+            "ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_verification.py",
+            "ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Expose equivalent CLI and MCP verification operations",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/test_logic_verification_cli_mcp.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-038",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G080",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-039:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/tests/fixtures/logic/software_verification/conformance/manifest.json",
+            "ipfs_datasets_py/tests/integration/logic/test_software_verification_conformance.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/tests/fixtures/logic/software_verification/conformance/manifest.json",
+            "ipfs_datasets_py/tests/integration/logic/test_software_verification_conformance.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Build the cross-family and cross-provider conformance corpus",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_software_verification_conformance.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_software_verification_conformance.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-039",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G081",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-040:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/examples/logic/software_verification/manifest.json",
+            "ipfs_datasets_py/tests/integration/logic/test_software_verification_examples.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/examples/logic/software_verification/manifest.json",
+            "ipfs_datasets_py/tests/integration/logic/test_software_verification_examples.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Deliver source-bound end-to-end software-verification exemplars",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_software_verification_examples.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_software_verification_examples.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-040",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "LFV-G083",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:LFV-041:focused-1",
+          "dependencies": [
+            "LFV-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/docs/logic/software_verification_rollout.md",
+            "ipfs_datasets_py/docs/security_verification/prover_matrix.md",
+            "ipfs_datasets_py/tests/integration/benchmarks/logic_pipeline/test_software_verification_matrix.py",
+            "test/api/test_logic_formal_verification_completion.py",
+            "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/docs/logic/software_verification_rollout.md",
+            "ipfs_datasets_py/tests/integration/benchmarks/logic_pipeline/test_software_verification_matrix.py",
+            "test/api/test_logic_formal_verification_completion.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Benchmark, document, roll out, and issue the completion receipt",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/benchmarks/logic_pipeline/test_software_verification_matrix.py test/api/test_logic_formal_verification_completion.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/benchmarks/logic_pipeline/test_software_verification_matrix.py test/api/test_logic_formal_verification_completion.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "LFV-041",
+      "used_fallback": false
+    }
+  ],
+  "schema": "ipfs_accelerate_py.agent_supervisor.objective_plan_evaluations@1"
+}

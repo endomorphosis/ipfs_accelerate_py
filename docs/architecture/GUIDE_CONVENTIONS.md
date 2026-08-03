@@ -1,15 +1,15 @@
 # Architecture guide conventions
 
-**Status:** Current  
+**Status:** Current
 **Audience:** Parallel documentation authors, architecture reviewers, and
-implementation agents writing or revising maintained architecture guides  
+implementation agents writing or revising maintained architecture guides
 **Scope:** Required structure, vocabulary, source anchors, diagrams, trust and
 failure language, verification, and volatile-claim policy for architecture
-guides under `docs/architecture/`  
+guides under `docs/architecture/`
 **Non-goals:** This file does not define the ADR template (see DOC-004 /
 `docs/architecture/decisions/`), lifecycle labels for non-architecture docs
 (see `docs/development/DOCUMENTATION_LIFECYCLE.md` when present), or
-subsystem-specific content. It does not establish new public APIs.  
+subsystem-specific content. It does not establish new public APIs.
 **Last verified:** baseline commit `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15`
 (program baseline 2026-08-03); conventions revalidated against the guide
 contract in `DOCUMENTATION_REFRESH_PLAN_2026_08.md` and existing maintained
@@ -61,11 +61,11 @@ Example (copy and adapt):
 ```markdown
 # Inference runtime
 
-**Status:** Current  
-**Audience:** Developers and agents tracing request dispatch  
-**Scope:** Router lifecycle, provider selection, and fallback for the inference plane  
-**Non-goals:** Supervisor scheduling, MCP transport policy, package install  
-**Last verified:** `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15` (2026-08-03); paths and symbols checked against package layout  
+**Status:** Current
+**Audience:** Developers and agents tracing request dispatch
+**Scope:** Router lifecycle, provider selection, and fallback for the inference plane
+**Non-goals:** Supervisor scheduling, MCP transport policy, package install
+**Last verified:** `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15` (2026-08-03); paths and symbols checked against package layout
 
 ## Source anchors
 
@@ -106,11 +106,11 @@ when both appear on one page. Never interleave them without labels.
 
 When sources conflict, prefer in this order:
 
-1. Live source and tests for the claim family  
-2. Installed CLI / module `--help` and discovery manifests  
-3. Maintained Current architecture guide  
-4. ADR accepted for that decision  
-5. Plan or historical document  
+1. Live source and tests for the claim family
+2. Installed CLI / module `--help` and discovery manifests
+3. Maintained Current architecture guide
+4. ADR accepted for that decision
+5. Plan or historical document
 
 Filename tokens (`complete`, `final`, `phase`, `todo`) are **not** authority.
 
@@ -401,10 +401,10 @@ the page.
 ````markdown
 # <Title>
 
-**Status:** Current  
-**Audience:** <who>  
-**Scope:** <what this page owns>  
-**Non-goals:** <what it does not own>  
+**Status:** Current
+**Audience:** <who>
+**Scope:** <what this page owns>
+**Non-goals:** <what it does not own>
 **Last verified:** `<commit>` (<date>); <what was checked>
 
 ## Source anchors
@@ -482,17 +482,17 @@ git diff --check
 
 Before merging a Current architecture guide:
 
-- [ ] Status, audience, scope, non-goals, and last-verified baseline present  
-- [ ] **Source anchors** list live paths/symbols; conceptual boxes labelled  
-- [ ] Current vs planned language separated  
-- [ ] Flows include primary control/data paths  
-- [ ] **Rationale**, **alternatives**, and **consequences** present  
-- [ ] Failure semantics (fail-closed, degradation, recovery) present  
-- [ ] Diagrams match live names or mark conceptual/compatibility  
-- [ ] No invented API, flag, extra, or universal optional-capability claims  
-- [ ] Volatile metrics dated and reproducible or omitted  
-- [ ] **Verification** section runnable without live provider inference  
-- [ ] Relative links and `git diff --check` clean  
+- [ ] Status, audience, scope, non-goals, and last-verified baseline present
+- [ ] **Source anchors** list live paths/symbols; conceptual boxes labelled
+- [ ] Current vs planned language separated
+- [ ] Flows include primary control/data paths
+- [ ] **Rationale**, **alternatives**, and **consequences** present
+- [ ] Failure semantics (fail-closed, degradation, recovery) present
+- [ ] Diagrams match live names or mark conceptual/compatibility
+- [ ] No invented API, flag, extra, or universal optional-capability claims
+- [ ] Volatile metrics dated and reproducible or omitted
+- [ ] **Verification** section runnable without live provider inference
+- [ ] Relative links and `git diff --check` clean
 
 ---
 

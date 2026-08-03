@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import sys as _sys
 import tempfile
 import threading
 from contextlib import contextmanager
@@ -71,6 +72,17 @@ from .objective_graph import (
 from ..validation.validation_commands import split_validation_commands
 from ..proof.formal_verification_contracts import content_identity
 from ..merge.checkout_lock import objective_admission_lock_path
+from .goal_quality import (
+    DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH,
+    DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH,
+    DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND,
+    DebtSeverity,
+    ObjectiveTypedGoals,
+    lint_objective_markdown,
+    lint_objective_typed_goals,
+    migrate_objective_markdown,
+    validate_objective_typed_goals,
+)
 from ..validation.validation_runtime import (
     build_validation_environment,
     validation_shell_command,
@@ -101,6 +113,9 @@ TASK_GOAL_METADATA_KEYS = (
 )
 OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/objective-goal-quality-report@1"
+)
+OBJECTIVE_LAUNCH_QUALITY_SUMMARY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/objective-launch-quality-summary@1"
 )
 _COMPLETION_GATE_REQUIRED_CHECK_NAMES = frozenset(
     {
@@ -608,7 +623,14 @@ def objective_goal_quality_record(
         "acceptance_criteria",
         "acceptance",
     )
-    producers = set(
+    # ``Evidence`` is the objective heap's canonical declaration of the
+    # artifacts or child goals that produce evidence for a goal.  Preserve
+    # those bindings in the compatibility quality report in addition to the
+    # newer explicit producer fields; otherwise a supervisor can report a
+    # goal while silently dropping the evidence obligation that caused it to
+    # be scheduled.
+    producers = set(goal.required_evidence)
+    producers.update(
         _quality_terms(
             goal,
             "evidence_producer_ids_json",
@@ -792,14 +814,415 @@ def load_objective_goal_quality_report(
         raise ValueError("objective goal-quality report must contain an object")
     report = ObjectiveGoalQualityReport.from_dict(payload)
     if objective_path is not None:
-        current_id = objective_heap_content_id(
-            objective_path.read_text(encoding="utf-8")
-        )
+        objective_text = objective_path.read_text(encoding="utf-8")
+        current_id = objective_heap_content_id(objective_text)
         if report.objective_heap_id != current_id:
             raise ValueError(
                 "objective goal-quality report is stale for the current heap"
             )
+        expected_goal_ids = {
+            goal.goal_id for goal in parse_goal_heap(objective_text)
+        }
+        report_goal_ids = {
+            record.goal_id for record in report.quality_records
+        }
+        if report_goal_ids != expected_goal_ids:
+            missing = sorted(expected_goal_ids - report_goal_ids)
+            unexpected = sorted(report_goal_ids - expected_goal_ids)
+            details = []
+            if missing:
+                details.append("missing: " + ", ".join(missing))
+            if unexpected:
+                details.append("unexpected: " + ", ".join(unexpected))
+            raise ValueError(
+                "objective goal-quality report goal coverage does not match "
+                f"the current heap ({'; '.join(details)})"
+            )
     return report
+
+
+@dataclass(frozen=True)
+class ObjectiveGoalQualityEnsureResult:
+    """Outcome of ensuring a heap-bound goal-quality evidence artifact.
+
+    Validation-repair lanes need a non-empty, deterministic producer action
+    when the durable report is missing or stale.  ``refreshed`` distinguishes
+    a no-op load of an already-current artifact from a rewrite that produces
+    changed evidence for proposal ``changed_paths``.
+    """
+
+    report: ObjectiveGoalQualityReport
+    refreshed: bool
+    evidence_path: str = DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
+    validation_command: str = DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND
+    test_path: str = DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "report": self.report.to_dict(),
+            "refreshed": bool(self.refreshed),
+            "evidence_path": self.evidence_path,
+            "validation_command": self.validation_command,
+            "test_path": self.test_path,
+            "objective_heap_id": self.report.objective_heap_id,
+            "content_id": self.report.content_id,
+            "quality_record_count": len(self.report.quality_records),
+            "debt_record_count": len(self.report.debt_records),
+        }
+
+
+def _goal_quality_evidence_path_label(report_path: Path) -> str:
+    """Prefer the reviewed relative evidence path when the file sits there."""
+
+    marker = DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
+    posix = report_path.as_posix().replace("\\", "/")
+    if posix == marker or posix.endswith("/" + marker):
+        return marker
+    return posix
+
+
+def ensure_objective_goal_quality_report(
+    objective_path: Path,
+    report_path: Path,
+    *,
+    default_max_breadth: int = 8,
+    force: bool = False,
+) -> ObjectiveGoalQualityEnsureResult:
+    """Load a current report or atomically rewrite missing/stale evidence.
+
+    Fail-closed load remains the default for callers that only read.  Repair
+    and evidence-obligation lanes call this helper so a heap identity drift
+    yields a deterministic rewrite rather than an empty patch and a
+    ``declared_validation_plan_invalid`` configuration failure.
+    """
+
+    if objective_path.resolve() == report_path.resolve():
+        raise ValueError(
+            "goal-quality report path must not overwrite the objective heap"
+        )
+    evidence_path = _goal_quality_evidence_path_label(report_path)
+    if not force and report_path.is_file():
+        try:
+            report = load_objective_goal_quality_report(
+                report_path, objective_path=objective_path
+            )
+        except ValueError:
+            report = None
+        else:
+            return ObjectiveGoalQualityEnsureResult(
+                report=report,
+                refreshed=False,
+                evidence_path=evidence_path,
+            )
+
+    report = write_objective_goal_quality_report(
+        objective_path,
+        report_path,
+        default_max_breadth=default_max_breadth,
+    )
+    return ObjectiveGoalQualityEnsureResult(
+        report=report,
+        refreshed=True,
+        evidence_path=evidence_path,
+    )
+
+
+def build_objective_typed_goals(
+    objective_text: str,
+    *,
+    lossless: bool = True,
+) -> ObjectiveTypedGoals:
+    """Build the versioned typed sidecar for one exact objective heap."""
+
+    if not isinstance(objective_text, str):
+        raise TypeError("objective_text must be a string")
+    if lossless:
+        return migrate_objective_markdown(objective_text)
+    from .goal_quality import project_objective_markdown
+
+    return ObjectiveTypedGoals(
+        objective_heap_id=objective_heap_content_id(objective_text),
+        goals=project_objective_markdown(objective_text, lossless=False),
+    )
+
+
+def write_objective_typed_goals(
+    objective_path: Path,
+    sidecar_path: Path,
+    *,
+    lossless: bool = True,
+) -> ObjectiveTypedGoals:
+    """Atomically persist a heap-bound typed goal sidecar."""
+
+    if objective_path.resolve() == sidecar_path.resolve():
+        raise ValueError(
+            "typed goal sidecar path must not overwrite the objective heap"
+        )
+    text = objective_path.read_text(encoding="utf-8")
+    document = build_objective_typed_goals(text, lossless=lossless)
+    _atomic_write_json(sidecar_path, document.to_dict())
+    return document
+
+
+def load_objective_typed_goals(
+    sidecar_path: Path,
+    *,
+    objective_path: Path | None = None,
+) -> ObjectiveTypedGoals:
+    """Restore a typed goal sidecar and optionally reject a stale heap."""
+
+    try:
+        payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid objective typed goals sidecar: {exc}") from exc
+    if not isinstance(payload, Mapping):
+        raise ValueError("objective typed goals sidecar must contain an object")
+    document = ObjectiveTypedGoals.from_dict(payload)
+    if objective_path is not None:
+        validate_objective_typed_goals(
+            objective_path.read_text(encoding="utf-8"),
+            document,
+        )
+    return document
+
+
+@dataclass(frozen=True)
+class ObjectiveLaunchQualitySummary:
+    """Launcher-facing structural gate plus explicit typed quality debt.
+
+    This summary never grants mutation or completion authority.  Typed
+    admission is reported only when every migrated goal has zero
+    error-severity debt; otherwise the launcher must stay on the structural
+    legacy path and surface debt counts.
+    """
+
+    objective_heap_id: str
+    goal_count: int
+    legacy_structure_accepted: bool
+    compatibility_report_id: str
+    strict_typed_accepted: int
+    strict_typed_rejected: int
+    strict_typed_debt: Mapping[str, int]
+    strict_typed_error_debt: Mapping[str, int]
+    strict_typed_required: bool
+    typed_admission_claimed: bool
+    typed_sidecar_content_id: str
+    admission_path: str
+
+    def __post_init__(self) -> None:
+        heap_id = str(self.objective_heap_id or "").strip()
+        if not heap_id:
+            raise ValueError("objective_heap_id is required")
+        object.__setattr__(self, "objective_heap_id", heap_id)
+        for name in (
+            "goal_count",
+            "strict_typed_accepted",
+            "strict_typed_rejected",
+        ):
+            value = int(getattr(self, name))
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative")
+            object.__setattr__(self, name, value)
+        for name in ("strict_typed_debt", "strict_typed_error_debt"):
+            raw = getattr(self, name)
+            if not isinstance(raw, Mapping):
+                raise TypeError(f"{name} must be a mapping")
+            normalized = {
+                str(key): int(value)
+                for key, value in sorted(raw.items(), key=lambda item: str(item[0]))
+            }
+            object.__setattr__(self, name, dict(normalized))
+        for name in (
+            "compatibility_report_id",
+            "typed_sidecar_content_id",
+            "admission_path",
+        ):
+            value = str(getattr(self, name) or "").strip()
+            if not value:
+                raise ValueError(f"{name} is required")
+            object.__setattr__(self, name, value)
+        object.__setattr__(
+            self, "legacy_structure_accepted", bool(self.legacy_structure_accepted)
+        )
+        object.__setattr__(
+            self, "strict_typed_required", bool(self.strict_typed_required)
+        )
+        claimed = bool(self.typed_admission_claimed)
+        if claimed and (
+            self.strict_typed_rejected
+            or not self.legacy_structure_accepted
+            or self.admission_path != "typed_sidecar"
+        ):
+            raise ValueError(
+                "typed admission cannot be claimed while structural or typed debt remains"
+            )
+        if not claimed and self.admission_path == "typed_sidecar":
+            raise ValueError(
+                "typed_sidecar admission path requires typed_admission_claimed"
+            )
+        object.__setattr__(self, "typed_admission_claimed", claimed)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": OBJECTIVE_LAUNCH_QUALITY_SUMMARY_SCHEMA,
+            "version": 1,
+            "objective_heap_id": self.objective_heap_id,
+            "goal_count": self.goal_count,
+            "legacy_structure_accepted": self.legacy_structure_accepted,
+            "compatibility_report_id": self.compatibility_report_id,
+            "strict_typed_accepted": self.strict_typed_accepted,
+            "strict_typed_rejected": self.strict_typed_rejected,
+            "strict_typed_debt": dict(self.strict_typed_debt),
+            "strict_typed_error_debt": dict(self.strict_typed_error_debt),
+            "strict_typed_required": self.strict_typed_required,
+            "typed_admission_claimed": self.typed_admission_claimed,
+            "typed_sidecar_content_id": self.typed_sidecar_content_id,
+            "admission_path": self.admission_path,
+        }
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_id": self.content_id}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ObjectiveLaunchQualitySummary":
+        if not isinstance(payload, Mapping):
+            raise TypeError("objective launch quality summary must be an object")
+        allowed = {
+            "schema",
+            "version",
+            "content_id",
+            "objective_heap_id",
+            "goal_count",
+            "legacy_structure_accepted",
+            "compatibility_report_id",
+            "strict_typed_accepted",
+            "strict_typed_rejected",
+            "strict_typed_debt",
+            "strict_typed_error_debt",
+            "strict_typed_required",
+            "typed_admission_claimed",
+            "typed_sidecar_content_id",
+            "admission_path",
+        }
+        unknown = sorted(set(payload) - allowed)
+        if unknown:
+            raise ValueError(
+                "unknown objective launch quality summary fields: "
+                + ", ".join(unknown)
+            )
+        if payload.get("schema") != OBJECTIVE_LAUNCH_QUALITY_SUMMARY_SCHEMA:
+            raise ValueError("unsupported objective launch quality summary schema")
+        if payload.get("version") != 1:
+            raise ValueError("unsupported objective launch quality summary version")
+        result = cls(
+            objective_heap_id=str(payload.get("objective_heap_id") or ""),
+            goal_count=int(payload.get("goal_count") or 0),
+            legacy_structure_accepted=bool(payload.get("legacy_structure_accepted")),
+            compatibility_report_id=str(payload.get("compatibility_report_id") or ""),
+            strict_typed_accepted=int(payload.get("strict_typed_accepted") or 0),
+            strict_typed_rejected=int(payload.get("strict_typed_rejected") or 0),
+            strict_typed_debt=payload.get("strict_typed_debt") or {},
+            strict_typed_error_debt=payload.get("strict_typed_error_debt") or {},
+            strict_typed_required=bool(payload.get("strict_typed_required")),
+            typed_admission_claimed=bool(payload.get("typed_admission_claimed")),
+            typed_sidecar_content_id=str(payload.get("typed_sidecar_content_id") or ""),
+            admission_path=str(payload.get("admission_path") or ""),
+        )
+        identity = payload.get("content_id")
+        if not isinstance(identity, str) or not identity.strip():
+            raise ValueError("objective launch quality summary identity is required")
+        if identity != result.content_id:
+            raise ValueError(
+                "objective launch quality summary content identity does not match"
+            )
+        return result
+
+
+def build_objective_launch_quality_summary(
+    objective_text: str,
+    *,
+    require_typed: bool = False,
+    claim_typed_admission: bool = False,
+) -> ObjectiveLaunchQualitySummary:
+    """Report legacy structural readiness and typed debt for one heap.
+
+    Until callers explicitly claim typed admission, the summary stays on the
+    documented structural legacy path and reports quality debt from the
+    conservative Markdown projection rather than claiming typed admission.
+    """
+
+    if not isinstance(objective_text, str):
+        raise TypeError("objective_text must be a string")
+    compatibility = build_objective_goal_quality_report(objective_text)
+    legacy_reports = lint_objective_markdown(objective_text, lossless=False)
+    typed_document = migrate_objective_markdown(objective_text)
+    if typed_document.objective_heap_id != compatibility.objective_heap_id:
+        raise ValueError(
+            "typed sidecar heap identity diverged from compatibility report"
+        )
+    sidecar_reports = lint_objective_typed_goals(typed_document)
+    sidecar_accepted = sum(1 for report in sidecar_reports if report.accepted)
+    sidecar_rejected = len(sidecar_reports) - sidecar_accepted
+
+    # Legacy projection debt is the diagnostic signal for the structural path.
+    legacy_debt: dict[str, int] = {}
+    legacy_error_debt: dict[str, int] = {}
+    for report in legacy_reports:
+        for debt in report.debt:
+            legacy_debt[debt.code.value] = legacy_debt.get(debt.code.value, 0) + 1
+            if debt.severity is DebtSeverity.ERROR:
+                legacy_error_debt[debt.code.value] = (
+                    legacy_error_debt.get(debt.code.value, 0) + 1
+                )
+    legacy_accepted = sum(1 for report in legacy_reports if report.accepted)
+    legacy_rejected = len(legacy_reports) - legacy_accepted
+
+    sidecar_debt: dict[str, int] = {}
+    sidecar_error_debt: dict[str, int] = {}
+    for report in sidecar_reports:
+        for debt in report.debt:
+            sidecar_debt[debt.code.value] = sidecar_debt.get(debt.code.value, 0) + 1
+            if debt.severity is DebtSeverity.ERROR:
+                sidecar_error_debt[debt.code.value] = (
+                    sidecar_error_debt.get(debt.code.value, 0) + 1
+                )
+
+    # Structural acceptance is owned by hierarchy checks outside this builder.
+    legacy_structure_accepted = True
+    can_claim = (
+        claim_typed_admission
+        and sidecar_rejected == 0
+        and legacy_structure_accepted
+        and bool(typed_document.goals)
+    )
+    if require_typed and sidecar_rejected:
+        can_claim = False
+    if can_claim:
+        accepted, rejected = sidecar_accepted, sidecar_rejected
+        debt_counts, error_counts = sidecar_debt, sidecar_error_debt
+        admission_path = "typed_sidecar"
+    else:
+        accepted, rejected = legacy_accepted, legacy_rejected
+        debt_counts, error_counts = legacy_debt, legacy_error_debt
+        admission_path = "structural_legacy"
+    return ObjectiveLaunchQualitySummary(
+        objective_heap_id=compatibility.objective_heap_id,
+        goal_count=len(typed_document.goals),
+        legacy_structure_accepted=legacy_structure_accepted,
+        compatibility_report_id=compatibility.content_id,
+        strict_typed_accepted=accepted,
+        strict_typed_rejected=rejected,
+        strict_typed_debt=debt_counts,
+        strict_typed_error_debt=error_counts,
+        strict_typed_required=require_typed,
+        typed_admission_claimed=can_claim,
+        typed_sidecar_content_id=typed_document.content_id,
+        admission_path=admission_path,
+    )
 
 
 OBJECTIVE_REFINEMENT_EVENT_STATE_SCHEMA = (
@@ -6701,3 +7124,12 @@ def parse_root_evidence(values: Iterable[str]) -> list[str]:
     for value in values:
         terms.extend(split_terms(value))
     return terms or list(DEFAULT_ROOT_EVIDENCE)
+
+
+# The package-root compatibility importer supports the retired flat module
+# path during the domain-layout cutover.  Publish the canonical module object
+# under that name as soon as this module has initialized so both import paths
+# share globals and mutation/atomic-write hooks.
+_sys.modules[
+    "ipfs_accelerate_py.agent_supervisor.objective_tracker"
+] = _sys.modules[__name__]

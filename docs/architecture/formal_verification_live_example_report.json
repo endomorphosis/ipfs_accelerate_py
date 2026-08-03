@@ -1,0 +1,1297 @@
+{
+  "cases": [
+    {
+      "case_id": "contracts_resources.positive",
+      "diagnostics": [
+        "manifest source uses constructs outside full support (e.g. assert)",
+        "manifest resource_counter asserts \u2192 adapter partial; live proof uses supported fragment"
+      ],
+      "evidence_class": "live",
+      "generated_witness": false,
+      "kind": "positive",
+      "lane_id": "contracts_resources",
+      "optional_tool_outcomes": [
+        {
+          "evidence_class": "live",
+          "provider_id": "z3",
+          "request_id": "req:opt:contracts_resources.positive:z3",
+          "status": "succeeded",
+          "tool": "z3",
+          "unsupported_features": []
+        },
+        {
+          "evidence_class": "live",
+          "provider_id": "cvc5",
+          "request_id": "req:opt:contracts_resources.positive:cvc5",
+          "status": "succeeded",
+          "tool": "cvc5",
+          "unsupported_features": []
+        }
+      ],
+      "result_status": "proved",
+      "run_identity": {
+        "adapter_status": "partial",
+        "compile_request_id": "req:compile:contracts_resources.positive",
+        "compile_status": "succeeded",
+        "differential_classification": "agree_proved",
+        "document_id": "bafkreigk6jds7ha2ybyjqusexi7kx3ebgk7zxptkif3dj4vgw6pyret4cu",
+        "materialised_path": "examples/logic/software_verification/sources/resource_counter.py",
+        "pipeline_disproved": false,
+        "pipeline_proved": true,
+        "pipeline_source_sha256": "a62e7e091ffd3591eddd128f60d3d0e41bb3f7ef35eef17985c5688453281a29",
+        "pipeline_status": "success",
+        "portfolio_request_id": "req:portfolio:contracts_resources.positive",
+        "portfolio_status": "succeeded",
+        "program_id": "bafkreicvimpqt73xea3jxhni72zux4sitlrd5d5y5cqdt4oqdjn7booaoi",
+        "receipt_id": "bafkreieh7zlxwh2i6qzwe46ils6654pok57y5wt5dcethzexu2ypb3ndoy",
+        "receipt_verify_request_id": "req:receipt:contracts_resources.positive",
+        "receipt_verify_status": "succeeded",
+        "smt_script_digest": "fd80724299551f028ea10c3117873fbc904ae6645cd256443f1e10629019a4dd",
+        "source_path": "examples/logic/software_verification/sources/resource_counter.py",
+        "source_sha256": "66a4dfa6b855cab9202760f01f5acf16f12ca579cf1958e667ead8fac7a9b18a",
+        "translation_receipt_id": "bafkreigbsuxbi77hzibt2pd7mahwsreu5faro7swpz6obuhb5vtnx7ymsy",
+        "translation_receipt_ids": [
+          "bafkreigbsuxbi77hzibt2pd7mahwsreu5faro7swpz6obuhb5vtnx7ymsy"
+        ]
+      },
+      "source_path": "examples/logic/software_verification/sources/resource_counter.py",
+      "source_sha256": "66a4dfa6b855cab9202760f01f5acf16f12ca579cf1958e667ead8fac7a9b18a",
+      "witness_summary": ""
+    },
+    {
+      "case_id": "contracts_resources.negative",
+      "diagnostics": [
+        "manifest source uses constructs outside full support (e.g. assert)"
+      ],
+      "evidence_class": "live",
+      "generated_witness": true,
+      "kind": "negative",
+      "lane_id": "contracts_resources",
+      "optional_tool_outcomes": [
+        {
+          "evidence_class": "live",
+          "provider_id": "z3",
+          "request_id": "req:opt:contracts_resources.negative:z3",
+          "status": "succeeded",
+          "tool": "z3",
+          "unsupported_features": []
+        },
+        {
+          "evidence_class": "live",
+          "provider_id": "cvc5",
+          "request_id": "req:opt:contracts_resources.negative:cvc5",
+          "status": "succeeded",
+          "tool": "cvc5",
+          "unsupported_features": []
+        }
+      ],
+      "result_status": "counterexample_generated",
+      "run_identity": {
+        "adapter_status": "partial",
+        "compile_request_id": "req:compile:contracts_resources.negative",
+        "compile_status": "succeeded",
+        "differential_classification": "agree_disproved",
+        "document_id": "bafkreigk6jds7ha2ybyjqusexi7kx3ebgk7zxptkif3dj4vgw6pyret4cu",
+        "materialised_path": "examples/logic/software_verification/sources/resource_counter.py",
+        "pipeline_disproved": true,
+        "pipeline_proved": false,
+        "pipeline_source_sha256": "c3d9465256689b15f486bee7d0d7a4f3b6c584568cd8f88d3e697036e310cbf0",
+        "pipeline_status": "success",
+        "portfolio_request_id": "req:portfolio:contracts_resources.negative",
+        "portfolio_status": "succeeded",
+        "program_id": "bafkreigwwseisqxdge7kx2sjuksh5mrgednab3g4ehrgthi55j3n6nz4je",
+        "receipt_id": "bafkreicd43st2n3o3zgbo4zqzz664nkvjxrmruxxwv5oifomzjczfpuhly",
+        "receipt_verify_request_id": "req:receipt:contracts_resources.negative",
+        "receipt_verify_status": "succeeded",
+        "smt_script_digest": "48f22bf91e7d67adc372980d253410966940d0abc79806749db4c0626b618ea6",
+        "source_path": "examples/logic/software_verification/sources/resource_counter.py",
+        "source_sha256": "66a4dfa6b855cab9202760f01f5acf16f12ca579cf1958e667ead8fac7a9b18a",
+        "translation_receipt_id": "bafkreihpyzuo57e6uzaqjcbpfbyrgzgu3bzhs36b5nrsvzfe47r2qpndty",
+        "translation_receipt_ids": [
+          "bafkreihpyzuo57e6uzaqjcbpfbyrgzgu3bzhs36b5nrsvzfe47r2qpndty"
+        ]
+      },
+      "source_path": "examples/logic/software_verification/sources/resource_counter.py",
+      "source_sha256": "66a4dfa6b855cab9202760f01f5acf16f12ca579cf1958e667ead8fac7a9b18a",
+      "witness_summary": "("
+    },
+    {
+      "case_id": "heap_ownership.positive",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": false,
+      "kind": "positive",
+      "lane_id": "heap_ownership",
+      "optional_tool_outcomes": [
+        {
+          "evidence_class": "live",
+          "provider_id": "z3",
+          "request_id": "req:opt:heap_ownership.positive:z3",
+          "status": "succeeded",
+          "tool": "z3",
+          "unsupported_features": []
+        }
+      ],
+      "result_status": "positive_observations_generated",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:heap_ownership.positive",
+        "compile_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/list_head.sl.json",
+        "portfolio_request_id": "req:portfolio:heap_ownership.positive",
+        "portfolio_status": "unavailable",
+        "positive_generation": "lane_statement",
+        "receipt_id": "bafkreiejvcvyvffp2ru6qjqlowdy4kcds7gyiep2ydlbqdqem6ryb7k6da",
+        "receipt_verify_request_id": "req:receipt:heap_ownership.positive",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/list_head.sl.json",
+        "source_sha256": "742393f6c8a56892267952cce906775df50013dfda087e00153518dee906542d"
+      },
+      "source_path": "examples/logic/software_verification/sources/list_head.sl.json",
+      "source_sha256": "742393f6c8a56892267952cce906775df50013dfda087e00153518dee906542d",
+      "witness_summary": ""
+    },
+    {
+      "case_id": "heap_ownership.negative",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": true,
+      "kind": "negative",
+      "lane_id": "heap_ownership",
+      "optional_tool_outcomes": [
+        {
+          "evidence_class": "live",
+          "provider_id": "z3",
+          "request_id": "req:opt:heap_ownership.negative:z3",
+          "status": "succeeded",
+          "tool": "z3",
+          "unsupported_features": []
+        }
+      ],
+      "result_status": "counterexample_generated",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:heap_ownership.negative",
+        "compile_status": "succeeded",
+        "explain_request_id": "req:cex:heap_ownership.negative",
+        "explain_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/list_head.sl.json",
+        "portfolio_request_id": "req:portfolio:heap_ownership.negative",
+        "portfolio_status": "unavailable",
+        "receipt_id": "bafkreidnhwbjgvr6pd25tmxyz5d72bx5eqcy377u5zquf4crp2keh3k7se",
+        "receipt_verify_request_id": "req:receipt:heap_ownership.negative",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/list_head.sl.json",
+        "source_sha256": "742393f6c8a56892267952cce906775df50013dfda087e00153518dee906542d"
+      },
+      "source_path": "examples/logic/software_verification/sources/list_head.sl.json",
+      "source_sha256": "742393f6c8a56892267952cce906775df50013dfda087e00153518dee906542d",
+      "witness_summary": "permission fraction becomes zero after exclusive transfer"
+    },
+    {
+      "case_id": "concurrent_workflows.positive",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": false,
+      "kind": "positive",
+      "lane_id": "concurrent_workflows",
+      "optional_tool_outcomes": [
+        {
+          "evidence_class": "unsupported",
+          "provider_id": "tlc",
+          "request_id": "req:opt:concurrent_workflows.positive:tlc",
+          "status": "unsupported",
+          "tool": "tlc",
+          "unsupported_features": [
+            "provider:tlc"
+          ]
+        },
+        {
+          "evidence_class": "unavailable",
+          "provider_id": "apalache",
+          "request_id": "req:opt:concurrent_workflows.positive:apalache",
+          "status": "error",
+          "tool": "apalache",
+          "unsupported_features": []
+        }
+      ],
+      "result_status": "positive_observations_generated",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:concurrent_workflows.positive",
+        "compile_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/producer_consumer.json",
+        "portfolio_request_id": "req:portfolio:concurrent_workflows.positive",
+        "portfolio_status": "unavailable",
+        "positive_generation": "lane_statement",
+        "receipt_id": "bafkreiab5jqtfwllt27egrmql7ohxs4dqd25yvflegzgriztw6pomwntfq",
+        "receipt_verify_request_id": "req:receipt:concurrent_workflows.positive",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/producer_consumer.json",
+        "source_sha256": "1bf184d74a000b9a7bbe63740d13a72038e67f168358616cbfc4d7de0f8f5050"
+      },
+      "source_path": "examples/logic/software_verification/sources/producer_consumer.json",
+      "source_sha256": "1bf184d74a000b9a7bbe63740d13a72038e67f168358616cbfc4d7de0f8f5050",
+      "witness_summary": ""
+    },
+    {
+      "case_id": "concurrent_workflows.negative",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": true,
+      "kind": "negative",
+      "lane_id": "concurrent_workflows",
+      "optional_tool_outcomes": [
+        {
+          "evidence_class": "unsupported",
+          "provider_id": "tlc",
+          "request_id": "req:opt:concurrent_workflows.negative:tlc",
+          "status": "unsupported",
+          "tool": "tlc",
+          "unsupported_features": [
+            "provider:tlc"
+          ]
+        },
+        {
+          "evidence_class": "unavailable",
+          "provider_id": "apalache",
+          "request_id": "req:opt:concurrent_workflows.negative:apalache",
+          "status": "error",
+          "tool": "apalache",
+          "unsupported_features": []
+        }
+      ],
+      "result_status": "counterexample_generated",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:concurrent_workflows.negative",
+        "compile_status": "succeeded",
+        "explain_request_id": "req:cex:concurrent_workflows.negative",
+        "explain_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/producer_consumer.json",
+        "portfolio_request_id": "req:portfolio:concurrent_workflows.negative",
+        "portfolio_status": "unavailable",
+        "receipt_id": "bafkreibimkgqgvsshvyrrwvqgl6pwes4aluaa7ybyvohanfpajbp44rrha",
+        "receipt_verify_request_id": "req:receipt:concurrent_workflows.negative",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/producer_consumer.json",
+        "source_sha256": "1bf184d74a000b9a7bbe63740d13a72038e67f168358616cbfc4d7de0f8f5050"
+      },
+      "source_path": "examples/logic/software_verification/sources/producer_consumer.json",
+      "source_sha256": "1bf184d74a000b9a7bbe63740d13a72038e67f168358616cbfc4d7de0f8f5050",
+      "witness_summary": "overlapping write/read without atomic exclusion"
+    },
+    {
+      "case_id": "authorization.positive",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": false,
+      "kind": "positive",
+      "lane_id": "authorization",
+      "optional_tool_outcomes": [],
+      "result_status": "positive_observations_generated",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:authorization.positive",
+        "compile_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/document_access.policy.json",
+        "portfolio_request_id": "req:portfolio:authorization.positive",
+        "portfolio_status": "partial",
+        "positive_generation": "derived_from_source_policy",
+        "receipt_id": "bafkreidojeteaescokxpvbe2uuy6e3mmi2ozlxvbmxhzb2jadgmayr34fe",
+        "receipt_verify_request_id": "req:receipt:authorization.positive",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/document_access.policy.json",
+        "source_sha256": "f5843305b16b758b77c5e22c35938ddebf07feb22523d99c0815e8ee923080d5"
+      },
+      "source_path": "examples/logic/software_verification/sources/document_access.policy.json",
+      "source_sha256": "f5843305b16b758b77c5e22c35938ddebf07feb22523d99c0815e8ee923080d5",
+      "witness_summary": ""
+    },
+    {
+      "case_id": "authorization.negative",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": true,
+      "kind": "negative",
+      "lane_id": "authorization",
+      "optional_tool_outcomes": [],
+      "result_status": "counterexample_generated",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:authorization.negative",
+        "compile_status": "succeeded",
+        "explain_request_id": "req:cex:authorization.negative",
+        "explain_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/document_access.policy.json",
+        "portfolio_request_id": "req:portfolio:authorization.negative",
+        "portfolio_status": "partial",
+        "receipt_id": "bafkreihhmw4i72xib5xudhm4lsr3ei7mnmr3olszc5ydw7ygm6cn3gaaua",
+        "receipt_verify_request_id": "req:receipt:authorization.negative",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/document_access.policy.json",
+        "source_sha256": "f5843305b16b758b77c5e22c35938ddebf07feb22523d99c0815e8ee923080d5"
+      },
+      "source_path": "examples/logic/software_verification/sources/document_access.policy.json",
+      "source_sha256": "f5843305b16b758b77c5e22c35938ddebf07feb22523d99c0815e8ee923080d5",
+      "witness_summary": "bob denied; rule admits owner only"
+    },
+    {
+      "case_id": "cryptographic_protocols.positive",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": false,
+      "kind": "positive",
+      "lane_id": "cryptographic_protocols",
+      "optional_tool_outcomes": [
+        {
+          "evidence_class": "unavailable",
+          "provider_id": "tamarin",
+          "request_id": "req:opt:cryptographic_protocols.positive:tamarin",
+          "status": "error",
+          "tool": "tamarin",
+          "unsupported_features": []
+        },
+        {
+          "evidence_class": "unavailable",
+          "provider_id": "proverif",
+          "request_id": "req:opt:cryptographic_protocols.positive:proverif",
+          "status": "error",
+          "tool": "proverif",
+          "unsupported_features": []
+        }
+      ],
+      "result_status": "positive_observations_generated",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:cryptographic_protocols.positive",
+        "compile_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+        "portfolio_request_id": "req:portfolio:cryptographic_protocols.positive",
+        "portfolio_status": "unavailable",
+        "positive_generation": "lane_statement",
+        "receipt_id": "bafkreiekplq7oeqyabfxxc7cjs6eun5oamrl7yc3p34d7xk5frwwzkjscm",
+        "receipt_verify_request_id": "req:receipt:cryptographic_protocols.positive",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+        "source_sha256": "7518f1d24ffb770d3fcb106de48721a7fa1cd69ba4e951200d95764cf773b22f"
+      },
+      "source_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+      "source_sha256": "7518f1d24ffb770d3fcb106de48721a7fa1cd69ba4e951200d95764cf773b22f",
+      "witness_summary": ""
+    },
+    {
+      "case_id": "cryptographic_protocols.negative",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": true,
+      "kind": "negative",
+      "lane_id": "cryptographic_protocols",
+      "optional_tool_outcomes": [
+        {
+          "evidence_class": "unavailable",
+          "provider_id": "tamarin",
+          "request_id": "req:opt:cryptographic_protocols.negative:tamarin",
+          "status": "error",
+          "tool": "tamarin",
+          "unsupported_features": []
+        },
+        {
+          "evidence_class": "unavailable",
+          "provider_id": "proverif",
+          "request_id": "req:opt:cryptographic_protocols.negative:proverif",
+          "status": "error",
+          "tool": "proverif",
+          "unsupported_features": []
+        }
+      ],
+      "result_status": "counterexample_generated",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:cryptographic_protocols.negative",
+        "compile_status": "succeeded",
+        "explain_request_id": "req:cex:cryptographic_protocols.negative",
+        "explain_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+        "portfolio_request_id": "req:portfolio:cryptographic_protocols.negative",
+        "portfolio_status": "unavailable",
+        "receipt_id": "bafkreibnps72isfv3l5u7rdudciazt44oq7xwo7yaut5iixe52ztoiwnlm",
+        "receipt_verify_request_id": "req:receipt:cryptographic_protocols.negative",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+        "source_sha256": "7518f1d24ffb770d3fcb106de48721a7fa1cd69ba4e951200d95764cf773b22f"
+      },
+      "source_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+      "source_sha256": "7518f1d24ffb770d3fcb106de48721a7fa1cd69ba4e951200d95764cf773b22f",
+      "witness_summary": "session key disclosure reveals challenge nonce"
+    },
+    {
+      "case_id": "noninterference.positive",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": false,
+      "kind": "positive",
+      "lane_id": "noninterference",
+      "optional_tool_outcomes": [],
+      "result_status": "positive_observations_generated",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:noninterference.positive",
+        "compile_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+        "portfolio_request_id": "req:portfolio:noninterference.positive",
+        "portfolio_status": "unavailable",
+        "positive_generation": "derived_from_source_hyperproperty",
+        "receipt_id": "bafkreiehogjm6h2scd3keabk6so6kx37z3kyjnz555crdwqf5gfzlp5loa",
+        "receipt_verify_request_id": "req:receipt:noninterference.positive",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+        "source_sha256": "764e408ac276ba9c3ba89c3ef1f41c52d5dea9d5ffee93f513e197db59650a66"
+      },
+      "source_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+      "source_sha256": "764e408ac276ba9c3ba89c3ef1f41c52d5dea9d5ffee93f513e197db59650a66",
+      "witness_summary": ""
+    },
+    {
+      "case_id": "noninterference.negative",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": true,
+      "kind": "negative",
+      "lane_id": "noninterference",
+      "optional_tool_outcomes": [],
+      "result_status": "counterexample_generated",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:noninterference.negative",
+        "compile_status": "succeeded",
+        "explain_request_id": "req:cex:noninterference.negative",
+        "explain_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+        "portfolio_request_id": "req:portfolio:noninterference.negative",
+        "portfolio_status": "unavailable",
+        "receipt_id": "bafkreihws5233ghabvlg3lcnjtdsgflrkraqdleqfp52dep7lmt6k3afka",
+        "receipt_verify_request_id": "req:receipt:noninterference.negative",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+        "source_sha256": "764e408ac276ba9c3ba89c3ef1f41c52d5dea9d5ffee93f513e197db59650a66"
+      },
+      "source_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+      "source_sha256": "764e408ac276ba9c3ba89c3ef1f41c52d5dea9d5ffee93f513e197db59650a66",
+      "witness_summary": "public_token depends on high secret"
+    },
+    {
+      "case_id": "runtime_temporal_monitoring.positive",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": false,
+      "kind": "positive",
+      "lane_id": "runtime_temporal_monitoring",
+      "optional_tool_outcomes": [],
+      "result_status": "monitor_true",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:runtime_temporal_monitoring.positive",
+        "compile_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+        "monitor_request_id": "req:monitor:runtime_temporal_monitoring.positive",
+        "monitor_status": "succeeded",
+        "monitor_verdict": "true",
+        "portfolio_request_id": "req:portfolio:runtime_temporal_monitoring.positive",
+        "portfolio_status": "partial",
+        "positive_generation": "derived_from_source_formula",
+        "receipt_id": "bafkreiawx25t6cj5ajpwmxzgjavi372xcdk7vqfwnpk3ymad3mchjbmvtu",
+        "receipt_verify_request_id": "req:receipt:runtime_temporal_monitoring.positive",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+        "source_sha256": "add4938cd5c17e63c24df1b1c41fef25cc381f0218c6a3a77e455f86d8741414"
+      },
+      "source_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+      "source_sha256": "add4938cd5c17e63c24df1b1c41fef25cc381f0218c6a3a77e455f86d8741414",
+      "witness_summary": ""
+    },
+    {
+      "case_id": "runtime_temporal_monitoring.negative",
+      "diagnostics": [
+        "domain source is not a Python program frontend target"
+      ],
+      "evidence_class": "simulated",
+      "generated_witness": true,
+      "kind": "negative",
+      "lane_id": "runtime_temporal_monitoring",
+      "optional_tool_outcomes": [],
+      "result_status": "monitor_violation_generated",
+      "run_identity": {
+        "adapter_status": "unsupported",
+        "compile_request_id": "req:compile:runtime_temporal_monitoring.negative",
+        "compile_status": "succeeded",
+        "explain_request_id": "req:cex:runtime_temporal_monitoring.negative",
+        "explain_status": "succeeded",
+        "materialised_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+        "monitor_request_id": "req:monitor:runtime_temporal_monitoring.negative",
+        "monitor_status": "succeeded",
+        "monitor_verdict": "false",
+        "portfolio_request_id": "req:portfolio:runtime_temporal_monitoring.negative",
+        "portfolio_status": "partial",
+        "receipt_id": "bafkreifywbmscapcgx4mj3bdyzw7r5hfqcbhlc6qn7vwfyd4tu3mubr66a",
+        "receipt_verify_request_id": "req:receipt:runtime_temporal_monitoring.negative",
+        "receipt_verify_status": "succeeded",
+        "source_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+        "source_sha256": "add4938cd5c17e63c24df1b1c41fef25cc381f0218c6a3a77e455f86d8741414"
+      },
+      "source_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+      "source_sha256": "add4938cd5c17e63c24df1b1c41fef25cc381f0218c6a3a77e455f86d8741414",
+      "witness_summary": "safe fails at step 1 under Always(safe)"
+    }
+  ],
+  "description": "Outcome report for runnable software-verification examples. Derived from materialised manifest sources and production entrypoints; never a synthetic readiness distribution.",
+  "evidence_class_policy": {
+    "fixture": "Structural offline evidence only.",
+    "live": "Bounded live tool outcome on this machine; not production-certified alone.",
+    "simulated": "Interpreter or API evaluation without external prover authority.",
+    "skipped": "Intentionally not executed under current bounds.",
+    "synthetic_forbidden_as_readiness": true,
+    "unavailable": "Required tool or runtime missing.",
+    "unsupported": "Outside supported fragment; fail-closed."
+  },
+  "evidence_class_vocabulary": {
+    "fixture": {
+      "id": "fixture",
+      "production_readiness_claim": false
+    },
+    "live": {
+      "id": "live",
+      "production_readiness_claim": false
+    },
+    "simulated": {
+      "id": "simulated",
+      "production_readiness_claim": false
+    },
+    "skipped": {
+      "id": "skipped",
+      "production_readiness_claim": false
+    },
+    "unavailable": {
+      "id": "unavailable",
+      "production_readiness_claim": false
+    },
+    "unsupported": {
+      "id": "unsupported",
+      "production_readiness_claim": false
+    }
+  },
+  "goal_id": "FVT-G013",
+  "interface": "LiveReadinessReport@1",
+  "lanes": [
+    {
+      "cases": [
+        {
+          "case_id": "contracts_resources.positive",
+          "diagnostics": [
+            "manifest source uses constructs outside full support (e.g. assert)",
+            "manifest resource_counter asserts \u2192 adapter partial; live proof uses supported fragment"
+          ],
+          "evidence_class": "live",
+          "generated_witness": false,
+          "kind": "positive",
+          "lane_id": "contracts_resources",
+          "optional_tool_outcomes": [
+            {
+              "evidence_class": "live",
+              "provider_id": "z3",
+              "request_id": "req:opt:contracts_resources.positive:z3",
+              "status": "succeeded",
+              "tool": "z3",
+              "unsupported_features": []
+            },
+            {
+              "evidence_class": "live",
+              "provider_id": "cvc5",
+              "request_id": "req:opt:contracts_resources.positive:cvc5",
+              "status": "succeeded",
+              "tool": "cvc5",
+              "unsupported_features": []
+            }
+          ],
+          "result_status": "proved",
+          "run_identity": {
+            "adapter_status": "partial",
+            "compile_request_id": "req:compile:contracts_resources.positive",
+            "compile_status": "succeeded",
+            "differential_classification": "agree_proved",
+            "document_id": "bafkreigk6jds7ha2ybyjqusexi7kx3ebgk7zxptkif3dj4vgw6pyret4cu",
+            "materialised_path": "examples/logic/software_verification/sources/resource_counter.py",
+            "pipeline_disproved": false,
+            "pipeline_proved": true,
+            "pipeline_source_sha256": "a62e7e091ffd3591eddd128f60d3d0e41bb3f7ef35eef17985c5688453281a29",
+            "pipeline_status": "success",
+            "portfolio_request_id": "req:portfolio:contracts_resources.positive",
+            "portfolio_status": "succeeded",
+            "program_id": "bafkreicvimpqt73xea3jxhni72zux4sitlrd5d5y5cqdt4oqdjn7booaoi",
+            "receipt_id": "bafkreieh7zlxwh2i6qzwe46ils6654pok57y5wt5dcethzexu2ypb3ndoy",
+            "receipt_verify_request_id": "req:receipt:contracts_resources.positive",
+            "receipt_verify_status": "succeeded",
+            "smt_script_digest": "fd80724299551f028ea10c3117873fbc904ae6645cd256443f1e10629019a4dd",
+            "source_path": "examples/logic/software_verification/sources/resource_counter.py",
+            "source_sha256": "66a4dfa6b855cab9202760f01f5acf16f12ca579cf1958e667ead8fac7a9b18a",
+            "translation_receipt_id": "bafkreigbsuxbi77hzibt2pd7mahwsreu5faro7swpz6obuhb5vtnx7ymsy",
+            "translation_receipt_ids": [
+              "bafkreigbsuxbi77hzibt2pd7mahwsreu5faro7swpz6obuhb5vtnx7ymsy"
+            ]
+          },
+          "source_path": "examples/logic/software_verification/sources/resource_counter.py",
+          "source_sha256": "66a4dfa6b855cab9202760f01f5acf16f12ca579cf1958e667ead8fac7a9b18a",
+          "witness_summary": ""
+        },
+        {
+          "case_id": "contracts_resources.negative",
+          "diagnostics": [
+            "manifest source uses constructs outside full support (e.g. assert)"
+          ],
+          "evidence_class": "live",
+          "generated_witness": true,
+          "kind": "negative",
+          "lane_id": "contracts_resources",
+          "optional_tool_outcomes": [
+            {
+              "evidence_class": "live",
+              "provider_id": "z3",
+              "request_id": "req:opt:contracts_resources.negative:z3",
+              "status": "succeeded",
+              "tool": "z3",
+              "unsupported_features": []
+            },
+            {
+              "evidence_class": "live",
+              "provider_id": "cvc5",
+              "request_id": "req:opt:contracts_resources.negative:cvc5",
+              "status": "succeeded",
+              "tool": "cvc5",
+              "unsupported_features": []
+            }
+          ],
+          "result_status": "counterexample_generated",
+          "run_identity": {
+            "adapter_status": "partial",
+            "compile_request_id": "req:compile:contracts_resources.negative",
+            "compile_status": "succeeded",
+            "differential_classification": "agree_disproved",
+            "document_id": "bafkreigk6jds7ha2ybyjqusexi7kx3ebgk7zxptkif3dj4vgw6pyret4cu",
+            "materialised_path": "examples/logic/software_verification/sources/resource_counter.py",
+            "pipeline_disproved": true,
+            "pipeline_proved": false,
+            "pipeline_source_sha256": "c3d9465256689b15f486bee7d0d7a4f3b6c584568cd8f88d3e697036e310cbf0",
+            "pipeline_status": "success",
+            "portfolio_request_id": "req:portfolio:contracts_resources.negative",
+            "portfolio_status": "succeeded",
+            "program_id": "bafkreigwwseisqxdge7kx2sjuksh5mrgednab3g4ehrgthi55j3n6nz4je",
+            "receipt_id": "bafkreicd43st2n3o3zgbo4zqzz664nkvjxrmruxxwv5oifomzjczfpuhly",
+            "receipt_verify_request_id": "req:receipt:contracts_resources.negative",
+            "receipt_verify_status": "succeeded",
+            "smt_script_digest": "48f22bf91e7d67adc372980d253410966940d0abc79806749db4c0626b618ea6",
+            "source_path": "examples/logic/software_verification/sources/resource_counter.py",
+            "source_sha256": "66a4dfa6b855cab9202760f01f5acf16f12ca579cf1958e667ead8fac7a9b18a",
+            "translation_receipt_id": "bafkreihpyzuo57e6uzaqjcbpfbyrgzgu3bzhs36b5nrsvzfe47r2qpndty",
+            "translation_receipt_ids": [
+              "bafkreihpyzuo57e6uzaqjcbpfbyrgzgu3bzhs36b5nrsvzfe47r2qpndty"
+            ]
+          },
+          "source_path": "examples/logic/software_verification/sources/resource_counter.py",
+          "source_sha256": "66a4dfa6b855cab9202760f01f5acf16f12ca579cf1958e667ead8fac7a9b18a",
+          "witness_summary": "("
+        }
+      ],
+      "declared_assurance": "bounded",
+      "lane_id": "contracts_resources",
+      "property_kind": "contract",
+      "source_path": "examples/logic/software_verification/sources/resource_counter.py",
+      "source_sha256": "66a4dfa6b855cab9202760f01f5acf16f12ca579cf1958e667ead8fac7a9b18a",
+      "title": "Contracts and resources"
+    },
+    {
+      "cases": [
+        {
+          "case_id": "heap_ownership.positive",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": false,
+          "kind": "positive",
+          "lane_id": "heap_ownership",
+          "optional_tool_outcomes": [
+            {
+              "evidence_class": "live",
+              "provider_id": "z3",
+              "request_id": "req:opt:heap_ownership.positive:z3",
+              "status": "succeeded",
+              "tool": "z3",
+              "unsupported_features": []
+            }
+          ],
+          "result_status": "positive_observations_generated",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:heap_ownership.positive",
+            "compile_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/list_head.sl.json",
+            "portfolio_request_id": "req:portfolio:heap_ownership.positive",
+            "portfolio_status": "unavailable",
+            "positive_generation": "lane_statement",
+            "receipt_id": "bafkreiejvcvyvffp2ru6qjqlowdy4kcds7gyiep2ydlbqdqem6ryb7k6da",
+            "receipt_verify_request_id": "req:receipt:heap_ownership.positive",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/list_head.sl.json",
+            "source_sha256": "742393f6c8a56892267952cce906775df50013dfda087e00153518dee906542d"
+          },
+          "source_path": "examples/logic/software_verification/sources/list_head.sl.json",
+          "source_sha256": "742393f6c8a56892267952cce906775df50013dfda087e00153518dee906542d",
+          "witness_summary": ""
+        },
+        {
+          "case_id": "heap_ownership.negative",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": true,
+          "kind": "negative",
+          "lane_id": "heap_ownership",
+          "optional_tool_outcomes": [
+            {
+              "evidence_class": "live",
+              "provider_id": "z3",
+              "request_id": "req:opt:heap_ownership.negative:z3",
+              "status": "succeeded",
+              "tool": "z3",
+              "unsupported_features": []
+            }
+          ],
+          "result_status": "counterexample_generated",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:heap_ownership.negative",
+            "compile_status": "succeeded",
+            "explain_request_id": "req:cex:heap_ownership.negative",
+            "explain_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/list_head.sl.json",
+            "portfolio_request_id": "req:portfolio:heap_ownership.negative",
+            "portfolio_status": "unavailable",
+            "receipt_id": "bafkreidnhwbjgvr6pd25tmxyz5d72bx5eqcy377u5zquf4crp2keh3k7se",
+            "receipt_verify_request_id": "req:receipt:heap_ownership.negative",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/list_head.sl.json",
+            "source_sha256": "742393f6c8a56892267952cce906775df50013dfda087e00153518dee906542d"
+          },
+          "source_path": "examples/logic/software_verification/sources/list_head.sl.json",
+          "source_sha256": "742393f6c8a56892267952cce906775df50013dfda087e00153518dee906542d",
+          "witness_summary": "permission fraction becomes zero after exclusive transfer"
+        }
+      ],
+      "declared_assurance": "bounded",
+      "lane_id": "heap_ownership",
+      "property_kind": "heap_safety",
+      "source_path": "examples/logic/software_verification/sources/list_head.sl.json",
+      "source_sha256": "742393f6c8a56892267952cce906775df50013dfda087e00153518dee906542d",
+      "title": "Heap ownership and separation"
+    },
+    {
+      "cases": [
+        {
+          "case_id": "concurrent_workflows.positive",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": false,
+          "kind": "positive",
+          "lane_id": "concurrent_workflows",
+          "optional_tool_outcomes": [
+            {
+              "evidence_class": "unsupported",
+              "provider_id": "tlc",
+              "request_id": "req:opt:concurrent_workflows.positive:tlc",
+              "status": "unsupported",
+              "tool": "tlc",
+              "unsupported_features": [
+                "provider:tlc"
+              ]
+            },
+            {
+              "evidence_class": "unavailable",
+              "provider_id": "apalache",
+              "request_id": "req:opt:concurrent_workflows.positive:apalache",
+              "status": "error",
+              "tool": "apalache",
+              "unsupported_features": []
+            }
+          ],
+          "result_status": "positive_observations_generated",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:concurrent_workflows.positive",
+            "compile_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/producer_consumer.json",
+            "portfolio_request_id": "req:portfolio:concurrent_workflows.positive",
+            "portfolio_status": "unavailable",
+            "positive_generation": "lane_statement",
+            "receipt_id": "bafkreiab5jqtfwllt27egrmql7ohxs4dqd25yvflegzgriztw6pomwntfq",
+            "receipt_verify_request_id": "req:receipt:concurrent_workflows.positive",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/producer_consumer.json",
+            "source_sha256": "1bf184d74a000b9a7bbe63740d13a72038e67f168358616cbfc4d7de0f8f5050"
+          },
+          "source_path": "examples/logic/software_verification/sources/producer_consumer.json",
+          "source_sha256": "1bf184d74a000b9a7bbe63740d13a72038e67f168358616cbfc4d7de0f8f5050",
+          "witness_summary": ""
+        },
+        {
+          "case_id": "concurrent_workflows.negative",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": true,
+          "kind": "negative",
+          "lane_id": "concurrent_workflows",
+          "optional_tool_outcomes": [
+            {
+              "evidence_class": "unsupported",
+              "provider_id": "tlc",
+              "request_id": "req:opt:concurrent_workflows.negative:tlc",
+              "status": "unsupported",
+              "tool": "tlc",
+              "unsupported_features": [
+                "provider:tlc"
+              ]
+            },
+            {
+              "evidence_class": "unavailable",
+              "provider_id": "apalache",
+              "request_id": "req:opt:concurrent_workflows.negative:apalache",
+              "status": "error",
+              "tool": "apalache",
+              "unsupported_features": []
+            }
+          ],
+          "result_status": "counterexample_generated",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:concurrent_workflows.negative",
+            "compile_status": "succeeded",
+            "explain_request_id": "req:cex:concurrent_workflows.negative",
+            "explain_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/producer_consumer.json",
+            "portfolio_request_id": "req:portfolio:concurrent_workflows.negative",
+            "portfolio_status": "unavailable",
+            "receipt_id": "bafkreibimkgqgvsshvyrrwvqgl6pwes4aluaa7ybyvohanfpajbp44rrha",
+            "receipt_verify_request_id": "req:receipt:concurrent_workflows.negative",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/producer_consumer.json",
+            "source_sha256": "1bf184d74a000b9a7bbe63740d13a72038e67f168358616cbfc4d7de0f8f5050"
+          },
+          "source_path": "examples/logic/software_verification/sources/producer_consumer.json",
+          "source_sha256": "1bf184d74a000b9a7bbe63740d13a72038e67f168358616cbfc4d7de0f8f5050",
+          "witness_summary": "overlapping write/read without atomic exclusion"
+        }
+      ],
+      "declared_assurance": "bounded",
+      "lane_id": "concurrent_workflows",
+      "property_kind": "data_race_freedom",
+      "source_path": "examples/logic/software_verification/sources/producer_consumer.json",
+      "source_sha256": "1bf184d74a000b9a7bbe63740d13a72038e67f168358616cbfc4d7de0f8f5050",
+      "title": "Concurrent workflows"
+    },
+    {
+      "cases": [
+        {
+          "case_id": "authorization.positive",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": false,
+          "kind": "positive",
+          "lane_id": "authorization",
+          "optional_tool_outcomes": [],
+          "result_status": "positive_observations_generated",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:authorization.positive",
+            "compile_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/document_access.policy.json",
+            "portfolio_request_id": "req:portfolio:authorization.positive",
+            "portfolio_status": "partial",
+            "positive_generation": "derived_from_source_policy",
+            "receipt_id": "bafkreidojeteaescokxpvbe2uuy6e3mmi2ozlxvbmxhzb2jadgmayr34fe",
+            "receipt_verify_request_id": "req:receipt:authorization.positive",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/document_access.policy.json",
+            "source_sha256": "f5843305b16b758b77c5e22c35938ddebf07feb22523d99c0815e8ee923080d5"
+          },
+          "source_path": "examples/logic/software_verification/sources/document_access.policy.json",
+          "source_sha256": "f5843305b16b758b77c5e22c35938ddebf07feb22523d99c0815e8ee923080d5",
+          "witness_summary": ""
+        },
+        {
+          "case_id": "authorization.negative",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": true,
+          "kind": "negative",
+          "lane_id": "authorization",
+          "optional_tool_outcomes": [],
+          "result_status": "counterexample_generated",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:authorization.negative",
+            "compile_status": "succeeded",
+            "explain_request_id": "req:cex:authorization.negative",
+            "explain_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/document_access.policy.json",
+            "portfolio_request_id": "req:portfolio:authorization.negative",
+            "portfolio_status": "partial",
+            "receipt_id": "bafkreihhmw4i72xib5xudhm4lsr3ei7mnmr3olszc5ydw7ygm6cn3gaaua",
+            "receipt_verify_request_id": "req:receipt:authorization.negative",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/document_access.policy.json",
+            "source_sha256": "f5843305b16b758b77c5e22c35938ddebf07feb22523d99c0815e8ee923080d5"
+          },
+          "source_path": "examples/logic/software_verification/sources/document_access.policy.json",
+          "source_sha256": "f5843305b16b758b77c5e22c35938ddebf07feb22523d99c0815e8ee923080d5",
+          "witness_summary": "bob denied; rule admits owner only"
+        }
+      ],
+      "declared_assurance": "authorization",
+      "lane_id": "authorization",
+      "property_kind": "authorization",
+      "source_path": "examples/logic/software_verification/sources/document_access.policy.json",
+      "source_sha256": "f5843305b16b758b77c5e22c35938ddebf07feb22523d99c0815e8ee923080d5",
+      "title": "Authorization and policy decisions"
+    },
+    {
+      "cases": [
+        {
+          "case_id": "cryptographic_protocols.positive",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": false,
+          "kind": "positive",
+          "lane_id": "cryptographic_protocols",
+          "optional_tool_outcomes": [
+            {
+              "evidence_class": "unavailable",
+              "provider_id": "tamarin",
+              "request_id": "req:opt:cryptographic_protocols.positive:tamarin",
+              "status": "error",
+              "tool": "tamarin",
+              "unsupported_features": []
+            },
+            {
+              "evidence_class": "unavailable",
+              "provider_id": "proverif",
+              "request_id": "req:opt:cryptographic_protocols.positive:proverif",
+              "status": "error",
+              "tool": "proverif",
+              "unsupported_features": []
+            }
+          ],
+          "result_status": "positive_observations_generated",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:cryptographic_protocols.positive",
+            "compile_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+            "portfolio_request_id": "req:portfolio:cryptographic_protocols.positive",
+            "portfolio_status": "unavailable",
+            "positive_generation": "lane_statement",
+            "receipt_id": "bafkreiekplq7oeqyabfxxc7cjs6eun5oamrl7yc3p34d7xk5frwwzkjscm",
+            "receipt_verify_request_id": "req:receipt:cryptographic_protocols.positive",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+            "source_sha256": "7518f1d24ffb770d3fcb106de48721a7fa1cd69ba4e951200d95764cf773b22f"
+          },
+          "source_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+          "source_sha256": "7518f1d24ffb770d3fcb106de48721a7fa1cd69ba4e951200d95764cf773b22f",
+          "witness_summary": ""
+        },
+        {
+          "case_id": "cryptographic_protocols.negative",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": true,
+          "kind": "negative",
+          "lane_id": "cryptographic_protocols",
+          "optional_tool_outcomes": [
+            {
+              "evidence_class": "unavailable",
+              "provider_id": "tamarin",
+              "request_id": "req:opt:cryptographic_protocols.negative:tamarin",
+              "status": "error",
+              "tool": "tamarin",
+              "unsupported_features": []
+            },
+            {
+              "evidence_class": "unavailable",
+              "provider_id": "proverif",
+              "request_id": "req:opt:cryptographic_protocols.negative:proverif",
+              "status": "error",
+              "tool": "proverif",
+              "unsupported_features": []
+            }
+          ],
+          "result_status": "counterexample_generated",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:cryptographic_protocols.negative",
+            "compile_status": "succeeded",
+            "explain_request_id": "req:cex:cryptographic_protocols.negative",
+            "explain_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+            "portfolio_request_id": "req:portfolio:cryptographic_protocols.negative",
+            "portfolio_status": "unavailable",
+            "receipt_id": "bafkreibnps72isfv3l5u7rdudciazt44oq7xwo7yaut5iixe52ztoiwnlm",
+            "receipt_verify_request_id": "req:receipt:cryptographic_protocols.negative",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+            "source_sha256": "7518f1d24ffb770d3fcb106de48721a7fa1cd69ba4e951200d95764cf773b22f"
+          },
+          "source_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+          "source_sha256": "7518f1d24ffb770d3fcb106de48721a7fa1cd69ba4e951200d95764cf773b22f",
+          "witness_summary": "session key disclosure reveals challenge nonce"
+        }
+      ],
+      "declared_assurance": "protocol",
+      "lane_id": "cryptographic_protocols",
+      "property_kind": "secrecy",
+      "source_path": "examples/logic/software_verification/sources/handshake.protocol.json",
+      "source_sha256": "7518f1d24ffb770d3fcb106de48721a7fa1cd69ba4e951200d95764cf773b22f",
+      "title": "Cryptographic protocol semantics"
+    },
+    {
+      "cases": [
+        {
+          "case_id": "noninterference.positive",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": false,
+          "kind": "positive",
+          "lane_id": "noninterference",
+          "optional_tool_outcomes": [],
+          "result_status": "positive_observations_generated",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:noninterference.positive",
+            "compile_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+            "portfolio_request_id": "req:portfolio:noninterference.positive",
+            "portfolio_status": "unavailable",
+            "positive_generation": "derived_from_source_hyperproperty",
+            "receipt_id": "bafkreiehogjm6h2scd3keabk6so6kx37z3kyjnz555crdwqf5gfzlp5loa",
+            "receipt_verify_request_id": "req:receipt:noninterference.positive",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+            "source_sha256": "764e408ac276ba9c3ba89c3ef1f41c52d5dea9d5ffee93f513e197db59650a66"
+          },
+          "source_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+          "source_sha256": "764e408ac276ba9c3ba89c3ef1f41c52d5dea9d5ffee93f513e197db59650a66",
+          "witness_summary": ""
+        },
+        {
+          "case_id": "noninterference.negative",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": true,
+          "kind": "negative",
+          "lane_id": "noninterference",
+          "optional_tool_outcomes": [],
+          "result_status": "counterexample_generated",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:noninterference.negative",
+            "compile_status": "succeeded",
+            "explain_request_id": "req:cex:noninterference.negative",
+            "explain_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+            "portfolio_request_id": "req:portfolio:noninterference.negative",
+            "portfolio_status": "unavailable",
+            "receipt_id": "bafkreihws5233ghabvlg3lcnjtdsgflrkraqdleqfp52dep7lmt6k3afka",
+            "receipt_verify_request_id": "req:receipt:noninterference.negative",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+            "source_sha256": "764e408ac276ba9c3ba89c3ef1f41c52d5dea9d5ffee93f513e197db59650a66"
+          },
+          "source_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+          "source_sha256": "764e408ac276ba9c3ba89c3ef1f41c52d5dea9d5ffee93f513e197db59650a66",
+          "witness_summary": "public_token depends on high secret"
+        }
+      ],
+      "declared_assurance": "hyperproperty",
+      "lane_id": "noninterference",
+      "property_kind": "noninterference",
+      "source_path": "examples/logic/software_verification/sources/noninterference.policy.json",
+      "source_sha256": "764e408ac276ba9c3ba89c3ef1f41c52d5dea9d5ffee93f513e197db59650a66",
+      "title": "Noninterference and information flow"
+    },
+    {
+      "cases": [
+        {
+          "case_id": "runtime_temporal_monitoring.positive",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": false,
+          "kind": "positive",
+          "lane_id": "runtime_temporal_monitoring",
+          "optional_tool_outcomes": [],
+          "result_status": "monitor_true",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:runtime_temporal_monitoring.positive",
+            "compile_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+            "monitor_request_id": "req:monitor:runtime_temporal_monitoring.positive",
+            "monitor_status": "succeeded",
+            "monitor_verdict": "true",
+            "portfolio_request_id": "req:portfolio:runtime_temporal_monitoring.positive",
+            "portfolio_status": "partial",
+            "positive_generation": "derived_from_source_formula",
+            "receipt_id": "bafkreiawx25t6cj5ajpwmxzgjavi372xcdk7vqfwnpk3ymad3mchjbmvtu",
+            "receipt_verify_request_id": "req:receipt:runtime_temporal_monitoring.positive",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+            "source_sha256": "add4938cd5c17e63c24df1b1c41fef25cc381f0218c6a3a77e455f86d8741414"
+          },
+          "source_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+          "source_sha256": "add4938cd5c17e63c24df1b1c41fef25cc381f0218c6a3a77e455f86d8741414",
+          "witness_summary": ""
+        },
+        {
+          "case_id": "runtime_temporal_monitoring.negative",
+          "diagnostics": [
+            "domain source is not a Python program frontend target"
+          ],
+          "evidence_class": "simulated",
+          "generated_witness": true,
+          "kind": "negative",
+          "lane_id": "runtime_temporal_monitoring",
+          "optional_tool_outcomes": [],
+          "result_status": "monitor_violation_generated",
+          "run_identity": {
+            "adapter_status": "unsupported",
+            "compile_request_id": "req:compile:runtime_temporal_monitoring.negative",
+            "compile_status": "succeeded",
+            "explain_request_id": "req:cex:runtime_temporal_monitoring.negative",
+            "explain_status": "succeeded",
+            "materialised_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+            "monitor_request_id": "req:monitor:runtime_temporal_monitoring.negative",
+            "monitor_status": "succeeded",
+            "monitor_verdict": "false",
+            "portfolio_request_id": "req:portfolio:runtime_temporal_monitoring.negative",
+            "portfolio_status": "partial",
+            "receipt_id": "bafkreifywbmscapcgx4mj3bdyzw7r5hfqcbhlc6qn7vwfyd4tu3mubr66a",
+            "receipt_verify_request_id": "req:receipt:runtime_temporal_monitoring.negative",
+            "receipt_verify_status": "succeeded",
+            "source_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+            "source_sha256": "add4938cd5c17e63c24df1b1c41fef25cc381f0218c6a3a77e455f86d8741414"
+          },
+          "source_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+          "source_sha256": "add4938cd5c17e63c24df1b1c41fef25cc381f0218c6a3a77e455f86d8741414",
+          "witness_summary": "safe fails at step 1 under Always(safe)"
+        }
+      ],
+      "declared_assurance": "monitor",
+      "lane_id": "runtime_temporal_monitoring",
+      "property_kind": "trace_conformance",
+      "source_path": "examples/logic/software_verification/sources/always_safe.mtl.json",
+      "source_sha256": "add4938cd5c17e63c24df1b1c41fef25cc381f0218c6a3a77e455f86d8741414",
+      "title": "Runtime temporal monitoring"
+    }
+  ],
+  "manifest": {
+    "case_count": 14,
+    "interface": "SoftwareVerificationExamples@1",
+    "lane_count": 7,
+    "path": "ipfs_datasets_py/examples/logic/software_verification/manifest.json",
+    "schema_version": "software-verification-examples/v1",
+    "sha256": "fa489c1326b3ac6dda7c567cd927b6aabf14b336eead533d3f30f5afae833b1f"
+  },
+  "observed_at": "2026-07-30T22:00:00Z",
+  "production_readiness_claims": {
+    "fixture_counts_as_production_certified": false,
+    "live_without_hermetic_certificate_is_not_production_certified": true,
+    "notes": "Live solver outcomes on this host are evidence class 'live' only. Production certification requires hermetic toolchain locks (FVT-006/FVT-030).",
+    "simulated_counts_as_production_certified": false,
+    "synthetic_distributions_forbidden": true
+  },
+  "program": "formal-verification-tactician/readiness",
+  "public_api": {
+    "interface": "LogicVerificationAPI@1",
+    "operations": [
+      "compile_verification_artifact",
+      "check",
+      "monitor",
+      "run_portfolio",
+      "explain_counterexample",
+      "verify_receipt",
+      "list_providers"
+    ]
+  },
+  "readme": {
+    "path": "ipfs_datasets_py/examples/logic/software_verification/README.md",
+    "present": true,
+    "sha256": "351d029f9ae26e029867813e7e73760e92d930158c8336447659c084a66915a1"
+  },
+  "run_id": "run:028dccf72b9d4362b8c5a93c",
+  "runnable_interface": "RunnableVerificationExamples@1",
+  "schema_version": "formal-verification-live-example-report/v1",
+  "summary": {
+    "by_evidence_class": {
+      "fixture": 0,
+      "live": 2,
+      "simulated": 12,
+      "skipped": 0,
+      "unavailable": 0,
+      "unsupported": 0
+    },
+    "case_count": 14,
+    "lane_count": 7,
+    "negative_generated_witness_count": 7,
+    "positive_with_receipt_count": 7,
+    "solvers_available": true
+  },
+  "task_id": "FVT-021"
+}

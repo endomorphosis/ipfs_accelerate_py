@@ -965,8 +965,23 @@ class TaskWorkContract:
             if canonical_json_bytes(dict(explicit)) != canonical_json_bytes(
                 result.to_dict()
             ):
+                expected_binding = result.to_dict()
+                differing_fields = sorted(
+                    key
+                    for key in set(explicit) | set(expected_binding)
+                    if canonical_json_bytes(explicit.get(key))
+                    != canonical_json_bytes(expected_binding.get(key))
+                )
+                task_label = str(
+                    root.get("task_id")
+                    or root.get("canonical_task_cid")
+                    or root.get("task_cid")
+                    or "<unknown>"
+                ).strip()
                 raise ValueError(
-                    "task_work_contract does not match canonical task fields"
+                    "task_work_contract does not match canonical task fields "
+                    f"for {task_label}; differing fields: "
+                    f"{', '.join(differing_fields) or '<unknown>'}"
                 )
         supplied_id = str(
             root.get("work_contract_id") or ""
@@ -992,6 +1007,167 @@ def build_task_work_contract(task: Any) -> TaskWorkContract:
     """Build and verify the canonical work contract for one task projection."""
 
     return TaskWorkContract.from_task(task)
+
+
+def rehydrate_task_work_contract_projection(task: Any) -> dict[str, Any]:
+    """Restore contract-bound fields omitted or rewritten by a projection.
+
+    Bounded planning artifacts intentionally omit bulky conflict surfaces and
+    dependency planning replaces display aliases with resolved CIDs.  Both
+    operations can make a projected row differ from its admitted work
+    contract.  Consumers that optimize the admitted work may use this helper
+    to construct a local, contract-authoritative copy without changing the
+    scheduler's projection.
+
+    The explicit contract remains mandatory and is verified after
+    rehydration.  A malformed contract, mismatched task identity, or invalid
+    content address therefore still fails closed.
+    """
+
+    projected = _payload(task)
+    work_contract = projected.get("work_contract")
+    task_work_contract = projected.get("task_work_contract")
+    if work_contract in (None, {}) and task_work_contract in (None, {}):
+        return projected
+    if not isinstance(work_contract, Mapping):
+        raise ValueError("work_contract must be a mapping")
+    if not isinstance(task_work_contract, Mapping):
+        raise ValueError("task_work_contract must be a mapping")
+
+    material = dict(work_contract)
+    binding = dict(task_work_contract)
+    if not isinstance(binding.get("work_contract"), Mapping):
+        raise ValueError("task_work_contract.work_contract must be a mapping")
+    if canonical_json_bytes(dict(binding["work_contract"])) != canonical_json_bytes(
+        material
+    ):
+        raise ValueError("task_work_contract does not bind work_contract")
+
+    def mapping_field(
+        source: Mapping[str, Any],
+        key: str,
+    ) -> dict[str, Any]:
+        value = source.get(key)
+        if not isinstance(value, Mapping):
+            raise ValueError(f"work contract field {key} must be a mapping")
+        return dict(value)
+
+    acceptance_effect = mapping_field(material, "acceptance_effect_subset")
+    predicted_scope = mapping_field(material, "predicted_scope")
+    predicted_costs = mapping_field(material, "predicted_costs")
+    execution_boundary = mapping_field(material, "execution_boundary")
+    estimated_costs = mapping_field(binding, "estimated_costs")
+
+    # Remove every alias consumed by TaskWorkContract.from_task so omitted
+    # conflict-surface values and scheduler-resolved dependency CIDs cannot be
+    # unioned with the contract-authoritative values below.  ``from_task``
+    # deliberately reads common nested producer projections as well as the
+    # root row.  Sanitising only the root therefore leaves stale aliases in a
+    # nested ``metadata``/``finding``/``conflict_surface`` mapping and makes a
+    # valid admitted contract fail incremental bundle-index regeneration.
+    contract_aliases = (
+        "acceptance_subset",
+        "acceptance_criteria",
+        "acceptance",
+        "effect_subset",
+        "effects",
+        "expected_effects",
+        "evidence_subset",
+        "missing_evidence",
+        "expected_evidence_delta",
+        "predicted_paths",
+        "predicted_files",
+        "outputs",
+        "predicted_symbols",
+        "ast_symbols",
+        "symbols",
+        "ast_query",
+        "context_paths",
+        "context_keys",
+        "context_files",
+        "estimated_context_tokens",
+        "context_tokens",
+        "estimated_tokens",
+        "token_cost",
+        "estimated_validation_seconds",
+        "validation_seconds",
+        "validation_cost",
+        "dependencies",
+        "depends_on",
+        "dependency_task_cids",
+        "conflicts",
+        "conflict_keys",
+        "preconditions",
+        "required_preconditions",
+        "validation_commands",
+        "validation",
+        "merge_fate",
+        "merge_family",
+        "merge_key",
+        "goal_id",
+        "resource_class",
+        "token_class",
+    )
+    for key in contract_aliases:
+        projected.pop(key, None)
+    for source_key in (
+        "finding",
+        "metadata",
+        "conflict_surface",
+        "profile_g",
+        "payload",
+    ):
+        nested = projected.get(source_key)
+        if not isinstance(nested, Mapping):
+            continue
+        sanitized = dict(nested)
+        for key in contract_aliases:
+            sanitized.pop(key, None)
+            # Human-readable Markdown metadata keys are normalized by
+            # ``_sources``.  Remove those spellings as well or they can
+            # reintroduce a stale alias after normalization.
+            for existing_key in tuple(sanitized):
+                if _normalized_field_key(existing_key) == key:
+                    sanitized.pop(existing_key, None)
+        projected[source_key] = sanitized
+
+    dependencies = list(execution_boundary.get("dependencies") or [])
+    projected.update(
+        {
+            "goal_id": material.get("goal_id") or "",
+            "acceptance_subset": list(binding.get("acceptance_subset") or []),
+            "effect_subset": list(binding.get("effect_subset") or []),
+            "evidence_subset": list(binding.get("evidence_subset") or []),
+            "predicted_paths": list(binding.get("predicted_paths") or []),
+            "outputs": list(binding.get("predicted_paths") or []),
+            "predicted_symbols": list(binding.get("predicted_symbols") or []),
+            "context_paths": list(binding.get("context_paths") or []),
+            "estimated_context_tokens": estimated_costs.get(
+                "context_tokens", 0
+            ),
+            "estimated_tokens": estimated_costs.get("task_tokens", 0),
+            "estimated_validation_seconds": estimated_costs.get(
+                "validation_seconds", 0
+            ),
+            "resource_class": predicted_costs.get("resource_class") or "",
+            "token_class": predicted_costs.get("token_class") or "",
+            "dependencies": dependencies,
+            "depends_on": dependencies,
+            "dependency_task_cids": dependencies,
+            "conflicts": list(execution_boundary.get("conflicts") or []),
+            "preconditions": list(
+                execution_boundary.get("preconditions") or []
+            ),
+            "validation_commands": list(
+                execution_boundary.get("validation_commands") or []
+            ),
+            "merge_fate": execution_boundary.get("merge_fate") or "",
+        }
+    )
+    # This verifies both content addresses and the root canonical task
+    # identity against the explicit binding.
+    build_task_work_contract(projected)
+    return projected
 
 
 def normalize_repo_path(value: str, *, repo_root: Path | None = None) -> str:
@@ -1165,8 +1341,21 @@ def build_conflict_surface(
     work_contract = build_task_work_contract(task)
     task_id = str(root.get("task_id") or root.get("id") or root.get("canonical_task_id") or "").strip()
     task_cid = str(
-        root.get("task_cid")
-        or root.get("canonical_task_cid")
+        # The content-addressed identity is authoritative.  ``task_cid`` is a
+        # compatibility projection and can legitimately lag after an
+        # evidence-bound task is reprojected.  Preferring that stale alias
+        # here makes the ConflictSurface disagree with the already-verified
+        # TaskWorkContract and blocks incremental bundle regeneration.
+        root.get("canonical_task_cid")
+        or root.get("task_cid")
+        or next(
+            (
+                source.get("canonical_task_cid")
+                for source in sources[1:]
+                if source.get("canonical_task_cid")
+            ),
+            "",
+        )
         or next((source.get("task_cid") for source in sources[1:] if source.get("task_cid")), "")
         or task_id
     ).strip()

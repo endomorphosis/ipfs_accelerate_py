@@ -1,0 +1,115 @@
+{
+  "authoritative": false,
+  "board_namespace": "ipfs-kit-vfs-symbolic-assurance-v1",
+  "bundle": "vfs-assurance/root",
+  "completion_authoritative": false,
+  "covered_evidence_after": [
+    "vfs/contract-assurance-root@1",
+    "vfs/repository-forest-receipt@1",
+    "vfs/exhaustive-index-receipt@1",
+    "vfs/autonomous-refill-exhaustion@1"
+  ],
+  "discovery_input": "/home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-062-objective-gap-63a470e6d548.md",
+  "fingerprint": "63a470e6d54804ee5e67ac758689da07d52f0b4d",
+  "goal_id": "VFS-G134",
+  "goal_packet": null,
+  "goal_packet_role": null,
+  "missing_evidence_before": [
+    "vfs/contract-assurance-root@1"
+  ],
+  "objective_heap_alignment": {
+    "leaf_goal_id": "VFS-G134",
+    "parent_goal_id": "VFS-G000",
+    "reason": "VFS-G134 is already the smallest stable evidence owner for vfs/contract-assurance-root@1; acceptance subset criteria map to sibling leaf receipts under the same package",
+    "refinement": "not_required",
+    "sibling_leaf_goal_ids": [
+      "VFS-G132",
+      "VFS-G133",
+      "VFS-G135"
+    ]
+  },
+  "objective_heap_index": 30,
+  "packet_goals": [],
+  "parallel_lane": "vfs-assurance/root",
+  "primary_evidence_term": "vfs/contract-assurance-root@1",
+  "primary_receipt": "receipts/contract_assurance_root.receipt.json",
+  "producer_map": {
+    "vfs/autonomous-refill-exhaustion@1": {
+      "gates": [
+        "refill_exhaustion",
+        "bounded_refill"
+      ],
+      "module": "ipfs_accelerate_py/agent_supervisor/symbolic_finding_refill.py",
+      "receipt": "receipts/autonomous_refill_exhaustion.receipt.json",
+      "tests": [
+        "test/api/test_agent_supervisor_symbolic_finding_refill.py",
+        "test/api/test_vfs_symbolic_assurance_e2e.py"
+      ]
+    },
+    "vfs/contract-assurance-root@1": {
+      "adversarial_e2e_report_id": "sha256:5cb952ea3d9fe7289389f616c98a2b414490c2ec2a1427b2ac0e3d1396548422",
+      "fixture_cid": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+      "gates": [
+        "adversarial_e2e_root",
+        "control_parity",
+        "automatic_mutation_disabled",
+        "rollback"
+      ],
+      "module": "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py",
+      "supporting_modules": [
+        "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_pilot.py",
+        "ipfs_accelerate_py/agent_supervisor/vfs_mcp_contract_checker.py",
+        "ipfs_accelerate_py/agent_supervisor/program_assurance_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/vfs_contract_pack.py"
+      ],
+      "tests": [
+        "test/api/test_vfs_symbolic_assurance_e2e.py"
+      ]
+    },
+    "vfs/exhaustive-index-receipt@1": {
+      "gates": [
+        "complete_inventory",
+        "inventory_exclusions",
+        "incremental_reuse"
+      ],
+      "module": "ipfs_accelerate_py/agent_supervisor/repository_corpus_index.py",
+      "receipt": "receipts/exhaustive_index_receipt.receipt.json",
+      "tests": [
+        "test/api/test_agent_supervisor_repository_corpus_index.py",
+        "test/api/test_vfs_symbolic_assurance_e2e.py"
+      ]
+    },
+    "vfs/repository-forest-receipt@1": {
+      "module": "ipfs_accelerate_py/agent_supervisor/repository_forest.py",
+      "receipt": "receipts/repository_forest_receipt.receipt.json",
+      "tests": [
+        "test/api/test_agent_supervisor_repository_forest.py",
+        "test/api/test_vfs_symbolic_assurance_e2e.py"
+      ]
+    }
+  },
+  "resolution": {
+    "child_goal_refinement_required": false,
+    "coverage_narrative": "evidence_coverage_vfs_g134.md",
+    "heap_alignment": "VFS-G134 remains the leaf owner for vfs/contract-assurance-root@1 under VFS-G000; child leaf terms VFS-G132/G133/G135 already own sibling root evidence; no further refinement",
+    "kind": "durable_evidence_package",
+    "package": "data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance",
+    "receipt": "receipts/contract_assurance_root.receipt.json"
+  },
+  "safe_for_completion_reasoning": false,
+  "schema": "ipfs_accelerate_py.agent_supervisor.vfs-symbolic-assurance.objective-gap-resolution@1",
+  "status": "resolved_nomination",
+  "supervisor_backlog_alignment": {
+    "completion_transition": "reserved_for_supervisor_validation_gate",
+    "evidence_input": "data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json",
+    "objectives_file": "docs/architecture/ipfs_kit_vfs_symbolic_assurance.objectives.md",
+    "protected_board_status": "todo",
+    "protected_paths_untouched": true,
+    "task_id": "VFS-062",
+    "todo_file": "docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md"
+  },
+  "task_id": "VFS-062",
+  "validation_commands": [
+    "python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q"
+  ]
+}

@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import resource
 import shlex
 import shutil
@@ -22,7 +23,8 @@ import sysconfig
 import tempfile
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -31,9 +33,41 @@ from typing import Any
 VALIDATION_PATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PATH"
 VALIDATION_PYTHON_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"
 VALIDATION_PYTHONPATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
+VALIDATION_PYTHON_MODULES_ENV = (
+    "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON_MODULES"
+)
 VALIDATION_NPM_CACHE_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_NPM_CACHE"
 VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
+)
+VALIDATION_SUPERVISOR_STATE_ROOT_ENV = "LPR_STATE_ROOT"
+FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV = (
+    "IPFS_ACCELERATE_AGENT_FORMAL_TOOLCHAIN_CONTRACT_SHA256"
+)
+FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV = (
+    "IPFS_ACCELERATE_AGENT_REQUIRED_COMMANDS"
+)
+FORMAL_TOOLCHAIN_PATH_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_FORMAL_TOOLCHAIN_PATH"
+)
+FORMAL_TOOLCHAIN_ROOT_ENV_NAMES = (
+    "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+    "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+)
+VALIDATION_PYTHON_LAUNCHER_SHA256_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_PYTHON_LAUNCHER_SHA256"
+)
+VALIDATION_PYTHON_LAUNCHER_MODE_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_PYTHON_LAUNCHER_MODE"
+)
+VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256"
+)
+VALIDATION_PYTHON_INTERPRETER_SHA256_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_PYTHON_INTERPRETER_SHA256"
+)
+VALIDATION_PYTHON_INTERPRETER_STAT_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_PYTHON_INTERPRETER_STAT"
 )
 _CHILD_PYTHON_ENV = "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
 _NEUTRAL_HOME = "/nonexistent/ipfs-accelerate-validation"
@@ -41,8 +75,43 @@ _NPM_DISABLED_USER_CONFIG = "/dev/null/npmrc"
 HERMETIC_VALIDATION_RUNTIME_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/hermetic-validation-runtime@1"
 )
+VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/validation-environment-contract@1"
+)
+FORMAL_TOOLCHAIN_DEPLOYMENT_MANIFEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "formal-toolchain-deployment-manifest@1"
+)
 _RUNTIME_ID_ENV = "IPFS_ACCELERATE_VALIDATION_RUNTIME_ID"
 _CANCELLATION_ID_ENV = "IPFS_ACCELERATE_VALIDATION_CANCELLATION_ID"
+_VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "nested-validation-python-launcher@1;"
+    "seals=write,grow,shrink,seal;"
+    "shell-startup=privileged-no-bash-env;"
+    "user-site=interpreter-s-flag;"
+    "pythonpath=task-local-then-approved"
+)
+_SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE = (
+    "__ipfs_accelerate_sealed_validation_python__"
+)
+_FORMAL_TOOL_COMMAND_RE = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}"
+)
+_PYTHON_MODULE_RE = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"
+)
+_MAX_FORMAL_TOOL_COMMANDS = 64
+_MAX_VALIDATION_PYTHON_MODULES = 64
+_MAX_VALIDATION_PYTHON_PROBE_OUTPUT_BYTES = 64 * 1024
+_VALIDATION_PYTHON_PROBE_MARKER = (
+    "__IPFS_ACCELERATE_VALIDATION_PYTHON_MODULE_PROBE__="
+)
+DEFAULT_VALIDATION_PYTHON_MODULES = ("pytest",)
+VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "validation-python-module-preflight@1"
+)
 
 # These values affect deterministic/offline validation without carrying the
 # provider, wallet, registry, signing, or cloud credentials commonly present
@@ -84,6 +153,19 @@ _SYSTEM_VALIDATION_PATHS = (
 
 class ValidationRuntimeError(ValueError):
     """Raised before execution when the validation runtime policy is invalid."""
+
+
+@dataclass(frozen=True)
+class ValidationPythonLauncherReceipt:
+    """Identity and isolation evidence for a nested-process Python launcher."""
+
+    executable: str
+    content_sha256: str
+    interpreter_sha256: str
+    interpreter_stat: str
+    mode: str
+    policy_sha256: str
+    sealed: bool
 
 
 class ValidationNetworkMode(str, Enum):
@@ -489,6 +571,129 @@ def validation_executable_path(
     return os.pathsep.join(entries)
 
 
+def _formal_toolchain_required_commands(
+    source: Mapping[str, object],
+) -> tuple[str, ...]:
+    raw = str(
+        source.get(FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV) or ""
+    ).strip()
+    if not raw:
+        return ()
+    commands: list[str] = []
+    for item in raw.split(","):
+        command = item.strip()
+        if not command or not _FORMAL_TOOL_COMMAND_RE.fullmatch(command):
+            raise ValidationRuntimeError(
+                f"{FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV} must contain "
+                "comma-separated bare executable names"
+            )
+        if command not in commands:
+            commands.append(command)
+        if len(commands) > _MAX_FORMAL_TOOL_COMMANDS:
+            raise ValidationRuntimeError(
+                f"{FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV} contains too "
+                "many commands"
+            )
+    return tuple(commands)
+
+
+def _formal_toolchain_root(
+    source: Mapping[str, object],
+    variable: str,
+) -> str | None:
+    raw = str(source.get(variable) or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        raise ValidationRuntimeError(
+            f"{variable} must be an absolute deployed toolchain root"
+        )
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            f"{variable} deployed toolchain root is unavailable"
+        ) from exc
+    if not resolved.is_dir():
+        raise ValidationRuntimeError(
+            f"{variable} deployed toolchain root is not a directory"
+        )
+    try:
+        _reject_writable_path(
+            resolved,
+            source=f"{variable} deployed toolchain root",
+        )
+    except ValidationRuntimeError as exc:
+        raise ValidationRuntimeError(
+            f"{variable} is not an immutable formal-toolchain deployment; "
+            "stage reviewed assets under a root-owned/read-only root before "
+            "supervisor dispatch"
+        ) from exc
+    return str(resolved)
+
+
+def formal_toolchain_deployment_manifest(
+    environment: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Build and verify the cross-boundary formal-toolchain manifest.
+
+    The manifest is derived only from the already fail-closed validation PATH,
+    explicitly allowlisted managed roots, and explicitly required bare command
+    names.  Every required executable is content hashed after writable-path
+    rejection.  A caller-supplied expected identity is a fence: mismatch fails
+    before provider dispatch or validation child creation.
+    """
+
+    source = os.environ if environment is None else environment
+    bound_path = str(source.get(FORMAL_TOOLCHAIN_PATH_ENV) or "").strip()
+    path = (
+        os.pathsep.join(
+            _validated_path_entries(
+                bound_path,
+                source=FORMAL_TOOLCHAIN_PATH_ENV,
+            )
+        )
+        if bound_path
+        else validation_executable_path(source)
+    )
+    roots = {
+        variable: resolved
+        for variable in FORMAL_TOOLCHAIN_ROOT_ENV_NAMES
+        if (resolved := _formal_toolchain_root(source, variable)) is not None
+    }
+    commands = _formal_toolchain_required_commands(source)
+    executable_identities: dict[str, dict[str, object]] = {}
+    for command in commands:
+        found = shutil.which(command, path=path)
+        if not found:
+            raise ValidationRuntimeError(
+                f"required formal toolchain command is unavailable: {command}"
+            )
+        executable_identities[command] = _file_identity(Path(found))
+    manifest: dict[str, object] = {
+        "schema": FORMAL_TOOLCHAIN_DEPLOYMENT_MANIFEST_SCHEMA,
+        "path_entries": path.split(os.pathsep),
+        "managed_roots": roots,
+        "required_executables": executable_identities,
+        "writable_sources_rejected": True,
+    }
+    identity = _sha256(_canonical_json(manifest).encode("utf-8"))
+    expected = str(
+        source.get(FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV) or ""
+    ).strip()
+    if expected:
+        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise ValidationRuntimeError(
+                f"{FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV} is malformed"
+            )
+        if expected != identity:
+            raise ValidationRuntimeError(
+                "formal toolchain deployment contract identity mismatch"
+            )
+    return {**manifest, "manifest_sha256": identity}
+
+
 def validation_python_executable(
     environment: Mapping[str, object] | None = None,
 ) -> str:
@@ -683,12 +888,103 @@ def _approved_directory(
     return str(resolved)
 
 
+def _validation_python_launcher_mode(*, sealed: bool = False) -> str:
+    delivery = "sealed-memfd" if sealed else "canonical-direct"
+    return f"{sys.platform}:{delivery}"
+
+
+def _validation_python_launcher_policy_sha256(mode: str) -> str:
+    return hashlib.sha256(
+        (
+            f"{_VALIDATION_PYTHON_LAUNCHER_POLICY_BASE};"
+            f"delivery={mode}"
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _validation_python_interpreter_identity(
+    executable: Path | str,
+) -> tuple[str, str]:
+    resolved = Path(executable).resolve(strict=True)
+    identity = _file_identity(resolved)
+    details = resolved.stat()
+    stat_identity = _canonical_json(
+        {
+            "path": str(resolved),
+            "device": int(details.st_dev),
+            "inode": int(details.st_ino),
+            "size": int(details.st_size),
+            "mode": stat.S_IMODE(details.st_mode),
+            "mtime_ns": int(details.st_mtime_ns),
+        }
+    )
+    return str(identity["sha256"]), stat_identity
+
+
+def sealed_validation_python_runner(runner: Any) -> Any:
+    """Mark a trusted runner as requiring sealed nested-Python delivery."""
+
+    setattr(runner, _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE, True)
+    return runner
+
+
+def runner_requires_sealed_validation_python(runner: Any) -> bool:
+    """Return whether a runner declares the sealed nested-Python contract."""
+
+    target = getattr(runner, "__func__", runner)
+    return (
+        getattr(
+            target,
+            _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE,
+            False,
+        )
+        is True
+    )
+
+
+def validation_environment_for_runner(
+    environment: Mapping[str, str],
+    runner: Any,
+) -> dict[str, str]:
+    """Bind runner-specific launcher policy before scheduler cache lookup."""
+
+    result = {str(key): str(value) for key, value in environment.items()}
+    if (
+        not sys.platform.startswith("linux")
+        or not runner_requires_sealed_validation_python(runner)
+    ):
+        return result
+    executable = str(result.get(_CHILD_PYTHON_ENV) or "").strip()
+    if not executable:
+        raise ValidationRuntimeError(
+            "validation environment is missing its canonical Python"
+        )
+    mode = _validation_python_launcher_mode(sealed=True)
+    result.update(
+        {
+            VALIDATION_PYTHON_LAUNCHER_MODE_ENV: mode,
+            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV: (
+                _validation_python_launcher_policy_sha256(mode)
+            ),
+            VALIDATION_PYTHON_LAUNCHER_SHA256_ENV: hashlib.sha256(
+                _validation_python_launcher_source(
+                    executable=executable,
+                    approved_pythonpath=result.get("PYTHONPATH", ""),
+                )
+            ).hexdigest(),
+        }
+    )
+    return result
+
+
 def build_validation_environment(
     environment: Mapping[str, object] | None = None,
 ) -> dict[str, str]:
     """Build the complete allowlisted environment for a validation child."""
 
     source = os.environ if environment is None else environment
+    python_executable = validation_python_executable(source)
+    formal_toolchain = formal_toolchain_deployment_manifest(source)
     result = {
         key: str(source[key])
         for key in sorted(VALIDATION_ENVIRONMENT_ALLOWLIST)
@@ -696,7 +992,7 @@ def build_validation_environment(
     }
     result.update(
         {
-            _CHILD_PYTHON_ENV: validation_python_executable(source),
+            _CHILD_PYTHON_ENV: python_executable,
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_PAGER": "cat",
@@ -709,10 +1005,18 @@ def build_validation_environment(
             # to remain unavailable, so neither scope can import host settings.
             "NPM_CONFIG_USERCONFIG": _NPM_DISABLED_USER_CONFIG,
             "PAGER": "cat",
-            "PATH": validation_executable_path(source),
+            "PATH": os.pathsep.join(
+                str(item) for item in formal_toolchain["path_entries"]
+            ),
             "PIP_CONFIG_FILE": "/dev/null",
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",
             "PIP_NO_INPUT": "1",
+            # Nested tools commonly honor PYTHON when starting a Python
+            # helper.  Pin its harmless baseline to the same canonical
+            # interpreter; command runners can replace it with a sealed
+            # launcher when approved package roots must survive a nested
+            # PYTHONPATH replacement.
+            "PYTHON": python_executable,
             "PYTHONNOUSERSITE": "1",
             "TERM": "dumb",
             "XDG_CACHE_HOME": _NEUTRAL_HOME,
@@ -730,13 +1034,682 @@ def build_validation_environment(
     )
     if playwright_browsers is not None:
         result["PLAYWRIGHT_BROWSERS_PATH"] = playwright_browsers
+    supervisor_state_root = _approved_directory(
+        source,
+        VALIDATION_SUPERVISOR_STATE_ROOT_ENV,
+    )
+    if supervisor_state_root is not None:
+        result[VALIDATION_SUPERVISOR_STATE_ROOT_ENV] = supervisor_state_root
     python_path = _runtime_python_path_entries(source)
     if python_path:
         result["PYTHONPATH"] = os.pathsep.join(python_path)
+    interpreter_sha256, interpreter_stat = (
+        _validation_python_interpreter_identity(python_executable)
+    )
+    launcher_mode = _validation_python_launcher_mode()
+    result.update(
+        {
+            VALIDATION_PYTHON_LAUNCHER_MODE_ENV: launcher_mode,
+            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV: (
+                _validation_python_launcher_policy_sha256(launcher_mode)
+            ),
+            VALIDATION_PYTHON_LAUNCHER_SHA256_ENV: interpreter_sha256,
+            VALIDATION_PYTHON_INTERPRETER_SHA256_ENV: interpreter_sha256,
+            VALIDATION_PYTHON_INTERPRETER_STAT_ENV: interpreter_stat,
+        }
+    )
     result.setdefault("LANG", "C")
     result.setdefault("LC_ALL", "C")
     result.setdefault("PYTHONHASHSEED", "0")
     result.setdefault("TZ", "UTC")
+    result[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = str(
+        formal_toolchain["manifest_sha256"]
+    )
+    result[FORMAL_TOOLCHAIN_PATH_ENV] = os.pathsep.join(
+        str(item) for item in formal_toolchain["path_entries"]
+    )
+    required_commands = tuple(
+        dict(formal_toolchain["required_executables"])
+    )
+    if required_commands:
+        result[FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV] = ",".join(
+            required_commands
+        )
+    for variable, root in dict(
+        formal_toolchain["managed_roots"]
+    ).items():
+        result[str(variable)] = str(root)
+    return result
+
+
+def canonical_validation_environment_contract(
+    environment: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Describe the exact sanitized environment without changing its policy.
+
+    Implementation providers run outside the validation boundary and can see a
+    broader operator ``PATH`` and profile home.  Exposing this body-free
+    contract lets prompts and retry diagnostics distinguish that convenience
+    environment from the one used for authoritative checks.  Values come from
+    :func:`build_validation_environment`, so this helper cannot accidentally
+    advertise a toolchain entry that the scheduler would later scrub.
+
+    The todo daemon replaces the neutral base ``HOME``/XDG values with a fresh
+    private directory for every command.  That final per-command mapping is
+    documented by the daemon because the temporary path itself is intentionally
+    unpredictable.
+    """
+
+    source = os.environ if environment is None else environment
+    child = build_validation_environment(source)
+    path = child["PATH"]
+    formal_toolchain = formal_toolchain_deployment_manifest(source)
+    return {
+        "schema": VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA,
+        "path": path,
+        "path_entries": tuple(path.split(os.pathsep)),
+        "path_source": (
+            VALIDATION_PATH_ENV
+            if str(source.get(VALIDATION_PATH_ENV) or "").strip()
+            else "trusted_system_directories"
+        ),
+        "path_override_environment_variable": VALIDATION_PATH_ENV,
+        "path_override_active": bool(
+            str(source.get(VALIDATION_PATH_ENV) or "").strip()
+        ),
+        "inherited_path_ignored": True,
+        "writable_toolchain_paths_rejected": True,
+        "python_interpreter": child["PYTHON"],
+        "required_python_modules": required_validation_python_modules(
+            environment=source,
+        ),
+        "formal_toolchain_contract_sha256": formal_toolchain[
+            "manifest_sha256"
+        ],
+        "formal_toolchain_required_executables": {
+            command: identity["sha256"]
+            for command, identity in dict(
+                formal_toolchain["required_executables"]
+            ).items()
+        },
+        "formal_toolchain_managed_roots": dict(
+            formal_toolchain["managed_roots"]
+        ),
+        "base_home": child["HOME"],
+        "base_xdg": {
+            key: child[key]
+            for key in (
+                "XDG_CACHE_HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "XDG_STATE_HOME",
+            )
+        },
+    }
+
+
+def _validation_python_launcher_source(
+    *,
+    executable: str,
+    approved_pythonpath: str,
+) -> bytes:
+    """Render a launcher containing no child-controlled configuration."""
+
+    return (
+        "#!/bin/bash -p\n"
+        f"readonly executable={shlex.quote(executable)}\n"
+        f"readonly approved={shlex.quote(approved_pythonpath)}\n"
+        "unset BASH_ENV ENV PYTHONHOME PYTHONSTARTUP\n"
+        "export PYTHONNOUSERSITE=1\n"
+        'requested="${PYTHONPATH-}"\n'
+        'if [[ -n "$approved" && "$requested" != "$approved" ]]; then\n'
+        '    if [[ -n "$requested" ]]; then\n'
+        '        export PYTHONPATH="$requested:$approved"\n'
+        "    else\n"
+        '        export PYTHONPATH="$approved"\n'
+        "    fi\n"
+        "fi\n"
+        'exec "$executable" -s "$@"\n'
+    ).encode("utf-8")
+
+
+def _write_all(fd: int, payload: bytes) -> None:
+    offset = 0
+    while offset < len(payload):
+        written = os.write(fd, payload[offset:])
+        if written <= 0:
+            raise ValidationRuntimeError(
+                "sealed validation Python launcher write was incomplete"
+            )
+        offset += written
+
+
+@contextmanager
+def validation_python_launcher_environment(
+    environment: Mapping[str, str],
+) -> Iterator[tuple[dict[str, str], ValidationPythonLauncherReceipt]]:
+    """Yield an environment that pins nested Python to approved packages.
+
+    Linux uses a sealed anonymous executable addressed through the supervisor's
+    procfs descriptor.  A child can replace ``PYTHONPATH`` for workspace-local
+    imports, but the launcher appends the roots already admitted by
+    :func:`build_validation_environment`.  ``PYTHONNOUSERSITE`` remains set, so
+    Python never rediscovers packages through a child-controlled HOME.
+
+    The descriptor stays open only for the yielded subprocess lifetime and is
+    closed on every exit path.  Linux fails closed if immutable delivery cannot
+    be established.  Other platforms retain the canonical interpreter without
+    attempting a weaker mutable launcher.
+    """
+
+    child_environment = {
+        str(key): str(value) for key, value in environment.items()
+    }
+    executable_text = str(
+        child_environment.get(_CHILD_PYTHON_ENV) or ""
+    ).strip()
+    if not executable_text:
+        raise ValidationRuntimeError(
+            "validation environment is missing its canonical Python"
+        )
+    executable = Path(executable_text)
+    if not executable.is_absolute():
+        raise ValidationRuntimeError(
+            "validation environment Python must be absolute"
+        )
+    try:
+        resolved_executable = executable.resolve(strict=True)
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            f"validation Python is unavailable: {executable}"
+        ) from exc
+    if not resolved_executable.is_file() or not os.access(
+        resolved_executable, os.X_OK
+    ):
+        raise ValidationRuntimeError(
+            f"validation Python is not executable: {executable}"
+        )
+    _reject_writable_path(
+        resolved_executable,
+        source="validation Python",
+    )
+    rendered_executable = str(resolved_executable)
+    approved_pythonpath = str(child_environment.get("PYTHONPATH") or "")
+    expected_mode = _validation_python_launcher_mode(
+        sealed=sys.platform.startswith("linux")
+    )
+    recorded_mode = str(
+        child_environment.get(VALIDATION_PYTHON_LAUNCHER_MODE_ENV) or ""
+    )
+    if recorded_mode != expected_mode:
+        raise ValidationRuntimeError(
+            "validation Python launcher mode does not match runtime policy"
+        )
+    recorded_policy_sha256 = str(
+        child_environment.get(
+            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
+        )
+        or ""
+    )
+    expected_policy_sha256 = _validation_python_launcher_policy_sha256(
+        expected_mode
+    )
+    if recorded_policy_sha256 != expected_policy_sha256:
+        raise ValidationRuntimeError(
+            "validation Python launcher policy identity mismatch"
+        )
+    recorded_content_sha256 = str(
+        child_environment.get(VALIDATION_PYTHON_LAUNCHER_SHA256_ENV) or ""
+    )
+    recorded_interpreter_sha256 = str(
+        child_environment.get(VALIDATION_PYTHON_INTERPRETER_SHA256_ENV)
+        or ""
+    )
+    recorded_interpreter_stat = str(
+        child_environment.get(VALIDATION_PYTHON_INTERPRETER_STAT_ENV)
+        or ""
+    )
+    interpreter_sha256, interpreter_stat = (
+        _validation_python_interpreter_identity(resolved_executable)
+    )
+    if (
+        recorded_interpreter_sha256 != interpreter_sha256
+        or recorded_interpreter_stat != interpreter_stat
+    ):
+        raise ValidationRuntimeError(
+            "validation Python interpreter identity mismatch"
+        )
+
+    if not sys.platform.startswith("linux"):
+        if recorded_content_sha256 != interpreter_sha256:
+            raise ValidationRuntimeError(
+                "validation Python launcher content identity mismatch"
+            )
+        child_environment["PYTHON"] = rendered_executable
+        yield child_environment, ValidationPythonLauncherReceipt(
+            executable=rendered_executable,
+            content_sha256=interpreter_sha256,
+            interpreter_sha256=interpreter_sha256,
+            interpreter_stat=interpreter_stat,
+            mode=expected_mode,
+            policy_sha256=recorded_policy_sha256,
+            sealed=False,
+        )
+        return
+
+    try:
+        import fcntl
+
+        required_seals = (
+            fcntl.F_SEAL_WRITE
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_SEAL
+        )
+        creation_flags = os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
+    except (AttributeError, ImportError) as exc:
+        raise ValidationRuntimeError(
+            "sealed validation Python launcher is unavailable on Linux"
+        ) from exc
+
+    payload = _validation_python_launcher_source(
+        executable=rendered_executable,
+        approved_pythonpath=approved_pythonpath,
+    )
+    content_sha256 = hashlib.sha256(payload).hexdigest()
+    if recorded_content_sha256 != content_sha256:
+        raise ValidationRuntimeError(
+            "validation Python launcher content identity mismatch"
+        )
+    fd = -1
+    try:
+        fd = os.memfd_create(
+            "ipfs-accelerate-validation-python",
+            creation_flags,
+        )
+        _write_all(fd, payload)
+        os.fchmod(fd, 0o500)
+        fcntl.fcntl(fd, fcntl.F_ADD_SEALS, required_seals)
+        actual_seals = int(fcntl.fcntl(fd, fcntl.F_GET_SEALS))
+        if actual_seals & required_seals != required_seals:
+            raise ValidationRuntimeError(
+                "validation Python launcher did not acquire all required seals"
+            )
+        persisted = os.pread(fd, len(payload) + 1, 0)
+        if (
+            len(persisted) != len(payload)
+            or hashlib.sha256(persisted).hexdigest() != content_sha256
+        ):
+            raise ValidationRuntimeError(
+                "sealed validation Python launcher content mismatch"
+            )
+        launcher_path = f"/proc/{os.getpid()}/fd/{fd}"
+        if not os.access(launcher_path, os.R_OK | os.X_OK):
+            raise ValidationRuntimeError(
+                "sealed validation Python launcher is not executable"
+            )
+        child_environment["PYTHON"] = launcher_path
+        yield child_environment, ValidationPythonLauncherReceipt(
+            executable=launcher_path,
+            content_sha256=content_sha256,
+            interpreter_sha256=interpreter_sha256,
+            interpreter_stat=interpreter_stat,
+            mode=expected_mode,
+            policy_sha256=recorded_policy_sha256,
+            sealed=True,
+        )
+    except ValidationRuntimeError:
+        raise
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "sealed validation Python launcher construction failed"
+        ) from exc
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def normalize_validation_python_modules(
+    modules: Sequence[str] | str,
+) -> tuple[str, ...]:
+    """Normalize a bounded list of import names used by validation.
+
+    Import names, rather than package-manager requirement strings, keep the
+    probe independent of pip and prevent task metadata from becoming code.
+    """
+
+    raw_modules = (modules,) if isinstance(modules, str) else modules
+    normalized: list[str] = []
+    for raw in raw_modules:
+        for item in str(raw).split(","):
+            module = item.strip()
+            if not module:
+                continue
+            if not _PYTHON_MODULE_RE.fullmatch(module):
+                raise ValidationRuntimeError(
+                    "required validation Python module must be a dotted "
+                    f"import name: {module!r}"
+                )
+            if module not in normalized:
+                normalized.append(module)
+            if len(normalized) > _MAX_VALIDATION_PYTHON_MODULES:
+                raise ValidationRuntimeError(
+                    "too many required validation Python modules"
+                )
+    return tuple(normalized)
+
+
+def required_validation_python_modules(
+    additional_modules: Sequence[str] | str = (),
+    *,
+    environment: Mapping[str, object] | None = None,
+) -> tuple[str, ...]:
+    """Return core, operator-configured, and task-configured import names."""
+
+    source = os.environ if environment is None else environment
+    configured = str(
+        source.get(VALIDATION_PYTHON_MODULES_ENV) or ""
+    ).strip()
+    configured_modules: tuple[str, ...] = (
+        (configured,) if configured else ()
+    )
+    additional: tuple[str, ...] = (
+        (additional_modules,)
+        if isinstance(additional_modules, str)
+        else tuple(additional_modules)
+    )
+    return normalize_validation_python_modules(
+        (
+            *DEFAULT_VALIDATION_PYTHON_MODULES,
+            *configured_modules,
+            *additional,
+        )
+    )
+
+
+@contextmanager
+def private_validation_environment(
+    environment: Mapping[str, str],
+) -> Iterator[dict[str, str]]:
+    """Yield the same fresh profile boundary used by validation commands."""
+
+    with tempfile.TemporaryDirectory(
+        prefix="ipfs-accelerate-validation-home-"
+    ) as temporary_home:
+        home_path = Path(temporary_home)
+        child_environment = {
+            str(key): str(value) for key, value in environment.items()
+        }
+        child_environment.update(
+            {
+                "HOME": str(home_path),
+                "PYTHONNOUSERSITE": "1",
+                "XDG_CACHE_HOME": str(home_path / ".cache"),
+                "XDG_CONFIG_HOME": str(home_path / ".config"),
+                "XDG_DATA_HOME": str(home_path / ".local" / "share"),
+                "XDG_STATE_HOME": str(home_path / ".local" / "state"),
+            }
+        )
+        for key in (
+            "XDG_CACHE_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+        ):
+            Path(child_environment[key]).mkdir(
+                mode=0o700,
+                parents=True,
+                exist_ok=True,
+            )
+        yield child_environment
+
+
+_VALIDATION_PYTHON_MODULE_PROBE_SOURCE = r"""
+import contextlib
+import importlib
+import io
+import json
+import os
+import site
+import sys
+
+required = json.loads(sys.argv[1])
+missing = []
+failures = {}
+for module in required:
+    captured_stdout = io.StringIO()
+    captured_stderr = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(captured_stdout):
+            with contextlib.redirect_stderr(captured_stderr):
+                importlib.import_module(module)
+    except ModuleNotFoundError as exc:
+        missing_name = str(getattr(exc, "name", "") or "")
+        if missing_name == module or module.startswith(missing_name + "."):
+            missing.append(module)
+        else:
+            failures[module] = {
+                "exception_type": type(exc).__name__,
+                "missing_dependency": missing_name,
+            }
+    except BaseException as exc:
+        failures[module] = {"exception_type": type(exc).__name__}
+
+payload = {
+    "missing_modules": missing,
+    "failed_modules": failures,
+    "environment": {
+        "home_is_private": os.path.basename(os.environ.get("HOME", "")).startswith(
+            "ipfs-accelerate-validation-home-"
+        ),
+        "python_no_user_site": os.environ.get("PYTHONNOUSERSITE") == "1",
+        "site_user_enabled": bool(site.ENABLE_USER_SITE),
+    },
+    "python_executable": sys.executable,
+}
+print(
+    "__IPFS_ACCELERATE_VALIDATION_PYTHON_MODULE_PROBE__="
+    + json.dumps(payload, sort_keys=True, separators=(",", ":"))
+)
+raise SystemExit(0 if not missing and not failures else 3)
+"""
+
+
+@sealed_validation_python_runner
+def preflight_validation_python_modules(
+    additional_modules: Sequence[str] | str = (),
+    *,
+    environment: Mapping[str, object] | None = None,
+    timeout_seconds: float = 15.0,
+) -> dict[str, object]:
+    """Probe required imports through the authoritative Python boundary.
+
+    This runs the exact configured interpreter behind the same sealed launcher,
+    approved ``PYTHONPATH``, private ``HOME``/XDG directories, and
+    ``PYTHONNOUSERSITE=1`` policy used by authoritative validation.  Missing or
+    broken imports are returned as infrastructure diagnostics so callers can
+    defer before a task attempt or model invocation is charged.
+    """
+
+    if isinstance(timeout_seconds, bool) or float(timeout_seconds) <= 0:
+        raise ValidationRuntimeError(
+            "validation Python module preflight timeout must be positive"
+        )
+    required_modules = required_validation_python_modules(
+        additional_modules,
+        environment=environment,
+    )
+    child_environment = validation_environment_for_runner(
+        build_validation_environment(environment),
+        preflight_validation_python_modules,
+    )
+    interpreter = str(child_environment.get(_CHILD_PYTHON_ENV) or "")
+    interpreter_sha256 = str(
+        child_environment.get(VALIDATION_PYTHON_INTERPRETER_SHA256_ENV) or ""
+    )
+    base_receipt: dict[str, object] = {
+        "schema": VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA,
+        "passed": False,
+        "reason": "validation_python_module_probe_not_run",
+        "required_modules": list(required_modules),
+        "missing_modules": [],
+        "failed_modules": {},
+        "python_executable": interpreter,
+        "python_interpreter_sha256": interpreter_sha256,
+        "private_home": True,
+        "python_no_user_site": True,
+    }
+    try:
+        with private_validation_environment(
+            child_environment
+        ) as private_environment:
+            with validation_python_launcher_environment(
+                private_environment
+            ) as (launcher_environment, launcher_receipt):
+                completed = subprocess.run(
+                    [
+                        launcher_environment["PYTHON"],
+                        "-c",
+                        _VALIDATION_PYTHON_MODULE_PROBE_SOURCE,
+                        json.dumps(list(required_modules)),
+                    ],
+                    cwd=private_environment["HOME"],
+                    text=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=float(timeout_seconds),
+                    check=False,
+                    env=launcher_environment,
+                )
+    except subprocess.TimeoutExpired:
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_timed_out",
+            "action": (
+                "verify the configured validation interpreter starts without "
+                "profile hooks and imports the required modules promptly"
+            ),
+        }
+    except (OSError, ValidationRuntimeError) as exc:
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_unavailable",
+            "exception_type": type(exc).__name__,
+            "error": str(exc)[-1000:],
+            "action": (
+                "repair IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON and its "
+                "sealed package environment before restarting the supervisor"
+            ),
+        }
+
+    output = completed.stdout or ""
+    if len(output.encode("utf-8", errors="replace")) > (
+        _MAX_VALIDATION_PYTHON_PROBE_OUTPUT_BYTES
+    ):
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_output_too_large",
+            "returncode": int(completed.returncode),
+            "action": (
+                "repair a required module that emits excessive output during "
+                "import before restarting the supervisor"
+            ),
+        }
+    marker_index = output.rfind(_VALIDATION_PYTHON_PROBE_MARKER)
+    if marker_index < 0:
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_receipt_missing",
+            "returncode": int(completed.returncode),
+            "action": (
+                "verify the configured validation interpreter can execute the "
+                "sealed dependency probe"
+            ),
+        }
+    encoded_receipt = output[
+        marker_index + len(_VALIDATION_PYTHON_PROBE_MARKER) :
+    ].splitlines()[0]
+    try:
+        probe = json.loads(encoded_receipt)
+    except (json.JSONDecodeError, TypeError):
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_receipt_invalid",
+            "returncode": int(completed.returncode),
+            "action": (
+                "verify the configured validation interpreter can emit the "
+                "dependency probe receipt"
+            ),
+        }
+    if not isinstance(probe, Mapping):
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_receipt_invalid",
+            "returncode": int(completed.returncode),
+        }
+    missing = [
+        str(item)
+        for item in probe.get("missing_modules", [])
+        if str(item)
+    ]
+    failed_raw = probe.get("failed_modules")
+    failed = (
+        {
+            str(key): value
+            for key, value in failed_raw.items()
+            if str(key)
+        }
+        if isinstance(failed_raw, Mapping)
+        else {}
+    )
+    probe_environment = probe.get("environment")
+    environment_matches = (
+        isinstance(probe_environment, Mapping)
+        and probe_environment.get("home_is_private") is True
+        and probe_environment.get("python_no_user_site") is True
+        and probe_environment.get("site_user_enabled") is False
+    )
+    passed = (
+        completed.returncode == 0
+        and not missing
+        and not failed
+        and environment_matches
+        and str(probe.get("python_executable") or "") == interpreter
+    )
+    reason = (
+        "validation_python_modules_available"
+        if passed
+        else "validation_python_modules_unavailable"
+        if missing or failed
+        else "validation_python_module_probe_environment_mismatch"
+    )
+    result = {
+        **base_receipt,
+        "passed": passed,
+        "reason": reason,
+        "returncode": int(completed.returncode),
+        "missing_modules": missing,
+        "failed_modules": failed,
+        "environment": dict(probe_environment or {}),
+        "validation_python_launcher": {
+            "content_sha256": launcher_receipt.content_sha256,
+            "interpreter_sha256": launcher_receipt.interpreter_sha256,
+            "interpreter_stat": launcher_receipt.interpreter_stat,
+            "mode": launcher_receipt.mode,
+            "policy_sha256": launcher_receipt.policy_sha256,
+            "sealed": launcher_receipt.sealed,
+        },
+    }
+    if not passed:
+        result["action"] = (
+            "install or seal the required import modules into "
+            f"{interpreter!r}, then restart the supervisor; user-site "
+            "packages are intentionally unavailable"
+        )
     return result
 
 
@@ -772,6 +1745,36 @@ def validation_shell_command(command: str) -> list[str]:
         raise ValidationRuntimeError(
             "dynamic shell evaluation is not permitted for validation"
         )
+    if any(
+        token.startswith(
+            (
+                f"{VALIDATION_SUPERVISOR_STATE_ROOT_ENV}=",
+                f"{VALIDATION_SUPERVISOR_STATE_ROOT_ENV}+=",
+            )
+        )
+        for token in leading
+    ):
+        raise ValidationRuntimeError(
+            "validation command may not override the supervisor state root"
+        )
+    shell_controls = frozenset({";", "&&", "||", "|", "&"})
+    for index, token in enumerate(leading):
+        if Path(token).name != "env":
+            continue
+        argument_index = index + 1
+        while argument_index < len(leading):
+            argument = leading[argument_index]
+            if argument in shell_controls or argument == "--":
+                break
+            if argument == "-" or argument.startswith("-"):
+                raise ValidationRuntimeError(
+                    "validation command may not use env options inside the "
+                    "protected environment"
+                )
+            if "=" in argument:
+                argument_index += 1
+                continue
+            break
     # A reviewed command may prepend workspace-local import roots with an
     # assignment such as ``PYTHONPATH=src:. python -m pytest``.  Bash applies
     # that assignment to the shell function itself, which would otherwise
@@ -782,6 +1785,7 @@ def validation_shell_command(command: str) -> list[str]:
     # the pinned pytest/runtime packages available.
     guarded = (
         f"readonly {_CHILD_PYTHON_ENV}; "
+        f"readonly {VALIDATION_SUPERVISOR_STATE_ROOT_ENV}; "
         '_IPFS_ACCELERATE_APPROVED_PYTHONPATH="${PYTHONPATH-}"; '
         "readonly _IPFS_ACCELERATE_APPROVED_PYTHONPATH; "
         "_ipfs_accelerate_validation_python() { "
@@ -790,13 +1794,13 @@ def validation_shell_command(command: str) -> list[str]:
         'if [[ -n "$approved" && "$requested" != "$approved" ]]; then '
         'if [[ -n "$requested" ]]; then '
         'PYTHONPATH="$requested:$approved" '
-        f'"${{{_CHILD_PYTHON_ENV}}}" "$@"; '
+        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
         "else "
         'PYTHONPATH="$approved" '
-        f'"${{{_CHILD_PYTHON_ENV}}}" "$@"; '
+        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
         "fi; "
         "else "
-        f'"${{{_CHILD_PYTHON_ENV}}}" "$@"; '
+        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
         "fi; "
         "}; "
         'python() { _ipfs_accelerate_validation_python "$@"; }; '
@@ -823,9 +1827,15 @@ def validation_argv_command(command: Sequence[str]) -> list[str]:
     if not parts or not parts[0]:
         raise ValidationRuntimeError("validation argv must not be empty")
     if parts[0] in {"python", "python3"}:
-        return [validation_python_executable(), *parts[1:]]
+        return [validation_python_executable(), "-s", *parts[1:]]
     if parts[0] == "pytest":
-        return [validation_python_executable(), "-m", "pytest", *parts[1:]]
+        return [
+            validation_python_executable(),
+            "-s",
+            "-m",
+            "pytest",
+            *parts[1:],
+        ]
     executable = Path(parts[0]).name
     if executable not in {"bash", "sh"}:
         if any(Path(part).name in {"bash", "sh"} for part in parts[1:]):
@@ -873,7 +1883,9 @@ def build_hermetic_validation_runtime(
     Strict execution uses Bubblewrap because an environment variable cannot
     enforce a network or filesystem boundary.  Missing namespace support is
     reported by the runner as an infrastructure failure; it never silently
-    falls back to an unisolated process.
+    falls back to an unisolated process.  The supplied environment is always
+    rebuilt through the validation allowlist; callers cannot bypass secret and
+    startup-hook scrubbing by claiming that a mapping was already sanitized.
     """
 
     child_environment = build_validation_environment(environment)

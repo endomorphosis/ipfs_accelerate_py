@@ -264,16 +264,24 @@ Default provider route:
 
 | Stage | Setting / behavior |
 | --- | --- |
-| Router | Leave `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` unset or use `auto` |
+| Production quota router | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok_quota_codex` |
 | Primary | Authenticated Grok CLI with exact `grok-4.5` |
-| Fallback | Daemon-pinned `gpt-5.6-terra`, reasoning `medium`, only after a verified native Grok quota-exhaustion event |
+| Quota-only fallback | Daemon-pinned `gpt-5.6-terra`, reasoning `medium`, only after independently signed quota authority and only on the corresponding fresh retry |
+| Legacy compatibility | Unset / `auto` is availability-based; do not use it when quota-only fallback authority is required |
 | Explicit Grok | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok`; forced Grok with no fallback |
 
 Direct `codex` / `openai` selection is not the fallback path. Missing auth,
 predispatch unavailability, and non-quota Grok failures fail closed on the
-default route.
+default route. General Codex model and reasoning environment variables affect
+direct Codex selection; they do not redefine either quota-only fallback.
 
-The quota-routed default always runs Grok in a capability-restricted outer
+`grok_quota_codex` persists independently signed daemon quota authority,
+defers and releases the Grok attempt, and
+selects Terra only for the associated retry in a fresh fenced worktree. The
+hyphenated `grok-quota-codex` spelling and the `_fallback` / `-fallback`
+spellings are accepted compatibility aliases.
+
+The legacy in-runner `auto` path runs Grok in a capability-restricted outer
 container that withholds peer-provider credentials, configuration, binaries,
 and runtime sockets. Only the active worktree and Grok's ephemeral state are
 writable. Explicit Grok selection may use the native custom sandbox where it
@@ -290,6 +298,17 @@ tool-free `grok-4.5` quota probe; streamed or model-authored text is never
 sufficient. Missing isolation or ambiguous termination fails closed, and an
 out-of-process cleanup watchdog reaps the isolated container and temporary
 state.
+
+That compatibility path is not the production supervisor quota-authority
+policy. The production policy binds Grok to `grok-4.5` and its only
+implementation fallback to direct `gpt-5.6-terra` with `medium` reasoning.
+It does not use Codex for missing Grok auth, a missing binary, generic provider
+failures, timeouts, malformed responses, or validation failures, and never
+promotes Copilot into the route. The runner's private receipt and reserved
+exit status remain untrusted candidates: only the daemon's independently
+signed, invocation/task/account/pool-bound verifier authorizes the fresh retry.
+The supervisor must never attach `--codex-fallback-command-json` to
+`grok_quota_codex`.
 
 ---
 

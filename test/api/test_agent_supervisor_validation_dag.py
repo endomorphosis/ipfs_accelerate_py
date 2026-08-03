@@ -31,6 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     VALIDATION_PYTHON_ENV,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
+    HermeticValidationPolicy,
     ImpactSelectedValidationDAG,
     ImpactDependencyGraph,
     ImpactValidationCheck,
@@ -244,6 +245,56 @@ def test_accepted_proposal_default_runner_uses_validation_python(
     assert report["passed"] is True, report
     assert report["results"][0]["returncode"] == 0
     assert "pytest " in report["results"][0]["output"]
+
+
+def test_validated_scheduler_rejects_unmarked_runner_under_hermetic_policy(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    def runner(*, spec: ValidationCommand, **_kwargs: object) -> dict[str, object]:
+        calls.append(spec.command)
+        return {"returncode": 0, "output": "false hermetic pass"}
+
+    validation = validate_implementation_proposal(
+        _proposal((_source_change(),)),
+        policy=_policy(),
+    )
+    command = ValidationCommand(
+        command='test -z "${IPFS_ACCELERATE_VALIDATION_RUNTIME_ID-}"',
+        stage=ValidationStage.TARGETED,
+        impact_paths=("pkg/source.py",),
+        validation_id="hermetic-capability",
+        cacheable=False,
+    )
+    graph = ImpactDependencyGraph(
+        repository_tree_id=TREE_ID,
+        dependencies={"pkg/source.py": ()},
+        validation_targets={"hermetic-capability": ("pkg/source.py",)},
+    )
+
+    report = ValidationScheduler(
+        max_workers=1,
+        runner=runner,
+        hermetic_policy=HermeticValidationPolicy(),
+    ).run_validated(
+        validation,
+        (command,),
+        workspace_path=tmp_path,
+        impact_graph=graph,
+        dependency_state="fixture",
+    )
+
+    assert calls == []
+    assert report["passed"] is False
+    result = report["results"][0]
+    assert result["returncode"] == 75
+    assert (
+        result["error"]
+        == "hermetic_validation_runner_capability_missing"
+    )
+    assert result["outcome"] == "infrastructure_failure"
+    assert result["authoritative"] is False
 
 
 def test_strict_validation_builds_hardened_python_environment(
@@ -1421,6 +1472,38 @@ def test_impact_selected_runner_receives_sanitized_validation_environment(
         and "UNSAFE_PARENT_SECRET" not in environment
         for environment in environments
     )
+
+
+def test_impact_selected_explicit_hermetic_policy_rejects_unmarked_runner(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    def runner(*, spec: ValidationCommand, **_kwargs: object) -> dict[str, object]:
+        calls.append(spec.command)
+        return {"returncode": 0, "output": "false hermetic pass"}
+
+    report = ValidationScheduler(max_workers=1).run_impact_selected(
+        _impact_checks(),
+        workspace_path=tmp_path,
+        impact_index=_ast_impact_index(),
+        changed_symbols=(_changed_public_symbol(),),
+        acceptance_criteria=(ACCEPTANCE_CRITERION,),
+        dependency_state="fixture",
+        runner=runner,
+        hermetic_policy=HermeticValidationPolicy(required_techniques=()),
+    )
+
+    assert calls == []
+    assert report["passed"] is False
+    result = report["results"][0]
+    assert result["returncode"] == 75
+    assert (
+        result["error"]
+        == "hermetic_validation_runner_capability_missing"
+    )
+    assert result["outcome"] == "infrastructure_failure"
+    assert result["authoritative"] is False
 
 
 def test_ast_impact_index_selects_transitive_consumer_outside_changed_path() -> None:

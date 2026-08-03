@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import shlex
 import subprocess
@@ -28,18 +29,32 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     VALIDATION_PATH_ENV,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
     VALIDATION_PYTHON_ENV,
+    VALIDATION_PYTHON_INTERPRETER_SHA256_ENV,
+    VALIDATION_PYTHON_INTERPRETER_STAT_ENV,
+    VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
+    VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
+    VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
     VALIDATION_PYTHONPATH_ENV,
+    VALIDATION_SUPERVISOR_STATE_ROOT_ENV,
     ValidationRuntimeError,
     build_validation_environment,
+    build_hermetic_validation_runtime,
+    canonical_validation_environment_contract,
+    sealed_validation_python_runner,
     validation_argv_command,
+    validation_environment_for_runner,
+    validation_python_launcher_environment,
     validation_python_executable,
     validation_shell_command,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
+    HermeticValidationPolicy,
     ValidationResultCache,
     ValidationScheduler,
+    _validation_result_digest,
     build_validation_cache_key,
     collect_dependency_state,
+    hermetic_validation_runner,
 )
 
 
@@ -51,6 +66,47 @@ def _result(spec, *, returncode: int = 0) -> dict[str, object]:
         "finished_at": "2026-01-01T00:00:01+00:00",
         "returncode": returncode,
         "output": f"output:{spec.command}",
+    }
+
+
+def _sealed_daemon_environment() -> dict[str, str]:
+    return validation_environment_for_runner(
+        build_validation_environment(),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+
+
+def test_canonical_validation_environment_contract_ignores_provider_path() -> None:
+    provider_only_path = (
+        "/home/test/.elan/bin:/home/test/.local/theorem-provers/bin"
+    )
+
+    contract = canonical_validation_environment_contract(
+        {"PATH": provider_only_path}
+    )
+    expected = build_validation_environment({"PATH": provider_only_path})
+
+    assert contract["path"] == expected["PATH"]
+    assert provider_only_path not in str(contract["path"])
+    assert contract["path_entries"] == tuple(
+        expected["PATH"].split(os.pathsep)
+    )
+    assert contract["inherited_path_ignored"] is True
+    assert contract["writable_toolchain_paths_rejected"] is True
+    assert contract["path_override_active"] is False
+    assert contract["path_override_environment_variable"] == (
+        VALIDATION_PATH_ENV
+    )
+    assert contract["python_interpreter"] == expected["PYTHON"]
+    assert contract["base_home"] == expected["HOME"]
+    assert contract["base_xdg"] == {
+        key: expected[key]
+        for key in (
+            "XDG_CACHE_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+        )
     }
 
 
@@ -93,6 +149,7 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
         "NPM_CONFIG_OFFLINE": "true",
         "PATH": str(tmp_path / "hostile-bin"),
         "PROMPT_COMMAND": "touch compromised",
+        "PYTHON": str(tmp_path / "hostile-python"),
         "RUSTUP_HOME": str(tmp_path / "rustup-home"),
         VALIDATION_NPM_CACHE_ENV: str(approved_npm_cache),
         VALIDATION_PATH_ENV: str(trusted_bin),
@@ -107,6 +164,19 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     assert environment["HOME"] == "/nonexistent/ipfs-accelerate-validation"
     assert environment["XDG_CONFIG_HOME"] == environment["HOME"]
     assert environment["PYTHONNOUSERSITE"] == "1"
+    assert environment["PYTHON"] == str(Path(sys.executable).resolve())
+    assert environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV].endswith(
+        ":canonical-direct"
+    )
+    assert (
+        len(environment[VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV])
+        == 64
+    )
+    assert len(environment[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV]) == 64
+    assert len(environment[VALIDATION_PYTHON_INTERPRETER_SHA256_ENV]) == 64
+    assert environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV].startswith(
+        '{"device":'
+    )
     assert environment["NPM_CONFIG_CACHE"] == str(approved_npm_cache.resolve())
     assert environment["NPM_CONFIG_OFFLINE"] == "true"
     assert environment["PLAYWRIGHT_BROWSERS_PATH"] == str(
@@ -192,6 +262,65 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     # must still be rejected.
     with pytest.raises(ValidationRuntimeError, match="must not be writable"):
         build_validation_environment({VALIDATION_PATH_ENV: str(replaceable_bin)})
+
+
+def test_validation_runtime_propagates_only_canonical_readonly_supervisor_state_root(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state_root = tmp_path / "program-state"
+    state_root.mkdir()
+    source = {
+        VALIDATION_SUPERVISOR_STATE_ROOT_ENV: str(state_root),
+    }
+
+    environment = build_validation_environment(source)
+
+    assert environment[VALIDATION_SUPERVISOR_STATE_ROOT_ENV] == str(
+        state_root.resolve()
+    )
+    report = ValidationScheduler().run(
+        [
+            "test \"$LPR_STATE_ROOT\" = "
+            f"{shlex.quote(str(state_root.resolve()))}"
+        ],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="test-commit",
+        dependency_state="test-dependencies",
+        environment=source,
+    )
+    assert report["passed"] is True
+
+    for command in (
+        "LPR_STATE_ROOT=/tmp python -c 'raise SystemExit(0)'",
+        "env LPR_STATE_ROOT=/tmp python -c 'raise SystemExit(0)'",
+        "export LPR_STATE_ROOT=/tmp; python -c 'raise SystemExit(0)'",
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="may not override the supervisor state root",
+        ):
+            validation_shell_command(command)
+    for command in (
+        "env -i python -c 'raise SystemExit(0)'",
+        "env - python -c 'raise SystemExit(0)'",
+        "env -iu LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
+        "env -u LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
+        "env --unset=LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
+        "env -S '-u LPR_STATE_ROOT' python -c 'raise SystemExit(0)'",
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="may not use env options inside the protected environment",
+        ):
+            validation_shell_command(command)
+
+    with pytest.raises(ValidationRuntimeError, match="must be an absolute directory"):
+        build_validation_environment(
+            {VALIDATION_SUPERVISOR_STATE_ROOT_ENV: "relative/state"}
+        )
 
 
 def test_real_validation_runner_ignores_profile_bash_env_and_path_injection(
@@ -293,6 +422,328 @@ def test_validation_runtime_reuses_supervisor_python_and_installed_pytest(
     assert str(Path(pytest.__file__).parent.parent.resolve()) in environment.get(
         "PYTHONPATH", ""
     ).split(os.pathsep)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd launchers are Linux-specific",
+)
+def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor(
+) -> None:
+    import fcntl
+
+    environment = _sealed_daemon_environment()
+    launcher_path = ""
+
+    with validation_python_launcher_environment(environment) as (
+        child_environment,
+        receipt,
+    ):
+        launcher_path = child_environment["PYTHON"]
+        payload = Path(launcher_path).read_bytes()
+        descriptor = os.open(launcher_path, os.O_RDONLY)
+        try:
+            required_seals = (
+                fcntl.F_SEAL_WRITE
+                | fcntl.F_SEAL_GROW
+                | fcntl.F_SEAL_SHRINK
+                | fcntl.F_SEAL_SEAL
+            )
+            assert (
+                fcntl.fcntl(descriptor, fcntl.F_GET_SEALS)
+                & required_seals
+                == required_seals
+            )
+        finally:
+            os.close(descriptor)
+        assert receipt.sealed is True
+        assert receipt.executable == launcher_path
+        assert receipt.content_sha256 == hashlib.sha256(payload).hexdigest()
+        assert (
+            receipt.interpreter_sha256
+            == child_environment[
+                VALIDATION_PYTHON_INTERPRETER_SHA256_ENV
+            ]
+        )
+        assert (
+            receipt.interpreter_stat
+            == child_environment[
+                VALIDATION_PYTHON_INTERPRETER_STAT_ENV
+            ]
+        )
+        assert (
+            receipt.mode
+            == child_environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV]
+        )
+        assert (
+            receipt.policy_sha256
+            == child_environment[
+                VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
+            ]
+        )
+        assert (
+            child_environment[
+                VALIDATION_PYTHON_LAUNCHER_SHA256_ENV
+            ]
+            == receipt.content_sha256
+        )
+        assert child_environment["PYTHONNOUSERSITE"] == "1"
+
+    assert launcher_path
+    assert not Path(launcher_path).exists()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd launchers are Linux-specific",
+)
+def test_daemon_nested_python_keeps_approved_packages_after_pythonpath_replace(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "fixture_value.py").write_text(
+        "VALUE = 'workspace-import'\n",
+        encoding="utf-8",
+    )
+    (workspace / "hostile-bash-env").write_text(
+        "touch bash-env-executed\nexit 42\n",
+        encoding="utf-8",
+    )
+    (workspace / "nested_launcher.py").write_text(
+        """
+import os
+import pathlib
+import subprocess
+
+environment = dict(os.environ)
+environment["PYTHONPATH"] = str(pathlib.Path.cwd())
+environment["PYTHONNOUSERSITE"] = "0"
+environment["BASH_ENV"] = str(pathlib.Path.cwd() / "hostile-bash-env")
+pathlib.Path("launcher-path.txt").write_text(
+    environment["PYTHON"],
+    encoding="utf-8",
+)
+completed = subprocess.run(
+    [
+        environment["PYTHON"],
+        "-c",
+        (
+            "import os, site, fixture_value, pytest; "
+            "assert os.environ['PYTHONNOUSERSITE'] == '1'; "
+            "assert site.ENABLE_USER_SITE is False; "
+            "assert fixture_value.VALUE == 'workspace-import'; "
+            "print(pytest.__version__)"
+        ),
+    ],
+    env=environment,
+    text=True,
+    capture_output=True,
+    check=False,
+)
+site_probe = subprocess.run(
+    [
+        environment["PYTHON"],
+        "-E",
+        "-c",
+        (
+            "import site; "
+            "assert site.ENABLE_USER_SITE is False"
+        ),
+    ],
+    env=environment,
+    text=True,
+    capture_output=True,
+    check=False,
+)
+print(completed.stdout, end="")
+print(completed.stderr, end="")
+print(site_probe.stdout, end="")
+print(site_probe.stderr, end="")
+raise SystemExit(completed.returncode or site_probe.returncode)
+""".lstrip(),
+        encoding="utf-8",
+    )
+    spec = SimpleNamespace(
+        command="python nested_launcher.py",
+        raw_command="python nested_launcher.py",
+    )
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=spec,
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=_sealed_daemon_environment(),
+    )
+
+    assert result["returncode"] == 0, result["output"]
+    assert pytest.__version__ in str(result["output"])
+    assert not (workspace / "bash-env-executed").exists()
+    launcher_receipt = result["validation_python_launcher"]
+    assert launcher_receipt["sealed"] is True
+    environment = _sealed_daemon_environment()
+    assert (
+        launcher_receipt["content_sha256"]
+        == environment[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV]
+    )
+    assert (
+        launcher_receipt["mode"]
+        == environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV]
+    )
+    assert (
+        launcher_receipt["policy_sha256"]
+        == environment[
+            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
+        ]
+    )
+    assert (
+        launcher_receipt["interpreter_sha256"]
+        == environment[VALIDATION_PYTHON_INTERPRETER_SHA256_ENV]
+    )
+    assert (
+        launcher_receipt["interpreter_stat"]
+        == environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV]
+    )
+    launcher_path = (workspace / "launcher-path.txt").read_text(
+        encoding="utf-8"
+    )
+    assert launcher_path.startswith(f"/proc/{os.getpid()}/fd/")
+    assert not Path(launcher_path).exists()
+
+
+def test_daemon_classifies_python_launcher_failure_as_infrastructure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    class FailedLauncher:
+        def __enter__(self):
+            raise ValidationRuntimeError("kernel sealing unavailable")
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        (
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_daemon.validation_python_launcher_environment"
+        ),
+        lambda _environment: FailedLauncher(),
+    )
+    spec = SimpleNamespace(command="true", raw_command="true")
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=spec,
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=_sealed_daemon_environment(),
+    )
+
+    assert result["returncode"] == 75
+    assert result["infrastructure_failure"] is True
+    assert (
+        result["error"]
+        == "validation_environment_python_launcher_unavailable"
+    )
+    assert (
+        result["reason"]
+        == "sealed_validation_python_launcher_unavailable"
+    )
+    assert "kernel sealing unavailable" in str(result["output"])
+
+
+def test_daemon_classifies_child_launcher_exec_denial_as_infrastructure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    environment = _sealed_daemon_environment()
+
+    def denied_run(*_args: object, **_kwargs: object):
+        raise PermissionError("procfd execution denied")
+
+    monkeypatch.setattr(
+        (
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_daemon.subprocess.run"
+        ),
+        denied_run,
+    )
+    spec = SimpleNamespace(command="true", raw_command="true")
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=spec,
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 75
+    assert result["infrastructure_failure"] is True
+    assert (
+        result["error"]
+        == "validation_environment_python_launcher_exec_unavailable"
+    )
+    assert (
+        result["reason"]
+        == "sealed_validation_python_launcher_child_probe_failed"
+    )
+    assert "procfd execution denied" in str(result["output"])
+    receipt = result["validation_python_launcher"]
+    assert (
+        receipt["content_sha256"]
+        == environment[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV]
+    )
+    assert (
+        receipt["interpreter_sha256"]
+        == environment[VALIDATION_PYTHON_INTERPRETER_SHA256_ENV]
+    )
+    assert (
+        receipt["interpreter_stat"]
+        == environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV]
+    )
+    assert (
+        receipt["mode"]
+        == environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV]
+    )
+    assert (
+        receipt["policy_sha256"]
+        == environment[
+            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    ("bash -c 'true'", "eval true"),
+)
+def test_daemon_classifies_invalid_shell_command_as_policy_rejection(
+    tmp_path: Path,
+    command: str,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    spec = SimpleNamespace(command=command, raw_command=command)
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=spec,
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=_sealed_daemon_environment(),
+    )
+
+    assert result["returncode"] == 78
+    assert result["error"] == "validation_command_policy_rejected"
+    assert (
+        result["reason"]
+        == "validation_shell_command_policy_violation"
+    )
+    assert result["infrastructure_failure"] is False
+    assert "validation_python_launcher" not in result
 
 
 def test_validation_runtime_extends_task_local_pythonpath_with_approved_packages(
@@ -555,6 +1006,424 @@ def test_independent_validations_run_in_parallel_under_weighted_budget(tmp_path:
     assert outcome["passed"] is True
     assert maximum_active == 2
     assert [item["command"] for item in outcome["results"]] == commands
+
+
+def test_cache_and_result_digests_bind_python_launcher_policy() -> None:
+    canonical_environment = build_validation_environment()
+    environment = _sealed_daemon_environment()
+    base_key = build_validation_cache_key(
+        target_commit="commit-a",
+        command="pytest tests/test_alpha.py",
+        environment=environment,
+        dependency_state={"lock": "one"},
+    )
+    canonical_key = build_validation_cache_key(
+        target_commit="commit-a",
+        command="pytest tests/test_alpha.py",
+        environment=canonical_environment,
+        dependency_state={"lock": "one"},
+    )
+    assert canonical_key.digest != base_key.digest
+
+    for variable in (
+        VALIDATION_PYTHON_INTERPRETER_SHA256_ENV,
+        VALIDATION_PYTHON_INTERPRETER_STAT_ENV,
+        VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
+        VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
+        VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+    ):
+        changed = dict(environment)
+        changed[variable] = f"{changed[variable]}-changed"
+        variant = build_validation_cache_key(
+            target_commit="commit-a",
+            command="pytest tests/test_alpha.py",
+            environment=changed,
+            dependency_state={"lock": "one"},
+        )
+        assert variant.digest != base_key.digest
+
+    result = {
+        "command": "pytest tests/test_alpha.py",
+        "returncode": 0,
+        "output": "passed",
+        "validation_python_launcher": {
+            "content_sha256": environment[
+                VALIDATION_PYTHON_LAUNCHER_SHA256_ENV
+            ],
+            "interpreter_sha256": environment[
+                VALIDATION_PYTHON_INTERPRETER_SHA256_ENV
+            ],
+            "interpreter_stat": environment[
+                VALIDATION_PYTHON_INTERPRETER_STAT_ENV
+            ],
+            "mode": environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV],
+            "policy_sha256": environment[
+                VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
+            ],
+            "sealed": True,
+        },
+    }
+    base_result_digest = _validation_result_digest(
+        result,
+        cache_key=base_key,
+    )
+    changed_result = {
+        **result,
+        "validation_python_launcher": {
+            **result["validation_python_launcher"],
+            "sealed": False,
+        },
+    }
+    assert (
+        _validation_result_digest(changed_result, cache_key=base_key)
+        != base_result_digest
+    )
+
+
+def test_validation_cache_separates_canonical_and_sealed_runners(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    cache_dir = tmp_path / "cache"
+    calls: list[str] = []
+
+    def canonical_runner(*, spec, **_kwargs):
+        calls.append("canonical")
+        return _result(spec)
+
+    @sealed_validation_python_runner
+    def sealed_runner(*, spec, environment, **_kwargs):
+        calls.append("sealed")
+        result = _result(spec)
+        result["validation_python_launcher"] = {
+            "content_sha256": environment[
+                VALIDATION_PYTHON_LAUNCHER_SHA256_ENV
+            ],
+            "interpreter_sha256": environment[
+                VALIDATION_PYTHON_INTERPRETER_SHA256_ENV
+            ],
+            "interpreter_stat": environment[
+                VALIDATION_PYTHON_INTERPRETER_STAT_ENV
+            ],
+            "mode": environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV],
+            "policy_sha256": environment[
+                VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
+            ],
+            "sealed": True,
+        }
+        return result
+
+    common = {
+        "workspace_path": workspace,
+        "changed_files": ["pyproject.toml"],
+        "target_commit": "same-commit",
+        "dependency_state": "same-dependencies",
+    }
+    canonical = ValidationScheduler(
+        cache_dir=cache_dir,
+        runner=canonical_runner,
+    ).run(["true"], **common)
+    sealed_environment = validation_environment_for_runner(
+        build_validation_environment(),
+        sealed_runner,
+    )
+    sealed_key = build_validation_cache_key(
+        target_commit="same-commit",
+        command="true",
+        environment=sealed_environment,
+        dependency_state="same-dependencies",
+    )
+    stale_without_receipt = {
+        "command": "true",
+        "raw_command": "true",
+        "returncode": 0,
+        "output": "stale",
+    }
+    assert ValidationResultCache(cache_dir).put(
+        sealed_key,
+        stale_without_receipt,
+    )
+    first_sealed = ValidationScheduler(
+        cache_dir=cache_dir,
+        runner=sealed_runner,
+    ).run(["true"], **common)
+    replayed_sealed = ValidationScheduler(
+        cache_dir=cache_dir,
+        runner=sealed_runner,
+    ).run(["true"], **common)
+
+    assert canonical["results"][0]["cache_hit"] is False
+    assert first_sealed["results"][0]["cache_hit"] is False
+    assert replayed_sealed["results"][0]["cache_hit"] is True
+    assert (
+        canonical["results"][0]["cache_key"]
+        != first_sealed["results"][0]["cache_key"]
+    )
+    assert calls == ["canonical", "sealed"]
+
+
+def test_fresh_sealed_runner_requires_exact_launcher_receipt(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    @sealed_validation_python_runner
+    def missing_receipt_runner(*, spec, **_kwargs):
+        return _result(spec)
+
+    report = ValidationScheduler(runner=missing_receipt_runner).run(
+        ["true"],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="same-commit",
+        dependency_state="same-dependencies",
+    )
+
+    result = report["results"][0]
+    assert result["returncode"] == 75
+    assert result["infrastructure_failure"] is True
+    assert (
+        result["error"]
+        == "validation_environment_python_launcher_receipt_mismatch"
+    )
+    assert result["outcome"] == "infrastructure_failure"
+    assert result["classification"] == "infrastructure_failure"
+    assert result["authoritative"] is False
+    assert result["stable"] is False
+
+
+def test_hermetic_runtime_always_resanitizes_supplied_environment(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    runtime = build_hermetic_validation_runtime(
+        command="true",
+        workspace_path=workspace,
+        repository_tree_id="tree:test",
+        environment={
+            "AWS_SECRET_ACCESS_KEY": "must-not-survive",
+            "BASH_ENV": str(tmp_path / "hostile-startup-hook"),
+        },
+        timeout_seconds=30,
+        cancellation_id="validation:test",
+        isolation_executable="/bin/true",
+    )
+
+    environment = dict(runtime.environment)
+    assert "AWS_SECRET_ACCESS_KEY" not in environment
+    assert "BASH_ENV" not in environment
+
+
+def test_hermetic_scheduler_rejects_actual_daemon_runner_before_execution(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    report = ValidationScheduler(
+        runner=TodoImplementationDaemon._validation_command_runner,
+        hermetic_policy=HermeticValidationPolicy(),
+    ).run(
+        ['test -z "${IPFS_ACCELERATE_VALIDATION_RUNTIME_ID-}"'],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="same-commit",
+        dependency_state="same-dependencies",
+    )
+
+    assert report["passed"] is False
+    result = report["results"][0]
+    assert result["returncode"] == 75
+    assert (
+        result["error"]
+        == "hermetic_validation_runner_capability_missing"
+    )
+    assert result["reason"] == (
+        "hermetic_runner_does_not_consume_runtime_context"
+    )
+    assert result["outcome"] == "infrastructure_failure"
+    assert result["classification"] == "infrastructure_failure"
+    assert result["authoritative"] is False
+    assert result["stable"] is False
+
+
+def test_marked_hermetic_runner_must_return_exact_runtime_receipt(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    @hermetic_validation_runner
+    def receiptless_runner(*, spec, runtime_context, **_kwargs):
+        assert runtime_context is not None
+        return _result(spec)
+
+    report = ValidationScheduler(
+        runner=receiptless_runner,
+        hermetic_policy=HermeticValidationPolicy(),
+    ).run(
+        ["true"],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="same-commit",
+        dependency_state="same-dependencies",
+    )
+
+    assert report["passed"] is False
+    result = report["results"][0]
+    assert result["returncode"] == 75
+    assert result["error"] == "hermetic_runtime_receipt_mismatch"
+    assert result["outcome"] == "infrastructure_failure"
+    assert result["authoritative"] is False
+    assert result["stable"] is False
+    assert result["attempts"][0]["observed_runtime_id"] == ""
+    assert result["attempts"][0]["expected_runtime_id"]
+    assert result.get("runtime_id", "") == ""
+    assert result.get("cancellation_id", "") == ""
+
+
+@pytest.mark.parametrize("stale_attempt_count", (None, "not-a-number"))
+def test_hermetic_cache_rejects_success_without_exact_runtime_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stale_attempt_count: object,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    cache = ValidationResultCache(tmp_path / "cache")
+    monkeypatch.setattr(
+        cache,
+        "get",
+        lambda _key: {
+            "returncode": 0,
+            "output": "forged stale cache authority",
+            "attempt_count": stale_attempt_count,
+        },
+    )
+    calls: list[int] = []
+
+    @hermetic_validation_runner
+    def runner(*, spec, runtime_context, attempt_number, **_kwargs):
+        calls.append(attempt_number)
+        result = _result(spec)
+        result.update(
+            {
+                "runtime_id": runtime_context.runtime_id,
+                "cancellation_id": runtime_context.cancellation_id,
+            }
+        )
+        return result
+
+    report = ValidationScheduler(
+        cache=cache,
+        runner=runner,
+        hermetic_policy=HermeticValidationPolicy(),
+    ).run(
+        ["true"],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="same-commit",
+        dependency_state="same-dependencies",
+    )
+
+    assert report["passed"] is True
+    assert calls == [1, 2]
+    result = report["results"][0]
+    assert result["cache_hit"] is False
+    assert result["authoritative"] is True
+    assert result["runtime_id"]
+    assert result["cancellation_id"]
+    base_digest = _validation_result_digest(result)
+    tampered = dict(result)
+    tampered["runtime_id"] = f"{result['runtime_id']}-tampered"
+    assert _validation_result_digest(tampered) != base_digest
+
+
+def test_hermetic_cache_reuses_exact_runtime_receipts(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    calls: list[int] = []
+
+    @hermetic_validation_runner
+    def runner(*, spec, runtime_context, attempt_number, **_kwargs):
+        calls.append(attempt_number)
+        result = _result(spec)
+        result.update(
+            {
+                "runtime_id": runtime_context.runtime_id,
+                "cancellation_id": runtime_context.cancellation_id,
+            }
+        )
+        return result
+
+    scheduler = ValidationScheduler(
+        cache_dir=tmp_path / "cache",
+        runner=runner,
+        hermetic_policy=HermeticValidationPolicy(),
+    )
+    common = {
+        "workspace_path": workspace,
+        "changed_files": ["pyproject.toml"],
+        "target_commit": "same-commit",
+        "dependency_state": "same-dependencies",
+    }
+
+    first = scheduler.run(["true"], **common)
+    replay = scheduler.run(["true"], **common)
+
+    assert first["passed"] is True
+    assert first["results"][0]["cache_hit"] is False
+    assert replay["passed"] is True
+    assert replay["results"][0]["cache_hit"] is True
+    assert replay["results"][0]["authoritative"] is True
+    assert calls == [1, 2]
+
+
+def test_hermetic_scheduler_rejects_dual_sealed_runner_composition(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    calls: list[str] = []
+
+    @sealed_validation_python_runner
+    @hermetic_validation_runner
+    def dual_runner(*, spec, runtime_context, **_kwargs):
+        calls.append(spec.command)
+        result = _result(spec)
+        result.update(
+            {
+                "runtime_id": runtime_context.runtime_id,
+                "cancellation_id": runtime_context.cancellation_id,
+            }
+        )
+        return result
+
+    report = ValidationScheduler(
+        runner=dual_runner,
+        hermetic_policy=HermeticValidationPolicy(),
+    ).run(
+        ["true"],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="same-commit",
+        dependency_state="same-dependencies",
+    )
+
+    assert calls == []
+    assert report["passed"] is False
+    result = report["results"][0]
+    assert result["returncode"] == 75
+    assert (
+        result["error"]
+        == "hermetic_sealed_runner_composition_unsupported"
+    )
+    assert result["outcome"] == "infrastructure_failure"
+    assert result["authoritative"] is False
 
 
 def test_cache_key_includes_commit_command_relevant_environment_and_dependencies() -> None:

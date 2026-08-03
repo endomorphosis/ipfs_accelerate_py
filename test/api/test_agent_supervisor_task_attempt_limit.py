@@ -7,7 +7,16 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     build_arg_parser as build_bundle_arg_parser,
     implementation_supervisor_command,
+    plan_bundle_lanes,
 )
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
+    submit_bundle_tasks,
+)
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
+    LeaseCoordinator,
+    profile_g_cid,
+)
+from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTaskState,
@@ -379,6 +388,88 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
     assert second["attempt_limited_task_ids"] == ["TASK-001"]
 
 
+def test_completed_source_retry_repair_preserves_attempt_history(
+    tmp_path,
+) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    todo_path.write_text(
+        """# Tasks
+
+## TASK-001 Preserve a completed task's audit history
+
+- Status: completed
+- Priority: P0
+- Track: agent
+- Outputs: src/retry_fence.py
+- Acceptance: The source task completed through its normal merge path.
+
+## TASK-002 Resolve validation retry-budget failure for TASK-001
+
+- Status: completed
+- Priority: P0
+- Track: agent
+- Outputs: test/retry_repair.py
+- Acceptance: Repair the validation contract, then release TASK-001 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    state_dir = tmp_path / "state"
+    state_path = state_dir / "task_state.json"
+    events_path = state_dir / "events.jsonl"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        implement=True,
+        max_task_attempts=1,
+        merge_queue_dir=tmp_path / "merge-queue",
+        validation_cache_dir=tmp_path / "validation-cache",
+        worktree_pool_enabled=False,
+    )
+    tasks = parse_task_file(todo_path, "## TASK-")
+    source_task = tasks[0]
+    daemon._register_task_identities(tasks)
+    source_identity = daemon._identity_for_task(source_task)
+    historical_state = PortalTaskState(
+        task_identities={source_task.task_id: source_identity.to_dict()},
+        implementation_attempts={source_task.task_id: 1},
+        implementation_attempts_by_cid={
+            source_identity.canonical_task_cid: 1
+        },
+        last_implementation_task_id=source_task.task_id,
+        last_implementation_task_key=source_identity.canonical_task_key,
+        last_implementation_task_cid=source_identity.canonical_task_cid,
+    )
+    historical_state.save(state_path)
+    daemon.task_queue.register_task(source_identity).record_failure(
+        "validation"
+    )
+    daemon.task_queue.save()
+
+    result = daemon.run_once()
+    state_after = PortalTaskState.load(state_path)
+    events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result["retry_budget_resets"] == []
+    assert state_after.implementation_attempts == {"TASK-001": 1}
+    assert state_after.implementation_attempts_by_cid == {
+        source_identity.canonical_task_cid: 1
+    }
+    assert state_after.retry_budget_repair_receipts == {}
+    assert daemon.task_queue.is_cooled_down(
+        source_identity.canonical_task_cid
+    ) is True
+    assert not any(
+        event["type"] == "task_retry_budget_reset" for event in events
+    )
+
+
 def test_max_task_attempts_threads_from_bundle_to_daemon_command(tmp_path) -> None:
     bundle_args = build_bundle_arg_parser().parse_args(
         [
@@ -429,12 +520,181 @@ def test_max_task_attempts_threads_from_bundle_to_daemon_command(tmp_path) -> No
     ).max_task_attempts == 1
 
 
+def test_planned_lane_uses_same_positive_attempt_limit_for_queue_and_worker(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    bundle_dir = repo / "data" / "agent_supervisor" / "bundles"
+    bundle_dir.mkdir(parents=True)
+    shard_path = bundle_dir / "runtime.todo.md"
+    shard_path.write_text(
+        """## TASK-001 Planned task
+
+- Status: todo
+""",
+        encoding="utf-8",
+    )
+    index_path = bundle_dir / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "source_todo": "docs/tasks.todo.md",
+                "bundles": {
+                    "objective/runtime": {
+                        "shard_path": str(
+                            shard_path.relative_to(index_path.parent)
+                        ),
+                        "parallel_lane": "objective/runtime",
+                        "tasks": [{"task_id": "TASK-001"}],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    [lane] = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="TASK-",
+        max_task_attempts=4,
+        optimize_bundles=False,
+    )
+
+    worker_flag = lane.command.index("--max-task-attempts")
+    assert lane.command[worker_flag + 1] == "4"
+    assert lane.queue_payload["max_attempts"] == 4
+    profile_g = lane.queue_payload["profile_g"]
+    assert profile_g["task"]["max_attempts"] == 4
+    assert profile_g["task_cid"] == profile_g_cid(profile_g["task"])
+    assert profile_g["task_spec_cid"] == profile_g["task_cid"]
+    assert profile_g["artifacts"][profile_g["task_cid"]] == profile_g["task"]
+
+    [boundary_lane] = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "boundary-state",
+        worktree_root=repo / "boundary-worktrees",
+        log_dir=repo / "boundary-logs",
+        task_prefix="TASK-",
+        max_task_attempts=100,
+        optimize_bundles=False,
+    )
+    boundary_flag = boundary_lane.command.index("--max-task-attempts")
+    assert boundary_lane.command[boundary_flag + 1] == "100"
+    assert boundary_lane.queue_payload["max_attempts"] == 100
+    assert boundary_lane.queue_payload["profile_g"]["task"]["max_attempts"] == 100
+
+    with pytest.raises(ValueError, match="between 0 and 100"):
+        plan_bundle_lanes(
+            bundle_index_path=index_path,
+            repo_root=repo,
+            state_root=repo / "rejected-state",
+            worktree_root=repo / "rejected-worktrees",
+            log_dir=repo / "rejected-logs",
+            task_prefix="TASK-",
+            max_task_attempts=101,
+            optimize_bundles=False,
+        )
+
+
 def test_max_task_attempts_defaults_to_unlimited() -> None:
     assert build_bundle_arg_parser().parse_args(
         ["--bundle-index-path", "bundles.json"]
     ).max_task_attempts == 0
     assert parse_supervisor_args([]).max_task_attempts == 0
     assert parse_daemon_args([]).max_task_attempts == 0
+
+
+def test_default_planned_lane_is_unlimited_in_worker_and_coordinator(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    bundle_dir = repo / "bundles"
+    bundle_dir.mkdir()
+    shard_path = bundle_dir / "runtime.todo.md"
+    shard_path.write_text(
+        """## TASK-001 Unlimited task
+
+- Status: todo
+""",
+        encoding="utf-8",
+    )
+    index_path = bundle_dir / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "source_todo": "docs/tasks.todo.md",
+                "bundles": {
+                    "objective/runtime": {
+                        "shard_path": "runtime.todo.md",
+                        "parallel_lane": "objective/runtime",
+                        "tasks": [{"task_id": "TASK-001"}],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    [lane] = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="TASK-",
+        optimize_bundles=False,
+    )
+
+    worker_flag = lane.command.index("--max-task-attempts")
+    assert lane.command[worker_flag + 1] == "0"
+    assert lane.queue_payload["max_attempts"] == 0
+    assert lane.queue_payload["profile_g"]["task"]["max_attempts"] == 0
+    with LeaseCoordinator(repo / "coordination.duckdb") as coordinator:
+        registered = coordinator.register_bundle(lane.queue_payload)
+        for expected_attempt in range(1, 5):
+            grant = coordinator.claim(
+                registered["task_cid"],
+                "did:web:lane.example",
+            )
+            assert grant.attempt == expected_attempt
+            coordinator.release(grant, reason="retry")
+
+    task_queue = TaskQueue(str(repo / "task-queue.duckdb"))
+    try:
+        [submitted_id] = submit_bundle_tasks(index_path, queue=task_queue)
+        assert task_queue.get(submitted_id)["max_attempts"] == 0
+        for expected_attempt in range(1, 5):
+            claimed = task_queue.claim_next(worker_id="worker-a")
+            assert claimed is not None
+            assert claimed.attempt == expected_attempt
+            assert claimed.max_attempts == 0
+            assert task_queue.retry(
+                task_id=submitted_id,
+                worker_id="worker-a",
+                error="retryable",
+            )
+        expiring = task_queue.claim_next(
+            worker_id="worker-a",
+            lease_seconds=1,
+        )
+        assert expiring is not None
+        assert expiring.attempt == 5
+        assert expiring.lease_until is not None
+        assert task_queue.recover_expired_leases(
+            now=expiring.lease_until + 1,
+        ) == 1
+        recovered = task_queue.claim_next(worker_id="worker-b")
+        assert recovered is not None
+        assert recovered.attempt == 6
+    finally:
+        task_queue.close()
 
 
 def test_merge_target_branch_threads_from_bundle_to_daemon_command(tmp_path) -> None:
@@ -622,6 +882,22 @@ def test_classify_provider_capacity_ignores_grok_policy_diagnostic(
     assert classified == {"exhausted": False, "providers": [], "reason": ""}
 
 
+def test_classify_codex_quota_does_not_poison_grok_capacity() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    classified = classify_provider_capacity_failure(
+        "You've hit your usage limit. Try again later."
+    )
+
+    assert classified == {
+        "exhausted": True,
+        "providers": ["codex"],
+        "reason": "provider_capacity_exhausted",
+    }
+
+
 def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
     todo_path = tmp_path / "tasks.todo.md"
     _write_single_task_board(todo_path)
@@ -651,6 +927,14 @@ def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
         started_at="2026-07-24T00:00:00+00:00",
         log_path=log_path,
     )
+    started = daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "attempt": 1,
+        },
+    )
 
     result = daemon._record_provider_capacity_deferral(
         task=task,
@@ -659,7 +943,13 @@ def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
         started_at="2026-07-24T00:00:00+00:00",
         returncode=1,
         log_path=log_path,
-        failure={"providers": ["codex"], "evidence": ["rate limited"]},
+        failure={
+            "exhausted": True,
+            "providers": ["codex"],
+            "reason": "provider_capacity_exhausted",
+            "evidence": ["rate limited"],
+        },
+        implementation_started_event=started,
     )
     recovered = PortalTaskState.load(daemon.state_path)
 
@@ -670,6 +960,97 @@ def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
         not in recovered.implementation_attempts_by_cid
     )
     assert daemon._task_attempt(recovered, task) == 1
+
+
+def test_provider_capacity_deferral_finalizes_worktree_lifecycle(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_single_task_board(todo_path)
+    state_dir = tmp_path / "state"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        implement=True,
+        max_task_attempts=1,
+        worktree_pool_enabled=False,
+    )
+    task = parse_task_file(todo_path, "## TASK-")[0]
+    daemon._register_task_identities([task])
+    identity = daemon._identity_for_task(task)
+    state = PortalTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+    )
+    worktree_path = tmp_path / "worktrees" / "attempt-1"
+    worktree_path.mkdir(parents=True)
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=1,
+        lane_id=daemon._worktree_lifecycle_lane_id(),
+        workspace_path=worktree_path,
+        branch="implementation/task-001-attempt-1",
+        merge_target="main",
+        state_dir=str(state_dir),
+    )
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        worktree_path,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    daemon._active_worktree_lifecycle = lifecycle
+    log_path = state_dir / "attempt-1.log"
+    daemon._mark_implementation_started(
+        state,
+        task=task,
+        attempt=1,
+        started_at="2026-07-24T00:00:00+00:00",
+        log_path=log_path,
+        worktree_path=worktree_path,
+        branch_name=lifecycle.branch,
+    )
+    started = daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "attempt": 1,
+        },
+    )
+
+    result = daemon._record_provider_capacity_deferral(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at="2026-07-24T00:00:00+00:00",
+        returncode=1,
+        log_path=log_path,
+        failure={
+            "exhausted": True,
+            "providers": ["codex"],
+            "reason": "provider_capacity_exhausted",
+            "evidence": ["usage limit"],
+        },
+        implementation_started_event=started,
+        worktree_path=worktree_path,
+        branch_name=lifecycle.branch,
+    )
+
+    assert result["attempt_consumed"] is False
+    assert result["lifecycle_finalize"]["finalized"] is True
+    assert result["lifecycle_finalize"]["reason"] == "provider_capacity_deferred"
+    assert daemon._active_worktree_lifecycle is None
+    assert daemon.worktree_lifecycle.load_workspace(worktree_path) is None
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=identity.canonical_task_cid,
+            task_id=task.task_id,
+            attempt=1,
+        )
+        is None
+    )
 
 
 def test_new_canonical_revision_gets_fresh_attempt_budget(

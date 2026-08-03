@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -35,7 +36,10 @@ from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
 )
 from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     ConflictWaveProjection,
+    build_conflict_surface,
+    build_task_work_contract,
     project_conflict_free_wave,
+    rehydrate_task_work_contract_projection,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     TodoIndexRecord,
@@ -43,6 +47,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     optimize_bundle_payloads,
+    plan_bundle_lanes,
+)
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
+    adapt_goal_bundle,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
     canonical_bundle_identity,
@@ -1239,6 +1247,208 @@ def test_bundle_supervisor_projects_optimizer_slices_and_comparison():
     )
 
 
+def test_bundle_supervisor_rebuilds_contract_for_derived_planning_projection():
+    source = _task("SUPERVISOR-PROJECTED")
+    contract = build_task_work_contract(source)
+    projected = {
+        **source,
+        "work_contract": contract._material(),
+        "work_contract_id": contract.work_contract_id,
+        "task_work_contract": contract.to_dict(),
+        "task_work_contract_id": contract.task_work_contract_id,
+        # Dependency planning adds canonical CIDs after admission, so the
+        # source contract no longer describes this execution projection.
+        "dependency_task_cids": ["cid-upstream"],
+    }
+    rehydrated = rehydrate_task_work_contract_projection(projected)
+
+    [optimized] = optimize_bundle_payloads(
+        [
+            {
+                "bundle_key": "objective/projected",
+                "parallel_lane": "projected",
+                "tasks": [projected],
+            }
+        ]
+    )
+
+    assert optimized["bundle_optimization"]["applied"] is True
+    assert rehydrated["dependency_task_cids"] == []
+    assert (
+        build_task_work_contract(rehydrated).task_work_contract_id
+        == contract.task_work_contract_id
+    )
+    assert optimized["execution_slice_task_cids"] == [
+        source["canonical_task_cid"]
+    ]
+    assert projected["work_contract_id"] == contract.work_contract_id
+
+
+def test_bundle_supervisor_rehydrates_stale_nested_contract_aliases():
+    source = _task("SUPERVISOR-NESTED-PROJECTION")
+    contract = build_task_work_contract(source)
+    projected = {
+        **source,
+        "work_contract": contract._material(),
+        "work_contract_id": contract.work_contract_id,
+        "task_work_contract": contract.to_dict(),
+        "task_work_contract_id": contract.task_work_contract_id,
+        "dependency_task_cids": ["cid-upstream"],
+        "metadata": {
+            "Depends on": ["cid-upstream"],
+            "Outputs": ["stale/generated-projection.py"],
+            "Acceptance": ["stale projected acceptance"],
+            "unrelated_audit_field": "preserved",
+        },
+    }
+
+    rehydrated = rehydrate_task_work_contract_projection(projected)
+
+    assert rehydrated["metadata"] == {"unrelated_audit_field": "preserved"}
+    assert rehydrated["dependency_task_cids"] == list(contract.dependencies)
+    assert (
+        build_task_work_contract(rehydrated).task_work_contract_id
+        == contract.task_work_contract_id
+    )
+
+
+def test_conflict_surface_prefers_canonical_cid_over_stale_compatibility_alias():
+    source = _task("SUPERVISOR-CANONICAL-CID")
+    contract = build_task_work_contract(source)
+    projected = {
+        **source,
+        "task_cid": "cid-stale-compatibility-projection",
+        "work_contract": contract._material(),
+        "work_contract_id": contract.work_contract_id,
+        "task_work_contract": contract.to_dict(),
+        "task_work_contract_id": contract.task_work_contract_id,
+    }
+
+    surface = build_conflict_surface(projected)
+
+    assert surface.task_cid == source["canonical_task_cid"]
+    assert surface.task_work_contract_id == contract.task_work_contract_id
+
+
+def test_bundle_optimizer_preserves_width_for_disjoint_managed_submodule_tasks():
+    first = _task(
+        "SUBMODULE-ALPHA",
+        outputs=["vendor/runtime/src/alpha.py"],
+        predicted_paths=["vendor/runtime/src/alpha.py"],
+        files=["vendor/runtime/src/alpha.py"],
+        submodules=["vendor/runtime"],
+        interfaces=["AlphaAPI@1"],
+        goal_id="GOAL-ALPHA",
+        context_paths=["vendor/runtime/src/alpha.py"],
+        validation_commands=["pytest tests/test_alpha.py"],
+        merge_fate="objective/GOAL-ALPHA",
+    )
+    second = _task(
+        "SUBMODULE-BETA",
+        outputs=["vendor/runtime/src/beta.py"],
+        predicted_paths=["vendor/runtime/src/beta.py"],
+        files=["vendor/runtime/src/beta.py"],
+        submodules=["vendor/runtime"],
+        interfaces=["BetaAPI@1"],
+        goal_id="GOAL-BETA",
+        context_paths=["vendor/runtime/src/beta.py"],
+        validation_commands=["pytest tests/test_beta.py"],
+        merge_fate="objective/GOAL-BETA",
+        resource_class="cpu-large",
+    )
+    source = [
+        {
+            "bundle_key": "objective/managed-submodule",
+            "parallel_lane": "managed-submodule",
+            "tasks": [first, second],
+        }
+    ]
+
+    conservative = optimize_bundle_payloads(source)
+    concurrent = optimize_bundle_payloads(
+        source,
+        managed_submodule_paths=("vendor/runtime",),
+        allow_disjoint_submodule_concurrency=True,
+    )
+
+    assert sorted(
+        payload["optimizer_execution_wave"] for payload in conservative
+    ) == [0, 1]
+    assert sorted(
+        payload["optimizer_execution_wave"] for payload in concurrent
+    ) == [0, 0]
+    assert all(
+        payload["bundle_optimization"]["metrics"][
+            "blocking_conflict_count"
+        ]
+        == 0
+        for payload in concurrent
+    )
+
+
+def test_implemented_bundle_planner_serializes_disjoint_managed_submodule_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    first = _task(
+        "SUBMODULE-ALPHA",
+        outputs=["vendor/runtime/src/alpha.py"],
+        predicted_paths=["vendor/runtime/src/alpha.py"],
+        files=["vendor/runtime/src/alpha.py"],
+        submodules=["vendor/runtime"],
+        interfaces=["AlphaAPI@1"],
+        goal_id="GOAL-ALPHA",
+        context_paths=["vendor/runtime/src/alpha.py"],
+        validation_commands=["pytest tests/test_alpha.py"],
+        merge_fate="objective/GOAL-ALPHA",
+    )
+    second = _task(
+        "SUBMODULE-BETA",
+        outputs=["vendor/runtime/src/beta.py"],
+        predicted_paths=["vendor/runtime/src/beta.py"],
+        files=["vendor/runtime/src/beta.py"],
+        submodules=["vendor/runtime"],
+        interfaces=["BetaAPI@1"],
+        goal_id="GOAL-BETA",
+        context_paths=["vendor/runtime/src/beta.py"],
+        validation_commands=["pytest tests/test_beta.py"],
+        merge_fate="objective/GOAL-BETA",
+        resource_class="cpu-large",
+    )
+    source = [
+        {
+            "bundle_key": "objective/managed-submodule",
+            "parallel_lane": "managed-submodule",
+            "todo_path": "managed-submodule.todo.md",
+            "tasks": [first, second],
+        }
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: source,
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        implement=True,
+        worktree_submodule_paths=("vendor/runtime",),
+        allow_disjoint_submodule_concurrency=True,
+    )
+
+    assert sorted(lane.optimizer_execution_wave for lane in lanes) == [0, 1]
+    assert all(
+        other.bundle_key in lane.conflicting_task_ids
+        for lane in lanes
+        for other in lanes
+        if other.bundle_key != lane.bundle_key
+    )
+    assert all("--implement" in lane.command for lane in lanes)
+
+
 def test_bundle_supervisor_optimizer_cannot_resurrect_completed_members():
     completed = _task("SUPERVISOR-COMPLETED")
     ready = _task(
@@ -1312,6 +1522,12 @@ def test_split_optimizer_slices_receive_distinct_execution_identities():
     assert len({payload["bundle_key"] for payload in payloads}) == 2
     assert all("profile_g" not in payload for payload in payloads)
     assert all(payload["source_profile_g_ref"] for payload in payloads)
+    assert all(
+        adapt_goal_bundle(payload, created_at_ms=1_783_872_000_000)[
+            "task_cid"
+        ]
+        for payload in payloads
+    )
     identities = {
         canonical_bundle_identity(payload).canonical_task_cid
         for payload in payloads

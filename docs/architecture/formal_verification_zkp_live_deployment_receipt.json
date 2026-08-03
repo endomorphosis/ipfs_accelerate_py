@@ -1,0 +1,694 @@
+{
+  "acceptance": {
+    "absent_operator_bound_public_artifacts_are_deployment_blockers": true,
+    "authority_is_attestation_only": true,
+    "fixture_or_schema_only_cannot_satisfy_live_goal": true,
+    "goal_id": "FVT-G211",
+    "live_execution_required_for_production": true,
+    "never_platform_exception_for_absent_public_artifacts": true,
+    "never_replaces_theorem_authority": true,
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_repair": true,
+    "repair_task_id": "FVT-080",
+    "sample_binding_cannot_satisfy_live_goal": true,
+    "task_id": "FVT-059"
+  },
+  "authority_ceiling": "attestation",
+  "authority_scope": "receipt_attestation_only",
+  "bindings": {
+    "authority_ceiling": "attestation",
+    "authority_scope": "receipt_attestation_only",
+    "backend_id": "backend:provekit",
+    "backend_mode": "cryptographic",
+    "backend_version": "0.2.0",
+    "ceremony_digest": "sha256:0356bd664bcaf01531ce7a6987593ad1882f17db7a9bd9d50fa5ae4f2a05bccc",
+    "ceremony_id": "ceremony:mpc-2026-07-production",
+    "circuit_id": "circuit:receipt-binding",
+    "circuit_public_digest": "sha256:cd206640b4e5eaad49aedbb2517966a4b54d6f715deb25f2fd00832eeabd1538",
+    "circuit_version": "2.1.0",
+    "crs_digest": "sha256:200dcecb64d4983cbb79b63898ad63a8c663491affe78b699ac56426502aa900",
+    "crs_id": "crs:powers-of-tau:28",
+    "max_attestation_ttl_seconds": 300,
+    "proving_key_digest": "sha256:e4bcb95b3f54a9fda4446422a7ab5b3455e72da0428ce01767b1b1765ca57eec",
+    "proving_key_id": "pk:receipt-binding:production",
+    "proving_key_secret_path_template": "${ZKP_DEPLOYMENT_SECRET_ROOT}/proving_key.bin",
+    "proving_system": "groth16",
+    "public_input_required_keys": [
+      "theorem_id",
+      "property_id",
+      "translation_receipt_id",
+      "receipt_id",
+      "tree_id",
+      "policy_id",
+      "circuit_id",
+      "circuit_version",
+      "ceremony_id",
+      "crs_id",
+      "proving_key_id",
+      "verification_key_id",
+      "backend_id",
+      "backend_version",
+      "backend_mode",
+      "revocation_policy_id",
+      "issued_at",
+      "expires_at",
+      "underlying_authority",
+      "underlying_status",
+      "source_result_digest"
+    ],
+    "public_input_schema_digest": "sha256:64f66d7116efcd64f4788f56aec143a1137a62cedd957ed83fdffee9e99b4850",
+    "public_input_schema_id": "public-input-schema:receipt-binding@1",
+    "revocation_policy_id": "revocation:production@1",
+    "revoked_circuit_ids": [],
+    "revoked_proving_key_ids": [],
+    "revoked_verification_key_ids": [],
+    "verification_key_digest": "sha256:49f51a37afad3a59c109ae91fb05d544cf6c313963fb108ddba121e9f5bc5ad2",
+    "verification_key_expires_at": "2030-01-01T00:00:00Z",
+    "verification_key_id": "vk:receipt-binding:production",
+    "verification_key_secret_path_template": "${ZKP_DEPLOYMENT_SECRET_ROOT}/verification_key.bin"
+  },
+  "block_reasons": [],
+  "cases": [
+    {
+      "case_id": "zkp.positive_verification",
+      "detail": "live positive cryptographic verification under the deployment lock",
+      "expect": "verified",
+      "kind": "positive",
+      "passed": true,
+      "public_artifact_digest": "sha256:d6b3081df00c78379db0b47070ecdf0a5814f11cb046b12caeb8eb4a0ee20379",
+      "reason_codes": []
+    },
+    {
+      "case_id": "zkp.corrupted_proof",
+      "detail": "corrupted proof digest must fail closed",
+      "expect": "rejected",
+      "kind": "corrupted_proof",
+      "passed": true,
+      "public_artifact_digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "reason_codes": [
+        "corrupted_proof"
+      ]
+    },
+    {
+      "case_id": "zkp.corrupted_key",
+      "detail": "verification with wrong key digest must fail closed",
+      "expect": "rejected",
+      "kind": "corrupted_key",
+      "passed": true,
+      "public_artifact_digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "reason_codes": [
+        "corrupted_key"
+      ]
+    },
+    {
+      "case_id": "zkp.corrupted_public_input",
+      "detail": "corrupted public inputs must fail closed",
+      "expect": "rejected",
+      "kind": "corrupted_public_input",
+      "passed": true,
+      "public_artifact_digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "reason_codes": [
+        "corrupted_public_input"
+      ]
+    },
+    {
+      "case_id": "zkp.circuit_mismatch",
+      "detail": "statement circuit must match the locked deployment circuit",
+      "expect": "circuit_mismatch",
+      "kind": "circuit_mismatch",
+      "passed": true,
+      "public_artifact_digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "reason_codes": [
+        "circuit_mismatch"
+      ]
+    },
+    {
+      "case_id": "zkp.mutation",
+      "detail": "ceremony mutation must change the public-input digest",
+      "expect": "distinct_public_input_digest",
+      "kind": "mutation",
+      "passed": true,
+      "public_artifact_digest": "sha256:2fc035921ce4e6e89750e35438d50e48aac431cd5c0888606ff495d3114b942f",
+      "reason_codes": []
+    },
+    {
+      "case_id": "zkp.deterministic_replay",
+      "detail": "positive verification must replay deterministically",
+      "expect": "identical_verified_public_artifacts",
+      "kind": "replay",
+      "passed": true,
+      "public_artifact_digest": "sha256:197b8ce3fa0d6fca99627154a07268eb970953b3f91a4164ab936af907cc5c3f",
+      "reason_codes": []
+    },
+    {
+      "case_id": "zkp.stale",
+      "detail": "stale attestation must fail closed",
+      "expect": "stale",
+      "kind": "stale",
+      "passed": true,
+      "public_artifact_digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "reason_codes": [
+        "stale"
+      ]
+    },
+    {
+      "case_id": "zkp.revoked",
+      "detail": "revoked verification key must fail closed",
+      "expect": "revoked",
+      "kind": "revoked",
+      "passed": true,
+      "public_artifact_digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "reason_codes": [
+        "revoked"
+      ]
+    },
+    {
+      "case_id": "zkp.secret_safety",
+      "detail": "private witnesses never enter Git/lock, logs, caches, public receipts, or model context",
+      "expect": "no_private_witness_in_public_surfaces",
+      "kind": "secret_safety",
+      "passed": true,
+      "public_artifact_digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "reason_codes": []
+    },
+    {
+      "case_id": "zkp.authority_boundary",
+      "detail": "ZKP attests an underlying receipt; never replaces theorem authority",
+      "expect": "attestation_only_preserves_theorem",
+      "kind": "authority",
+      "passed": true,
+      "public_artifact_digest": "sha256:8085e5a00a329f20b67bca42026553056fb64106846195e56e15b7f209d23ecc",
+      "reason_codes": []
+    }
+  ],
+  "certification_surface": "tools.logic.certification.zkp",
+  "certified": true,
+  "checks": [
+    {
+      "bindings": {
+        "present": {
+          "ceremony_digest": "sha256:0356bd664bcaf01531ce7a6987593ad1882f17db7a9bd9d50fa5ae4f2a05bccc",
+          "circuit_public_digest": "sha256:cd206640b4e5eaad49aedbb2517966a4b54d6f715deb25f2fd00832eeabd1538",
+          "crs_digest": "sha256:200dcecb64d4983cbb79b63898ad63a8c663491affe78b699ac56426502aa900",
+          "proving_key_digest": "sha256:e4bcb95b3f54a9fda4446422a7ab5b3455e72da0428ce01767b1b1765ca57eec",
+          "public_input_schema_digest": "sha256:64f66d7116efcd64f4788f56aec143a1137a62cedd957ed83fdffee9e99b4850",
+          "verification_key_digest": "sha256:49f51a37afad3a59c109ae91fb05d544cf6c313963fb108ddba121e9f5bc5ad2"
+        }
+      },
+      "check_id": "zkp.live.operator_bound_public_artifacts",
+      "detail": "Circuit, ceremony, CRS/public-parameter, verification-key, and public-input-schema digests are operator-bound",
+      "expected": "all_operator_bound_public_artifacts_present",
+      "kind": "binding",
+      "observed": "present",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {},
+      "check_id": "zkp.offline_policy",
+      "detail": "certification never installs, downloads, or opens the network",
+      "expected": "no_install_no_download_no_network",
+      "kind": "policy",
+      "observed": "install=False,download=False,network=False",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "authority_ceiling": "attestation",
+        "authority_scope": "receipt_attestation_only",
+        "backend_id": "backend:provekit",
+        "backend_mode": "cryptographic",
+        "backend_version": "0.2.0",
+        "ceremony_digest": "sha256:0356bd664bcaf01531ce7a6987593ad1882f17db7a9bd9d50fa5ae4f2a05bccc",
+        "ceremony_id": "ceremony:mpc-2026-07-production",
+        "circuit_id": "circuit:receipt-binding",
+        "circuit_public_digest": "sha256:cd206640b4e5eaad49aedbb2517966a4b54d6f715deb25f2fd00832eeabd1538",
+        "circuit_version": "2.1.0",
+        "crs_digest": "sha256:200dcecb64d4983cbb79b63898ad63a8c663491affe78b699ac56426502aa900",
+        "crs_id": "crs:powers-of-tau:28",
+        "max_attestation_ttl_seconds": 300,
+        "proving_key_digest": "sha256:e4bcb95b3f54a9fda4446422a7ab5b3455e72da0428ce01767b1b1765ca57eec",
+        "proving_key_id": "pk:receipt-binding:production",
+        "proving_key_secret_path_template": "${ZKP_DEPLOYMENT_SECRET_ROOT}/proving_key.bin",
+        "proving_system": "groth16",
+        "public_input_required_keys": [
+          "theorem_id",
+          "property_id",
+          "translation_receipt_id",
+          "receipt_id",
+          "tree_id",
+          "policy_id",
+          "circuit_id",
+          "circuit_version",
+          "ceremony_id",
+          "crs_id",
+          "proving_key_id",
+          "verification_key_id",
+          "backend_id",
+          "backend_version",
+          "backend_mode",
+          "revocation_policy_id",
+          "issued_at",
+          "expires_at",
+          "underlying_authority",
+          "underlying_status",
+          "source_result_digest"
+        ],
+        "public_input_schema_digest": "sha256:64f66d7116efcd64f4788f56aec143a1137a62cedd957ed83fdffee9e99b4850",
+        "public_input_schema_id": "public-input-schema:receipt-binding@1",
+        "revocation_policy_id": "revocation:production@1",
+        "revoked_circuit_ids": [],
+        "revoked_proving_key_ids": [],
+        "revoked_verification_key_ids": [],
+        "verification_key_digest": "sha256:49f51a37afad3a59c109ae91fb05d544cf6c313963fb108ddba121e9f5bc5ad2",
+        "verification_key_expires_at": "2030-01-01T00:00:00Z",
+        "verification_key_id": "vk:receipt-binding:production",
+        "verification_key_secret_path_template": "${ZKP_DEPLOYMENT_SECRET_ROOT}/verification_key.bin"
+      },
+      "check_id": "zkp.lock_reviewable_binding",
+      "detail": "circuit/ceremony/key digests, schema, backend, expiry, revocation",
+      "expected": "exact_reviewable_deployment_binding",
+      "kind": "binding",
+      "observed": "ok",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "circuit_id": "circuit:receipt-binding",
+        "proof_digest": "sha256:c4bb3c7cd3deb4fe2c61e854a7fe4fdf0b394e193fd64b8050e4dc5713904af4",
+        "public_input_digest": "659de25535771031603185a04bf4e44b55a0e971fca2796303db3a13d5f02a10",
+        "verification_key_id": "vk:receipt-binding:production"
+      },
+      "check_id": "zkp.positive_verification",
+      "detail": "live positive cryptographic verification under the deployment lock",
+      "expected": "verified",
+      "kind": "positive",
+      "observed": "verified",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {},
+      "check_id": "zkp.corrupted_proof",
+      "detail": "corrupted proof digest must fail closed",
+      "expected": "rejected",
+      "kind": "corrupted_proof",
+      "observed": "rejected",
+      "reason_codes": [
+        "corrupted_proof"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {},
+      "check_id": "zkp.corrupted_key",
+      "detail": "verification with wrong key digest must fail closed",
+      "expected": "rejected",
+      "kind": "corrupted_key",
+      "observed": "rejected",
+      "reason_codes": [
+        "corrupted_key"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {},
+      "check_id": "zkp.corrupted_public_input",
+      "detail": "corrupted public inputs must fail closed",
+      "expected": "rejected",
+      "kind": "corrupted_public_input",
+      "observed": "rejected",
+      "reason_codes": [
+        "corrupted_public_input"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {},
+      "check_id": "zkp.circuit_mismatch",
+      "detail": "statement circuit must match the locked deployment circuit",
+      "expected": "circuit_mismatch",
+      "kind": "circuit_mismatch",
+      "observed": "circuit_mismatch",
+      "reason_codes": [
+        "circuit_mismatch"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "base_digest": "659de25535771031603185a04bf4e44b55a0e971fca2796303db3a13d5f02a10",
+        "mutated_digest": "e2975c8a7b77ed71ed94557e9a39aa633f3318d039e5b14f85287aa951a172cc"
+      },
+      "check_id": "zkp.mutation",
+      "detail": "ceremony mutation must change the public-input digest",
+      "expected": "distinct_public_input_digest",
+      "kind": "mutation",
+      "observed": "distinct",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "positive_public_digest": "sha256:86f337c0abf406b78bffdd2b17c1883f2e502b727e808372027868fd2fad6501",
+        "replay_public_digest": "sha256:86f337c0abf406b78bffdd2b17c1883f2e502b727e808372027868fd2fad6501"
+      },
+      "check_id": "zkp.deterministic_replay",
+      "detail": "positive verification must replay deterministically",
+      "expected": "identical_verified_public_artifacts",
+      "kind": "replay",
+      "observed": "matched",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {},
+      "check_id": "zkp.stale",
+      "detail": "stale attestation must fail closed",
+      "expected": "stale",
+      "kind": "stale",
+      "observed": "stale",
+      "reason_codes": [
+        "stale"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {},
+      "check_id": "zkp.revoked",
+      "detail": "revoked verification key must fail closed",
+      "expected": "revoked",
+      "kind": "revoked",
+      "observed": "revoked",
+      "reason_codes": [
+        "revoked"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {},
+      "check_id": "zkp.secret_safety",
+      "detail": "private witnesses never enter Git/lock, logs, caches, public receipts, or model context",
+      "expected": "no_private_witness_in_public_surfaces",
+      "kind": "secret_safety",
+      "observed": "safe",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "authority_ceiling": "attestation",
+        "authority_scope": "receipt_attestation_only",
+        "never_replaces_theorem_authority": true,
+        "underlying_authority": "theorem"
+      },
+      "check_id": "zkp.authority_boundary",
+      "detail": "ZKP attests an underlying receipt; never replaces theorem authority",
+      "expected": "attestation_only_preserves_theorem",
+      "kind": "authority",
+      "observed": "theorem",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {},
+      "check_id": "zkp.corpus_coverage",
+      "detail": "all required certification case kinds must run",
+      "expected": "authority,circuit_mismatch,corrupted_key,corrupted_proof,corrupted_public_input,mutation,positive,replay,revoked,secret_safety,stale",
+      "kind": "corpus",
+      "observed": "authority,circuit_mismatch,corrupted_key,corrupted_proof,corrupted_public_input,mutation,positive,replay,revoked,secret_safety,stale",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "public_inputs": {
+          "backend_id": "backend:provekit",
+          "backend_mode": "cryptographic",
+          "backend_version": "0.2.0",
+          "ceremony_id": "ceremony:mpc-2026-07-production",
+          "circuit_id": "circuit:receipt-binding",
+          "circuit_version": "2.1.0",
+          "crs_id": "crs:powers-of-tau:28",
+          "expires_at": "2026-07-31T12:05:00Z",
+          "issued_at": "2026-07-31T12:00:00Z",
+          "policy_id": "policy:formal@1",
+          "property_id": "property:functional-correctness",
+          "proving_key_id": "pk:receipt-binding:production",
+          "receipt_id": "receipt:28ec2d8acdcef47c04656be58c57bc2691e448c2495146d4de694dd4bd47c0b8",
+          "revocation_policy_id": "revocation:production@1",
+          "source_result_digest": "28ec2d8acdcef47c04656be58c57bc2691e448c2495146d4de694dd4bd47c0b8",
+          "theorem_id": "theorem:sort-correct",
+          "translation_receipt_id": "translation:fol-to-lean:v1",
+          "tree_id": "tree:repo@fvt047",
+          "underlying_authority": "theorem",
+          "underlying_status": "proved",
+          "verification_key_id": "vk:receipt-binding:production"
+        }
+      },
+      "check_id": "zkp.public_input_schema",
+      "detail": "public inputs bind every required receipt/circuit identity",
+      "expected": "all_required_public_input_keys",
+      "kind": "binding",
+      "observed": "21",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "backend_id": "backend:provekit",
+        "backend_mode": "cryptographic",
+        "backend_version": "0.2.0",
+        "ceremony_digest": "sha256:0356bd664bcaf01531ce7a6987593ad1882f17db7a9bd9d50fa5ae4f2a05bccc",
+        "ceremony_id": "ceremony:mpc-2026-07-production",
+        "circuit_id": "circuit:receipt-binding",
+        "circuit_public_digest": "sha256:cd206640b4e5eaad49aedbb2517966a4b54d6f715deb25f2fd00832eeabd1538",
+        "circuit_version": "2.1.0",
+        "crs_digest": "sha256:200dcecb64d4983cbb79b63898ad63a8c663491affe78b699ac56426502aa900",
+        "crs_id": "crs:powers-of-tau:28",
+        "max_attestation_ttl_seconds": 300,
+        "proving_key_digest": "sha256:e4bcb95b3f54a9fda4446422a7ab5b3455e72da0428ce01767b1b1765ca57eec",
+        "proving_key_id": "pk:receipt-binding:production",
+        "proving_system": "groth16",
+        "public_input_schema_digest": "sha256:64f66d7116efcd64f4788f56aec143a1137a62cedd957ed83fdffee9e99b4850",
+        "public_input_schema_id": "public-input-schema:receipt-binding@1",
+        "revocation_policy_id": "revocation:production@1",
+        "verification_key_digest": "sha256:49f51a37afad3a59c109ae91fb05d544cf6c313963fb108ddba121e9f5bc5ad2",
+        "verification_key_expires_at": "2030-01-01T00:00:00Z",
+        "verification_key_id": "vk:receipt-binding:production"
+      },
+      "check_id": "zkp.live.exact_identity_binding",
+      "detail": "Live verifier binds circuit, ceremony, proving-key, verification-key, public-parameter (CRS), public-input-schema, version, expiry, freshness, and revocation identities",
+      "expected": "exact_circuit_ceremony_keys_schema_backend_expiry_freshness_revocation",
+      "kind": "binding",
+      "observed": "ok",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {},
+      "check_id": "zkp.live.corpus_coverage",
+      "detail": "positive and corrupted proof/key/public-input, circuit mismatch, mutation, replay, stale, and revoked cases run against the live verifier",
+      "expected": "authority,circuit_mismatch,corrupted_key,corrupted_proof,corrupted_public_input,mutation,positive,replay,revoked,secret_safety,stale",
+      "kind": "corpus",
+      "observed": "authority,circuit_mismatch,corrupted_key,corrupted_proof,corrupted_public_input,mutation,positive,replay,revoked,secret_safety,stale",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {},
+      "check_id": "zkp.live.secret_safety",
+      "detail": "No private witness, proving-key bytes, trapdoor, secret path value, or secret value enters the public live deployment receipt",
+      "expected": "no_private_material_in_public_live_receipt",
+      "kind": "secret_safety",
+      "observed": "safe",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "authority_ceiling": "attestation",
+        "authority_scope": "receipt_attestation_only",
+        "never_replaces_theorem_authority": true
+      },
+      "check_id": "zkp.live.authority_boundary",
+      "detail": "ZKP attests an underlying trusted receipt and never replaces semantic theorem authority",
+      "expected": "attestation_only_preserves_theorem",
+      "kind": "authority",
+      "observed": "theorem",
+      "reason_codes": [],
+      "status": "passed"
+    }
+  ],
+  "deployment_certification": {
+    "certified": true,
+    "goal_id": "FVT-G190",
+    "interface": "ZKPDeploymentCertification@1",
+    "production_certified": true,
+    "promotion_blocked": false,
+    "receipt_digest_sha256": "sha256:e4935ced6293743d213c53eb24af5072d557b76763236e92e57e6bf5cd8dae11",
+    "schema_version": "zkp-deployment-certification/v1",
+    "task_id": "FVT-047"
+  },
+  "download_attempted": false,
+  "execution_mode": "live_cryptographic_verifier",
+  "goal_id": "FVT-G211",
+  "handler_id": "zkp_live_verifier_deployment@1",
+  "install_attempted": false,
+  "interface": "ZKPLiveVerifierDeployment@1",
+  "lane_id": "attestation",
+  "live_corpus_passed": true,
+  "live_execution": true,
+  "live_verifier_executed": true,
+  "lock_digest": "sha256:9b69b52d611317dbea755762de0bdfb64093f8207076a6da8b762f633908a71a",
+  "lock_path": "config/formal_verification_zkp_deployment.lock.json",
+  "network_used": false,
+  "notes": "Live secret-safe ZKP deployment certified: configured backend performed live verification against exact circuit, ceremony, proving-key, verification-key, public-parameter, public-input-schema, version, expiry, freshness, and revocation identities; positive and fail-closed negative cases passed; private material never entered public surfaces; attestation authority preserves underlying theorem authority.",
+  "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_zkp_live_verifier_deployment.py test/integration/toolchains/test_zkp_deployment_certification.py -q",
+  "objective_validation_evidence": "objective validation repair",
+  "objective_validation_repair": {
+    "evidence_terms": [
+      "objective validation repair",
+      "ZKPLiveVerifierDeployment@1",
+      "live secret-safe ZKP deployment certificate"
+    ],
+    "goal_id": "FVT-G211",
+    "interface": "ZKPLiveVerifierDeployment@1",
+    "live_verifier_executed": true,
+    "notes": "FVT-080 objective validation repair re-proves FVT-G211 acceptance when path evidence already exists. The synthetic discovery term objective validation repair is bound so supervisor scans re-find the validation gate without granting theorem authority.",
+    "objective_validation_evidence": "objective validation repair",
+    "production_certified": true,
+    "repair_task_id": "FVT-080",
+    "schema_version": "objective-validation-repair/v1",
+    "status": "satisfied",
+    "task_id": "FVT-059",
+    "validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_zkp_live_verifier_deployment.py test/integration/toolchains/test_zkp_deployment_certification.py -q"
+  },
+  "operator_bound_public_artifacts": {
+    "absent": [],
+    "absent_are_deployment_blockers_not_platform_exceptions": true,
+    "all_present": true,
+    "deployment_blockers": [],
+    "never_reclassify_absent_as_platform_exception": true,
+    "platform_exceptions": [],
+    "present": {
+      "ceremony_digest": "sha256:0356bd664bcaf01531ce7a6987593ad1882f17db7a9bd9d50fa5ae4f2a05bccc",
+      "circuit_public_digest": "sha256:cd206640b4e5eaad49aedbb2517966a4b54d6f715deb25f2fd00832eeabd1538",
+      "crs_digest": "sha256:200dcecb64d4983cbb79b63898ad63a8c663491affe78b699ac56426502aa900",
+      "proving_key_digest": "sha256:e4bcb95b3f54a9fda4446422a7ab5b3455e72da0428ce01767b1b1765ca57eec",
+      "public_input_schema_digest": "sha256:64f66d7116efcd64f4788f56aec143a1137a62cedd957ed83fdffee9e99b4850",
+      "verification_key_digest": "sha256:49f51a37afad3a59c109ae91fb05d544cf6c313963fb108ddba121e9f5bc5ad2"
+    },
+    "schema_version": "zkp-operator-bound-public-artifacts/v1"
+  },
+  "policy": {
+    "absent_operator_bound_public_artifacts_are_deployment_blockers": true,
+    "authority_is_attestation_only": true,
+    "does_not_edit_central_certificate": true,
+    "fixture_or_schema_only_cannot_satisfy_live_goal": true,
+    "live_execution_required_for_production": true,
+    "never_platform_exception_for_absent_public_artifacts": true,
+    "never_replaces_theorem_authority": true,
+    "no_download": true,
+    "no_install": true,
+    "no_network": true,
+    "objective_validation_repair": true,
+    "private_witness_never_in_public_artifacts": true,
+    "sample_binding_cannot_satisfy_live_goal": true,
+    "secret_safe": true
+  },
+  "predecessor_goal_id": "FVT-G190",
+  "predecessor_task_id": "FVT-047",
+  "production_certified": true,
+  "program": "formal-verification-tactician/zkp-production-runtime",
+  "promotion_blocked": false,
+  "receipt_digest_sha256": "sha256:54ae75202a49cb29899a387288750f80af326aeac03c8259d92513b7885bd110",
+  "receipt_path": "docs/architecture/formal_verification_zkp_live_deployment_receipt.json",
+  "repair_task_id": "FVT-080",
+  "sample_binding": {
+    "bindings": {
+      "authority_ceiling": "attestation",
+      "authority_scope": "receipt_attestation_only",
+      "backend_id": "backend:provekit",
+      "backend_mode": "cryptographic",
+      "backend_version": "0.2.0",
+      "ceremony_digest": "sha256:0356bd664bcaf01531ce7a6987593ad1882f17db7a9bd9d50fa5ae4f2a05bccc",
+      "ceremony_id": "ceremony:mpc-2026-07-production",
+      "circuit_id": "circuit:receipt-binding",
+      "circuit_public_digest": "sha256:cd206640b4e5eaad49aedbb2517966a4b54d6f715deb25f2fd00832eeabd1538",
+      "circuit_version": "2.1.0",
+      "crs_digest": "sha256:200dcecb64d4983cbb79b63898ad63a8c663491affe78b699ac56426502aa900",
+      "crs_id": "crs:powers-of-tau:28",
+      "max_attestation_ttl_seconds": 300,
+      "proving_key_digest": "sha256:e4bcb95b3f54a9fda4446422a7ab5b3455e72da0428ce01767b1b1765ca57eec",
+      "proving_key_id": "pk:receipt-binding:production",
+      "proving_key_secret_path_template": "${ZKP_DEPLOYMENT_SECRET_ROOT}/proving_key.bin",
+      "proving_system": "groth16",
+      "public_input_required_keys": [
+        "theorem_id",
+        "property_id",
+        "translation_receipt_id",
+        "receipt_id",
+        "tree_id",
+        "policy_id",
+        "circuit_id",
+        "circuit_version",
+        "ceremony_id",
+        "crs_id",
+        "proving_key_id",
+        "verification_key_id",
+        "backend_id",
+        "backend_version",
+        "backend_mode",
+        "revocation_policy_id",
+        "issued_at",
+        "expires_at",
+        "underlying_authority",
+        "underlying_status",
+        "source_result_digest"
+      ],
+      "public_input_schema_digest": "sha256:64f66d7116efcd64f4788f56aec143a1137a62cedd957ed83fdffee9e99b4850",
+      "public_input_schema_id": "public-input-schema:receipt-binding@1",
+      "revocation_policy_id": "revocation:production@1",
+      "revoked_circuit_ids": [],
+      "revoked_proving_key_ids": [],
+      "revoked_verification_key_ids": [],
+      "verification_key_digest": "sha256:49f51a37afad3a59c109ae91fb05d544cf6c313963fb108ddba121e9f5bc5ad2",
+      "verification_key_expires_at": "2030-01-01T00:00:00Z",
+      "verification_key_id": "vk:receipt-binding:production",
+      "verification_key_secret_path_template": "${ZKP_DEPLOYMENT_SECRET_ROOT}/verification_key.bin"
+    },
+    "block_reasons": [],
+    "can_satisfy_live_goal": false,
+    "goal_id": "FVT-G190",
+    "interface": "ZKPDeploymentLock@1",
+    "kind": "sample_binding",
+    "live_verifier": false,
+    "lock_digest": "sha256:9b69b52d611317dbea755762de0bdfb64093f8207076a6da8b762f633908a71a",
+    "lock_path": "config/formal_verification_zkp_deployment.lock.json",
+    "notes": "Schema-valid sample binding only; does not execute the live cryptographic verifier corpus and cannot satisfy FVT-G211.",
+    "sample_binding_valid": true,
+    "schema_valid": true,
+    "schema_version": "zkp-deployment-lock/v1",
+    "task_id": "FVT-047"
+  },
+  "sample_vs_live_distinction": {
+    "distinction": "sample_binding_vs_live_verifier",
+    "distinction_holds": true,
+    "live_production_certified": true,
+    "live_verifier_executed": true,
+    "policy": {
+      "fixture_or_schema_only_cannot_satisfy_live_goal": true,
+      "live_execution_required_for_production": true,
+      "sample_binding_cannot_satisfy_live_goal": true
+    },
+    "sample_binding_valid": true,
+    "sample_can_satisfy_live_goal": false
+  },
+  "schema_version": "zkp-live-verifier-deployment/v1",
+  "task_id": "FVT-059",
+  "tool_id": "zkp-circuit",
+  "usable": true
+}

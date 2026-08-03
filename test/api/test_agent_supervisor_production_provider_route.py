@@ -46,7 +46,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     TodoImplementationDaemon,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 EVALUATION_PATH = (
     REPO_ROOT
     / "data"
@@ -55,13 +55,6 @@ EVALUATION_PATH = (
     / "evaluation"
     / "production-provider-route.json"
 )
-# Fall back to workspace-relative path when tests run from the monorepo root.
-if not EVALUATION_PATH.exists():
-    EVALUATION_PATH = Path(
-        "data/agent_supervisor/swissknife_contract_assurance/evaluation/"
-        "production-provider-route.json"
-    )
-
 SNAPSHOT = "git-commit:sca-615-fixture"
 PATH = (
     "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/"

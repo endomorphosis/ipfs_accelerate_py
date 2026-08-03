@@ -688,4 +688,3 @@ DOC-G000  Accurate, rationale-rich documentation
 - Validation commands JSON: ["python scripts/docs/check_agent_supervisor_docs.py", "git diff --check"]
 - Acceptance: The documentation entrypoints and status report are accurate for one exact tree, with reproducible validation commands and explicit remaining code-owned or historical debt.
 - Gap task: Close the smallest current-surface validation or publication residual.
-

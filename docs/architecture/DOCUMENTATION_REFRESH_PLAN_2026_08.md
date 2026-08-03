@@ -1,10 +1,10 @@
 # IPFS Accelerate documentation refresh and architecture guide plan
 
-**Status:** active execution plan  
-**Baseline:** `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15` (2026-08-03)  
-**Program:** `ipfs-accelerate-documentation-refresh-v1`  
-**Task prefix:** `DOC-`  
-**Objective heap:** [documentation_refresh.objectives.md](documentation_refresh.objectives.md)  
+**Status:** active execution plan
+**Baseline:** `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15` (2026-08-03)
+**Program:** `ipfs-accelerate-documentation-refresh-v1`
+**Task prefix:** `DOC-`
+**Objective heap:** [documentation_refresh.objectives.md](documentation_refresh.objectives.md)
 **Executable board:** [documentation_refresh.todo.md](documentation_refresh.todo.md)
 
 ## Outcome

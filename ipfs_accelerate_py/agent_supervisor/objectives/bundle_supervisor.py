@@ -8,16 +8,17 @@ import gc
 import hashlib
 import json
 import logging
+import math
 import os
+import shlex
 import signal
 import subprocess
 import sys
 import threading
 import time
-import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -26,7 +27,11 @@ from ..runtime.artifact_store import (
     read_artifact_fields,
     write_scheduler_manifest_artifact,
 )
-from ..core.conflict_graph import materialize_task_conflict_graph
+from ..core.conflict_graph import (
+    materialize_task_conflict_graph,
+    rehydrate_task_work_contract_projection,
+)
+from ..implementation_timeout import effective_implementation_hard_timeout
 from .bundle_optimizer import BundleOptimizationPolicy, optimize_task_bundles
 from ..merge.lease_coordination import (
     DistributedLaneDispatch,
@@ -36,10 +41,12 @@ from ..merge.lease_coordination import (
     RemoteLaneResult,
     WorkerCapabilityReceipt,
     WorkerEnvironmentReceipt,
+    profile_g_task_attempt_limit,
 )
 from .objective_graph import (
     DEFAULT_TASK_PREFIX,
     build_bundle_task_payloads,
+    profile_g_safe_planning_value,
     repo_relative_path,
     safe_bundle_key,
     utc_now,
@@ -74,7 +81,10 @@ _TASK_ATTEMPT_LIMIT_IDLE_REASON = (
     "all_selectable_ready_tasks_reached_max_task_attempts"
 )
 BUNDLE_TASKBOARD_INPUT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@1"
+    "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@2"
+)
+BUNDLE_LANE_EXECUTION_SLICE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.bundle_lane_execution_slice@2"
 )
 INTERNAL_EXECUTION_AUTHORITY = "agent-supervisor/v1"
 DISTRIBUTED_LANE_REQUIREMENT_ID = "314703454108352614663943447510592855908"
@@ -128,12 +138,19 @@ _MANIFEST_PROFILE_G_REFERENCE_FIELDS = frozenset(
     }
 )
 
-
 def bundle_member_completion_event_sources(state_root: Path) -> tuple[Path, ...]:
     """Return active and rotated member-completion logs in stable order."""
 
     base_paths: set[Path] = set()
-    for pattern in ("*_events.jsonl*", "*/state/*_events.jsonl*"):
+    # Lane state is execution-slice versioned. Bounded patterns retain legacy
+    # `<bundle>/state` receipts and every immutable historical
+    # `<bundle>/executions/<cid>/state` receipt without recursing into the
+    # potentially large worktree root that may also live below `state_root`.
+    for pattern in (
+        "*_events.jsonl*",
+        "*/state/*_events.jsonl*",
+        "*/executions/*/state/*_events.jsonl*",
+    ):
         for candidate in state_root.glob(pattern):
             name = candidate.name
             if name.endswith("_events.jsonl"):
@@ -395,6 +412,7 @@ class BundleLaneSpec:
     gpu_memory_bytes: int = 0
     disk_bytes: int = 0
     process_slots: int = 1
+    implementation_max_timeout: float = 1800.0
     optimizer_bundle_cid: str = ""
     optimizer_policy_id: str = ""
     optimizer_execution_wave: int = 0
@@ -402,6 +420,10 @@ class BundleLaneSpec:
     planner_comparison: dict[str, Any] = field(default_factory=dict)
     packet_aggregates: list[dict[str, Any]] = field(default_factory=list)
     expected_task_cids_by_id: dict[str, str] = field(default_factory=dict)
+    # Keep new optional fields after the complete legacy constructor surface.
+    # External supervisor adapters may still instantiate this public dataclass
+    # positionally.
+    execution_slice_cid: str = ""
 
     def to_dict(self, *, repo_root: Path | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {}
@@ -717,6 +739,48 @@ def bundle_taskboard_input_binding_path(lane: BundleLaneSpec) -> Path:
     return lane.state_dir / f"{lane.state_prefix}_taskboard_input.json"
 
 
+def stale_bundle_lane_input_binding(
+    lane: BundleLaneSpec,
+    *,
+    repo_root: Path,
+) -> dict[str, str] | None:
+    """Diagnose a planned lane whose immutable runtime input is from an older plan.
+
+    Runtime taskboards are deliberately mutable after materialization because
+    the implementation daemon records task status there. Their accompanying
+    input binding is immutable, however. If a later plan points the same lane
+    state directory at different source bytes, launching it would only fail
+    inside :func:`materialize_bundle_lane_taskboard` after a coordination lease
+    and resource reservation had already been acquired.
+
+    This read-only preflight recognizes that one actionable mismatch without
+    rewriting either the binding or the runtime taskboard. Other malformed
+    binding conditions continue through the existing fail-closed materializer.
+    """
+
+    planned_digest = str(lane.source_todo_sha256 or "").strip().lower()
+    if len(planned_digest) != 64:
+        return None
+    binding_path = bundle_taskboard_input_binding_path(lane)
+    try:
+        existing_binding = json.loads(binding_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(existing_binding, dict):
+        return None
+    bound_digest = str(
+        existing_binding.get("source_todo_sha256") or ""
+    ).strip().lower()
+    if not bound_digest or bound_digest == planned_digest:
+        return None
+    return {
+        "reason": "stale_input_binding",
+        "binding_path": repo_relative_path(repo_root, binding_path),
+        "bound_source_todo_sha256": bound_digest,
+        "planned_source_todo_sha256": planned_digest,
+    }
+
+
 def _write_bytes_atomically(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -792,6 +856,7 @@ def materialize_bundle_lane_taskboard(
         expected_binding = {
             "schema": BUNDLE_TASKBOARD_INPUT_SCHEMA,
             "bundle_key": lane.bundle_key,
+            "execution_slice_cid": lane.execution_slice_cid,
             "source_todo_path": binding_source_path,
             "source_todo_sha256": expected_digest,
             "runtime_todo_path": binding_runtime_path,
@@ -836,6 +901,7 @@ def materialize_bundle_lane_taskboard(
     binding = {
         "schema": BUNDLE_TASKBOARD_INPUT_SCHEMA,
         "bundle_key": lane.bundle_key,
+        "execution_slice_cid": lane.execution_slice_cid,
         "source_todo_path": binding_source_path,
         "source_todo_sha256": expected_digest,
         "runtime_todo_path": binding_runtime_path,
@@ -882,6 +948,7 @@ def immutable_lane_input_artifact(
         "task_cid": lane.task_cid,
         "goal_cid": lane.goal_cid,
         "subgoal_cid": lane.subgoal_cid,
+        "execution_slice_cid": lane.execution_slice_cid,
         "source_todo_sha256": observed_digest,
         "source_todo_base64": base64.b64encode(source_bytes).decode("ascii"),
         "command": list(lane.command),
@@ -1637,8 +1704,106 @@ def resolve_repo_path(repo_root: Path, value: str) -> Path:
     return repo_root / path
 
 
+def _normalized_lane_source_todo_path(repo_root: Path, todo_path: Path) -> str:
+    """Return the stable repository-relative identity of a reviewed shard."""
+
+    resolved_root = repo_root.resolve()
+    resolved_source = todo_path.resolve()
+    try:
+        relative = resolved_source.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError(
+            f"bundle source taskboard must remain inside repository root: {todo_path}"
+        ) from exc
+    normalized = relative.as_posix()
+    if not normalized or normalized == "." or ".." in relative.parts:
+        raise ValueError(
+            f"bundle source taskboard has no safe repository-relative path: {todo_path}"
+        )
+    return normalized
+
+
+def _require_lane_path_within_root(
+    path: Path,
+    root: Path,
+    *,
+    label: str,
+) -> Path:
+    """Reject a lane path whose resolved location escapes its configured root."""
+
+    resolved_root = root.resolve()
+    resolved_path = path.resolve()
+    try:
+        resolved_path.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError(
+            f"bundle lane {label} must remain inside its configured root: {path}"
+        ) from exc
+    return path
+
+
 def lane_state_prefix(bundle_key: str) -> str:
     return f"agent_{safe_bundle_key(bundle_key).replace('-', '_')}"
+
+
+def bundle_lane_execution_slice_cid(
+    *,
+    bundle_key: str,
+    source_todo_path: str,
+    source_todo_sha256: str,
+    expected_task_cids_by_id: Mapping[str, str],
+    execution_slice_task_cids: Sequence[str],
+    dependency_task_cids: Sequence[str],
+    optimizer_bundle_cid: str = "",
+) -> str:
+    """Return the immutable namespace for one planned lane execution slice.
+
+    The normalized source path and digest fence reviewed shard revisions.
+    Member, dependency and optimizer identities additionally prevent two
+    semantically different slices from sharing mutable daemon state.
+    Mutable dependency *status* and the derived Profile-G planning chain are
+    deliberately absent. Replanning may project a newly completed prerequisite
+    out of the dependency set, which is a new execution slice; repeated plans
+    of either the blocked or unblocked slice still reuse their exact namespace.
+    """
+
+    payload = {
+        "schema": BUNDLE_LANE_EXECUTION_SLICE_SCHEMA,
+        "bundle_key": str(bundle_key),
+        "source_todo_path": str(source_todo_path),
+        "source_todo_sha256": str(source_todo_sha256).strip().lower(),
+        "expected_task_cids_by_id": {
+            str(task_id): str(task_cid)
+            for task_id, task_cid in sorted(expected_task_cids_by_id.items())
+        },
+        "execution_slice_task_cids": list(
+            dict.fromkeys(
+                str(task_cid).strip()
+                for task_cid in execution_slice_task_cids
+                if str(task_cid).strip()
+            )
+        ),
+        "dependency_task_cids": sorted(
+            {
+                str(task_cid).strip()
+                for task_cid in dependency_task_cids
+                if str(task_cid).strip()
+            }
+        ),
+        "optimizer_bundle_cid": str(optimizer_bundle_cid).strip(),
+    }
+    return _distributed_lane_digest(payload)
+
+
+def bundle_lane_execution_slice_path_component(execution_slice_cid: str) -> str:
+    """Return a filesystem-safe, collision-resistant slice namespace."""
+
+    prefix = "sha256:"
+    value = str(execution_slice_cid).strip().lower()
+    digest = value[len(prefix) :] if value.startswith(prefix) else ""
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        raise ValueError("bundle lane execution slice CID must be sha256:<64 lowercase hex>")
+    return digest
 
 
 def _execution_slice_task_cids_by_id(
@@ -1786,6 +1951,106 @@ def _execution_slice_members(
     ]
 
 
+def _apply_runtime_task_exclusions(
+    payloads: Sequence[dict[str, Any]],
+    *,
+    excluded_task_ids: Sequence[str],
+) -> list[dict[str, Any]]:
+    """Fence selected ready members without changing reviewed bundle inputs.
+
+    Task exclusions are an operator control for one supervisor run, not a task
+    completion signal.  Keep every source member and work contract attached as
+    dependency/provenance evidence, but narrow the authorized execution slice.
+    A bundle whose entire ready slice is excluded is omitted instead of being
+    registered with coordination, so the fenced work cannot consume a retry.
+
+    Embedded Profile-G artifacts bind the original execution slice.  Detach
+    that aggregate identity whenever the slice changes and retain a compact
+    provenance reference; registration will derive a fresh slice identity from
+    the remaining canonical member identities.
+    """
+
+    excluded = {
+        str(task_id).strip()
+        for task_id in excluded_task_ids
+        if str(task_id).strip()
+    }
+    if not excluded:
+        return list(payloads)
+
+    projected_payloads: list[dict[str, Any]] = []
+    for original in payloads:
+        payload = dict(original)
+        execution_tasks = _execution_slice_members(
+            payload,
+            _mapping_list(payload.get("tasks")),
+        )
+        excluded_members = [
+            task
+            for task in execution_tasks
+            if str(task.get("task_id") or "").strip() in excluded
+        ]
+        if not excluded_members:
+            projected_payloads.append(payload)
+            continue
+
+        retained_members = [
+            task
+            for task in execution_tasks
+            if str(task.get("task_id") or "").strip() not in excluded
+        ]
+        if not retained_members:
+            continue
+
+        source_profile = (
+            dict(payload.get("profile_g") or {})
+            if isinstance(payload.get("profile_g"), Mapping)
+            else {}
+        )
+        if source_profile:
+            payload["source_profile_g_ref"] = {
+                key: str(source_profile.get(key) or "")
+                for key in (
+                    "goal_cid",
+                    "subgoal_cid",
+                    "plan_branch_cid",
+                    "selection_cid",
+                    "task_cid",
+                    "task_spec_cid",
+                )
+                if source_profile.get(key)
+            }
+            payload.pop("profile_g", None)
+
+        payload["execution_slice_task_ids"] = [
+            str(task.get("task_id") or "").strip()
+            for task in retained_members
+            if str(task.get("task_id") or "").strip()
+        ]
+        payload["execution_slice_task_cids"] = [
+            str(
+                task.get("canonical_task_cid")
+                or task.get("task_cid")
+                or ""
+            ).strip()
+            for task in retained_members
+            if str(
+                task.get("canonical_task_cid")
+                or task.get("task_cid")
+                or ""
+            ).strip()
+        ]
+        payload["runtime_excluded_task_ids"] = sorted(
+            {
+                str(task.get("task_id") or "").strip()
+                for task in excluded_members
+                if str(task.get("task_id") or "").strip()
+            }
+        )
+        projected_payloads.append(payload)
+    return projected_payloads
+
+
 def _first_nonempty(payloads: Sequence[dict[str, Any]], *keys: str) -> Any:
     for payload in payloads:
         for key in keys:
@@ -1886,6 +2151,40 @@ def _resource_lane_fields(payload: dict[str, Any]) -> dict[str, Any]:
             maximum("process_slots", "required_process_slots", "worker_slots"),
         ),
     }
+
+
+def _execution_slice_implementation_max_timeout(
+    payload: Mapping[str, Any],
+    *,
+    default_timeout: float,
+) -> float:
+    """Return the largest hard timeout authorized by the execution slice.
+
+    The implementation daemon still receives ``default_timeout`` as its idle
+    and ordinary-task policy. This separate maximum sizes the parent
+    supervisor watchdog so a task-specific hard timeout cannot be interrupted
+    early. Exact per-task limits remain in the digest-bound taskboard and are
+    enforced by ``PortalImplementationDaemon``.
+    """
+
+    baseline = effective_implementation_hard_timeout(
+        {},
+        configured_timeout=default_timeout,
+    ).seconds
+    effective: list[float] = []
+    tasks = _execution_slice_members(
+        payload,
+        _mapping_list(payload.get("tasks")),
+    )
+    for task in tasks:
+        effective.append(
+            effective_implementation_hard_timeout(
+                task,
+                configured_timeout=default_timeout,
+                task_id=str(task.get("task_id") or "<unknown task>"),
+            ).seconds
+        )
+    return max(effective, default=baseline)
 
 
 _TERMINAL_CONFLICT_TASK_STATUSES = frozenset(
@@ -2034,6 +2333,165 @@ def _bundle_conflict_task(
     }
 
 
+def _repo_path_is_within(path: str, root: str) -> bool:
+    """Return whether one normalized repository path is at or below another."""
+
+    normalized_path = str(path or "").strip().strip("/")
+    normalized_root = str(root or "").strip().strip("/")
+    return bool(
+        normalized_path
+        and normalized_root
+        and (
+            normalized_path == normalized_root
+            or normalized_path.startswith(f"{normalized_root}/")
+        )
+    )
+
+
+def _mutation_paths(conflict_task: Mapping[str, Any]) -> list[str]:
+    """Return the precise paths an execution unit may mutate."""
+
+    paths: list[str] = []
+    for key in ("files", "changed_paths", "generated_artifacts"):
+        paths.extend(_string_list(conflict_task.get(key)))
+    return list(dict.fromkeys(path for path in paths if path))
+
+
+def _paths_overlap(left: Sequence[str], right: Sequence[str]) -> bool:
+    """Return whether either precise mutation surface contains the other."""
+
+    return any(
+        _repo_path_is_within(left_path, right_path)
+        or _repo_path_is_within(right_path, left_path)
+        for left_path in left
+        for right_path in right
+    )
+
+
+def _recorded_pair_conflict(
+    left_cid: str,
+    right_cid: str,
+    *,
+    inputs: Mapping[str, Any],
+) -> bool:
+    """Keep learned pair conflicts authoritative over automatic concurrency."""
+
+    pair_key = "\0".join(sorted((left_cid, right_cid)))
+    history = inputs.get("history")
+    if isinstance(history, Mapping):
+        pair_weights = history.get("pair_weights")
+        if isinstance(pair_weights, Mapping):
+            try:
+                if float(pair_weights.get(pair_key) or 0.0) > 0:
+                    return True
+            except (TypeError, ValueError):
+                return True
+
+    receipts = inputs.get("conflict_receipts")
+    if isinstance(receipts, Mapping):
+        receipts = [receipts]
+    for receipt in receipts or ():
+        if not isinstance(receipt, Mapping):
+            continue
+        identities = _string_list(receipt.get("task_cids") or receipt.get("tasks"))
+        if not identities:
+            identities = [
+                str(
+                    receipt.get("left_task_cid")
+                    or receipt.get("source_task_cid")
+                    or receipt.get("task_cid")
+                    or ""
+                ),
+                str(
+                    receipt.get("right_task_cid")
+                    or receipt.get("target_task_cid")
+                    or receipt.get("other_task_cid")
+                    or ""
+                ),
+            ]
+        if {identity for identity in identities if identity} == {left_cid, right_cid}:
+            return True
+    return False
+
+
+def _managed_submodule_concurrency_overrides(
+    conflict_tasks: Sequence[dict[str, Any]],
+    *,
+    managed_submodule_paths: Sequence[str],
+    inputs: Mapping[str, Any],
+) -> list[tuple[str, str]]:
+    """Allow disjoint, precisely scoped work in isolated managed submodules.
+
+    A shared gitlink is normally a conservative conflict surface.  When the
+    operator explicitly opts in and the supervisor already provisions an
+    isolated worktree for that submodule, the gitlink alone need not serialize
+    two tasks.  Exact path, interface, global-symbol, and learned conflicts
+    remain blocking.
+    """
+
+    managed = {
+        str(path).strip().strip("/")
+        for path in managed_submodule_paths
+        if str(path).strip().strip("/")
+    }
+    if not managed:
+        return []
+
+    overrides: list[tuple[str, str]] = []
+    for index, left in enumerate(conflict_tasks):
+        for right in conflict_tasks[index + 1 :]:
+            left_cid = str(
+                left.get("canonical_task_cid")
+                or left.get("task_cid")
+                or left.get("task_id")
+                or ""
+            )
+            right_cid = str(
+                right.get("canonical_task_cid")
+                or right.get("task_cid")
+                or right.get("task_id")
+                or ""
+            )
+            if not left_cid or not right_cid:
+                continue
+            shared_submodules = (
+                set(_string_list(left.get("submodules")))
+                & set(_string_list(right.get("submodules")))
+            )
+            if not shared_submodules or not shared_submodules.issubset(managed):
+                continue
+
+            left_paths = _mutation_paths(left)
+            right_paths = _mutation_paths(right)
+            if not left_paths or not right_paths or _paths_overlap(left_paths, right_paths):
+                continue
+            if set(_string_list(left.get("interfaces"))) & set(
+                _string_list(right.get("interfaces"))
+            ):
+                continue
+            if set(_string_list(left.get("global_ast_symbols"))) & set(
+                _string_list(right.get("global_ast_symbols"))
+            ):
+                continue
+            if _recorded_pair_conflict(left_cid, right_cid, inputs=inputs):
+                continue
+
+            precise = True
+            for submodule in shared_submodules:
+                for paths in (left_paths, right_paths):
+                    if submodule in paths or not any(
+                        _repo_path_is_within(path, submodule) and path != submodule
+                        for path in paths
+                    ):
+                        precise = False
+                        break
+                if not precise:
+                    break
+            if precise:
+                overrides.append((left_cid, right_cid))
+    return overrides
+
+
 def _excluded_bundle_keys(bundle_index_path: Path) -> set[str]:
     """Return execution units retained only as dependency metadata."""
 
@@ -2091,6 +2549,8 @@ def _bundle_conflict_annotations(
     bundle_index_path: Path,
     repo_root: Path,
     task_prefix: str,
+    managed_submodule_paths: Sequence[str] = (),
+    allow_disjoint_submodule_concurrency: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Return graph color, surface, edges, and reasons keyed by bundle."""
 
@@ -2231,6 +2691,22 @@ def _bundle_conflict_annotations(
             else:
                 translated_overrides.append(override)
         inputs["concurrency_overrides"] = translated_overrides
+    if allow_disjoint_submodule_concurrency:
+        automatic_overrides = _managed_submodule_concurrency_overrides(
+            conflict_tasks,
+            managed_submodule_paths=managed_submodule_paths,
+            inputs=inputs,
+        )
+        if automatic_overrides:
+            existing_overrides = inputs.get("concurrency_overrides")
+            if isinstance(existing_overrides, (list, tuple, set, frozenset)):
+                combined_overrides = list(existing_overrides)
+            elif existing_overrides:
+                combined_overrides = [existing_overrides]
+            else:
+                combined_overrides = []
+            combined_overrides.extend(automatic_overrides)
+            inputs["concurrency_overrides"] = combined_overrides
     graph = materialize_task_conflict_graph(
         conflict_tasks,
         repo_root=repo_root,
@@ -2341,6 +2817,7 @@ def implementation_supervisor_command(
     watchdog_startup_grace_seconds: float | None,
     max_restarts: int,
     implementation_timeout: float,
+    implementation_max_timeout: float | None = None,
     max_task_attempts: int = 0,
     implementation_command: str = "",
     merge_target_branch: str = "",
@@ -2382,7 +2859,7 @@ def implementation_supervisor_command(
         "--max-restarts",
         str(max_restarts),
         "--max-task-attempts",
-        str(max(0, int(max_task_attempts))),
+        str(profile_g_task_attempt_limit(max_task_attempts, default=0)),
         "--implementation-timeout",
         str(implementation_timeout),
         "--log-level",
@@ -2396,6 +2873,13 @@ def implementation_supervisor_command(
         "--no-objective-task-janitor",
         "--no-objective-goal-migration",
     ]
+    if implementation_max_timeout is not None:
+        command.extend(
+            [
+                "--implementation-max-timeout",
+                str(implementation_max_timeout),
+            ]
+        )
     if watchdog_startup_grace_seconds is not None:
         command.extend(
             [
@@ -2443,6 +2927,9 @@ def optimize_bundle_payloads(
     payloads: Sequence[dict[str, Any]],
     *,
     policy: BundleOptimizationPolicy | None = None,
+    managed_submodule_paths: Sequence[str] = (),
+    allow_disjoint_submodule_concurrency: bool = False,
+    conflict_inputs: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Split current-planner payloads into optimized canonical execution units.
 
@@ -2526,7 +3013,7 @@ def optimize_bundle_payloads(
 
         normalized: list[dict[str, Any]] = []
         for task in live_tasks:
-            member = dict(task)
+            member = rehydrate_task_work_contract_projection(task)
             for key in (
                 "goal_id",
                 "merge_family",
@@ -2565,6 +3052,38 @@ def optimize_bundle_payloads(
                     or []
                 )
             normalized.append(member)
+
+        if allow_disjoint_submodule_concurrency:
+            automatic_overrides = _managed_submodule_concurrency_overrides(
+                normalized,
+                managed_submodule_paths=managed_submodule_paths,
+                inputs=conflict_inputs or {},
+            )
+            task_by_cid = {
+                str(task.get("canonical_task_cid") or task.get("task_cid") or ""): task
+                for task in normalized
+            }
+            for left_cid, right_cid in automatic_overrides:
+                left = task_by_cid.get(left_cid)
+                right = task_by_cid.get(right_cid)
+                if left is None or right is None:
+                    continue
+                left["allow_concurrent_with"] = list(
+                    dict.fromkeys(
+                        [
+                            *_string_list(left.get("allow_concurrent_with")),
+                            right_cid,
+                        ]
+                    )
+                )
+                right["allow_concurrent_with"] = list(
+                    dict.fromkeys(
+                        [
+                            *_string_list(right.get("allow_concurrent_with")),
+                            left_cid,
+                        ]
+                    )
+                )
 
         try:
             result = optimize_task_bundles(
@@ -2671,6 +3190,15 @@ def optimize_bundle_payloads(
                 bundle.execution_wave * 1_000_000
                 + _schedule_int(payload, "schedule_rank")
             )
+            if not (
+                isinstance(projected.get("profile_g"), Mapping)
+                and projected["profile_g"].get("task_cid")
+            ):
+                # Split optimizer slices deliberately discard the source
+                # bundle's shared Profile-G identity.  The lease adapter will
+                # derive a distinct chain from the full projected payload, so
+                # normalize its learned float metrics before content hashing.
+                projected = dict(profile_g_safe_planning_value(projected))
             optimized_payloads.append(projected)
     return optimized_payloads
 
@@ -2703,21 +3231,33 @@ def plan_bundle_lanes(
     generated_dirty_repair_stale_lock_seconds: float | None = None,
     generated_dirty_repair_paths: Sequence[Path | str] = (),
     worktree_submodule_paths: Sequence[str] = (),
+    allow_disjoint_submodule_concurrency: bool = False,
     log_level: str = "INFO",
     max_lanes: int | None = None,
     completion_receipts: Mapping[str, Any] | None = None,
     optimize_bundles: bool = True,
     bundle_optimization_policy: BundleOptimizationPolicy | None = None,
+    excluded_bundle_keys: Sequence[str] = (),
+    excluded_task_ids: Sequence[str] = (),
 ) -> list[BundleLaneSpec]:
     """Return one isolated supervisor command for each objective bundle."""
 
     lanes: list[BundleLaneSpec] = []
+    selected_max_task_attempts = profile_g_task_attempt_limit(
+        max_task_attempts,
+        default=0,
+    )
     if completion_receipts is None:
         completion_receipts = bundle_member_completion_receipts(state_root)
+    build_payload_kwargs: dict[str, Any] = {}
     if completion_receipts:
+        build_payload_kwargs["merge_receipts"] = completion_receipts
+    if selected_max_task_attempts > 0:
+        build_payload_kwargs["max_attempts"] = selected_max_task_attempts
+    if build_payload_kwargs:
         bundle_payloads = build_bundle_task_payloads(
             bundle_index_path,
-            merge_receipts=completion_receipts,
+            **build_payload_kwargs,
         )
     else:
         # Keep the legacy single-argument call path for integrations which
@@ -2736,7 +3276,14 @@ def plan_bundle_lanes(
         for payload in bundle_payloads
         for task_id in _string_list(payload.get("completed_member_task_ids"))
     )
-    excluded_bundle_keys = _excluded_bundle_keys(bundle_index_path)
+    excluded_bundle_keys = {
+        *_excluded_bundle_keys(bundle_index_path),
+        *(
+            str(bundle_key).strip()
+            for bundle_key in excluded_bundle_keys
+            if str(bundle_key).strip()
+        ),
+    }
     bundle_payloads = [
         payload
         for payload in bundle_payloads
@@ -2744,29 +3291,56 @@ def plan_bundle_lanes(
         and payload.get("is_schedulable") is not False
         and payload.get("review_only") is not True
     ]
+    bundle_payloads = _apply_runtime_task_exclusions(
+        bundle_payloads,
+        excluded_task_ids=excluded_task_ids,
+    )
+    # Implementation daemons currently coordinate managed-submodule mutation
+    # with one repository-shared claim per configured submodule root.  Do not
+    # let precise outer conflict planning over-admit work that the inner daemon
+    # must then defer behind that broader claim.  Analysis-only planning may
+    # still expose the opt-in width; implemented lanes remain serialized until
+    # the downstream claim registry can atomically enforce path-scope overlap.
+    effective_disjoint_submodule_concurrency = bool(
+        allow_disjoint_submodule_concurrency and not implement
+    )
+    if (
+        allow_disjoint_submodule_concurrency
+        and implement
+        and worktree_submodule_paths
+    ):
+        logger.warning(
+            "Disjoint managed-submodule concurrency was requested for "
+            "implemented lanes, but implementation resource claims are "
+            "submodule-root scoped; retaining root-level serialization."
+        )
     if optimize_bundles:
         bundle_payloads = optimize_bundle_payloads(
             bundle_payloads,
             policy=bundle_optimization_policy,
+            managed_submodule_paths=worktree_submodule_paths,
+            allow_disjoint_submodule_concurrency=(
+                effective_disjoint_submodule_concurrency
+            ),
+            conflict_inputs=_conflict_graph_inputs(bundle_index_path),
         )
     conflict_annotations = _bundle_conflict_annotations(
         bundle_payloads,
         bundle_index_path=bundle_index_path,
         repo_root=repo_root,
         task_prefix=task_prefix,
+        managed_submodule_paths=worktree_submodule_paths,
+        allow_disjoint_submodule_concurrency=(
+            effective_disjoint_submodule_concurrency
+        ),
     )
     for payload in bundle_payloads:
         bundle_key = str(payload.get("bundle_key") or "objective/general")
         conflict_annotation = conflict_annotations.get(bundle_key, {})
         safe_key = safe_bundle_key(bundle_key)
         todo_path = resolve_repo_path(repo_root, str(payload.get("todo_path") or ""))
-        state_dir = state_root / safe_key / "state"
-        runtime_todo_path = (
-            state_dir / f"{lane_state_prefix(bundle_key)}_runtime.todo.md"
-        )
+        source_todo_path = _normalized_lane_source_todo_path(repo_root, todo_path)
         source_todo_sha256 = _taskboard_sha256(todo_path)
-        lane_worktree_root = worktree_root / safe_key
-        log_path = log_dir / f"{safe_key}.log"
         state_prefix = lane_state_prefix(bundle_key)
         execution_tasks = _execution_slice_members(
             payload,
@@ -2805,7 +3379,66 @@ def plan_bundle_lanes(
             task_cids=task_cids,
         )
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
+        dependency_task_cids = _string_list(payload.get("dependency_task_cids"))
+        optimizer_bundle_cid = str(payload.get("optimizer_bundle_cid") or "")
+        execution_slice_cid = bundle_lane_execution_slice_cid(
+            bundle_key=bundle_key,
+            source_todo_path=source_todo_path,
+            source_todo_sha256=source_todo_sha256,
+            expected_task_cids_by_id=expected_task_cids_by_id,
+            execution_slice_task_cids=task_cids,
+            dependency_task_cids=dependency_task_cids,
+            optimizer_bundle_cid=optimizer_bundle_cid,
+        )
+        execution_namespace = bundle_lane_execution_slice_path_component(
+            execution_slice_cid
+        )
+        # Never rewrite or resume a different immutable input revision. Legacy
+        # `<bundle>/state` directories and earlier execution namespaces remain
+        # archival evidence; identical slices deterministically reuse this
+        # exact namespace after a dependency deferral or safe process restart.
+        lane_state_root = (
+            state_root / safe_key / "executions" / execution_namespace
+        )
+        state_dir = lane_state_root / "state"
+        runtime_todo_path = (
+            state_dir / f"{state_prefix}_runtime.todo.md"
+        )
+        lane_worktree_root = (
+            worktree_root / safe_key / "executions" / execution_namespace
+        )
+        log_path = (
+            log_dir
+            / safe_key
+            / "executions"
+            / execution_namespace
+            / "supervisor.log"
+        )
+        _require_lane_path_within_root(
+            state_dir,
+            state_root,
+            label="state directory",
+        )
+        _require_lane_path_within_root(
+            runtime_todo_path,
+            state_root,
+            label="runtime taskboard",
+        )
+        _require_lane_path_within_root(
+            lane_worktree_root,
+            worktree_root,
+            label="worktree directory",
+        )
+        _require_lane_path_within_root(
+            log_path,
+            log_dir,
+            label="log path",
+        )
         resource_fields = _resource_lane_fields(payload)
+        implementation_max_timeout = _execution_slice_implementation_max_timeout(
+            payload,
+            default_timeout=implementation_timeout,
+        )
         command = implementation_supervisor_command(
             todo_path=runtime_todo_path,
             state_dir=state_dir,
@@ -2819,7 +3452,12 @@ def plan_bundle_lanes(
             watchdog_startup_grace_seconds=watchdog_startup_grace_seconds,
             max_restarts=max_restarts,
             implementation_timeout=implementation_timeout,
-            max_task_attempts=max_task_attempts,
+            implementation_max_timeout=(
+                implementation_max_timeout
+                if implementation_max_timeout > float(implementation_timeout)
+                else None
+            ),
+            max_task_attempts=selected_max_task_attempts,
             implementation_command=implementation_command,
             merge_target_branch=merge_target_branch,
             llm_merge_resolver_command=llm_merge_resolver_command,
@@ -2852,6 +3490,7 @@ def plan_bundle_lanes(
                 expected_task_cids_by_id=expected_task_cids_by_id,
                 runtime_todo_path=runtime_todo_path,
                 source_todo_sha256=source_todo_sha256,
+                execution_slice_cid=execution_slice_cid,
                 source_todo=str(payload.get("source_todo") or ""),
                 task_cid=str(profile_g.get("task_cid") or ""),
                 goal_cid=str(profile_g.get("goal_cid") or ""),
@@ -2859,7 +3498,7 @@ def plan_bundle_lanes(
                 queue_payload=dict(payload),
                 schedule_rank=(_schedule_int(payload, "schedule_rank") if payload.get("schedule_rank") is not None else None),
                 claimable=_schedule_bool(payload, "claimable"),
-                dependency_task_cids=_string_list(payload.get("dependency_task_cids")),
+                dependency_task_cids=dependency_task_cids,
                 blocking_task_cids=_string_list(payload.get("blocking_task_cids")),
                 critical_path_length=_schedule_int(payload, "critical_path_length"),
                 slack=_schedule_int(payload, "slack"),
@@ -2872,7 +3511,7 @@ def plan_bundle_lanes(
                 conflicting_task_ids=_string_list(conflict_annotation.get("conflicting_task_ids")),
                 conflict_decisions=_mapping_list(conflict_annotation.get("conflict_decisions")),
                 conflict_surface=dict(conflict_annotation.get("conflict_surface") or {}),
-                optimizer_bundle_cid=str(payload.get("optimizer_bundle_cid") or ""),
+                optimizer_bundle_cid=optimizer_bundle_cid,
                 optimizer_policy_id=str(payload.get("optimizer_policy_id") or ""),
                 optimizer_execution_wave=_schedule_int(
                     payload, "optimizer_execution_wave"
@@ -2905,6 +3544,7 @@ def plan_bundle_lanes(
                 ]
                 if isinstance(payload.get("bundle_optimization"), Mapping)
                 else [],
+                implementation_max_timeout=implementation_max_timeout,
                 **resource_fields,
             )
         )
@@ -3029,6 +3669,13 @@ def launch_bundle_lanes(
         id(lane): _lane_launch_policy_error(lane)
         for lane in lanes
     }
+    stale_input_bindings = {
+        id(lane): stale_bundle_lane_input_binding(
+            lane,
+            repo_root=repo_root,
+        )
+        for lane in lanes
+    }
     if lanes and all(policy_errors[id(lane)] for lane in lanes):
         return [
             {
@@ -3053,6 +3700,21 @@ def launch_bundle_lanes(
                         "accepted": False,
                         "error": policy_error,
                         "code": "G_EXECUTION_POLICY_DENIED",
+                    }
+                )
+                continue
+            stale_input_binding = stale_input_bindings[id(lane)]
+            if stale_input_binding is not None:
+                results.append(
+                    {
+                        "bundle_key": lane.bundle_key,
+                        "accepted": False,
+                        "error": (
+                            "immutable runtime taskboard input is bound to a "
+                            "different planned source digest"
+                        ),
+                        "code": "G_STALE_INPUT_BINDING",
+                        **stale_input_binding,
                     }
                 )
                 continue
@@ -3382,6 +4044,9 @@ class DynamicBundleScheduler:
         provider_capacity_source: Callable[..., Any] | None = None,
         provider_capacity_path: Path | None = None,
         external_task_state_paths: Sequence[Path | str] = (),
+        bundle_index_refresh_command: str = "",
+        bundle_index_refresh_timeout_seconds: float = 60.0,
+        bundle_index_refresher: Callable[[], Any] | None = None,
         resource_policy: ResourcePolicy | dict[str, Any] | None = None,
         **lane_options: Any,
     ) -> None:
@@ -3430,6 +4095,20 @@ class DynamicBundleScheduler:
         self.external_task_state_paths = tuple(
             Path(path).resolve() for path in external_task_state_paths
         )
+        self.bundle_index_refresh_command = str(
+            bundle_index_refresh_command or ""
+        ).strip()
+        self.bundle_index_refresh_timeout_seconds = float(
+            bundle_index_refresh_timeout_seconds
+        )
+        if (
+            not math.isfinite(self.bundle_index_refresh_timeout_seconds)
+            or self.bundle_index_refresh_timeout_seconds <= 0
+        ):
+            raise ValueError(
+                "bundle_index_refresh_timeout_seconds must be positive"
+            )
+        self._bundle_index_refresher = bundle_index_refresher
         self._running: dict[str, RunningBundleLane] = {}
         self._stop_event = threading.Event()
         self._lock = threading.RLock()
@@ -3439,6 +4118,9 @@ class DynamicBundleScheduler:
         self._last_scheduler_snapshot: SchedulerSnapshot | None = None
         self._last_resource_snapshot: ResourceScheduleSnapshot | None = None
         self._event_source_cache: dict[Path, tuple[int, int, list[dict[str, Any]]]] = {}
+        self._last_bundle_index_refresh_source_revision: (
+            tuple[tuple[str, int, int], ...] | None
+        ) = None
         self._plan_cache: tuple[
             tuple[Path, ...],
             tuple[tuple[str, int, int], ...],
@@ -3450,12 +4132,21 @@ class DynamicBundleScheduler:
     def running_count(self) -> int:
         return len(self._running)
 
-    def _sample_host_resources(self) -> HostResourceSnapshot | dict[str, Any]:
+    def _sample_host_resources(
+        self,
+        *,
+        active_workers: int | None = None,
+    ) -> HostResourceSnapshot | dict[str, Any]:
         source = self._host_resource_source
+        accounted_active_workers = (
+            len(self._running)
+            if active_workers is None
+            else max(0, int(active_workers))
+        )
         try:
             return source(
                 self.state_root,
-                active_workers=len(self._running),
+                active_workers=accounted_active_workers,
                 worker_limit=self.max_lanes,
                 active_phase="scheduler",
             )
@@ -3677,8 +4368,6 @@ class DynamicBundleScheduler:
                 "active_member_task_cids": sorted(
                     set(_string_list(payload.get("active_member_task_cids"))) | active_cids
                 ),
-                "execution_slice_task_ids": [],
-                "execution_slice_task_cids": [],
                 "external_active_member_fence": True,
             }
         )
@@ -3708,7 +4397,8 @@ class DynamicBundleScheduler:
                 self._plan_cache = None
         if self._plan_cache is None:
             allowed = {
-                "task_prefix", "implement", "daemon_interval", "stale_seconds",
+                "task_prefix", "excluded_bundle_keys", "excluded_task_ids", "implement",
+                "daemon_interval", "stale_seconds",
                 "check_interval", "max_restarts", "max_task_attempts",
                 "implementation_timeout",
                 "implementation_command", "llm_merge_resolver_command",
@@ -3719,6 +4409,7 @@ class DynamicBundleScheduler:
                 "generated_dirty_repair_max_paths", "generated_dirty_repair_stale_lock_seconds",
                 "generated_dirty_repair_paths",
                 "worktree_submodule_paths", "log_level",
+                "allow_disjoint_submodule_concurrency",
                 "optimize_bundles", "bundle_optimization_policy",
             }
             options = {key: value for key, value in self.lane_options.items() if key in allowed}
@@ -3778,6 +4469,82 @@ class DynamicBundleScheduler:
             for lane in base_lanes
         ]
 
+    def _refresh_bundle_index_if_needed(self) -> bool:
+        """Refresh a derived index before applying changed merge evidence."""
+
+        if (
+            self._bundle_index_refresher is None
+            and not self.bundle_index_refresh_command
+        ):
+            return False
+        receipt_revision = list(
+            bundle_member_completion_source_revision(self.state_root)
+        )
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        source_revision = tuple(
+            [
+                *receipt_revision,
+                (
+                    f"git:{head.stdout.strip() if head.returncode == 0 else ''}",
+                    0,
+                    0,
+                ),
+            ]
+        )
+        if (
+            self._last_bundle_index_refresh_source_revision is not None
+            and source_revision
+            == self._last_bundle_index_refresh_source_revision
+        ):
+            return False
+        try:
+            if self._bundle_index_refresher is not None:
+                self._bundle_index_refresher()
+            else:
+                command = shlex.split(self.bundle_index_refresh_command)
+                if not command:
+                    raise ValueError("bundle-index refresh command is empty")
+                completed = subprocess.run(
+                    command,
+                    cwd=self.repo_root,
+                    text=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    timeout=self.bundle_index_refresh_timeout_seconds,
+                    check=False,
+                )
+                if completed.returncode != 0:
+                    error = str(completed.stderr or "").strip()[-2_000:]
+                    raise ValueError(
+                        "bundle-index refresh command failed with exit code "
+                        f"{completed.returncode}"
+                        + (f": {error}" if error else "")
+                    )
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError(
+                "bundle-index refresh command timed out after "
+                f"{self.bundle_index_refresh_timeout_seconds:.3f}s"
+            ) from exc
+        except Exception as exc:
+            if isinstance(exc, ValueError):
+                raise
+            raise ValueError(
+                f"bundle-index refresh failed: {type(exc).__name__}: {exc}"
+            ) from exc
+        if not self.bundle_index_path.is_file():
+            raise ValueError(
+                "bundle-index refresh did not produce the configured index"
+            )
+        self._last_bundle_index_refresh_source_revision = source_revision
+        self._plan_cache = None
+        return True
+
     @staticmethod
     def _default_process_alive(handle: Any) -> bool:
         poll = getattr(handle, "poll", None)
@@ -3797,7 +4564,10 @@ class DynamicBundleScheduler:
             markdown = operational_todo_path.read_text(encoding="utf-8")
         except OSError:
             markdown = ""
-        from ..todo_daemon.implementation_daemon import parse_task_file
+        from ..todo_daemon.implementation_daemon import (
+            TASK_ATTEMPT_LIMIT_IDLE_REASON,
+            parse_task_file,
+        )
 
         task_prefix = str(self.lane_options.get("task_prefix") or DEFAULT_TASK_PREFIX)
         portal_tasks = (
@@ -3869,6 +4639,17 @@ class DynamicBundleScheduler:
                 statuses.get(task_id, board_statuses.get(task_id, ""))
                 for task_id in lane.task_ids
             ]
+            if (
+                state_matches_board
+                and not active
+                and str(state.get("selection_idle_reason") or "")
+                == TASK_ATTEMPT_LIMIT_IDLE_REASON
+            ):
+                # An ordinary empty queue remains persistent. This exact reason
+                # means every selectable member exhausted its bounded retry
+                # budget, so after the wrapper settles and exits the scheduler
+                # must not launch the unchanged execution slice again.
+                return "blocked"
             if state_matches_board and not active and execution_statuses:
                 if all(status in {"complete", "completed"} for status in execution_statuses):
                     return "completed"
@@ -4105,141 +4886,19 @@ class DynamicBundleScheduler:
         coordinator: LeaseCoordinator,
         lanes: Sequence[BundleLaneSpec],
     ) -> dict[str, dict[str, str]]:
-        """Settle durable terminal work whose accepted wrapper predates this scheduler.
+        """Defer untracked accepted leases to their fenced wrapper or expiry.
 
-        ``_running`` is intentionally process-local and is empty after a
-        scheduler restart.  The accepted lease and lane phase state are durable,
-        however, so a predecessor's wrapper can remain alive and renew forever
-        after its board has drained.  Reuse the same current-board and
-        identity-aware disposition check used for locally owned workers, then
-        publish the terminal receipt through the accepted fencing token.
-
-        The receipt is written before any process is stopped.  A still-running
-        leased wrapper observes the terminal lease on its next heartbeat, fences
-        its child, and exits without manufacturing a competing receipt.
-        Non-terminal accepted workers are never adopted or preempted.
+        ``_running`` is process-local, so after restart this scheduler cannot
+        prove that a predecessor wrapper has exited or fenced its descendants.
+        Neither mutable terminal board state nor a durable member receipt is
+        sufficient authority to publish a Profile-G terminal receipt.  The
+        predecessor ``leased_lane`` remains the only successful-settlement
+        authority; blocked work likewise remains accepted until that wrapper
+        settles, its lease expires, or an operator performs fenced recovery.
         """
 
-        lanes_by_bundle_key = {lane.bundle_key: lane for lane in lanes}
-        accepted_tasks = [
-            accepted
-            for accepted in coordinator.list_tasks()
-            if self._projection_state(accepted) == "accepted"
-            and str(accepted.get("task_cid") or "") not in self._running
-        ]
-        if not accepted_tasks:
-            return {}
-        member_receipts = bundle_member_completion_receipts(self.state_root)
-        reconciled: dict[str, dict[str, str]] = {}
-        for accepted in accepted_tasks:
-            task_cid = str(accepted.get("task_cid") or "")
-            if not task_cid:
-                continue
-            payload = accepted.get("bundle")
-            if not isinstance(payload, dict):
-                continue
-            bundle_key = str(
-                payload.get("bundle_key")
-                or accepted.get("bundle_key")
-                or ""
-            )
-            current_lane = lanes_by_bundle_key.get(bundle_key)
-            if current_lane is None:
-                todo_path = resolve_repo_path(
-                    self.repo_root,
-                    str(payload.get("todo_path") or payload.get("shard_path") or ""),
-                )
-                safe_key = safe_bundle_key(bundle_key or task_cid)
-                current_lane = BundleLaneSpec(
-                    bundle_key=bundle_key or task_cid,
-                    parallel_lane=str(payload.get("parallel_lane") or bundle_key or task_cid),
-                    todo_path=todo_path,
-                    state_dir=self.state_root / safe_key / "state",
-                    worktree_root=self.worktree_root / safe_key,
-                    state_prefix=lane_state_prefix(bundle_key or task_cid),
-                    task_ids=[],
-                    conflict_policy=str(payload.get("conflict_policy") or ""),
-                    command=[],
-                    log_path=self.log_dir / f"{safe_key}.log",
-                )
-            tasks = _mapping_list(payload.get("tasks"))
-            execution_tasks = _execution_slice_members(payload, tasks)
-            if (
-                "execution_slice_task_cids" in payload
-                or "execution_slice_task_ids" in payload
-            ) and not execution_tasks:
-                # An accepted lease must describe concrete work.  An empty
-                # current planning slice is not evidence about its predecessor.
-                continue
-            task_ids = [
-                str(task.get("task_id") or "")
-                for task in execution_tasks
-                if str(task.get("task_id") or "")
-            ]
-            recovery_lane = replace(
-                current_lane,
-                task_cid=task_cid,
-                goal_cid=str(accepted.get("goal_cid") or current_lane.goal_cid),
-                subgoal_cid=str(accepted.get("subgoal_cid") or current_lane.subgoal_cid),
-                task_ids=task_ids,
-                queue_payload=dict(payload),
-            )
-            disposition = self._disposition(recovery_lane)
-            if not disposition:
-                continue
-            completed_member_cids = {
-                str(task.get("canonical_task_cid") or task.get("task_cid") or "")
-                for task in execution_tasks
-                if str(task.get("canonical_task_cid") or task.get("task_cid") or "")
-            }
-            if disposition == "completed" and (
-                not completed_member_cids
-                or not completed_member_cids.issubset(member_receipts)
-            ):
-                logger.warning(
-                    "Refusing to reconcile completed lease %s without durable "
-                    "successful receipts for every execution-slice member",
-                    task_cid,
-                )
-                continue
-            try:
-                grant = coordinator.active_lease(task_cid)
-                if grant is None:
-                    continue
-                if disposition == "completed":
-                    coordinator.receipt(
-                        grant,
-                        status="succeeded",
-                        output={
-                            "reason": "reconciled durable terminal execution slice",
-                            "recovery": "untracked_accepted_lease",
-                            "member_receipts": [
-                                member_receipts[cid]
-                                for cid in sorted(completed_member_cids)
-                            ],
-                        },
-                    )
-                else:
-                    self._settle_grant(
-                        coordinator,
-                        grant,
-                        disposition=disposition,
-                    )
-            except LeaseError:
-                # Renewal, takeover, and peer settlement races are resolved by
-                # the coordination store's fencing token.  The next cycle will
-                # observe whichever state won.
-                continue
-            reconciled[task_cid] = {
-                "bundle_key": recovery_lane.bundle_key,
-                "disposition": disposition,
-            }
-            logger.info(
-                "Reconciled terminal accepted lease %s after scheduler restart (%s)",
-                task_cid,
-                disposition,
-            )
-        return reconciled
+        del coordinator, lanes
+        return {}
 
     def _default_launcher(self, lane: BundleLaneSpec, grant: Any) -> subprocess.Popen[bytes]:
         process, _command, _pid_path = _spawn_accepted_lane(
@@ -4253,25 +4912,59 @@ class DynamicBundleScheduler:
         )
         return process
 
+    @staticmethod
+    def _reap_exited_handle(handle: Any) -> bool:
+        """Collect an already-exited wrapper without sending it a signal."""
+
+        poll = getattr(handle, "poll", None)
+        try:
+            if callable(poll) and poll() is None:
+                return False
+            if not callable(poll) and hasattr(handle, "alive") and bool(handle.alive):
+                return False
+        except OSError:
+            return False
+        wait = getattr(handle, "wait", None)
+        if not callable(wait):
+            return True
+        try:
+            wait(timeout=0)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return True
+
     def _reap(self, coordinator: LeaseCoordinator) -> list[str]:
+        """Reap wrappers only after their fenced execution boundary exits.
+
+        The leased wrapper is the settlement authority for live work: it binds
+        exact durable evidence, fences descendants, publishes its receipt, and
+        exits.  Mutable task-board projections must not let the scheduler
+        manufacture that receipt or release capacity prematurely.
+        """
+
         reaped: list[str] = []
         for task_cid, running in list(self._running.items()):
             try:
                 alive = bool(self._process_alive(running.handle))
             except (OSError, RuntimeError):
                 alive = False
-            disposition = self._disposition(running.spec) if alive else ""
-            if alive and not disposition:
+            if alive:
                 continue
-            if disposition:
-                try:
-                    self._settle_grant(coordinator, running.grant, disposition=disposition)
-                except LeaseError:
-                    pass
-            self._terminate_handle(running.handle)
-            # The leased-lane wrapper normally publishes a receipt first.  A
+
+            # ``process_alive`` has independently observed wrapper exit. Reap
+            # only its already-terminal status; never terminate or force-kill
+            # here because that could bypass the wrapper's descendant fence.
+            if not self._reap_exited_handle(running.handle):
+                continue
+            receipts = coordinator.list_receipts(task_cid)
+            terminal_status = (
+                str(receipts[-1].get("receipt", {}).get("status") or "")
+                if receipts
+                else ""
+            )
+            # The leased-lane wrapper normally publishes a receipt first. A
             # crashed wrapper does not, so explicitly release its still-current
-            # grant and make the lane immediately reclaimable.
+            # grant only after wrapper exit makes reuse safe.
             try:
                 if coordinator.active_lease(task_cid) is not None:
                     coordinator.release(running.grant, reason="worker drained or exited")
@@ -4282,8 +4975,8 @@ class DynamicBundleScheduler:
                 self.resource_scheduler.record_stage_completion(
                     running.resource_lease.requirement.stage,
                     duration_ms=self._running_stage_duration_ms(running),
-                    accepted=disposition == "completed",
-                    cancelled=not bool(disposition),
+                    accepted=terminal_status == "succeeded",
+                    cancelled=terminal_status in {"", "cancelled"},
                 )
             del self._running[task_cid]
             reaped.append(task_cid)
@@ -4447,7 +5140,13 @@ class DynamicBundleScheduler:
         scheduler_state: SchedulerSnapshot | None = None,
         decision_snapshot: SchedulerSnapshot | None = None,
         decisions: Sequence[dict[str, Any]] = (),
+        lifecycle_state: str | None = None,
     ) -> dict[str, Any]:
+        resolved_lifecycle_state = lifecycle_state or (
+            "stopping" if self._stop_event.is_set() else "running"
+        )
+        if resolved_lifecycle_state not in {"running", "stopping", "stopped"}:
+            raise ValueError("lifecycle_state must be running, stopping, or stopped")
         running_ids = set(self._running)
         lanes_by_task_cid = {
             lane.task_cid: lane for lane in discovered if lane.task_cid
@@ -4515,11 +5214,21 @@ class DynamicBundleScheduler:
             resource_snapshot_payload.pop("observed_at_ms", None)
             resource_snapshot_payload.pop("configured_max_lanes", None)
             resource_snapshot_payload.pop("available_slots", None)
+        generated_at = utc_now()
+        heartbeat_expires_at = (
+            datetime.now(timezone.utc)
+            + timedelta(seconds=max(1.0, self.poll_interval * 3.0))
+        ).isoformat() if resolved_lifecycle_state != "stopped" else None
         payload: dict[str, Any] = {
             "schema": "ipfs_accelerate_py.agent_supervisor.dynamic_bundle_scheduler@1",
-            "generated_at": utc_now(),
+            "generated_at": generated_at,
             "authoritative": True,
-            "scheduler_state": "stopping" if self._stop_event.is_set() else "running",
+            "scheduler_state": resolved_lifecycle_state,
+            "supervisor_pid": (
+                os.getpid() if resolved_lifecycle_state != "stopped" else None
+            ),
+            "heartbeat_at": generated_at,
+            "heartbeat_expires_at": heartbeat_expires_at,
             "cycle": self._cycle,
             "repo_root": str(self.repo_root),
             "bundle_index_path": repo_relative_path(self.repo_root, self.bundle_index_path),
@@ -4609,6 +5318,7 @@ class DynamicBundleScheduler:
         with self._lock:
             self._cycle += 1
             try:
+                self._refresh_bundle_index_if_needed()
                 discovered = self._plan()
                 self._last_discovery_error = ""
             except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -4633,6 +5343,14 @@ class DynamicBundleScheduler:
                     if self._projection_state(item) == "accepted"
                     and str(item.get("task_cid") or "")
                 }
+                accounted_worker_task_cids = set(self._running)
+                accounted_worker_task_cids.update(
+                    task_cid
+                    for task_cid, accepted in accepted_by_task_cid.items()
+                    if str(accepted.get("claimant_did") or "")
+                    == self.claimant_did
+                )
+                accounted_active_workers = len(accounted_worker_task_cids)
                 # Receipt overlays intentionally leave fully drained bundle
                 # records in discovery so they remain visible to planning, but
                 # those records must never be registered, claimed, or launched.
@@ -4650,6 +5368,23 @@ class DynamicBundleScheduler:
                     )
                 ):
                     receipt_drained = _receipt_drained_execution_slice(lane)
+                    policy_error = _lane_launch_policy_error(lane)
+                    if (
+                        policy_error
+                        and receipt_drained
+                        and not self._disposition(lane)
+                    ):
+                        # Static launches reject these lanes before touching
+                        # coordination. Apply the same fail-closed boundary to
+                        # persistent discovery: a receipt-drained empty slice
+                        # must not acquire a fresh bundle identity merely
+                        # because its immutable source board still says todo.
+                        logger.debug(
+                            "Skipping non-executable bundle lane %s: %s",
+                            lane.bundle_key,
+                            policy_error,
+                        )
+                        continue
                     accepted = accepted_by_task_cid.get(lane.task_cid)
                     if accepted is not None:
                         # Preserve the immutable payload of work that is still
@@ -4672,7 +5407,11 @@ class DynamicBundleScheduler:
                         subgoal_cid=str(adapted["subgoal_cid"]),
                     )
                     registered.append(registered_lane)
-                    if receipt_drained and self._disposition(registered_lane) == "completed":
+                    if (
+                        receipt_drained
+                        and self._disposition(registered_lane)
+                        == "completed"
+                    ):
                         receipt_drained_completion_task_cids.add(
                             registered_lane.task_cid
                         )
@@ -4687,6 +5426,11 @@ class DynamicBundleScheduler:
                             and lane.task_cid
                             in receipt_drained_completion_task_cids
                         ):
+                            # A historical terminal block may have exhausted
+                            # its admission budget before merge persistence
+                            # recovered. Re-open only that fenced terminal
+                            # state so the normal claim path can publish the
+                            # now-authoritative successful bundle receipt.
                             coordinator.requeue_exhausted_blocked(
                                 lane.task_cid,
                                 reason="receipt_drained_completion",
@@ -4720,7 +5464,35 @@ class DynamicBundleScheduler:
                     for item in decision_projection
                     if str(item.get("task_cid") or "")
                 }
+                ready_input_binding_task_cids = {
+                    str(item.get("task_cid") or "")
+                    for item in decision_projection
+                    if self._projection_state(item) == "ready"
+                }
+                stale_input_bindings = {
+                    lane.task_cid: diagnosis
+                    for lane in registered
+                    if lane.task_cid in ready_input_binding_task_cids
+                    if (
+                        diagnosis := stale_bundle_lane_input_binding(
+                            lane,
+                            repo_root=self.repo_root,
+                        )
+                    )
+                }
+                for item in decision_projection:
+                    task_cid = str(item.get("task_cid") or "")
+                    diagnosis = stale_input_bindings.get(task_cid)
+                    if diagnosis is not None:
+                        item["state"] = "blocked"
+                        item["blocked_reason"] = "stale_input_binding"
+                        item["stale_input_binding"] = dict(diagnosis)
                 decision_snapshot = self._build_scheduler_snapshot(registered, decision_projection)
+                projection_states = {
+                    str(item.get("task_cid") or ""): self._projection_state(item)
+                    for item in decision_projection
+                    if str(item.get("task_cid") or "")
+                }
                 registered_by_task_cid = {
                     lane.task_cid: lane for lane in registered
                 }
@@ -4777,13 +5549,18 @@ class DynamicBundleScheduler:
                     )
                 ]
                 try:
-                    host_resources = self._sample_host_resources()
+                    host_resources = self._sample_host_resources(
+                        active_workers=accounted_active_workers,
+                    )
                 except Exception:
                     logger.exception("Host resource sampling failed; retaining configured bounds")
                     host_resources = HostResourceSnapshot(
-                        active_workers=len(self._running),
+                        active_workers=accounted_active_workers,
                         worker_limit=self.max_lanes,
-                        available_worker_capacity=max(0, self.max_lanes - len(self._running)),
+                        available_worker_capacity=max(
+                            0,
+                            self.max_lanes - accounted_active_workers,
+                        ),
                     )
                 try:
                     provider_capacities = self._provider_capacities(coordinator)
@@ -4806,7 +5583,7 @@ class DynamicBundleScheduler:
                     host=host_resources,
                     providers=provider_capacities,
                     path=self.state_root,
-                    active_workers=len(self._running),
+                    active_workers=accounted_active_workers,
                 )
                 confirmed_requirements: list[LaneResourceRequirements] = []
                 resource_cycle_decisions: list[AdmissionDecision] = []
@@ -4842,6 +5619,25 @@ class DynamicBundleScheduler:
                         })
                         continue
                     if lane.task_cid in reconciled:
+                        continue
+                    if projection_states.get(lane.task_cid) == "completed":
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "settled",
+                            "reason": "completed",
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
+                        continue
+                    stale_input_binding = stale_input_bindings.get(lane.task_cid)
+                    if stale_input_binding is not None:
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "deferred",
+                            **stale_input_binding,
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
                         continue
                     scope_owner = running_by_bundle_key.get(lane.bundle_key)
                     if scope_owner is not None:
@@ -5068,6 +5864,16 @@ class DynamicBundleScheduler:
                     task_cids=current_task_cids,
                     include_claimability=True,
                 )
+                for item in projection:
+                    task_cid = str(item.get("task_cid") or "")
+                    diagnosis = stale_input_bindings.get(task_cid)
+                    if (
+                        diagnosis is not None
+                        and self._projection_state(item) == "ready"
+                    ):
+                        item["state"] = "blocked"
+                        item["blocked_reason"] = "stale_input_binding"
+                        item["stale_input_binding"] = dict(diagnosis)
                 current_snapshot = self._build_scheduler_snapshot(registered, projection)
                 if (
                     self._cycle % COORDINATION_COMPACTION_INTERVAL_CYCLES == 0
@@ -5143,6 +5949,7 @@ class DynamicBundleScheduler:
 
         self._stop_event.set()
         with self._lock, LeaseCoordinator(self.coordination_path) as coordinator:
+            stopped_task_cids = set(self._running)
             for task_cid, running in list(self._running.items()):
                 self._terminate_handle(running.handle, grace_seconds=grace_seconds)
                 try:
@@ -5156,16 +5963,30 @@ class DynamicBundleScheduler:
                         reason="scheduler_stopped",
                     )
             self._running.clear()
-            projection = coordinator.list_tasks()
-        try:
-            discovered = self._plan()
-        except (OSError, ValueError, json.JSONDecodeError):
-            discovered = []
+            try:
+                discovered = self._plan()
+            except (OSError, ValueError, json.JSONDecodeError):
+                discovered = []
+            current_task_cids = {
+                lane.task_cid
+                for lane in discovered
+                if lane.task_cid
+            }
+            current_task_cids.update(stopped_task_cids)
+            projection = (
+                coordinator.list_tasks(
+                    task_cids=current_task_cids,
+                    include_claimability=True,
+                )
+                if current_task_cids
+                else []
+            )
         return self._write_live_manifest(
             discovered=discovered,
             task_projection=projection,
             launched=(),
             reaped=(),
+            lifecycle_state="stopped",
         )
 
 
@@ -5179,9 +6000,41 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-path", type=Path, default=None)
     parser.add_argument("--metrics-path", type=Path, default=None)
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
+    parser.add_argument(
+        "--exclude-bundle-key",
+        action="append",
+        default=[],
+        help=(
+            "Exact bundle key to omit from this supervisor run; repeat the "
+            "option to fence multiple bundles without rewriting the index"
+        ),
+    )
+    parser.add_argument(
+        "--exclude-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Exact task ID to omit from this supervisor run; repeat the option "
+            "to fence members without rewriting their shared bundle or taskboard"
+        ),
+    )
     parser.add_argument("--start", action="store_true", help="Launch the planned lane supervisors")
     parser.add_argument("--max-lanes", type=int, default=1, help="Maximum concurrent leased workers")
     parser.add_argument("--poll-interval", type=float, default=5.0)
+    parser.add_argument(
+        "--bundle-index-refresh-command",
+        default="",
+        help=(
+            "Optional argv string that atomically refreshes a derived bundle "
+            "index before planning against a changed completion-receipt stream"
+        ),
+    )
+    parser.add_argument(
+        "--bundle-index-refresh-timeout-seconds",
+        type=float,
+        default=60.0,
+        help="Positive timeout for the optional bundle-index refresh command",
+    )
     parser.add_argument("--once", action="store_true", help="Run one reconciliation cycle and exit")
     implement_group = parser.add_mutually_exclusive_group()
     implement_group.add_argument("--implement", dest="implement", action="store_true")
@@ -5232,6 +6085,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=[],
         help="Repeatable nested submodule path to prepare, commit, merge, and clean in every lane.",
     )
+    parser.add_argument(
+        "--allow-disjoint-submodule-concurrency",
+        action="store_true",
+        help=(
+            "Allow tasks with disjoint precise paths to run concurrently inside "
+            "submodules configured by --worktree-submodule-path. Exact path, "
+            "interface, global-symbol, and learned conflicts still serialize."
+        ),
+    )
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--coordination-path", type=Path, default=None)
     parser.add_argument("--claimant-did", default="did:web:ipfs-accelerate.local")
@@ -5271,13 +6133,23 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
     bundle_index_path = args.bundle_index_path.resolve()
     lane_options = dict(
         task_prefix=args.task_prefix,
+        excluded_bundle_keys=tuple(
+            str(bundle_key).strip()
+            for bundle_key in (getattr(args, "exclude_bundle_key", ()) or ())
+            if str(bundle_key).strip()
+        ),
+        excluded_task_ids=tuple(
+            str(task_id).strip()
+            for task_id in (getattr(args, "exclude_task_id", ()) or ())
+            if str(task_id).strip()
+        ),
         implement=args.implement,
         daemon_interval=args.daemon_interval,
         stale_seconds=args.stale_seconds,
         check_interval=args.check_interval,
         watchdog_startup_grace_seconds=args.watchdog_startup_grace_seconds,
         max_restarts=args.max_restarts,
-        max_task_attempts=max(0, int(getattr(args, "max_task_attempts", 0))),
+        max_task_attempts=int(getattr(args, "max_task_attempts", 0)),
         implementation_timeout=args.implementation_timeout,
         implementation_command=args.implementation_command,
         merge_target_branch=args.merge_target_branch,
@@ -5291,6 +6163,9 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         generated_dirty_repair_stale_lock_seconds=args.generated_dirty_stale_lock_seconds,
         generated_dirty_repair_paths=tuple(args.generated_dirty_path or ()),
         worktree_submodule_paths=tuple(args.worktree_submodule_path or ()),
+        allow_disjoint_submodule_concurrency=bool(
+            getattr(args, "allow_disjoint_submodule_concurrency", False)
+        ),
         log_level=args.log_level,
     )
     if args.start:
@@ -5312,6 +6187,16 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
             provider_capacity_path=getattr(args, "provider_capacity_path", None),
             external_task_state_paths=tuple(
                 getattr(args, "external_task_state_path", ()) or ()
+            ),
+            bundle_index_refresh_command=getattr(
+                args,
+                "bundle_index_refresh_command",
+                "",
+            ),
+            bundle_index_refresh_timeout_seconds=getattr(
+                args,
+                "bundle_index_refresh_timeout_seconds",
+                60.0,
             ),
             resource_policy={
                 "max_lanes": getattr(args, "max_lanes", 1) or 1,
