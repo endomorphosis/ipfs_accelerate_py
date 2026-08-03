@@ -1357,7 +1357,7 @@ or write authority.
 
 ## KITA-043 Build the production-bound benchmark harness, frozen baseline, SLO manifest, and regression gate
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
