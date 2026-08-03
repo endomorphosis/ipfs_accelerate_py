@@ -6,11 +6,11 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-03T04:17:46Z",
+  "observed_at": "2026-08-03T04:19:06Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "fd8be1934f4175343f0b29edd4f8933f8260e1ea",
-    "parent_tree": "d7969b9d0ab0757b684a9b377dddc929d62b1030",
+    "parent_commit": "c031460379ce7b3a7f59432b9c7d947c2d098d43",
+    "parent_tree": "cabdb98198e099b46fe4d74b6aa958cfb8d28c41",
     "datasets_gitlink": "7413286d13e4db5e71ea245a623f2b542448201c",
     "datasets_embedded_head": "7413286d13e4db5e71ea245a623f2b542448201c",
     "datasets_origin_main": "7413286d13e4db5e71ea245a623f2b542448201c",
@@ -297,11 +297,11 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "fd8be1934f4175343f0b29edd4f8933f8260e1ea",
-        "tree": "d7969b9d0ab0757b684a9b377dddc929d62b1030",
+        "commit": "c031460379ce7b3a7f59432b9c7d947c2d098d43",
+        "tree": "cabdb98198e099b46fe4d74b6aa958cfb8d28c41",
         "origin_main": "fd8be1934f4175343f0b29edd4f8933f8260e1ea",
-        "clean": false,
-        "matches_origin_main": true
+        "clean": true,
+        "matches_origin_main": false
       },
       "gitlink": {
         "path": "ipfs_datasets_py",
@@ -317,14 +317,14 @@
         "matches_origin_main": true
       },
       "publication_gates": {
-        "parent_publication_lag": false,
+        "parent_publication_lag": true,
         "datasets_publication_lag": false,
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
       },
-      "aligned_for_implementation": false,
+      "aligned_for_implementation": true,
       "diagnostics": [
-        "parent_working_tree_dirty"
+        "parent_publication_lag_vs_origin_main"
       ]
     },
     "exact_tools": [
@@ -1140,7 +1140,7 @@
     },
     "unsupported_semantics": [],
     "publication_gates": {
-      "parent_publication_lag": false,
+      "parent_publication_lag": true,
       "datasets_publication_lag": false,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
@@ -1155,7 +1155,7 @@
       "production_certified_count": 18,
       "baseline_production_certified_count": 0,
       "machine_certified": false,
-      "publication_aligned": true,
+      "publication_aligned": false,
       "hard_zero_clear": false
     },
     "hardcoded_success_counters": false
@@ -3728,7 +3728,7 @@
       "vampire"
     ],
     "publication_gates": {
-      "parent_publication_lag": false,
+      "parent_publication_lag": true,
       "datasets_publication_lag": false,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
@@ -3743,7 +3743,7 @@
       "production_certified_count": 18,
       "baseline_production_certified_count": 0,
       "machine_certified": false,
-      "publication_aligned": true,
+      "publication_aligned": false,
       "hard_zero_clear": false
     },
     "open_baseline_findings": [
@@ -3773,5 +3773,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:6374a3087ff0bece043de0c3aff7790d61b00a105ea918760f7a6a3ec7259954"
+  "receipt_identity": "sha256:918919cc8afab079ece15e5520fd7d6b7788d89a0262ff9c5f33d197e701a314"
 }
