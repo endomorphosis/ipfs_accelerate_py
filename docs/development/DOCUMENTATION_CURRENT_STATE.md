@@ -13,12 +13,13 @@ do not exist.
 **Sources:** [DOCUMENTATION_LIFECYCLE.md](DOCUMENTATION_LIFECYCLE.md);
 [DOCUMENTATION_MANIFEST.md](DOCUMENTATION_MANIFEST.md);
 [DOCUMENTATION_MAINTENANCE.md](DOCUMENTATION_MAINTENANCE.md);
+[DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md](DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md);
 [DOCUMENTATION_VALIDATION_2026_08.md](DOCUMENTATION_VALIDATION_2026_08.md);
 `docs/README.md`; `docs/INDEX.md`; `pyproject.toml`; live package layout.
 **Last verified:** 2026-08-03; navigation and maintained-surface inventory
-revalidated against the DOC-027 manifest and Current guide headers on this tree.
-Exact commit, command return codes, and path results:
-[DOCUMENTATION_VALIDATION_2026_08.md](DOCUMENTATION_VALIDATION_2026_08.md).
+revalidated after integrating `origin/main`. Exact merge identity and current
+test results:
+[DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md](DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md).
 **Freshness triggers:** new Current guide; ADR accept/supersede; package or
 entrypoint renames; top-level navigation changes; packaging version
 reconciliation; new doc checkers under `scripts/docs/`.
@@ -77,7 +78,8 @@ Canonical entrypoints:
 - [Documentation orientation](../README.md) — **Current** choose-a-path page
 - [Architecture hub](../architecture/README.md) — **Reference** concern router
 - [Documentation manifest](DOCUMENTATION_MANIFEST.md) — **Current** status inventory
-- [Validation closeout](DOCUMENTATION_VALIDATION_2026_08.md) — **Reference** offline receipt
+- [Post-merge validation](DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md) — latest **Reference** integrated receipt
+- [DOC-028 validation closeout](DOCUMENTATION_VALIDATION_2026_08.md) — historical **Reference** offline receipt
 
 These pages should describe the current package boundaries, supported commands,
 optional dependency behavior, and reproducible validation commands. When a
@@ -193,7 +195,9 @@ python -m pytest \
   test/api/test_agent_supervisor_entrypoint_package.py -q
 ```
 
-Full command matrix and measured results for the closeout tree:
+Current integrated command matrix and measured results:
+[DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md](DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md).
+The original DOC-028 closeout remains preserved in
 [DOCUMENTATION_VALIDATION_2026_08.md](DOCUMENTATION_VALIDATION_2026_08.md).
 
 ---
@@ -233,7 +237,8 @@ the following occur:
 | [DOCUMENTATION_MANIFEST.md](DOCUMENTATION_MANIFEST.md) | Full status inventory |
 | [DOCUMENTATION_LIFECYCLE.md](DOCUMENTATION_LIFECYCLE.md) | Status vocabulary and authority |
 | [DOCUMENTATION_MAINTENANCE.md](DOCUMENTATION_MAINTENANCE.md) | PR review without suppressing drift |
-| [DOCUMENTATION_VALIDATION_2026_08.md](DOCUMENTATION_VALIDATION_2026_08.md) | Closeout receipt |
+| [DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md](DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md) | Latest integrated validation receipt |
+| [DOCUMENTATION_VALIDATION_2026_08.md](DOCUMENTATION_VALIDATION_2026_08.md) | Historical DOC-028 closeout receipt |
 | [DOCUMENTATION_DRIFT_AUDIT_2026_08.md](DOCUMENTATION_DRIFT_AUDIT_2026_08.md) | Frozen Wave-0 drift inventory (**Historical**) |
 | [testing.md](testing.md) | Test selection guide |
 | [docs/INDEX.md](../INDEX.md) | Canonical navigation |
