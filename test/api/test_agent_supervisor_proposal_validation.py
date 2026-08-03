@@ -1331,6 +1331,94 @@ diff --git a/{path} b/{path}
     assert ProposalFindingCode.TEST_WEAKENING_FORBIDDEN in _finding_codes(result)
 
 
+def test_same_count_unrelated_test_rename_is_rejected_without_authority() -> None:
+    path = "test/api/test_agent_supervisor_proposal_validation.py"
+    before = (
+        "def test_stale_identity_contract() -> None:\n"
+        "    assert returned_identity() == requested_identity()\n"
+    )
+    after = (
+        "def test_requested_and_returned_identity_are_distinct() -> None:\n"
+        "    assert returned_identity() != requested_identity()\n"
+        "    assert returned_identity() is not None\n"
+    )
+    patch = f"""\
+diff --git a/{path} b/{path}
+--- a/{path}
++++ b/{path}
+@@ -1,2 +1,3 @@
+-def test_stale_identity_contract() -> None:
+-    assert returned_identity() == requested_identity()
++def test_requested_and_returned_identity_are_distinct() -> None:
++    assert returned_identity() != requested_identity()
++    assert returned_identity() is not None
+"""
+    proposal = _v2_proposal(
+        candidate_diff=(_entry(path, before=before, after=after),),
+        declared_paths=(path,),
+        operations=(
+            ProposalOperation(
+                operation="modify",
+                path=path,
+                old_path=path,
+                rationale_refs=(V2_RATIONALE,),
+            ),
+        ),
+        patch_text=patch,
+    )
+
+    result = validate_implementation_proposal(proposal, policy=_v2_policy())
+
+    assert not result.accepted
+    assert ProposalFindingCode.TEST_WEAKENING_FORBIDDEN in _finding_codes(result)
+
+
+def test_test_function_removal_is_rejected_even_if_assertions_increase() -> None:
+    path = "test/api/test_agent_supervisor_proposal_validation.py"
+    before = (
+        "def test_first_contract() -> None:\n"
+        "    assert first_contract()\n"
+        "\n"
+        "def test_second_contract() -> None:\n"
+        "    assert second_contract()\n"
+    )
+    after = (
+        "def test_first_contract() -> None:\n"
+        "    assert first_contract()\n"
+        "    assert first_contract_is_stable()\n"
+    )
+    patch = f"""\
+diff --git a/{path} b/{path}
+--- a/{path}
++++ b/{path}
+@@ -1,5 +1,3 @@
+ def test_first_contract() -> None:
+     assert first_contract()
+-
+-def test_second_contract() -> None:
+-    assert second_contract()
++    assert first_contract_is_stable()
+"""
+    proposal = _v2_proposal(
+        candidate_diff=(_entry(path, before=before, after=after),),
+        declared_paths=(path,),
+        operations=(
+            ProposalOperation(
+                operation="modify",
+                path=path,
+                old_path=path,
+                rationale_refs=(V2_RATIONALE,),
+            ),
+        ),
+        patch_text=patch,
+    )
+
+    result = validate_implementation_proposal(proposal, policy=_v2_policy())
+
+    assert not result.accepted
+    assert ProposalFindingCode.TEST_WEAKENING_FORBIDDEN in _finding_codes(result)
+
+
 def test_test_deletion_requires_explicit_policy_authority() -> None:
     path = "test/api/test_agent_supervisor_proposal_validation.py"
     proposal = _proposal(

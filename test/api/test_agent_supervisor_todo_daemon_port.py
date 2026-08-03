@@ -10413,6 +10413,13 @@ def test_post_merge_denial_feedback_is_bounded_and_exactly_attempt_scoped(
     )
 
     assert "correction-0" not in prior_attempt
+    prior_rules = json.loads(prior_attempt)["authority"][
+        "generic_prompt_policy"
+    ]
+    assert all(
+        "Preserve every existing test function symbol" not in rule
+        for rule in prior_rules
+    )
     feedback_payload = json.loads(feedback)
     correction_payload, correction_evidence = (
         _post_merge_correction_prompt_evidence(correction_attempt)
@@ -10425,6 +10432,14 @@ def test_post_merge_denial_feedback_is_bounded_and_exactly_attempt_scoped(
     assert first_finding["code"] in correction_evidence
     assert feedback_payload["task_binding_id"] in correction_evidence
     assert feedback_payload["source_event_id"] in correction_evidence
+    correction_rules = correction_payload["authority"][
+        "generic_prompt_policy"
+    ]
+    assert any(
+        "Preserve every existing test function symbol" in rule
+        and "Free-text review findings do not authorize" in rule
+        for rule in correction_rules
+    )
 
 
 def test_post_merge_correction_bypasses_stale_retry_context_and_addendum(

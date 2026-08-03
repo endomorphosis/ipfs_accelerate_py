@@ -131,6 +131,40 @@ def test_non_weakened_regression_test_justifies_companion_test() -> None:
     assert receipt.decisions[0].evidence_paths == ("pkg/compiler.py",)
 
 
+def test_same_count_regression_test_rename_cannot_expand_scope() -> None:
+    before_test = (
+        "from pkg.compiler import compile_text\n\n"
+        "def test_stale_identity_contract():\n"
+        "    assert compile_text('shall') == 'old'\n"
+    )
+    after_test = (
+        "from pkg.compiler import compile_text\n\n"
+        "def test_compiler_returns_new_identity():\n"
+        "    assert compile_text('shall') == 'new'\n"
+        "    assert compile_text('shall') is not None\n"
+    )
+    receipt = _adjudicate(
+        (
+            _entry(
+                "pkg/compiler.py",
+                "def compile_text(text):\n    return 'old'\n",
+                "def compile_text(text):\n    return 'new'\n",
+            ),
+            _entry(
+                "test/test_compiler.py",
+                before_test,
+                after_test,
+            ),
+        )
+    )
+
+    assert receipt.accepted is False
+    assert receipt.denied_paths == ("test/test_compiler.py",)
+    assert receipt.decisions[0].reason_codes == (
+        ScopeExpansionReason.TEST_WEAKENING,
+    )
+
+
 def test_explicit_validation_target_justifies_guarded_integration_test() -> None:
     receipt = _adjudicate(
         (
