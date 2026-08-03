@@ -10,6 +10,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     TodoImplementationDaemon,
     parse_task_file,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.post_merge_validation import (
+    POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
+    verify_post_merge_validation_evidence,
+)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -425,7 +429,21 @@ def test_merge_reconciliation_uses_authoritative_acceptance_funnel(
     assert observed["implementation_commit"] == implementation_commit
     assert observed["merge_commit"] == merge_commit
     assert observed["repository_tree_id"] == f"git-tree:{merge_tree}"
-    assert observed["validation_result"] == validation
+    post_merge_validation = observed["validation_result"]
+    assert isinstance(post_merge_validation, dict)
+    assert post_merge_validation["schema"] == POST_MERGE_VALIDATION_EVIDENCE_SCHEMA
+    assert post_merge_validation["target_commit"] == merge_commit
+    assert post_merge_validation["validated_commit"] == merge_commit
+    assert post_merge_validation["repository_tree_id"] == f"git-tree:{merge_tree}"
+    assert post_merge_validation["validation_scope"] == "post_merge"
+    assert post_merge_validation["passed"] is True
+    assert post_merge_validation["validation_result"]["force_uncached"] is True
+    assert verify_post_merge_validation_evidence(
+        post_merge_validation,
+        expected_task_id=task.task_id,
+        expected_target_commit=merge_commit,
+        expected_repository_tree_id=f"git-tree:{merge_tree}",
+    ) == (True, ())
     assert result["resolved"] is True
     assert result["completion_authoritative"] is False
     assert result["acceptance_result"]["acceptance_attempted"] is True
