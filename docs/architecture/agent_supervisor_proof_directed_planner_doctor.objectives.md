@@ -134,7 +134,7 @@ PDR-G000  Proof-directed Planner and Doctor self-improvement loop
 - Bundle: agent-supervisor/proof-directed-planner-doctor/control-runtime
 - Producing tasks: PDR-028, PDR-030, PDR-031, PDR-032, PDR-033
 - Goal: Expose create/steer preview and apply through one Python/control/CLI/MCP service, persist append-only plan revisions across restart, prove Markdown/DuckDB parity, and require the compiled execution plan at dispatch.
-- Evidence: PDR-030, PDR-031, PDR-032, PDR-033
+- Evidence: PDR-028, PDR-030, PDR-031, PDR-032, PDR-033
 - Outputs: ipfs_accelerate_py/agent_supervisor/prompt/plan_supervisor_service.py, ipfs_accelerate_py/agent_supervisor/task_sources/plan_revision_store.py, ipfs_accelerate_py/agent_supervisor/control/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control/control_plane.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
 - Validation: python -m pytest test/api/test_agent_supervisor_plan_supervisor_service.py test/api/test_agent_supervisor_plan_revision_store.py test/api/test_agent_supervisor_plan_control_conformance.py test/api/test_agent_supervisor_parallel_plan_runtime.py -q
 - Acceptance: Preview has no effects; apply is CAS/fence/permit bound and restartable; transports and projections are canonical equivalents; claimed history is immutable; runtime rejects mixed revisions, false lane labels, and stale capacity/lease state.

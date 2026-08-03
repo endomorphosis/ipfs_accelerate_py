@@ -645,6 +645,9 @@ def load_supervisor_scheduler_config(
     normalized["manual_completion_seals"] = manual_seals
     normalized["verified_manual_completion_seals"] = verified_manual_seals
     normalized["activated_protected_task_ids"] = tuple(activated_task_ids)
+    normalized["manual_completion_authority_required_task_ids"] = tuple(
+        sorted(set(staged_protected_paths) - set(activated_task_ids))
+    )
     normalized["protected_paths"] = tuple(active_paths)
     normalized["_config_path"] = str(resolved_config_path)
     return normalized
@@ -696,6 +699,10 @@ def supervisor_scheduler_config_cli_defaults(
         options.extend(("--worktree-submodule-path", str(path)))
     for path in profile["protected_paths"]:
         options.extend(("--implementation-protected-path", str(path)))
+    for task_id in profile["manual_completion_authority_required_task_ids"]:
+        options.extend(
+            ("--manual-completion-authority-required-task-id", str(task_id))
+        )
     return options
 
 
@@ -963,6 +970,9 @@ class PortalSupervisorConfig:
     merge_queue_dir: Path | None = None
     worktree_submodule_paths: tuple[str, ...] = field(default_factory=tuple)
     implementation_protected_paths: tuple[str, ...] = field(default_factory=tuple)
+    manual_completion_authority_required_task_ids: tuple[str, ...] = field(
+        default_factory=tuple
+    )
     worktree_reconciliation_enabled: bool = True
     worktree_reconciliation_max_merges: int = 1
     worktree_reconciliation_dry_run: bool = False
@@ -7173,6 +7183,9 @@ class PortalImplementationSupervisor:
             implementation_protected_paths=(
                 self.config.implementation_protected_paths
             ),
+            manual_completion_authority_required_task_ids=(
+                self.config.manual_completion_authority_required_task_ids
+            ),
             objective_path=self.config.objective_path,
             objective_bundle_dir=self.config.objective_bundle_dir,
             generated_status_paths=self.config.generated_dirty_repair_paths,
@@ -12224,6 +12237,10 @@ class PortalImplementationSupervisor:
             command.extend(["--external-reservation-manifest-path", str(path)])
         for task_id in self.config.assumed_completed_task_ids:
             command.extend(["--assume-completed-task-id", str(task_id)])
+        for task_id in self.config.manual_completion_authority_required_task_ids:
+            command.extend(
+                ["--manual-completion-authority-required-task-id", str(task_id)]
+            )
         for task_id in self.config.execution_slice_task_ids:
             command.extend(["--execution-slice-task-id", str(task_id)])
         for task_cid in self.config.execution_slice_task_cids:
@@ -12462,10 +12479,10 @@ class PortalImplementationSupervisor:
         ]
         if not all(fragment in command_line for fragment in required_fragments):
             return False
-        has_implement_flag = "--implement" in command_line
+        tokens = command_line.split()
+        has_implement_flag = "--implement" in tokens
         if self.config.implement != has_implement_flag:
             return False
-        tokens = command_line.split()
         has_strict_task_sharding_flag = "--strict-task-sharding" in tokens
         if (
             bool(self.config.strict_task_sharding)
@@ -12491,6 +12508,10 @@ class PortalImplementationSupervisor:
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids
         ):
+            return False
+        if option_values(
+            "--manual-completion-authority-required-task-id"
+        ) != set(self.config.manual_completion_authority_required_task_ids):
             return False
         if option_values("--execution-slice-task-cid") != set(
             self.config.execution_slice_task_cids
@@ -12621,6 +12642,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Exact repo-relative file that managed implementation agents must treat as "
             "read-only. May be repeated or comma-separated."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-required-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID whose status cannot be selected or "
+            "accepted as complete until a fresh scheduler load verifies its "
+            "operator seal."
         ),
     )
     parser.add_argument(
@@ -13309,6 +13340,15 @@ def supervisor_config_from_args(
         implementation_protected_paths=normalize_implementation_protected_paths(
             resolved_implementation_protected_paths,
             repo_root=effective_repo_root,
+        ),
+        manual_completion_authority_required_task_ids=tuple(
+            dict.fromkeys(
+                str(task_id).strip()
+                for task_id in (
+                    args.manual_completion_authority_required_task_id or ()
+                )
+                if str(task_id).strip()
+            )
         ),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,

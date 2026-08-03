@@ -25,10 +25,11 @@ import importlib.util
 import json
 import os
 import re
-import tempfile
+import subprocess
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Final
@@ -210,9 +211,12 @@ TERMINAL_DEPENDENCIES: Final[tuple[str, ...]] = (
     "PDR-091",
 )
 
-# Child-goal coverage is proven by current artifact presence + content digests,
-# never by completed task counts alone.
-CHILD_GOAL_EVIDENCE_ARTIFACTS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
+# Private legacy display inventory retained only to explain migrations from the
+# original PDR-092 implementation.  It is intentionally not exported and is
+# never release authority; coverage derives from every current task output.
+_LEGACY_CHILD_GOAL_HEADLINE_ARTIFACTS: Final[
+    Mapping[str, tuple[str, ...]]
+] = MappingProxyType(
     {
         "PDR-G010": (
             "docs/architecture/agent_supervisor_planner_doctor_baseline.md",
@@ -386,19 +390,33 @@ OPTIONAL_CAPABILITY_PROBES: Final[tuple[tuple[str, str], ...]] = (
 
 MAX_TEXT_BYTES: Final[int] = 512
 
+MANDATORY_POLICY_GATES: Final[tuple[str, ...]] = (
+    "require_source_artifact_reload",
+    "require_child_goal_coverage",
+    "require_task_objective_distinction",
+    "require_reject_bad_evidence",
+    "require_zero_safety_floors",
+    "require_exact_rollback",
+    "require_optional_capability_documentation",
+    "require_holdout_operator_decision_for_automatic",
+    "require_cold_imports",
+    "require_six_lane_drain",
+    "require_protected_anchors",
+)
+
 
 class PlannerDoctorReleaseError(ValueError):
     """Release policy, receipt, or validation evidence is invalid."""
 
 
-class CheckStatus(str, Enum):
+class CheckStatus(StrEnum):
     PASS = "pass"
     FAIL = "fail"
     WARN = "warn"
     SKIP = "skip"
 
 
-class EvidenceDisposition(str, Enum):
+class EvidenceDisposition(StrEnum):
     """Admissible vs rejected evidence classes for required surfaces."""
 
     CURRENT = "current"
@@ -566,7 +584,9 @@ class CheckResult:
 
     @property
     def ok(self) -> bool:
-        return self.status in {CheckStatus.PASS, CheckStatus.SKIP, CheckStatus.WARN}
+        # Required terminal checks are fail-closed: a warning or skip is not a
+        # successful qualification, even when it remains useful diagnostically.
+        return self.status is CheckStatus.PASS
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -671,6 +691,14 @@ class PlannerDoctorReleasePolicy:
             raise PlannerDoctorReleaseError(
                 "terminal release policy forbids model/network requirement flags"
             )
+        disabled_gates = [
+            name for name in MANDATORY_POLICY_GATES if not getattr(self, name)
+        ]
+        if disabled_gates:
+            raise PlannerDoctorReleaseError(
+                "terminal release policy cannot disable mandatory gates: "
+                + ", ".join(disabled_gates)
+            )
         floors = dict(self.safety_floors or _zero_floors())
         for key in SAFETY_FLOOR_KEYS:
             if int(floors.get(key, 1)) != 0:
@@ -760,6 +788,389 @@ def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _csv_values(value: Any) -> tuple[str, ...]:
+    return tuple(item.strip() for item in str(value or "").split(",") if item.strip())
+
+
+def _safe_repo_relative_path(value: Any) -> str:
+    text = str(value or "").strip().replace("\\", "/")
+    candidate = Path(text)
+    if (
+        not text
+        or candidate.is_absolute()
+        or text.startswith("/")
+        or any(part in {"", ".", ".."} for part in candidate.parts)
+    ):
+        raise PlannerDoctorReleaseError(f"unsafe repository-relative path: {value!r}")
+    return candidate.as_posix()
+
+
+def _current_commit(repo_root: Path) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    value = completed.stdout.strip()
+    return value if completed.returncode == 0 and re.fullmatch(r"[0-9a-f]{40,64}", value) else ""
+
+
+def _worktree_identity(repo_root: Path) -> dict[str, Any]:
+    commands = {
+        "head": ("rev-parse", "HEAD"),
+        "status": ("status", "--porcelain=v1", "--untracked-files=all", "-z"),
+        "worktree_diff": ("diff", "--binary", "HEAD", "--", "."),
+        "index_diff": ("diff", "--cached", "--binary", "HEAD", "--", "."),
+        "gitlinks": ("submodule", "status", "--recursive"),
+    }
+    rows: dict[str, Any] = {}
+    for name, arguments in commands.items():
+        completed = subprocess.run(
+            ["git", "-C", str(repo_root), *arguments],
+            check=False,
+            capture_output=True,
+            timeout=60,
+        )
+        rows[name] = {
+            "returncode": completed.returncode,
+            "content_id": _sha256_hex(completed.stdout),
+            "stderr_id": _sha256_hex(completed.stderr),
+            "empty": not completed.stdout,
+        }
+        if name == "head":
+            rows[name]["valid"] = bool(
+                completed.returncode == 0
+                and re.fullmatch(rb"[0-9a-f]{40,64}\n?", completed.stdout)
+            )
+        elif name == "gitlinks":
+            rows[name]["valid"] = bool(
+                completed.returncode == 0
+                and all(
+                    line.startswith(b" ")
+                    for line in completed.stdout.splitlines()
+                    if line
+                )
+            )
+        else:
+            rows[name]["valid"] = completed.returncode == 0
+    rows["clean"] = bool(
+        all(rows[name]["valid"] for name in commands)
+        and rows["status"]["empty"]
+        and rows["worktree_diff"]["empty"]
+        and rows["index_diff"]["empty"]
+    )
+    rows["identity"] = content_identity(rows)
+    return rows
+
+
+def _load_external_json(
+    path_value: str | Path | None,
+    *,
+    repo_root: Path,
+    label: str,
+    require_seal: bool,
+) -> tuple[Path | None, dict[str, Any], str]:
+    """Load a bounded external evidence object and bind its exact bytes.
+
+    Required runtime evidence must not be authored inside the candidate source
+    tree.  The durable external path and byte digest are retained so replay can
+    reload the same source rather than trusting the release receipt's copy.
+    """
+
+    if path_value is None or not str(path_value).strip():
+        return None, {}, "missing"
+    raw_path = Path(path_value).expanduser()
+    if raw_path.is_symlink():
+        return None, {}, "symlink"
+    try:
+        path = raw_path.resolve(strict=True)
+    except OSError:
+        return None, {}, "missing"
+    if not path.is_file():
+        return None, {}, "not_regular_file"
+    if path == repo_root or repo_root in path.parents:
+        return None, {}, "self_authored_source"
+    try:
+        if path.stat().st_size <= 0 or path.stat().st_size > 32 * 1024 * 1024:
+            return None, {}, "invalid_size"
+        body = path.read_bytes()
+        payload = json.loads(body)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None, {}, "unreadable"
+    if not isinstance(payload, dict):
+        return None, {}, "not_object"
+    if require_seal and not verify_sealed(payload):
+        return None, payload, "invalid_seal"
+    if payload.get("synthetic") is True or payload.get("skipped") is True:
+        return None, payload, "synthetic_or_skipped"
+    if payload.get("self_authored") is True or payload.get("producer_task_id") == TASK_ID:
+        return None, payload, "self_authored_source"
+    return path, payload, _sha256_hex(body)
+
+
+def _verify_external_evidence_authority(
+    payload: Mapping[str, Any],
+    *,
+    repo_root: Path,
+    evidence_kind: str,
+) -> tuple[bool, str]:
+    """Fail closed until an operator-owned dynamic-evidence verifier is pinned.
+
+    ``receipt_id`` is an unkeyed content identity.  It detects accidental byte
+    drift but cannot authenticate a producer, evaluator, supervisor lane, or
+    semantic claim.  The current protected scheduler pins static manual seals,
+    but it does not yet pin a verification key or expected identity for dynamic
+    terminal measurements.  Treating a caller-writable external path, claimed
+    producer ID, or self-hash as that missing authority would violate the PDR
+    threat model's self-certification prohibition.
+
+    This deliberately small seam is where a later operator-owned detached-
+    signature/attestation policy must be wired.  It is private so callers cannot
+    supply an ``authenticated=True`` escape hatch.
+    """
+
+    del payload, repo_root, evidence_kind
+    return False, "authenticated_external_evidence_authority_not_configured"
+
+
+def _goal_evidence_projection(repo_root: Path) -> tuple[dict[str, Any], list[str]]:
+    """Derive goal evidence from canonical task ownership and every task output."""
+
+    tasks = _parse_task_file(repo_root)
+    goals = _parse_goals(repo_root)
+    tasks_by_id = {task.task_id: task for task in tasks}
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+    assigned: dict[str, list[str]] = {goal_id: [] for goal_id in EXPECTED_GOAL_IDS}
+    errors: list[str] = []
+    raw_task_ids = tuple(task.task_id for task in tasks)
+    raw_goal_ids = tuple(goal.goal_id for goal in goals)
+    if (
+        tuple(sorted(raw_task_ids)) != EXPECTED_TASK_IDS
+        or len(raw_task_ids) != CANONICAL_TASK_COUNT
+    ):
+        errors.append("canonical_task_set_mismatch")
+    if (
+        tuple(sorted(raw_goal_ids)) != EXPECTED_GOAL_IDS
+        or len(raw_goal_ids) != CANONICAL_GOAL_COUNT
+    ):
+        errors.append("canonical_goal_set_mismatch")
+    canonical_structure_ok = not errors
+    for task in tasks:
+        goal_id = str((task.metadata or {}).get("goal id") or "").strip()
+        if goal_id not in assigned:
+            errors.append(f"{task.task_id}:unknown_goal:{goal_id}")
+            continue
+        assigned[goal_id].append(task.task_id)
+
+    projection: dict[str, Any] = {}
+    child_roots: dict[str, str] = {}
+    for goal_id in CHILD_GOAL_IDS:
+        goal = goals_by_id.get(goal_id)
+        if goal is None:
+            errors.append(f"{goal_id}:missing_from_heap")
+            projection[goal_id] = {"present": False, "covered": False}
+            continue
+        fields = getattr(goal, "fields", {}) or {}
+        producing = _csv_values(fields.get("producing_tasks"))
+        declared_evidence = _csv_values(fields.get("evidence"))
+        expected = tuple(sorted(assigned.get(goal_id, ())))
+        relation_errors: list[str] = []
+        if len(producing) != len(set(producing)):
+            relation_errors.append("duplicate_producing_task")
+        if len(declared_evidence) != len(set(declared_evidence)):
+            relation_errors.append("duplicate_evidence_task")
+        unknown = sorted((set(producing) | set(declared_evidence)) - set(tasks_by_id))
+        if unknown:
+            relation_errors.append(f"unknown_task:{unknown}")
+        if tuple(sorted(producing)) != expected:
+            relation_errors.append("producing_assignment_mismatch")
+        if tuple(sorted(declared_evidence)) != tuple(sorted(producing)):
+            relation_errors.append("evidence_producing_mismatch")
+
+        records: list[dict[str, Any]] = []
+        missing: list[str] = []
+        unsafe: list[str] = []
+        task_output_union: set[str] = set()
+        for task_id in sorted(set(producing)):
+            task = tasks_by_id.get(task_id)
+            if task is None:
+                continue
+            task_paths: set[str] = set()
+            for raw_rel in task.outputs:
+                try:
+                    rel = _safe_repo_relative_path(raw_rel)
+                except PlannerDoctorReleaseError:
+                    unsafe.append(str(raw_rel))
+                    continue
+                if rel in task_paths:
+                    relation_errors.append(f"{task_id}:duplicate_output:{rel}")
+                    continue
+                task_paths.add(rel)
+                task_output_union.add(rel)
+                path = repo_root / rel
+                if path.is_symlink() or not path.is_file() or path.stat().st_size <= 0:
+                    missing.append(rel)
+                    continue
+                try:
+                    if repo_root not in path.resolve(strict=True).parents:
+                        unsafe.append(rel)
+                        continue
+                except OSError:
+                    missing.append(rel)
+                    continue
+                records.append(
+                    {
+                        "task_id": task_id,
+                        "path": rel,
+                        "content_id": file_content_identity(path),
+                        "byte_length": path.stat().st_size,
+                    }
+                )
+        objective_outputs: list[str] = []
+        for raw_rel in _csv_values(fields.get("outputs")):
+            try:
+                objective_outputs.append(_safe_repo_relative_path(raw_rel))
+            except PlannerDoctorReleaseError:
+                unsafe.append(str(raw_rel))
+        if not objective_outputs:
+            relation_errors.append("missing_objective_outputs")
+        if len(objective_outputs) != len(set(objective_outputs)):
+            relation_errors.append("duplicate_objective_output")
+        unbacked_objective_outputs = sorted(set(objective_outputs) - task_output_union)
+        if unbacked_objective_outputs:
+            relation_errors.append("unbacked_objective_outputs")
+        if missing:
+            relation_errors.append("missing_task_outputs")
+        if unsafe:
+            relation_errors.append("unsafe_task_outputs")
+        record_root = content_identity(records) if records else ""
+        covered = bool(records) and canonical_structure_ok and not relation_errors
+        projection[goal_id] = {
+            "present": True,
+            "status": str(fields.get("status") or ""),
+            "assigned_tasks": list(expected),
+            "producing_tasks": list(producing),
+            "evidence_tasks": list(declared_evidence),
+            "artifact_records": records,
+            "artifact_count": len(records),
+            "unique_artifact_count": len(task_output_union),
+            "missing_artifacts": sorted(set(missing)),
+            "unsafe_artifacts": sorted(set(unsafe)),
+            "objective_outputs": objective_outputs,
+            "unbacked_objective_outputs": unbacked_objective_outputs,
+            "errors": relation_errors,
+            "evidence_root": record_root,
+            "uses_task_count_as_authority": False,
+            "covered": covered,
+        }
+        child_roots[goal_id] = record_root
+        errors.extend(f"{goal_id}:{item}" for item in relation_errors)
+
+    root_goal = goals_by_id.get(ROOT_GOAL_ID)
+    root_records: list[dict[str, Any]] = []
+    root_output_declarations: list[str] = []
+    producing_declaration = ""
+    root_errors: list[str] = []
+    if root_goal is None:
+        root_errors.append("missing_root_goal")
+    else:
+        fields = getattr(root_goal, "fields", {}) or {}
+        producing_declaration = str(fields.get("producing_tasks") or "").strip()
+        direct_children = _csv_values(fields.get("direct_child_goals"))
+        evidence_children = _csv_values(fields.get("evidence"))
+        for raw_rel in _csv_values(fields.get("outputs")):
+            try:
+                root_output_declarations.append(_safe_repo_relative_path(raw_rel))
+            except PlannerDoctorReleaseError:
+                root_errors.append("unsafe_root_objective_output")
+        if len(direct_children) != len(set(direct_children)):
+            root_errors.append("duplicate_direct_child_goal")
+        if len(evidence_children) != len(set(evidence_children)):
+            root_errors.append("duplicate_root_evidence_goal")
+        if len(root_output_declarations) != len(set(root_output_declarations)):
+            root_errors.append("duplicate_root_objective_output")
+        if producing_declaration.casefold() != "all tasks in the companion pdr taskboard":
+            root_errors.append("root_producing_declaration_mismatch")
+        direct_root_tasks = tuple(sorted(assigned.get(ROOT_GOAL_ID, ())))
+        if direct_root_tasks != ("PDR-000",):
+            root_errors.append("root_direct_task_assignment_mismatch")
+        if tuple(sorted(direct_children)) != tuple(sorted(CHILD_GOAL_IDS)):
+            root_errors.append("direct_child_goal_mismatch")
+        if tuple(sorted(evidence_children)) != tuple(sorted(CHILD_GOAL_IDS)):
+            root_errors.append("root_evidence_goal_mismatch")
+        root_task_outputs: set[str] = set()
+        for task_id in sorted(assigned.get(ROOT_GOAL_ID, ())):
+            task = tasks_by_id.get(task_id)
+            if task is None:
+                continue
+            task_paths: set[str] = set()
+            for raw_rel in task.outputs:
+                try:
+                    rel = _safe_repo_relative_path(raw_rel)
+                except PlannerDoctorReleaseError:
+                    root_errors.append("unsafe_root_output")
+                    continue
+                if rel in task_paths:
+                    root_errors.append(f"duplicate_root_task_output:{rel}")
+                    continue
+                task_paths.add(rel)
+                root_task_outputs.add(rel)
+                path = repo_root / rel
+                if path.is_symlink() or not path.is_file() or path.stat().st_size <= 0:
+                    root_errors.append(f"missing_root_output:{rel}")
+                    continue
+                try:
+                    if repo_root not in path.resolve(strict=True).parents:
+                        root_errors.append(f"unsafe_root_output:{rel}")
+                        continue
+                except OSError:
+                    root_errors.append(f"missing_root_output:{rel}")
+                    continue
+                root_records.append(
+                    {
+                        "task_id": task_id,
+                        "path": rel,
+                        "content_id": file_content_identity(path),
+                        "byte_length": path.stat().st_size,
+                    }
+                )
+        if set(root_output_declarations) != root_task_outputs:
+            root_errors.append("root_objective_output_mismatch")
+    children_covered = all(
+        bool(projection.get(goal_id, {}).get("covered")) for goal_id in CHILD_GOAL_IDS
+    )
+    root_evidence_root = content_identity(
+        {"direct_artifacts": root_records, "child_evidence_roots": child_roots}
+    )
+    projection[ROOT_GOAL_ID] = {
+        "present": root_goal is not None,
+        "assigned_tasks": sorted(assigned.get(ROOT_GOAL_ID, ())),
+        "transitive_producing_tasks": list(EXPECTED_TASK_IDS),
+        "producing_declaration": (
+            producing_declaration if root_goal is not None else ""
+        ),
+        "objective_outputs": root_output_declarations,
+        "direct_artifact_records": root_records,
+        "children_covered": children_covered,
+        "child_evidence_roots": child_roots,
+        "evidence_root": root_evidence_root,
+        "uses_task_count_as_authority": False,
+        "covered": (
+            bool(root_records)
+            and canonical_structure_ok
+            and children_covered
+            and not root_errors
+        ),
+        "errors": root_errors,
+    }
+    errors.extend(f"{ROOT_GOAL_ID}:{item}" for item in root_errors)
+    if not projection[ROOT_GOAL_ID]["covered"]:
+        errors.append(f"{ROOT_GOAL_ID}:incomplete_child_coverage")
+    return projection, errors
+
+
 def check_declared_artifacts(repo_root: Path | None = None) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     present = {rel: (root / rel).is_file() for rel in REQUIRED_RELEASE_ARTIFACTS}
@@ -834,25 +1245,57 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
             f"unable to parse board/objectives: {exc}",
         )
 
-    goal_ids = tuple(sorted({g.goal_id for g in goals}))
+    raw_goal_ids = tuple(g.goal_id for g in goals)
+    goal_ids = tuple(sorted(set(raw_goal_ids)))
     evidence["goal_ids"] = list(goal_ids)
-    evidence["goal_count"] = len(goal_ids)
-    if set(goal_ids) != set(EXPECTED_GOAL_IDS) or len(goal_ids) != CANONICAL_GOAL_COUNT:
+    evidence["goal_count"] = len(raw_goal_ids)
+    evidence["duplicate_goal_ids"] = sorted(
+        goal_id for goal_id in set(raw_goal_ids) if raw_goal_ids.count(goal_id) > 1
+    )
+    if (
+        tuple(sorted(raw_goal_ids)) != EXPECTED_GOAL_IDS
+        or len(raw_goal_ids) != CANONICAL_GOAL_COUNT
+    ):
         errors.append(
             f"goal set mismatch: expected {CANONICAL_GOAL_COUNT} "
-            f"{list(EXPECTED_GOAL_IDS)}, got {list(goal_ids)}"
+            f"{list(EXPECTED_GOAL_IDS)}, got {list(raw_goal_ids)}"
         )
 
     by_id = {task.task_id: task for task in all_tasks}
-    canonical = tuple(task for task in all_tasks if task.task_id in EXPECTED_TASK_IDS)
-    canonical_ids = tuple(sorted(task.task_id for task in canonical))
-    evidence["canonical_task_count"] = len(canonical_ids)
+    raw_task_ids = tuple(task.task_id for task in all_tasks)
+    canonical = tuple(all_tasks)
+    canonical_ids = tuple(sorted(raw_task_ids))
+    evidence["canonical_task_count"] = len(raw_task_ids)
     evidence["canonical_task_ids"] = list(canonical_ids)
-    if canonical_ids != EXPECTED_TASK_IDS:
+    evidence["duplicate_task_ids"] = sorted(
+        task_id for task_id in set(raw_task_ids) if raw_task_ids.count(task_id) > 1
+    )
+    if canonical_ids != EXPECTED_TASK_IDS or len(raw_task_ids) != CANONICAL_TASK_COUNT:
         errors.append(
-            f"canonical task set mismatch count={len(canonical_ids)} "
+            f"canonical task set mismatch count={len(raw_task_ids)} "
             f"expected={CANONICAL_TASK_COUNT}"
         )
+
+    nonterminal_statuses = {
+        task.task_id: str(task.status or "")
+        for task in canonical
+        if str(task.status or "").strip().casefold() != "completed"
+    }
+    wrong_namespaces = {
+        task.task_id: getattr(task, "board_namespace", None)
+        for task in canonical
+        if getattr(task, "board_namespace", None) != BOARD_NAMESPACE
+    }
+    evidence["task_statuses"] = {
+        task.task_id: str(task.status or "") for task in canonical
+    }
+    evidence["all_tasks_completed"] = not nonterminal_statuses
+    evidence["nonterminal_statuses"] = nonterminal_statuses
+    evidence["wrong_namespaces"] = wrong_namespaces
+    if nonterminal_statuses:
+        errors.append(f"nonterminal canonical tasks: {nonterminal_statuses}")
+    if wrong_namespaces:
+        errors.append(f"task board namespace mismatch: {wrong_namespaces}")
 
     # Preimage digests for every canonical task body (current tree).
     task_preimages: dict[str, str] = {}
@@ -860,7 +1303,10 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
         task_preimages[task.task_id] = content_identity(
             {
                 "task_id": task.task_id,
+                "status": str(task.status or ""),
                 "depends_on": list(task.depends_on),
+                "outputs": list(task.outputs),
+                "validation": list(task.validation),
                 "board_namespace": getattr(task, "board_namespace", None),
                 "goal_id": (task.metadata or {}).get("goal id")
                 if isinstance(task.metadata, Mapping)
@@ -924,6 +1370,23 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
             errors.append(f"max_lanes must be {LANE_COUNT}, got {max_lanes}")
         if scheduler.get("board_namespace") != BOARD_NAMESPACE:
             errors.append("scheduler board_namespace mismatch")
+        try:
+            from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+                load_supervisor_scheduler_config,
+            )
+
+            verified_scheduler = load_supervisor_scheduler_config(
+                scheduler_path,
+                repo_root=root,
+            )
+            verified_seals = dict(
+                verified_scheduler.get("verified_manual_completion_seals") or {}
+            )
+            evidence["verified_manual_completion_seals"] = verified_seals
+        except Exception as exc:  # noqa: BLE001 - fail closed on seal/config errors
+            evidence["verified_manual_completion_seals"] = {}
+            evidence["scheduler_validation_error"] = f"{type(exc).__name__}:{exc}"
+            errors.append("scheduler/manual completion seal validation failed")
 
     evidence["errors"] = errors
     if errors:
@@ -952,17 +1415,26 @@ def check_source_artifact_reload(repo_root: Path | None = None) -> CheckResult:
     missing: list[str] = []
     forged: list[str] = []
 
-    # Unique union of required release + child-goal + protected artifacts.
+    # Unique union of release/protected artifacts and every declared task
+    # output.  The taskboard is the canonical producer relation; a hand-picked
+    # map can silently omit a producer and is therefore not release authority.
     required_paths: list[str] = []
     seen: set[str] = set()
+    task_output_paths: list[str] = []
+    declaration_errors: list[str] = []
+    try:
+        for task in _parse_task_file(root):
+            for raw_rel in task.outputs:
+                try:
+                    task_output_paths.append(_safe_repo_relative_path(raw_rel))
+                except PlannerDoctorReleaseError as exc:
+                    declaration_errors.append(f"{task.task_id}:{exc}")
+    except Exception as exc:  # noqa: BLE001
+        declaration_errors.append(f"task_output_parse_failed:{exc}")
     for rel in (
         *REQUIRED_RELEASE_ARTIFACTS,
         *PROTECTED_PATHS,
-        *(
-            path
-            for paths in CHILD_GOAL_EVIDENCE_ARTIFACTS.values()
-            for path in paths
-        ),
+        *task_output_paths,
     ):
         if rel not in seen:
             seen.add(rel)
@@ -970,7 +1442,7 @@ def check_source_artifact_reload(repo_root: Path | None = None) -> CheckResult:
 
     for rel in required_paths:
         path = root / rel
-        if not path.is_file():
+        if path.is_symlink() or not path.is_file() or path.stat().st_size <= 0:
             missing.append(rel)
             artifacts[rel] = {
                 "present": False,
@@ -1014,13 +1486,23 @@ def check_source_artifact_reload(repo_root: Path | None = None) -> CheckResult:
     )
     evidence = {
         "artifact_count": len(artifacts),
+        "declared_task_output_count": len(task_output_paths),
+        "unique_task_output_count": len(set(task_output_paths)),
+        "declaration_errors": declaration_errors,
         "missing": missing,
         "forged": forged,
         "forest_root": forest_root,
         "artifacts": artifacts,
-        "self_authored_release_module": False,
+        "release_module_is_validator_not_source_receipt": True,
         "reloaded_from_current_tree": True,
     }
+    if declaration_errors:
+        return CheckResult(
+            "source_artifact_reload",
+            CheckStatus.FAIL,
+            f"invalid task output declarations: {declaration_errors[:8]}",
+            evidence,
+        )
     if missing:
         return CheckResult(
             "source_artifact_reload",
@@ -1044,81 +1526,17 @@ def check_source_artifact_reload(repo_root: Path | None = None) -> CheckResult:
 
 
 def check_child_goal_coverage(repo_root: Path | None = None) -> CheckResult:
-    """Prove every child goal has current independently reloadable evidence."""
+    """Bind each goal to its producer declarations and every producer output."""
 
     root = (repo_root or repository_root()).resolve()
-    errors: list[str] = []
-    coverage: dict[str, dict[str, Any]] = {}
-
     try:
-        goals = _parse_goals(root)
+        coverage, errors = _goal_evidence_projection(root)
     except Exception as exc:  # noqa: BLE001
         return CheckResult(
             "child_goal_coverage",
             CheckStatus.FAIL,
-            f"unable to parse goals: {exc}",
+            f"unable to derive goal evidence: {exc}",
         )
-
-    goals_by_id = {g.goal_id: g for g in goals}
-    for goal_id in CHILD_GOAL_IDS:
-        goal = goals_by_id.get(goal_id)
-        if goal is None:
-            errors.append(f"{goal_id}:missing_from_heap")
-            coverage[goal_id] = {"present": False}
-            continue
-        artifact_paths = list(CHILD_GOAL_EVIDENCE_ARTIFACTS.get(goal_id, ()))
-        digests: dict[str, str] = {}
-        missing_artifacts: list[str] = []
-        for rel in artifact_paths:
-            path = root / rel
-            if not path.is_file() or path.stat().st_size == 0:
-                missing_artifacts.append(rel)
-                continue
-            digests[rel] = file_content_identity(path)
-        goal_evidence_root = content_identity(digests) if digests else ""
-        # Objective completion requires independent artifact roots, not task counts.
-        task_count_claim = None
-        producing = str(getattr(goal, "fields", {}).get("producing_tasks") or "")
-        if re.fullmatch(r"\d+", producing.strip()):
-            task_count_claim = int(producing.strip())
-        covered = not missing_artifacts and bool(digests)
-        if not covered:
-            errors.append(f"{goal_id}:incomplete_evidence")
-        coverage[goal_id] = {
-            "present": True,
-            "artifact_count": len(digests),
-            "missing_artifacts": missing_artifacts,
-            "evidence_root": goal_evidence_root,
-            "task_count_claim": task_count_claim,
-            "uses_task_count_as_authority": False,
-            "covered": covered,
-        }
-
-    # Root goal is covered only when every child goal is covered.
-    children_covered = all(
-        bool(coverage.get(goal_id, {}).get("covered")) for goal_id in CHILD_GOAL_IDS
-    )
-    root_artifacts = [
-        PLAN_REL,
-        OBJECTIVE_REL,
-        TODO_REL,
-        SCHEDULER_REL,
-        PROGRAMS_REL,
-    ]
-    root_digests = {
-        rel: file_content_identity(root / rel)
-        for rel in root_artifacts
-        if (root / rel).is_file()
-    }
-    coverage[ROOT_GOAL_ID] = {
-        "present": ROOT_GOAL_ID in goals_by_id,
-        "children_covered": children_covered,
-        "evidence_root": content_identity(root_digests),
-        "covered": children_covered and len(root_digests) == len(root_artifacts),
-        "uses_task_count_as_authority": False,
-    }
-    if not coverage[ROOT_GOAL_ID]["covered"]:
-        errors.append(f"{ROOT_GOAL_ID}:incomplete_child_coverage")
 
     evidence = {
         "child_goal_ids": list(CHILD_GOAL_IDS),
@@ -1128,6 +1546,8 @@ def check_child_goal_coverage(repo_root: Path | None = None) -> CheckResult:
         ),
         "required_count": len(CHILD_GOAL_IDS),
         "objective_completion_from_task_counts": False,
+        "coverage_is_task_output_derived": True,
+        "errors": errors,
     }
     if errors:
         return CheckResult(
@@ -1169,10 +1589,23 @@ def check_task_vs_objective_completion(
 
     task_completion = {
         "canonical_task_count": board.evidence.get("canonical_task_count"),
+        "all_tasks_completed": board.evidence.get("all_tasks_completed") is True,
+        "status_root": content_identity(board.evidence.get("task_statuses") or {}),
         "terminal_present": TERMINAL_TASK_ID
         in (board.evidence.get("canonical_task_ids") or []),
         "unique_terminal": board.evidence.get("sinks") == [TERMINAL_TASK_ID],
     }
+    try:
+        goal_statuses = {
+            goal.goal_id: str((getattr(goal, "fields", {}) or {}).get("status") or "")
+            for goal in _parse_goals(root)
+        }
+    except Exception as exc:  # noqa: BLE001
+        return CheckResult(
+            "task_vs_objective_completion",
+            CheckStatus.FAIL,
+            f"objective status projection unreadable: {exc}",
+        )
     objective_completion = {
         "child_goals_covered": coverage.evidence.get("covered_count")
         == coverage.evidence.get("required_count"),
@@ -1183,13 +1616,27 @@ def check_task_vs_objective_completion(
         ),
         "from_task_counts": False,
         "requires_independent_evidence_roots": True,
+        "goal_statuses": goal_statuses,
+        "completed_goal_ids": sorted(
+            goal_id
+            for goal_id, status in goal_statuses.items()
+            if status.strip().casefold() == "completed"
+        ),
+        "active_goal_ids": sorted(
+            goal_id
+            for goal_id, status in goal_statuses.items()
+            if status.strip().casefold() != "completed"
+        ),
+        "status_projection_is_independent": True,
     }
     # Task board being well-formed is necessary but not sufficient for objectives.
     distinct = (
-        task_completion["unique_terminal"] is True
+        task_completion["all_tasks_completed"] is True
+        and task_completion["unique_terminal"] is True
         and objective_completion["child_goals_covered"] is True
         and objective_completion["from_task_counts"] is False
         and objective_completion["requires_independent_evidence_roots"] is True
+        and objective_completion["status_projection_is_independent"] is True
     )
     evidence = {
         "task_completion": task_completion,
@@ -1344,42 +1791,102 @@ def check_reject_bad_evidence(
 
 def check_zero_safety_floors(
     *,
+    repo_root: Path | None = None,
+    floor_projection_path: str | Path | None = None,
     floor_projection: Mapping[str, Any] | None = None,
     policy: PlannerDoctorReleasePolicy | None = None,
 ) -> CheckResult:
-    """Require every release safety floor to remain exactly zero."""
+    """Require a sealed, current, independently produced measured floor receipt."""
 
+    root = (repo_root or repository_root()).resolve()
     policy = policy or default_release_policy()
-    if floor_projection is None:
-        # Align with the preregistered rollout floor registry; release demands zeros.
-        try:
-            from ipfs_accelerate_py.agent_supervisor.self_improvement.planner_doctor_rollout import (
-                SAFETY_FLOOR_METRICS,
-            )
+    source, payload, source_result = _load_external_json(
+        floor_projection_path,
+        repo_root=root,
+        label="safety floor receipt",
+        require_seal=True,
+    )
+    if source is None:
+        evidence = {
+            "source_path": str(floor_projection_path or ""),
+            "source_result": source_result,
+            "caller_projection_ignored": dict(floor_projection or {}),
+            "metrics_authoritative": False,
+        }
+        return CheckResult(
+            "zero_safety_floors",
+            CheckStatus.FAIL,
+            "sealed external current-tree safety-floor receipt is required",
+            evidence,
+        )
 
-            rollout_keys = tuple(SAFETY_FLOOR_METRICS)
-        except Exception:  # noqa: BLE001
-            rollout_keys = SAFETY_FLOOR_KEYS
-        floor_projection = {key: 0 for key in rollout_keys}
-
-    mapped = {key: int(floor_projection.get(key, 0) or 0) for key in SAFETY_FLOOR_KEYS}
-    # Also fold any extra rollout keys into the projection check.
-    for key, value in floor_projection.items():
-        if key not in mapped:
-            mapped[str(key)] = int(value or 0)
-
-    nonzero = {key: value for key, value in mapped.items() if int(value) != 0}
+    producer_authenticated, authority_result = _verify_external_evidence_authority(
+        payload,
+        repo_root=root,
+        evidence_kind="terminal_safety_floors",
+    )
+    errors: list[str] = []
+    if not producer_authenticated:
+        errors.append(authority_result)
+    producer_task_id = str(payload.get("producer_task_id") or "")
+    if producer_task_id not in {"PDR-070", "PDR-071", "PDR-072", "PDR-082", "PDR-090"}:
+        errors.append("untrusted_producer")
+    if str(payload.get("evidence_class") or "").strip().casefold() != "measured":
+        errors.append("evidence_not_measured")
+    if payload.get("current") is not True:
+        errors.append("evidence_not_current")
+    current_commit = _current_commit(root)
+    if not current_commit or payload.get("repository_commit") != current_commit:
+        errors.append("repository_commit_mismatch")
+    projected = payload.get("safety_floors")
+    if not isinstance(projected, Mapping):
+        projected = {}
+        errors.append("missing_safety_floor_map")
+    expected_keys = set(SAFETY_FLOOR_KEYS)
+    actual_keys = {str(key) for key in projected}
+    if actual_keys != expected_keys:
+        errors.append("safety_floor_key_set_mismatch")
+    mapped: dict[str, int] = {}
+    invalid_values: list[str] = []
+    for key in SAFETY_FLOOR_KEYS:
+        value = projected.get(key)
+        if isinstance(value, bool) or not isinstance(value, int):
+            invalid_values.append(key)
+            continue
+        mapped[key] = value
+    if invalid_values:
+        errors.append("invalid_safety_floor_values")
+    source_receipt_ids = payload.get("source_receipt_ids")
+    if (
+        not isinstance(source_receipt_ids, list)
+        or not source_receipt_ids
+        or not all(isinstance(item, str) and item.strip() for item in source_receipt_ids)
+    ):
+        errors.append("missing_source_receipt_ids")
+    nonzero = {key: value for key, value in mapped.items() if value != 0}
+    if nonzero:
+        errors.append("nonzero_safety_floor")
     evidence = {
         "floors": mapped,
         "policy_floors": dict(policy.safety_floors),
         "nonzero": nonzero,
-        "metrics_authoritative": False,
+        "metrics_authoritative": not errors,
+        "integrity_seal_ok": True,
+        "producer_authenticated": producer_authenticated,
+        "authority_result": authority_result,
+        "source_path": str(source),
+        "source_content_id": source_result,
+        "source_receipt_id": payload.get("receipt_id"),
+        "producer_task_id": producer_task_id,
+        "repository_commit": payload.get("repository_commit"),
+        "source_receipt_ids": source_receipt_ids if isinstance(source_receipt_ids, list) else [],
+        "errors": errors,
     }
-    if nonzero:
+    if errors:
         return CheckResult(
             "zero_safety_floors",
             CheckStatus.FAIL,
-            f"nonzero safety floors: {nonzero}",
+            f"safety-floor evidence rejected: {errors}",
             evidence,
         )
     return CheckResult(
@@ -1390,8 +1897,12 @@ def check_zero_safety_floors(
     )
 
 
-def check_exact_rollback(repo_root: Path | None = None) -> CheckResult:
-    """Prove exact-root rollback contracts remain present and fail-closed."""
+def check_exact_rollback(
+    repo_root: Path | None = None,
+    *,
+    rollback_receipt_path: str | Path | None = None,
+) -> CheckResult:
+    """Replay a sealed Doctor restore proof from an independent producer."""
 
     root = (repo_root or repository_root()).resolve()
     adapter = (
@@ -1431,48 +1942,98 @@ def check_exact_rollback(repo_root: Path | None = None) -> CheckResult:
             f"rollback-related modules missing: {missing}",
             {"missing": missing},
         )
-
-    # Hermetic probe: write a disposable snapshot, "roll back" by restoring
-    # exact bytes, and compare content identities.
-    before_payload = {
-        "root": "sha256:" + ("1" * 64),
-        "blob": "sha256:" + ("2" * 64),
-        "ref": "refs/heads/pdr-release-probe",
-    }
-    with tempfile.TemporaryDirectory(prefix="pdr-release-rollback-") as tmp:
-        probe = Path(tmp) / "roots.json"
-        probe.write_text(
-            json.dumps(before_payload, sort_keys=True, separators=(",", ":")),
-            encoding="utf-8",
+    source, payload, source_result = _load_external_json(
+        rollback_receipt_path,
+        repo_root=root,
+        label="rollback receipt",
+        require_seal=True,
+    )
+    if source is None:
+        return CheckResult(
+            "exact_rollback",
+            CheckStatus.FAIL,
+            "sealed external Doctor rollback receipt is required",
+            {
+                "source_path": str(rollback_receipt_path or ""),
+                "source_result": source_result,
+                "rollback_authoritative": False,
+            },
         )
-        before_id = file_content_identity(probe)
-        # Mutate then restore exact prior bytes.
-        probe.write_text('{"tampered":true}', encoding="utf-8")
-        after_tamper_id = file_content_identity(probe)
-        probe.write_text(
-            json.dumps(before_payload, sort_keys=True, separators=(",", ":")),
-            encoding="utf-8",
-        )
-        restored_id = file_content_identity(probe)
-
-    roots_match = before_id == restored_id and before_id != after_tamper_id
+    producer_authenticated, authority_result = _verify_external_evidence_authority(
+        payload,
+        repo_root=root,
+        evidence_kind="exact_doctor_rollback",
+    )
+    errors: list[str] = []
+    if not producer_authenticated:
+        errors.append(authority_result)
+    producer_task_id = str(payload.get("producer_task_id") or "")
+    if producer_task_id not in {"PDR-052", "PDR-053", "PDR-090"}:
+        errors.append("untrusted_producer")
+    if str(payload.get("evidence_class") or "").strip().casefold() != "measured":
+        errors.append("evidence_not_measured")
+    if payload.get("current") is not True:
+        errors.append("evidence_not_current")
+    current_commit = _current_commit(root)
+    if not current_commit or payload.get("repository_commit") != current_commit:
+        errors.append("repository_commit_mismatch")
+    proof = payload.get("restore_proof")
+    if not isinstance(proof, Mapping):
+        proof = {}
+        errors.append("missing_restore_proof")
+    expected_tree = str(proof.get("expected_tree_cid") or "")
+    observed_tree = str(proof.get("observed_tree_cid") or "")
+    expected_forest = str(proof.get("expected_forest_cid") or "")
+    observed_forest = str(proof.get("observed_forest_cid") or "")
+    roots_match = bool(
+        expected_tree
+        and expected_forest
+        and expected_tree == observed_tree
+        and expected_forest == observed_forest
+    )
+    if proof.get("restored") is not True:
+        errors.append("restore_not_completed")
+    if proof.get("quarantined") is not False:
+        errors.append("restore_quarantined")
+    if proof.get("ref_restored") is not True:
+        errors.append("ref_not_restored")
+    if proof.get("gitlinks_equal") is not True:
+        errors.append("gitlinks_not_equal")
+    if not roots_match:
+        errors.append("rollback_root_mismatch")
+    transaction_receipt_id = payload.get("transaction_receipt_id")
+    if not isinstance(transaction_receipt_id, str) or not transaction_receipt_id.strip():
+        errors.append("missing_transaction_receipt_id")
     evidence = {
-        "before_root": before_id,
-        "tampered_root": after_tamper_id,
-        "restored_root": restored_id,
+        "before_root": expected_tree,
+        "restored_root": observed_tree,
+        "before_forest_root": expected_forest,
+        "restored_forest_root": observed_forest,
         "roots_match": roots_match,
-        "rollback_failure_count": 0 if roots_match else 1,
+        "rollback_failure_count": 0 if not errors else 1,
+        "rollback_authoritative": not errors,
+        "integrity_seal_ok": True,
+        "producer_authenticated": producer_authenticated,
+        "authority_result": authority_result,
+        "source_path": str(source),
+        "source_content_id": source_result,
+        "source_receipt_id": payload.get("receipt_id"),
+        "transaction_receipt_id": transaction_receipt_id,
+        "producer_task_id": producer_task_id,
+        "repository_commit": payload.get("repository_commit"),
+        "restore_proof": dict(proof),
+        "errors": errors,
         "modules": {
             "doctor_worktree_adapter": file_content_identity(adapter),
             "live_fixed_point": file_content_identity(fixed_point),
             "rollout": file_content_identity(rollout),
         },
     }
-    if not roots_match:
+    if errors:
         return CheckResult(
             "exact_rollback",
             CheckStatus.FAIL,
-            "rollback did not restore exact roots",
+            f"rollback evidence rejected: {errors}",
             evidence,
         )
     return CheckResult(
@@ -1632,8 +2193,13 @@ def check_automatic_promotion_gated(repo_root: Path | None = None) -> CheckResul
     )
 
 
-def check_six_lane_supervisor_drain(repo_root: Path | None = None) -> CheckResult:
-    """Confirm the healthy six-lane supervisor can drain the PDR DAG."""
+def check_six_lane_supervisor_drain(
+    repo_root: Path | None = None,
+    *,
+    lane_state_paths: Sequence[str | Path] | None = None,
+    drain_receipt_path: str | Path | None = None,
+) -> CheckResult:
+    """Replay six terminal lane projections and their fenced drain receipt."""
 
     root = (repo_root or repository_root()).resolve()
     board = check_canonical_board(root)
@@ -1670,40 +2236,215 @@ def check_six_lane_supervisor_drain(repo_root: Path | None = None) -> CheckResul
             {"protected_present": protected_present},
         )
 
+    paths = tuple(lane_state_paths or ())
+    if len(paths) != LANE_COUNT:
+        return CheckResult(
+            "six_lane_supervisor_drain",
+            CheckStatus.FAIL,
+            f"exactly {LANE_COUNT} external lane projections are required",
+            {"lane_state_paths": [str(item) for item in paths], "lanes": len(paths)},
+        )
+    errors: list[str] = []
+    lane_rows: dict[int, dict[str, Any]] = {}
+    lane_content_ids: dict[str, str] = {}
+    expected_task_set = set(EXPECTED_TASK_IDS)
+    for raw_path in paths:
+        source, payload, source_result = _load_external_json(
+            raw_path,
+            repo_root=root,
+            label="lane state",
+            require_seal=False,
+        )
+        if source is None:
+            errors.append(f"lane_source_rejected:{raw_path}:{source_result}")
+            continue
+        match = re.search(r"(?:^|/)lane-(\d+)(?:/|$)", source.as_posix())
+        if match is None:
+            errors.append(f"lane_identity_missing:{source}")
+            continue
+        lane_id = int(match.group(1))
+        if lane_id in lane_rows:
+            errors.append(f"duplicate_lane:{lane_id}")
+            continue
+        statuses = payload.get("task_statuses")
+        status_map = dict(statuses) if isinstance(statuses, Mapping) else {}
+        nonterminal = {
+            str(task_id): str(status)
+            for task_id, status in status_map.items()
+            if str(status).strip().casefold() != "completed"
+        }
+        counts = {
+            name: payload.get(name)
+            for name in (
+                "ready_count",
+                "selectable_ready_count",
+                "eligible_ready_count",
+                "waiting_count",
+                "blocked_count",
+                "external_reserved_count",
+                "resource_reserved_count",
+            )
+        }
+        lane_errors: list[str] = []
+        if payload.get("task_count") != CANONICAL_TASK_COUNT:
+            lane_errors.append("task_count")
+        if payload.get("completed_count") != CANONICAL_TASK_COUNT:
+            lane_errors.append("completed_count")
+        if set(status_map) != expected_task_set or nonterminal:
+            lane_errors.append("task_statuses")
+        for name, value in counts.items():
+            if value not in {None, 0}:
+                lane_errors.append(name)
+        if str(payload.get("active_task_id") or ""):
+            lane_errors.append("active_task")
+        if payload.get("implementation_in_progress") is True:
+            lane_errors.append("implementation_in_progress")
+        if not str(payload.get("heartbeat_at") or ""):
+            lane_errors.append("missing_heartbeat")
+        if lane_errors:
+            errors.append(f"lane_{lane_id}_nonterminal:{lane_errors}")
+        lane_content_ids[str(lane_id)] = source_result
+        lane_rows[lane_id] = {
+            "path": str(source),
+            "content_id": source_result,
+            "completed_count": payload.get("completed_count"),
+            "active_task_id": payload.get("active_task_id"),
+            "implementation_in_progress": payload.get("implementation_in_progress"),
+            "heartbeat_at": payload.get("heartbeat_at"),
+            "counts": counts,
+            "errors": lane_errors,
+        }
+    if set(lane_rows) != set(range(LANE_COUNT)):
+        errors.append("lane_set_mismatch")
+
+    drain_source, drain_payload, drain_result = _load_external_json(
+        drain_receipt_path,
+        repo_root=root,
+        label="supervisor drain receipt",
+        require_seal=True,
+    )
+    drain_authenticated = False
+    drain_authority_result = "drain_receipt_unavailable"
+    if drain_source is None:
+        errors.append(f"drain_receipt_rejected:{drain_result}")
+    else:
+        drain_authenticated, drain_authority_result = (
+            _verify_external_evidence_authority(
+                drain_payload,
+                repo_root=root,
+                evidence_kind="six_lane_terminal_drain",
+            )
+        )
+        if not drain_authenticated:
+            errors.append(drain_authority_result)
+        current_commit = _current_commit(root)
+        if drain_payload.get("interface") != "MultiSupervisorDrainReceipt@1":
+            errors.append("drain_interface_mismatch")
+        if not current_commit or drain_payload.get("repository_commit") != current_commit:
+            errors.append("drain_repository_commit_mismatch")
+        if drain_payload.get("track_count") != LANE_COUNT:
+            errors.append("drain_track_count_mismatch")
+        if drain_payload.get("terminal_quiescent") is not True:
+            errors.append("drain_not_terminal")
+        if drain_payload.get("all_trees_fenced") is not True:
+            errors.append("drain_not_fenced")
+        if drain_payload.get("interrupted") is not False:
+            errors.append("drain_interrupted")
+        if drain_payload.get("lane_state_content_ids") != lane_content_ids:
+            errors.append("drain_lane_binding_mismatch")
+
     evidence = {
-        "lanes": LANE_COUNT,
+        "lanes": len(lane_rows),
         "board_valid": True,
-        "dependency_blockage": False,
-        "provider_blockage": False,
-        "protected_path_blockage": False,
-        "merge_blockage": False,
-        "lifecycle_blockage": False,
+        "terminal_quiescent": not errors,
+        "all_trees_fenced": bool(drain_source is not None and drain_payload.get("all_trees_fenced") is True),
+        "interrupted": None if drain_source is None else drain_payload.get("interrupted"),
+        "lane_states": {str(key): value for key, value in sorted(lane_rows.items())},
+        "lane_state_paths": [str(item) for item in paths],
+        "lane_state_content_ids": lane_content_ids,
+        "drain_receipt_path": str(drain_source or drain_receipt_path or ""),
+        "drain_receipt_content_id": drain_result,
+        "drain_receipt_id": None if drain_source is None else drain_payload.get("receipt_id"),
+        "integrity_seal_ok": drain_source is not None,
+        "producer_authenticated": drain_authenticated,
+        "authority_result": drain_authority_result,
         "terminal_task_id": TERMINAL_TASK_ID,
         "protected_present": protected_present,
         "sinks": list(board.evidence.get("sinks") or []),
+        "errors": errors,
     }
+    if errors:
+        return CheckResult(
+            "six_lane_supervisor_drain",
+            CheckStatus.FAIL,
+            f"six-lane drain evidence rejected: {errors[:8]}",
+            evidence,
+        )
     return CheckResult(
         "six_lane_supervisor_drain",
         CheckStatus.PASS,
-        "PDR DAG is drainable under six-lane seed sharding without blockage",
+        "six distinct lanes reached terminal quiescence and were fenced",
         evidence,
     )
 
 
-def check_cold_imports() -> CheckResult:
-    """Release-critical modules import without optional provider side effects."""
+def check_cold_imports(repo_root: Path | None = None) -> CheckResult:
+    """Import each release module in a fresh provider-free subprocess."""
 
+    root = (repo_root or repository_root()).resolve()
     failed: list[str] = []
     imported: list[str] = []
+    probes: list[dict[str, Any]] = []
+    script = (
+        "import importlib,json,sys; "
+        "m=sys.argv[1]; importlib.import_module(m); "
+        "bad=sorted(k for k in sys.modules if k.split('.')[0] in "
+        "{'openai','anthropic','torch','transformers','sentence_transformers','pynvml'}); "
+        "print(json.dumps({'module':m,'forbidden':bad},sort_keys=True)); "
+        "raise SystemExit(7 if bad else 0)"
+    )
+    environment = dict(os.environ)
+    removed_environment_keys = sorted(
+        key
+        for key in environment
+        if any(token in key.upper() for token in ("API_KEY", "TOKEN", "SECRET"))
+    )
+    for key in removed_environment_keys:
+        environment.pop(key, None)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["PYTHONNOUSERSITE"] = "1"
+    environment["PYTHONPATH"] = str(root)
     for module_name in COLD_IMPORT_MODULES:
         try:
-            importlib.import_module(module_name)
-            imported.append(module_name)
-        except Exception as exc:  # noqa: BLE001
+            completed = subprocess.run(
+                [sys.executable, "-P", "-c", script, module_name],
+                cwd=root,
+                env=environment,
+                check=False,
+                capture_output=True,
+                timeout=60,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
             failed.append(f"{module_name}:{type(exc).__name__}")
+            probes.append({"module": module_name, "error": type(exc).__name__})
+            continue
+        row = {
+            "module": module_name,
+            "returncode": completed.returncode,
+            "stdout_content_id": _sha256_hex(completed.stdout),
+            "stderr_content_id": _sha256_hex(completed.stderr),
+        }
+        probes.append(row)
+        if completed.returncode == 0:
+            imported.append(module_name)
+        else:
+            failed.append(f"{module_name}:returncode_{completed.returncode}")
     evidence = {
         "imported": imported,
         "failed": failed,
+        "probes": probes,
+        "fresh_process_per_module": True,
+        "removed_sensitive_environment_key_count": len(removed_environment_keys),
         "optional_providers_not_required": True,
     }
     if failed:
@@ -1721,24 +2462,29 @@ def check_cold_imports() -> CheckResult:
     )
 
 
-def check_report_only_no_write(repo_root: Path | None = None) -> CheckResult:
+def check_report_only_no_write(
+    repo_root: Path | None = None,
+    *,
+    before_identity: Mapping[str, Any] | None = None,
+) -> CheckResult:
     """Default mode is report-only; release does not mutate the target tree."""
 
     root = (repo_root or repository_root()).resolve()
     policy = default_release_policy()
-    probe_rel = "docs/architecture/PROOF_DIRECTED_PLANNER_DOCTOR_RELEASE.md"
-    probe_path = root / probe_rel
-    before = file_content_identity(probe_path) if probe_path.is_file() else None
-    # Re-run a pure validation subset that must not write.
-    _ = check_declared_artifacts(root)
-    after = file_content_identity(probe_path) if probe_path.is_file() else None
+    before = dict(before_identity or _worktree_identity(root))
+    if before_identity is None:
+        # Standalone use still executes a representative read-only check.
+        _ = check_declared_artifacts(root)
+    after = _worktree_identity(root)
     evidence = {
         "mode": policy.default_mode,
         "mutation_authorized": policy.mutation_authorized,
         "completion_authoritative": policy.completion_authoritative,
-        "before": before,
-        "after": after,
-        "tree_unchanged": before == after,
+        "before_identity": before,
+        "after_identity": after,
+        "tree_unchanged": before.get("identity") == after.get("identity"),
+        "tree_clean_before": before.get("clean") is True,
+        "tree_clean_after": after.get("clean") is True,
     }
     if policy.default_mode != "report_only" or policy.mutation_authorized:
         return CheckResult(
@@ -1747,11 +2493,18 @@ def check_report_only_no_write(repo_root: Path | None = None) -> CheckResult:
             "policy is not report-only / no-mutation",
             evidence,
         )
-    if before != after:
+    if before.get("identity") != after.get("identity"):
         return CheckResult(
             "report_only_no_write",
             CheckStatus.FAIL,
             "validation mutated probe artifact",
+            evidence,
+        )
+    if before.get("clean") is not True or after.get("clean") is not True:
+        return CheckResult(
+            "report_only_no_write",
+            CheckStatus.FAIL,
+            "terminal release requires a clean target worktree",
             evidence,
         )
     return CheckResult(
@@ -1780,6 +2533,8 @@ class PlannerDoctorReleaseReceipt:
     forest_root: str = ""
     task_preimage_root: str = ""
     child_goal_coverage_root: str = ""
+    repository_commit: str = ""
+    repository_state_root: str = ""
     board_terminal: str = TERMINAL_TASK_ID
     task_id: str = TASK_ID
     goal_id: str = GOAL_ID
@@ -1805,6 +2560,8 @@ class PlannerDoctorReleaseReceipt:
             "forest_root": self.forest_root,
             "task_preimage_root": self.task_preimage_root,
             "child_goal_coverage_root": self.child_goal_coverage_root,
+            "repository_commit": self.repository_commit,
+            "repository_state_root": self.repository_state_root,
             "board_terminal": self.board_terminal,
             "mutation_authorized": False,
             "completion_authoritative": False,
@@ -1827,13 +2584,18 @@ def validate_planner_doctor_release(
     repo_root: Path | None = None,
     *,
     policy: PlannerDoctorReleasePolicy | None = None,
+    floor_projection_path: str | Path | None = None,
     floor_projection: Mapping[str, Any] | None = None,
+    rollback_receipt_path: str | Path | None = None,
+    lane_state_paths: Sequence[str | Path] | None = None,
+    drain_receipt_path: str | Path | None = None,
     evidence_probes: Sequence[Mapping[str, Any]] | None = None,
 ) -> PlannerDoctorReleaseReceipt:
     """Run the full terminal release gate and return a sealed receipt."""
 
     root = (repo_root or repository_root()).resolve()
     policy = policy or default_release_policy()
+    before_identity = _worktree_identity(root)
     results: list[CheckResult] = []
 
     results.append(check_declared_artifacts(root))
@@ -1851,24 +2613,54 @@ def validate_planner_doctor_release(
     if policy.require_zero_safety_floors:
         results.append(
             check_zero_safety_floors(
-                floor_projection=floor_projection, policy=policy
+                repo_root=root,
+                floor_projection_path=floor_projection_path,
+                floor_projection=floor_projection,
+                policy=policy,
             )
         )
     if policy.require_exact_rollback:
-        results.append(check_exact_rollback(root))
+        results.append(
+            check_exact_rollback(
+                root,
+                rollback_receipt_path=rollback_receipt_path,
+            )
+        )
     if policy.require_optional_capability_documentation:
         results.append(check_optional_capabilities())
     if policy.require_holdout_operator_decision_for_automatic:
         results.append(check_automatic_promotion_gated(root))
     if policy.require_six_lane_drain:
-        results.append(check_six_lane_supervisor_drain(root))
+        results.append(
+            check_six_lane_supervisor_drain(
+                root,
+                lane_state_paths=lane_state_paths,
+                drain_receipt_path=drain_receipt_path,
+            )
+        )
     if policy.require_cold_imports:
-        results.append(check_cold_imports())
-    results.append(check_report_only_no_write(root))
+        results.append(check_cold_imports(root))
+    results.append(check_report_only_no_write(root, before_identity=before_identity))
 
     checks = _checks_to_map(results)
-    valid = all(
-        item.get("status") in {"pass", "skip", "warn"} for item in checks.values()
+    required_check_names = {
+        "declared_artifacts",
+        "protected_anchors",
+        "canonical_board",
+        "source_artifact_reload",
+        "child_goal_coverage",
+        "task_vs_objective_completion",
+        "reject_bad_evidence",
+        "zero_safety_floors",
+        "exact_rollback",
+        "optional_capabilities",
+        "automatic_promotion_gated",
+        "six_lane_supervisor_drain",
+        "cold_imports",
+        "report_only_no_write",
+    }
+    valid = set(checks) == required_check_names and all(
+        item.get("status") == CheckStatus.PASS.value for item in checks.values()
     )
 
     forest_root = str(
@@ -1902,14 +2694,22 @@ def validate_planner_doctor_release(
         forest_root=forest_root,
         task_preimage_root=task_preimage_root,
         child_goal_coverage_root=child_goal_coverage_root,
+        repository_commit=_current_commit(root),
+        repository_state_root=str(before_identity.get("identity") or ""),
         board_terminal=TERMINAL_TASK_ID,
     )
 
 
 def replay_release_receipt(
     receipt: Mapping[str, Any] | PlannerDoctorReleaseReceipt,
+    *,
+    repo_root: Path | None = None,
+    floor_projection_path: str | Path | None = None,
+    rollback_receipt_path: str | Path | None = None,
+    lane_state_paths: Sequence[str | Path] | None = None,
+    drain_receipt_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Replay a release receipt and prove identity-equivalent sealing."""
+    """Rerun the gate from current sources and compare the complete identity."""
 
     payload = (
         receipt.to_dict()
@@ -1921,14 +2721,61 @@ def replay_release_receipt(
         {k: v for k, v in payload.items() if k != "receipt_id"},
         id_key="receipt_id",
     )
-    identity_ok = claimed == resealed.get("receipt_id") and verify_sealed(payload)
+    seal_ok = claimed == resealed.get("receipt_id") and verify_sealed(payload)
+    checks = payload.get("checks") if isinstance(payload.get("checks"), Mapping) else {}
+    floor_evidence = (
+        checks.get("zero_safety_floors", {}).get("evidence", {})
+        if isinstance(checks.get("zero_safety_floors"), Mapping)
+        else {}
+    )
+    rollback_evidence = (
+        checks.get("exact_rollback", {}).get("evidence", {})
+        if isinstance(checks.get("exact_rollback"), Mapping)
+        else {}
+    )
+    drain_evidence = (
+        checks.get("six_lane_supervisor_drain", {}).get("evidence", {})
+        if isinstance(checks.get("six_lane_supervisor_drain"), Mapping)
+        else {}
+    )
+    resolved_floor_path = floor_projection_path or floor_evidence.get("source_path")
+    resolved_rollback_path = rollback_receipt_path or rollback_evidence.get("source_path")
+    resolved_lane_paths = tuple(
+        lane_state_paths or drain_evidence.get("lane_state_paths") or ()
+    )
+    resolved_drain_path = drain_receipt_path or drain_evidence.get("drain_receipt_path")
+    current = validate_planner_doctor_release(
+        repo_root,
+        floor_projection_path=resolved_floor_path,
+        rollback_receipt_path=resolved_rollback_path,
+        lane_state_paths=resolved_lane_paths,
+        drain_receipt_path=resolved_drain_path,
+    )
+    current_payload = current.to_dict()
+    identity_equivalent = bool(
+        seal_ok
+        and current.valid
+        and claimed == current.receipt_id
+        and payload.get("forest_root") == current.forest_root
+        and payload.get("task_preimage_root") == current.task_preimage_root
+        and payload.get("child_goal_coverage_root") == current.child_goal_coverage_root
+        and payload.get("repository_commit") == current.repository_commit
+        and payload.get("repository_state_root") == current.repository_state_root
+    )
     return {
         "schema": RELEASE_REPLAY_SCHEMA,
         "interface": RELEASE_REPLAY_INTERFACE,
-        "valid": bool(identity_ok and payload.get("valid") is True),
-        "identity_ok": identity_ok,
+        "valid": bool(identity_equivalent and payload.get("valid") is True),
+        "identity_ok": identity_equivalent,
+        "seal_ok": seal_ok,
+        "current_validation_valid": current.valid,
+        "current_receipt_id": current.receipt_id,
+        "current_repository_commit": current.repository_commit,
+        "source_replay_performed": True,
         "claimed_receipt_id": claimed,
-        "recomputed_receipt_id": resealed.get("receipt_id"),
+        "recomputed_receipt_id": current.receipt_id,
+        "resealed_receipt_id": resealed.get("receipt_id"),
+        "current_checks": current_payload.get("checks"),
         "mutation_authorized": False,
         "completion_authoritative": False,
         "automatic_promotion_enabled": False,
@@ -2013,7 +2860,6 @@ __all__ = [
     "BOARD_NAMESPACE",
     "CANONICAL_GOAL_COUNT",
     "CANONICAL_TASK_COUNT",
-    "CHILD_GOAL_EVIDENCE_ARTIFACTS",
     "CHILD_GOAL_IDS",
     "COLD_IMPORT_MODULES",
     "CONSUMED_INTERFACES",

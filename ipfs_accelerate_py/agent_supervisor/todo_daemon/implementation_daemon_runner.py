@@ -1134,6 +1134,11 @@ def build_portal_implementation_daemon_from_args(
         merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
         worktree_submodule_paths=worktree_submodule_paths,
         implementation_protected_paths=implementation_protected_paths,
+        manual_completion_authority_required_task_ids=getattr(
+            parsed,
+            "manual_completion_authority_required_task_id",
+            (),
+        ),
         objective_path=parsed.objective_path or default_objective_path,
         objective_bundle_dir=parsed.objective_bundle_dir or default_objective_bundle_dir,
         execution_slice_task_ids=getattr(parsed, "execution_slice_task_id", ()),

@@ -3153,6 +3153,7 @@ class PortalImplementationDaemon:
         merge_target_branch: str | None = None,
         worktree_submodule_paths: Any = None,
         implementation_protected_paths: Any = None,
+        manual_completion_authority_required_task_ids: Sequence[str] = (),
         objective_path: Path | None = None,
         objective_bundle_dir: Path | None = None,
         generated_status_paths: Sequence[Path | str] = (),
@@ -3251,6 +3252,11 @@ class PortalImplementationDaemon:
         self.implementation_protected_paths = normalize_implementation_protected_paths(
             implementation_protected_paths,
             repo_root=self.repo_root,
+        )
+        self.manual_completion_authority_required_task_ids = frozenset(
+            str(task_id).strip()
+            for task_id in manual_completion_authority_required_task_ids
+            if str(task_id).strip()
         )
         self.shared_worktree_source_roots = shared_worktree_source_roots(self.repo_root)
         self.task_header_prefix = normalize_task_header_prefix(task_header_prefix)
@@ -8709,13 +8715,22 @@ class PortalImplementationDaemon:
             self._shared_completed_task_cid_bindings()
         )
         shared_active_merge_cids.difference_update(shared_completed_merge_cids)
+        declared_task_ids = {task.task_id for task in tasks}
+        manual_completion_authority_required_task_ids = (
+            set(self.manual_completion_authority_required_task_ids)
+            & declared_task_ids
+        )
         shared_completed_task_ids = {
             task.task_id
             for task in tasks
             if (
-                self._canonical_ref(task) in shared_completed_merge_cids
-                or self._canonical_ref(task)
-                in shared_completed_task_bindings.get(task.task_id, set())
+                task.task_id
+                not in manual_completion_authority_required_task_ids
+                and (
+                    self._canonical_ref(task) in shared_completed_merge_cids
+                    or self._canonical_ref(task)
+                    in shared_completed_task_bindings.get(task.task_id, set())
+                )
             )
         }
         shared_active_merge_task_ids = {
@@ -8733,7 +8748,22 @@ class PortalImplementationDaemon:
         )
         now = utc_now()
         board_completed_task_ids = {
-            task.task_id for task in tasks if task.status == "completed"
+            task.task_id
+            for task in tasks
+            if (
+                task.status == "completed"
+                and task.task_id
+                not in manual_completion_authority_required_task_ids
+            )
+        }
+        quarantined_manual_completion_status_task_ids = {
+            task.task_id
+            for task in tasks
+            if (
+                task.status == "completed"
+                and task.task_id
+                in manual_completion_authority_required_task_ids
+            )
         }
         status_completed_task_ids = board_completed_task_ids | shared_completed_task_ids
         pending_retry_repair_source_ids = pending_retry_budget_repair_sources(
@@ -8786,7 +8816,9 @@ class PortalImplementationDaemon:
         queued_merge_task_ids = self._pending_queued_merge_task_ids(recent_outcomes)
         quarantined_merge_task_ids = self._quarantined_queued_merge_task_ids(recent_outcomes)
         successfully_merged_task_ids = self._successfully_merged_task_ids()
-        completion_receipt_task_ids = successfully_merged_task_ids | shared_completed_task_ids
+        completion_receipt_task_ids = (
+            successfully_merged_task_ids | shared_completed_task_ids
+        ) - manual_completion_authority_required_task_ids
         merged_status_repair: dict[str, Any] = {}
         stale_merged_completed_task_ids = [
             task.task_id
@@ -8834,6 +8866,8 @@ class PortalImplementationDaemon:
                 and not unresolved_merge_failure
                 and not transient_merge_deferral
             )
+            if task.task_id in manual_completion_authority_required_task_ids:
+                continue
             if task.task_id in status_completed_task_ids or artifact_complete or merged_complete:
                 completed_set.add(task.task_id)
 
@@ -8862,7 +8896,10 @@ class PortalImplementationDaemon:
         dependency_satisfied_task_ids = dependency_satisfied_references(
             tasks,
             completed_task_ids=completed_set,
-            assumed_completed_references=self.assumed_completed_task_ids,
+            assumed_completed_references=(
+                self.assumed_completed_task_ids
+                - manual_completion_authority_required_task_ids
+            ),
         )
         dependency_reopen_candidates = [
             task.task_id
@@ -8888,6 +8925,9 @@ class PortalImplementationDaemon:
         }
 
         for task in tasks:
+            if task.task_id in manual_completion_authority_required_task_ids:
+                resolved_statuses[task.task_id] = "blocked"
+                continue
             if task.task_id in completed_set:
                 resolved_statuses[task.task_id] = "completed"
                 if task.task_id not in previous_completed:
@@ -9296,6 +9336,12 @@ class PortalImplementationDaemon:
                             protected_path_conflicts_by_task.items()
                         )
                     },
+                    "manual_completion_authority_required_task_ids": sorted(
+                        manual_completion_authority_required_task_ids
+                    ),
+                    "quarantined_manual_completion_status_task_ids": sorted(
+                        quarantined_manual_completion_status_task_ids
+                    ),
                     "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
                     "shared_completed_task_ids": sorted(shared_completed_task_ids),
                     "completion_receipt_task_ids": [
@@ -9331,6 +9377,12 @@ class PortalImplementationDaemon:
                     protected_path_conflicts_by_task.items()
                 )
             },
+            "manual_completion_authority_required_task_ids": sorted(
+                manual_completion_authority_required_task_ids
+            ),
+            "quarantined_manual_completion_status_task_ids": sorted(
+                quarantined_manual_completion_status_task_ids
+            ),
             "state_path": str(self.state_path),
             "strategy_path": str(self.strategy_path),
             "events_path": str(self.events_path),
@@ -12901,6 +12953,24 @@ class PortalImplementationDaemon:
             for task_id in dict.fromkeys(task_ids)
             if str(task_id).strip()
         ]
+        authority_required_task_ids = sorted(
+            set(expected_task_ids)
+            & set(self.manual_completion_authority_required_task_ids)
+        )
+        if authority_required_task_ids:
+            result = {
+                "updated": False,
+                "durable": False,
+                "task_id": primary_task_id,
+                "reason": "manual_completion_authority_required",
+                "completion_reason": completion_reason,
+                "expected_task_ids": expected_task_ids,
+                "manual_completion_authority_required_task_ids": (
+                    authority_required_task_ids
+                ),
+            }
+            self._record_event("todo_status_update_failed", result)
+            return result
         callback_expectation: dict[str, Any] | None
         try:
             callback_expectation = self._completion_callback_expectation(
@@ -14417,6 +14487,9 @@ class PortalImplementationDaemon:
             worktree_root=self.worktree_root,
             merge_target_branch=self.resolved_merge_target_branch,
             worktree_submodule_paths=self.worktree_submodule_paths,
+            manual_completion_authority_required_task_ids=(
+                self.manual_completion_authority_required_task_ids
+            ),
             merge_queue=self.merge_queue,
             merge_queue_dir=self.merge_queue_dir,
             decision_runtime=self.decision_runtime,
@@ -16247,6 +16320,9 @@ class PortalImplementationDaemon:
                         worktree_submodule_paths=self.worktree_submodule_paths,
                         implementation_protected_paths=(
                             effective_protected_paths
+                        ),
+                        manual_completion_authority_required_task_ids=(
+                            self.manual_completion_authority_required_task_ids
                         ),
                         merge_queue=self.merge_queue,
                         merge_queue_dir=self.merge_queue_dir,
@@ -42605,6 +42681,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--manual-completion-authority-required-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID that autonomous scheduling and task-"
+            "status completion must quarantine until a fresh supervisor "
+            "load verifies its operator seal."
+        ),
+    )
+    parser.add_argument(
         "--clear-protected-path-incident",
         action="store_true",
         help=(
@@ -42921,6 +43007,9 @@ def main(argv: list[str] | None = None) -> None:
         merge_queue_dir=args.merge_queue_dir,
         worktree_submodule_paths=args.worktree_submodule_path or None,
         implementation_protected_paths=args.implementation_protected_path,
+        manual_completion_authority_required_task_ids=(
+            args.manual_completion_authority_required_task_id
+        ),
         objective_path=args.objective_path,
         objective_bundle_dir=args.objective_bundle_dir,
         generated_status_paths=args.generated_status_path,

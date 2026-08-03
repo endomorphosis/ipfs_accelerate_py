@@ -898,7 +898,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-060 Bind receipt lineage and gate optional ZKP to an approved threat model
 
-- Status: completed
+- Status: pending
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -924,7 +924,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-070 Execute live paired Planner/Doctor benchmarks on hermetic repositories
 
-- Status: completed
+- Status: pending
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -976,7 +976,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-072 Add protected hidden quality oracles, adversarial cases, and ablations
 
-- Status: completed
+- Status: pending
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1002,7 +1002,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-080 Invoke bounded live self-improvement epochs from supervisor lifecycle
 
-- Status: completed
+- Status: pending
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1028,7 +1028,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-081 Compile benchmark/Doctor residuals into bounded derived goals and tasks
 
-- Status: completed
+- Status: pending
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1054,7 +1054,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-082 Gate baseline/challenger rollout with quality-safe Pareto and anti-gaming checks
 
-- Status: completed
+- Status: pending
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1080,7 +1080,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-090 Prove live E2E, transport/projection parity, adversarial safety, and chaos recovery
 
-- Status: completed
+- Status: pending
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1106,7 +1106,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-091 Deliver protected launch profiles, lifecycle controls, kill switch, and runbook
 
-- Status: completed
+- Status: pending
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1132,7 +1132,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-092 Issue the independently replayed terminal PDR release receipt
 
-- Status: completed
+- Status: pending
 - Completion: manual
 - Is schedulable: true
 - Review only: false
