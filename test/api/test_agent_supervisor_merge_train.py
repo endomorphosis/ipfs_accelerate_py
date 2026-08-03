@@ -475,6 +475,50 @@ def test_train_callback_runs_when_root_candidate_is_already_merged(tmp_path: Pat
     assert queue.get(request.request_id).status == "completed"  # type: ignore[union-attr]
 
 
+def test_non_retryable_callback_exception_uses_custom_quarantine_reason(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/terminal-callback",
+        task_id="TERMINAL-CALLBACK",
+        canonical_task_id="canonical-terminal-callback",
+        commit_sha=candidate,
+    )
+    callbacks: list[str] = []
+
+    class TerminalCallbackError(RuntimeError):
+        retryable = False
+        merge_failure_reason = "custom_terminal_callback_failure"
+
+    def fail_terminally(claimed: MergeRequest) -> dict[str, object]:
+        callbacks.append(claimed.request_id)
+        raise TerminalCallbackError("sealed callback failure")
+
+    train = MergeTrain(
+        repo,
+        queue,
+        merge_callback=fail_terminally,
+    )
+    result = train.run_once()
+
+    assert result is not None
+    assert result["status"] == "quarantined"
+    assert result["retryable"] is False
+    assert result["reason"] == "custom_terminal_callback_failure"
+    assert result["exception"] == (
+        "TerminalCallbackError: sealed callback failure"
+    )
+    stored = queue.get(request.request_id)
+    assert stored is not None
+    assert stored.status == "quarantined"
+    assert stored.failure_reason == "custom_terminal_callback_failure"
+    assert train.run_once() is None
+    assert callbacks == [request.request_id]
+
+
 def test_train_immediately_recovers_a_claim_abandoned_by_dead_consumer(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     candidate = _git(repo, "rev-parse", "HEAD")
@@ -659,11 +703,26 @@ def test_cross_lane_completion_reuses_the_bound_non_main_target(
     tmp_path: Path,
 ) -> None:
     repo = _repo(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
     _git(repo, "branch", "benchmark/semantic-roundtrip")
     _git(repo, "branch", "implementation/ref-039")
+    _git(repo, "checkout", "implementation/ref-039")
+    (repo / "ref-039.txt").write_text(
+        "cross-lane target binding\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "ref-039.txt")
+    _git(repo, "commit", "-m", "REF-039: add target-binding fixture")
+    commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
     producer_todo = repo / "producer-tasks.md"
     consumer_todo = repo / "consumer-tasks.md"
-    task_text = "## REF-039 Cross-lane completion\n\n- Status: todo\n"
+    task_text = (
+        "## REF-039 Cross-lane completion\n\n"
+        "- Status: todo\n"
+        "- Provider role: deterministic-only\n"
+        "- Outputs: ref-039.txt\n"
+    )
     producer_todo.write_text(task_text, encoding="utf-8")
     consumer_todo.write_text(task_text, encoding="utf-8")
 
@@ -689,16 +748,23 @@ def test_cross_lane_completion_reuses_the_bound_non_main_target(
         completion="manual",
         priority="P0",
         track="g9",
+        outputs=["ref-039.txt"],
+        metadata={"provider role": "deterministic-only"},
     )
-    commit = _git(repo, "rev-parse", "HEAD")
     request, _result = producer._enqueue_merge_candidate(
         branch_name="implementation/ref-039",
         implementation_commit=commit,
-        baseline_ref=commit,
+        baseline_ref=baseline,
         worktree_path=None,
         task=task,
         attempt=1,
     )
+    request.metadata["validation_proof"] = {
+        "passed": True,
+        "returncode": 0,
+        "selection": {"scope": "pre_merge"},
+        "proposal_gate": {"changed_paths": ["ref-039.txt"]},
+    }
 
     result = consumer._merge_train_callback(request)
 

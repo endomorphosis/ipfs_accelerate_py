@@ -3045,11 +3045,19 @@ class MergeTrain:
                     or {}
                 )
             except Exception as exc:  # callbacks are an isolation boundary
+                retryable = getattr(exc, "retryable", True) is not False
                 return self._finish_failure(
                     request,
-                    reason="merge_callback_exception",
+                    reason=str(
+                        getattr(
+                            exc,
+                            "merge_failure_reason",
+                            "merge_callback_exception",
+                        )
+                    ),
                     details={"exception": f"{type(exc).__name__}: {exc}"},
                     started_at=started_at,
+                    retryable=retryable,
                 )
             if callback_result.get("merged") or callback_result.get("already_merged"):
                 if self.post_merge_validation is not None:

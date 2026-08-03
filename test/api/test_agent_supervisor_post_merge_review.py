@@ -13,7 +13,10 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
+    append_jsonl_event,
+    event_log_manifest,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import post_merge_review as review
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.authoritative_completion import (
     POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
@@ -267,6 +270,42 @@ def _append_review_event(
     payload = dict(outcome.event)
     event_type = str(payload.pop("type"))
     return append_jsonl_event(events_path, event_type, payload)
+
+
+def test_strict_ledger_rejects_sibling_path_manifest_replay(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "state" / "origin" / "events.jsonl"
+    copied = tmp_path / "state" / "consumer" / "events.jsonl"
+    append_jsonl_event(
+        source,
+        "implementation_finished",
+        {
+            "task_id": "REV-001",
+            "attempt": 1,
+            "implementation_commit": "a" * 40,
+            "returncode": 0,
+        },
+    )
+    copied.parent.mkdir(parents=True)
+    copied.write_bytes(source.read_bytes())
+    source_manifest = source.with_name(
+        f"{source.name}.manifest.json"
+    )
+    copied_manifest = copied.with_name(
+        f"{copied.name}.manifest.json"
+    )
+    copied_manifest.write_bytes(source_manifest.read_bytes())
+    copied_stream_id = event_log_manifest(copied)["stream_id"]
+    assert copied_stream_id == event_log_manifest(source)["stream_id"]
+
+    with pytest.raises(review.PostMergeReviewError) as raised:
+        review._strict_event_ledger(copied)
+
+    assert (
+        raised.value.reason_code
+        == "event_ledger_path_binding_invalid"
+    )
 
 
 @pytest.fixture()
@@ -1172,6 +1211,15 @@ def test_injected_and_declined_reviews_remain_pending(
     assert declined.reason_code == "independent_review_changes_required"
     assert declined.acceptance_pending is True
     assert declined._gate_evidence == {}
+    assert declined._producer_seal is None
+    assert (
+        review.post_merge_review_denial_tombstone_from_live_outcome(
+            declined,
+            target_repository_id="repository:test",
+            target_branch="main",
+        )
+        == {}
+    )
 
 
 @pytest.mark.parametrize(

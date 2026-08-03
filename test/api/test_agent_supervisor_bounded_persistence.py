@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -8,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor import artifact_store
+from ipfs_accelerate_py.agent_supervisor.runtime import event_log as event_log_runtime
 from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import (
     ArtifactBlobIntegrityError,
     ArtifactOutcome,
@@ -20,9 +22,15 @@ from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import (
     enforce_receipt_bound,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
+    EventLogIntegrityFailure,
+    EventLogTailRecoveryRequired,
     EventPayloadTooLarge,
     append_jsonl_event,
+    event_log_integrity_failure,
     event_log_manifest,
+    initial_event_cursor,
+    recover_jsonl_event_log_tail,
+    read_jsonl_event_page,
     read_jsonl_event_sources,
     rotate_event_log_if_needed,
 )
@@ -284,3 +292,620 @@ def test_event_log_bounds_streaming_rotation_and_recovery_manifest(
     recovered = event_log_manifest(path)
     assert recovered["generation"] == 0
     assert sum(item["event_count"] for item in recovered["files"]) == 8
+
+
+def test_reconciled_event_log_tail_manifest_is_durable_for_strict_restart(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.post_merge_review import (
+        _strict_event_ledger,
+    )
+
+    path = tmp_path / "events.jsonl"
+    manifest_path = path.with_name(f"{path.name}.manifest.json")
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 1})
+    stale_manifest = manifest_path.read_bytes()
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 2})
+    manifest_path.write_bytes(stale_manifest)
+
+    reconciled = event_log_manifest(path)
+    persisted = event_log_runtime._load_event_manifest(path)
+
+    assert reconciled["latest_sequence"] == 2
+    assert persisted == reconciled
+    assert [event["sequence"] for event in _strict_event_ledger(path)] == [
+        1,
+        2,
+    ]
+
+
+def test_reconciled_manifest_write_failure_does_not_fail_append(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    manifest_path = path.with_name(f"{path.name}.manifest.json")
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 1})
+    stale_manifest = manifest_path.read_bytes()
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 2})
+    manifest_path.write_bytes(stale_manifest)
+    original_write = event_log_runtime._write_manifest_value
+    calls = 0
+
+    def fail_reconciliation_write_once(
+        event_path: Path,
+        value: dict[str, object],
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("injected reconciled-manifest write failure")
+        original_write(event_path, value)
+
+    monkeypatch.setattr(
+        event_log_runtime,
+        "_write_manifest_value",
+        fail_reconciliation_write_once,
+    )
+
+    appended = append_jsonl_event(
+        path,
+        "scheduler_tick",
+        {"ordinal": 3},
+    )
+
+    assert appended["sequence"] == 3
+    assert calls == 2
+    assert event_log_runtime._load_event_manifest(path)["latest_sequence"] == 3
+
+
+def test_first_rotation_manifest_write_failure_uses_fresh_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.post_merge_review import (
+        _strict_event_ledger,
+    )
+
+    path = tmp_path / "events.jsonl"
+    for ordinal in range(8):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": ordinal})
+    original_write = event_log_runtime._write_manifest_value
+    calls = 0
+
+    def fail_first_rotation_manifest_write(
+        event_path: Path,
+        value: dict[str, object],
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("injected first rotation manifest write failure")
+        original_write(event_path, value)
+
+    monkeypatch.setattr(
+        event_log_runtime,
+        "_write_manifest_value",
+        fail_first_rotation_manifest_write,
+    )
+    failed = rotate_event_log_if_needed(
+        path,
+        max_bytes=1,
+        retain_recent=3,
+        max_archives=8,
+    )
+    monkeypatch.setattr(
+        event_log_runtime,
+        "_write_manifest_value",
+        original_write,
+    )
+
+    assert failed["rotated"] is False
+    assert failed["reason"] == "write_failed"
+    first_archive = next(
+        path.parent.glob(f"{path.name}.rotated-g*-*")
+    )
+    assert event_log_runtime._installed_rotation_generations(path) == (1,)
+
+    recovered = event_log_manifest(path)
+    assert recovered["latest_sequence"] == 8
+    appended = append_jsonl_event(
+        path,
+        "scheduler_tick",
+        {"ordinal": 8},
+    )
+    assert appended["sequence"] == 9
+
+    retried = rotate_event_log_if_needed(
+        path,
+        max_bytes=1,
+        retain_recent=3,
+        max_archives=8,
+    )
+
+    assert retried["rotated"] is True
+    assert Path(retried["archive_path"]) != first_archive
+    assert retried["manifest_generation"] == 2
+    assert event_log_runtime._installed_rotation_generations(path) == (1, 2)
+    assert [event["sequence"] for event in _strict_event_ledger(path)] == list(
+        range(1, 10)
+    )
+
+
+@pytest.mark.parametrize("reader", ("manifest", "page"))
+def test_event_log_read_cannot_launder_active_history_regression(
+    tmp_path: Path,
+    reader: str,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    initial = initial_event_cursor(path)
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 1})
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 2})
+    manifest_path = path.with_name(f"{path.name}.manifest.json")
+    manifest_before = manifest_path.read_bytes()
+    first_line = path.read_bytes().splitlines(keepends=True)[0]
+    path.write_bytes(first_line)
+
+    with pytest.raises(EventLogIntegrityFailure):
+        if reader == "manifest":
+            event_log_manifest(path)
+        else:
+            read_jsonl_event_page(path, initial, limit=10)
+
+    latch = event_log_integrity_failure(path)
+    assert latch is not None
+    assert latch["affected_path"] == path.name
+    assert latch["actual_size_bytes"] < latch["expected_size_bytes"]
+    assert manifest_path.read_bytes() == manifest_before
+    with pytest.raises(EventLogIntegrityFailure):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": 3})
+
+
+def test_unexpected_archive_cannot_mask_active_history_regression(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    for ordinal in range(3):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": ordinal})
+    manifest_before = event_log_manifest(path)
+    first_line = path.read_bytes().splitlines(keepends=True)[0]
+    path.write_bytes(first_line)
+    path.with_name(f"{path.name}.rotated-mask").write_bytes(b"")
+
+    with pytest.raises(EventLogIntegrityFailure):
+        event_log_manifest(path)
+
+    latch = event_log_integrity_failure(path)
+    assert latch is not None
+    assert latch["affected_path"] == path.name
+    assert latch["expected_latest_sequence"] == (
+        manifest_before["latest_sequence"]
+    )
+
+
+def test_tail_recovery_cannot_launder_clean_history_regression(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 1})
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 2})
+    first_line = path.read_bytes().splitlines(keepends=True)[0]
+    path.write_bytes(first_line)
+
+    result = recover_jsonl_event_log_tail(path)
+
+    assert result["failed_closed"] is True
+    assert result["reason"] == "event_log_history_regressed"
+    assert event_log_integrity_failure(path) is not None
+    with pytest.raises(EventLogIntegrityFailure):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": 3})
+
+
+def test_tail_recovery_quarantines_only_unindexed_partial_suffix(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 1})
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 2})
+    with path.open("ab") as stream:
+        stream.write(b'{"partial":')
+
+    result = recover_jsonl_event_log_tail(path)
+
+    assert result["repaired"] is True
+    assert result["failed_closed"] is False
+    assert result["reason"] == "partial_tail_quarantined"
+    assert Path(result["quarantine_path"]).read_bytes() == b'{"partial":'
+    appended = append_jsonl_event(
+        path,
+        "scheduler_tick",
+        {"ordinal": 3},
+    )
+    assert appended["sequence"] == 3
+    assert event_log_integrity_failure(path) is None
+
+
+def test_append_requires_recovery_before_unindexed_partial_suffix(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    initial = initial_event_cursor(path)
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 1})
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 2})
+    with path.open("ab") as stream:
+        stream.write(b'{"partial":')
+    damaged = path.read_bytes()
+
+    with pytest.raises(EventLogTailRecoveryRequired):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": 3})
+
+    assert path.read_bytes() == damaged
+    assert event_log_runtime._load_event_manifest(path)["latest_sequence"] == 2
+    assert event_log_integrity_failure(path) is None
+
+    recovery = recover_jsonl_event_log_tail(path)
+    assert recovery["repaired"] is True
+    assert Path(recovery["quarantine_path"]).read_bytes() == b'{"partial":'
+    appended = append_jsonl_event(
+        path,
+        "scheduler_tick",
+        {"ordinal": 3},
+    )
+    page = read_jsonl_event_page(path, initial, limit=10)
+    assert appended["sequence"] == 3
+    assert [event["sequence"] for event in page.events] == [1, 2, 3]
+
+
+def test_tail_recovery_preserves_complete_unindexed_event_before_partial_suffix(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 1})
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 2})
+    manifest_path = path.with_name(f"{path.name}.manifest.json")
+    manifest_before_third = manifest_path.read_bytes()
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 3})
+    manifest_path.write_bytes(manifest_before_third)
+    with path.open("ab") as stream:
+        stream.write(b'{"partial":')
+
+    result = recover_jsonl_event_log_tail(path)
+
+    assert result["repaired"] is True
+    assert result["failed_closed"] is False
+    appended = append_jsonl_event(
+        path,
+        "scheduler_tick",
+        {"ordinal": 4},
+    )
+    assert appended["sequence"] == 4
+    assert event_log_integrity_failure(path) is None
+
+
+@pytest.mark.parametrize(
+    "damage_mode",
+    ("delete", "replace", "shrink"),
+)
+def test_event_log_append_latches_any_sealed_archive_regression(
+    tmp_path: Path,
+    damage_mode: str,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    for ordinal in range(8):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": ordinal})
+    rotation = rotate_event_log_if_needed(
+        path,
+        max_bytes=1,
+        retain_recent=3,
+        max_archives=2,
+    )
+    archive_path = Path(rotation["archive_path"])
+    archive_payload = archive_path.read_bytes()
+    manifest_before = event_log_manifest(path)
+
+    if damage_mode == "delete":
+        archive_path.unlink()
+    elif damage_mode == "replace":
+        replacement = archive_path.with_name(
+            f".{archive_path.name}.replacement"
+        )
+        replacement.write_bytes(archive_payload)
+        replacement.replace(archive_path)
+    else:
+        archive_path.write_bytes(archive_payload[:-1])
+
+    with pytest.raises(EventLogIntegrityFailure):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": 9})
+
+    latch = event_log_integrity_failure(path)
+    assert latch is not None
+    assert latch["affected_path"] == archive_path.name
+    assert latch["expected_latest_sequence"] == (
+        manifest_before["latest_sequence"]
+    )
+
+
+@pytest.mark.parametrize("failed_manifest_write", (2, 3))
+def test_archive_retirement_manifest_failure_never_latches_healthy_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failed_manifest_write: int,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    for ordinal in range(8):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": ordinal})
+    assert rotate_event_log_if_needed(
+        path,
+        max_bytes=1,
+        retain_recent=3,
+        max_archives=1,
+    )["rotated"]
+    for ordinal in range(8, 16):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": ordinal})
+
+    original_write = event_log_runtime._write_manifest_value
+    calls = 0
+
+    def fail_selected_write(
+        event_path: Path,
+        value: dict[str, object],
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == failed_manifest_write:
+            raise OSError("injected manifest durability failure")
+        original_write(event_path, value)
+
+    monkeypatch.setattr(
+        event_log_runtime,
+        "_write_manifest_value",
+        fail_selected_write,
+    )
+    rotation = rotate_event_log_if_needed(
+        path,
+        max_bytes=1,
+        retain_recent=3,
+        max_archives=1,
+    )
+    monkeypatch.setattr(
+        event_log_runtime,
+        "_write_manifest_value",
+        original_write,
+    )
+
+    if failed_manifest_write == 2:
+        assert rotation["reason"] == "write_failed"
+    else:
+        assert rotation["rotated"] is True
+    appended = append_jsonl_event(
+        path,
+        "scheduler_tick",
+        {"ordinal": 16},
+    )
+    assert appended["sequence"] == 17
+    assert event_log_integrity_failure(path) is None
+
+
+def test_same_size_active_rewrite_latches_canonical_head_regression(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 1})
+    append_jsonl_event(path, "scheduler_tick", {"ordinal": 2})
+    lines = path.read_bytes().splitlines(keepends=True)
+    rewritten = json.loads(lines[1])
+    rewritten["ordinal"] = 9
+    rewritten["event_id"] = event_log_runtime._event_identity(rewritten)
+    replacement = (
+        json.dumps(
+            rewritten,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        + b"\n"
+    )
+    assert len(replacement) == len(lines[1])
+    path.write_bytes(lines[0] + replacement)
+
+    with pytest.raises(EventLogIntegrityFailure):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": 3})
+
+    latch = event_log_integrity_failure(path)
+    assert latch is not None
+    assert latch["affected_path"] == path.name
+
+
+def test_repeated_archive_retention_keeps_a_strict_verifiable_chain(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.post_merge_review import (
+        _strict_event_ledger,
+    )
+
+    path = tmp_path / "events.jsonl"
+    archive_names: list[str] = []
+    for ordinal in range(20):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": ordinal})
+        if ordinal in {3, 7, 11, 15, 19}:
+            rotation = rotate_event_log_if_needed(
+                path,
+                max_bytes=1,
+                retain_recent=2,
+                max_archives=1,
+            )
+            assert rotation["rotated"] is True
+            archive_names.append(Path(rotation["archive_path"]).name)
+
+    manifest = event_log_manifest(path)
+    retained = _strict_event_ledger(path)
+
+    assert len(set(archive_names)) == len(archive_names)
+    assert manifest["earliest_sequence"] > 1
+    assert manifest["latest_sequence"] == 20
+    assert retained[-1]["ordinal"] == 19
+    assert retained[-1]["sequence"] == 20
+    assert event_log_integrity_failure(path) is None
+
+
+def test_strict_ledger_coalesces_exact_rotation_crash_overlap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.post_merge_review import (
+        _strict_event_ledger,
+    )
+
+    path = tmp_path / "events.jsonl"
+    for ordinal in range(1, 7):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": ordinal})
+
+    original_atomic_write = event_log_runtime._atomic_write_bytes
+
+    def crash_before_active_replacement(
+        target: Path,
+        payload: bytes,
+    ) -> None:
+        if target == path:
+            raise RuntimeError("injected crash before active-tail replacement")
+        original_atomic_write(target, payload)
+
+    monkeypatch.setattr(
+        event_log_runtime,
+        "_atomic_write_bytes",
+        crash_before_active_replacement,
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="injected crash before active-tail replacement",
+    ):
+        rotate_event_log_if_needed(
+            path,
+            max_bytes=1,
+            retain_recent=2,
+            max_archives=8,
+        )
+    monkeypatch.setattr(
+        event_log_runtime,
+        "_atomic_write_bytes",
+        original_atomic_write,
+    )
+
+    manifest = event_log_manifest(path)
+    ranges = [
+        (
+            int(record["first_sequence"]),
+            int(record["last_sequence"]),
+        )
+        for record in manifest["files"]
+    ]
+    assert ranges == [(1, 4), (1, 6)]
+    assert [
+        event["sequence"] for event in _strict_event_ledger(path)
+    ] == [1, 2, 3, 4, 5, 6]
+
+    appended = append_jsonl_event(
+        path,
+        "scheduler_tick",
+        {"ordinal": 7},
+    )
+    assert appended["sequence"] == 7
+    assert [
+        event["sequence"] for event in _strict_event_ledger(path)
+    ] == [1, 2, 3, 4, 5, 6, 7]
+
+
+def test_strict_ledger_rejects_conflicting_rotation_overlap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.post_merge_review import (
+        PostMergeReviewError,
+        _strict_event_ledger,
+    )
+
+    path = tmp_path / "events.jsonl"
+    for ordinal in range(1, 7):
+        append_jsonl_event(path, "scheduler_tick", {"ordinal": ordinal})
+
+    original_atomic_write = event_log_runtime._atomic_write_bytes
+
+    def crash_before_active_replacement(
+        target: Path,
+        payload: bytes,
+    ) -> None:
+        if target == path:
+            raise RuntimeError("injected crash before active-tail replacement")
+        original_atomic_write(target, payload)
+
+    monkeypatch.setattr(
+        event_log_runtime,
+        "_atomic_write_bytes",
+        crash_before_active_replacement,
+    )
+    with pytest.raises(RuntimeError):
+        rotate_event_log_if_needed(
+            path,
+            max_bytes=1,
+            retain_recent=2,
+            max_archives=8,
+        )
+    monkeypatch.setattr(
+        event_log_runtime,
+        "_atomic_write_bytes",
+        original_atomic_write,
+    )
+    manifest = event_log_manifest(path)
+
+    rewritten_events: list[dict[str, object]] = []
+    previous_event_id = ""
+    for index, raw_line in enumerate(path.read_bytes().splitlines()):
+        event = json.loads(raw_line)
+        if index == 0:
+            event["ordinal"] = 9
+        event["previous_event_id"] = previous_event_id
+        event["event_id"] = event_log_runtime._event_identity(event)
+        previous_event_id = str(event["event_id"])
+        rewritten_events.append(event)
+    rewritten_payload = b"".join(
+        json.dumps(
+            event,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        + b"\n"
+        for event in rewritten_events
+    )
+    path.write_bytes(rewritten_payload)
+
+    conflicting_manifest = dict(manifest)
+    records = [
+        dict(record)
+        for record in manifest["files"]
+    ]
+    active_record = next(
+        record for record in records if record["path"] == path.name
+    )
+    active_record.update(
+        {
+            "size_bytes": len(rewritten_payload),
+            "sha256": hashlib.sha256(rewritten_payload).hexdigest(),
+            **event_log_runtime._stat_fields(path),
+        }
+    )
+    conflicting_manifest.update(
+        {
+            "active_indexed_bytes": len(rewritten_payload),
+            "last_event_id": previous_event_id,
+            "files": records,
+        }
+    )
+    conflicting_manifest["manifest_digest"] = (
+        event_log_runtime._event_manifest_digest(conflicting_manifest)
+    )
+    event_log_runtime._write_manifest_value(path, conflicting_manifest)
+
+    with pytest.raises(
+        PostMergeReviewError,
+        match="duplicate sequence has conflicting identity",
+    ):
+        _strict_event_ledger(path)

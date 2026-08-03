@@ -10,6 +10,11 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MergeQueue,
     MergeQueueFenceError,
     MergeQueueFullError,
+    MergeQueueIntegrityError,
+    POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
 )
 
 
@@ -29,6 +34,261 @@ def _enqueue(
         priority=priority,
         metadata=metadata,
     )
+
+
+def _post_merge_denial_record(
+    *,
+    repository_id: str,
+    target_branch: str,
+) -> dict[str, object]:
+    finding_material = {
+        "source_ordinal": 1,
+        "code": "missing-fence",
+        "severity": "high",
+        "summary": "Bind the correction to the exact reviewed candidate.",
+    }
+    material: dict[str, object] = {
+        "schema": POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA,
+        "target_repository_id": repository_id,
+        "target_branch": target_branch,
+        "task_id": "UIR-002",
+        "canonical_task_key": "task/v1/example",
+        "canonical_task_cid": "baguqeeraexample",
+        "board_namespace": "uiir-v1",
+        "task_binding_id": "baguqeerataskbinding",
+        "review_attempt": 1,
+        "implementation_attempt": 1,
+        "target_implementation_attempt": 2,
+        "implementation_commit": "1" * 40,
+        "merge_commit": "2" * 40,
+        "repository_tree_id": f"git-tree:{'3' * 40}",
+        "review_receipt_id": "baguqeerareceipt",
+        "review_request_id": "baguqeerarequest",
+        "review_response_id": "baguqeeraresponse",
+        "diff_binding_id": "baguqeeradiff",
+        "implementer_provenance_id": "baguqeeraprovenance",
+        "correction_origin_stream_id": "event-log:sha256:origin",
+        "correction_authorized": True,
+        "decision": "changes_required",
+        "source_finding_count": 1,
+        "included_finding_count": 1,
+        "truncated": False,
+        "findings": [
+            {
+                **finding_material,
+                "finding_id": content_identity(finding_material),
+            }
+        ],
+        "repository_write_authorized": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    terminal_material = {
+        "target_repository_id": repository_id,
+        "target_branch": target_branch,
+        "task_id": material["task_id"],
+        "canonical_task_key": material["canonical_task_key"],
+        "canonical_task_cid": material["canonical_task_cid"],
+        "task_binding_id": material["task_binding_id"],
+        "implementation_commit": material["implementation_commit"],
+    }
+    material["terminal_key_id"] = content_identity(terminal_material)
+    return {
+        **material,
+        "denial_id": content_identity(material),
+    }
+
+
+def _evolved_post_merge_denial_record(
+    record: dict[str, object],
+    *,
+    marker: str,
+    correction_authorized: bool,
+) -> dict[str, object]:
+    evolved = dict(record)
+    digit = "4" if marker == "a" else "5"
+    evolved.update(
+        {
+            "review_attempt": 2,
+            "merge_commit": digit * 40,
+            "repository_tree_id": f"git-tree:{digit * 40}",
+            "review_receipt_id": f"baguqeerareceipt{marker}",
+            "review_request_id": f"baguqeerarequest{marker}",
+            "review_response_id": f"baguqeeraresponse{marker}",
+            "diff_binding_id": f"baguqeeradiff{marker}",
+            "implementer_provenance_id": (
+                f"baguqeeraprovenance{marker}"
+            ),
+            "correction_origin_stream_id": (
+                f"event-log:sha256:origin-{marker}"
+            ),
+            "correction_authorized": correction_authorized,
+        }
+    )
+    evolved.pop("denial_id")
+    evolved["denial_id"] = content_identity(evolved)
+    return evolved
+
+
+def test_post_merge_denial_registry_is_permanent_idempotent_and_restart_safe(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'a' * 64}"
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    record = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+
+    assert queue.record_post_merge_review_denial(record) == record
+    assert queue.record_post_merge_review_denial(record) == record
+    restarted = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+
+    assert restarted.verified_post_merge_review_denials() == (record,)
+    with restarted._connect() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) AS count FROM post_merge_review_denials"
+        ).fetchone()
+    assert count is not None and int(count["count"]) == 1
+
+
+def test_post_merge_denial_registry_coalesces_evolved_target_and_rejects_tampering(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'b' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    record = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    queue.record_post_merge_review_denial(record)
+    terminal_only = _evolved_post_merge_denial_record(
+        record,
+        marker="a",
+        correction_authorized=False,
+    )
+
+    assert queue.record_post_merge_review_denial(terminal_only) == record
+
+    with queue._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """UPDATE post_merge_review_denials
+               SET record_json='{"tampered":true}'
+               WHERE terminal_key_id=?""",
+            (record["terminal_key_id"],),
+        )
+        connection.commit()
+    with pytest.raises(MergeQueueIntegrityError, match="schema fields"):
+        queue.verified_post_merge_review_denials()
+
+
+@pytest.mark.parametrize("origin_first", (False, True))
+def test_post_merge_denial_registry_authorized_origin_wins_in_both_orders(
+    tmp_path: Path,
+    origin_first: bool,
+) -> None:
+    repository_id = f"repository:sha256:{'d' * 64}"
+    queue = MergeQueue(
+        tmp_path / f"queue-{int(origin_first)}",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    origin = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    consumer = _evolved_post_merge_denial_record(
+        origin,
+        marker="a",
+        correction_authorized=False,
+    )
+
+    for candidate in (
+        (origin, consumer)
+        if origin_first
+        else (consumer, origin)
+    ):
+        queue.record_post_merge_review_denial(candidate)
+
+    assert queue.verified_post_merge_review_denials() == (origin,)
+
+
+def test_post_merge_denial_registry_evolved_authorized_origins_converge(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'e' * 64}"
+    seed = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    first = _evolved_post_merge_denial_record(
+        seed,
+        marker="a",
+        correction_authorized=True,
+    )
+    second = _evolved_post_merge_denial_record(
+        seed,
+        marker="b",
+        correction_authorized=True,
+    )
+    results: list[dict[str, object]] = []
+    for index, order in enumerate(((first, second), (second, first))):
+        queue = MergeQueue(
+            tmp_path / f"authorized-{index}",
+            target_repository_id=repository_id,
+            target_branch="agent/uiir",
+            require_target_binding=True,
+        )
+        for candidate in order:
+            queue.record_post_merge_review_denial(candidate)
+        results.append(queue.verified_post_merge_review_denials()[0])
+
+    assert results[0] == results[1]
+    assert results[0]["correction_authorized"] is True
+    assert results[0] in (first, second)
+
+
+def test_post_merge_denial_correction_authority_promotes_monotonically(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'c' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    authorized = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    terminal_only = dict(authorized)
+    terminal_only["correction_authorized"] = False
+    terminal_only.pop("denial_id")
+    terminal_only["denial_id"] = content_identity(terminal_only)
+
+    assert queue.record_post_merge_review_denial(terminal_only) == terminal_only
+    assert queue.record_post_merge_review_denial(authorized) == authorized
+    assert queue.record_post_merge_review_denial(terminal_only) == authorized
+    assert queue.verified_post_merge_review_denials() == (authorized,)
 
 
 def test_batch_claims_have_a_deterministic_total_order_and_unique_fences(

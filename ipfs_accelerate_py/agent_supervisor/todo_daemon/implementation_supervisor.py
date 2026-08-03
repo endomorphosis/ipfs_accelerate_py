@@ -5007,7 +5007,12 @@ class PortalImplementationSupervisor:
 
         result = repair_jsonl_event_log(self.config.events_path)
         if result.get("repaired"):
-            append_jsonl_event(self.config.events_path, "event_log_repaired", result)
+            event_type = (
+                "event_log_tail_recovered"
+                if result.get("reason") == "partial_tail_quarantined"
+                else "event_log_repaired"
+            )
+            append_jsonl_event(self.config.events_path, event_type, result)
         return result
 
     def ensure_state_file(self) -> dict[str, Any]:
@@ -7710,7 +7715,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--implementation-command",
         default="",
-        help="Command used by the daemon for implementation. Defaults to codex exec --full-auto.",
+        help=(
+            "Command used by the daemon for implementation. By default the "
+            "managed daemon prefers authenticated Grok and falls back to "
+            "Codex when Grok is unavailable."
+        ),
     )
     parser.add_argument(
         "--implementation-protected-path",

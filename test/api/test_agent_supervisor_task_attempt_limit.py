@@ -210,7 +210,7 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
     reset_state = PortalTaskState.load(state_path)
     second = daemon.run_once()
 
-    assert launched_attempts == [1]
+    assert launched_attempts == [2]
     assert first["retry_budget_resets"][0]["source_task_id"] == "TASK-001"
     assert first["retry_budget_resets"][0][
         "previous_display_attempt_count"
@@ -227,10 +227,13 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
     assert reset_state.retry_budget_repair_receipts == {
         "TASK-001": "TASK-002"
     }
-    assert reset_state.implementation_attempts["TASK-001"] == 1
+    assert reset_state.retry_budget_attempt_baselines_by_cid == {
+        source_identity.canonical_task_cid: 1
+    }
+    assert reset_state.implementation_attempts["TASK-001"] == 2
     assert reset_state.implementation_attempts_by_cid[
         source_identity.canonical_task_cid
-    ] == 1
+    ] == 2
     assert daemon.task_queue.is_cooled_down(
         source_identity.canonical_task_cid
     ) is False

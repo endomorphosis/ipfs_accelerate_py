@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
 import time
 import uuid
@@ -26,6 +27,7 @@ from ..task_sources.duckdb_state import (
     initialize_duckdb_database,
     open_duckdb_connection,
 )
+from ..proof.formal_verification_contracts import content_identity
 
 
 _PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
@@ -53,6 +55,13 @@ MERGE_TARGET_BINDING_SCHEMA = (
 SUBMODULE_INTEGRATION_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/submodule-integration-recovery@1"
 )
+POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-review-denial-tombstone@2"
+)
+_FULL_GIT_OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+_GIT_TREE_ID = re.compile(r"^git-tree:[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+_MAX_DENIAL_RECORD_BYTES = 16 * 1024
 
 
 class MergeQueueFullError(RuntimeError):
@@ -61,6 +70,216 @@ class MergeQueueFullError(RuntimeError):
 
 class MergeQueueFenceError(RuntimeError):
     """Raised when stale or non-owning work tries to mutate a claimed request."""
+
+
+class MergeQueueIntegrityError(RuntimeError):
+    """Raised when permanent queue authority is malformed or conflicting."""
+
+
+def _canonical_json(value: Mapping[str, Any]) -> str:
+    try:
+        encoded = json.dumps(
+            dict(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise MergeQueueIntegrityError(
+            "post-merge denial record is not canonical JSON"
+        ) from exc
+    if len(encoded.encode("utf-8")) > _MAX_DENIAL_RECORD_BYTES:
+        raise MergeQueueIntegrityError(
+            "post-merge denial record exceeds its persistence bound"
+        )
+    return encoded
+
+
+def _post_merge_review_terminal_key_material(
+    record: Mapping[str, Any],
+) -> dict[str, str]:
+    return {
+        "target_repository_id": str(
+            record.get("target_repository_id") or ""
+        ),
+        "target_branch": str(record.get("target_branch") or ""),
+        "task_id": str(record.get("task_id") or ""),
+        "canonical_task_key": str(
+            record.get("canonical_task_key") or ""
+        ),
+        "canonical_task_cid": str(
+            record.get("canonical_task_cid") or ""
+        ),
+        "task_binding_id": str(record.get("task_binding_id") or ""),
+        "implementation_commit": str(
+            record.get("implementation_commit") or ""
+        ),
+    }
+
+
+def _validated_post_merge_review_denial(
+    value: Mapping[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Return one exact, content-addressed terminal denial record."""
+
+    if not isinstance(value, Mapping):
+        raise MergeQueueIntegrityError(
+            "post-merge denial record must be an object"
+        )
+    record = dict(value)
+    expected_fields = {
+        "schema",
+        "terminal_key_id",
+        "denial_id",
+        "target_repository_id",
+        "target_branch",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "task_binding_id",
+        "review_attempt",
+        "implementation_attempt",
+        "target_implementation_attempt",
+        "implementation_commit",
+        "merge_commit",
+        "repository_tree_id",
+        "review_receipt_id",
+        "review_request_id",
+        "review_response_id",
+        "diff_binding_id",
+        "implementer_provenance_id",
+        "correction_origin_stream_id",
+        "correction_authorized",
+        "decision",
+        "source_finding_count",
+        "included_finding_count",
+        "truncated",
+        "findings",
+        "repository_write_authorized",
+        "proof_authoritative",
+        "completion_authoritative",
+    }
+    if set(record) != expected_fields:
+        raise MergeQueueIntegrityError(
+            "post-merge denial record schema fields changed"
+        )
+    required_text = (
+        "target_repository_id",
+        "target_branch",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "task_binding_id",
+        "review_receipt_id",
+        "review_request_id",
+        "review_response_id",
+        "diff_binding_id",
+        "implementer_provenance_id",
+        "correction_origin_stream_id",
+    )
+    if (
+        record.get("schema")
+        != POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA
+        or record.get("decision") != "changes_required"
+        or any(not isinstance(record.get(name), str) or not record[name]
+               for name in required_text)
+        or not _FULL_GIT_OBJECT_ID.fullmatch(
+            str(record.get("implementation_commit") or "")
+        )
+        or not _FULL_GIT_OBJECT_ID.fullmatch(
+            str(record.get("merge_commit") or "")
+        )
+        or not _GIT_TREE_ID.fullmatch(
+            str(record.get("repository_tree_id") or "")
+        )
+        or record.get("repository_write_authorized") is not False
+        or record.get("proof_authoritative") is not False
+        or record.get("completion_authoritative") is not False
+        or not isinstance(record.get("correction_authorized"), bool)
+        or not isinstance(record.get("truncated"), bool)
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge denial record binding is invalid"
+        )
+    integer_fields = (
+        "review_attempt",
+        "implementation_attempt",
+        "target_implementation_attempt",
+        "source_finding_count",
+        "included_finding_count",
+    )
+    for name in integer_fields:
+        item = record.get(name)
+        if isinstance(item, bool) or not isinstance(item, int) or item < 1:
+            raise MergeQueueIntegrityError(
+                f"post-merge denial {name} must be a positive integer"
+            )
+    if (
+        record["target_implementation_attempt"]
+        != record["implementation_attempt"] + 1
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge denial target attempt is not exact-next"
+        )
+    findings = record.get("findings")
+    if (
+        not isinstance(findings, list)
+        or not 1 <= len(findings) <= 4
+        or record["included_finding_count"] != len(findings)
+        or record["source_finding_count"] < len(findings)
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge denial finding projection is invalid"
+        )
+    for finding in findings:
+        if (
+            not isinstance(finding, Mapping)
+            or set(finding)
+            != {
+                "finding_id",
+                "source_ordinal",
+                "code",
+                "severity",
+                "summary",
+            }
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge denial finding schema is invalid"
+            )
+        material = dict(finding)
+        finding_id = str(material.pop("finding_id", "") or "")
+        if (
+            finding_id != content_identity(material)
+            or isinstance(finding.get("source_ordinal"), bool)
+            or not isinstance(finding.get("source_ordinal"), int)
+            or int(finding["source_ordinal"]) < 1
+            or finding.get("severity")
+            not in {"blocker", "high", "medium", "low", "info"}
+            or not isinstance(finding.get("code"), str)
+            or not finding["code"]
+            or not isinstance(finding.get("summary"), str)
+            or not finding["summary"]
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge denial finding identity is invalid"
+            )
+    terminal_key_id = str(record.get("terminal_key_id") or "")
+    if terminal_key_id != content_identity(
+        _post_merge_review_terminal_key_material(record)
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge denial terminal key identity is invalid"
+        )
+    denial_material = dict(record)
+    denial_id = str(denial_material.pop("denial_id", "") or "")
+    if denial_id != content_identity(denial_material):
+        raise MergeQueueIntegrityError(
+            "post-merge denial content identity is invalid"
+        )
+    return record, _canonical_json(record)
 
 
 @dataclass(frozen=True)
@@ -402,8 +621,247 @@ class MergeQueue:
                   ON merge_requests(dedupe_key);
                 CREATE INDEX IF NOT EXISTS merge_requests_stage_order
                   ON merge_requests(status, enqueued_at);
+                CREATE TABLE IF NOT EXISTS post_merge_review_denials (
+                    terminal_key_id TEXT PRIMARY KEY,
+                    denial_id TEXT NOT NULL UNIQUE,
+                    target_repository_id TEXT NOT NULL,
+                    target_branch TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    canonical_task_key TEXT NOT NULL,
+                    canonical_task_cid TEXT NOT NULL,
+                    task_binding_id TEXT NOT NULL,
+                    implementation_commit TEXT NOT NULL,
+                    record_json TEXT NOT NULL,
+                    created_at DOUBLE NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS post_merge_review_denials_target
+                  ON post_merge_review_denials(
+                    target_repository_id,
+                    target_branch,
+                    task_id
+                  );
                 """,
         )
+
+    def record_post_merge_review_denial(
+        self,
+        value: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Commit one permanent, exact-candidate review-denial tombstone."""
+
+        record, canonical = _validated_post_merge_review_denial(value)
+        if (
+            self.target_repository_id
+            and (
+                record["target_repository_id"]
+                != self.target_repository_id
+                or record["target_branch"] != self.target_branch
+            )
+        ):
+            raise MergeQueueFenceError(
+                "post-merge denial target differs from queue binding"
+            )
+        if self.require_target_binding and not self.target_repository_id:
+            raise MergeQueueFenceError(
+                "bound merge queue lacks a target for denial authority"
+            )
+        terminal_key_id = str(record["terminal_key_id"])
+        denial_id = str(record["denial_id"])
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                existing = connection.execute(
+                    """SELECT terminal_key_id, denial_id, record_json
+                       FROM post_merge_review_denials
+                       WHERE terminal_key_id=? OR denial_id=?""",
+                    (terminal_key_id, denial_id),
+                ).fetchall()
+                if existing:
+                    if len(existing) != 1:
+                        raise MergeQueueIntegrityError(
+                            "conflicting post-merge denial authority exists"
+                        )
+                    try:
+                        existing_decoded = json.loads(
+                            str(existing[0]["record_json"])
+                        )
+                    except (
+                        TypeError,
+                        ValueError,
+                        json.JSONDecodeError,
+                    ) as exc:
+                        raise MergeQueueIntegrityError(
+                            "existing post-merge denial authority is malformed"
+                        ) from exc
+                    existing_record, existing_canonical = (
+                        _validated_post_merge_review_denial(
+                            existing_decoded
+                        )
+                    )
+                    if (
+                        str(existing[0]["record_json"])
+                        != existing_canonical
+                        or str(existing[0]["terminal_key_id"])
+                        != str(existing_record["terminal_key_id"])
+                        or str(existing[0]["denial_id"])
+                        != str(existing_record["denial_id"])
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "existing post-merge denial authority changed"
+                        )
+                    if (
+                        str(existing_record["terminal_key_id"])
+                        != terminal_key_id
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "post-merge denial identity crosses terminal keys"
+                        )
+                    if (
+                        str(existing[0]["denial_id"]) == denial_id
+                        and existing_canonical == canonical
+                    ):
+                        connection.commit()
+                        return existing_record
+                    candidates: list[
+                        tuple[tuple[int, str], dict[str, Any]]
+                    ] = []
+                    for candidate in (existing_record, record):
+                        representative = dict(candidate)
+                        representative.pop("denial_id", None)
+                        representative.pop(
+                            "correction_authorized",
+                            None,
+                        )
+                        # Same-terminal records can legitimately differ after
+                        # another lane reviewed the same immutable
+                        # implementation against a later target HEAD. Prefer
+                        # the strictly authorized origin record, then converge
+                        # ties by canonical content regardless of migration
+                        # order. Authorization remains attached to its own
+                        # verified origin payload.
+                        candidates.append(
+                            (
+                                (
+                                    0
+                                    if candidate[
+                                        "correction_authorized"
+                                    ]
+                                    else 1,
+                                    _canonical_json(representative),
+                                ),
+                                dict(candidate),
+                            )
+                        )
+                    selected = dict(min(candidates, key=lambda item: item[0])[1])
+                    selected.pop("denial_id", None)
+                    selected["denial_id"] = content_identity(selected)
+                    selected_record, selected_canonical = (
+                        _validated_post_merge_review_denial(selected)
+                    )
+                    if selected_canonical == existing_canonical:
+                        connection.commit()
+                        return existing_record
+                    connection.execute(
+                        """UPDATE post_merge_review_denials
+                           SET denial_id=?, record_json=?
+                           WHERE terminal_key_id=?""",
+                        (
+                            selected_record["denial_id"],
+                            selected_canonical,
+                            terminal_key_id,
+                        ),
+                    )
+                    connection.commit()
+                    return selected_record
+                connection.execute(
+                    """INSERT INTO post_merge_review_denials (
+                         terminal_key_id, denial_id,
+                         target_repository_id, target_branch, task_id,
+                         canonical_task_key, canonical_task_cid,
+                         task_binding_id, implementation_commit,
+                         record_json, created_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        terminal_key_id,
+                        denial_id,
+                        record["target_repository_id"],
+                        record["target_branch"],
+                        record["task_id"],
+                        record["canonical_task_key"],
+                        record["canonical_task_cid"],
+                        record["task_binding_id"],
+                        record["implementation_commit"],
+                        canonical,
+                        self._clock(),
+                    ),
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        return record
+
+    def verified_post_merge_review_denials(
+        self,
+    ) -> tuple[dict[str, Any], ...]:
+        """Return all permanent denial tombstones or fail on any corruption."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT terminal_key_id, denial_id,
+                          target_repository_id, target_branch, task_id,
+                          canonical_task_key, canonical_task_cid,
+                          task_binding_id, implementation_commit,
+                          record_json
+                   FROM post_merge_review_denials
+                   ORDER BY created_at, terminal_key_id"""
+            ).fetchall()
+        verified: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                decoded = json.loads(str(row["record_json"]))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise MergeQueueIntegrityError(
+                    "post-merge denial registry contains malformed JSON"
+                ) from exc
+            record, canonical = _validated_post_merge_review_denial(decoded)
+            row_bindings = {
+                "terminal_key_id": str(row["terminal_key_id"]),
+                "denial_id": str(row["denial_id"]),
+                "target_repository_id": str(
+                    row["target_repository_id"]
+                ),
+                "target_branch": str(row["target_branch"]),
+                "task_id": str(row["task_id"]),
+                "canonical_task_key": str(
+                    row["canonical_task_key"]
+                ),
+                "canonical_task_cid": str(
+                    row["canonical_task_cid"]
+                ),
+                "task_binding_id": str(row["task_binding_id"]),
+                "implementation_commit": str(
+                    row["implementation_commit"]
+                ),
+            }
+            if (
+                canonical != str(row["record_json"])
+                or any(record[name] != item for name, item in row_bindings.items())
+            ):
+                raise MergeQueueIntegrityError(
+                    "post-merge denial registry row binding changed"
+                )
+            if (
+                self.target_repository_id
+                and (
+                    record["target_repository_id"]
+                    != self.target_repository_id
+                    or record["target_branch"] != self.target_branch
+                )
+            ):
+                continue
+            verified.append(record)
+        return tuple(verified)
 
     def _import_legacy_files(self) -> None:
         """Import legacy JSON queue files once, preserving their original stage."""

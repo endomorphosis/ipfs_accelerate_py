@@ -46,6 +46,9 @@ LEGACY_EVENT_LOG_MANIFEST_SCHEMA = (
 EVENT_CURSOR_CHECKPOINT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.event-cursor-checkpoint@1"
 )
+EVENT_LOG_INTEGRITY_FAILURE_SCHEMA = (
+    "ipfs_accelerate_py.agent-supervisor/event-log-integrity-failure@1"
+)
 SEMANTIC_CHANGE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/semantic-change@1"
 )
@@ -67,6 +70,14 @@ _RESERVED_EVENT_FIELDS = frozenset(
 
 class EventPayloadTooLarge(ValueError):
     """An event exceeded its receipt or routine projection bound."""
+
+
+class EventLogIntegrityFailure(CursorReplayError):
+    """A prior canonical event-log head was destructively shortened."""
+
+
+class EventLogTailRecoveryRequired(CursorReplayError):
+    """An unindexed malformed suffix must be recovered before appending."""
 
 
 class SemanticChangeIntegrityError(CursorReplayError):
@@ -365,6 +376,15 @@ def _event_manifest_path(path: Path) -> Path:
     return path.with_name(f"{path.name}.manifest.json")
 
 
+def event_log_integrity_failure_path(path: Path | str) -> Path:
+    """Return the durable fail-closed latch path for one event stream."""
+
+    event_path = Path(path)
+    return event_path.with_name(
+        f"{event_path.name}.integrity-failure.json"
+    )
+
+
 def _canonical_identity(value: Mapping[str, Any]) -> str:
     encoded = json.dumps(
         value,
@@ -374,6 +394,74 @@ def _canonical_identity(value: Mapping[str, Any]) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def event_log_integrity_failure(
+    path: Path | str,
+) -> dict[str, Any] | None:
+    """Load and verify a persistent destructive-history latch, if present."""
+
+    latch_path = event_log_integrity_failure_path(path)
+    try:
+        value = json.loads(latch_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise EventLogIntegrityFailure(
+            "event log integrity-failure latch is unreadable"
+        ) from exc
+    if not isinstance(value, dict):
+        raise EventLogIntegrityFailure(
+            "event log integrity-failure latch is malformed"
+        )
+    material = dict(value)
+    failure_id = str(material.pop("failure_id", "") or "")
+    if (
+        material.get("schema") != EVENT_LOG_INTEGRITY_FAILURE_SCHEMA
+        or material.get("reason") != "event_log_history_regressed"
+        or not failure_id
+        or failure_id != _canonical_identity(material)
+    ):
+        raise EventLogIntegrityFailure(
+            "event log integrity-failure latch identity is invalid"
+        )
+    return value
+
+
+def _latch_event_log_truncation(
+    path: Path,
+    *,
+    manifest: Mapping[str, Any],
+    affected_path: str,
+    actual_size_bytes: int,
+    expected_size_bytes: int,
+) -> dict[str, Any]:
+    material = {
+        "schema": EVENT_LOG_INTEGRITY_FAILURE_SCHEMA,
+        "reason": "event_log_history_regressed",
+        "active_path": path.name,
+        "affected_path": str(affected_path),
+        "stream_id": str(manifest.get("stream_id") or ""),
+        "snapshot_id": str(manifest.get("snapshot_id") or ""),
+        "expected_size_bytes": int(expected_size_bytes),
+        "actual_size_bytes": int(actual_size_bytes),
+        "expected_latest_sequence": int(
+            manifest.get("latest_sequence") or 0
+        ),
+        "expected_last_event_id": str(
+            manifest.get("last_event_id") or ""
+        ),
+    }
+    value = {
+        **material,
+        "failure_id": _canonical_identity(material),
+    }
+    _atomic_write_bytes(
+        event_log_integrity_failure_path(path),
+        json.dumps(value, sort_keys=True, indent=2).encode("utf-8")
+        + b"\n",
+    )
+    return value
 
 
 def _event_identity(value: Mapping[str, Any]) -> str:
@@ -403,12 +491,32 @@ def _source_paths(path: Path) -> list[Path]:
     return sources
 
 
+def _installed_rotation_generations(path: Path) -> tuple[int, ...]:
+    """Return generations bound by canonical installed archive identities."""
+
+    prefix = f"{path.name}.rotated-g"
+    generations: set[int] = set()
+    if not path.parent.exists():
+        return ()
+    for archive in path.parent.glob(f"{path.name}.rotated-g*-*"):
+        suffix = archive.name[len(prefix) :]
+        generation_text, separator, sequence_text = suffix.partition("-")
+        if (
+            separator
+            and generation_text.isdigit()
+            and sequence_text.isdigit()
+        ):
+            generations.add(int(generation_text))
+    return tuple(sorted(generations))
+
+
 def _stat_fields(path: Path) -> dict[str, int]:
     stat = path.stat()
     return {
         "device": int(stat.st_dev),
         "inode": int(stat.st_ino),
         "mtime_ns": int(stat.st_mtime_ns),
+        "ctime_ns": int(stat.st_ctime_ns),
     }
 
 
@@ -443,6 +551,7 @@ def _scan_event_log(
     generation: int = 0,
     stream_id: str | None = None,
     snapshot_id: str | None = None,
+    identity_probe: dict[int, str] | None = None,
 ) -> dict[str, Any]:
     """Rebuild canonical segment metadata.
 
@@ -516,6 +625,14 @@ def _scan_event_log(
                     raise CursorReplayError(
                         f"event {sequence} has a non-canonical event_id"
                     )
+                if not first_sequence:
+                    # A bounded stream can intentionally start after sequence
+                    # one. Preserve the predecessor carried by the first
+                    # retained event so strict readers can verify that exact
+                    # retained chain anchor after archive retirement.
+                    starting_previous_event_id = str(
+                        event.get("previous_event_id") or ""
+                    )
                 known_identity = identities.get(sequence)
                 if known_identity is not None:
                     if known_identity != event_id:
@@ -540,6 +657,8 @@ def _scan_event_log(
                     latest_event_id = event_id
                     if not earliest_sequence:
                         earliest_sequence = sequence
+                if identity_probe is not None and sequence in identity_probe:
+                    identity_probe[sequence] = event_id
                 if not first_sequence:
                     first_sequence = sequence
                 last_sequence = max(last_sequence, sequence)
@@ -618,6 +737,114 @@ def _load_event_manifest(path: Path) -> dict[str, Any] | None:
     return value
 
 
+def _finalize_manifest_archive_retirements(
+    path: Path,
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Finish archive deletion only after its replacement manifest is durable."""
+
+    retired = [
+        dict(item)
+        for item in value.get("retired_files", ())
+        if isinstance(item, Mapping)
+    ]
+    if not retired:
+        return dict(value)
+    for record in retired:
+        source_name = str(record.get("path") or "")
+        if (
+            Path(source_name).name != source_name
+            or not source_name.startswith(f"{path.name}.rotated-")
+        ):
+            raise EventLogIntegrityFailure(
+                "event log manifest has an invalid archive retirement"
+            )
+        source = path.parent / source_name
+        try:
+            payload = source.read_bytes()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise EventLogIntegrityFailure(
+                "event log archive retirement cannot be verified"
+            ) from exc
+        if (
+            len(payload) != int(record.get("size_bytes", -1))
+            or hashlib.sha256(payload).hexdigest()
+            != str(record.get("sha256") or "")
+        ):
+            raise EventLogIntegrityFailure(
+                "event log archive retirement source changed after commit"
+            )
+        try:
+            source.unlink()
+        except OSError as exc:
+            raise EventLogIntegrityFailure(
+                "event log archive retirement could not be completed"
+            ) from exc
+    try:
+        directory = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        directory = -1
+    if directory >= 0:
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finalized = dict(value)
+    finalized.pop("retired_files", None)
+    finalized["updated_at"] = utc_now()
+    finalized["manifest_digest"] = _event_manifest_digest(finalized)
+    try:
+        _write_manifest_value(path, finalized)
+    except OSError:
+        # The durable retirement intent remains in the prior manifest. A
+        # subsequent locked reader can repeat this idempotent finalization.
+        pass
+    return finalized
+
+
+def _manifest_with_archive_retirements(
+    value: Mapping[str, Any],
+    retired_names: set[str],
+) -> dict[str, Any]:
+    records = [
+        dict(item)
+        for item in value.get("files", ())
+        if isinstance(item, Mapping)
+    ]
+    retired = [
+        item
+        for item in records
+        if str(item.get("path") or "") in retired_names
+    ]
+    kept = [
+        item
+        for item in records
+        if str(item.get("path") or "") not in retired_names
+    ]
+    if len(retired) != len(retired_names) or not kept:
+        raise EventLogIntegrityFailure(
+            "event log archive retirement does not bind exact manifest files"
+        )
+    first_sequences = [
+        int(item.get("first_sequence") or 0)
+        for item in kept
+        if int(item.get("first_sequence") or 0) > 0
+    ]
+    target = dict(value)
+    target.update(
+        {
+            "updated_at": utc_now(),
+            "earliest_sequence": min(first_sequences, default=0),
+            "files": kept,
+            "retired_files": retired,
+        }
+    )
+    target["manifest_digest"] = _event_manifest_digest(target)
+    return target
+
+
 def _manifest_matches_metadata(path: Path, value: Mapping[str, Any]) -> bool:
     expected = {
         str(item.get("path")): item
@@ -638,6 +865,7 @@ def _manifest_matches_metadata(path: Path, value: Mapping[str, Any]) -> bool:
             or int(record.get("device", -1)) != stat.st_dev
             or int(record.get("inode", -1)) != stat.st_ino
             or int(record.get("mtime_ns", -1)) != stat.st_mtime_ns
+            or int(record.get("ctime_ns", -1)) != stat.st_ctime_ns
         ):
             return False
     return True
@@ -651,20 +879,17 @@ def _write_manifest_value(path: Path, value: Mapping[str, Any]) -> None:
 
 
 def event_log_manifest(path: Path | str) -> dict[str, Any]:
-    """Return the cheap active/archive head, rebuilding only after drift.
+    """Return the verified active/archive head, rebuilding only after drift.
 
     A healthy v2 manifest is validated with bounded ``stat`` metadata. File
-    bodies are scanned only when the manifest is absent, corrupt, or disagrees
-    with the physical segments.
+    bodies are scanned only when the manifest is absent, corrupt, or has a
+    recoverable append-only disagreement with the physical segments. A valid
+    manifest is never replaced after its indexed history regresses.
     """
 
     event_path = Path(path)
-    value = _load_event_manifest(event_path)
-    if value is not None and _manifest_matches_metadata(event_path, value):
-        return value
-    value = _scan_event_log(event_path, generation=0)
-    _write_manifest_value(event_path, value)
-    return value
+    with _EventLogLock(event_path):
+        return _manifest_for_append(event_path)
 
 
 def _write_event_manifest(
@@ -702,7 +927,15 @@ def unique_backup_path(path: Path, label: str) -> Path:
 
 
 def repair_jsonl_event_log(path: Path) -> dict[str, Any]:
-    """Repair event-log storage enough for later reads and appends to proceed."""
+    """Repair event-log storage without rewriting canonical v2 history.
+
+    Legacy logs have no durable manifest and retain the historical
+    best-effort JSONL repair behaviour below.  Once a manifest, integrity
+    latch, or canonical archive exists, however, byte offsets and hashes are
+    part of the event-stream contract.  Such a log may only discard a
+    strictly proven, unindexed crash tail; it must never be parsed and
+    re-serialized wholesale.
+    """
 
     result: dict[str, Any] = {
         "repaired": False,
@@ -711,6 +944,34 @@ def repair_jsonl_event_log(path: Path) -> dict[str, Any]:
         "valid_count": 0,
         "invalid_count": 0,
     }
+    canonical_history_exists = bool(
+        _event_manifest_path(path).exists()
+        or event_log_integrity_failure_path(path).exists()
+        or (
+            path.parent.exists()
+            and any(path.parent.glob(f"{path.name}.rotated-*"))
+        )
+    )
+    if canonical_history_exists:
+        try:
+            manifest = event_log_manifest(path)
+        except EventLogTailRecoveryRequired:
+            recovered = recover_jsonl_event_log_tail(path)
+            if recovered.get("failed_closed"):
+                raise EventLogIntegrityFailure(
+                    "canonical event-log tail recovery failed closed: "
+                    f"{recovered.get('reason') or 'unknown'}"
+                )
+            return {
+                **result,
+                **recovered,
+                "canonical_history": True,
+            }
+        return {
+            **result,
+            "canonical_history": True,
+            "valid_count": int(manifest.get("event_count") or 0),
+        }
     if not path.exists():
         result["reason"] = "missing"
         return result
@@ -822,6 +1083,19 @@ def recover_jsonl_event_log_tail(
             )
             return result
         try:
+            prior_manifest = _manifest_for_append(
+                event_path,
+                allow_invalid_unindexed_tail=True,
+            )
+        except EventLogIntegrityFailure:
+            result.update(
+                {
+                    "failed_closed": True,
+                    "reason": "event_log_history_regressed",
+                }
+            )
+            return result
+        try:
             payload = event_path.read_bytes()
         except OSError as exc:
             result.update(
@@ -882,13 +1156,65 @@ def recover_jsonl_event_log_tail(
                 stream.write(retained)
                 stream.flush()
                 os.fsync(stream.fileno())
-            prior_manifest = _load_event_manifest(event_path) or {}
+            prior_active = next(
+                (
+                    item
+                    for item in prior_manifest.get("files", ())
+                    if isinstance(item, Mapping)
+                    and item.get("path") == event_path.name
+                ),
+                {},
+            )
+            prior_latest_sequence = int(
+                prior_manifest.get("latest_sequence") or 0
+            )
+            identity_probe = (
+                {prior_latest_sequence: ""}
+                if prior_latest_sequence > 0
+                else None
+            )
             candidate_manifest = _scan_event_log(
                 candidate,
                 generation=int(prior_manifest.get("generation") or 0) + 1,
                 stream_id=str(prior_manifest.get("stream_id") or "") or None,
                 snapshot_id=str(prior_manifest.get("snapshot_id") or "") or None,
+                identity_probe=identity_probe,
             )
+            prior_head_retained = (
+                prior_latest_sequence == 0
+                or (
+                    identity_probe is not None
+                    and identity_probe.get(prior_latest_sequence)
+                    == str(prior_manifest.get("last_event_id") or "")
+                )
+            )
+            if (
+                int(candidate_manifest.get("earliest_sequence") or 0)
+                != int(prior_active.get("first_sequence") or 0)
+                or int(candidate_manifest.get("latest_sequence") or 0)
+                < prior_latest_sequence
+                or not prior_head_retained
+            ):
+                _latch_event_log_truncation(
+                    event_path,
+                    manifest=prior_manifest,
+                    affected_path=event_path.name,
+                    actual_size_bytes=len(retained),
+                    expected_size_bytes=max(
+                        int(prior_active.get("size_bytes") or 0),
+                        int(
+                            prior_manifest.get("active_indexed_bytes")
+                            or 0
+                        ),
+                    ),
+                )
+                result.update(
+                    {
+                        "failed_closed": True,
+                        "reason": "event_log_history_regressed",
+                    }
+                )
+                return result
             if selected_checkpoint is not None:
                 selected_stream = str(candidate_manifest["stream_id"])
                 selected_snapshot = str(candidate_manifest["snapshot_id"])
@@ -1406,20 +1732,302 @@ persist_event_cursor = write_event_cursor_checkpoint
 load_event_cursor = read_event_cursor_checkpoint
 
 
-def _manifest_for_append(path: Path) -> dict[str, Any]:
+def _unindexed_active_tail_is_malformed(
+    path: Path,
+    manifest: Mapping[str, Any],
+) -> bool:
+    """Return whether bytes after the indexed boundary are not JSONL objects."""
+
+    indexed = int(manifest.get("active_indexed_bytes") or 0)
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        return False
+    if size <= indexed:
+        return False
+    with path.open("rb") as stream:
+        stream.seek(indexed)
+        while stream.tell() < size:
+            raw_line = stream.readline()
+            if not raw_line.endswith(b"\n"):
+                return True
+            if not raw_line.strip():
+                continue
+            try:
+                value = json.loads(raw_line)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return True
+            if not isinstance(value, dict):
+                return True
+    return False
+
+
+def _manifest_for_append(
+    path: Path,
+    *,
+    allow_invalid_unindexed_tail: bool = False,
+) -> dict[str, Any]:
+    integrity_failure = event_log_integrity_failure(path)
+    if integrity_failure is not None:
+        raise EventLogIntegrityFailure(
+            "event log has a latched destructive-history incident"
+        )
     manifest = _load_event_manifest(path)
+    if manifest is not None and manifest.get("retired_files"):
+        manifest = _finalize_manifest_archive_retirements(path, manifest)
     if manifest is not None and _manifest_matches_metadata(path, manifest):
         return manifest
     if manifest is not None:
+        expected_records = {
+            str(item.get("path") or ""): item
+            for item in manifest.get("files", ())
+            if isinstance(item, Mapping)
+        }
+        sources = _source_paths(path)
+        actual_source_names = {source.name for source in sources}
+        expected_source_names = set(expected_records)
+        missing_archives = sorted(
+            source_name
+            for source_name in expected_source_names - actual_source_names
+            if source_name != path.name
+        )
+        if missing_archives:
+            affected_path = missing_archives[0]
+            record = expected_records[affected_path]
+            expected_size = int(record.get("size_bytes") or 0)
+            _latch_event_log_truncation(
+                path,
+                manifest=manifest,
+                affected_path=affected_path,
+                actual_size_bytes=0,
+                expected_size_bytes=expected_size,
+            )
+            raise EventLogIntegrityFailure(
+                "event log sealed archive disappeared behind its "
+                "canonical manifest history"
+            )
+        active_record = expected_records.get(path.name)
+        if (
+            active_record is not None
+            and int(manifest.get("latest_sequence") or 0) > 0
+            and path.name not in actual_source_names
+            and expected_source_names - actual_source_names
+            == {path.name}
+            and not (actual_source_names - expected_source_names)
+        ):
+            expected_size = max(
+                int(active_record.get("size_bytes") or 0),
+                int(manifest.get("active_indexed_bytes") or 0),
+            )
+            _latch_event_log_truncation(
+                path,
+                manifest=manifest,
+                affected_path=path.name,
+                actual_size_bytes=0,
+                expected_size_bytes=expected_size,
+            )
+            raise EventLogIntegrityFailure(
+                "event log active segment disappeared behind its "
+                "canonical manifest head"
+            )
+        for source in sources:
+            record = expected_records.get(source.name)
+            if record is None:
+                continue
+            expected_size = int(record.get("size_bytes") or 0)
+            if source != path:
+                try:
+                    stat = source.stat()
+                    actual_size = stat.st_size
+                    with source.open("rb") as stream:
+                        physical_bytes = stream.read()
+                except OSError:
+                    stat = None
+                    actual_size = -1
+                    physical_bytes = b""
+                expected_digest = str(record.get("sha256") or "")
+                archive_replaced = bool(
+                    stat is None
+                    or int(record.get("device", -1)) != stat.st_dev
+                    or int(record.get("inode", -1)) != stat.st_ino
+                )
+                archive_changed = bool(
+                    actual_size != expected_size
+                    or (
+                        expected_digest
+                        and hashlib.sha256(physical_bytes).hexdigest()
+                        != expected_digest
+                    )
+                )
+                if archive_replaced or archive_changed:
+                    _latch_event_log_truncation(
+                        path,
+                        manifest=manifest,
+                        affected_path=source.name,
+                        actual_size_bytes=max(0, actual_size),
+                        expected_size_bytes=expected_size,
+                    )
+                    raise EventLogIntegrityFailure(
+                        "event log sealed archive regressed behind its "
+                        "canonical manifest history"
+                    )
+                continue
+            if expected_source_names == actual_source_names:
+                expected_size = int(
+                    record.get("size_bytes") or 0
+                )
+                expected_size = max(
+                    expected_size,
+                    int(
+                        manifest.get("active_indexed_bytes")
+                        or 0
+                    ),
+                )
+                try:
+                    actual_size = source.stat().st_size
+                    with source.open("rb") as stream:
+                        indexed_prefix = stream.read(expected_size)
+                except OSError:
+                    actual_size = -1
+                    indexed_prefix = b""
+                expected_digest = str(record.get("sha256") or "")
+                prefix_changed = bool(
+                    actual_size >= expected_size
+                    and expected_size > 0
+                    and expected_digest
+                    and hashlib.sha256(indexed_prefix).hexdigest()
+                    != expected_digest
+                )
+                if (
+                    actual_size < expected_size
+                    or prefix_changed
+                ):
+                    _latch_event_log_truncation(
+                        path,
+                        manifest=manifest,
+                        affected_path=source.name,
+                        actual_size_bytes=max(0, actual_size),
+                        expected_size_bytes=expected_size,
+                    )
+                    raise EventLogIntegrityFailure(
+                        "event log segment regressed behind its canonical "
+                        "manifest history"
+                    )
+        if _unindexed_active_tail_is_malformed(path, manifest):
+            if allow_invalid_unindexed_tail:
+                # Explicit recovery owns quarantine and replacement. Returning
+                # the prior manifest preserves its exact durable byte boundary.
+                return manifest
+            raise EventLogTailRecoveryRequired(
+                "event log has an unindexed malformed tail; explicit recovery "
+                "is required before append"
+            )
         reconciled = _reconcile_manifest_tail(path, manifest)
         if reconciled is not None:
+            try:
+                _write_manifest_value(path, reconciled)
+            except OSError:
+                # The event bytes are authoritative. Preserve append
+                # availability when the repaired acceleration metadata cannot
+                # cross its durability boundary; a later locked reader can
+                # repeat the same bounded reconciliation.
+                pass
             return reconciled
-    manifest = _scan_event_log(
-        path,
-        generation=int((manifest or {}).get("generation", 0)),
-        stream_id=str((manifest or {}).get("stream_id") or "") or None,
-        snapshot_id=str((manifest or {}).get("snapshot_id") or "") or None,
+    prior_latest_sequence = int(
+        (manifest or {}).get("latest_sequence") or 0
     )
+    identity_probe = (
+        {prior_latest_sequence: ""}
+        if prior_latest_sequence > 0
+        else None
+    )
+    try:
+        recovered_manifest = _scan_event_log(
+            path,
+            generation=int((manifest or {}).get("generation", 0)),
+            stream_id=str((manifest or {}).get("stream_id") or "")
+            or None,
+            snapshot_id=str((manifest or {}).get("snapshot_id") or "")
+            or None,
+            identity_probe=identity_probe,
+        )
+    except CursorReplayError as exc:
+        if manifest is None or prior_latest_sequence <= 0:
+            raise
+        active_record = next(
+            (
+                item
+                for item in manifest.get("files", ())
+                if isinstance(item, Mapping)
+                and item.get("path") == path.name
+            ),
+            {},
+        )
+        try:
+            actual_size = path.stat().st_size
+        except OSError:
+            actual_size = 0
+        _latch_event_log_truncation(
+            path,
+            manifest=manifest,
+            affected_path=path.name,
+            actual_size_bytes=actual_size,
+            expected_size_bytes=max(
+                int(active_record.get("size_bytes") or 0),
+                int(manifest.get("active_indexed_bytes") or 0),
+            ),
+        )
+        raise EventLogIntegrityFailure(
+            "event log recovery found a malformed canonical history"
+        ) from exc
+    if manifest is not None and prior_latest_sequence > 0:
+        prior_earliest_sequence = int(
+            manifest.get("earliest_sequence") or 0
+        )
+        recovered_earliest_sequence = int(
+            recovered_manifest.get("earliest_sequence") or 0
+        )
+        recovered_latest_sequence = int(
+            recovered_manifest.get("latest_sequence") or 0
+        )
+        prior_head_retained = (
+            identity_probe is not None
+            and identity_probe.get(prior_latest_sequence)
+            == str(manifest.get("last_event_id") or "")
+        )
+        if (
+            recovered_earliest_sequence > prior_earliest_sequence
+            or recovered_latest_sequence < prior_latest_sequence
+            or not prior_head_retained
+        ):
+            active_record = next(
+                (
+                    item
+                    for item in manifest.get("files", ())
+                    if isinstance(item, Mapping)
+                    and item.get("path") == path.name
+                ),
+                {},
+            )
+            try:
+                actual_size = path.stat().st_size
+            except OSError:
+                actual_size = 0
+            _latch_event_log_truncation(
+                path,
+                manifest=manifest,
+                affected_path=path.name,
+                actual_size_bytes=actual_size,
+                expected_size_bytes=max(
+                    int(active_record.get("size_bytes") or 0),
+                    int(manifest.get("active_indexed_bytes") or 0),
+                ),
+            )
+            raise EventLogIntegrityFailure(
+                "event log recovery did not retain the exact canonical "
+                "manifest head"
+            )
+    manifest = recovered_manifest
     try:
         _write_manifest_value(path, manifest)
     except OSError:
@@ -1490,6 +2098,7 @@ def _manifest_after_append(
             "device": int(stat.st_dev),
             "inode": int(stat.st_ino),
             "mtime_ns": int(stat.st_mtime_ns),
+            "ctime_ns": int(stat.st_ctime_ns),
         }
     )
     value.update(
@@ -1535,6 +2144,7 @@ def _reconcile_manifest_tail(
             or int(record.get("device", -1)) != stat.st_dev
             or int(record.get("inode", -1)) != stat.st_ino
             or int(record.get("mtime_ns", -1)) != stat.st_mtime_ns
+            or int(record.get("ctime_ns", -1)) != stat.st_ctime_ns
         ):
             return None
     active = expected_records.get(path.name)
@@ -1554,17 +2164,12 @@ def _reconcile_manifest_tail(
         return None
     value = dict(manifest)
     if stat.st_size == indexed:
-        records = [
-            dict(item)
-            for item in manifest.get("files", ())
-            if isinstance(item, Mapping)
-        ]
-        for record in records:
-            if record.get("path") == path.name:
-                record.update(_stat_fields(path))
-        value["files"] = records
-        value["manifest_digest"] = _event_manifest_digest(value)
-        return value
+        # Reaching reconciliation with no unindexed tail means metadata
+        # changed behind the canonical head. Re-scan the bounded stream so a
+        # same-size in-place rewrite cannot be laundered by merely refreshing
+        # stat fields. The caller compares the recovered head and latches any
+        # semantic regression.
+        return None
     try:
         with path.open("rb") as stream:
             stream.seek(indexed)
@@ -1907,6 +2512,7 @@ def rotate_event_log_if_needed(
         return {"rotated": False, "reason": "missing"}
 
     with _EventLogLock(path):
+        manifest_before = _manifest_for_append(path)
         try:
             file_size = path.stat().st_size
         except OSError:
@@ -1918,7 +2524,23 @@ def rotate_event_log_if_needed(
                 "size": file_size,
             }
 
-        archive_path = unique_backup_path(path, "rotated")
+        archive_generation = max(
+            (
+                int(manifest_before.get("generation") or 0),
+                *_installed_rotation_generations(path),
+            )
+        ) + 1
+        archive_sequence = int(
+            manifest_before.get("latest_sequence") or 0
+        )
+        archive_path = path.with_name(
+            f"{path.name}.rotated-g{archive_generation:020d}"
+            f"-{archive_sequence:020d}"
+        )
+        if archive_path.exists():
+            raise EventLogIntegrityFailure(
+                "event log rotation archive identity already exists"
+            )
         archive_descriptor, archive_temporary = tempfile.mkstemp(
             prefix=f".{archive_path.name}.", dir=path.parent
         )
@@ -1962,16 +2584,36 @@ def rotate_event_log_if_needed(
             archive_temporary = ""
             _atomic_write_bytes(path, retained_payload)
 
-            removed_archives: list[str] = []
+            manifest_seed = dict(manifest_before)
+            manifest_seed["generation"] = archive_generation - 1
+            manifest = _write_event_manifest(
+                path,
+                previous=manifest_seed,
+            )
             archives = sorted(path.parent.glob(f"{path.name}.rotated-*"))
-            while len(archives) > selected_max_archives:
-                expired_archive = archives.pop(0)
-                try:
-                    expired_archive.unlink()
-                except OSError:
-                    break
-                removed_archives.append(str(expired_archive))
-            manifest = _write_event_manifest(path)
+            expired_archives = archives[
+                : max(0, len(archives) - selected_max_archives)
+            ]
+            removed_archives = [
+                str(expired_archive)
+                for expired_archive in expired_archives
+            ]
+            if expired_archives:
+                retirement_manifest = _manifest_with_archive_retirements(
+                    manifest,
+                    {
+                        expired_archive.name
+                        for expired_archive in expired_archives
+                    },
+                )
+                # Commit the exact retirement set before removing a source.
+                # If the process stops after this atomic write, the next
+                # locked reader can safely finish the idempotent deletions.
+                _write_manifest_value(path, retirement_manifest)
+                manifest = _finalize_manifest_archive_retirements(
+                    path,
+                    retirement_manifest,
+                )
             return {
                 "rotated": True,
                 "archived_count": archived_count,
@@ -1981,7 +2623,7 @@ def rotate_event_log_if_needed(
                 "removed_archives": removed_archives,
                 "manifest_generation": manifest["generation"],
             }
-        except OSError as exc:
+        except (EventLogIntegrityFailure, OSError) as exc:
             return {
                 "rotated": False,
                 "reason": "write_failed",
