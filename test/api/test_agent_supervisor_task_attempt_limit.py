@@ -48,6 +48,96 @@ def _write_single_task_board(path) -> None:
     )
 
 
+def _idle_heartbeat_projection(**overrides):
+    projection = {
+        "active_task_id": "",
+        "implementation_in_progress": False,
+        "ready_count": 0,
+        "selectable_ready_count": 0,
+        "eligible_ready_count": 0,
+        "blocked_count": 0,
+        "selection_idle_reason": "no_shard_selectable_ready_tasks",
+    }
+    projection.update(overrides)
+    return projection
+
+
+def test_heartbeat_fallback_accepts_strict_shard_with_global_ready_work() -> None:
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=3,
+            blocked_count=2,
+        )
+    )
+
+
+def test_heartbeat_fallback_accepts_resource_claim_deferral() -> None:
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=1,
+            selection_idle_reason=(
+                "all_selectable_ready_tasks_deferred_by_resource_claim"
+            ),
+        )
+    )
+
+
+def test_heartbeat_fallback_accepts_attempt_limit_backpressure() -> None:
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=1,
+            selection_idle_reason=(
+                "all_selectable_ready_tasks_reached_max_task_attempts"
+            ),
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("idle_reason", "selectable_ready_count", "eligible_ready_count"),
+    (
+        ("all_selectable_ready_tasks_deprioritized_as_off_mission", 2, 0),
+        ("no_eligible_ready_tasks_after_selection_filters", 2, 0),
+        ("provider_capacity_backoff", 1, 1),
+        ("resource_claim_deferred:ipfs_kit_py", 1, 1),
+    ),
+)
+def test_heartbeat_fallback_accepts_other_explicit_idle_policies(
+    idle_reason,
+    selectable_ready_count,
+    eligible_ready_count,
+) -> None:
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=2,
+            selectable_ready_count=selectable_ready_count,
+            eligible_ready_count=eligible_ready_count,
+            selection_idle_reason=idle_reason,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("active_task_id", "implementation_in_progress"),
+    (
+        ("TASK-001", False),
+        ("", True),
+        ("TASK-001", True),
+    ),
+)
+def test_heartbeat_fallback_rejects_active_or_implementing_projection(
+    active_task_id,
+    implementation_in_progress,
+) -> None:
+    assert not _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            active_task_id=active_task_id,
+            implementation_in_progress=implementation_in_progress,
+            ready_count=1,
+        )
+    )
+
+
 def test_canonical_attempt_limit_blocks_cooldown_fallback_retry(
     tmp_path,
     monkeypatch,
