@@ -2323,9 +2323,13 @@ def post_merge_review_denial_tombstone_from_live_outcome(
         "correction_origin_stream_id": str(
             provenance.get("source_stream_id") or ""
         ),
-        # The live producer seal exists only after exact origin-ledger
-        # implementer provenance has been verified.
-        "correction_authorized": True,
+        # Persist terminal suppression before either denial-ledger append.
+        # This live object cannot predict the append-only event envelope, so
+        # strict post-append migration must supply the causal source binding
+        # before the tombstone may authorize a correction.
+        "source_event_id": "",
+        "source_event_sequence": 0,
+        "correction_authorized": False,
         "decision": "changes_required",
         "source_finding_count": len(raw_findings),
         "included_finding_count": len(projected_findings),
@@ -3006,36 +3010,144 @@ def verified_post_merge_review_corrections_from_strict_ledger(
     )
 
 
-def verified_consumed_post_merge_review_correction_keys_from_strict_ledger(
+def verified_consumed_post_merge_review_corrections_from_strict_ledger(
     events_path: Path,
-) -> frozenset[tuple[str, str, str, str, str]]:
-    """Return denial keys with positive, later corrective-attempt evidence."""
+    *,
+    permanent_denials: Sequence[Mapping[str, Any]] = (),
+    verified_legacy_terminal_bindings: Mapping[str, str] | None = None,
+) -> tuple[dict[str, Any], ...]:
+    """Return denials paired with positive later terminal-event evidence.
+
+    New terminal events must carry their exact task-spec binding. A caller may
+    supply a narrowly verified event-id-to-binding map for pre-binding ledgers;
+    the daemon builds that map only when the task board blob is byte-identical
+    to the immutable Git baseline recorded by the terminal event.
+    """
 
     path = Path(events_path)
     ledger = _strict_event_ledger(path)
-    denials = verified_post_merge_review_corrections_from_strict_ledger(
-        path,
-        include_superseded=True,
+    local_stream_id = str(
+        _event_log_runtime._event_stream_binding(path)[0]
     )
-    consumed: set[tuple[str, str, str, str, str]] = set()
+    retained_denials = list(
+        denial
+        for denial in (
+            verified_post_merge_review_corrections_from_strict_ledger(
+                path,
+                include_superseded=True,
+            )
+        )
+        if str(
+            denial.get("correction_origin_stream_id") or ""
+        )
+        == local_stream_id
+    )
+    retained_keys = {
+        (
+            str(denial["task_id"]),
+            str(denial["canonical_task_key"]),
+            str(denial["canonical_task_cid"]),
+            str(denial["task_binding_id"]),
+            str(denial["implementation_commit"]),
+        )
+        for denial in retained_denials
+    }
+    denials: list[Mapping[str, Any]] = list(retained_denials)
+    for denial in permanent_denials:
+        terminal_key = (
+            str(denial.get("task_id") or ""),
+            str(denial.get("canonical_task_key") or ""),
+            str(denial.get("canonical_task_cid") or ""),
+            str(denial.get("task_binding_id") or ""),
+            str(denial.get("implementation_commit") or ""),
+        )
+        if (
+            terminal_key in retained_keys
+            or denial.get("correction_authorized") is not True
+            or str(
+                denial.get("correction_origin_stream_id") or ""
+            )
+            != local_stream_id
+        ):
+            continue
+        denials.append(denial)
+    consumed: list[dict[str, Any]] = []
+    legacy_bindings = {
+        str(event_id): str(binding_id)
+        for event_id, binding_id in (
+            verified_legacy_terminal_bindings or {}
+        ).items()
+        if str(event_id) and str(binding_id)
+    }
     for denial in denials:
-        source_sequence = int(denial["source_event_sequence"])
+        source_sequence = int(
+            denial.get("source_event_sequence") or 0
+        )
+        if (
+            source_sequence < 1
+            or not str(denial.get("source_event_id") or "")
+        ):
+            # A legacy or pre-append terminal tombstone suppresses its exact
+            # candidate but cannot establish that a terminal attempt is later
+            # than the denial and therefore cannot mint consumption authority.
+            continue
         target_attempt = int(denial["target_implementation_attempt"])
         for event in ledger:
             raw_sequence = event.get("sequence")
             raw_attempt = event.get("attempt")
-            raw_returncode = event.get("returncode")
+            event_type = str(event.get("type") or "")
+            recovery = event.get("attempt_recovery")
+            event_id = str(event.get("event_id") or "")
+            event_task_binding_id = str(
+                event.get("task_binding_id") or ""
+            )
+            exact_task_binding = (
+                event_task_binding_id
+                == denial["task_binding_id"]
+            )
+            verified_legacy_task_binding = (
+                not event_task_binding_id
+                and legacy_bindings.get(event_id)
+                == denial["task_binding_id"]
+            )
+            recovery_matches = bool(
+                event_type == "implementation_state_recovered"
+                and event.get("reason") == "inflight_process_missing"
+                and isinstance(recovery, Mapping)
+                and recovery.get("task_id") == denial["task_id"]
+                and recovery.get("canonical_task_key")
+                == denial["canonical_task_key"]
+                and recovery.get("canonical_task_cid")
+                == denial["canonical_task_cid"]
+                and recovery.get("attempt") == raw_attempt
+            )
             if (
-                event.get("type") != "implementation_finished"
+                event_type
+                not in {
+                    "implementation_finished",
+                    "implementation_state_recovered",
+                }
                 or isinstance(raw_sequence, bool)
                 or not isinstance(raw_sequence, int)
-                or raw_sequence <= source_sequence
+                or (
+                    source_sequence > 0
+                    and raw_sequence <= source_sequence
+                )
                 or isinstance(raw_attempt, bool)
                 or not isinstance(raw_attempt, int)
-                or raw_attempt < target_attempt
-                or isinstance(raw_returncode, bool)
-                or not isinstance(raw_returncode, int)
-                or event.get("attempt_consumed") is False
+                or raw_attempt != target_attempt
+                or (
+                    event_type == "implementation_finished"
+                    and (
+                        isinstance(event.get("returncode"), bool)
+                        or not isinstance(event.get("returncode"), int)
+                        or event.get("attempt_consumed") is False
+                    )
+                )
+                or (
+                    event_type == "implementation_state_recovered"
+                    and not recovery_matches
+                )
                 or str(event.get("task_id") or "")
                 != denial["task_id"]
                 or str(event.get("canonical_task_key") or "")
@@ -3048,19 +3160,84 @@ def verified_consumed_post_merge_review_correction_keys_from_strict_ledger(
                 != denial["canonical_task_cid"]
                 or str(event.get("board_namespace") or "")
                 != denial["board_namespace"]
+                or not (
+                    exact_task_binding
+                    or verified_legacy_task_binding
+                )
             ):
                 continue
-            consumed.add(
-                (
-                    str(denial["task_id"]),
-                    str(denial["canonical_task_key"]),
-                    str(denial["canonical_task_cid"]),
-                    str(denial["task_binding_id"]),
-                    str(denial["implementation_commit"]),
-                )
+            consumed.append(
+                {
+                    "task_id": str(denial["task_id"]),
+                    "canonical_task_key": str(
+                        denial["canonical_task_key"]
+                    ),
+                    "canonical_task_cid": str(
+                        denial["canonical_task_cid"]
+                    ),
+                    "board_namespace": str(
+                        denial["board_namespace"]
+                    ),
+                    "task_binding_id": str(
+                        denial["task_binding_id"]
+                    ),
+                    "implementation_commit": str(
+                        denial["implementation_commit"]
+                    ),
+                    "implementation_attempt": int(
+                        denial["implementation_attempt"]
+                    ),
+                    "target_implementation_attempt": target_attempt,
+                    "correction_origin_stream_id": str(
+                        denial["correction_origin_stream_id"]
+                    ),
+                    "consuming_event_id": str(
+                        event.get("event_id") or ""
+                    ),
+                    "consuming_event_type": event_type,
+                    "consuming_event_sequence": int(raw_sequence),
+                    "consuming_implementation_attempt": int(
+                        raw_attempt
+                    ),
+                }
             )
             break
-    return frozenset(consumed)
+    return tuple(
+        sorted(
+            consumed,
+            key=lambda item: (
+                int(item["consuming_event_sequence"]),
+                str(item["task_id"]),
+                str(item["implementation_commit"]),
+            ),
+        )
+    )
+
+
+def verified_consumed_post_merge_review_correction_keys_from_strict_ledger(
+    events_path: Path,
+    *,
+    verified_legacy_terminal_bindings: Mapping[str, str] | None = None,
+) -> frozenset[tuple[str, str, str, str, str]]:
+    """Return denial keys with positive, later corrective-attempt evidence."""
+
+    return frozenset(
+        (
+            str(item["task_id"]),
+            str(item["canonical_task_key"]),
+            str(item["canonical_task_cid"]),
+            str(item["task_binding_id"]),
+            str(item["implementation_commit"]),
+        )
+        for item in (
+            verified_consumed_post_merge_review_corrections_from_strict_ledger(
+                events_path,
+                verified_legacy_terminal_bindings=(
+                    verified_legacy_terminal_bindings
+                ),
+            )
+        )
+    )
 
 
 def verified_retained_post_merge_review_correction_authority(
@@ -3156,6 +3333,7 @@ def post_merge_review_denial_tombstones_from_strict_ledger(
     *,
     target_repository_id: str,
     target_branch: str,
+    verified_legacy_terminal_bindings: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], ...]:
     """Build explicit migration tombstones from fully verified legacy history."""
 
@@ -3175,6 +3353,14 @@ def post_merge_review_denial_tombstones_from_strict_ledger(
         correction_authority_keys,
     ) = verified_retained_post_merge_review_correction_authority(
         Path(events_path)
+    )
+    consumed_correction_keys = (
+        verified_consumed_post_merge_review_correction_keys_from_strict_ledger(
+            Path(events_path),
+            verified_legacy_terminal_bindings=(
+                verified_legacy_terminal_bindings
+            ),
+        )
     )
     manifest = _event_log_runtime._load_event_manifest(Path(events_path))
     local_stream_id = str((manifest or {}).get("stream_id") or "")
@@ -3249,10 +3435,21 @@ def post_merge_review_denial_tombstones_from_strict_ledger(
             "correction_origin_stream_id": correction[
                 "correction_origin_stream_id"
             ],
-            # Consumer copies and consumed/malformed origin histories remain
-            # permanent terminal suppression evidence, but cannot open work.
+            "source_event_id": correction["source_event_id"],
+            "source_event_sequence": correction[
+                "source_event_sequence"
+            ],
+            # Consumer copies and malformed origin histories remain permanent
+            # terminal suppression evidence but cannot open work. A consumed
+            # exact origin correction remains authorized because its separate
+            # durable consumption marker is the positive fence for any later
+            # ordinary retry.
             "correction_authorized": bool(
-                terminal_key in correction_authority_keys
+                terminal_key
+                in (
+                    correction_authority_keys
+                    | consumed_correction_keys
+                )
                 and correction["correction_origin_stream_id"]
                 == local_stream_id
             ),

@@ -92,6 +92,7 @@ from ..runtime.event_log import (
     event_log_manifest,
     latest_event_cursor,
     read_jsonl_events,
+    read_jsonl_event_sources,
     recover_jsonl_event_log_tail,
     repair_jsonl_event_log,
     unique_backup_path,
@@ -127,6 +128,7 @@ from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallba
 from ..merge.merge_checkpoint import MergeCheckpoint
 from ..merge.merge_queue import (
     MERGE_TARGET_BINDING_SCHEMA,
+    POST_MERGE_REVIEW_DENIAL_CONSUMPTION_SCHEMA,
     SUBMODULE_INTEGRATION_RECOVERY_SCHEMA,
     MergeQueue,
     MergeQueueIntegrityError,
@@ -182,6 +184,7 @@ from .post_merge_review import (
     task_proposal_scope_paths,
     verified_implementation_finished_event_from_ledger,
     verified_implementation_finished_event_from_strict_ledger,
+    verified_consumed_post_merge_review_corrections_from_strict_ledger,
     verified_consumed_post_merge_review_correction_keys_from_strict_ledger,
     verified_implementer_provenance_from_ledger,
     verified_post_merge_review_corrections_from_strict_ledger,
@@ -220,6 +223,9 @@ DEFAULT_TRACKS = [
     "ops",
 ]
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+_FULL_GIT_COMMIT_ID = re.compile(
+    r"(?:[0-9a-f]{40}|[0-9a-f]{64})"
+)
 # Compatibility re-export for callers that historically imported the policy
 # constant from implementation_daemon.
 DEFAULT_PROVIDER_IMPLEMENTATION_TIMEOUT_MULTIPLIER = (
@@ -5792,6 +5798,71 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             return set()
 
+    def _shared_completed_merge_queue_task_cids(
+        self,
+        *,
+        candidate_is_denied: Callable[[Any], bool] | None,
+        candidate_is_eligible: Callable[[Any], bool] | None,
+    ) -> set[str] | None:
+        """Project completed queue rows after exact-candidate denial checks.
+
+        ``None`` is a fail-closed signal.  Unlike the general shared-queue
+        status helper, completion evidence controls whether another provider
+        attempt may run, so an unavailable query cannot be collapsed to an
+        empty set.
+        """
+
+        method = getattr(
+            self.merge_queue,
+            "completed_canonical_task_ids",
+            None,
+        )
+        if not callable(method):
+            self._record_event(
+                "shared_merge_receipts_unavailable",
+                {
+                    "query": "completed_canonical_task_ids",
+                    "reason": "query_unsupported",
+                    "selection_suppressed": True,
+                },
+            )
+            return None
+        try:
+            if (
+                candidate_is_denied is None
+                and candidate_is_eligible is None
+            ):
+                values = method()
+            else:
+                values = method(
+                    candidate_is_denied=candidate_is_denied,
+                    candidate_is_eligible=candidate_is_eligible,
+                )
+            if type(values) not in {set, frozenset}:
+                raise TypeError(
+                    "completed_canonical_task_ids must return a set"
+                )
+            if any(
+                type(item) is not str or not item
+                for item in values
+            ):
+                raise TypeError(
+                    "completed_canonical_task_ids returned an invalid "
+                    "canonical task identity"
+                )
+            return set(values)
+        except Exception as exc:
+            self._record_event(
+                "shared_merge_receipts_unavailable",
+                {
+                    "query": "completed_canonical_task_ids",
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                    "selection_suppressed": True,
+                },
+            )
+            return None
+
     @staticmethod
     def _canonical_representative_task_ids(
         tasks: Sequence[PortalTask],
@@ -6455,6 +6526,41 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if not tasks:
             return self._record_empty_backlog_state(reason="no_tasks_found")
         aliases_by_cid = self._register_task_identities(tasks)
+        local_completion_denials = (
+            self._locally_authorized_post_merge_review_denials(tasks)
+        )
+        local_completion_projection_available = (
+            local_completion_denials is not None
+        )
+        denied_completion_candidate_keys = (
+            self._post_merge_review_completion_denial_keys(
+                local_completion_denials
+            )
+            if local_completion_denials is not None
+            else None
+        )
+        denied_merge_candidate_predicate = (
+            (
+                lambda request: self._merge_request_is_locally_denied(
+                    request,
+                    denied_candidate_keys=denied_completion_candidate_keys,
+                )
+            )
+            if denied_completion_candidate_keys
+            else None
+        )
+        eligible_merge_candidate_predicate = (
+            (
+                lambda request: (
+                    self._merge_request_is_eligible_completion(
+                        request,
+                        completion_denials=local_completion_denials,
+                    )
+                )
+            )
+            if local_completion_denials
+            else None
+        )
         merge_train_progress: dict[str, Any] | None = None
         try:
             merge_train_progress = self._consume_one_merge_candidate()
@@ -6470,8 +6576,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         shared_active_merge_cids = self._shared_merge_queue_task_cids(
             "active_canonical_task_ids"
         )
-        shared_completed_merge_cids = self._shared_merge_queue_task_cids(
-            "completed_canonical_task_ids"
+        completed_merge_projection = (
+            self._shared_completed_merge_queue_task_cids(
+                candidate_is_denied=denied_merge_candidate_predicate,
+                candidate_is_eligible=(
+                    eligible_merge_candidate_predicate
+                ),
+            )
+        )
+        shared_completion_projection_available = (
+            completed_merge_projection is not None
+        )
+        shared_completed_merge_cids = (
+            completed_merge_projection or set()
         )
         shared_active_merge_cids.difference_update(shared_completed_merge_cids)
         shared_completed_task_ids = {
@@ -6525,17 +6642,57 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             recovered_attempt = consume_stale_active_attempt(recovered_state)
             self._clear_active_execution_state(recovered_state)
             recovered_state.save(self.state_path)
+            recovered_task = next(
+                (
+                    task
+                    for task in tasks
+                    if task.task_id
+                    == (
+                        previous.active_task_id
+                        or previous.last_implementation_task_id
+                    )
+                ),
+                None,
+            )
             self._record_event(
                 "implementation_state_recovered",
                 {
                     "task_id": previous.active_task_id or previous.last_implementation_task_id,
                     "attempt": previous.active_attempt,
+                    **(
+                        {
+                            "task_binding_id": (
+                                post_merge_task_binding_id(
+                                    recovered_task
+                                )
+                            )
+                        }
+                        if recovered_task is not None
+                        else {}
+                    ),
                     "reason": "inflight_process_missing",
                     "worktree_path": previous.active_worktree_path,
                     "branch": previous.active_branch,
                     "attempt_recovery": recovered_attempt,
                 },
             )
+            refreshed_completion_denials = (
+                self._locally_authorized_post_merge_review_denials(
+                    tasks
+                )
+            )
+            local_completion_projection_available = (
+                refreshed_completion_denials is not None
+            )
+            if refreshed_completion_denials is not None:
+                local_completion_denials = (
+                    refreshed_completion_denials
+                )
+                denied_completion_candidate_keys = (
+                    self._post_merge_review_completion_denial_keys(
+                        local_completion_denials
+                    )
+                )
             previous = recovered_state
         retry_budget_resets, retry_budget_reset_deferred = (
             self._reset_attempt_budgets_for_completed_retry_repairs(
@@ -6556,7 +6713,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         recent_outcomes = self._latest_implementation_finished_by_task()
         queued_merge_task_ids = self._pending_queued_merge_task_ids(recent_outcomes)
         quarantined_merge_task_ids = self._quarantined_queued_merge_task_ids(recent_outcomes)
-        successfully_merged_task_ids = self._successfully_merged_task_ids()
+        successfully_merged_task_ids = (
+            self._successfully_merged_task_ids_excluding_denied(
+                tasks=tasks,
+                denied_candidate_keys=(
+                    denied_completion_candidate_keys
+                    or set()
+                ),
+                completion_denials=(
+                    local_completion_denials
+                    or ()
+                ),
+            )
+            if denied_completion_candidate_keys
+            else self._successfully_merged_task_ids()
+        )
         # Compute this from the final recovered/reset attempt state. A stale
         # active corrective attempt may be consumed above; carrying a
         # pre-recovery answer would incorrectly authorize attempt N+2.
@@ -6581,10 +6752,70 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
             ):
                 correction_ready_task_ids.add(task.task_id)
+        # A correction opens only when every integrated candidate for the
+        # task is denied. One later non-denied completion is sufficient to
+        # restore acceptance-pending state and must not be hidden by an older
+        # denial's retry authority.
+        correction_ready_task_ids.difference_update(
+            successfully_merged_task_ids | shared_completed_task_ids
+        )
+        denied_completion_task_ids = {
+            str(denial["task_id"])
+            for denial in (local_completion_denials or ())
+        }
+        denial_state_blocked_task_ids: set[str] = set()
+        if local_completion_denials is not None:
+            tasks_by_id = {task.task_id: task for task in tasks}
+            for denial in local_completion_denials:
+                task_id = str(denial["task_id"])
+                task = tasks_by_id.get(task_id)
+                if (
+                    task is None
+                    or task_id in correction_ready_task_ids
+                    or task_id
+                    in (
+                        successfully_merged_task_ids
+                        | shared_completed_task_ids
+                    )
+                ):
+                    continue
+                if (
+                    denial.get("retry_authorized") is True
+                    and denial.get("correction_consumed") is True
+                    and self._task_attempt_count(previous, task) >= int(
+                        denial["target_implementation_attempt"]
+                    )
+                ):
+                    continue
+                # The completion row is permanently denied, but the durable
+                # attempt state is not at either its exact correction attempt
+                # or a later ordinary retry. Keep the task waiting rather than
+                # letting inconsistent recovery state launch a provider.
+                denial_state_blocked_task_ids.add(task_id)
+        if (
+            not local_completion_projection_available
+            or not shared_completion_projection_available
+        ):
+            # Losing the completed-receipt projection cannot safely mean that
+            # every task is unimplemented.  The same applies when exact local
+            # denial/consumption authority cannot be verified. Suppress
+            # selection until both durable projections can be read again.
+            denial_state_blocked_task_ids.update(
+                task.task_id
+                for task in tasks
+                if task.task_id not in board_completed_task_ids
+            )
         acceptance_pending_merged_task_ids = (
-            successfully_merged_task_ids
-            | shared_completed_task_ids
-        ) - board_completed_task_ids - correction_ready_task_ids
+            (
+                successfully_merged_task_ids
+                | shared_completed_task_ids
+            )
+            - board_completed_task_ids
+            - correction_ready_task_ids
+        ) | (
+            denial_state_blocked_task_ids
+            - board_completed_task_ids
+        )
         merged_status_repair: dict[str, Any] = {}
         stale_merged_completed_task_ids = [
             task.task_id
@@ -7051,6 +7282,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     },
                     "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
                     "shared_completed_task_ids": sorted(shared_completed_task_ids),
+                    "shared_completion_projection_available": (
+                        shared_completion_projection_available
+                    ),
+                    "local_completion_projection_available": (
+                        local_completion_projection_available
+                    ),
+                    "post_merge_denied_completion_task_ids": sorted(
+                        denied_completion_task_ids
+                    ),
+                    "post_merge_denial_state_blocked_task_ids": sorted(
+                        denial_state_blocked_task_ids
+                    ),
                     "projection_delta_keys": sorted(projection_delta),
                 },
             )
@@ -7097,6 +7340,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "execution_slice_task_cids": sorted(self.execution_slice_task_cids),
             "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
             "shared_completed_task_ids": sorted(shared_completed_task_ids),
+            "shared_completion_projection_available": (
+                shared_completion_projection_available
+            ),
+            "local_completion_projection_available": (
+                local_completion_projection_available
+            ),
+            "post_merge_denied_completion_task_ids": sorted(
+                denied_completion_task_ids
+            ),
+            "post_merge_denial_state_blocked_task_ids": sorted(
+                denial_state_blocked_task_ids
+            ),
             "canonical_task_count": len(aliases_by_cid),
             "merge_train_progress": merge_train_progress,
             "protected_path_reconciliation": protected_path_reconciliation,
@@ -7358,6 +7613,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 task
             ).canonical_task_key,
             "canonical_task_cid": self._canonical_ref(task),
+            "task_binding_id": post_merge_task_binding_id(task),
             "attempt": attempt,
             "returncode": returncode,
             "log_path": str(log_path),
@@ -8164,6 +8420,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             result = {
                 "task_id": task.task_id,
+                "task_binding_id": post_merge_task_binding_id(task),
                 "attempt": attempt,
                 "returncode": effective_returncode,
                 "log_path": str(log_path),
@@ -8227,6 +8484,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             result = {
                 "task_id": task.task_id,
+                "task_binding_id": post_merge_task_binding_id(task),
                 "attempt": attempt,
                 "returncode": terminal_returncode,
                 "log_path": str(log_path),
@@ -8302,6 +8560,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             }
             result = {
                 "task_id": task.task_id,
+                "task_binding_id": post_merge_task_binding_id(task),
                 "attempt": attempt,
                 "returncode": 1,
                 "log_path": str(log_path),
@@ -8324,7 +8583,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 result["protected_path_violation"] = protected_path_violation
             self._record_event(
                 "implementation_exception",
-                {"task_id": task.task_id, "attempt": attempt, **exception_result},
+                {
+                    "task_id": task.task_id,
+                    "task_binding_id": post_merge_task_binding_id(
+                        task
+                    ),
+                    "attempt": attempt,
+                    **exception_result,
+                },
             )
             self._record_event("implementation_finished", result)
             return result
@@ -11046,6 +11312,43 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 raise PostMergeReviewDenialPersistenceError(
                     "consumer:denial_event_unavailable"
                 )
+            try:
+                self._migrate_post_merge_review_denials_from_strict_ledgers(
+                    (source_events_path, self.events_path)
+                )
+                promoted_denials = tuple(
+                    self.merge_queue.verified_post_merge_review_denials()
+                )
+            except (
+                MergeQueueIntegrityError,
+                OSError,
+                PostMergeReviewError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                raise PostMergeReviewDenialPersistenceError(
+                    "registry:causal_promotion_"
+                    f"{type(exc).__name__}"
+                ) from exc
+            if not any(
+                denial.get("task_id") == task.task_id
+                and denial.get("canonical_task_key")
+                == identity.canonical_task_key
+                and denial.get("canonical_task_cid")
+                == identity.canonical_task_cid
+                and denial.get("task_binding_id")
+                == post_merge_task_binding_id(task)
+                and denial.get("implementation_commit")
+                == implementation_commit
+                and denial.get("correction_authorized") is True
+                and bool(denial.get("source_event_id"))
+                and int(denial.get("source_event_sequence") or 0) > 0
+                for denial in promoted_denials
+            ):
+                raise PostMergeReviewDenialPersistenceError(
+                    "registry:causal_promotion_unavailable"
+                )
             return {}
         else:
             written = self._record_event(
@@ -13541,6 +13844,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 task
             ).canonical_task_key,
             "canonical_task_cid": self._canonical_ref(task),
+            "task_binding_id": post_merge_task_binding_id(task),
             "attempt": attempt,
             "returncode": returncode,
             "log_path": str(log_path),
@@ -26709,6 +27013,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "attempt": attempt,
                     "queue_attempt": queue_attempt,
                     "implementation_attempt": implementation_attempt,
+                    "task_binding_id": post_merge_task_binding_id(
+                        task
+                    ),
                     "branch": branch,
                     "implementation_commit": implementation_commit,
                     "merge_commit": reconciled_merge_commit,
@@ -26896,6 +27203,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "attempt": attempt,
                 "queue_attempt": queue_attempt,
                 "implementation_attempt": implementation_attempt,
+                "task_binding_id": post_merge_task_binding_id(task),
                 "branch": branch,
                 "implementation_commit": implementation_commit,
                 "merge_commit": reconciled_merge_commit,
@@ -28388,9 +28696,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 quarantined.add(task_id)
         return quarantined
 
-    def _successfully_merged_task_ids(self) -> set[str]:
+    def _successfully_merged_task_ids(
+        self,
+    ) -> set[str]:
+        """Return tasks having at least one integrated candidate."""
+
+        return self._successfully_merged_task_ids_excluding_denied()
+
+    def _successfully_merged_task_ids_excluding_denied(
+        self,
+        *,
+        tasks: Sequence[PortalTask] = (),
+        denied_candidate_keys: set[
+            tuple[str, str, str, str, str]
+        ] | None = None,
+        completion_denials: Sequence[Mapping[str, Any]] = (),
+    ) -> set[str]:
+        """Return tasks having at least one non-denied integrated candidate."""
+
         task_ids: set[str] = set()
         target_branch = self._main_branch_name()
+        tasks_by_id = {task.task_id: task for task in tasks}
         for event in self._iter_events():
             event_type = str(event.get("type") or "")
             task_id = str(event.get("task_id") or "")
@@ -28412,6 +28738,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             else:
                 continue
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
+                continue
+            if (
+                denied_candidate_keys
+                and self._event_is_locally_denied_completion(
+                    event,
+                    tasks_by_id=tasks_by_id,
+                    denied_candidate_keys=denied_candidate_keys,
+                )
+            ):
+                continue
+            if (
+                completion_denials
+                and not self._event_is_eligible_completion(
+                    event,
+                    tasks_by_id=tasks_by_id,
+                    completion_denials=completion_denials,
+                )
+            ):
                 continue
             task_ids.add(task_id)
         return task_ids
@@ -28503,14 +28847,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 correction.get("correction_origin_stream_id") or ""
             ),
             "source_event_id": str(
-                correction.get("source_event_id")
-                or correction.get("denial_id")
-                or ""
+                correction.get("source_event_id") or ""
             ),
             "source_event_sequence": int(
-                correction.get("source_event_sequence")
-                or correction.get("review_attempt")
-                or 0
+                correction.get("source_event_sequence") or 0
             ),
             "source_finding_count": int(
                 correction.get("source_finding_count") or 0
@@ -28587,6 +28927,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         # segments.
                     event_log_manifest(events_path)
             try:
+                legacy_terminal_bindings = (
+                    self._verified_legacy_terminal_task_bindings(
+                        events_path
+                    )
+                )
                 tombstones = (
                     post_merge_review_denial_tombstones_from_strict_ledger(
                         events_path,
@@ -28594,6 +28939,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             self.merge_target_repository_id
                         ),
                         target_branch=self.resolved_merge_target_branch,
+                        verified_legacy_terminal_bindings=(
+                            legacy_terminal_bindings
+                        ),
                     )
                 )
             except PostMergeReviewError as exc:
@@ -28613,6 +28961,327 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     tail_recovery,
                 )
 
+    def _migrate_post_merge_review_consumptions_from_strict_ledger(
+        self,
+        events_path: Path,
+    ) -> None:
+        """Seal exact correction-consumption events before log retention."""
+
+        denial_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_review_denials",
+            None,
+        )
+        if not callable(denial_reader):
+            raise MergeQueueIntegrityError(
+                "permanent post-merge consumption registry is unavailable"
+            )
+        denials = tuple(denial_reader())
+        if not denials:
+            return
+        recorder = getattr(
+            self.merge_queue,
+            "record_post_merge_review_denial_consumption",
+            None,
+        )
+        if not callable(recorder):
+            raise MergeQueueIntegrityError(
+                "permanent post-merge consumption registry is unavailable"
+            )
+        local_stream_id = str(
+            _event_stream_binding(Path(events_path))[0]
+        )
+        consumption_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_review_denial_consumptions",
+            None,
+        )
+        if not callable(consumption_reader):
+            raise MergeQueueIntegrityError(
+                "permanent post-merge consumption reader is unavailable"
+            )
+        existing_consumption_keys = (
+            self._post_merge_review_consumption_keys(
+                consumption_reader()
+            )
+        )
+        legacy_terminal_bindings = (
+            self._verified_legacy_terminal_task_bindings(
+                Path(events_path)
+            )
+        )
+        evidence = (
+            verified_consumed_post_merge_review_corrections_from_strict_ledger(
+                Path(events_path),
+                permanent_denials=denials,
+                verified_legacy_terminal_bindings=(
+                    legacy_terminal_bindings
+                ),
+            )
+        )
+        if not evidence:
+            return
+        denial_by_terminal_key = {
+            (
+                str(denial.get("task_id") or ""),
+                str(denial.get("canonical_task_key") or ""),
+                str(denial.get("canonical_task_cid") or ""),
+                str(denial.get("task_binding_id") or ""),
+                str(denial.get("implementation_commit") or ""),
+            ): denial
+            for denial in denials
+        }
+        for item in evidence:
+            terminal_key = (
+                str(item["task_id"]),
+                str(item["canonical_task_key"]),
+                str(item["canonical_task_cid"]),
+                str(item["task_binding_id"]),
+                str(item["implementation_commit"]),
+            )
+            if terminal_key in existing_consumption_keys:
+                continue
+            if str(
+                item.get("correction_origin_stream_id") or ""
+            ) != local_stream_id:
+                raise MergeQueueIntegrityError(
+                    "consumption evidence crosses its origin stream"
+                )
+            denial = denial_by_terminal_key.get(terminal_key)
+            if denial is None:
+                raise MergeQueueIntegrityError(
+                    "consumption evidence lacks a permanent denial"
+                )
+            if denial.get("correction_authorized") is not True:
+                continue
+            shared_fields = (
+                "task_id",
+                "canonical_task_key",
+                "canonical_task_cid",
+                "board_namespace",
+                "task_binding_id",
+                "implementation_commit",
+                "implementation_attempt",
+                "target_implementation_attempt",
+                "correction_origin_stream_id",
+            )
+            if any(item[name] != denial[name] for name in shared_fields):
+                raise MergeQueueIntegrityError(
+                    "consumption evidence crosses denial authority"
+                )
+            material = {
+                "schema": (
+                    POST_MERGE_REVIEW_DENIAL_CONSUMPTION_SCHEMA
+                ),
+                "terminal_key_id": denial["terminal_key_id"],
+                "denial_id": denial["denial_id"],
+                "target_repository_id": denial[
+                    "target_repository_id"
+                ],
+                "target_branch": denial["target_branch"],
+                "task_id": denial["task_id"],
+                "canonical_task_key": denial[
+                    "canonical_task_key"
+                ],
+                "canonical_task_cid": denial[
+                    "canonical_task_cid"
+                ],
+                "board_namespace": denial["board_namespace"],
+                "task_binding_id": denial["task_binding_id"],
+                "implementation_commit": denial[
+                    "implementation_commit"
+                ],
+                "implementation_attempt": denial[
+                    "implementation_attempt"
+                ],
+                "target_implementation_attempt": denial[
+                    "target_implementation_attempt"
+                ],
+                "correction_origin_stream_id": denial[
+                    "correction_origin_stream_id"
+                ],
+                "consuming_event_type": item[
+                    "consuming_event_type"
+                ],
+                "consuming_event_id": item["consuming_event_id"],
+                "consuming_event_sequence": item[
+                    "consuming_event_sequence"
+                ],
+                "consuming_implementation_attempt": item[
+                    "consuming_implementation_attempt"
+                ],
+                "attempt_consumed": True,
+                "repository_write_authorized": False,
+                "proof_authoritative": False,
+                "completion_authoritative": False,
+            }
+            recorder(
+                {
+                    **material,
+                    "consumption_id": content_identity(material),
+                }
+            )
+
+    def _verified_legacy_terminal_task_bindings(
+        self,
+        events_path: Path,
+    ) -> dict[str, str]:
+        """Bind pre-upgrade terminal events to an immutable task-board blob.
+
+        Older ledgers did not place ``task_binding_id`` on every deterministic
+        terminal path. They are eligible for one-time migration only when the
+        terminal event records a full Git baseline and the complete current
+        task-board file is byte-identical to the blob at that baseline. The
+        strict ledger reader still verifies the event id and every other
+        causal binding before accepting this map.
+        """
+
+        if self.task_source is not None:
+            return {}
+        try:
+            repository_root = self.repo_root.resolve()
+            todo_path = self.todo_path.resolve()
+            relative_todo_path = todo_path.relative_to(
+                repository_root
+            ).as_posix()
+        except (OSError, ValueError):
+            return {}
+        if (
+            not relative_todo_path
+            or ":" in relative_todo_path
+            or "\n" in relative_todo_path
+            or "\r" in relative_todo_path
+        ):
+            return {}
+        current_blob_result = subprocess.run(
+            ["git", "hash-object", "--", str(todo_path)],
+            cwd=repository_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        current_blob = current_blob_result.stdout.strip()
+        if (
+            current_blob_result.returncode != 0
+            or not _FULL_GIT_COMMIT_ID.fullmatch(current_blob)
+        ):
+            return {}
+        try:
+            manifest_stat = Path(events_path).with_name(
+                f"{Path(events_path).name}.manifest.json"
+            ).stat()
+            cache_key = (
+                str(Path(events_path).resolve()),
+                manifest_stat.st_size,
+                manifest_stat.st_mtime_ns,
+                current_blob,
+            )
+        except OSError:
+            cache_key = None
+        if (
+            cache_key is not None
+            and getattr(
+                self,
+                "_legacy_terminal_binding_cache_key",
+                None,
+            )
+            == cache_key
+        ):
+            return dict(
+                getattr(
+                    self,
+                    "_legacy_terminal_binding_cache_value",
+                    {},
+                )
+            )
+        try:
+            tasks = self._load_tasks()
+        except (OSError, TypeError, ValueError):
+            return {}
+        tasks_by_id: dict[str, PortalTask] = {}
+        duplicate_task_ids: set[str] = set()
+        for task in tasks:
+            if task.task_id in tasks_by_id:
+                duplicate_task_ids.add(task.task_id)
+            else:
+                tasks_by_id[task.task_id] = task
+        for task_id in duplicate_task_ids:
+            tasks_by_id.pop(task_id, None)
+
+        baseline_blob_matches: dict[str, bool] = {}
+        verified: dict[str, str] = {}
+        for event in read_jsonl_event_sources(
+            (Path(events_path),),
+            include_rotated=True,
+        ):
+            if (
+                event.get("type")
+                not in {
+                    "implementation_finished",
+                    "implementation_state_recovered",
+                }
+                or str(event.get("task_binding_id") or "")
+            ):
+                continue
+            event_id = str(event.get("event_id") or "")
+            task_id = str(event.get("task_id") or "")
+            baseline_ref = str(event.get("baseline_ref") or "")
+            task = tasks_by_id.get(task_id)
+            if (
+                not event_id
+                or task is None
+                or not _FULL_GIT_COMMIT_ID.fullmatch(baseline_ref)
+            ):
+                continue
+            matches = baseline_blob_matches.get(baseline_ref)
+            if matches is None:
+                baseline_blob_result = subprocess.run(
+                    [
+                        "git",
+                        "rev-parse",
+                        "--verify",
+                        (
+                            f"{baseline_ref}:"
+                            f"{relative_todo_path}"
+                        ),
+                    ],
+                    cwd=repository_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                baseline_blob = baseline_blob_result.stdout.strip()
+                matches = bool(
+                    baseline_blob_result.returncode == 0
+                    and baseline_blob == current_blob
+                )
+                baseline_blob_matches[baseline_ref] = matches
+            if matches:
+                verified[event_id] = post_merge_task_binding_id(
+                    task
+                )
+        if cache_key is not None:
+            self._legacy_terminal_binding_cache_key = cache_key
+            self._legacy_terminal_binding_cache_value = dict(
+                verified
+            )
+        return verified
+
+    @staticmethod
+    def _post_merge_review_consumption_keys(
+        consumptions: Sequence[Mapping[str, Any]],
+    ) -> set[tuple[str, str, str, str, str]]:
+        return {
+            (
+                str(item.get("task_id") or ""),
+                str(item.get("canonical_task_key") or ""),
+                str(item.get("canonical_task_cid") or ""),
+                str(item.get("task_binding_id") or ""),
+                str(item.get("implementation_commit") or ""),
+            )
+            for item in consumptions
+        }
+
     def _verified_post_merge_review_denials(
         self,
         *,
@@ -28623,6 +29292,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         try:
             self._migrate_post_merge_review_denials_from_strict_ledgers(
                 (self.events_path,)
+            )
+            self._migrate_post_merge_review_consumptions_from_strict_ledger(
+                self.events_path
             )
             ledger_corrections = (
                 verified_post_merge_review_corrections_from_strict_ledger(
@@ -28640,10 +29312,26 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "permanent post-merge denial registry is unavailable"
                 )
             permanent_denials = registry_reader()
-            if not include_superseded:
-                local_stream_id = str(
-                    _event_stream_binding(self.events_path)[0]
+            consumption_reader = getattr(
+                self.merge_queue,
+                "verified_post_merge_review_denial_consumptions",
+                None,
+            )
+            if permanent_denials and not callable(consumption_reader):
+                raise MergeQueueIntegrityError(
+                    "permanent post-merge consumption registry is unavailable"
                 )
+            local_stream_id = str(
+                _event_stream_binding(self.events_path)[0]
+            )
+            permanent_consumed_denial_keys = (
+                self._post_merge_review_consumption_keys(
+                    consumption_reader()
+                )
+                if callable(consumption_reader)
+                else set()
+            )
+            if not include_superseded:
                 permanent_denials = tuple(
                     denial
                     for denial in permanent_denials
@@ -28651,6 +29339,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         denial.get("correction_origin_stream_id")
                         == local_stream_id
                         and denial.get("correction_authorized") is True
+                        and bool(denial.get("source_event_id"))
+                        and int(
+                            denial.get("source_event_sequence") or 0
+                        )
+                        > 0
                     )
                 )
                 terminal_fields = (
@@ -28683,7 +29376,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         str(denial.get(field) or "")
                         for field in terminal_fields
                     )
-                    not in consumed_denial_keys
+                    not in (
+                        consumed_denial_keys
+                        | permanent_consumed_denial_keys
+                    )
                     and (
                         tuple(
                             str(denial.get(field) or "")
@@ -28779,6 +29475,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self._migrate_post_merge_review_denials_from_strict_ledgers(
                 (self.events_path,)
             )
+            self._migrate_post_merge_review_consumptions_from_strict_ledger(
+                self.events_path
+            )
             corrections = list(
                 verified_post_merge_review_corrections_from_strict_ledger(
                     self.events_path,
@@ -28829,6 +29528,503 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             for correction in corrections
         }
+
+    def _locally_authorized_post_merge_review_denials(
+        self,
+        tasks: Sequence[PortalTask],
+    ) -> tuple[dict[str, Any], ...] | None:
+        """Return exact current-revision denials owned by this event stream.
+
+        Permanent queue tombstones, rather than the bounded correction view,
+        are used deliberately.  Consuming the one corrective attempt removes
+        retry authority but must never make its denied implementation commit
+        appear successfully completed again.
+        """
+
+        try:
+            self._migrate_post_merge_review_denials_from_strict_ledgers(
+                (self.events_path,)
+            )
+            self._migrate_post_merge_review_consumptions_from_strict_ledger(
+                self.events_path
+            )
+            registry_reader = getattr(
+                self.merge_queue,
+                "verified_post_merge_review_denials",
+                None,
+            )
+            if not callable(registry_reader):
+                raise MergeQueueIntegrityError(
+                    "permanent post-merge denial registry is unavailable"
+                )
+            permanent_denials = tuple(registry_reader())
+            if not permanent_denials:
+                self._last_post_merge_review_completion_projection = {
+                    "verified": True,
+                    "denial_count": 0,
+                    "local_current_denial_count": 0,
+                    "selection_suppressed": False,
+                }
+                return ()
+            consumption_reader = getattr(
+                self.merge_queue,
+                "verified_post_merge_review_denial_consumptions",
+                None,
+            )
+            if permanent_denials and not callable(consumption_reader):
+                raise MergeQueueIntegrityError(
+                    "permanent post-merge consumption registry is unavailable"
+                )
+            local_stream_id = str(
+                _event_stream_binding(self.events_path)[0]
+            )
+            permanent_consumptions = (
+                tuple(consumption_reader())
+                if callable(consumption_reader)
+                else ()
+            )
+            permanent_consumed_denial_keys = (
+                self._post_merge_review_consumption_keys(
+                    permanent_consumptions
+                )
+            )
+            consumed_denial_keys = (
+                verified_consumed_post_merge_review_correction_keys_from_strict_ledger(
+                    self.events_path
+                )
+            )
+        except (
+            MergeQueueIntegrityError,
+            OSError,
+            PostMergeReviewError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            self._last_post_merge_review_completion_projection = {
+                "verified": False,
+                "reason_code": str(
+                    getattr(
+                        exc,
+                        "reason_code",
+                        "review_denial_registry_unavailable",
+                    )
+                ),
+                "selection_suppressed": True,
+            }
+            return None
+
+        current_bindings: dict[
+            tuple[str, str, str, str],
+            PortalTask,
+        ] = {}
+        for task in tasks:
+            identity = self._identity_for_task(task)
+            current_bindings[
+                (
+                    task.task_id,
+                    identity.canonical_task_key,
+                    identity.canonical_task_cid,
+                    post_merge_task_binding_id(task),
+                )
+            ] = task
+
+        selected: list[dict[str, Any]] = []
+        for denial in permanent_denials:
+            binding = (
+                str(denial.get("task_id") or ""),
+                str(denial.get("canonical_task_key") or ""),
+                str(denial.get("canonical_task_cid") or ""),
+                str(denial.get("task_binding_id") or ""),
+            )
+            if (
+                str(
+                    denial.get("correction_origin_stream_id") or ""
+                )
+                != local_stream_id
+                or str(denial.get("target_repository_id") or "")
+                != self.merge_target_repository_id
+                or str(denial.get("target_branch") or "")
+                != self.resolved_merge_target_branch
+                or binding not in current_bindings
+            ):
+                continue
+            terminal_key = (
+                binding[0],
+                binding[1],
+                binding[2],
+                binding[3],
+                str(denial.get("implementation_commit") or ""),
+            )
+            selected_denial = dict(denial)
+            source_event_sequence = int(
+                denial.get("source_event_sequence") or 0
+            )
+            source_bound = bool(
+                denial.get("source_event_id")
+            ) and source_event_sequence > 0
+            # Every exact tombstone from this stream remains terminal
+            # suppression evidence. Only a source-bound v3 origin tombstone
+            # may open its exact correction or accept a consumption marker;
+            # legacy and pre-append tombstones remain suppression-only.
+            selected_denial["retry_authorized"] = (
+                source_bound
+                and (
+                    denial.get("correction_authorized") is True
+                    or terminal_key
+                    in permanent_consumed_denial_keys
+                )
+            )
+            selected_denial["correction_consumed"] = (
+                source_bound
+                and (
+                    terminal_key
+                    in (
+                        consumed_denial_keys
+                        | permanent_consumed_denial_keys
+                    )
+                )
+            )
+            selected.append(selected_denial)
+
+        self._last_post_merge_review_completion_projection = {
+            "verified": True,
+            "denial_count": len(permanent_denials),
+            "local_current_denial_count": len(selected),
+            "selection_suppressed": False,
+        }
+        return tuple(
+            sorted(
+                selected,
+                key=lambda denial: (
+                    int(denial["implementation_attempt"]),
+                    str(denial["task_id"]),
+                    str(denial["implementation_commit"]),
+                ),
+            )
+        )
+
+    @staticmethod
+    def _post_merge_review_completion_denial_keys(
+        denials: Sequence[Mapping[str, Any]],
+    ) -> set[tuple[str, str, str, str, str]]:
+        return {
+            (
+                str(denial.get("task_id") or ""),
+                str(denial.get("canonical_task_key") or ""),
+                str(denial.get("canonical_task_cid") or ""),
+                str(denial.get("task_binding_id") or ""),
+                str(denial.get("implementation_commit") or ""),
+            )
+            for denial in denials
+        }
+
+    def _merge_request_is_locally_denied(
+        self,
+        request: Any,
+        *,
+        denied_candidate_keys: set[
+            tuple[str, str, str, str, str]
+        ],
+    ) -> bool:
+        """Match a queue row to one fully bound permanent denial."""
+
+        metadata = (
+            request.metadata
+            if isinstance(getattr(request, "metadata", None), Mapping)
+            else {}
+        )
+        task_payload = metadata.get("task")
+        if not isinstance(task_payload, Mapping) or not task_payload:
+            return False
+        try:
+            queued_task = self._portal_task_from_merge_request(request)
+            queued_identity = self._identity_for_task(queued_task)
+            task_binding_id = post_merge_task_binding_id(queued_task)
+        except (PostMergeReviewError, TypeError, ValueError):
+            return False
+        if (
+            str(getattr(request, "target_repository_id", "") or "")
+            != self.merge_target_repository_id
+            or str(getattr(request, "target_branch", "") or "")
+            != self.resolved_merge_target_branch
+            or str(getattr(request, "task_id", "") or "")
+            != queued_task.task_id
+            or str(
+                getattr(request, "canonical_task_key", "") or ""
+            )
+            != queued_identity.canonical_task_key
+            or str(
+                getattr(request, "canonical_task_id", "") or ""
+            )
+            != queued_identity.canonical_task_cid
+        ):
+            return False
+        candidate_key = (
+            queued_task.task_id,
+            queued_identity.canonical_task_key,
+            queued_identity.canonical_task_cid,
+            task_binding_id,
+            str(getattr(request, "commit_sha", "") or ""),
+        )
+        return candidate_key in denied_candidate_keys
+
+    def _merge_request_is_eligible_completion(
+        self,
+        request: Any,
+        *,
+        completion_denials: Sequence[Mapping[str, Any]],
+    ) -> bool:
+        """Require a causally later, exact-binding receipt after a denial.
+
+        Rows unrelated to a locally authorized denial keep their ordinary
+        completion semantics.  Once a canonical identity has a local denial,
+        however, another row restores completion only when the row carries the
+        exact current task specification and a strictly greater implementation
+        attempt.  A foreign display ID or task binding that merely reuses the
+        CID cannot close the denied task.
+        """
+
+        request_cid = str(
+            getattr(request, "canonical_task_id", "") or ""
+        )
+        request_task_id = str(
+            getattr(request, "task_id", "") or ""
+        )
+        related = [
+            denial
+            for denial in completion_denials
+            if (
+                str(denial.get("canonical_task_cid") or "")
+                == request_cid
+                or str(denial.get("task_id") or "")
+                == request_task_id
+            )
+        ]
+        if not related:
+            return True
+
+        metadata = (
+            request.metadata
+            if isinstance(getattr(request, "metadata", None), Mapping)
+            else {}
+        )
+        raw_attempt = metadata.get("implementation_attempt")
+        task_payload = metadata.get("task")
+        if (
+            isinstance(raw_attempt, bool)
+            or not isinstance(raw_attempt, int)
+            or raw_attempt < 1
+            or not isinstance(task_payload, Mapping)
+            or not task_payload
+            or metadata.get("target_binding_schema")
+            != MERGE_TARGET_BINDING_SCHEMA
+            or str(
+                metadata.get("target_repository_id") or ""
+            )
+            != self.merge_target_repository_id
+            or str(metadata.get("target_branch") or "")
+            != self.resolved_merge_target_branch
+        ):
+            return False
+        try:
+            queued_task = self._portal_task_from_merge_request(request)
+            queued_identity = self._identity_for_task(queued_task)
+            task_binding_id = post_merge_task_binding_id(queued_task)
+        except (PostMergeReviewError, TypeError, ValueError):
+            return False
+        if (
+            str(getattr(request, "target_repository_id", "") or "")
+            != self.merge_target_repository_id
+            or str(getattr(request, "target_branch", "") or "")
+            != self.resolved_merge_target_branch
+            or request_task_id != queued_task.task_id
+            or str(
+                getattr(request, "canonical_task_key", "") or ""
+            )
+            != queued_identity.canonical_task_key
+            or request_cid != queued_identity.canonical_task_cid
+        ):
+            return False
+        matching = [
+            denial
+            for denial in related
+            if (
+                str(denial.get("task_id") or "")
+                == queued_task.task_id
+                and str(
+                    denial.get("canonical_task_key") or ""
+                )
+                == queued_identity.canonical_task_key
+                and str(
+                    denial.get("canonical_task_cid") or ""
+                )
+                == queued_identity.canonical_task_cid
+                and str(denial.get("task_binding_id") or "")
+                == task_binding_id
+            )
+        ]
+        if not matching:
+            return False
+        latest_denied_attempt = max(
+            int(denial["implementation_attempt"])
+            for denial in matching
+        )
+        candidate_commit = str(
+            getattr(request, "commit_sha", "") or ""
+        )
+        target_branch = (
+            self.resolved_merge_target_branch
+            or self._main_branch_name()
+        )
+        return (
+            raw_attempt > latest_denied_attempt
+            and _FULL_GIT_COMMIT_ID.fullmatch(candidate_commit)
+            is not None
+            and self._git_ref_is_ancestor(
+                candidate_commit,
+                target_branch,
+            )
+        )
+
+    def _event_is_locally_denied_completion(
+        self,
+        event: Mapping[str, Any],
+        *,
+        tasks_by_id: Mapping[str, PortalTask],
+        denied_candidate_keys: set[
+            tuple[str, str, str, str, str]
+        ],
+    ) -> bool:
+        """Match one merged event to a current, exact denied candidate."""
+
+        task_id = str(event.get("task_id") or "")
+        task = tasks_by_id.get(task_id)
+        if task is None:
+            return False
+        identity = self._identity_for_task(task)
+        if (
+            str(event.get("canonical_task_key") or "")
+            != identity.canonical_task_key
+            or str(event.get("canonical_task_cid") or "")
+            != identity.canonical_task_cid
+        ):
+            return False
+        candidate_key = (
+            task_id,
+            identity.canonical_task_key,
+            identity.canonical_task_cid,
+            post_merge_task_binding_id(task),
+            str(event.get("implementation_commit") or ""),
+        )
+        return candidate_key in denied_candidate_keys
+
+    def _event_is_eligible_completion(
+        self,
+        event: Mapping[str, Any],
+        *,
+        tasks_by_id: Mapping[str, PortalTask],
+        completion_denials: Sequence[Mapping[str, Any]],
+    ) -> bool:
+        """Apply exact-binding and later-attempt causality to merged events."""
+
+        task_id = str(event.get("task_id") or "")
+        event_cid = str(
+            event.get("canonical_task_cid")
+            or event.get("canonical_task_id")
+            or ""
+        )
+        related = [
+            denial
+            for denial in completion_denials
+            if (
+                str(denial.get("canonical_task_cid") or "")
+                == event_cid
+                or str(denial.get("task_id") or "") == task_id
+            )
+        ]
+        if not related:
+            return True
+        task = tasks_by_id.get(task_id)
+        if task is None:
+            return False
+        identity = self._identity_for_task(task)
+        task_binding_id = post_merge_task_binding_id(task)
+        raw_attempt = event.get(
+            "implementation_attempt",
+            event.get("attempt"),
+        )
+        raw_sequence = event.get("sequence")
+        if (
+            isinstance(raw_attempt, bool)
+            or not isinstance(raw_attempt, int)
+            or raw_attempt < 1
+            or isinstance(raw_sequence, bool)
+            or not isinstance(raw_sequence, int)
+            or str(event.get("canonical_task_key") or "")
+            != identity.canonical_task_key
+            or event_cid != identity.canonical_task_cid
+            or str(event.get("task_binding_id") or "")
+            != task_binding_id
+        ):
+            return False
+        matching = [
+            denial
+            for denial in related
+            if (
+                str(denial.get("task_id") or "") == task_id
+                and str(
+                    denial.get("canonical_task_key") or ""
+                )
+                == identity.canonical_task_key
+                and str(
+                    denial.get("canonical_task_cid") or ""
+                )
+                == identity.canonical_task_cid
+                and str(denial.get("task_binding_id") or "")
+                == task_binding_id
+            )
+        ]
+        if not matching:
+            return False
+        latest_denied_attempt = max(
+            int(denial["implementation_attempt"])
+            for denial in matching
+        )
+        latest_attempt_denials = tuple(
+            denial
+            for denial in matching
+            if int(denial["implementation_attempt"])
+            == latest_denied_attempt
+        )
+        causal_sequences = tuple(
+            int(denial.get("source_event_sequence") or 0)
+            for denial in latest_attempt_denials
+        )
+        if not causal_sequences or any(
+            sequence < 1 for sequence in causal_sequences
+        ):
+            return False
+        latest_denied_sequence = max(causal_sequences)
+        implementation_commit = str(
+            event.get("implementation_commit") or ""
+        )
+        target_branch = (
+            self.resolved_merge_target_branch
+            or self._main_branch_name()
+        )
+        return (
+            raw_attempt > latest_denied_attempt
+            and raw_sequence > latest_denied_sequence
+            and _FULL_GIT_COMMIT_ID.fullmatch(
+                implementation_commit
+            )
+            is not None
+            and self._git_ref_is_ancestor(
+                implementation_commit,
+                target_branch,
+            )
+        )
 
     def _post_merge_review_corrections_by_task(
         self,
@@ -32063,6 +33259,45 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             enriched,
         )
         self._invalidate_event_cache()
+        if event_type in {
+            "implementation_finished",
+            "implementation_state_recovered",
+        }:
+            # Seal retry-budget consumption while the just-written strict
+            # terminal event is necessarily retained.  The next projection
+            # repeats this idempotently, but must not be the first opportunity
+            # because bounded event rotation may retire older denial proof.
+            try:
+                self._migrate_post_merge_review_denials_from_strict_ledgers(
+                    (self.events_path,)
+                )
+                self._migrate_post_merge_review_consumptions_from_strict_ledger(
+                    self.events_path
+                )
+            except (
+                MergeQueueIntegrityError,
+                OSError,
+                PostMergeReviewError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                self._last_post_merge_review_consumption_persistence = {
+                    "persisted": False,
+                    "reason_code": str(
+                        getattr(
+                            exc,
+                            "reason_code",
+                            "review_consumption_persistence_failed",
+                        )
+                    ),
+                    "selection_suppressed": True,
+                }
+            else:
+                self._last_post_merge_review_consumption_persistence = {
+                    "persisted": True,
+                    "selection_suppressed": False,
+                }
         return written
 
 

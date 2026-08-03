@@ -7,10 +7,12 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
+    LEGACY_POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA,
     MergeQueue,
     MergeQueueFenceError,
     MergeQueueFullError,
     MergeQueueIntegrityError,
+    POST_MERGE_REVIEW_DENIAL_CONSUMPTION_SCHEMA,
     POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
@@ -68,6 +70,8 @@ def _post_merge_denial_record(
         "diff_binding_id": "baguqeeradiff",
         "implementer_provenance_id": "baguqeeraprovenance",
         "correction_origin_stream_id": "event-log:sha256:origin",
+        "source_event_id": f"sha256:{'7' * 64}",
+        "source_event_sequence": 41,
         "correction_authorized": True,
         "decision": "changes_required",
         "source_finding_count": 1,
@@ -128,6 +132,325 @@ def _evolved_post_merge_denial_record(
     evolved.pop("denial_id")
     evolved["denial_id"] = content_identity(evolved)
     return evolved
+
+
+def _post_merge_denial_consumption_record(
+    denial: dict[str, object],
+) -> dict[str, object]:
+    material: dict[str, object] = {
+        "schema": POST_MERGE_REVIEW_DENIAL_CONSUMPTION_SCHEMA,
+        "terminal_key_id": denial["terminal_key_id"],
+        "denial_id": denial["denial_id"],
+        "target_repository_id": denial["target_repository_id"],
+        "target_branch": denial["target_branch"],
+        "task_id": denial["task_id"],
+        "canonical_task_key": denial["canonical_task_key"],
+        "canonical_task_cid": denial["canonical_task_cid"],
+        "board_namespace": denial["board_namespace"],
+        "task_binding_id": denial["task_binding_id"],
+        "implementation_commit": denial["implementation_commit"],
+        "implementation_attempt": denial["implementation_attempt"],
+        "target_implementation_attempt": denial[
+            "target_implementation_attempt"
+        ],
+        "correction_origin_stream_id": denial[
+            "correction_origin_stream_id"
+        ],
+        "consuming_event_type": "implementation_finished",
+        "consuming_event_id": f"sha256:{'6' * 64}",
+        "consuming_event_sequence": 42,
+        "consuming_implementation_attempt": 2,
+        "attempt_consumed": True,
+        "repository_write_authorized": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    return {
+        **material,
+        "consumption_id": content_identity(material),
+    }
+
+
+def _legacy_post_merge_denial_record(
+    record: dict[str, object],
+) -> dict[str, object]:
+    legacy = dict(record)
+    legacy["schema"] = (
+        LEGACY_POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA
+    )
+    legacy.pop("source_event_id")
+    legacy.pop("source_event_sequence")
+    legacy.pop("denial_id")
+    legacy["denial_id"] = content_identity(legacy)
+    return legacy
+
+
+def _insert_stored_post_merge_denial(
+    queue: MergeQueue,
+    record: dict[str, object],
+) -> None:
+    canonical = json.dumps(
+        record,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    with queue._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """INSERT INTO post_merge_review_denials (
+                 terminal_key_id, denial_id,
+                 target_repository_id, target_branch, task_id,
+                 canonical_task_key, canonical_task_cid,
+                 task_binding_id, implementation_commit,
+                 record_json, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                record["terminal_key_id"],
+                record["denial_id"],
+                record["target_repository_id"],
+                record["target_branch"],
+                record["task_id"],
+                record["canonical_task_key"],
+                record["canonical_task_cid"],
+                record["task_binding_id"],
+                record["implementation_commit"],
+                canonical,
+                1.0,
+            ),
+        )
+        connection.commit()
+
+
+def test_completed_projection_filters_candidates_existentially(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    first = queue.enqueue(
+        branch_name="candidate/first",
+        task_id="UIR-002",
+        canonical_task_id="baguqeeraexample",
+        canonical_task_key="task/v1/example",
+        commit_sha="1" * 40,
+    )
+    second = queue.enqueue(
+        branch_name="candidate/second",
+        task_id="UIR-002",
+        canonical_task_id="baguqeeraexample",
+        canonical_task_key="task/v1/example",
+        commit_sha="2" * 40,
+    )
+    for request in (first, second):
+        claimed = queue.dequeue(
+            consumer_id=f"merge-train:{request.request_id}"
+        )
+        assert claimed is not None
+        queue.complete(claimed)
+
+    assert queue.completed_canonical_task_ids() == {
+        "baguqeeraexample"
+    }
+    assert queue.completed_canonical_task_ids(
+        candidate_is_denied=lambda request: (
+            request.commit_sha == first.commit_sha
+        )
+    ) == {"baguqeeraexample"}
+    assert queue.completed_canonical_task_ids(
+        candidate_is_denied=lambda _request: True
+    ) == set()
+    assert queue.completed_canonical_task_ids(
+        candidate_is_eligible=lambda request: (
+            request.commit_sha == second.commit_sha
+        )
+    ) == {"baguqeeraexample"}
+    assert queue.completed_canonical_task_ids(
+        candidate_is_eligible=lambda _request: False
+    ) == set()
+    with pytest.raises(RuntimeError, match="denial proof unavailable"):
+        queue.completed_canonical_task_ids(
+            candidate_is_denied=lambda _request: (_ for _ in ()).throw(
+                RuntimeError("denial proof unavailable")
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("predicate_name", "malformed_result"),
+    (
+        ("candidate_is_denied", None),
+        ("candidate_is_denied", 0),
+        ("candidate_is_denied", "false"),
+        ("candidate_is_eligible", None),
+        ("candidate_is_eligible", 1),
+        ("candidate_is_eligible", {"error": "unavailable"}),
+    ),
+)
+def test_completed_projection_rejects_non_boolean_predicate_results(
+    tmp_path: Path,
+    predicate_name: str,
+    malformed_result: object,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    pending = queue.enqueue(
+        branch_name="candidate/only",
+        task_id="UIR-002",
+        canonical_task_id="baguqeeraexample",
+        canonical_task_key="task/v1/example",
+        commit_sha="1" * 40,
+    )
+    claimed = queue.dequeue(
+        consumer_id=f"merge-train:{pending.request_id}"
+    )
+    assert claimed is not None
+    queue.complete(claimed)
+
+    with pytest.raises(
+        TypeError,
+        match=rf"{predicate_name} must return an exact bool",
+    ):
+        queue.completed_canonical_task_ids(
+            **{
+                predicate_name: (
+                    lambda _request: malformed_result
+                ),
+            }
+        )
+
+
+def test_post_merge_denial_consumption_is_permanent_and_tamper_evident(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'f' * 64}"
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    consumption = _post_merge_denial_consumption_record(denial)
+    queue.record_post_merge_review_denial(denial)
+
+    assert (
+        queue.record_post_merge_review_denial_consumption(
+            consumption
+        )
+        == consumption
+    )
+    assert (
+        queue.record_post_merge_review_denial_consumption(
+            consumption
+        )
+        == consumption
+    )
+    restarted = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    assert (
+        restarted.verified_post_merge_review_denial_consumptions()
+        == (consumption,)
+    )
+
+    with restarted._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """UPDATE post_merge_review_denial_consumptions
+               SET record_json='{"tampered":true}'"""
+        )
+        connection.commit()
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="schema fields",
+    ):
+        restarted.verified_post_merge_review_denial_consumptions()
+
+
+def test_post_merge_consumption_rejects_unauthorized_denial_before_promotion(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'9' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    authorized = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    unauthorized = _evolved_post_merge_denial_record(
+        authorized,
+        marker="a",
+        correction_authorized=False,
+    )
+    queue.record_post_merge_review_denial(unauthorized)
+
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="does not match its permanent denial",
+    ):
+        queue.record_post_merge_review_denial_consumption(
+            _post_merge_denial_consumption_record(unauthorized)
+        )
+    assert (
+        queue.verified_post_merge_review_denial_consumptions()
+        == ()
+    )
+
+    assert queue.record_post_merge_review_denial(authorized) == authorized
+    consumption = _post_merge_denial_consumption_record(authorized)
+    assert (
+        queue.record_post_merge_review_denial_consumption(
+            consumption
+        )
+        == consumption
+    )
+    assert (
+        queue.verified_post_merge_review_denial_consumptions()
+        == (consumption,)
+    )
+
+
+def test_post_merge_consumption_survives_authorized_representative_evolution(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'8' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    original = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    evolved = _evolved_post_merge_denial_record(
+        original,
+        marker="a",
+        correction_authorized=True,
+    )
+    queue.record_post_merge_review_denial(evolved)
+    consumption = _post_merge_denial_consumption_record(evolved)
+    queue.record_post_merge_review_denial_consumption(consumption)
+
+    selected = queue.record_post_merge_review_denial(original)
+
+    assert selected == evolved
+    assert selected["correction_origin_stream_id"] == (
+        consumption["correction_origin_stream_id"]
+    )
+    assert (
+        queue.verified_post_merge_review_denial_consumptions()
+        == (consumption,)
+    )
 
 
 def test_post_merge_denial_registry_is_permanent_idempotent_and_restart_safe(
@@ -231,7 +554,7 @@ def test_post_merge_denial_registry_authorized_origin_wins_in_both_orders(
     assert queue.verified_post_merge_review_denials() == (origin,)
 
 
-def test_post_merge_denial_registry_evolved_authorized_origins_converge(
+def test_post_merge_denial_registry_rejects_competing_authorized_origins(
     tmp_path: Path,
 ) -> None:
     repository_id = f"repository:sha256:{'e' * 64}"
@@ -249,7 +572,6 @@ def test_post_merge_denial_registry_evolved_authorized_origins_converge(
         marker="b",
         correction_authorized=True,
     )
-    results: list[dict[str, object]] = []
     for index, order in enumerate(((first, second), (second, first))):
         queue = MergeQueue(
             tmp_path / f"authorized-{index}",
@@ -257,13 +579,15 @@ def test_post_merge_denial_registry_evolved_authorized_origins_converge(
             target_branch="agent/uiir",
             require_target_binding=True,
         )
-        for candidate in order:
-            queue.record_post_merge_review_denial(candidate)
-        results.append(queue.verified_post_merge_review_denials()[0])
-
-    assert results[0] == results[1]
-    assert results[0]["correction_authorized"] is True
-    assert results[0] in (first, second)
+        queue.record_post_merge_review_denial(order[0])
+        with pytest.raises(
+            MergeQueueIntegrityError,
+            match="multiple authorized origin streams",
+        ):
+            queue.record_post_merge_review_denial(order[1])
+        assert queue.verified_post_merge_review_denials() == (
+            order[0],
+        )
 
 
 def test_post_merge_denial_correction_authority_promotes_monotonically(
@@ -289,6 +613,97 @@ def test_post_merge_denial_correction_authority_promotes_monotonically(
     assert queue.record_post_merge_review_denial(authorized) == authorized
     assert queue.record_post_merge_review_denial(terminal_only) == authorized
     assert queue.verified_post_merge_review_denials() == (authorized,)
+
+
+def test_legacy_denial_is_suppression_only_until_source_bound_promotion(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'7' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    current = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    legacy = _legacy_post_merge_denial_record(current)
+    _insert_stored_post_merge_denial(queue, legacy)
+
+    assert queue.verified_post_merge_review_denials() == (legacy,)
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="does not match its permanent denial",
+    ):
+        queue.record_post_merge_review_denial_consumption(
+            _post_merge_denial_consumption_record(legacy)
+        )
+
+    assert queue.record_post_merge_review_denial(current) == current
+    assert queue.verified_post_merge_review_denials() == (current,)
+
+
+def test_legacy_denial_consumption_marker_fails_closed(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'6' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    current = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    legacy = _legacy_post_merge_denial_record(current)
+    consumption = _post_merge_denial_consumption_record(legacy)
+    _insert_stored_post_merge_denial(queue, legacy)
+    canonical = json.dumps(
+        consumption,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    with queue._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """INSERT INTO post_merge_review_denial_consumptions (
+                 terminal_key_id, consumption_id, denial_id,
+                 target_repository_id, target_branch, task_id,
+                 canonical_task_key, canonical_task_cid,
+                 task_binding_id, implementation_commit,
+                 record_json, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                consumption["terminal_key_id"],
+                consumption["consumption_id"],
+                consumption["denial_id"],
+                consumption["target_repository_id"],
+                consumption["target_branch"],
+                consumption["task_id"],
+                consumption["canonical_task_key"],
+                consumption["canonical_task_cid"],
+                consumption["task_binding_id"],
+                consumption["implementation_commit"],
+                canonical,
+                2.0,
+            ),
+        )
+        connection.commit()
+
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="consumption registry denial binding changed",
+    ):
+        queue.verified_post_merge_review_denial_consumptions()
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="consumed denial representative changed",
+    ):
+        queue.record_post_merge_review_denial(current)
 
 
 def test_batch_claims_have_a_deterministic_total_order_and_unique_fences(

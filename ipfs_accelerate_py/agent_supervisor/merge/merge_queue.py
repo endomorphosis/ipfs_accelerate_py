@@ -55,12 +55,21 @@ MERGE_TARGET_BINDING_SCHEMA = (
 SUBMODULE_INTEGRATION_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/submodule-integration-recovery@1"
 )
-POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA = (
+LEGACY_POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-review-denial-tombstone@2"
 )
+POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-review-denial-tombstone@3"
+)
+POST_MERGE_REVIEW_DENIAL_CONSUMPTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-review-denial-consumption@1"
+)
 _FULL_GIT_OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _GIT_TREE_ID = re.compile(r"^git-tree:[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+_SHA256_EVENT_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 _MAX_DENIAL_RECORD_BYTES = 16 * 1024
 
 
@@ -120,6 +129,8 @@ def _post_merge_review_terminal_key_material(
 
 def _validated_post_merge_review_denial(
     value: Mapping[str, Any],
+    *,
+    allow_legacy: bool = False,
 ) -> tuple[dict[str, Any], str]:
     """Return one exact, content-addressed terminal denial record."""
 
@@ -151,6 +162,8 @@ def _validated_post_merge_review_denial(
         "diff_binding_id",
         "implementer_provenance_id",
         "correction_origin_stream_id",
+        "source_event_id",
+        "source_event_sequence",
         "correction_authorized",
         "decision",
         "source_finding_count",
@@ -161,6 +174,15 @@ def _validated_post_merge_review_denial(
         "proof_authoritative",
         "completion_authoritative",
     }
+    legacy = (
+        record.get("schema")
+        == LEGACY_POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA
+    )
+    if legacy:
+        expected_fields -= {
+            "source_event_id",
+            "source_event_sequence",
+        }
     if set(record) != expected_fields:
         raise MergeQueueIntegrityError(
             "post-merge denial record schema fields changed"
@@ -181,8 +203,11 @@ def _validated_post_merge_review_denial(
         "correction_origin_stream_id",
     )
     if (
-        record.get("schema")
-        != POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA
+        (
+            record.get("schema")
+            != POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA
+            and not (allow_legacy and legacy)
+        )
         or record.get("decision") != "changes_required"
         or any(not isinstance(record.get(name), str) or not record[name]
                for name in required_text)
@@ -204,6 +229,29 @@ def _validated_post_merge_review_denial(
         raise MergeQueueIntegrityError(
             "post-merge denial record binding is invalid"
         )
+    if not legacy:
+        source_event_id = record.get("source_event_id")
+        source_event_sequence = record.get("source_event_sequence")
+        has_source_event = bool(source_event_id)
+        if (
+            not isinstance(source_event_id, str)
+            or isinstance(source_event_sequence, bool)
+            or not isinstance(source_event_sequence, int)
+            or source_event_sequence < 0
+            or has_source_event
+            != bool(source_event_sequence)
+            or (
+                has_source_event
+                and _SHA256_EVENT_ID.fullmatch(source_event_id) is None
+            )
+            or (
+                record.get("correction_authorized") is True
+                and not has_source_event
+            )
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge denial source event binding is invalid"
+            )
     integer_fields = (
         "review_attempt",
         "implementation_attempt",
@@ -278,6 +326,120 @@ def _validated_post_merge_review_denial(
     if denial_id != content_identity(denial_material):
         raise MergeQueueIntegrityError(
             "post-merge denial content identity is invalid"
+        )
+    return record, _canonical_json(record)
+
+
+def _validated_post_merge_review_denial_consumption(
+    value: Mapping[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Return one exact, content-addressed correction-consumption marker."""
+
+    if not isinstance(value, Mapping):
+        raise MergeQueueIntegrityError(
+            "post-merge denial consumption must be an object"
+        )
+    record = dict(value)
+    expected_fields = {
+        "schema",
+        "consumption_id",
+        "terminal_key_id",
+        "denial_id",
+        "target_repository_id",
+        "target_branch",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "task_binding_id",
+        "implementation_commit",
+        "implementation_attempt",
+        "target_implementation_attempt",
+        "correction_origin_stream_id",
+        "consuming_event_type",
+        "consuming_event_id",
+        "consuming_event_sequence",
+        "consuming_implementation_attempt",
+        "attempt_consumed",
+        "repository_write_authorized",
+        "proof_authoritative",
+        "completion_authoritative",
+    }
+    if set(record) != expected_fields:
+        raise MergeQueueIntegrityError(
+            "post-merge denial consumption schema fields changed"
+        )
+    required_text = (
+        "terminal_key_id",
+        "denial_id",
+        "target_repository_id",
+        "target_branch",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "task_binding_id",
+        "correction_origin_stream_id",
+        "consuming_event_type",
+    )
+    if (
+        record.get("schema")
+        != POST_MERGE_REVIEW_DENIAL_CONSUMPTION_SCHEMA
+        or any(
+            not isinstance(record.get(name), str) or not record[name]
+            for name in required_text
+        )
+        or not _FULL_GIT_OBJECT_ID.fullmatch(
+            str(record.get("implementation_commit") or "")
+        )
+        or not _SHA256_EVENT_ID.fullmatch(
+            str(record.get("consuming_event_id") or "")
+        )
+        or record.get("consuming_event_type")
+        not in {
+            "implementation_finished",
+            "implementation_state_recovered",
+        }
+        or record.get("attempt_consumed") is not True
+        or record.get("repository_write_authorized") is not False
+        or record.get("proof_authoritative") is not False
+        or record.get("completion_authoritative") is not False
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge denial consumption binding is invalid"
+        )
+    integer_fields = (
+        "implementation_attempt",
+        "target_implementation_attempt",
+        "consuming_event_sequence",
+        "consuming_implementation_attempt",
+    )
+    for name in integer_fields:
+        item = record.get(name)
+        if isinstance(item, bool) or not isinstance(item, int) or item < 1:
+            raise MergeQueueIntegrityError(
+                f"post-merge denial consumption {name} must be positive"
+            )
+    if (
+        record["target_implementation_attempt"]
+        != record["implementation_attempt"] + 1
+        or record["consuming_implementation_attempt"]
+        != record["target_implementation_attempt"]
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge denial consumption is not causally later"
+        )
+    if str(record["terminal_key_id"]) != content_identity(
+        _post_merge_review_terminal_key_material(record)
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge denial consumption terminal identity is invalid"
+        )
+    material = dict(record)
+    consumption_id = str(material.pop("consumption_id", "") or "")
+    if consumption_id != content_identity(material):
+        raise MergeQueueIntegrityError(
+            "post-merge denial consumption identity is invalid"
         )
     return record, _canonical_json(record)
 
@@ -640,6 +802,26 @@ class MergeQueue:
                     target_branch,
                     task_id
                   );
+                CREATE TABLE IF NOT EXISTS post_merge_review_denial_consumptions (
+                    terminal_key_id TEXT PRIMARY KEY,
+                    consumption_id TEXT NOT NULL UNIQUE,
+                    denial_id TEXT NOT NULL,
+                    target_repository_id TEXT NOT NULL,
+                    target_branch TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    canonical_task_key TEXT NOT NULL,
+                    canonical_task_cid TEXT NOT NULL,
+                    task_binding_id TEXT NOT NULL,
+                    implementation_commit TEXT NOT NULL,
+                    record_json TEXT NOT NULL,
+                    created_at DOUBLE NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS post_merge_review_consumptions_target
+                  ON post_merge_review_denial_consumptions(
+                    target_repository_id,
+                    target_branch,
+                    task_id
+                  );
                 """,
         )
 
@@ -695,7 +877,8 @@ class MergeQueue:
                         ) from exc
                     existing_record, existing_canonical = (
                         _validated_post_merge_review_denial(
-                            existing_decoded
+                            existing_decoded,
+                            allow_legacy=True,
                         )
                     )
                     if (
@@ -722,8 +905,126 @@ class MergeQueue:
                     ):
                         connection.commit()
                         return existing_record
+                    consumption_rows = connection.execute(
+                        """SELECT terminal_key_id, consumption_id,
+                                  denial_id, record_json
+                           FROM post_merge_review_denial_consumptions
+                           WHERE terminal_key_id=?""",
+                        (terminal_key_id,),
+                    ).fetchall()
+                    if consumption_rows:
+                        if len(consumption_rows) != 1:
+                            raise MergeQueueIntegrityError(
+                                "conflicting denial consumption authority exists"
+                            )
+                        try:
+                            consumption_decoded = json.loads(
+                                str(consumption_rows[0]["record_json"])
+                            )
+                        except (
+                            TypeError,
+                            ValueError,
+                            json.JSONDecodeError,
+                        ) as exc:
+                            raise MergeQueueIntegrityError(
+                                "existing denial consumption is malformed"
+                            ) from exc
+                        (
+                            consumption_record,
+                            consumption_canonical,
+                        ) = _validated_post_merge_review_denial_consumption(
+                            consumption_decoded
+                        )
+                        consumption_shared_fields = (
+                            "terminal_key_id",
+                            "denial_id",
+                            "target_repository_id",
+                            "target_branch",
+                            "task_id",
+                            "canonical_task_key",
+                            "canonical_task_cid",
+                            "board_namespace",
+                            "task_binding_id",
+                            "implementation_commit",
+                            "implementation_attempt",
+                            "target_implementation_attempt",
+                            "correction_origin_stream_id",
+                        )
+                        if (
+                            existing_record.get("schema")
+                            != POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA
+                            or not str(
+                                existing_record.get("source_event_id") or ""
+                            )
+                            or int(
+                                existing_record.get(
+                                    "source_event_sequence"
+                                )
+                                or 0
+                            )
+                            < 1
+                            or str(
+                                consumption_rows[0]["record_json"]
+                            )
+                            != consumption_canonical
+                            or str(
+                                consumption_rows[0]["terminal_key_id"]
+                            )
+                            != str(
+                                consumption_record["terminal_key_id"]
+                            )
+                            or str(
+                                consumption_rows[0]["consumption_id"]
+                            )
+                            != str(consumption_record["consumption_id"])
+                            or str(consumption_rows[0]["denial_id"])
+                            != str(consumption_record["denial_id"])
+                            or existing_record.get(
+                                "correction_authorized"
+                            )
+                            is not True
+                            or any(
+                                consumption_record[name]
+                                != existing_record[name]
+                                for name in consumption_shared_fields
+                            )
+                        ):
+                            raise MergeQueueIntegrityError(
+                                "consumed denial representative changed"
+                            )
+                        # Consumption is global for the immutable terminal
+                        # key, while only its owning origin may mint the
+                        # marker. Once consumed, pin that verified origin
+                        # representative so later same-terminal migrations
+                        # cannot rewrite the authority the marker records.
+                        connection.commit()
+                        return existing_record
+                    if (
+                        existing_record.get("schema")
+                        == POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA
+                        and
+                        existing_record.get(
+                            "correction_authorized"
+                        )
+                        is True
+                        and record.get("correction_authorized") is True
+                        and existing_record[
+                            "correction_origin_stream_id"
+                        ]
+                        != record["correction_origin_stream_id"]
+                    ):
+                        # One immutable terminal key has one global retry
+                        # budget and therefore one origin owner. Competing
+                        # authorized streams cannot be deterministically
+                        # coalesced before consumption: a terminal event from
+                        # the losing representative could otherwise spend the
+                        # budget without being able to seal its marker.
+                        raise MergeQueueIntegrityError(
+                            "post-merge denial has multiple authorized "
+                            "origin streams"
+                        )
                     candidates: list[
-                        tuple[tuple[int, str], dict[str, Any]]
+                        tuple[tuple[int, int, str], dict[str, Any]]
                     ] = []
                     for candidate in (existing_record, record):
                         representative = dict(candidate)
@@ -742,6 +1043,12 @@ class MergeQueue:
                         candidates.append(
                             (
                                 (
+                                    0
+                                    if candidate.get("schema")
+                                    == (
+                                        POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA
+                                    )
+                                    else 1,
                                     0
                                     if candidate[
                                         "correction_authorized"
@@ -824,7 +1131,10 @@ class MergeQueue:
                 raise MergeQueueIntegrityError(
                     "post-merge denial registry contains malformed JSON"
                 ) from exc
-            record, canonical = _validated_post_merge_review_denial(decoded)
+            record, canonical = _validated_post_merge_review_denial(
+                decoded,
+                allow_legacy=True,
+            )
             row_bindings = {
                 "terminal_key_id": str(row["terminal_key_id"]),
                 "denial_id": str(row["denial_id"]),
@@ -850,6 +1160,297 @@ class MergeQueue:
             ):
                 raise MergeQueueIntegrityError(
                     "post-merge denial registry row binding changed"
+                )
+            if (
+                self.target_repository_id
+                and (
+                    record["target_repository_id"]
+                    != self.target_repository_id
+                    or record["target_branch"] != self.target_branch
+                )
+            ):
+                continue
+            verified.append(record)
+        return tuple(verified)
+
+    def record_post_merge_review_denial_consumption(
+        self,
+        value: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Persist one exact terminal event that consumed a correction."""
+
+        record, canonical = (
+            _validated_post_merge_review_denial_consumption(value)
+        )
+        if (
+            self.target_repository_id
+            and (
+                record["target_repository_id"]
+                != self.target_repository_id
+                or record["target_branch"] != self.target_branch
+            )
+        ):
+            raise MergeQueueFenceError(
+                "post-merge denial consumption target differs from queue"
+            )
+        if self.require_target_binding and not self.target_repository_id:
+            raise MergeQueueFenceError(
+                "bound merge queue lacks a target for consumption authority"
+            )
+        terminal_key_id = str(record["terminal_key_id"])
+        consumption_id = str(record["consumption_id"])
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                denial_rows = connection.execute(
+                    """SELECT denial_id, record_json
+                       FROM post_merge_review_denials
+                       WHERE terminal_key_id=?""",
+                    (terminal_key_id,),
+                ).fetchall()
+                if len(denial_rows) != 1:
+                    raise MergeQueueIntegrityError(
+                        "consumption lacks exactly one permanent denial"
+                    )
+                try:
+                    denial_decoded = json.loads(
+                        str(denial_rows[0]["record_json"])
+                    )
+                except (
+                    TypeError,
+                    ValueError,
+                    json.JSONDecodeError,
+                ) as exc:
+                    raise MergeQueueIntegrityError(
+                        "consumption denial authority is malformed"
+                    ) from exc
+                denial, denial_canonical = (
+                    _validated_post_merge_review_denial(
+                        denial_decoded,
+                        allow_legacy=True,
+                    )
+                )
+                shared_fields = (
+                    "terminal_key_id",
+                    "denial_id",
+                    "target_repository_id",
+                    "target_branch",
+                    "task_id",
+                    "canonical_task_key",
+                    "canonical_task_cid",
+                    "board_namespace",
+                    "task_binding_id",
+                    "implementation_commit",
+                    "implementation_attempt",
+                    "target_implementation_attempt",
+                    "correction_origin_stream_id",
+                )
+                if (
+                    denial_canonical
+                    != str(denial_rows[0]["record_json"])
+                    or str(denial_rows[0]["denial_id"])
+                    != str(denial["denial_id"])
+                    or denial.get("schema")
+                    != POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA
+                    or not str(denial.get("source_event_id") or "")
+                    or int(denial.get("source_event_sequence") or 0) < 1
+                    or denial.get("correction_authorized") is not True
+                    or any(
+                        record[name] != denial[name]
+                        for name in shared_fields
+                    )
+                ):
+                    raise MergeQueueIntegrityError(
+                        "consumption does not match its permanent denial"
+                    )
+                existing = connection.execute(
+                    """SELECT terminal_key_id, consumption_id, record_json
+                       FROM post_merge_review_denial_consumptions
+                       WHERE terminal_key_id=? OR consumption_id=?""",
+                    (terminal_key_id, consumption_id),
+                ).fetchall()
+                if existing:
+                    if len(existing) != 1:
+                        raise MergeQueueIntegrityError(
+                            "conflicting denial consumption authority exists"
+                        )
+                    try:
+                        existing_decoded = json.loads(
+                            str(existing[0]["record_json"])
+                        )
+                    except (
+                        TypeError,
+                        ValueError,
+                        json.JSONDecodeError,
+                    ) as exc:
+                        raise MergeQueueIntegrityError(
+                            "existing denial consumption is malformed"
+                        ) from exc
+                    existing_record, existing_canonical = (
+                        _validated_post_merge_review_denial_consumption(
+                            existing_decoded
+                        )
+                    )
+                    if (
+                        str(existing[0]["record_json"])
+                        != existing_canonical
+                        or str(existing[0]["terminal_key_id"])
+                        != str(existing_record["terminal_key_id"])
+                        or str(existing[0]["consumption_id"])
+                        != str(existing_record["consumption_id"])
+                        or existing_canonical != canonical
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "existing denial consumption authority changed"
+                        )
+                    connection.commit()
+                    return existing_record
+                connection.execute(
+                    """INSERT INTO post_merge_review_denial_consumptions (
+                         terminal_key_id, consumption_id, denial_id,
+                         target_repository_id, target_branch, task_id,
+                         canonical_task_key, canonical_task_cid,
+                         task_binding_id, implementation_commit,
+                         record_json, created_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        terminal_key_id,
+                        consumption_id,
+                        record["denial_id"],
+                        record["target_repository_id"],
+                        record["target_branch"],
+                        record["task_id"],
+                        record["canonical_task_key"],
+                        record["canonical_task_cid"],
+                        record["task_binding_id"],
+                        record["implementation_commit"],
+                        canonical,
+                        self._clock(),
+                    ),
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        return record
+
+    def verified_post_merge_review_denial_consumptions(
+        self,
+    ) -> tuple[dict[str, Any], ...]:
+        """Return durable correction consumptions or fail on any corruption."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT terminal_key_id, consumption_id, denial_id,
+                          target_repository_id, target_branch, task_id,
+                          canonical_task_key, canonical_task_cid,
+                          task_binding_id, implementation_commit,
+                          record_json
+                   FROM post_merge_review_denial_consumptions
+                   ORDER BY created_at, terminal_key_id"""
+            ).fetchall()
+            denial_rows = connection.execute(
+                """SELECT terminal_key_id, denial_id, record_json
+                   FROM post_merge_review_denials"""
+            ).fetchall()
+        denials: dict[str, dict[str, Any]] = {}
+        for row in denial_rows:
+            try:
+                decoded = json.loads(str(row["record_json"]))
+            except (
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ) as exc:
+                raise MergeQueueIntegrityError(
+                    "consumption registry denial is malformed"
+                ) from exc
+            denial, canonical = _validated_post_merge_review_denial(
+                decoded,
+                allow_legacy=True,
+            )
+            terminal_key_id = str(row["terminal_key_id"])
+            if (
+                canonical != str(row["record_json"])
+                or terminal_key_id
+                != str(denial["terminal_key_id"])
+                or str(row["denial_id"]) != str(denial["denial_id"])
+                or denial.get("schema")
+                != POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA
+                or not str(denial.get("source_event_id") or "")
+                or int(denial.get("source_event_sequence") or 0) < 1
+            ):
+                raise MergeQueueIntegrityError(
+                    "consumption registry denial binding changed"
+                )
+            denials[terminal_key_id] = denial
+        verified: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                decoded = json.loads(str(row["record_json"]))
+            except (
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ) as exc:
+                raise MergeQueueIntegrityError(
+                    "denial consumption registry contains malformed JSON"
+                ) from exc
+            record, canonical = (
+                _validated_post_merge_review_denial_consumption(
+                    decoded
+                )
+            )
+            row_bindings = {
+                "terminal_key_id": str(row["terminal_key_id"]),
+                "consumption_id": str(row["consumption_id"]),
+                "denial_id": str(row["denial_id"]),
+                "target_repository_id": str(
+                    row["target_repository_id"]
+                ),
+                "target_branch": str(row["target_branch"]),
+                "task_id": str(row["task_id"]),
+                "canonical_task_key": str(
+                    row["canonical_task_key"]
+                ),
+                "canonical_task_cid": str(
+                    row["canonical_task_cid"]
+                ),
+                "task_binding_id": str(row["task_binding_id"]),
+                "implementation_commit": str(
+                    row["implementation_commit"]
+                ),
+            }
+            denial = denials.get(str(record["terminal_key_id"]))
+            shared_fields = (
+                "denial_id",
+                "target_repository_id",
+                "target_branch",
+                "task_id",
+                "canonical_task_key",
+                "canonical_task_cid",
+                "board_namespace",
+                "task_binding_id",
+                "implementation_commit",
+                "implementation_attempt",
+                "target_implementation_attempt",
+                "correction_origin_stream_id",
+            )
+            if (
+                canonical != str(row["record_json"])
+                or any(
+                    record[name] != item
+                    for name, item in row_bindings.items()
+                )
+                or denial is None
+                or denial.get("correction_authorized") is not True
+                or any(
+                    record[name] != denial[name]
+                    for name in shared_fields
+                )
+            ):
+                raise MergeQueueIntegrityError(
+                    "denial consumption registry row binding changed"
                 )
             if (
                 self.target_repository_id
@@ -1854,10 +2455,58 @@ class MergeQueue:
 
         return self._canonical_task_ids_for_statuses(_ACTIVE_STATES)
 
-    def completed_canonical_task_ids(self) -> set[str]:
-        """Return content identities with a successful terminal merge receipt."""
+    def completed_canonical_task_ids(
+        self,
+        *,
+        candidate_is_denied: Callable[[MergeRequest], bool] | None = None,
+        candidate_is_eligible: Callable[[MergeRequest], bool] | None = None,
+    ) -> set[str]:
+        """Return identities having at least one eligible merge receipt.
 
-        return self._canonical_task_ids_for_statuses(("completed",))
+        A completed queue row is candidate-specific: a later independent
+        review can permanently deny that immutable implementation commit
+        without denying every future implementation of the same task.  The
+        optional predicate lets the caller apply its verified, lane-bound
+        denial authority before this method projects candidate rows to task
+        identities.  ``candidate_is_eligible`` may additionally require
+        positive causal evidence (for example, a strictly later
+        implementation attempt with the same task binding).  Existential
+        projection is intentional: one eligible completed candidate restores
+        the task identity.
+
+        Predicate failures propagate.  A caller must never interpret
+        unavailable denial or eligibility decisions as an empty denial set.
+        """
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM merge_requests WHERE status='completed'"
+            ).fetchall()
+        completed: set[str] = set()
+        for row in rows:
+            if not self._metadata_matches_target(row["metadata_json"]):
+                continue
+            request = self._request_from_row(row)
+            if candidate_is_denied is not None:
+                denied = candidate_is_denied(request)
+                if type(denied) is not bool:
+                    raise TypeError(
+                        "candidate_is_denied must return an exact bool"
+                    )
+                if denied:
+                    continue
+            if candidate_is_eligible is not None:
+                eligible = candidate_is_eligible(request)
+                if type(eligible) is not bool:
+                    raise TypeError(
+                        "candidate_is_eligible must return an exact bool"
+                    )
+                if not eligible:
+                    continue
+            canonical_task_id = str(request.canonical_task_id)
+            if canonical_task_id:
+                completed.add(canonical_task_id)
+        return completed
 
     def _canonical_task_ids_for_statuses(self, statuses: tuple[str, ...]) -> set[str]:
         normalized = tuple(
