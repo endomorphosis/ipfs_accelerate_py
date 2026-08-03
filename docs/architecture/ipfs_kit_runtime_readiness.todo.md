@@ -954,7 +954,7 @@ or write authority.
 
 ## KITA-030 Repair MCP++ construction, registry, transports, and protocol advertisement
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
