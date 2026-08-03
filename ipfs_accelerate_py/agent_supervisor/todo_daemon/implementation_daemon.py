@@ -1438,10 +1438,10 @@ def _grok_cli_available() -> bool:
     """Return whether Grok is ready for non-interactive implementation work.
 
     Binary discovery alone is insufficient for the daemon: selecting an
-    unauthenticated CLI would fail after dispatch instead of allowing the
-    default route to fall back to Codex.  Keep the probe side-effect free and
-    fail closed when the shared router cannot prove both authentication and
-    provider construction.
+    unauthenticated CLI would fail after dispatch. Keep the probe side-effect
+    free and fail closed when the shared router cannot prove both
+    authentication and provider construction; Codex is reserved for a
+    verified Grok quota-exhaustion response after dispatch.
     """
 
     if not _grok_binary():
