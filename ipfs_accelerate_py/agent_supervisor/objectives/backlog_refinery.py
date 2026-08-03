@@ -6689,17 +6689,29 @@ def merge_retry_task_block(
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
-    if discovery_output_path not in outputs:
-        outputs.append(discovery_output_path)
-    validation_command = f"test -f {shlex.quote(str(discovery_path))}"
-    # Merge repair work coordinates an already committed implementation. Its
-    # durable write scope is the discovery output; inheriting the source
-    # implementation paths makes strict parallel-board validation treat the
-    # strategy-blocked source and its repair as concurrent writers.
-    execution_metadata = retry_task_execution_metadata(
-        source_task,
-        predicted_files=discovery_output_path,
+    # Retry discovery is already-written supervisor evidence.  A merge
+    # repair reconciles the source implementation and therefore keeps the
+    # source task's exact write authority; treating discovery as a candidate
+    # output both broadens that authority and makes the proposal gate demand
+    # a staged change to runtime state.
+    _ = discovery_output_path
+    source_validation_commands = [
+        normalize_validation_command_text(str(command))
+        for command in getattr(source_task, "validation", ()) or ()
+        if normalize_validation_command_text(str(command))
+    ]
+    # A pre-existing discovery finding proves only that the merge failed; it
+    # cannot prove that the source contract has since landed.  Re-run the
+    # source task's declared gate so an unchanged merge target cannot retire
+    # the repair merely because its diagnostic receipt exists.  Boards are
+    # expected to give executable tasks a validation contract; fail closed if
+    # a legacy task omitted one.
+    validation_command = (
+        " && ".join(source_validation_commands)
+        if source_validation_commands
+        else "false # merge repair source has no validation contract"
     )
+    execution_metadata = retry_task_execution_metadata(source_task)
     provenance_metadata = retry_budget_repair_provenance_metadata(
         source_task_id=source_task.task_id,
         failure_kind="merge",

@@ -101,7 +101,7 @@ def _is_transient_duckdb_lock_error(exc: Exception) -> bool:
 
 
 def profile_g_task_attempt_limit(value: Any, *, default: int = 3) -> int:
-    """Return a Profile-G-compatible attempt limit.
+    """Return the supervisor attempt policy accepted beside Profile-G tasks.
 
     Zero is the unlimited sentinel. Values above the Profile-G v1 boundary
     are rejected instead of being silently rewritten across queue layers.
@@ -116,6 +116,18 @@ def profile_g_task_attempt_limit(value: Any, *, default: int = 3) -> int:
             f"{PROFILE_G_MAX_TASK_ATTEMPTS} for Profile-G tasks"
         )
     return raw
+
+
+def _profile_g_task_spec_attempt_limit(value: Any, *, default: int = 3) -> int:
+    """Translate supervisor attempt policy into strict Profile-G v1 syntax.
+
+    Profile-G v1 has no unlimited sentinel and accepts only values in
+    ``[1, 100]``. The executable bundle retains zero as its authoritative
+    unlimited policy; only the immutable TaskSpec uses the schema ceiling.
+    """
+
+    selected = profile_g_task_attempt_limit(value, default=default)
+    return PROFILE_G_MAX_TASK_ATTEMPTS if selected == 0 else selected
 
 
 def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
@@ -749,7 +761,7 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "resource_class": str(bundle.get("resource_class") or "cpu-small"),
         "deadline_ms": int(bundle.get("deadline_ms") or now + 86_400_000),
         "expected_value_millionths": int(bundle.get("expected_value_millionths") or 500_000),
-        "max_attempts": profile_g_task_attempt_limit(
+        "max_attempts": _profile_g_task_spec_attempt_limit(
             bundle.get("max_attempts"),
         ),
         "execution_mode": "idempotent",
@@ -795,6 +807,7 @@ def _validated_embedded_profile_g(
         bundle.get("max_attempts"),
         default=3,
     )
+    expected_task_limit = _profile_g_task_spec_attempt_limit(outer_limit)
     adapted = dict(embedded)
     artifacts = adapted.get("artifacts")
     if not isinstance(artifacts, Mapping):
@@ -856,7 +869,7 @@ def _validated_embedded_profile_g(
     if "max_attempts" not in task:
         raise ValueError("embedded Profile-G TaskSpec max_attempts is required")
     task_limit = profile_g_task_attempt_limit(task["max_attempts"])
-    if task_limit != outer_limit:
+    if task_limit != expected_task_limit:
         raise ValueError(
             "bundle max_attempts does not match embedded Profile-G TaskSpec"
         )

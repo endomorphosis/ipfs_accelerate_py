@@ -372,6 +372,24 @@ PROVIDER_CAPACITY_PATTERNS = (
         ),
     ),
 )
+GROK_QUOTA_OR_BALANCE_EXHAUSTION_PATTERN = re.compile(
+    r"(?:\binsufficient[_ ]quota\b|"
+    r"\bquota(?:[_ ]|\s+(?:is\s+|has\s+been\s+)?)"
+    r"(?:exceeded|exhausted)\b|"
+    r"\b(?:usage\s+)?balance(?:\s+(?:is|has\s+been))?\s+exhausted\b|"
+    r"\b(?:hit|reached|exceeded)\s+(?:your|the)\s+usage\s+limit\b)",
+    re.IGNORECASE,
+)
+GROK_FALLBACK_DISQUALIFY_PATTERN = re.compile(
+    r"(?:\b429\b|rate.?limit|too\s+many\s+requests|"
+    r"temporar(?:y|ily)|try\s+again\s+later|overload(?:ed)?|"
+    r"resource.?exhausted|service\s+unavailable|\bunavailable\b|"
+    r"timed?\s*out|\btimeout\b|auth(?:entication|orization)?|"
+    r"\bunauthorized\b|\bforbidden\b|\blogin\b|credential|api\s+key)",
+    re.IGNORECASE,
+)
+PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER = "primary_quota_exhausted"
+QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND = "quota_or_balance_exhausted"
 PROVIDER_DECLARED_RETRY_AT_PATTERN = re.compile(
     r"\btry\s+again\s+at\s+"
     r"(?P<month>[A-Za-z]{3,9})\.?\s+"
@@ -401,6 +419,9 @@ PROVIDER_RETRY_MONTHS = {
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 IMPLEMENTATION_FALLBACK_PROVIDER_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
+)
+IMPLEMENTATION_FALLBACK_TRIGGER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
 )
 GROK_IMPLEMENTATION_PROVIDER_ALIASES = frozenset(
     {
@@ -1614,6 +1635,21 @@ def _configured_implementation_fallback_provider() -> str:
     ).strip().lower()
 
 
+def _configured_implementation_fallback_trigger() -> str:
+    """Return the reviewed condition that may authorize fallback dispatch."""
+
+    return os.environ.get(
+        IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        "",
+    ).strip().lower()
+
+
+def _configured_codex_reasoning_effort() -> str:
+    """Return the configured Codex effort without applying legacy defaults."""
+
+    return os.environ.get(_CODEX_REASONING_EFFORT_ENV, "").strip().lower()
+
+
 def _codex_cli_command(
     *,
     codex: str,
@@ -2289,10 +2325,48 @@ def classify_provider_capacity_failure(
         if not attributed and "provider" in unique_providers:
             attributed = command_providers
         unique_providers = attributed
+    grok_command_attributed = bool(
+        {"grok", "xai"} & set(command_providers)
+    )
+    explicit_quota_or_balance_text = bool(
+        GROK_QUOTA_OR_BALANCE_EXHAUSTION_PATTERN.search(text)
+    )
+    fallback_disqualified = bool(
+        GROK_FALLBACK_DISQUALIFY_PATTERN.search(text)
+    )
+    if (
+        grok_command_attributed
+        and explicit_quota_or_balance_text
+        and not fallback_disqualified
+        and "grok" not in unique_providers
+    ):
+        # The dispatched command is stronger attribution than a provider's
+        # generic wording (for example, "you've hit your usage limit").
+        unique_providers = ["grok"]
+    explicit_grok_quota_or_balance = bool(
+        grok_command_attributed
+        and "grok" in unique_providers
+        and explicit_quota_or_balance_text
+        and not fallback_disqualified
+    )
     result = {
         "exhausted": bool(unique_providers),
         "providers": unique_providers,
         "reason": "provider_capacity_exhausted" if unique_providers else "",
+        "capacity_failure_kind": (
+            QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND
+            if explicit_grok_quota_or_balance
+            else "provider_capacity_exhausted" if unique_providers else ""
+        ),
+        "provider_attribution": (
+            "implementation_command" if command_providers else "log_text"
+        ),
+        "fallback_eligible": explicit_grok_quota_or_balance,
+        "fallback_trigger": (
+            PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER
+            if explicit_grok_quota_or_balance
+            else ""
+        ),
     }
     retry_at = parse_provider_declared_retry_at(text)
     if unique_providers and retry_at is not None:
@@ -4939,12 +5013,19 @@ class PortalImplementationDaemon:
             path.unlink()
         except FileNotFoundError:
             pass
+        task_claim_reconciliation = (
+            self._reap_retained_task_claim_after_protected_fence_clear(
+                task_id=task_id,
+                attempt=attempt,
+            )
+        )
         self._record_event(
             "implementation_protected_path_snapshot_cleared",
             {
                 "task_id": task_id,
                 "attempt": attempt,
                 "reason": reason,
+                "task_claim_reconciliation": task_claim_reconciliation,
             },
         )
 
@@ -5312,6 +5393,12 @@ class PortalImplementationDaemon:
             active_path.unlink()
         except FileNotFoundError:
             pass
+        task_claim_reconciliation = (
+            self._reap_retained_task_claim_after_protected_fence_clear(
+                task_id=receipt["task_id"],
+                attempt=receipt["attempt"],
+            )
+        )
         stale_lock_cleared = False
         if lock_path.exists():
             lock_path.unlink()
@@ -5347,6 +5434,7 @@ class PortalImplementationDaemon:
             "ephemeral_workspace_recovery_approved": bool(
                 disposed_workspace_proof or mirrored_workspace_proof
             ),
+            "task_claim_reconciliation": task_claim_reconciliation,
             "stale_lock_cleared": stale_lock_cleared,
         }
         self._record_event(
@@ -6627,6 +6715,12 @@ class PortalImplementationDaemon:
             active_path.unlink()
         except FileNotFoundError:
             pass
+        task_claim_reconciliation = (
+            self._reap_retained_task_claim_after_protected_fence_clear(
+                task_id=receipt["task_id"],
+                attempt=receipt["attempt"],
+            )
+        )
         result = {
             "cleared": True,
             "auto": True,
@@ -6637,6 +6731,7 @@ class PortalImplementationDaemon:
             "attempt": receipt["attempt"],
             "mutated_paths": receipt["mutated_paths"],
             "class_codes": receipt["class_codes"],
+            "task_claim_reconciliation": task_claim_reconciliation,
             "blocked": False,
         }
         self._record_event(
@@ -6845,6 +6940,12 @@ class PortalImplementationDaemon:
             active_path.unlink()
         except FileNotFoundError:
             pass
+        task_claim_reconciliation = (
+            self._reap_retained_task_claim_after_protected_fence_clear(
+                task_id=task_id,
+                attempt=attempt,
+            )
+        )
         result = {
             "cleared": True,
             "auto": True,
@@ -6854,6 +6955,7 @@ class PortalImplementationDaemon:
             "receipt_path": str(receipt_path),
             "task_id": task_id,
             "attempt": attempt,
+            "task_claim_reconciliation": task_claim_reconciliation,
             **concurrent_update,
         }
         self._record_event(
@@ -7427,6 +7529,13 @@ class PortalImplementationDaemon:
 
         source_task_id, failure_kind = retry_budget_repair_source(task)
         if source_task_id:
+            # Passing tests on an unchanged checkout cannot establish that a
+            # stranded implementation commit has the correct ancestry or is
+            # ready to merge.  Merge repairs must produce a reviewed
+            # candidate and traverse the normal proposal/merge gates; never
+            # retire them through the local no-change provider bypass.
+            if failure_kind == "merge":
+                return None
             return {
                 "kind": "retry_budget_repair",
                 "source_task_id": source_task_id,
@@ -9484,6 +9593,72 @@ class PortalImplementationDaemon:
         )
         return schedule if schedule.get("active", False) else {}
 
+    def _active_grok_quota_fallback_proof(self) -> dict[str, Any]:
+        """Return a live, command-attributed Grok quota proof.
+
+        Legacy capacity latches and generic rate, availability, authentication,
+        or transient failures deliberately do not authorize the Codex fallback.
+        """
+
+        now = _provider_capacity_now()
+        for event in reversed(self._iter_events()):
+            event_type = str(event.get("type") or "")
+            if event_type == "implementation_provider_exhausted":
+                exhausted = {
+                    str(item).strip().lower()
+                    for item in list(event.get("providers") or [])
+                    if str(item).strip()
+                }
+                if not ({"grok", "xai"} & exhausted):
+                    continue
+                retry_at = parse_timestamp(str(event.get("retry_at") or ""))
+                if retry_at is None or retry_at <= now:
+                    return {}
+                if (
+                    event.get("fallback_eligible") is not True
+                    or str(event.get("fallback_trigger") or "").strip().lower()
+                    != PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER
+                    or str(event.get("capacity_failure_kind") or "")
+                    .strip()
+                    .lower()
+                    != QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND
+                    or str(event.get("provider_attribution") or "")
+                    .strip()
+                    .lower()
+                    != "implementation_command"
+                    or not list(event.get("evidence") or [])
+                ):
+                    return {}
+                return {
+                    "active": True,
+                    "retry_at": retry_at.isoformat(),
+                    "retry_after_seconds": max(
+                        0.0,
+                        (retry_at - now).total_seconds(),
+                    ),
+                    "providers": list(event.get("providers") or []),
+                    "capacity_failure_kind": str(
+                        event.get("capacity_failure_kind") or ""
+                    ),
+                    "provider_attribution": str(
+                        event.get("provider_attribution") or ""
+                    ),
+                    "fallback_trigger": str(
+                        event.get("fallback_trigger") or ""
+                    ),
+                }
+            if event_type == "implementation_started":
+                if event.get("provider_dispatched") is False:
+                    continue
+                started_labels = set(
+                    _provider_labels_from_implementation_command(
+                        event.get("command") or ()
+                    )
+                )
+                if started_labels & {"grok", "xai"}:
+                    return {}
+        return {}
+
     def _ordered_grok_codex_route_configured(
         self,
         task: PortalTask | None = None,
@@ -9506,14 +9681,20 @@ class PortalImplementationDaemon:
         if not self._ordered_grok_codex_route_configured(task):
             return ""
         if (
-            _grok_cli_available()
-            and not self._active_provider_capacity_backoff_for_labels(
-                {"grok", "xai"}
-            )
+            _configured_implementation_fallback_trigger()
+            != PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER
+            or _configured_codex_reasoning_effort() != "medium"
         ):
+            return ""
+        grok_backoff = self._active_provider_capacity_backoff_for_labels(
+            {"grok", "xai"}
+        )
+        grok_quota_proof = self._active_grok_quota_fallback_proof()
+        if _grok_cli_available() and not grok_backoff:
             return "grok"
         if (
-            shutil.which("codex")
+            grok_quota_proof
+            and shutil.which("codex")
             and not self._active_provider_capacity_backoff_for_labels(
                 {"codex"}
             )
@@ -9604,15 +9785,16 @@ class PortalImplementationDaemon:
         if ordered_grok_codex:
             if self._ordered_grok_codex_selected_provider(task):
                 return {}
-            active_schedules: list[dict[str, Any]] = []
-            if _grok_cli_available():
-                grok_schedule = (
-                    self._active_provider_capacity_backoff_for_labels(
-                        {"grok", "xai"}
-                    )
+            grok_schedule = (
+                self._active_provider_capacity_backoff_for_labels(
+                    {"grok", "xai"}
                 )
-                if not grok_schedule:
-                    return {}
+            )
+            grok_quota_proof = self._active_grok_quota_fallback_proof()
+            if not grok_quota_proof:
+                return grok_schedule
+            active_schedules: list[dict[str, Any]] = []
+            if grok_schedule:
                 active_schedules.append(grok_schedule)
             if shutil.which("codex"):
                 codex_schedule = (
@@ -9620,9 +9802,8 @@ class PortalImplementationDaemon:
                         {"codex"}
                     )
                 )
-                if not codex_schedule:
-                    return {}
-                active_schedules.append(codex_schedule)
+                if codex_schedule:
+                    active_schedules.append(codex_schedule)
             if active_schedules:
                 return min(
                     active_schedules,
@@ -9837,6 +10018,16 @@ class PortalImplementationDaemon:
             "reason": "provider_capacity_exhausted",
             "providers": list(failure.get("providers") or []),
             "evidence": list(failure.get("evidence") or []),
+            "capacity_failure_kind": str(
+                failure.get("capacity_failure_kind") or ""
+            ),
+            "provider_attribution": str(
+                failure.get("provider_attribution") or ""
+            ),
+            "fallback_eligible": failure.get("fallback_eligible") is True,
+            "fallback_trigger": str(
+                failure.get("fallback_trigger") or ""
+            ),
             "retry_at": retry_at,
             "retry_at_source": retry_at_source,
             "attempt_consumed": False,
@@ -38113,13 +38304,242 @@ class PortalImplementationDaemon:
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
 
     def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
-        return checkout_lock_owner_is_active(
+        if implementation_task_claim_protected_fence_paths(metadata):
+            return True
+        process_owner_active = checkout_lock_owner_is_active(
             metadata,
             expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
             expected_repo_root=self.repo_root,
             process_command_line=process_command_line,
             process_is_running=process_is_running,
         )
+        state_path_text = str(metadata.get("state_path") or "").strip()
+        if not state_path_text:
+            # Legacy claims have no state projection to cross-check.
+            return process_owner_active
+        try:
+            owner_state_path = Path(state_path_text).resolve()
+        except (OSError, RuntimeError, ValueError):
+            return True
+        owner_state = load_json_dict(owner_state_path)
+        if owner_state is None:
+            return True
+
+        active_task_id = owner_state.get("active_task_id")
+        active_task_cid = owner_state.get("active_task_cid")
+        active_attempt = owner_state.get("active_attempt")
+        implementation_in_progress = owner_state.get(
+            "implementation_in_progress"
+        )
+        if (
+            not isinstance(active_task_id, str)
+            or not isinstance(active_task_cid, str)
+            or isinstance(active_attempt, bool)
+            or not isinstance(active_attempt, int)
+            or not isinstance(implementation_in_progress, bool)
+        ):
+            return True
+        task_id = metadata.get("task_id")
+        canonical_task_cid = metadata.get("canonical_task_cid")
+        claim_attempt = metadata.get("attempt")
+        if (
+            not isinstance(task_id, str)
+            or not task_id
+            or not isinstance(canonical_task_cid, str)
+            or not canonical_task_cid
+            or isinstance(claim_attempt, bool)
+            or not isinstance(claim_attempt, int)
+            or claim_attempt <= 0
+        ):
+            return True
+        if not process_owner_active:
+            return False
+        if (
+            active_task_id != task_id
+            or active_task_cid != canonical_task_cid
+        ):
+            return False
+        if implementation_in_progress:
+            return active_attempt == claim_attempt
+        # Selection persists before claim acquisition.  Preserve that narrow
+        # live pre-dispatch window, whose attempt marker is intentionally zero.
+        return active_attempt == 0
+
+    def _reap_retained_task_claim_after_protected_fence_clear(
+        self,
+        *,
+        task_id: str,
+        attempt: Any,
+    ) -> dict[str, Any]:
+        """Release a fence-retained claim once its exact owner is no longer active.
+
+        Attempt finalization deliberately keeps the repository-wide task claim
+        while a lane-local protected snapshot or incident exists.  Once that
+        fence is reconciled, a still-running daemon PID is not sufficient proof
+        that the old attempt remains active: the lane state must still name the
+        same task, canonical CID, and attempt.  Missing or malformed claim/state
+        data and any fence I/O uncertainty remain fail closed.
+        """
+
+        result: dict[str, Any] = {
+            "task_id": str(task_id or ""),
+            "attempt": attempt,
+            "reaped_claim_paths": [],
+            "retained_claim_paths": [],
+        }
+        resolved_task_id = str(task_id or "").strip()
+        try:
+            resolved_attempt = int(attempt)
+        except (TypeError, ValueError):
+            result["reason"] = "invalid_task_attempt"
+            return result
+        if not resolved_task_id or resolved_attempt <= 0:
+            result["reason"] = "invalid_task_attempt"
+            return result
+
+        claim_dir = checkout_mutation_lock_path(
+            self.repo_root,
+            lock_name=IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
+        )
+        try:
+            claim_paths = sorted(claim_dir.glob("*.lock"))
+        except OSError as exc:
+            result["reason"] = "claim_scan_failed"
+            result["error"] = f"{type(exc).__name__}: {exc}"
+            return result
+
+        expected_state_path = self.state_path.resolve()
+        expected_state_dir = expected_state_path.parent
+        for claim_path in claim_paths:
+            if claim_path.name.startswith("."):
+                continue
+            try:
+                with serialized_lock_update(claim_path):
+                    metadata = load_json_dict(claim_path)
+                    if metadata is None:
+                        # The claim could belong to the reconciled attempt, but
+                        # unreadable ownership cannot authorize deletion.
+                        if claim_path.exists():
+                            result["retained_claim_paths"].append(
+                                str(claim_path)
+                            )
+                        continue
+                    if str(metadata.get("task_id") or "") != resolved_task_id:
+                        continue
+                    raw_attempt = metadata.get("attempt")
+                    if (
+                        isinstance(raw_attempt, bool)
+                        or not isinstance(raw_attempt, int)
+                    ):
+                        result["retained_claim_paths"].append(str(claim_path))
+                        continue
+                    if raw_attempt != resolved_attempt:
+                        continue
+                    if (
+                        str(metadata.get("kind") or "")
+                        != IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
+                        or not str(metadata.get("lease_id") or "")
+                    ):
+                        result["retained_claim_paths"].append(str(claim_path))
+                        continue
+                    try:
+                        repository_match = checkout_lock_repository_matches(
+                            metadata,
+                            self.repo_root,
+                        )
+                        owner_state_path = Path(
+                            str(metadata.get("state_path") or "")
+                        ).resolve()
+                        owner_state_dir = Path(
+                            str(metadata.get("state_dir") or "")
+                        ).resolve()
+                    except (OSError, RuntimeError, ValueError):
+                        result["retained_claim_paths"].append(str(claim_path))
+                        continue
+                    if repository_match is not True:
+                        result["retained_claim_paths"].append(str(claim_path))
+                        continue
+                    if (
+                        owner_state_path != expected_state_path
+                        or owner_state_dir != expected_state_dir
+                    ):
+                        # Another lane owns this claim; its reconciler is the
+                        # only authority that may assess its state projection.
+                        continue
+                    if implementation_task_claim_protected_fence_paths(
+                        metadata
+                    ):
+                        result["retained_claim_paths"].append(str(claim_path))
+                        continue
+
+                    owner_state = load_json_dict(owner_state_path)
+                    if owner_state is None:
+                        result["retained_claim_paths"].append(str(claim_path))
+                        continue
+                    active_task_id = owner_state.get("active_task_id")
+                    active_task_cid = owner_state.get("active_task_cid")
+                    active_attempt = owner_state.get("active_attempt")
+                    implementation_in_progress = owner_state.get(
+                        "implementation_in_progress"
+                    )
+                    if (
+                        not isinstance(active_task_id, str)
+                        or not isinstance(active_task_cid, str)
+                        or isinstance(active_attempt, bool)
+                        or not isinstance(active_attempt, int)
+                        or not isinstance(implementation_in_progress, bool)
+                    ):
+                        result["retained_claim_paths"].append(str(claim_path))
+                        continue
+                    canonical_task_cid = metadata.get("canonical_task_cid")
+                    if (
+                        not isinstance(canonical_task_cid, str)
+                        or not canonical_task_cid
+                    ):
+                        result["retained_claim_paths"].append(str(claim_path))
+                        continue
+
+                    # The shared owner predicate also recognizes the narrow
+                    # selected-but-not-yet-dispatched window (active attempt
+                    # zero).  Reuse it here so a fence clearance racing a new
+                    # dispatch cannot steal that freshly acquired claim.
+                    if self._implementation_task_claim_owner_is_active(
+                        metadata
+                    ):
+                        result["retained_claim_paths"].append(str(claim_path))
+                        continue
+                    claim_path.unlink()
+                    result["reaped_claim_paths"].append(str(claim_path))
+            except (OSError, RuntimeError) as exc:
+                result["retained_claim_paths"].append(str(claim_path))
+                result.setdefault("errors", []).append(
+                    {
+                        "claim_path": str(claim_path),
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
+
+        result["reaped_claim_paths"] = list(
+            dict.fromkeys(result["reaped_claim_paths"])
+        )
+        result["retained_claim_paths"] = list(
+            dict.fromkeys(result["retained_claim_paths"])
+        )
+        result["reason"] = (
+            "stale_claim_reaped"
+            if result["reaped_claim_paths"]
+            else (
+                "claim_retained_fail_closed"
+                if result["retained_claim_paths"]
+                else "no_matching_claim"
+            )
+        )
+        if result["reaped_claim_paths"]:
+            self._record_event(
+                "implementation_task_claim_reaped_after_protected_path_clear",
+                result,
+            )
+        return result
 
     def _implementation_resource_claim_owner_is_active(
         self,
@@ -38209,7 +38629,53 @@ class PortalImplementationDaemon:
                 if not claim_path.exists():
                     continue
                 metadata = load_json_dict(claim_path)
-                if metadata is not None and self._implementation_task_claim_owner_is_active(metadata):
+                if metadata is None:
+                    # A present but unreadable claim has unknown ownership.
+                    # Keep the task reserved until a reviewed recovery can
+                    # establish that deleting the file is safe.
+                    active_claims[task_id] = {
+                        "kind": IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+                        "coordination_error": "malformed_task_claim",
+                        "claim_path": str(claim_path),
+                    }
+                    break
+                if self._implementation_task_claim_owner_is_active(metadata):
+                    active_claims[task_id] = metadata
+                    if canonical_task_cid:
+                        active_claims_by_cid[canonical_task_cid] = metadata
+                    break
+                try:
+                    with serialized_lock_update(claim_path):
+                        current = load_json_dict(claim_path)
+                        if current is None:
+                            if claim_path.exists():
+                                # The claim became unreadable while the scan
+                                # was acquiring its serialization lease.  Do
+                                # not turn that coordination race into write
+                                # authority for another lane.
+                                active_claims[task_id] = {
+                                    "kind": IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+                                    "coordination_error": "malformed_task_claim",
+                                    "claim_path": str(claim_path),
+                                }
+                                break
+                            continue
+                        if self._implementation_task_claim_owner_is_active(
+                            current
+                        ):
+                            active_claims[task_id] = current
+                            if canonical_task_cid:
+                                active_claims_by_cid[
+                                    canonical_task_cid
+                                ] = current
+                            break
+                        self._clear_stale_lock(
+                            claim_path,
+                            lock_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+                            metadata=current,
+                        )
+                except (OSError, RuntimeError):
+                    # Coordination uncertainty must keep the task reserved.
                     active_claims[task_id] = metadata
                     if canonical_task_cid:
                         active_claims_by_cid[canonical_task_cid] = metadata
@@ -41267,11 +41733,33 @@ class PortalImplementationDaemon:
                 f"{declared_provider} task requires a supervisor-owned typed "
                 "local operation; model dispatch is forbidden"
             )
+        sealed_ordered_route = self._ordered_grok_codex_route_configured(None)
         if self.implementation_command and not declared_provider:
+            if sealed_ordered_route:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route forbids an explicit "
+                    "implementation command override",
+                    backoff_seconds=300,
+                )
             return shlex.split(self.implementation_command)
         env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
         if env_command and not declared_provider:
+            if sealed_ordered_route:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route forbids the ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
             return shlex.split(env_command)
+        if (
+            sealed_ordered_route
+            and declared_provider in CODEX_IMPLEMENTATION_PROVIDER_ALIASES
+        ):
+            raise ImplementationRetryDeferred(
+                "sealed Grok/Codex route forbids task-declared Codex dispatch "
+                "without a live Grok quota exhaustion proof",
+                backoff_seconds=300,
+            )
 
         configured_provider = _configured_implementation_provider()
         provider = (
@@ -41309,6 +41797,28 @@ class PortalImplementationDaemon:
                 "Unsupported implementation provider fallback route: "
                 f"{provider!r} -> {fallback_provider!r}"
             )
+        if ordered_codex_fallback and not ordered_selected_provider:
+            if (
+                _configured_implementation_fallback_trigger()
+                != PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER
+                or _configured_codex_reasoning_effort() != "medium"
+            ):
+                reason = (
+                    "ordered Grok/Codex route is missing its reviewed "
+                    "primary_quota_exhausted trigger or medium reasoning "
+                    "policy"
+                )
+            elif self._active_grok_quota_fallback_proof():
+                reason = (
+                    "Codex fallback is unavailable or capacity-deferred while "
+                    "the live Grok quota/balance exhaustion proof is active"
+                )
+            else:
+                reason = (
+                    "Grok is unavailable or capacity-deferred; Codex fallback "
+                    "requires a live explicit Grok quota/balance exhaustion proof"
+                )
+            raise ImplementationRetryDeferred(reason, backoff_seconds=300)
         if declared_provider in {
             "grok",
             "grok_cli",

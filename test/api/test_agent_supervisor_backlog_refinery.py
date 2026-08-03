@@ -4694,8 +4694,17 @@ def test_backlog_refinery_retry_budget_blocks_merge_loop(tmp_path):
         1,
     )[1]
     assert "- Parallel lane: runtime-merge" in repair_text
-    assert "- Predicted files: data/agent_supervisor/discovery" in repair_text
-    assert "- Predicted files: src/runtime.py" not in repair_text
+    assert "- Outputs: src/runtime.py" in repair_text
+    assert "- Predicted files: src/runtime.py" in repair_text
+    assert "- Validation: test -f src/runtime.py" in repair_text
+    assert "- Validation: test -f" in repair_text
+    assert str(discovery_dir) not in repair_text.split(
+        "- Validation:", 1
+    )[1].splitlines()[0]
+    assert (
+        "- Outputs: src/runtime.py, data/agent_supervisor/discovery"
+        not in repair_text
+    )
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
 

@@ -41,19 +41,29 @@ PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 FALLBACK_PROVIDER_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
 )
+FALLBACK_TRIGGER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
+)
 GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
 CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
+CODEX_REASONING_EFFORT_ENV = (
+    "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
+)
 SCHEDULER_PROVIDER_ENV_NAMES = (
     PROVIDER_ENV,
     FALLBACK_PROVIDER_ENV,
+    FALLBACK_TRIGGER_ENV,
     GROK_MODEL_ENV,
     CODEX_MODEL_ENV,
+    CODEX_REASONING_EFFORT_ENV,
 )
 ORDERED_PROVIDER_FIELDS = (
     "primary_provider_id",
     "primary_model_id",
     "fallback_provider_id",
     "fallback_model_id",
+    "fallback_trigger",
+    "fallback_reasoning_effort",
 )
 
 
@@ -377,6 +387,14 @@ def load_configured_board(
             "fallback_provider_id",
         ).lower()
         _provider_string(provider, "fallback_model_id")
+        fallback_trigger = _provider_string(
+            provider,
+            "fallback_trigger",
+        ).lower()
+        fallback_reasoning_effort = _provider_string(
+            provider,
+            "fallback_reasoning_effort",
+        ).lower()
         if primary_provider_id != "grok_cli":
             raise ConfiguredBoardError(
                 "provider.primary_provider_id must be 'grok_cli' for "
@@ -385,6 +403,16 @@ def load_configured_board(
         if fallback_provider_id != "codex":
             raise ConfiguredBoardError(
                 "provider.fallback_provider_id must be 'codex' for "
+                "the ordered provider contract"
+            )
+        if fallback_trigger != "primary_quota_exhausted":
+            raise ConfiguredBoardError(
+                "provider.fallback_trigger must be "
+                "'primary_quota_exhausted' for the ordered provider contract"
+            )
+        if fallback_reasoning_effort != "medium":
+            raise ConfiguredBoardError(
+                "provider.fallback_reasoning_effort must be 'medium' for "
                 "the ordered provider contract"
             )
         if "provider_id" in provider or "model_id" in provider:
@@ -953,8 +981,14 @@ def configured_board_launch_plan(
             FALLBACK_PROVIDER_ENV: str(
                 provider["fallback_provider_id"]
             ).strip(),
+            FALLBACK_TRIGGER_ENV: str(
+                provider["fallback_trigger"]
+            ).strip(),
             GROK_MODEL_ENV: str(provider["primary_model_id"]).strip(),
             CODEX_MODEL_ENV: str(provider["fallback_model_id"]).strip(),
+            CODEX_REASONING_EFFORT_ENV: str(
+                provider["fallback_reasoning_effort"]
+            ).strip(),
         }
     else:
         provider_id = str(provider.get("provider_id") or "").strip()

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from ipfs_datasets_py.logic.profile_g import validate_profile_g_artifact
 
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     build_arg_parser as build_bundle_arg_parser,
@@ -14,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
 )
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
+    adapt_goal_bundle,
     profile_g_cid,
 )
 from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
@@ -541,6 +543,30 @@ def test_max_task_attempts_defaults_to_unlimited() -> None:
     assert parse_daemon_args([]).max_task_attempts == 0
 
 
+def test_unlimited_attempts_translate_only_at_profile_g_task_spec_boundary() -> None:
+    bundle = {
+        "bundle_key": "objective/runtime",
+        "source_todo": "docs/tasks.todo.md",
+        "tasks": [{"task_id": "TASK-001"}],
+        "max_attempts": 0,
+    }
+
+    adapted = adapt_goal_bundle(bundle, created_at_ms=1_783_872_000_000)
+
+    assert bundle["max_attempts"] == 0
+    assert adapted["task"]["max_attempts"] == 100
+    assert (
+        validate_profile_g_artifact("TaskSpec", adapted["task"])
+        == adapted["task_cid"]
+    )
+
+    finite = adapt_goal_bundle(
+        {**bundle, "max_attempts": 4},
+        created_at_ms=1_783_872_000_000,
+    )
+    assert finite["task"]["max_attempts"] == 4
+
+
 def test_default_planned_lane_is_unlimited_in_worker_and_coordinator(
     tmp_path,
 ) -> None:
@@ -586,7 +612,12 @@ def test_default_planned_lane_is_unlimited_in_worker_and_coordinator(
     worker_flag = lane.command.index("--max-task-attempts")
     assert lane.command[worker_flag + 1] == "0"
     assert lane.queue_payload["max_attempts"] == 0
-    assert lane.queue_payload["profile_g"]["task"]["max_attempts"] == 0
+    profile_g = lane.queue_payload["profile_g"]
+    assert profile_g["task"]["max_attempts"] == 100
+    assert (
+        validate_profile_g_artifact("TaskSpec", profile_g["task"])
+        == profile_g["task_cid"]
+    )
     with LeaseCoordinator(repo / "coordination.duckdb") as coordinator:
         registered = coordinator.register_bundle(lane.queue_payload)
         for expected_attempt in range(1, 5):
@@ -776,10 +807,59 @@ def test_classify_provider_capacity_detects_grok_402_balance_exhausted() -> None
         '  "http_status": 402\n'
         "}\n"
     )
-    classified = classify_provider_capacity_failure(text)
+    classified = classify_provider_capacity_failure(
+        text,
+        provider_labels=("grok",),
+    )
     assert classified["exhausted"] is True
-    assert "grok" in classified["providers"] or "provider" in classified["providers"]
+    assert classified["providers"] == ["grok"]
     assert classified["reason"] == "provider_capacity_exhausted"
+    assert classified["capacity_failure_kind"] == "quota_or_balance_exhausted"
+    assert classified["provider_attribution"] == "implementation_command"
+    assert classified["fallback_eligible"] is True
+    assert classified["fallback_trigger"] == "primary_quota_exhausted"
+
+
+def test_classify_generic_usage_limit_uses_dispatched_grok_attribution() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    classified = classify_provider_capacity_failure(
+        "You've hit your usage limit.",
+        provider_labels=("grok",),
+    )
+
+    assert classified["providers"] == ["grok"]
+    assert classified["capacity_failure_kind"] == "quota_or_balance_exhausted"
+    assert classified["provider_attribution"] == "implementation_command"
+    assert classified["fallback_eligible"] is True
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "xAI HTTP 429: too many requests",
+        "Grok is temporarily overloaded: resource exhausted",
+        "Grok authentication failed; login required",
+        "Grok service unavailable",
+    ),
+)
+def test_classify_grok_nonquota_failures_do_not_authorize_codex_fallback(
+    text: str,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    classified = classify_provider_capacity_failure(
+        text,
+        provider_labels=("grok",),
+    )
+
+    assert classified["fallback_eligible"] is False
+    assert classified["fallback_trigger"] == ""
+    assert classified["capacity_failure_kind"] != "quota_or_balance_exhausted"
 
 
 def test_classify_codex_quota_does_not_poison_grok_capacity() -> None:
@@ -795,6 +875,10 @@ def test_classify_codex_quota_does_not_poison_grok_capacity() -> None:
         "exhausted": True,
         "providers": ["codex"],
         "reason": "provider_capacity_exhausted",
+        "capacity_failure_kind": "provider_capacity_exhausted",
+        "provider_attribution": "log_text",
+        "fallback_eligible": False,
+        "fallback_trigger": "",
     }
 
 

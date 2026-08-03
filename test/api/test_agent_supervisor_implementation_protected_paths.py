@@ -2905,6 +2905,358 @@ def test_auto_clears_content_preserving_identity_thrash(tmp_path: Path) -> None:
     assert not daemon._implementation_protected_incident_path().exists()
 
 
+def test_identity_thrash_auto_clear_reaps_stale_task_claim_for_next_selection(
+    tmp_path: Path,
+) -> None:
+    """A live lane PID must not preserve a claim for its finished attempt."""
+
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("authoritative\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    identity = daemon._identity_for_task(task)
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+    )
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = (
+        daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert acquired is True
+    # The owner daemon is still alive, but its projection no longer names this
+    # task/CID/attempt after the protected-path interruption settled.
+    PortalTaskState().save(daemon.state_path)
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": task.task_id,
+            "attempt": 1,
+            "workspace_path": str(tmp_path),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "identity_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "same-digest",
+                        "links": 1,
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "same-digest",
+                        "links": 2,
+                    },
+                }
+            ],
+        }
+    )
+    assert daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+    assert claim_path.exists()
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["cleared"] is True
+    assert result["reason"] == "content_preserving_identity_thrash_accepted"
+    assert result["task_claim_reconciliation"]["reason"] == (
+        "stale_claim_reaped"
+    )
+    assert not claim_path.exists()
+    assert daemon._active_implementation_task_claims([task]) == {}
+    selected = daemon._select_next_task(
+        [task],
+        {task.task_id: "ready"},
+        {},
+        {},
+        {},
+    )
+    assert selected is task
+
+
+def test_active_claim_scan_reaps_preexisting_fenceless_stale_claim(
+    tmp_path: Path,
+) -> None:
+    """An upgrade can recover a claim whose old fence is already absent."""
+
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    PortalTaskState().save(daemon.state_path)
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = (
+        daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert acquired is True
+    assert claim_path.exists()
+
+    assert daemon._active_implementation_task_claims([task]) == {}
+    assert not claim_path.exists()
+    selected = daemon._select_next_task(
+        [task],
+        {task.task_id: "ready"},
+        {},
+        {},
+        {},
+    )
+    assert selected is task
+
+
+def test_fence_clear_reaper_retains_selected_predispatch_claim(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: f"implementation_daemon.py {Path(sys.argv[0]).name}",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_is_running",
+        lambda pid: pid == os.getpid(),
+    )
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    task_cid = daemon._canonical_ref(task)
+    PortalTaskState(
+        active_task_id=task.task_id,
+        active_task_cid=task_cid,
+        active_attempt=0,
+        implementation_in_progress=False,
+    ).save(daemon.state_path)
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=task_cid,
+    )
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = (
+        daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert acquired is True
+
+    result = daemon._reap_retained_task_claim_after_protected_fence_clear(
+        task_id=task.task_id,
+        attempt=1,
+    )
+
+    assert result["reason"] == "claim_retained_fail_closed"
+    assert claim_path.exists()
+    PortalTaskState().save(daemon.state_path)
+    assert daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+
+
+def test_active_claim_scan_fails_closed_for_malformed_claim(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    claim_path.write_text("{not-json\n", encoding="utf-8")
+
+    active = daemon._active_implementation_task_claims([task])
+
+    assert active[task.task_id]["coordination_error"] == (
+        "malformed_task_claim"
+    )
+    assert claim_path.exists()
+
+
+def test_identity_thrash_auto_clear_retains_live_matching_task_claim(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Auto-clear cannot steal a claim from the exact running attempt."""
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: f"implementation_daemon.py {Path(sys.argv[0]).name}",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_is_running",
+        lambda pid: pid == os.getpid(),
+    )
+
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("authoritative\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=tmp_path,
+        attempt=1,
+    )
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = (
+        daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert acquired is True
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": task.task_id,
+            "attempt": 1,
+            "workspace_path": str(tmp_path),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "identity_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "same-digest",
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "same-digest",
+                    },
+                }
+            ],
+        }
+    )
+    assert daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["cleared"] is True
+    assert result["task_claim_reconciliation"]["reason"] == (
+        "claim_retained_fail_closed"
+    )
+    assert claim_path.exists()
+    assert daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+
+
+def test_identity_thrash_auto_clear_retains_claim_for_unreadable_owner_state(
+    tmp_path: Path,
+) -> None:
+    """Malformed owner state cannot become deletion authority."""
+
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("authoritative\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = (
+        daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert acquired is True
+    daemon.state_path.parent.mkdir(parents=True, exist_ok=True)
+    daemon.state_path.write_text("{not-json\n", encoding="utf-8")
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": task.task_id,
+            "attempt": 1,
+            "workspace_path": str(tmp_path),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "identity_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "same-digest",
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "same-digest",
+                    },
+                }
+            ],
+        }
+    )
+    assert daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["cleared"] is True
+    assert result["task_claim_reconciliation"]["reason"] == (
+        "claim_retained_fail_closed"
+    )
+    assert claim_path.exists()
+    assert daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+
+
 def test_auto_clears_mixed_identity_and_todo_board_thrash(tmp_path: Path) -> None:
     """Live multi-lane pattern: identity thrash on plan + board content rewrite."""
 

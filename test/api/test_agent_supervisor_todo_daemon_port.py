@@ -13266,6 +13266,17 @@ def test_auto_provider_with_codex_model_ignores_grok_capacity_latch(
     assert command[command.index("-m") + 1] == "gpt-5.6-terra"
 
 
+def _seal_ordered_grok_codex_route(monkeypatch) -> None:
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        "primary_quota_exhausted",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+        "medium",
+    )
+
+
 def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
     tmp_path,
     monkeypatch,
@@ -13281,6 +13292,7 @@ def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
         implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
         "codex",
     )
+    _seal_ordered_grok_codex_route(monkeypatch)
     monkeypatch.setenv(
         implementation_daemon_module._GROK_MODEL_ENV,
         "grok-4.5",
@@ -13334,7 +13346,7 @@ def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
     }
 
 
-def test_ordered_grok_route_falls_back_to_exact_codex_when_unavailable(
+def test_ordered_grok_route_fails_closed_when_primary_is_unavailable(
     tmp_path,
     monkeypatch,
 ):
@@ -13349,6 +13361,7 @@ def test_ordered_grok_route_falls_back_to_exact_codex_when_unavailable(
         implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
         "codex",
     )
+    _seal_ordered_grok_codex_route(monkeypatch)
     monkeypatch.setenv(
         implementation_daemon_module._GROK_MODEL_ENV,
         "grok-4.5",
@@ -13407,14 +13420,183 @@ def test_ordered_grok_route_falls_back_to_exact_codex_when_unavailable(
         outputs=["src/provider.py"],
     )
 
-    command = daemon._build_implementation_command(repo, task=task)
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
+        daemon._build_implementation_command(repo, task=task)
 
-    assert command[:2] == ["/usr/local/bin/codex", "exec"]
-    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
-    assert "model_context_window=22222" in command
-    assert daemon._implementation_context_window(task) == 22_222
-    assert command[0] != "bash"
-    assert "/usr/local/bin/copilot" not in command
+    assert daemon._implementation_context_window(task) == 11_111
+
+
+@pytest.mark.parametrize(
+    ("constructor_command", "ambient_command", "expected"),
+    (
+        ("codex exec -", "", "explicit implementation command override"),
+        (
+            "",
+            "codex exec -",
+            "ambient IMPLEMENTATION_DAEMON_COMMAND override",
+        ),
+    ),
+)
+def test_sealed_ordered_route_rejects_command_overrides(
+    tmp_path,
+    monkeypatch,
+    constructor_command,
+    ambient_command,
+    expected,
+):
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    if ambient_command:
+        monkeypatch.setenv("IMPLEMENTATION_DAEMON_COMMAND", ambient_command)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=constructor_command,
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match=expected,
+    ):
+        daemon._build_implementation_command(repo)
+
+
+def test_sealed_ordered_route_rejects_task_declared_codex_without_quota_proof(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Attempt a provider override",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "codex-implement"},
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="task-declared Codex dispatch",
+    ):
+        daemon._build_implementation_command(repo, task=task)
+
+
+@pytest.mark.parametrize(
+    "receipt_fields",
+    (
+        {},
+        {
+            "capacity_failure_kind": "provider_capacity_exhausted",
+            "provider_attribution": "implementation_command",
+            "fallback_eligible": False,
+            "fallback_trigger": "",
+            "evidence": ["xAI HTTP 429 rate limited"],
+        },
+        {
+            "capacity_failure_kind": "quota_or_balance_exhausted",
+            "provider_attribution": "log_text",
+            "fallback_eligible": True,
+            "fallback_trigger": "primary_quota_exhausted",
+            "evidence": ["Grok quota exhausted"],
+        },
+    ),
+)
+def test_ordered_codex_fallback_rejects_non_proof_grok_latches(
+    tmp_path,
+    monkeypatch,
+    receipt_fields,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["grok"],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            **receipt_fields,
+        },
+    )
+
+    assert daemon._active_grok_quota_fallback_proof() == {}
+    assert daemon._ordered_grok_codex_selected_provider() == ""
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
+        daemon._build_implementation_command(repo)
 
 
 @pytest.mark.parametrize(
@@ -13444,6 +13626,7 @@ def test_ordered_capacity_latch_selects_healthy_provider_on_next_dispatch(
         implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
         "codex",
     )
+    _seal_ordered_grok_codex_route(monkeypatch)
     monkeypatch.setattr(
         implementation_daemon_module,
         "_grok_cli_available",
@@ -13477,6 +13660,17 @@ def test_ordered_capacity_latch_selects_healthy_provider_on_next_dispatch(
         {
             "providers": [exhausted_provider],
             "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            **(
+                {
+                    "capacity_failure_kind": "quota_or_balance_exhausted",
+                    "provider_attribution": "implementation_command",
+                    "fallback_eligible": True,
+                    "fallback_trigger": "primary_quota_exhausted",
+                    "evidence": ["Grok usage balance exhausted"],
+                }
+                if exhausted_provider == "grok"
+                else {}
+            ),
         },
     )
 
@@ -13492,6 +13686,7 @@ def test_ordered_capacity_latch_selects_healthy_provider_on_next_dispatch(
         }
     else:
         assert command[:2] == ["/usr/local/bin/codex", "exec"]
+        assert 'model_reasoning_effort="medium"' in command
         assert daemon._current_implementation_provider_labels() == {
             "codex",
             "provider",
@@ -13513,6 +13708,7 @@ def test_ordered_grok_route_uses_grok_when_codex_is_missing(
         implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
         "codex",
     )
+    _seal_ordered_grok_codex_route(monkeypatch)
     monkeypatch.setattr(
         implementation_daemon_module,
         "_grok_cli_available",
@@ -13562,6 +13758,7 @@ def test_ordered_grok_route_fails_closed_when_both_providers_are_unavailable(
         implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
         "codex",
     )
+    _seal_ordered_grok_codex_route(monkeypatch)
     monkeypatch.setattr(
         implementation_daemon_module,
         "_grok_cli_available",
@@ -13586,7 +13783,10 @@ def test_ordered_grok_route_fails_closed_when_both_providers_are_unavailable(
         implement=True,
     )
 
-    with pytest.raises(RuntimeError, match="no currently available"):
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
         daemon._build_implementation_command(repo)
 
 
@@ -13712,11 +13912,11 @@ def test_task_declared_codex_is_exact_and_never_substitutes_copilot(
     state_dir = repo / "state"
     monkeypatch.setenv(
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_cli",
+        "auto",
     )
-    monkeypatch.setenv(
+    monkeypatch.delenv(
         implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
-        "codex",
+        raising=False,
     )
     monkeypatch.setattr(
         implementation_daemon_module,
@@ -34899,6 +35099,38 @@ def test_retry_no_change_scope_requires_completed_board_bound_repair(
     todo_path.write_text(unfinished, encoding="utf-8")
     state.retry_budget_repair_receipts["ACCEL-001"] = "ACCEL-002"
     assert daemon._retry_no_change_pre_dispatch_scope(source, state) is None
+
+
+def test_merge_retry_repair_cannot_use_no_change_provider_bypass(tmp_path):
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## ACCEL-",
+    )
+    repair = PortalTask(
+        task_id="ACCEL-002",
+        title="Resolve merge retry-budget failure for ACCEL-001",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["src/runtime.py"],
+        validation=["python --version"],
+        acceptance="Reconcile the stranded implementation lineage.",
+        metadata={
+            "Generated by": RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-001",
+            "Retry failure kind": "merge",
+        },
+    )
+
+    assert (
+        daemon._retry_no_change_pre_dispatch_scope(repair, TodoTaskState())
+        is None
+    )
 
 
 def test_retry_pre_dispatch_probe_blocks_validation_candidate_mutation(
