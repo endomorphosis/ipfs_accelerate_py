@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
@@ -17,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from scripts.validate_ipfs_kit_runtime_readiness_board import (
     SEALED_TASKBOARD_DEFINITION_SHA256,
     _taskboard_definition_sha256,
+    _validate_operational_repair_tasks,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -107,6 +109,43 @@ def test_production_parsers_consume_exact_task_and_goal_populations() -> None:
     assert all(
         not output.startswith("data/agent_supervisor/")
         for output in operational[0].outputs
+    )
+
+
+def test_operational_failure_paths_remain_diagnostic_read_only() -> None:
+    tasks, operational = _task_populations()
+    canonical_by_id = {task.task_id: task for task in tasks}
+    failure_path = (
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/tests_e2e_interop.py"
+    )
+    metadata = {
+        **operational[0].metadata,
+        "validation failure paths": failure_path,
+        "validation failure path authority": "diagnostic-read-only",
+    }
+    repair = replace(operational[0], metadata=metadata)
+
+    errors: list[str] = []
+    assert _validate_operational_repair_tasks(
+        [repair],
+        canonical_by_id=canonical_by_id,
+        errors=errors,
+    ) == ("KITA-048",)
+    assert errors == []
+
+    overbroad = replace(
+        repair,
+        outputs=[*repair.outputs, failure_path],
+    )
+    errors = []
+    _validate_operational_repair_tasks(
+        [overbroad],
+        canonical_by_id=canonical_by_id,
+        errors=errors,
+    )
+    assert any(
+        "validation failure paths do not grant write authority" in error
+        for error in errors
     )
 
 

@@ -351,15 +351,20 @@ def _validate_operational_repair_tasks(
         declared_failure_paths = list(
             _csv(metadata.get("validation failure paths", ""))
         )
-        expected_outputs = list(source_outputs)
-        for path in declared_failure_paths:
-            if path not in expected_outputs:
-                expected_outputs.append(path)
+        if (
+            declared_failure_paths
+            and metadata.get("validation failure path authority")
+            != "diagnostic-read-only"
+        ):
+            errors.append(
+                f"{task_id} validation failure paths are not explicitly "
+                "diagnostic-read-only"
+            )
         repair_outputs = list(getattr(repair, "outputs", ()) or ())
-        if repair_outputs != expected_outputs:
+        if repair_outputs != source_outputs:
             errors.append(
                 f"{task_id} candidate outputs differ from the source repair "
-                "scope and explicit failure paths"
+                "scope; validation failure paths do not grant write authority"
             )
         discovery = metadata.get("retry repair discovery", "")
         if not discovery:
