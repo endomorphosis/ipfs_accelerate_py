@@ -8985,6 +8985,26 @@ class PortalImplementationDaemon:
                     "selection_idle_reason": attempt_limit_idle_reason,
                 },
             )
+        selection_provider_backoff = self._active_provider_capacity_backoff()
+        if selection_provider_backoff and self.use_ephemeral_worktree:
+            local_probe_tasks = [
+                task
+                for task in selectable_tasks
+                if (
+                    resolved_statuses.get(task.task_id) == "ready"
+                    and self._retry_no_change_pre_dispatch_scope(
+                        task,
+                        previous,
+                    )
+                    is not None
+                )
+            ]
+            if local_probe_tasks:
+                # The unchanged-runtime wake was granted specifically for a
+                # provider-independent proof.  Do not let a higher-ranked
+                # model-assisted task consume that wake and recreate a
+                # capacity-backoff spin.
+                selectable_tasks = local_probe_tasks
         selected = self._select_next_task(
             selectable_tasks,
             resolved_statuses,
@@ -10078,6 +10098,10 @@ class PortalImplementationDaemon:
                 # Provider-only context is intentionally lazy.  The retry
                 # probe runs in a disposable worktree and may prove the
                 # declared contract without consulting any model runtime.
+                if self._implementation_cancel_requested():
+                    raise ImplementationRetryDeferred(
+                        "implementation dispatch cancelled"
+                    )
                 prompt = ""
             else:
                 prompt = self._build_implementation_prompt(task, attempt)
@@ -18235,11 +18259,31 @@ class PortalImplementationDaemon:
                             {
                                 "deferred": True,
                                 "infrastructure_failure": True,
+                                "lifecycle_race": True,
                                 "failure_kind": (
                                     LifecycleFailureKind.LIFECYCLE_RACE.value
                                 ),
                             }
                         )
+                    if attempt_consumed:
+                        failure_reason = str(
+                            terminal_validation.get("reason")
+                            or "retry_probe_blocked"
+                        )
+                        self._record_task_queue_outcome(
+                            task,
+                            1,
+                            reason=failure_reason,
+                        )
+                        diagnostic = self._record_failed_attempt_retry_context(
+                            task,
+                            returncode=1,
+                            validation_result=terminal_validation,
+                        )
+                        if diagnostic is not None:
+                            probe_result["diagnostic_receipt_id"] = (
+                                diagnostic.receipt_id
+                            )
                     probe_result["execution_mode"] = "local-retry-proof"
                     self._record_event(
                         "implementation_finished",
