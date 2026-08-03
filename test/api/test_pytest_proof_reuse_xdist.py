@@ -34,6 +34,10 @@ from ipfs_accelerate_py.testing.proof_reuse.plugin import (
     pytest_configure_node,
     pytest_testnodedown,
 )
+import ipfs_accelerate_py.testing.proof_reuse.publication as publication_module
+from ipfs_accelerate_py.testing.proof_reuse.publication import (
+    Groth16ArtifactIdentityBindings,
+)
 from ipfs_accelerate_py.testing.proof_reuse.reporting import (
     ProofReuseMetricsSnapshot,
     ProofReuseOutcome,
@@ -64,6 +68,20 @@ def _certificate(receipt: TestPassReceipt) -> TestProofCertificate:
         circuit_cid="cid:circuit",
         verifying_key_cid="cid:verifying-key",
         proof_system_id="proof:test",
+    )
+
+
+def _ready_bindings() -> Groth16ArtifactIdentityBindings:
+    """Provenance-ready pins for an explicitly injected crypto test verifier."""
+
+    return Groth16ArtifactIdentityBindings(
+        circuit_cid="cid:circuit",
+        verifying_key_cid="cid:verifying-key",
+        artifacts_root="/test-only/reviewed-groth16-v4",
+        verifying_key_sha256="a" * 64,
+        proving_key_sha256="b" * 64,
+        provenance_ready=True,
+        reason_code="test_fixture_provenance_ready",
     )
 
 
@@ -252,7 +270,7 @@ def test_workers_disagreeing_on_publication_payload_disable_all_writes() -> None
     )
 
 
-def test_candidate_publication_uses_only_atomic_store_operation() -> None:
+def test_attached_fake_certificate_never_reaches_candidate_index() -> None:
     controller = ProofReuseXdistCoordinator.controller()
     receipt = _receipt()
     certificate = _certificate(receipt)
@@ -263,12 +281,255 @@ def test_candidate_publication_uses_only_atomic_store_operation() -> None:
     )
     assert controller.queue_publication(intent) is True
     store = _CandidateStore()
+    issuer = SimpleNamespace(
+        last_artifact_bindings=Groth16ArtifactIdentityBindings.unready(
+            "hostile_unreviewed_artifacts"
+        )
+    )
 
-    assert controller.flush_publications(store) == (intent.intent_id,)
+    assert controller.flush_publications(store, issuer) == (intent.intent_id,)
+    assert [name for name, _payload in store.calls] == ["put_receipt"]
+    assert controller.healthy is True
+    assert controller.pending_publications == 0
+
+
+def test_attached_certificate_with_ready_pins_but_no_verifier_never_indexes() -> None:
+    controller = ProofReuseXdistCoordinator.controller()
+    receipt = _receipt()
+    certificate = _certificate(receipt)
+    intent = ProofReusePublicationIntent.from_receipt(
+        receipt,
+        certificate=certificate.to_dict(),
+        certificate_cid=certificate.certificate_id,
+    )
+    assert controller.queue_publication(intent) is True
+    store = _CandidateStore()
+    issuer = SimpleNamespace(last_artifact_bindings=_ready_bindings())
+
+    assert controller.flush_publications(store, issuer) == (intent.intent_id,)
+    assert [name for name, _payload in store.calls] == ["put_receipt"]
+    assert controller.healthy is True
+    assert controller.pending_publications == 0
+
+
+def test_transaction_unavailable_never_uses_legacy_issuer_candidate_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = ProofReuseXdistCoordinator.controller()
+    receipt = _receipt()
+    certificate = _certificate(receipt)
+    issued: list[Any] = []
+
+    class _HostileIssuer:
+        def issue(self, request: Any) -> Any:
+            issued.append(request)
+            return SimpleNamespace(
+                status="certificate_issued",
+                certificate=certificate.to_dict(),
+            )
+
+    intent = ProofReusePublicationIntent.from_receipt(receipt)
+    assert controller.queue_publication(intent) is True
+    store = _CandidateStore()
+    monkeypatch.setitem(
+        sys.modules,
+        "ipfs_accelerate_py.testing.proof_reuse.publication",
+        None,
+    )
+
+    assert controller.flush_publications(store, _HostileIssuer()) == (
+        intent.intent_id,
+    )
+    assert issued == []
+    assert [name for name, _payload in store.calls] == ["put_receipt"]
+    assert controller.metrics.reasons["deferred_issuer_unavailable"] == 1
+
+
+def test_missing_transaction_and_receipt_cache_stays_pending_without_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = ProofReuseXdistCoordinator.controller()
+    intent = ProofReusePublicationIntent.from_receipt(_receipt())
+    assert controller.queue_publication(intent) is True
+    candidate_calls: list[Any] = []
+    store = SimpleNamespace(
+        put_candidate=lambda *args, **kwargs: candidate_calls.append(
+            (args, kwargs)
+        )
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "ipfs_accelerate_py.testing.proof_reuse.publication",
+        None,
+    )
+
+    assert controller.flush_publications(store, SimpleNamespace()) == ()
+    assert candidate_calls == []
+    assert controller.healthy is True
+    assert controller.pending_publications == 1
+    assert controller.metrics.count(ProofReuseOutcome.DEFERRED) == 1
+    assert controller.metrics.reasons["cache_unavailable"] == 1
+
+
+def test_retained_public_context_survives_worker_transport_for_controller() -> None:
+    controller = ProofReuseXdistCoordinator.controller()
+    worker = _connected_worker(controller)
+    receipt = _receipt()
+    retained_receipt = receipt.canonical_bytes()
+    retained_candidate = json.dumps(
+        {"padding": "c" * 5000},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    assert worker.queue_publication(
+        receipt,
+        deferred_request={
+            "receipt_cid": receipt.receipt_id,
+            "execution_key_cid": receipt.execution_key_cid,
+            "locator_cid": receipt.locator_cid,
+            "retained_receipt_bytes_hex": retained_receipt.hex(),
+            "retained_candidate_context_bytes_hex": retained_candidate.hex(),
+        },
+    )
+    assert controller.accept_worker_output(worker.worker_output()) is True
+    issued: list[Any] = []
+
+    class _DeferredIssuer:
+        def issue(self, request: Any) -> Any:
+            issued.append(request)
+            return SimpleNamespace(status="certificate_deferred")
+
+    store = _CandidateStore()
+    published = controller.flush_publications(store, _DeferredIssuer())
+
+    assert len(published) == 1
+    assert len(issued) == 1
+    request = issued[0]
+    statement = getattr(request, "statement", None)
+    public_inputs = getattr(statement, "public_inputs", None)
+    if public_inputs is not None and hasattr(public_inputs, "to_dict"):
+        public = public_inputs.to_dict()
+    else:
+        public = request
+        if hasattr(public, "to_dict"):
+            public = public.to_dict()
+    assert public["retained_receipt_bytes_hex"] == retained_receipt.hex()
+    assert (
+        public["retained_candidate_context_bytes_hex"]
+        == retained_candidate.hex()
+    )
+    assert [name for name, _payload in store.calls] == ["put_receipt"]
+
+
+@pytest.mark.parametrize("attached", [False, True])
+def test_transaction_is_only_positive_candidate_authority(
+    attached: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = _receipt()
+    certificate = _certificate(receipt)
+    bindings = _ready_bindings()
+    verified: list[tuple[Any, Any, bool, dict[str, Any]]] = []
+    issued: list[Any] = []
+
+    class _TypedRequest:
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self.payload = payload
+            self.receipt_cid = str(payload["receipt_cid"])
+            self.execution_key_cid = str(payload["execution_key_cid"])
+            self.locator_cid = str(payload.get("locator_cid") or "")
+
+        @classmethod
+        def from_public_mapping(cls, payload: Any) -> "_TypedRequest":
+            return cls(dict(payload))
+
+    monkeypatch.setitem(
+        sys.modules,
+        "ipfs_datasets_py.logic.zkp.test_certificate_issuer",
+        SimpleNamespace(
+            DEFERRED_TEST_CERTIFICATE_REQUEST_INTERFACE=(
+                "DeferredTestCertificateRequest@1"
+            ),
+            DeferredTestCertificateRequest=_TypedRequest,
+        ),
+    )
+
+    def _cryptographic_verify(
+        certificate_payload: Any,
+        *,
+        bindings: Any,
+        require_cryptographic_verify: bool = False,
+        **kwargs: Any,
+    ) -> tuple[bool, str]:
+        verified.append(
+            (
+                certificate_payload,
+                bindings,
+                require_cryptographic_verify,
+                kwargs,
+            )
+        )
+        assert bindings is not None
+        assert bindings.provenance_ready is True
+        assert bindings.circuit_cid == certificate.circuit_cid
+        assert bindings.verifying_key_cid == certificate.verifying_key_cid
+        assert require_cryptographic_verify is True
+        context = kwargs["verification_context"]
+        assert isinstance(context["deferred_request"], _TypedRequest)
+        assert (
+            TestPassReceipt.from_dict(context["receipt"]).receipt_id
+            == receipt.receipt_id
+        )
+        return True, "cryptographically_verified"
+
+    monkeypatch.setattr(
+        publication_module,
+        "_local_verify_certificate",
+        _cryptographic_verify,
+    )
+
+    class _Issuer:
+        last_artifact_bindings = bindings
+
+        def issue(self, request: Any) -> Any:
+            issued.append(request)
+            return SimpleNamespace(
+                status="certificate_issued",
+                certificate=certificate.to_dict(),
+                certificate_cid=certificate.certificate_id,
+            )
+
+    intent = ProofReusePublicationIntent.from_receipt(
+        receipt,
+        certificate=certificate.to_dict() if attached else None,
+        certificate_cid=certificate.certificate_id if attached else "",
+    )
+    controller = ProofReuseXdistCoordinator.controller()
+    assert controller.queue_publication(intent) is True
+    store = _CandidateStore()
+
+    assert controller.flush_publications(store, _Issuer()) == (intent.intent_id,)
     assert [name for name, _payload in store.calls] == ["put_candidate"]
+    assert len(verified) == 1
+    if attached:
+        assert issued == []
+    else:
+        assert len(issued) == 1
+        assert isinstance(issued[0], _TypedRequest)
+        assert issued[0].receipt_cid == receipt.receipt_id
+        assert issued[0].locator_cid == receipt.locator_cid
+        assert "witness" not in json.dumps(issued[0].payload)
 
 
-def test_atomic_publication_failure_fences_all_later_writes() -> None:
+def test_atomic_publication_failure_fences_all_later_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        publication_module,
+        "_local_verify_certificate",
+        lambda _certificate, **_kwargs: (True, "cryptographically_verified"),
+    )
+    issuer = SimpleNamespace(last_artifact_bindings=_ready_bindings())
     controller = ProofReuseXdistCoordinator.controller()
     first_receipt = _receipt(nonce="nonce:first")
     first_certificate = _certificate(first_receipt)
@@ -288,12 +549,12 @@ def test_atomic_publication_failure_fences_all_later_writes() -> None:
     assert controller.queue_publication(second) is True
     store = _CandidateStore(fail=True)
 
-    assert controller.flush_publications(store) == ()
+    assert controller.flush_publications(store, issuer) == ()
     assert controller.healthy is False
     assert controller.can_write is False
     assert controller.pending_publications == 0
     assert [name for name, _payload in store.calls] == ["put_candidate"]
-    assert controller.flush_publications(store) == ()
+    assert controller.flush_publications(store, issuer) == ()
     assert [name for name, _payload in store.calls] == ["put_candidate"]
 
 

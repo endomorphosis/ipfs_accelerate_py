@@ -36,6 +36,14 @@ WORKER_OUTPUT_KEY: Final = "ipfs_proof_reuse_result"
 COORDINATION_UNAVAILABLE: Final = "coordination_unavailable"
 MAX_PUBLICATION_INTENTS: Final = 4096
 MAX_PACKET_BYTES: Final = 8 * 1024 * 1024
+MAX_RETAINED_PUBLIC_BYTES: Final = 2 * 1024 * 1024
+_RETAINED_PUBLIC_HEX_FIELDS: Final = frozenset(
+    {
+        "retained_receipt_bytes_hex",
+        "retained_candidate_context_bytes_hex",
+    }
+)
+_HEX_CHARACTERS: Final = frozenset("0123456789abcdefABCDEF")
 
 
 class ProofReuseXdistRole(str, Enum):
@@ -101,8 +109,20 @@ def _public_deferred_request(value: Any) -> Mapping[str, Any] | None:
         if any(marker in lowered for marker in private_markers):
             continue
         if isinstance(raw_value, (str, int, float, bool)) or raw_value is None:
-            if isinstance(raw_value, str) and len(raw_value) > 4096:
-                continue
+            if isinstance(raw_value, str):
+                if key in _RETAINED_PUBLIC_HEX_FIELDS:
+                    if (
+                        not raw_value
+                        or len(raw_value) % 2
+                        or len(raw_value) > MAX_RETAINED_PUBLIC_BYTES * 2
+                        or any(
+                            character not in _HEX_CHARACTERS
+                            for character in raw_value
+                        )
+                    ):
+                        continue
+                elif len(raw_value) > 4096:
+                    continue
             cleaned[key] = raw_value
         # Nested maps/lists are never transported: they may hide witness data.
     return cleaned or None
@@ -110,8 +130,14 @@ def _public_deferred_request(value: Any) -> Mapping[str, Any] | None:
 
 def _controller_deferred_request(
     intent: "ProofReusePublicationIntent",
-) -> Mapping[str, Any] | None:
-    """Reconstruct issuance input from public retained bytes, not worker trust."""
+) -> Any:
+    """Reconstruct typed issuance input from retained public bytes.
+
+    The worker carries only a bounded public envelope.  The controller opens
+    and re-hashes its retained receipt/candidate bytes through the reviewed
+    datasets request parser when available.  A flattened mapping is only a
+    non-authoritative fallback; the transaction's verifier will defer it.
+    """
 
     try:
         from .receipt import (
@@ -153,7 +179,39 @@ def _controller_deferred_request(
             retained_receipt_bytes=retained_receipt,
             retained_candidate_context_bytes=retained_candidate,
         )
-        return _public_deferred_request(reconstructed or envelope.to_dict())
+        public = _public_deferred_request(
+            reconstructed or envelope.to_dict()
+        )
+        if public is None:
+            return None
+        try:
+            from ipfs_datasets_py.logic.zkp.test_certificate_issuer import (
+                DEFERRED_TEST_CERTIFICATE_REQUEST_INTERFACE,
+                DeferredTestCertificateRequest,
+            )
+
+            typed_payload = dict(public)
+            typed_payload["interface"] = (
+                DEFERRED_TEST_CERTIFICATE_REQUEST_INTERFACE
+            )
+            typed = DeferredTestCertificateRequest.from_public_mapping(
+                typed_payload
+            )
+            receipt_execution_key = str(
+                intent.receipt.get("execution_key_cid") or ""
+            )
+            if (
+                typed.receipt_cid != intent.receipt_cid
+                or typed.execution_key_cid != receipt_execution_key
+                or (
+                    typed.locator_cid
+                    and typed.locator_cid != intent.locator_cid
+                )
+            ):
+                return public
+            return typed
+        except Exception:
+            return public
     except Exception:
         return _public_deferred_request(intent.deferred_request)
 
@@ -607,12 +665,15 @@ class ProofReuseXdistCoordinator:
     ) -> tuple[str, ...]:
         """Publish each intent once through the controller's fenced store API.
 
-        PTR-147: when a certificate is already attached, or when the issuer
-        returns one, the complete candidate is published exactly once via
-        ``put_candidate``.  A returned certificate is never discarded.
-        ``put_receipt`` alone remains for deferred/no-certificate paths and
-        never authorizes skip.  Workers supply only public deferred envelopes;
-        private witness material is stripped before issuance.
+        All certificate authority is delegated to
+        ``ProofReuseControllerPublicationTransaction``.  Attached certificates
+        and issuer-returned certificates therefore traverse the same artifact
+        provenance and local cryptographic verification boundary before the
+        transaction may index them.  If that transaction, issuer, provenance,
+        or verifier is unavailable, this coordinator may retain only the
+        receipt as non-authoritative retry state; it never falls back to a
+        direct candidate-index write.  Workers supply only public deferred
+        envelopes; private witness material is stripped before issuance.
         """
 
         if not self.can_write:
@@ -622,7 +683,9 @@ class ProofReuseXdistCoordinator:
         with self._lock:
             intents = tuple(self._intents.values())
 
-        # Prefer the atomic controller publication transaction when available.
+        # This transaction is the sole certificate-publication authority.  An
+        # import/construction failure deliberately has no legacy issuer or
+        # candidate-index fallback.
         transaction: Any = None
         try:
             from .publication import ProofReuseControllerPublicationTransaction
@@ -637,171 +700,113 @@ class ProofReuseXdistCoordinator:
         except Exception:
             transaction = None
 
-        for intent in intents:
-            if intent.intent_id in self._published:
-                continue
-            try:
-                if intent.certificate is not None:
-                    # Authoritative path: atomic put_candidate only.
-                    method = getattr(store, "put_candidate", None)
-                    if not callable(method):
-                        raise TypeError("atomic candidate publisher unavailable")
-                    result = method(
-                        intent.receipt,
-                        intent.certificate,
-                        locator_cid=intent.locator_cid,
-                        owner_id=self.controller_id,
-                    )
-                    stored = getattr(result, "stored", None) is True
-                    indexed = getattr(result, "indexed", None) is True
-                    if not (stored and indexed):
-                        raise RuntimeError("atomic candidate publication rejected")
-                    with self._lock:
-                        self._published.add(intent.intent_id)
-                        self._intents.pop(intent.intent_id, None)
-                    published.append(intent.intent_id)
-                    continue
+        def retain_non_authoritative(
+            intent: ProofReusePublicationIntent,
+            *,
+            already_retained: bool = False,
+            reason_code: str,
+            record_deferred: bool = True,
+        ) -> bool:
+            """Best-effort receipt retention with no candidate-index authority."""
 
-                # No attached certificate: cold retain + issue + verify + publish.
-                if transaction is not None and issuer is not None:
-                    request = _controller_deferred_request(intent)
-                    if request is None:
-                        request = {
-                            "receipt_cid": intent.receipt_cid,
-                            "locator_cid": intent.locator_cid,
-                        }
-                    outcome = transaction.publish_intent(
-                        intent,
-                        store=store,
-                        candidate_store=candidate_store,
-                        issuer=issuer,
-                        deferred_request=request,
-                    )
-                    if getattr(outcome, "published", False):
-                        with self._lock:
-                            self._published.add(intent.intent_id)
-                            self._intents.pop(intent.intent_id, None)
-                        published.append(intent.intent_id)
-                        continue
-                    # Deferred / failed issuance: retain non-authoritative
-                    # receipt when possible; never partial skip authority.
-                    if getattr(outcome, "put_candidate_called", False) and not getattr(
-                        outcome, "published", False
-                    ):
-                        # put_candidate was attempted and rejected — fence.
-                        raise RuntimeError(
-                            getattr(outcome, "reason_code", None)
-                            or "atomic candidate publication rejected"
-                        )
-                    method = getattr(store, "put_receipt", None)
-                    if callable(method) and not getattr(
-                        outcome, "non_authoritative_retained", False
-                    ):
+            retained = bool(already_retained)
+            if not retained:
+                method = getattr(store, "put_receipt", None)
+                if callable(method):
+                    try:
                         result = method(intent.receipt)
                         stored = getattr(result, "stored", None)
                         if stored is None:
                             stored = bool(result)
-                        if stored is not True:
-                            raise RuntimeError("receipt publication rejected")
-                    with self._lock:
-                        self._published.add(intent.intent_id)
-                        self._intents.pop(intent.intent_id, None)
-                    published.append(intent.intent_id)
-                    continue
+                        retained = stored is True
+                    except Exception:
+                        retained = False
+            if record_deferred:
+                self.metrics.deferred(reason_code=reason_code)
+            if not retained:
+                self.metrics.degraded(
+                    reason_code="cache_unavailable"
+                )
+                return False
+            with self._lock:
+                self._published.add(intent.intent_id)
+                self._intents.pop(intent.intent_id, None)
+            published.append(intent.intent_id)
+            return True
 
-                # issuer is None or transaction unavailable: receipt-only path.
-                method = getattr(store, "put_receipt", None)
-                if not callable(method):
-                    raise TypeError("receipt publisher unavailable")
-                result = method(intent.receipt)
-                stored = getattr(result, "stored", None)
-                if stored is None:
-                    stored = bool(result)
-                if stored is not True:
-                    raise RuntimeError("receipt publication rejected")
+        for intent in intents:
+            if intent.intent_id in self._published:
+                continue
+            if transaction is None:
+                retain_non_authoritative(
+                    intent,
+                    reason_code="deferred_issuer_unavailable",
+                )
+                continue
+
+            request = _controller_deferred_request(intent)
+            if request is None:
+                request = {
+                    "receipt_cid": intent.receipt_cid,
+                    "locator_cid": intent.locator_cid,
+                }
+            try:
+                outcome = transaction.publish_intent(
+                    intent,
+                    store=store,
+                    candidate_store=candidate_store,
+                    issuer=issuer,
+                    deferred_request=request,
+                )
+            except Exception:
+                # An incompatible/broken transaction is equivalent to an
+                # unavailable authority boundary, never permission to issue or
+                # index through legacy calls in this module.
+                retain_non_authoritative(
+                    intent,
+                    reason_code="deferred_issuer_unavailable",
+                )
+                continue
+
+            if (
+                getattr(outcome, "published", False) is True
+                and getattr(outcome, "indexed", False) is True
+                and getattr(outcome, "put_candidate_called", False) is True
+            ):
                 with self._lock:
                     self._published.add(intent.intent_id)
                     self._intents.pop(intent.intent_id, None)
                 published.append(intent.intent_id)
-                if issuer is None:
-                    self.metrics.deferred(reason_code="certificate_deferred")
-                else:
-                    # Legacy issue path without transaction: still must not
-                    # discard a returned certificate.
-                    try:
-                        issue = getattr(issuer, "issue", None)
-                        if not callable(issue):
-                            raise TypeError("deferred issuer unavailable")
-                        request = _controller_deferred_request(intent)
-                        if request is None:
-                            request = {
-                                "receipt_cid": intent.receipt_cid,
-                                "locator_cid": intent.locator_cid,
-                            }
-                        issue_result = issue(request)
-                        status = str(
-                            getattr(issue_result, "status", "")
-                        ).lower()
-                        certificate = getattr(issue_result, "certificate", None)
-                        if certificate is None:
-                            mapped = (
-                                issue_result.to_dict()
-                                if hasattr(issue_result, "to_dict")
-                                else None
-                            )
-                            if isinstance(mapped, Mapping):
-                                certificate = mapped.get("certificate")
-                        if certificate is not None:
-                            put_candidate = getattr(store, "put_candidate", None)
-                            if not callable(put_candidate):
-                                raise TypeError(
-                                    "atomic candidate publisher unavailable"
-                                )
-                            cert_map = (
-                                certificate
-                                if isinstance(certificate, Mapping)
-                                else (
-                                    certificate.to_dict()
-                                    if hasattr(certificate, "to_dict")
-                                    else None
-                                )
-                            )
-                            if not isinstance(cert_map, Mapping):
-                                raise TypeError("certificate payload unavailable")
-                            cand = put_candidate(
-                                intent.receipt,
-                                cert_map,
-                                locator_cid=intent.locator_cid,
-                                owner_id=self.controller_id,
-                            )
-                            stored = getattr(cand, "stored", None) is True
-                            indexed = getattr(cand, "indexed", None) is True
-                            if not (stored and indexed):
-                                raise RuntimeError(
-                                    "atomic candidate publication rejected"
-                                )
-                        elif status in {
-                            "deferred",
-                            "certificate_deferred",
-                            "queued",
-                        }:
-                            self.metrics.deferred(
-                                reason_code="certificate_deferred"
-                            )
-                        else:
-                            self.metrics.deferred(
-                                reason_code="certificate_deferred"
-                            )
-                    except Exception:
-                        self.metrics.deferred(
-                            reason_code="deferred_issuer_unavailable"
-                        )
-            except Exception:
-                # Immutable orphan blobs are not authority.  Never attempt an
-                # index fallback after an atomic candidate publication error.
-                self.metrics.degraded(reason_code="publication_failed")
+                continue
+
+            if getattr(outcome, "put_candidate_called", False):
+                # The sole authority transaction reached its atomic write and
+                # that write failed or returned a non-indexed result.  Fence all
+                # subsequent writes for this controller session.
+                self.metrics.degraded(
+                    reason_code=(
+                        getattr(outcome, "reason_code", None)
+                        or "publication_failed"
+                    )
+                )
                 self.mark_controller_unavailable()
                 break
+
+            retain_non_authoritative(
+                intent,
+                already_retained=getattr(
+                    outcome, "non_authoritative_retained", False
+                ),
+                reason_code=(
+                    getattr(outcome, "reason_code", None)
+                    or (
+                        "issuer_unavailable"
+                        if issuer is None
+                        else "certificate_deferred"
+                    )
+                ),
+                record_deferred=False,
+            )
         return tuple(published)
 
 
