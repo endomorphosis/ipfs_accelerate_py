@@ -8831,6 +8831,514 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         return result.stdout.strip() if result.returncode == 0 else ""
 
+    @staticmethod
+    def _acceptance_receipt_from_event(
+        event: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Return a previously recorded implementation receipt, if present."""
+
+        candidates: list[Any] = [event.get("receipt")]
+        acceptance = event.get("acceptance_result")
+        if isinstance(acceptance, Mapping):
+            candidates.append(acceptance.get("receipt"))
+        merge_result = event.get("merge_result")
+        if isinstance(merge_result, Mapping):
+            candidates.append(merge_result.get("receipt"))
+            nested_acceptance = merge_result.get("acceptance_result")
+            if isinstance(nested_acceptance, Mapping):
+                candidates.append(nested_acceptance.get("receipt"))
+        for candidate in candidates:
+            if isinstance(candidate, Mapping):
+                return dict(candidate)
+        return {}
+
+    @staticmethod
+    def _preserved_provider_review_evidence(
+        value: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Preserve raw review metadata without manufacturing authority.
+
+        These diagnostic fields are deliberately not the ``provider_review``
+        authoritative gate.  Only independently verified, commit-bound review
+        receipt derivation may construct that gate.
+        """
+
+        evidence: dict[str, Any] = {}
+        raw_binding = value.get("admitted_review_chain_binding")
+        if isinstance(raw_binding, Mapping):
+            evidence["admitted_review_chain_binding"] = dict(raw_binding)
+        receipt_id = str(value.get("provider_review_receipt_id") or "")
+        if receipt_id:
+            evidence["provider_review_receipt_id"] = receipt_id
+        return evidence
+
+    def _validated_recovered_implementation_binding(
+        self,
+        task: PortalTask,
+        *,
+        implementation_commit: str,
+        prior_merge_commit: str,
+        prior_repository_tree_id: str,
+        current_merge_commit: str,
+        current_repository_tree_id: str,
+        validation_result: Mapping[str, Any] | None,
+        gate_evidence: Mapping[str, Any] | None,
+        model_invocation_observed: bool,
+        source: str,
+        source_id: str,
+    ) -> dict[str, Any]:
+        """Validate a durable implementation-to-merge binding fail closed.
+
+        A later no-change attempt proves only that its freshly validated target
+        tree is unchanged.  It does not make that target commit the task's
+        implementation commit.  Recovery therefore preserves the immutable
+        implementation commit from an earlier merge receipt and independently
+        verifies both the earlier receipt and the exact current target.
+        """
+
+        target_branch = self._main_branch_name()
+        resolved_target = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            target_branch,
+        )
+        resolved_implementation = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            implementation_commit,
+        )
+        resolved_prior_merge = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            prior_merge_commit,
+        )
+        resolved_current_merge = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            current_merge_commit,
+        )
+        prior_tree = self._candidate_repository_tree(prior_merge_commit)
+        current_tree = self._candidate_repository_tree(current_merge_commit)
+        expected_prior_tree_id = f"git-tree:{prior_tree}" if prior_tree else ""
+        expected_current_tree_id = (
+            f"git-tree:{current_tree}" if current_tree else ""
+        )
+        reasons: list[str] = []
+        if not implementation_commit or resolved_implementation != implementation_commit:
+            reasons.append("recovered_implementation_commit_missing")
+        if not prior_merge_commit or resolved_prior_merge != prior_merge_commit:
+            reasons.append("recovered_merge_commit_missing")
+        if not current_merge_commit or resolved_current_merge != current_merge_commit:
+            reasons.append("current_merge_commit_missing")
+        if not resolved_target or resolved_target != current_merge_commit:
+            reasons.append("current_target_commit_mismatch")
+        if (
+            not expected_prior_tree_id
+            or prior_repository_tree_id != expected_prior_tree_id
+        ):
+            reasons.append("recovered_merge_tree_mismatch")
+        if (
+            not expected_current_tree_id
+            or current_repository_tree_id != expected_current_tree_id
+        ):
+            reasons.append("current_merge_tree_mismatch")
+        if (
+            resolved_implementation
+            and resolved_prior_merge
+            and not self._git_ref_is_ancestor(
+                resolved_implementation,
+                resolved_prior_merge,
+            )
+        ):
+            reasons.append("recovered_implementation_not_merged")
+        if (
+            resolved_prior_merge
+            and resolved_current_merge
+            and not self._git_ref_is_ancestor(
+                resolved_prior_merge,
+                resolved_current_merge,
+            )
+        ):
+            reasons.append("recovered_merge_not_on_current_target")
+        return {
+            "recovered": not reasons,
+            "reason": (
+                "recovered_implementation_binding"
+                if not reasons
+                else reasons[0]
+            ),
+            "reason_codes": reasons,
+            "task_id": task.task_id,
+            "canonical_task_cid": self._identity_for_task(
+                task
+            ).canonical_task_cid,
+            "implementation_commit": implementation_commit,
+            "prior_merge_commit": prior_merge_commit,
+            "prior_repository_tree_id": prior_repository_tree_id,
+            "merge_commit": current_merge_commit,
+            "repository_tree_id": current_repository_tree_id,
+            "target_branch": target_branch,
+            "validation_result": dict(validation_result or {}),
+            "gate_evidence": dict(gate_evidence or {}),
+            "model_invocation_observed": bool(model_invocation_observed),
+            "source": source,
+            "source_id": source_id,
+        }
+
+    def _merge_train_recovery_candidates(
+        self,
+        task: PortalTask,
+        *,
+        current_merge_commit: str,
+        current_repository_tree_id: str,
+    ) -> list[dict[str, Any]]:
+        """Read globally durable merge-train receipts for one canonical task."""
+
+        identity = self._identity_for_task(task)
+        queue_dir_value = getattr(self.merge_queue, "queue_dir", None)
+        get_request = getattr(self.merge_queue, "get", None)
+        if queue_dir_value is None or not callable(get_request):
+            return []
+        receipt_dir = Path(queue_dir_value) / "train" / "receipts"
+        try:
+            receipt_paths = tuple(receipt_dir.glob("*.json"))
+        except OSError:
+            return []
+        candidates: list[dict[str, Any]] = []
+        for path in receipt_paths:
+            try:
+                train_receipt = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if not isinstance(train_receipt, Mapping):
+                continue
+            if str(train_receipt.get("task_id") or "") != task.task_id:
+                continue
+            request_id = str(train_receipt.get("request_id") or "")
+            request = get_request(request_id) if request_id else None
+            if request is None:
+                continue
+            request_cid = str(
+                getattr(request, "canonical_task_id", "") or ""
+            )
+            request_key = str(
+                getattr(request, "canonical_task_key", "") or ""
+            )
+            if request_cid != identity.canonical_task_cid:
+                continue
+            metadata = getattr(request, "metadata", {})
+            if not isinstance(metadata, Mapping):
+                metadata = {}
+            receipt_identity = str(
+                train_receipt.get("canonical_task_id") or ""
+            )
+            implementation_commit = str(
+                getattr(request, "commit_sha", "") or ""
+            )
+            prior_merge_commit = str(
+                train_receipt.get("merge_commit")
+                or train_receipt.get("target_commit")
+                or ""
+            )
+            merge_result = train_receipt.get("merge_result")
+            merge_result = (
+                dict(merge_result)
+                if isinstance(merge_result, Mapping)
+                else {}
+            )
+            acceptance_receipt = self._acceptance_receipt_from_event(
+                merge_result
+            )
+            prior_repository_tree_id = str(
+                acceptance_receipt.get("repository_tree_id") or ""
+            )
+            validation_result = metadata.get("validation_proof")
+            validation_result = (
+                dict(validation_result)
+                if isinstance(validation_result, Mapping)
+                else {}
+            )
+            identity_errors: list[str] = []
+            if str(getattr(request, "task_id", "") or "") != task.task_id:
+                identity_errors.append("merge_request_task_mismatch")
+            if request_key != identity.canonical_task_key:
+                identity_errors.append("merge_request_task_key_mismatch")
+            if receipt_identity not in {
+                identity.canonical_task_cid,
+                identity.canonical_task_key,
+            }:
+                identity_errors.append("merge_receipt_task_identity_mismatch")
+            if str(getattr(request, "status", "") or "") != "completed":
+                identity_errors.append("merge_request_not_completed")
+            if str(train_receipt.get("status") or "") not in {
+                "merged",
+                "already_merged",
+                "deduplicated",
+                "completed",
+            } or train_receipt.get("integrated") is not True:
+                identity_errors.append("merge_receipt_not_integrated")
+            if str(train_receipt.get("commit_sha") or "") != implementation_commit:
+                identity_errors.append("merge_receipt_implementation_mismatch")
+            if str(metadata.get("implementation_commit") or "") != implementation_commit:
+                identity_errors.append("merge_request_implementation_mismatch")
+            if str(metadata.get("target_repository_id") or "") != self.merge_target_repository_id:
+                identity_errors.append("merge_request_repository_mismatch")
+            if str(metadata.get("target_branch") or "") != self.resolved_merge_target_branch:
+                identity_errors.append("merge_request_target_branch_mismatch")
+            reported_target_commit = str(
+                train_receipt.get("target_commit") or ""
+            )
+            reported_merge_commit = str(
+                merge_result.get("merge_commit") or prior_merge_commit
+            )
+            if (
+                not prior_merge_commit
+                or reported_target_commit != prior_merge_commit
+                or reported_merge_commit != prior_merge_commit
+            ):
+                identity_errors.append("merge_receipt_commit_binding_mismatch")
+            if acceptance_receipt:
+                if (
+                    str(acceptance_receipt.get("task_id") or "")
+                    != task.task_id
+                ):
+                    identity_errors.append("acceptance_receipt_task_mismatch")
+                if (
+                    str(acceptance_receipt.get("implementation_commit") or "")
+                    != implementation_commit
+                ):
+                    identity_errors.append(
+                        "acceptance_receipt_implementation_mismatch"
+                    )
+                if (
+                    str(acceptance_receipt.get("merge_commit") or "")
+                    != prior_merge_commit
+                ):
+                    identity_errors.append("acceptance_receipt_merge_mismatch")
+                if acceptance_receipt.get("merged") is not True:
+                    identity_errors.append("acceptance_receipt_not_merged")
+            else:
+                identity_errors.append("acceptance_receipt_missing")
+            recovered_gate_evidence = (
+                dict(acceptance_receipt.get("gate_evidence") or {})
+                if isinstance(
+                    acceptance_receipt.get("gate_evidence"), Mapping
+                )
+                else {}
+            )
+            # A persisted receipt is recovery input, not a review verifier.
+            # Never replay its provider gate as fresh authority.
+            recovered_gate_evidence.pop("provider_review", None)
+            recovered_gate_evidence.update(
+                self._preserved_provider_review_evidence(metadata)
+            )
+            recovered = self._validated_recovered_implementation_binding(
+                task,
+                implementation_commit=implementation_commit,
+                prior_merge_commit=prior_merge_commit,
+                prior_repository_tree_id=prior_repository_tree_id,
+                current_merge_commit=current_merge_commit,
+                current_repository_tree_id=current_repository_tree_id,
+                validation_result=validation_result,
+                gate_evidence=recovered_gate_evidence,
+                model_invocation_observed=bool(
+                    acceptance_receipt.get("model_invocation_observed")
+                    or metadata.get("model_invocation_observed")
+                ),
+                source="merge_train_receipt",
+                source_id=request_id,
+            )
+            if identity_errors:
+                recovered.update(
+                    {
+                        "recovered": False,
+                        "reason": identity_errors[0],
+                        "reason_codes": [
+                            *identity_errors,
+                            *recovered.get("reason_codes", []),
+                        ],
+                    }
+                )
+            try:
+                order = float(train_receipt.get("finished_at") or 0.0)
+            except (TypeError, ValueError):
+                order = 0.0
+            recovered["source_order"] = order
+            candidates.append(recovered)
+        return candidates
+
+    def _event_recovery_candidates(
+        self,
+        task: PortalTask,
+        *,
+        current_merge_commit: str,
+        current_repository_tree_id: str,
+    ) -> list[dict[str, Any]]:
+        """Recover legacy/local bindings while requiring a canonical anchor."""
+
+        identity = self._identity_for_task(task)
+        events = self._iter_events()
+        candidates: list[dict[str, Any]] = []
+        for index, event in enumerate(events):
+            if str(event.get("task_id") or "") != task.task_id:
+                continue
+            receipt = self._acceptance_receipt_from_event(event)
+            if not receipt or receipt.get("merged") is not True:
+                continue
+            implementation_commit = str(
+                receipt.get("implementation_commit")
+                or event.get("implementation_commit")
+                or ""
+            )
+            prior_merge_commit = str(
+                receipt.get("merge_commit")
+                or event.get("merge_commit")
+                or ""
+            )
+            if not implementation_commit or not prior_merge_commit:
+                continue
+            linked = [
+                linked_event
+                for linked_event in events
+                if str(linked_event.get("task_id") or "") == task.task_id
+                and str(linked_event.get("implementation_commit") or "")
+                == implementation_commit
+            ]
+            linked_cids = {
+                str(linked_event.get("canonical_task_cid") or "")
+                for linked_event in linked
+                if str(linked_event.get("canonical_task_cid") or "")
+            }
+            linked_keys = {
+                str(linked_event.get("canonical_task_key") or "")
+                for linked_event in linked
+                if str(linked_event.get("canonical_task_key") or "")
+            }
+            identity_errors: list[str] = []
+            if identity.canonical_task_cid not in linked_cids:
+                identity_errors.append("canonical_task_identity_unverified")
+            if linked_cids - {identity.canonical_task_cid}:
+                identity_errors.append("canonical_task_identity_ambiguous")
+            if linked_keys and linked_keys != {identity.canonical_task_key}:
+                identity_errors.append("canonical_task_key_ambiguous")
+            validation_result: dict[str, Any] = {}
+            for linked_event in reversed(events[: index + 1]):
+                if (
+                    str(linked_event.get("task_id") or "") != task.task_id
+                    or str(linked_event.get("implementation_commit") or "")
+                    != implementation_commit
+                    or str(linked_event.get("canonical_task_cid") or "")
+                    != identity.canonical_task_cid
+                ):
+                    continue
+                raw_validation = linked_event.get("validation_result")
+                if isinstance(raw_validation, Mapping):
+                    validation_result = dict(raw_validation)
+                    break
+            recovered_gate_evidence = (
+                dict(receipt.get("gate_evidence") or {})
+                if isinstance(receipt.get("gate_evidence"), Mapping)
+                else {}
+            )
+            recovered_gate_evidence.pop("provider_review", None)
+            recovered_gate_evidence.update(
+                self._preserved_provider_review_evidence(event)
+            )
+            recovered = self._validated_recovered_implementation_binding(
+                task,
+                implementation_commit=implementation_commit,
+                prior_merge_commit=prior_merge_commit,
+                prior_repository_tree_id=str(
+                    receipt.get("repository_tree_id") or ""
+                ),
+                current_merge_commit=current_merge_commit,
+                current_repository_tree_id=current_repository_tree_id,
+                validation_result=validation_result,
+                gate_evidence=recovered_gate_evidence,
+                model_invocation_observed=bool(
+                    receipt.get("model_invocation_observed")
+                ),
+                source="event_log",
+                source_id=str(event.get("event_id") or index),
+            )
+            if identity_errors:
+                recovered.update(
+                    {
+                        "recovered": False,
+                        "reason": identity_errors[0],
+                        "reason_codes": [
+                            *identity_errors,
+                            *recovered.get("reason_codes", []),
+                        ],
+                    }
+                )
+            recovered["source_order"] = float(index)
+            candidates.append(recovered)
+        return candidates
+
+    def _recover_no_change_implementation_binding(
+        self,
+        task: PortalTask,
+        *,
+        merge_commit: str,
+        repository_tree_id: str,
+    ) -> dict[str, Any]:
+        """Recover the latest exact merged binding for a no-change retry."""
+
+        sources = self._merge_train_recovery_candidates(
+            task,
+            current_merge_commit=merge_commit,
+            current_repository_tree_id=repository_tree_id,
+        )
+        if not sources:
+            sources = self._event_recovery_candidates(
+                task,
+                current_merge_commit=merge_commit,
+                current_repository_tree_id=repository_tree_id,
+            )
+        if not sources:
+            return {
+                "recovered": False,
+                "reason": "prior_merged_implementation_binding_missing",
+                "reason_codes": [
+                    "prior_merged_implementation_binding_missing"
+                ],
+                "task_id": task.task_id,
+                "canonical_task_cid": self._identity_for_task(
+                    task
+                ).canonical_task_cid,
+                "merge_commit": merge_commit,
+                "repository_tree_id": repository_tree_id,
+            }
+        latest_order = max(
+            float(candidate.get("source_order") or 0.0)
+            for candidate in sources
+        )
+        latest = [
+            candidate
+            for candidate in sources
+            if float(candidate.get("source_order") or 0.0) == latest_order
+        ]
+        binding_ids = {
+            (
+                str(candidate.get("implementation_commit") or ""),
+                str(candidate.get("prior_merge_commit") or ""),
+                str(candidate.get("prior_repository_tree_id") or ""),
+            )
+            for candidate in latest
+        }
+        if len(binding_ids) != 1:
+            return {
+                "recovered": False,
+                "reason": "prior_merged_implementation_binding_ambiguous",
+                "reason_codes": [
+                    "prior_merged_implementation_binding_ambiguous"
+                ],
+                "task_id": task.task_id,
+                "canonical_task_cid": self._identity_for_task(
+                    task
+                ).canonical_task_cid,
+                "merge_commit": merge_commit,
+                "repository_tree_id": repository_tree_id,
+            }
+        return latest[0]
+
     def _candidate_protected_path_check(
         self,
         *,
@@ -9698,6 +10206,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     or implementation_commit
                 )
                 completion_tree = self._candidate_repository_tree(completion_commit)
+                gate_evidence = self._preserved_provider_review_evidence(
+                    metadata
+                )
                 acceptance_result = (
                     completion_daemon.apply_post_merge_authoritative_acceptance(
                         task,
@@ -9709,6 +10220,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             else ""
                         ),
                         validation_result=validation_proof,
+                        gate_evidence=gate_evidence or None,
                         model_invocation_observed=bool(
                             metadata.get("model_invocation_observed")
                         ),
@@ -10060,6 +10572,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "reason": "not_run",
         }
         cleanup_result: dict[str, Any] = {"cleaned": False, "reason": "not_attempted"}
+        implementation_binding_recovery: dict[str, Any] = {}
         command: list[str] = []
         returncode = 1
         commit_result: dict[str, Any] = {"committed": False}
@@ -11131,17 +11644,109 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 or baseline_ref
             )
             completion_tree = self._candidate_repository_tree(completion_commit)
+            acceptance_implementation_commit = implementation_commit
+            acceptance_validation_result: Mapping[str, Any] = (
+                validation_result
+            )
+            acceptance_gate_evidence: Mapping[str, Any] | None = None
             model_invocation_observed = bool(
                 not deterministic_only and implementation_started
             )
-            acceptance_result = self.apply_post_merge_authoritative_acceptance(
-                task,
-                implementation_commit=implementation_commit,
-                merge_commit=completion_commit,
-                repository_tree_id=f"git-tree:{completion_tree}" if completion_tree else "",
-                validation_result=validation_result,
-                model_invocation_observed=model_invocation_observed,
-            )
+            if no_change_completion:
+                implementation_binding_recovery = (
+                    self._recover_no_change_implementation_binding(
+                        task,
+                        merge_commit=completion_commit,
+                        repository_tree_id=(
+                            f"git-tree:{completion_tree}"
+                            if completion_tree
+                            else ""
+                        ),
+                    )
+                )
+                if implementation_binding_recovery.get("recovered"):
+                    acceptance_implementation_commit = str(
+                        implementation_binding_recovery.get(
+                            "implementation_commit"
+                        )
+                        or ""
+                    )
+                    recovered_validation = (
+                        implementation_binding_recovery.get(
+                            "validation_result"
+                        )
+                    )
+                    if isinstance(recovered_validation, Mapping):
+                        acceptance_validation_result = {
+                            **dict(recovered_validation),
+                            "no_change_revalidation": dict(
+                                validation_result
+                            ),
+                        }
+                    recovered_gate_evidence = (
+                        implementation_binding_recovery.get("gate_evidence")
+                    )
+                    if isinstance(recovered_gate_evidence, Mapping):
+                        acceptance_gate_evidence = dict(
+                            recovered_gate_evidence
+                        )
+                    model_invocation_observed = bool(
+                        model_invocation_observed
+                        or implementation_binding_recovery.get(
+                            "model_invocation_observed"
+                        )
+                    )
+                    state.last_implementation_commit = (
+                        acceptance_implementation_commit
+                    )
+                    self._record_event(
+                        "no_change_implementation_binding_recovered",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            **implementation_binding_recovery,
+                        },
+                    )
+                else:
+                    acceptance_result = {
+                        "updated": False,
+                        "authoritatively_completed": False,
+                        "completion_authoritative": False,
+                        "reason": (
+                            "no_change_implementation_binding_recovery_failed"
+                        ),
+                        "binding_recovery": dict(
+                            implementation_binding_recovery
+                        ),
+                    }
+                    self._record_event(
+                        "no_change_implementation_binding_recovery_failed",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            **implementation_binding_recovery,
+                        },
+                    )
+            if not acceptance_result:
+                acceptance_result = (
+                    self.apply_post_merge_authoritative_acceptance(
+                        task,
+                        implementation_commit=(
+                            acceptance_implementation_commit
+                        ),
+                        merge_commit=completion_commit,
+                        repository_tree_id=(
+                            f"git-tree:{completion_tree}"
+                            if completion_tree
+                            else ""
+                        ),
+                        validation_result=acceptance_validation_result,
+                        gate_evidence=acceptance_gate_evidence,
+                        model_invocation_observed=(
+                            model_invocation_observed
+                        ),
+                    )
+                )
             authoritatively_completed = bool(
                 acceptance_result.get("authoritatively_completed")
             )
@@ -11285,6 +11890,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["diagnostic_receipt_id"] = diagnostic.receipt_id
         if todo_update_result:
             result["todo_update_result"] = todo_update_result
+        if acceptance_result:
+            result["acceptance_result"] = acceptance_result
+        if implementation_binding_recovery:
+            result["implementation_binding_recovery"] = (
+                implementation_binding_recovery
+            )
         self._record_event("implementation_finished", result)
         return result
 
@@ -23096,6 +23707,144 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 blocking.append(relative)
         return blocking, nonblocking
 
+    def _task_for_merge_reconciliation(
+        self,
+        event: Mapping[str, Any],
+    ) -> PortalTask | None:
+        """Resolve a reconciliation event to exactly one current board task."""
+
+        task_id = str(event.get("task_id") or "")
+        try:
+            matches = [
+                task
+                for task in self._load_tasks()
+                if task.task_id == task_id
+            ]
+        except (OSError, UnicodeDecodeError, TaskSourceError, ValueError):
+            matches = []
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    def _apply_reconciled_merge_authoritative_acceptance(
+        self,
+        task: PortalTask,
+        event: Mapping[str, Any],
+        *,
+        implementation_commit: str,
+    ) -> dict[str, Any]:
+        """Route a reconciled merge through the canonical completion funnel."""
+
+        identity = self._identity_for_task(task)
+        event_cid = str(event.get("canonical_task_cid") or "")
+        event_key = str(event.get("canonical_task_key") or "")
+        identity_errors: list[str] = []
+        if str(event.get("task_id") or "") != task.task_id:
+            identity_errors.append("reconciliation_task_id_mismatch")
+        if event_cid and event_cid != identity.canonical_task_cid:
+            identity_errors.append("reconciliation_task_cid_mismatch")
+        if event_key and event_key != identity.canonical_task_key:
+            identity_errors.append("reconciliation_task_key_mismatch")
+        target_branch = self._main_branch_name()
+        merge_commit = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            target_branch,
+        )
+        repository_tree = self._candidate_repository_tree(merge_commit)
+        repository_tree_id = (
+            f"git-tree:{repository_tree}" if repository_tree else ""
+        )
+        resolved_implementation = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            implementation_commit,
+        )
+        binding_errors: list[str] = []
+        if resolved_implementation != implementation_commit:
+            binding_errors.append("reconciliation_implementation_missing")
+        if not merge_commit:
+            binding_errors.append("reconciliation_target_missing")
+        if not repository_tree_id:
+            binding_errors.append("reconciliation_target_tree_missing")
+        if (
+            resolved_implementation
+            and merge_commit
+            and not self._git_ref_is_ancestor(
+                resolved_implementation,
+                merge_commit,
+            )
+        ):
+            binding_errors.append("reconciliation_implementation_not_merged")
+
+        raw_merge_result = event.get("merge_result")
+        merge_result = (
+            dict(raw_merge_result)
+            if isinstance(raw_merge_result, Mapping)
+            else {}
+        )
+        raw_validation = merge_result.get("post_merge_validation")
+        if not isinstance(raw_validation, Mapping):
+            raw_validation = merge_result.get("validation_result")
+        if not isinstance(raw_validation, Mapping):
+            raw_validation = event.get("validation_result")
+        validation_result = (
+            dict(raw_validation)
+            if isinstance(raw_validation, Mapping)
+            else {}
+        )
+        prior_receipt = self._acceptance_receipt_from_event(event)
+        gate_evidence = prior_receipt.get("gate_evidence")
+        gate_evidence = (
+            dict(gate_evidence)
+            if isinstance(gate_evidence, Mapping)
+            else {}
+        )
+        # Reconciliation verifies integration, not provider-review authority.
+        # Never replay a persisted provider gate through this path.
+        gate_evidence.pop("provider_review", None)
+        gate_evidence.update(
+            self._preserved_provider_review_evidence(event)
+        )
+        gate_evidence.update(
+            self._preserved_provider_review_evidence(merge_result)
+        )
+        model_invocation_observed = bool(
+            event.get("model_invocation_observed")
+            or prior_receipt.get("model_invocation_observed")
+            or not self._task_uses_typed_local_execution(task)
+        )
+        if identity_errors:
+            return {
+                "updated": False,
+                "authoritatively_completed": False,
+                "completion_authoritative": False,
+                "reason": "reconciliation_task_identity_mismatch",
+                "reason_codes": identity_errors,
+                "implementation_commit": implementation_commit,
+                "merge_commit": merge_commit,
+                "repository_tree_id": repository_tree_id,
+                "acceptance_attempted": False,
+            }
+
+        acceptance = self.apply_post_merge_authoritative_acceptance(
+            task,
+            implementation_commit=implementation_commit,
+            merge_commit=merge_commit,
+            repository_tree_id=repository_tree_id,
+            validation_result=validation_result,
+            gate_evidence=gate_evidence or None,
+            model_invocation_observed=model_invocation_observed,
+        )
+        return {
+            **acceptance,
+            "acceptance_attempted": True,
+            "binding_verified": not binding_errors,
+            "binding_reason_codes": binding_errors,
+            "implementation_commit": implementation_commit,
+            "merge_commit": merge_commit,
+            "repository_tree_id": repository_tree_id,
+            "validation_result": validation_result,
+        }
+
     def _reconcile_failed_merges(
         self,
         *,
@@ -23174,14 +23923,39 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             implementation_commit = str(event.get("implementation_commit") or "")
             if not task_id or not implementation_commit:
                 continue
-            task = PortalTask(
+            board_task = self._task_for_merge_reconciliation(event)
+            # Operational merge/cleanup recovery may continue with the legacy
+            # event metadata.  That sparse task is never allowed into the
+            # authoritative acceptance funnel; only an exact current board
+            # task can supply canonical identity and policy fields.
+            task = board_task or PortalTask(
                 task_id=task_id,
                 title=str(event.get("title") or "failed implementation merge"),
                 status="todo",
                 completion="manual",
-                priority="P2",
-                track="ops",
+                priority=str(event.get("priority") or "P2"),
+                track=str(event.get("track") or "ops"),
             )
+
+            def reconciled_acceptance() -> dict[str, Any]:
+                if board_task is None:
+                    return {
+                        "updated": False,
+                        "authoritatively_completed": False,
+                        "completion_authoritative": False,
+                        "acceptance_attempted": False,
+                        "reason": "reconciliation_task_unresolved",
+                        "reason_codes": [
+                            "current_board_task_missing_or_ambiguous"
+                        ],
+                        "implementation_commit": implementation_commit,
+                    }
+                return self._apply_reconciled_merge_authoritative_acceptance(
+                    board_task,
+                    event,
+                    implementation_commit=implementation_commit,
+                )
+
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
                 # The parent commit can land before its daemon-owned submodule
                 # branches finish merging.  Do not interpret parent ancestry as
@@ -23203,7 +23977,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 cleanup_cleaned = bool(cleanup_result.get("cleaned", False)) if cleanup_result else True
                 resolved = not failed_submodules and cleanup_cleaned
-                todo_update_result = self._mark_task_completed_in_todo(task_id) if resolved else {}
+                acceptance_result = (
+                    reconciled_acceptance()
+                    if resolved
+                    else {}
+                )
+                todo_update_result = dict(
+                    acceptance_result.get("todo_update_result") or {}
+                )
                 result = {
                     "task_id": task_id,
                     "attempt": attempt,
@@ -23220,6 +24001,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "submodule_merge_results": submodule_merge_results,
                     "cleanup_result": cleanup_result,
                 }
+                if acceptance_result:
+                    result["acceptance_result"] = acceptance_result
+                    result["completion_authoritative"] = bool(
+                        acceptance_result.get("authoritatively_completed")
+                    )
+                    result["acceptance_pending"] = not bool(
+                        acceptance_result.get("authoritatively_completed")
+                    )
                 if todo_update_result:
                     result["todo_update_result"] = todo_update_result
                 self._record_event("merge_reconciled", result)
@@ -23299,7 +24088,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             reason = "merge_retried" if resolved else "merge_retry_failed"
             if merge_result.get("merged") and not cleanup_cleaned:
                 reason = "cleanup_retry_failed"
-            todo_update_result = self._mark_task_completed_in_todo(task_id) if resolved else {}
+            acceptance_result = (
+                reconciled_acceptance()
+                if resolved
+                else {}
+            )
+            todo_update_result = dict(
+                acceptance_result.get("todo_update_result") or {}
+            )
             result = {
                 "task_id": task_id,
                 "attempt": attempt,
@@ -23312,6 +24108,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "merge_result": merge_result,
                 "cleanup_result": cleanup_result,
             }
+            if acceptance_result:
+                result["acceptance_result"] = acceptance_result
+                result["completion_authoritative"] = bool(
+                    acceptance_result.get("authoritatively_completed")
+                )
+                result["acceptance_pending"] = not bool(
+                    acceptance_result.get("authoritatively_completed")
+                )
             if todo_update_result:
                 result["todo_update_result"] = todo_update_result
             self._record_event("merge_reconciled", result)
