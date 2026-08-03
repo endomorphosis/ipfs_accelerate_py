@@ -391,6 +391,21 @@ PROVIDER_RETRY_MONTHS = {
     "dec": 12,
 }
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+IMPLEMENTATION_FALLBACK_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
+)
+GROK_IMPLEMENTATION_PROVIDER_ALIASES = frozenset(
+    {
+        "grok",
+        "grok_cli",
+        "grok-cli",
+        "grok_build",
+        "grok-build",
+        "xai_cli",
+        "xai-cli",
+    }
+)
+CODEX_IMPLEMENTATION_PROVIDER_ALIASES = frozenset({"codex", "openai"})
 REQUIRE_TASK_EXECUTION_METADATA_ENV = (
     "IPFS_ACCELERATE_AGENT_REQUIRE_TASK_EXECUTION_METADATA"
 )
@@ -1466,22 +1481,22 @@ def _grok_binary() -> str | None:
 
 
 def _grok_cli_available() -> bool:
-    """True when llm_router's grok_cli provider can be constructed."""
+    """True when the Grok CLI binary and headless auth are both available."""
 
+    if not _grok_binary():
+        return False
     try:
-        from ...llm_router import get_llm_provider
+        from ...llm_router import (
+            _grok_cli_auth_available,
+            get_llm_provider,
+        )
 
-        return get_llm_provider("grok_cli") is not None
+        return (
+            get_llm_provider("grok_cli") is not None
+            and bool(_grok_cli_auth_available())
+        )
     except Exception:
-        if not _grok_binary():
-            return False
-        try:
-            from ...llm_router import _grok_cli_auth_available
-
-            return bool(_grok_cli_auth_available())
-        except Exception:
-            auth = Path.home() / ".grok" / "auth.json"
-            return auth.is_file() or bool(os.environ.get("XAI_API_KEY", "").strip())
+        return False
 
 
 def _grok_cli_command(*, workspace_path: Path) -> list[str]:
@@ -1558,14 +1573,7 @@ _CODEX_MODEL_PROVIDER_HINT_RE = re.compile(
 
 
 def _configured_implementation_provider() -> str:
-    """Resolve an auto provider when its configured model is unambiguous.
-
-    Configured boards pass the selected Codex model separately from the
-    provider selector.  Treating ``auto`` as availability-only used to choose
-    Grok first and silently ignore an explicit ``gpt-*`` model.  Keep unknown
-    model names on the existing availability path, while binding recognized
-    OpenAI/Codex model families to the Codex runner.
-    """
+    """Resolve legacy auto provider hints without affecting ordered routes."""
 
     provider = (
         os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
@@ -1577,6 +1585,68 @@ def _configured_implementation_provider() -> str:
     if model and _CODEX_MODEL_PROVIDER_HINT_RE.match(model):
         return "codex"
     return provider
+
+
+def _configured_implementation_fallback_provider() -> str:
+    """Return only the explicitly configured implementation fallback."""
+
+    return os.environ.get(
+        IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "",
+    ).strip().lower()
+
+
+def _codex_cli_command(
+    *,
+    codex: str,
+    workspace_path: Path,
+    codex_context_window: int | None = None,
+) -> list[str]:
+    """Build the exact non-fallback Codex implementation command."""
+
+    codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+    codex_context = (
+        str(codex_context_window)
+        if codex_context_window is not None
+        else os.environ.get(
+            _CODEX_CONTEXT_WINDOW_ENV,
+            "200000",
+        ).strip()
+    )
+    codex_reasoning = os.environ.get(
+        _CODEX_REASONING_EFFORT_ENV,
+        "high",
+    ).strip()
+    codex_max_threads = os.environ.get(
+        _CODEX_MAX_THREADS_ENV,
+        "10",
+    ).strip()
+    codex_max_depth = os.environ.get(
+        _CODEX_MAX_DEPTH_ENV,
+        "2",
+    ).strip()
+
+    command = [
+        codex,
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        str(workspace_path),
+    ]
+    if codex_model:
+        command.extend(["-m", codex_model])
+    if codex_context:
+        command.extend(["-c", f"model_context_window={codex_context}"])
+    if codex_reasoning:
+        command.extend(
+            ["-c", f'model_reasoning_effort="{codex_reasoning}"']
+        )
+    if codex_max_threads:
+        command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
+    if codex_max_depth:
+        command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
+    command.append("-")
+    return command
 
 
 def _copilot_fallback_command(
@@ -9125,6 +9195,98 @@ class PortalImplementationDaemon:
         classified["evidence"] = evidence[-4:]
         return classified
 
+    def _provider_capacity_backoff_schedule_for_labels(
+        self,
+        provider_labels: set[str],
+    ) -> dict[str, Any]:
+        """Return the newest still-relevant capacity latch for one provider."""
+
+        labels = {
+            str(label).strip().lower()
+            for label in provider_labels
+            if str(label).strip()
+        }
+        if not labels:
+            return {}
+        now = _provider_capacity_now()
+        for event in reversed(self._iter_events()):
+            event_type = str(event.get("type") or "")
+            if event_type == "implementation_provider_exhausted":
+                exhausted = {
+                    str(item).strip().lower()
+                    for item in list(event.get("providers") or [])
+                    if str(item).strip()
+                }
+                if exhausted and not (exhausted & labels):
+                    continue
+                retry_at = parse_timestamp(str(event.get("retry_at") or ""))
+                if retry_at is None:
+                    return {}
+                return {
+                    "active": retry_at > now,
+                    "retry_at": retry_at.isoformat(),
+                    "retry_after_seconds": max(
+                        0.0,
+                        (retry_at - now).total_seconds(),
+                    ),
+                    "providers": list(event.get("providers") or []),
+                }
+            if event_type == "implementation_started":
+                started_labels = set(
+                    _provider_labels_from_implementation_command(
+                        event.get("command") or ()
+                    )
+                )
+                if started_labels & labels:
+                    return {}
+        return {}
+
+    def _active_provider_capacity_backoff_for_labels(
+        self,
+        provider_labels: set[str],
+    ) -> dict[str, Any]:
+        schedule = self._provider_capacity_backoff_schedule_for_labels(
+            provider_labels
+        )
+        return schedule if schedule.get("active", False) else {}
+
+    def _ordered_grok_codex_route_configured(
+        self,
+        task: PortalTask | None = None,
+    ) -> bool:
+        if self._task_declared_implementation_provider(task):
+            return False
+        return (
+            _configured_implementation_provider()
+            in GROK_IMPLEMENTATION_PROVIDER_ALIASES
+            and _configured_implementation_fallback_provider()
+            in CODEX_IMPLEMENTATION_PROVIDER_ALIASES
+        )
+
+    def _ordered_grok_codex_selected_provider(
+        self,
+        task: PortalTask | None = None,
+    ) -> str:
+        """Select one healthy route member without crossing task authority."""
+
+        if not self._ordered_grok_codex_route_configured(task):
+            return ""
+        if (
+            _grok_cli_available()
+            and not self._active_provider_capacity_backoff_for_labels(
+                {"grok", "xai"}
+            )
+        ):
+            return "grok"
+        if (
+            shutil.which("codex")
+            and not self._active_provider_capacity_backoff_for_labels(
+                {"codex"}
+            )
+        ):
+            return "codex"
+        return ""
+
     def _current_implementation_provider_labels(
         self,
         task: PortalTask | None = None,
@@ -9144,6 +9306,16 @@ class PortalImplementationDaemon:
         if explicit_labels:
             return {*explicit_labels, "provider"}
         provider = declared_provider or _configured_implementation_provider()
+        ordered_grok_codex = self._ordered_grok_codex_route_configured(task)
+        if ordered_grok_codex:
+            selected_provider = (
+                self._ordered_grok_codex_selected_provider(task)
+            )
+            if selected_provider == "grok":
+                return {"grok", "xai", "provider"}
+            if selected_provider == "codex":
+                return {"codex", "provider"}
+            return {"grok", "xai", "codex", "provider"}
         if provider in {
             "goose",
             "goose_meta",
@@ -9166,7 +9338,11 @@ class PortalImplementationDaemon:
             "grok-build",
         }:
             return {"grok", "xai", "provider"}
-        if provider in {"codex", "copilot", "openai"}:
+        if provider in {"codex", "openai"}:
+            if declared_provider:
+                return {"codex", "provider"}
+            return {"codex", "copilot", "provider"}
+        if provider == "copilot":
             return {"codex", "copilot", "provider"}
         labels: set[str] = set()
         if _goose_meta_spark_available():
@@ -9188,42 +9364,42 @@ class PortalImplementationDaemon:
         Provider labels isolate codex/goose/grok latches from each other.
         """
 
-        now = _provider_capacity_now()
-        current_labels: set[str] | None = None
-        for event in reversed(self._iter_events()):
-            event_type = str(event.get("type") or "")
-            if event_type == "implementation_provider_exhausted":
-                retry_at = parse_timestamp(str(event.get("retry_at") or ""))
-                if retry_at is None:
-                    return {}
-                exhausted = {
-                    str(item).strip().lower()
-                    for item in list(event.get("providers") or [])
-                    if str(item).strip()
-                }
-                # A codex quota latch must not block goose/grok (and vice versa).
-                if exhausted:
-                    if current_labels is None:
-                        current_labels = (
-                            self._current_implementation_provider_labels()
-                            if task is None
-                            else self._current_implementation_provider_labels(
-                                task
-                            )
-                        )
-                    if not (exhausted & current_labels):
-                        continue
-                return {
-                    "active": retry_at > now,
-                    "retry_at": retry_at.isoformat(),
-                    "retry_after_seconds": max(
-                        0.0, (retry_at - now).total_seconds()
-                    ),
-                    "providers": list(event.get("providers") or []),
-                }
-            if event_type in {"implementation_started", "implementation_finished"}:
+        ordered_grok_codex = (
+            self._ordered_grok_codex_route_configured(task)
+        )
+        if ordered_grok_codex:
+            if self._ordered_grok_codex_selected_provider(task):
                 return {}
-        return {}
+            active_schedules: list[dict[str, Any]] = []
+            if _grok_cli_available():
+                grok_schedule = (
+                    self._active_provider_capacity_backoff_for_labels(
+                        {"grok", "xai"}
+                    )
+                )
+                if not grok_schedule:
+                    return {}
+                active_schedules.append(grok_schedule)
+            if shutil.which("codex"):
+                codex_schedule = (
+                    self._active_provider_capacity_backoff_for_labels(
+                        {"codex"}
+                    )
+                )
+                if not codex_schedule:
+                    return {}
+                active_schedules.append(codex_schedule)
+            if active_schedules:
+                return min(
+                    active_schedules,
+                    key=lambda item: float(
+                        item.get("retry_after_seconds") or 0.0
+                    ),
+                )
+            return {}
+        return self._provider_capacity_backoff_schedule_for_labels(
+            self._current_implementation_provider_labels(task)
+        )
 
     def _active_provider_capacity_backoff(
         self,
@@ -39222,10 +39398,38 @@ class PortalImplementationDaemon:
             declared_provider
             or configured_provider
         )
+        fallback_provider = (
+            ""
+            if declared_provider
+            else _configured_implementation_fallback_provider()
+        )
         grok_ready = _grok_cli_available()
         goose_meta_ready = _goose_meta_spark_available()
-        prefer_grok = provider in {
+        grok_provider_aliases = {
             "auto",
+            *GROK_IMPLEMENTATION_PROVIDER_ALIASES,
+        }
+        explicit_grok_aliases = grok_provider_aliases - {"auto"}
+        prefer_grok = provider in grok_provider_aliases
+        ordered_codex_fallback = (
+            self._ordered_grok_codex_route_configured(task)
+        )
+        ordered_selected_provider = (
+            self._ordered_grok_codex_selected_provider(task)
+            if ordered_codex_fallback
+            else ""
+        )
+        force_grok = provider in explicit_grok_aliases and (
+            bool(declared_provider) or not ordered_codex_fallback
+        )
+        force_codex = provider in {"codex", "openai"}
+        force_declared_codex = bool(declared_provider) and force_codex
+        if fallback_provider and not ordered_codex_fallback:
+            raise RuntimeError(
+                "Unsupported implementation provider fallback route: "
+                f"{provider!r} -> {fallback_provider!r}"
+            )
+        if declared_provider in {
             "grok",
             "grok_cli",
             "grok-cli",
@@ -39233,16 +39437,8 @@ class PortalImplementationDaemon:
             "grok-build",
             "xai_cli",
             "xai-cli",
-        }
-        force_grok = provider in {
-            "grok",
-            "grok_cli",
-            "grok-cli",
-            "grok_build",
-            "grok-build",
-            "xai_cli",
-            "xai-cli",
-        }
+        }:
+            force_grok = True
         prefer_goose_meta = provider in {
             "goose",
             "goose_meta",
@@ -39265,7 +39461,6 @@ class PortalImplementationDaemon:
             "muse-spark",
             "spark",
         }
-        force_codex = provider in {"codex", "copilot", "openai"}
 
         # Prefer only when the binary is actually resolvable so an auth-only
         # readiness signal does not block auto-fallback to codex/copilot.
@@ -39281,6 +39476,10 @@ class PortalImplementationDaemon:
             prefer_grok
             and grok_ready
             and _grok_binary()
+            and (
+                not ordered_codex_fallback
+                or ordered_selected_provider == "grok"
+            )
             and not force_codex
             and not force_goose_meta
         ):
@@ -39300,10 +39499,38 @@ class PortalImplementationDaemon:
         codex = shutil.which("codex")
         copilot = shutil.which("copilot")
         codex_context_window = (
-            self._implementation_provider_context_window_for_task(task)[0]
+            self._implementation_provider_context_window_for_task(
+                task,
+                selected_provider="codex",
+            )[0]
             if task is not None
             else None
         )
+        if ordered_codex_fallback or force_declared_codex:
+            if (
+                ordered_codex_fallback
+                and ordered_selected_provider != "codex"
+            ):
+                raise RuntimeError(
+                    "Implementation provider route "
+                    f"{provider!r} -> {fallback_provider!r} has no currently "
+                    "available, authenticated, and capacity-eligible provider"
+                )
+            if not codex:
+                route = (
+                    f"{provider} -> {fallback_provider}"
+                    if ordered_codex_fallback
+                    else provider
+                )
+                raise RuntimeError(
+                    "Implementation provider route "
+                    f"{route!r} requires the Codex CLI (`codex`)"
+                )
+            return _codex_cli_command(
+                codex=codex,
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
+            )
         if copilot and _copilot_has_auth():
             return _copilot_fallback_command(
                 codex=codex,
@@ -39312,39 +39539,11 @@ class PortalImplementationDaemon:
                 codex_context_window=codex_context_window,
             )
         if codex:
-            # Build codex command with full capability flags
-            codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
-            codex_context = (
-                str(codex_context_window)
-                if codex_context_window is not None
-                else os.environ.get(
-                    _CODEX_CONTEXT_WINDOW_ENV,
-                    "200000",
-                ).strip()
+            return _codex_cli_command(
+                codex=codex,
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
             )
-            codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
-            codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
-            codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
-
-            cmd = [
-                codex,
-                "exec",
-                "--dangerously-bypass-approvals-and-sandbox",
-                "-C",
-                str(workspace_path),
-            ]
-            if codex_model:
-                cmd.extend(["-m", codex_model])
-            if codex_context:
-                cmd.extend(["-c", f"model_context_window={codex_context}"])
-            if codex_reasoning:
-                cmd.extend(["-c", f'model_reasoning_effort="{codex_reasoning}"'])
-            if codex_max_threads:
-                cmd.extend(["-c", f"agents.max_threads={codex_max_threads}"])
-            if codex_max_depth:
-                cmd.extend(["-c", f"agents.max_depth={codex_max_depth}"])
-            cmd.append("-")
-            return cmd
         if grok_ready:
             return _grok_cli_command(workspace_path=workspace_path)
         if goose_meta_ready:
@@ -39440,6 +39639,8 @@ class PortalImplementationDaemon:
     def _configured_implementation_provider_context_window(
         self,
         task: PortalTask | None = None,
+        *,
+        selected_provider: str = "",
     ) -> int:
         configured = self.implementation_provider_context_window
         if configured is not None:
@@ -39452,20 +39653,19 @@ class PortalImplementationDaemon:
                     "invalid implementation provider context window"
                 )
             return configured
-        provider = self._task_declared_implementation_provider(task)
+        provider = str(selected_provider or "").strip().lower()
+        if not provider:
+            provider = self._task_declared_implementation_provider(task)
+        if (
+            not provider
+            and self._ordered_grok_codex_route_configured(task)
+        ):
+            provider = self._ordered_grok_codex_selected_provider(task)
         if not provider:
             provider = _configured_implementation_provider()
         environment_name = (
             _GROK_CONTEXT_WINDOW_ENV
-            if provider in {
-                "grok",
-                "grok_cli",
-                "grok-cli",
-                "xai_cli",
-                "xai-cli",
-                "grok_build",
-                "grok-build",
-            }
+            if provider in GROK_IMPLEMENTATION_PROVIDER_ALIASES
             else _CODEX_CONTEXT_WINDOW_ENV
         )
         raw = os.environ.get(environment_name, "200000").strip()
@@ -39478,6 +39678,8 @@ class PortalImplementationDaemon:
     def _implementation_provider_context_window_for_task(
         self,
         task: PortalTask,
+        *,
+        selected_provider: str = "",
     ) -> tuple[int, ContextBudget, int | None]:
         budget = self._base_implementation_context_budget()
         token_limit = self._task_context_token_limit(task)
@@ -39491,7 +39693,8 @@ class PortalImplementationDaemon:
             )
         byte_limit = self._task_llm_context_budget_bytes(task)
         provider_window = self._configured_implementation_provider_context_window(
-            task
+            task,
+            selected_provider=selected_provider,
         )
         if byte_limit is not None:
             # Canonical provider input contains ordinary UTF-8 text, so its

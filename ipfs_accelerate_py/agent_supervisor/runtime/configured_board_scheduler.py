@@ -38,7 +38,23 @@ IMPLEMENTATION_ENTRY_PATH = Path(
     "scripts/ops/agent_supervisor/implementation_supervisor_entry.py"
 )
 PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+FALLBACK_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
+)
+GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
 CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
+SCHEDULER_PROVIDER_ENV_NAMES = (
+    PROVIDER_ENV,
+    FALLBACK_PROVIDER_ENV,
+    GROK_MODEL_ENV,
+    CODEX_MODEL_ENV,
+)
+ORDERED_PROVIDER_FIELDS = (
+    "primary_provider_id",
+    "primary_model_id",
+    "fallback_provider_id",
+    "fallback_model_id",
+)
 
 
 class ConfiguredBoardError(ValueError):
@@ -92,6 +108,33 @@ def _required_string(
     if not isinstance(value, str) or not value.strip():
         raise ConfiguredBoardError(f"{field} must be a nonempty string")
     return value.strip()
+
+
+def _provider_string(
+    payload: Mapping[str, Any],
+    field: str,
+) -> str:
+    value = _required_string(payload, field)
+    if "\x00" in value or "\n" in value or "\r" in value:
+        raise ConfiguredBoardError(
+            f"{field} must be a single-line nonempty string"
+        )
+    return value
+
+
+def _optional_provider_string(
+    payload: Mapping[str, Any],
+    field: str,
+) -> str:
+    value = payload.get(field)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ConfiguredBoardError(f"{field} must be a string")
+    normalized = value.strip()
+    if "\x00" in normalized or "\n" in normalized or "\r" in normalized:
+        raise ConfiguredBoardError(f"{field} must be a single-line string")
+    return normalized
 
 
 def _safe_relative(value: Any, *, field: str) -> str:
@@ -322,6 +365,46 @@ def load_configured_board(
     provider = payload.get("provider")
     if not isinstance(provider, dict):
         raise ConfiguredBoardError("provider must be an object")
+    ordered_provider = any(field in provider for field in ORDERED_PROVIDER_FIELDS)
+    if ordered_provider:
+        primary_provider_id = _provider_string(
+            provider,
+            "primary_provider_id",
+        ).lower()
+        _provider_string(provider, "primary_model_id")
+        fallback_provider_id = _provider_string(
+            provider,
+            "fallback_provider_id",
+        ).lower()
+        _provider_string(provider, "fallback_model_id")
+        if primary_provider_id != "grok_cli":
+            raise ConfiguredBoardError(
+                "provider.primary_provider_id must be 'grok_cli' for "
+                "the ordered provider contract"
+            )
+        if fallback_provider_id != "codex":
+            raise ConfiguredBoardError(
+                "provider.fallback_provider_id must be 'codex' for "
+                "the ordered provider contract"
+            )
+        if "provider_id" in provider or "model_id" in provider:
+            raise ConfiguredBoardError(
+                "ordered provider fields cannot be mixed with legacy "
+                "provider_id/model_id"
+            )
+    else:
+        provider_id = _optional_provider_string(
+            provider,
+            "provider_id",
+        ).lower()
+        _optional_provider_string(provider, "model_id")
+        if provider_id and re.fullmatch(
+            r"[a-z0-9][a-z0-9_-]*",
+            provider_id,
+        ) is None:
+            raise ConfiguredBoardError(
+                "provider.provider_id is not a supported identifier"
+            )
     concurrency = _positive_int(
         provider.get("max_concurrency"),
         field="provider.max_concurrency",
@@ -863,13 +946,24 @@ def configured_board_launch_plan(
 
     provider = board.payload.get("provider")
     provider = provider if isinstance(provider, dict) else {}
-    provider_id = str(provider.get("provider_id") or "").strip()
-    model_id = str(provider.get("model_id") or "").strip()
-    environment: dict[str, str] = {}
-    if provider_id and provider_id != "auto":
-        environment[PROVIDER_ENV] = provider_id
-    if model_id and provider_id in {"", "auto", "codex", "openai"}:
-        environment[CODEX_MODEL_ENV] = model_id
+    ordered_provider = any(field in provider for field in ORDERED_PROVIDER_FIELDS)
+    if ordered_provider:
+        environment = {
+            PROVIDER_ENV: str(provider["primary_provider_id"]).strip(),
+            FALLBACK_PROVIDER_ENV: str(
+                provider["fallback_provider_id"]
+            ).strip(),
+            GROK_MODEL_ENV: str(provider["primary_model_id"]).strip(),
+            CODEX_MODEL_ENV: str(provider["fallback_model_id"]).strip(),
+        }
+    else:
+        provider_id = str(provider.get("provider_id") or "").strip()
+        model_id = str(provider.get("model_id") or "").strip()
+        environment = {}
+        if provider_id and provider_id != "auto":
+            environment[PROVIDER_ENV] = provider_id
+        if model_id and provider_id in {"", "auto", "codex", "openai"}:
+            environment[CODEX_MODEL_ENV] = model_id
     return {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
@@ -973,8 +1067,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(json.dumps(plan, indent=2, sort_keys=True))
     if args.dry_run:
         return 0
+    for name in SCHEDULER_PROVIDER_ENV_NAMES:
+        if name not in plan["environment"]:
+            os.environ.pop(name, None)
     for name, value in plan["environment"].items():
-        os.environ.setdefault(name, value)
+        os.environ[name] = value
     from .multi_supervisor_runner import main as multi_supervisor_main
 
     return int(multi_supervisor_main(plan["argv"]))
