@@ -3373,6 +3373,213 @@ def project_usage_governance_metrics(
     }
 
 
+# ---------------------------------------------------------------------------
+# Benchmark causal-span joins (PDR-071)
+# ---------------------------------------------------------------------------
+#
+# Capacity admission and lifecycle reduction remain authoritative above.
+# These helpers only project existing snapshot dimensions onto benchmark
+# causal spans; they never invent measured zeros for missing sensors.
+
+BENCHMARK_SPAN_CLOCK_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.benchmark-span-clock-metrics@1"
+)
+BENCHMARK_SPAN_CLOCK_SCHEMA_VERSION = 1
+
+
+def bind_metric_row_to_span_identity(
+    row: Mapping[str, Any],
+    *,
+    span_id: str,
+    run_id: str = "",
+    case_id: str = "",
+    arm_id: str = "",
+    attempt: int = 0,
+    process_id: str = "",
+) -> dict[str, Any]:
+    """Attach causal-span ancestry fields to one scheduler metric row.
+
+    The original counters are preserved; span fields are additive so existing
+    gauge consumers continue to read the same keys.
+    """
+
+    if not isinstance(row, Mapping):
+        raise TypeError("metric row must be a mapping")
+    bound = dict(row)
+    bound["span_id"] = str(span_id or "")
+    if run_id:
+        bound["run_id"] = str(run_id)
+    if case_id:
+        bound["case_id"] = str(case_id)
+    if arm_id:
+        bound["arm_id"] = str(arm_id)
+    if attempt:
+        bound["attempt"] = int(attempt)
+    if process_id:
+        bound["process_id"] = str(process_id)
+    return bound
+
+
+def project_snapshot_metrics_for_span(
+    snapshot: SchedulerSnapshot | Mapping[str, Any],
+    *,
+    span_id: str,
+    task_id: str = "",
+    task_cid: str = "",
+    run_id: str = "",
+    case_id: str = "",
+    arm_id: str = "",
+    attempt: int = 0,
+    process_id: str = "",
+) -> dict[str, Any]:
+    """Project queue/merge/implementation waits for one causal span.
+
+    Returns a content-stable dictionary of clock dimensions joined by span
+    identity.  Missing per-task rows produce explicit nulls rather than
+    fabricated zeros so benchmark telemetry can emit ``unavailable`` samples.
+    """
+
+    payload = dict(snapshot) if not isinstance(snapshot, Mapping) else snapshot
+    if not isinstance(payload, Mapping):
+        raise TypeError("snapshot must be a mapping")
+    metrics = list(payload.get("metrics") or [])
+    target_task = str(task_cid or task_id or "")
+    matched: list[Mapping[str, Any]] = []
+    for row in metrics:
+        if not isinstance(row, Mapping):
+            continue
+        row_task = str(row.get("task_cid") or row.get("task_id") or "")
+        if target_task and row_task and target_task not in (
+            row_task,
+            f"task:{row_task}",
+        ):
+            if not (
+                row_task.endswith(target_task) or target_task.endswith(row_task)
+            ):
+                continue
+        matched.append(row)
+
+    def _sum(name: str) -> float | None:
+        if not matched:
+            return None
+        total = 0.0
+        saw = False
+        for row in matched:
+            if name not in row:
+                continue
+            total += _number(row.get(name))
+            saw = True
+        return total if saw else None
+
+    queue_wait = _sum("queue_wait_seconds")
+    implementation = _sum("implementation_duration_seconds")
+    validation = _sum("validation_duration_seconds")
+    merge_wait = _sum("merge_wait_seconds")
+    makespan: float | None
+    if any(value is not None for value in (queue_wait, implementation, validation, merge_wait)):
+        makespan = (
+            (queue_wait or 0.0)
+            + (implementation or 0.0)
+            + (validation or 0.0)
+            + (merge_wait or 0.0)
+        )
+    else:
+        makespan = None
+
+    critical_path: float | None = None
+    if matched:
+        path_values = []
+        for row in matched:
+            if (
+                "implementation_duration_seconds" not in row
+                and "validation_duration_seconds" not in row
+            ):
+                continue
+            path_values.append(
+                _number(row.get("implementation_duration_seconds"))
+                + _number(row.get("validation_duration_seconds"))
+            )
+        if path_values:
+            critical_path = max(path_values)
+
+    phase_counts = payload.get("phase_counts") or {}
+    ready_width = None
+    observed_width = None
+    if isinstance(phase_counts, Mapping):
+        ready_width = int(phase_counts.get("ready") or 0)
+        observed_width = int(phase_counts.get("active") or 0)
+
+    rows = [
+        bind_metric_row_to_span_identity(
+            dict(row),
+            span_id=span_id,
+            run_id=run_id,
+            case_id=case_id,
+            arm_id=arm_id,
+            attempt=attempt,
+            process_id=process_id,
+        )
+        for row in matched
+    ]
+    return {
+        "schema": BENCHMARK_SPAN_CLOCK_SCHEMA,
+        "schema_version": BENCHMARK_SPAN_CLOCK_SCHEMA_VERSION,
+        "span_id": str(span_id),
+        "run_id": str(run_id or ""),
+        "case_id": str(case_id or ""),
+        "arm_id": str(arm_id or ""),
+        "task_id": str(task_id or target_task or ""),
+        "attempt": int(attempt or 0),
+        "process_id": str(process_id or ""),
+        "matched_row_count": len(matched),
+        "queue_wait_seconds": queue_wait,
+        "implementation_duration_seconds": implementation,
+        "validation_duration_seconds": validation,
+        "merge_wait_seconds": merge_wait,
+        "end_to_end_makespan_seconds": makespan,
+        "critical_path_seconds": critical_path,
+        "ready_width": ready_width,
+        "observed_width": observed_width,
+        "admitted_width": payload.get("admitted_width"),
+        "rows": rows,
+        # Nulls above must be projected as unavailable by benchmark_telemetry;
+        # this join never rewrites them into measured zeros.
+        "missing_dimensions_are_null": True,
+        "capacity_admission_unchanged": True,
+    }
+
+
+def join_scheduler_snapshot_to_benchmark_span(
+    snapshot: SchedulerSnapshot | Mapping[str, Any],
+    span: Any,
+) -> dict[str, Any]:
+    """Join a scheduler snapshot to a ``BenchmarkCausalSpan``-like object."""
+
+    span_id = str(getattr(span, "span_id", "") or "")
+    if not span_id and isinstance(span, Mapping):
+        span_id = str(span.get("span_id") or "")
+    if not span_id:
+        raise ValueError("span must expose span_id")
+
+    def _field(name: str, default: Any = "") -> Any:
+        if hasattr(span, name):
+            return getattr(span, name)
+        if isinstance(span, Mapping):
+            return span.get(name, default)
+        return default
+
+    return project_snapshot_metrics_for_span(
+        snapshot,
+        span_id=span_id,
+        task_id=str(_field("task_id", "") or ""),
+        run_id=str(_field("run_id", "") or ""),
+        case_id=str(_field("case_id", "") or ""),
+        arm_id=str(_field("arm_id", "") or ""),
+        attempt=int(_field("attempt", 0) or 0),
+        process_id=str(_field("process_id", "") or ""),
+    )
+
+
 # Proof observability uses the same operator-facing module as a discovery
 # surface while keeping its stricter public-projection policy isolated.
 from ..proof.proof_metrics import (  # noqa: E402  (intentional late compatibility import)
@@ -3454,4 +3661,9 @@ __all__ = [
     "MAX_USAGE_METRIC_SERIES",
     "forbidden_usage_metric_label_keys",
     "project_usage_governance_metrics",
+    "BENCHMARK_SPAN_CLOCK_SCHEMA",
+    "BENCHMARK_SPAN_CLOCK_SCHEMA_VERSION",
+    "bind_metric_row_to_span_identity",
+    "join_scheduler_snapshot_to_benchmark_span",
+    "project_snapshot_metrics_for_span",
 ]
