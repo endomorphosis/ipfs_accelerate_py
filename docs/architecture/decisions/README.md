@@ -131,36 +131,37 @@ ADRs follow the template section order:
 4. Keep edits to that single file unless a task also owns the index.
 5. When accepting, update Status, Date, Last verified, and evidence.
 
-## Program reservation (documentation refresh)
+## Documentation-refresh decision wave
 
-IDs **0001–0006** are reserved for the documentation-refresh decision wave.
-Later writers own only their numbered file; they do not edit this index solely
-to claim a number.
+IDs **0001–0006** were allocated to the documentation-refresh decision wave.
+All six decision records have now landed and are Accepted.
 
-| ID | Planned file | Topic | Producing task | Status |
+| ID | File | Topic | Producing task | Status |
 | --- | --- | --- | --- | --- |
-| ADR-0001 | [`0001-objectives-and-task-projections.md`](0001-objectives-and-task-projections.md) | Immutable/durable intent vs regenerable task projections | DOC-015 | Reserved |
-| ADR-0002 | [`0002-model-proposals-and-evidence-admission.md`](0002-model-proposals-and-evidence-admission.md) | Models propose; evidence admits; merge ≠ acceptance | DOC-016 | Reserved |
-| ADR-0003 | [`0003-capabilities-catalogs-and-routing.md`](0003-capabilities-catalogs-and-routing.md) | Capability, catalog, usage, and routing plane separation | DOC-017 | Reserved |
-| ADR-0004 | [`0004-worktrees-leases-and-fencing.md`](0004-worktrees-leases-and-fencing.md) | Worktree isolation, leases, and fencing | DOC-018 | Reserved |
-| ADR-0005 | [`0005-mutable-coordination-and-immutable-replication.md`](0005-mutable-coordination-and-immutable-replication.md) | Mutable coordination vs immutable replication | DOC-019 | Reserved |
-| ADR-0006 | [`0006-domain-packages-and-compatibility-boundaries.md`](0006-domain-packages-and-compatibility-boundaries.md) | Domain packages and compatibility boundaries | DOC-020 | Reserved |
+| ADR-0001 | [`0001-objectives-and-task-projections.md`](0001-objectives-and-task-projections.md) | Immutable/durable intent vs regenerable task projections | DOC-015 | Accepted |
+| ADR-0002 | [`0002-model-proposals-and-evidence-admission.md`](0002-model-proposals-and-evidence-admission.md) | Models propose; evidence admits; merge ≠ acceptance | DOC-016 | Accepted |
+| ADR-0003 | [`0003-capabilities-catalogs-and-routing.md`](0003-capabilities-catalogs-and-routing.md) | Capability, catalog, usage, and routing plane separation | DOC-017 | Accepted |
+| ADR-0004 | [`0004-worktrees-leases-and-fencing.md`](0004-worktrees-leases-and-fencing.md) | Worktree isolation, leases, and fencing | DOC-018 | Accepted |
+| ADR-0005 | [`0005-mutable-coordination-and-immutable-replication.md`](0005-mutable-coordination-and-immutable-replication.md) | Mutable coordination vs immutable replication | DOC-019 | Accepted |
+| ADR-0006 | [`0006-domain-packages-and-compatibility-boundaries.md`](0006-domain-packages-and-compatibility-boundaries.md) | Domain packages and compatibility boundaries | DOC-020 | Accepted |
 
-**Reserved** means the number and filename are allocated; the decision file may
-not exist yet. Do not publish a different ADR under these numbers. After a
-reserved ADR merges, treat its file status field as authoritative and refresh
-this table in the index-owning closeout (or the index-owning task) when that
-work runs.
+These numbers remain permanently allocated. Each decision file's own status
+field is authoritative if a later review deprecates or supersedes it.
 
 ## Index of published ADRs
 
 | ADR | Title | Status | Notes |
 | --- | --- | --- | --- |
 | [0000](0000-template.md) | Template | n/a | Not a decision; copy only |
-| 0001–0006 | See program reservation above | Reserved | Decision wave DOC-015–DOC-020 |
+| [0001](0001-objectives-and-task-projections.md) | Objectives and task projections | Accepted | Durable intent vs schedulable projection |
+| [0002](0002-model-proposals-and-evidence-admission.md) | Model proposals and evidence admission | Accepted | Models propose; evidence admits |
+| [0003](0003-capabilities-catalogs-and-routing.md) | Capabilities, catalogs, and routing | Accepted | Separate identity, capacity, and invocation planes |
+| [0004](0004-worktrees-leases-and-fencing.md) | Worktrees, leases, and fencing | Accepted | Isolation and stale-worker safety |
+| [0005](0005-mutable-coordination-and-immutable-replication.md) | Mutable coordination and immutable replication | Accepted | Replicas do not grant coordination authority |
+| [0006](0006-domain-packages-and-compatibility-boundaries.md) | Domain packages and compatibility boundaries | Accepted | Semantic ownership and exact delegation |
 
-When new ADRs land outside the reserved set, append rows here (or in the
-closeout index pass) with number, link, status, and one-line scope.
+When new ADRs land, append rows here with number, link, status, and one-line
+scope.
 
 ## Review and supersession
 

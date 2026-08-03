@@ -732,7 +732,7 @@ Review checklist:
 | [AGENT_SUPERVISOR_ARCHITECTURE.md](../AGENT_SUPERVISOR_ARCHITECTURE.md) | Deep contracts and theory |
 | [AGENT_SUPERVISOR_PHILOSOPHY.md](../AGENT_SUPERVISOR_PHILOSOPHY.md) | Authority ladder pillars |
 | [Operator guide](../../guides/AGENT_SUPERVISOR_GUIDE.md) | Runbooks and profiles |
-| ADR (planned DOC-018) `0004-worktrees-leases-and-fencing.md` | Decision record for isolation |
+| [ADR-0004](../decisions/0004-worktrees-leases-and-fencing.md) | Decision record for isolation |
 
 ---
 

@@ -477,7 +477,7 @@ Review checks for this guide:
 | [GUIDE_CONVENTIONS.md](GUIDE_CONVENTIONS.md) | Architecture guide contract |
 | [docs/LLM_ROUTER.md](../LLM_ROUTER.md) | LLM router operator surface |
 | [docs/MCP_SERVER.md](../MCP_SERVER.md) | MCP tool names including `model_catalog_*` |
-| Planned ADR DOC-017 | Capability vs catalog vs usage vs routing decision record |
+| [ADR-0003](decisions/0003-capabilities-catalogs-and-routing.md) | Capability vs catalog vs usage vs routing decision record |
 
 ---
 

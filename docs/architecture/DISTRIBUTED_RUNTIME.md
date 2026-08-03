@@ -9,10 +9,12 @@ synthetic cache keys; verified put/get/admission; CAR/pinning/replication
 capability gates; separation of immutable content from mutable coordination;
 P2P TaskQueue discovery, scheduling, trust, and fallback
 **Non-goals:** Sibling-repository ownership maps (see
-[integration boundaries](INTEGRATION_BOUNDARIES.md) / DOC-010); operator P2P install journeys (see
-planned `docs/guides/p2p/`); ADR formalization of single-writer DuckDB vs
-immutable replicas (planned ADR-0005 / DOC-019); MCP transport policy as a
-whole (see [MCP runtime](MCP_RUNTIME.md)); inventing new public APIs
+[integration boundaries](INTEGRATION_BOUNDARIES.md)); operator P2P install
+journeys (see [P2P workflows](../guides/p2p/README.md)); decision rationale for
+single-writer DuckDB versus immutable replicas (see
+[ADR-0005](decisions/0005-mutable-coordination-and-immutable-replication.md));
+MCP transport policy as a whole (see [MCP runtime](MCP_RUNTIME.md)); inventing
+new public APIs
 **Last verified:** `e559ff0046c639ba1dadabe02ea0ea91d9877e20` (2026-08-03);
 paths and symbols checked against `ipfs_backend_router.py`,
 `multiformats_identity.py`, `verified_ipld_backend.py`, `p2p_tasks/`, and
@@ -556,6 +558,6 @@ Review checklist:
 | [Guide conventions](GUIDE_CONVENTIONS.md) | Required guide contract |
 | [IPFS kit architecture](IPFS_KIT_ARCHITECTURE.md) | Historical kit detail (not Current for synthetic CID policy) |
 | [Integration boundaries](INTEGRATION_BOUNDARIES.md) | Sibling repos (`ipfs_kit_py`, `ipfs_datasets_py`, MCP++) |
-| Planned ADR-0005 | Single-writer mutable coordination vs immutable replication |
-| Planned operator P2P guides | Install and troubleshooting journeys |
+| [ADR-0005](decisions/0005-mutable-coordination-and-immutable-replication.md) | Single-writer mutable coordination vs immutable replication |
+| [P2P workflows](../guides/p2p/README.md) | Install and troubleshooting journeys |
 | [Agent supervisor architecture](AGENT_SUPERVISOR_ARCHITECTURE.md) | Control plane; uses verified identity at the edge |

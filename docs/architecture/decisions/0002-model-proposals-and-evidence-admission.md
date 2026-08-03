@@ -8,7 +8,8 @@
   anything that may advance admission, merge eligibility, or authoritative task
   or goal completion in `ipfs_accelerate_py.agent_supervisor`
 - **Non-goals:** Which LLM vendor or endpoint is configured; proof-kernel choice;
-  worktree/lease mechanics (see planned ADR-0004); capability/catalog/routing
+  worktree/lease mechanics (see
+  [ADR-0004](0004-worktrees-leases-and-fencing.md)); capability/catalog/routing
   separation (ADR-0003); objective-vs-todo durability (ADR-0001)
 - **Supersedes:** none
 - **Superseded-by:** none

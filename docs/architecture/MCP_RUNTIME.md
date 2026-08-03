@@ -10,8 +10,10 @@ tool registry and hierarchical dispatch, transport boundaries, MCP++ primitives
 (IDL, CID artifacts, UCAN, temporal policy, Event DAG, risk/frontier), and
 import side effects that affect process startup
 
-**Non-goals:** Operator install and journey steps (see `docs/MCP_SERVER.md` and
-setup guides when refreshed under DOC-023); full MCP++ chapter checklists
+**Non-goals:** Operator install and journey steps (see
+[MCP server reference](../MCP_SERVER.md),
+[MCP setup](../guides/MCP_SETUP_GUIDE.md), and
+[MCP quick start](../guides/QUICK_START_MCP.md)); full MCP++ chapter checklists
 (`mcpplusplus/`); sibling-repository ownership maps (see
 [Integration boundaries](INTEGRATION_BOUNDARIES.md)); model catalog vs router
 plane detail (see [Model/service routing](MODEL_SERVICE_ROUTING.md));
@@ -526,6 +528,6 @@ semantics present; no invented public APIs.
 | [Canonical server README](../../ipfs_accelerate_py/mcp_server/README.md) | Operator-oriented package notes and env tables |
 | [MCP++ workspace records](../../mcpplusplus/README.md) | Conformance checklist and gap matrix (Plan/evidence) |
 | [MCP server unification plan](MCP_SERVER_UNIFICATION_PLAN.md) | Historical / planned migration narrative |
-| [MCP server user doc](../MCP_SERVER.md) | Product-facing tool catalog notes (journeys refreshed under DOC-023) |
+| [MCP server user doc](../MCP_SERVER.md) | Product-facing tool catalog and current operator journey links |
 | [Model/service routing](MODEL_SERVICE_ROUTING.md) | Current catalog vs usage vs invocation planes |
 | [Distributed runtime](DISTRIBUTED_RUNTIME.md) | Current IPFS/P2P task execution beyond MCP framing |
