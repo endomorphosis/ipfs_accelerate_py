@@ -10184,6 +10184,63 @@ class PortalImplementationDaemon:
                     context_receipt_path
                 )
                 return ephemeral_result
+            try:
+                dependency_preflight = (
+                    self._require_validation_project_dependency_preflight(
+                        workspace_path=workspace_path,
+                        task=task,
+                        attempt=attempt,
+                    )
+                )
+            except ValidationProjectDependencyPreflightDeferred as exc:
+                canonical_task_cid = self._canonical_ref(task)
+                backoff_seconds = int(exc.backoff_seconds)
+                self.task_queue.defer(
+                    canonical_task_cid,
+                    backoff_seconds,
+                    reason=(
+                        "validation_project_dependency_preflight_failed"
+                    ),
+                )
+                self.task_queue.save()
+                self._restore_task_attempt(
+                    state,
+                    task,
+                    max(0, attempt - 1),
+                )
+                if not state.implementation_in_progress:
+                    self._clear_active_execution_state(
+                        state,
+                        clear_task=True,
+                    )
+                state.save(self.state_path)
+                result = {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "returncode": 1,
+                    "deferred": True,
+                    "reason": (
+                        "validation_project_dependency_preflight_failed"
+                    ),
+                    "infrastructure_failure": True,
+                    "failure_kind": (
+                        LifecycleFailureKind.LIFECYCLE_SETUP.value
+                    ),
+                    "provider_call_allowed": False,
+                    "provider_dispatched": False,
+                    "attempt_consumed": False,
+                    "backoff_seconds": backoff_seconds,
+                    "dependency_preflight": dict(exc.receipt),
+                    "workspace_path": str(workspace_path),
+                    "context_receipt_path": str(
+                        context_receipt_path
+                    ),
+                }
+                self._record_event(
+                    "implementation_retry_deferred",
+                    result,
+                )
+                return result
             # Some administrative and provider-capacity paths intentionally
             # operate against a not-yet-initialized checkout.  Baseline
             # discovery must not pre-empt the implementation command in those
@@ -10229,6 +10286,9 @@ class PortalImplementationDaemon:
                         ExecutionMode.DETERMINISTIC_ONLY.value
                         if deterministic_only
                         else "model-assisted"
+                    ),
+                    "validation_project_dependency_preflight": (
+                        dependency_preflight
                     ),
                 },
             )
@@ -17327,6 +17387,56 @@ class PortalImplementationDaemon:
             prior_fingerprints,
         )
 
+    def _require_validation_project_dependency_preflight(
+        self,
+        *,
+        workspace_path: Path,
+        task: PortalTask,
+        attempt: int,
+        branch_name: str = "",
+    ) -> dict[str, Any]:
+        """Gate every provider path on one shared fail-closed preflight."""
+
+        try:
+            raw_receipt = preflight_validation_project_dependencies(
+                workspace_path,
+                task.validation,
+            )
+            if not isinstance(raw_receipt, Mapping):
+                raise TypeError(
+                    "dependency preflight receipt must be a mapping"
+                )
+            receipt = dict(raw_receipt)
+        except Exception as exc:
+            receipt = project_dependency_preflight_error_receipt(
+                workspace_path,
+                task.validation,
+                exc,
+            )
+        if receipt.get("passed") is True:
+            return receipt
+        backoff_seconds = (
+            self._validation_project_dependency_preflight_backoff(
+                task_id=task.task_id,
+                receipt=receipt,
+            )
+        )
+        self._record_event(
+            "validation_project_dependency_preflight_failed",
+            {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "worktree_path": str(workspace_path),
+                "branch": branch_name,
+                "dependency_preflight": receipt,
+                "backoff_seconds": backoff_seconds,
+            },
+        )
+        raise ValidationProjectDependencyPreflightDeferred(
+            receipt,
+            backoff_seconds=backoff_seconds,
+        )
+
     def _run_implementation_in_ephemeral_worktree(
         self,
         *,
@@ -17472,53 +17582,17 @@ class PortalImplementationDaemon:
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
             workspace_setup["prior_attempt_seed"] = dict(seed_apply)
-            try:
-                raw_dependency_preflight = (
-                    preflight_validation_project_dependencies(
-                        worktree_path,
-                        task.validation,
-                    )
+            dependency_preflight = (
+                self._require_validation_project_dependency_preflight(
+                    workspace_path=worktree_path,
+                    task=task,
+                    attempt=attempt,
+                    branch_name=branch_name,
                 )
-                if not isinstance(raw_dependency_preflight, Mapping):
-                    raise TypeError(
-                        "dependency preflight receipt must be a mapping"
-                    )
-                dependency_preflight = dict(raw_dependency_preflight)
-            except Exception as exc:
-                dependency_preflight = (
-                    project_dependency_preflight_error_receipt(
-                        worktree_path,
-                        task.validation,
-                        exc,
-                    )
-                )
+            )
             workspace_setup["validation_project_dependency_preflight"] = (
                 dependency_preflight
             )
-            if dependency_preflight.get("passed") is not True:
-                dependency_backoff_seconds = (
-                    self._validation_project_dependency_preflight_backoff(
-                        task_id=task.task_id,
-                        receipt=dependency_preflight,
-                    )
-                )
-                self._record_event(
-                    "validation_project_dependency_preflight_failed",
-                    {
-                        "task_id": task.task_id,
-                        "attempt": attempt,
-                        "worktree_path": str(worktree_path),
-                        "branch": branch_name,
-                        "dependency_preflight": dependency_preflight,
-                        "backoff_seconds": (
-                            dependency_backoff_seconds
-                        ),
-                    },
-                )
-                raise ValidationProjectDependencyPreflightDeferred(
-                    dependency_preflight,
-                    backoff_seconds=dependency_backoff_seconds,
-                )
             command = (
                 []
                 if deterministic_only

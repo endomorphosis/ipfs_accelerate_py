@@ -13,8 +13,11 @@ import base64
 import hashlib
 import importlib.metadata
 import json
+import os
 import platform
 import re
+import shlex
+import stat as stat_module
 import subprocess
 import sys
 import tempfile
@@ -47,8 +50,10 @@ MAX_DEPENDENCY_MANIFEST_FILES = 16
 MAX_DEPENDENCY_MANIFEST_BYTES = 2 * 1024 * 1024
 MAX_STATIC_REQUIREMENTS = 512
 MAX_REQUIREMENT_BYTES = 2048
+MAX_INSTALLED_VERSION_BYTES = 512
 MAX_PROBE_OUTPUT_BYTES = 2 * 1024 * 1024
 MAX_PROBE_SOURCE_BYTES = 512 * 1024
+BOUNDED_FILE_READ_CHUNK_BYTES = 64 * 1024
 DEPENDENCY_PROBE_TIMEOUT_SECONDS = 30.0
 PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
     "test",
@@ -78,6 +83,121 @@ def _canonical_json(value: object) -> str:
 
 def _content_sha256(value: object) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+class _BoundedFileTooLarge(ValueError):
+    """A regular metadata file exceeded its declared snapshot bound."""
+
+    def __init__(self, observed_bytes: int, maximum_bytes: int) -> None:
+        super().__init__("metadata file exceeds bounded snapshot size")
+        self.observed_bytes = int(observed_bytes)
+        self.maximum_bytes = int(maximum_bytes)
+
+
+class _BoundedFileSnapshotRace(ValueError):
+    """A metadata path or opened file changed during snapshot collection."""
+
+
+def _stat_snapshot(stat_result: os.stat_result) -> tuple[int, ...]:
+    return (
+        int(stat_result.st_dev),
+        int(stat_result.st_ino),
+        int(stat_module.S_IFMT(stat_result.st_mode)),
+        int(stat_result.st_nlink),
+        int(stat_result.st_size),
+        int(stat_result.st_mtime_ns),
+        int(stat_result.st_ctime_ns),
+    )
+
+
+def _read_bounded_contained_regular_file(
+    containment_root: Path,
+    candidate: Path,
+    *,
+    maximum_bytes: int,
+) -> tuple[Path, bytes]:
+    """Read one stable regular-file snapshot without following an escape.
+
+    The path is resolved and checked before opening, the final component is
+    opened no-follow where the platform supports it, and both the descriptor
+    and path identities are revalidated after a chunk-bounded read.
+    """
+
+    if maximum_bytes < 0:
+        raise ValueError("metadata file byte bound is invalid")
+    root = containment_root.resolve(strict=True)
+    initial_path_stat = candidate.lstat()
+    try:
+        resolved = candidate.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise _BoundedFileSnapshotRace("metadata path disappeared during snapshot") from exc
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("metadata file escapes project root") from exc
+
+    target_stat = os.stat(resolved, follow_symlinks=False)
+    if not stat_module.S_ISREG(target_stat.st_mode):
+        raise ValueError("metadata source is not a regular file")
+    if target_stat.st_size > maximum_bytes:
+        raise _BoundedFileTooLarge(target_stat.st_size, maximum_bytes)
+
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = os.open(resolved, flags)
+    try:
+        opened_stat = os.fstat(descriptor)
+        if not stat_module.S_ISREG(opened_stat.st_mode) or _stat_snapshot(
+            opened_stat
+        ) != _stat_snapshot(target_stat):
+            raise _BoundedFileSnapshotRace("metadata file changed before bounded read")
+        if opened_stat.st_size > maximum_bytes:
+            raise _BoundedFileTooLarge(opened_stat.st_size, maximum_bytes)
+
+        chunks: list[bytes] = []
+        observed_bytes = 0
+        while True:
+            remaining = maximum_bytes + 1 - observed_bytes
+            if remaining <= 0:
+                raise _BoundedFileTooLarge(observed_bytes, maximum_bytes)
+            chunk = os.read(
+                descriptor,
+                min(BOUNDED_FILE_READ_CHUNK_BYTES, remaining),
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            observed_bytes += len(chunk)
+            if observed_bytes > maximum_bytes:
+                raise _BoundedFileTooLarge(observed_bytes, maximum_bytes)
+        final_descriptor_stat = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+
+    payload = b"".join(chunks)
+    if len(payload) != opened_stat.st_size or _stat_snapshot(
+        final_descriptor_stat
+    ) != _stat_snapshot(opened_stat):
+        raise _BoundedFileSnapshotRace("metadata file changed during bounded read")
+
+    try:
+        final_path_stat = candidate.lstat()
+        final_resolved = candidate.resolve(strict=True)
+        final_resolved.relative_to(root)
+        final_target_stat = os.stat(final_resolved, follow_symlinks=False)
+    except (FileNotFoundError, ValueError) as exc:
+        raise _BoundedFileSnapshotRace("metadata path changed after bounded read") from exc
+    if (
+        final_resolved != resolved
+        or _stat_snapshot(final_path_stat) != _stat_snapshot(initial_path_stat)
+        or _stat_snapshot(final_target_stat) != _stat_snapshot(opened_stat)
+    ):
+        raise _BoundedFileSnapshotRace("metadata path identity changed during bounded read")
+    return resolved, payload
 
 
 def _retry_fingerprint(receipt: Mapping[str, Any]) -> str:
@@ -127,6 +247,20 @@ def _load_pyproject(payload: bytes) -> Mapping[str, Any]:
     return parsed
 
 
+def _validation_command_invokes_pytest(command: str) -> bool:
+    try:
+        tokens = shlex.split(str(command), posix=True)
+    except ValueError:
+        tokens = []
+    for index, token in enumerate(tokens):
+        executable = PurePosixPath(token.replace("\\", "/")).name
+        if executable in {"py.test", "pytest"}:
+            return True
+        if token == "-m" and index + 1 < len(tokens) and tokens[index + 1] == "pytest":
+            return True
+    return bool(PYTEST_COMMAND_PATTERN.search(str(command)))
+
+
 def _safe_project_dependency_file(
     project_root: Path,
     raw_path: str,
@@ -141,26 +275,18 @@ def _safe_project_dependency_file(
         or candidate.as_posix() == "."
     ):
         raise ValueError("dynamic dependency file path is unsafe")
-    resolved = (project_root / candidate.as_posix()).resolve(strict=True)
-    try:
-        resolved.relative_to(project_root)
-    except ValueError as exc:
-        raise ValueError("dynamic dependency file escapes project root") from exc
-    if not resolved.is_file():
-        raise ValueError("dynamic dependency source is not a file")
-    return resolved
+    return project_root / candidate.as_posix()
 
 
-def _setuptools_file_backed_dependencies(
-    parsed: Mapping[str, Any],
+def _setuptools_file_backed_requirement_source(
+    dependency_source: object,
     project_root: Path,
+    *,
+    maximum_total_bytes: int,
+    maximum_files: int = MAX_DEPENDENCY_MANIFEST_FILES,
 ) -> tuple[list[str], list[dict[str, Any]]]:
-    """Resolve the one reviewed dynamic dependency source without guessing."""
+    """Resolve one reviewed setuptools file source without guessing."""
 
-    tool = parsed.get("tool")
-    setuptools = tool.get("setuptools") if isinstance(tool, Mapping) else None
-    dynamic = setuptools.get("dynamic") if isinstance(setuptools, Mapping) else None
-    dependency_source = dynamic.get("dependencies") if isinstance(dynamic, Mapping) else None
     raw_files = dependency_source.get("file") if isinstance(dependency_source, Mapping) else None
     if isinstance(raw_files, str):
         files = [raw_files]
@@ -168,21 +294,20 @@ def _setuptools_file_backed_dependencies(
         files = list(raw_files)
     else:
         raise ValueError("dynamic dependencies are not setuptools file-backed")
-    if not files or len(files) > MAX_DEPENDENCY_MANIFEST_FILES:
+    if maximum_files < 1 or not files or len(files) > maximum_files:
         raise ValueError("dynamic dependency file count is invalid")
 
     requirements: list[str] = []
     manifests: list[dict[str, Any]] = []
     total_bytes = 0
     for raw_file in files:
-        path = _safe_project_dependency_file(project_root, raw_file)
-        payload = path.read_bytes()
+        candidate = _safe_project_dependency_file(project_root, raw_file)
+        path, payload = _read_bounded_contained_regular_file(
+            project_root,
+            candidate,
+            maximum_bytes=maximum_total_bytes - total_bytes,
+        )
         total_bytes += len(payload)
-        if (
-            len(payload) > MAX_DEPENDENCY_MANIFEST_BYTES
-            or total_bytes > MAX_DEPENDENCY_MANIFEST_BYTES
-        ):
-            raise ValueError("dynamic dependency files exceed size bound")
         try:
             text = payload.decode("utf-8")
         except UnicodeDecodeError as exc:
@@ -213,11 +338,47 @@ def _setuptools_file_backed_dependencies(
     return requirements, manifests
 
 
+def _setuptools_dynamic_configuration(
+    parsed: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    tool = parsed.get("tool")
+    setuptools = tool.get("setuptools") if isinstance(tool, Mapping) else None
+    dynamic = setuptools.get("dynamic") if isinstance(setuptools, Mapping) else None
+    if not isinstance(dynamic, Mapping):
+        raise ValueError("setuptools dynamic configuration is unavailable")
+    return dynamic
+
+
+def _setuptools_file_backed_dependencies(
+    parsed: Mapping[str, Any],
+    project_root: Path,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Resolve the reviewed dynamic project dependency source."""
+
+    dynamic = _setuptools_dynamic_configuration(parsed)
+    return _setuptools_file_backed_requirement_source(
+        dynamic.get("dependencies"),
+        project_root,
+        maximum_total_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
+    )
+
+
 def _pytest_validation_dependencies(
+    parsed: Mapping[str, Any],
     project: Mapping[str, Any],
+    project_root: Path,
+    dynamic_fields: Sequence[str],
     *,
     pytest_invoked: bool,
-) -> tuple[list[str], list[str]]:
+    maximum_manifest_bytes: int,
+    maximum_manifest_files: int,
+) -> tuple[
+    list[str],
+    list[str],
+    list[str],
+    list[dict[str, Any]],
+    str,
+]:
     """Select ``test``, then ``testing``, then ``dev`` for pytest commands.
 
     The runner distribution itself is always required.  At most one declared
@@ -225,23 +386,70 @@ def _pytest_validation_dependencies(
     larger, environment-dependent contract.
     """
 
+    requirements = ["pytest"]
+    marker_extras = [""]
     if not pytest_invoked:
-        return [], []
-    optional = project.get("optional-dependencies", {})
+        return [], [], [], [], "not_applicable"
+
+    optional_is_dynamic = "optional-dependencies" in dynamic_fields
+    optional = project.get("optional-dependencies")
+    if optional_is_dynamic:
+        if optional is not None:
+            raise ValueError("PEP-621 optional-dependencies cannot be static and dynamic")
+        dynamic = _setuptools_dynamic_configuration(parsed)
+        optional = dynamic.get("optional-dependencies")
+        if not isinstance(optional, Mapping):
+            raise ValueError("dynamic optional-dependencies are not setuptools file-backed")
+        selected = next(
+            (name for name in PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY if name in optional),
+            "",
+        )
+        if not selected:
+            return (
+                requirements,
+                marker_extras,
+                [],
+                [],
+                "setuptools_dynamic_file",
+            )
+        declared, manifests = _setuptools_file_backed_requirement_source(
+            optional.get(selected),
+            project_root,
+            maximum_total_bytes=maximum_manifest_bytes,
+            maximum_files=maximum_manifest_files,
+        )
+        requirements.extend(declared)
+        marker_extras.extend([selected] * len(declared))
+        return (
+            requirements,
+            marker_extras,
+            [selected],
+            manifests,
+            "setuptools_dynamic_file",
+        )
+
+    if optional is None:
+        optional = {}
     if not isinstance(optional, Mapping):
         raise ValueError("PEP-621 optional-dependencies must be a table")
     selected = next(
         (name for name in PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY if name in optional),
         "",
     )
-    requirements = ["pytest"]
     if not selected:
-        return requirements, []
+        return requirements, marker_extras, [], [], "pep621_static"
     declared = optional.get(selected)
     if not isinstance(declared, list) or not all(isinstance(item, str) for item in declared):
         raise ValueError(f"validation dependency extra {selected!r} is invalid")
     requirements.extend(declared)
-    return requirements, [selected]
+    marker_extras.extend([selected] * len(declared))
+    return (
+        requirements,
+        marker_extras,
+        [selected],
+        [],
+        "pep621_static",
+    )
 
 
 def _public_project_contract(
@@ -249,14 +457,52 @@ def _public_project_contract(
 ) -> dict[str, Any]:
     """Remove raw PEP-508 text before durable receipts or events."""
 
-    result = {str(key): value for key, value in project.items() if key != "requirements"}
+    result = {
+        str(key): value
+        for key, value in project.items()
+        if key
+        not in {
+            "dependency_manifests",
+            "requirement_marker_extras",
+            "requirements",
+            "requires_python",
+        }
+    }
     requirements = project.get("requirements")
     if isinstance(requirements, list):
         result["requirement_count"] = len(requirements)
         result["requirement_sha256"] = [
             hashlib.sha256(str(item).encode("utf-8")).hexdigest() for item in requirements
         ]
+    requires_python = project.get("requires_python")
+    if isinstance(requires_python, str) and requires_python:
+        result["requires_python_declared"] = True
+        result["requires_python_sha256"] = hashlib.sha256(
+            requires_python.encode("utf-8")
+        ).hexdigest()
+    else:
+        result["requires_python_declared"] = False
+    manifests = project.get("dependency_manifests")
+    if isinstance(manifests, list):
+        result["dependency_manifests"] = [
+            {
+                "path_sha256": hashlib.sha256(
+                    str(manifest.get("path") or "").encode("utf-8")
+                ).hexdigest(),
+                "content_sha256": str(manifest.get("sha256") or ""),
+                "bytes": int(manifest.get("bytes") or 0),
+            }
+            for manifest in manifests
+            if isinstance(manifest, Mapping)
+        ]
     return result
+
+
+def _project_name_sha256(project: Mapping[str, Any]) -> str:
+    value = project.get("name")
+    if value is None:
+        return ""
+    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()
 
 
 def _bounded_static_project(
@@ -275,13 +521,15 @@ def _bounded_static_project(
         if pytest_invoked:
             return {
                 "root": relative_root,
-                "project_name": "",
+                "project_name_sha256": "",
                 "applicable": True,
                 "passed": True,
                 "reason": "validation_runner_requirement_collected",
                 "requirements": ["pytest"],
+                "requirement_marker_extras": [""],
                 "requires_python": "",
                 "dependency_source": "validation_command_runner",
+                "validation_dependency_source": "validation_command_runner",
                 "dependency_manifests": [],
                 "pytest_invoked": True,
                 "selected_validation_extras": [],
@@ -310,17 +558,21 @@ def _bounded_static_project(
         }
 
     pyproject_path = project_root / "pyproject.toml"
-    if not pyproject_path.is_file():
+    try:
+        pyproject_path.lstat()
+    except FileNotFoundError:
         if pytest_invoked:
             return {
                 "root": relative_root,
-                "project_name": "",
+                "project_name_sha256": "",
                 "applicable": True,
                 "passed": True,
                 "reason": "validation_runner_requirement_collected",
                 "requirements": ["pytest"],
+                "requirement_marker_extras": [""],
                 "requires_python": "",
                 "dependency_source": "validation_command_runner",
+                "validation_dependency_source": "validation_command_runner",
                 "dependency_manifests": [],
                 "pytest_invoked": True,
                 "selected_validation_extras": [],
@@ -331,8 +583,6 @@ def _bounded_static_project(
             "passed": True,
             "reason": "pep621_metadata_not_present",
         }
-    try:
-        payload = pyproject_path.read_bytes()
     except OSError as exc:
         return {
             "root": relative_root,
@@ -341,14 +591,36 @@ def _bounded_static_project(
             "reason": "pyproject_read_failed",
             "error_type": type(exc).__name__,
         }
-    if len(payload) > MAX_PYPROJECT_BYTES:
+    try:
+        _, payload = _read_bounded_contained_regular_file(
+            project_root,
+            pyproject_path,
+            maximum_bytes=MAX_PYPROJECT_BYTES,
+        )
+    except _BoundedFileTooLarge as exc:
         return {
             "root": relative_root,
             "applicable": True,
             "passed": False,
             "reason": "pyproject_exceeds_preflight_bound",
-            "pyproject_bytes": len(payload),
-            "maximum_pyproject_bytes": MAX_PYPROJECT_BYTES,
+            "pyproject_bytes": exc.observed_bytes,
+            "maximum_pyproject_bytes": exc.maximum_bytes,
+        }
+    except OSError as exc:
+        return {
+            "root": relative_root,
+            "applicable": True,
+            "passed": False,
+            "reason": "pyproject_read_failed",
+            "error_type": type(exc).__name__,
+        }
+    except ValueError as exc:
+        return {
+            "root": relative_root,
+            "applicable": True,
+            "passed": False,
+            "reason": "pyproject_path_or_snapshot_invalid",
+            "error_type": type(exc).__name__,
         }
 
     pyproject_sha256 = hashlib.sha256(payload).hexdigest()
@@ -368,14 +640,16 @@ def _bounded_static_project(
         if pytest_invoked:
             return {
                 "root": relative_root,
-                "project_name": "",
+                "project_name_sha256": "",
                 "applicable": True,
                 "passed": True,
                 "reason": "validation_runner_requirement_collected",
                 "pyproject_sha256": pyproject_sha256,
                 "requirements": ["pytest"],
+                "requirement_marker_extras": [""],
                 "requires_python": "",
                 "dependency_source": "validation_command_runner",
+                "validation_dependency_source": "validation_command_runner",
                 "dependency_manifests": [],
                 "pytest_invoked": True,
                 "selected_validation_extras": [],
@@ -396,6 +670,15 @@ def _bounded_static_project(
             "reason": "pep621_dynamic_field_invalid",
             "pyproject_sha256": pyproject_sha256,
         }
+    if "requires-python" in dynamic:
+        return {
+            "root": relative_root,
+            "project_name_sha256": _project_name_sha256(project),
+            "applicable": True,
+            "passed": False,
+            "reason": "pep621_requires_python_dynamic_unresolved",
+            "pyproject_sha256": pyproject_sha256,
+        }
     dependencies = project.get("dependencies")
     dependency_source = "pep621_static"
     dependency_manifests: list[dict[str, Any]] = []
@@ -403,7 +686,7 @@ def _bounded_static_project(
         if dependencies is not None:
             return {
                 "root": relative_root,
-                "project_name": str(project.get("name") or ""),
+                "project_name_sha256": _project_name_sha256(project),
                 "applicable": True,
                 "passed": False,
                 "reason": "pep621_dependencies_static_and_dynamic",
@@ -417,7 +700,7 @@ def _bounded_static_project(
         except (OSError, UnicodeError, ValueError) as exc:
             return {
                 "root": relative_root,
-                "project_name": str(project.get("name") or ""),
+                "project_name_sha256": _project_name_sha256(project),
                 "applicable": True,
                 "passed": False,
                 "reason": "dynamic_dependencies_unresolved",
@@ -432,21 +715,39 @@ def _bounded_static_project(
     ):
         return {
             "root": relative_root,
-            "project_name": str(project.get("name") or ""),
+            "project_name_sha256": _project_name_sha256(project),
             "applicable": True,
             "passed": False,
             "reason": "pep621_dependencies_must_be_static_strings",
             "pyproject_sha256": pyproject_sha256,
         }
+    requirement_marker_extras = [""] * len(dependencies)
     try:
-        validation_dependencies, selected_extras = _pytest_validation_dependencies(
+        (
+            validation_dependencies,
+            validation_marker_extras,
+            selected_extras,
+            validation_manifests,
+            validation_dependency_source,
+        ) = _pytest_validation_dependencies(
+            parsed,
             project,
+            project_root,
+            dynamic,
             pytest_invoked=pytest_invoked,
+            maximum_manifest_bytes=(
+                MAX_DEPENDENCY_MANIFEST_BYTES
+                - sum(int(manifest.get("bytes") or 0) for manifest in dependency_manifests)
+            ),
+            maximum_manifest_files=(
+                MAX_DEPENDENCY_MANIFEST_FILES
+                - len(dependency_manifests)
+            ),
         )
-    except ValueError as exc:
+    except (OSError, ValueError) as exc:
         return {
             "root": relative_root,
-            "project_name": str(project.get("name") or ""),
+            "project_name_sha256": _project_name_sha256(project),
             "applicable": True,
             "passed": False,
             "reason": "validation_dependencies_unresolved",
@@ -454,10 +755,12 @@ def _bounded_static_project(
             "error_type": type(exc).__name__,
         }
     dependencies = [*dependencies, *validation_dependencies]
+    requirement_marker_extras.extend(validation_marker_extras)
+    dependency_manifests.extend(validation_manifests)
     if len(dependencies) > MAX_STATIC_REQUIREMENTS:
         return {
             "root": relative_root,
-            "project_name": str(project.get("name") or ""),
+            "project_name_sha256": _project_name_sha256(project),
             "applicable": True,
             "passed": False,
             "reason": "pep621_dependencies_exceed_preflight_bound",
@@ -473,7 +776,7 @@ def _bounded_static_project(
     if oversized:
         return {
             "root": relative_root,
-            "project_name": str(project.get("name") or ""),
+            "project_name_sha256": _project_name_sha256(project),
             "applicable": True,
             "passed": False,
             "reason": "pep621_requirement_exceeds_preflight_bound",
@@ -481,11 +784,11 @@ def _bounded_static_project(
             "oversized_requirement_indexes": oversized[:20],
             "maximum_requirement_bytes": MAX_REQUIREMENT_BYTES,
         }
-    requires_python = project.get("requires-python") or ""
+    requires_python = project.get("requires-python", "")
     if not isinstance(requires_python, str):
         return {
             "root": relative_root,
-            "project_name": str(project.get("name") or ""),
+            "project_name_sha256": _project_name_sha256(project),
             "applicable": True,
             "passed": False,
             "reason": "pep621_requires_python_must_be_string",
@@ -493,7 +796,7 @@ def _bounded_static_project(
         }
     return {
         "root": relative_root,
-        "project_name": str(project.get("name") or ""),
+        "project_name_sha256": _project_name_sha256(project),
         "applicable": bool(dependencies or requires_python),
         "passed": True,
         "reason": (
@@ -503,8 +806,10 @@ def _bounded_static_project(
         ),
         "pyproject_sha256": pyproject_sha256,
         "requirements": list(dependencies),
+        "requirement_marker_extras": requirement_marker_extras,
         "requires_python": requires_python,
         "dependency_source": dependency_source,
+        "validation_dependency_source": validation_dependency_source,
         "dependency_manifests": dependency_manifests,
         "pytest_invoked": pytest_invoked,
         "selected_validation_extras": selected_extras,
@@ -558,7 +863,7 @@ def _evaluate_dependency_payload(
             continue
         project: dict[str, Any] = {
             "root": str(source_project.get("root") or ""),
-            "project_name": str(source_project.get("project_name") or ""),
+            "project_name_sha256": str(source_project.get("project_name_sha256") or ""),
             "pyproject_sha256": str(source_project.get("pyproject_sha256") or ""),
             "passed": True,
             "reason": "project_dependencies_satisfied",
@@ -570,6 +875,7 @@ def _evaluate_dependency_payload(
         }
         requires_python = str(source_project.get("requires_python") or "")
         if requires_python:
+            requires_python_sha256 = hashlib.sha256(requires_python.encode("utf-8")).hexdigest()
             try:
                 python_specifier = SpecifierSet(requires_python)
                 if Version(platform.python_version()) not in python_specifier:
@@ -577,7 +883,7 @@ def _evaluate_dependency_payload(
                     project["incompatible"].append(
                         {
                             "kind": "python",
-                            "requirement": requires_python,
+                            "requirement_sha256": requires_python_sha256,
                             "installed_version": platform.python_version(),
                         }
                     )
@@ -586,7 +892,7 @@ def _evaluate_dependency_payload(
                 project["invalid"].append(
                     {
                         "kind": "requires-python",
-                        "requirement": requires_python,
+                        "requirement_sha256": requires_python_sha256,
                         "error_type": type(exc).__name__,
                     }
                 )
@@ -600,7 +906,31 @@ def _evaluate_dependency_payload(
                 }
             )
             requirements = []
-        for raw_requirement in requirements:
+        marker_extras = source_project.get("requirement_marker_extras")
+        if (
+            not isinstance(marker_extras, list)
+            or len(marker_extras) != len(requirements)
+            or not all(
+                isinstance(item, str)
+                and item
+                in {
+                    "",
+                    *PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY,
+                }
+                for item in marker_extras
+            )
+        ):
+            project["passed"] = False
+            project["invalid"].append(
+                {
+                    "kind": "requirement_marker_extras",
+                    "error_type": "InvalidProbePayload",
+                }
+            )
+            marker_extras = []
+            requirements = []
+        for requirement_index, raw_requirement in enumerate(requirements):
+            selected_extra = marker_extras[requirement_index]
             requirement_text = str(raw_requirement)
             requirement_sha256 = hashlib.sha256(requirement_text.encode("utf-8")).hexdigest()
             try:
@@ -628,6 +958,8 @@ def _evaluate_dependency_payload(
                 "specifier": str(requirement.specifier),
                 "extras": extras,
             }
+            if selected_extra:
+                safe_record["selected_extra"] = selected_extra
             if requirement.marker is not None:
                 safe_record["marker_sha256"] = hashlib.sha256(
                     str(requirement.marker).encode("utf-8")
@@ -639,8 +971,10 @@ def _evaluate_dependency_payload(
             else:
                 direct_reference_sha256 = ""
             try:
+                marker_environment = dict(environment)
+                marker_environment["extra"] = selected_extra
                 applies = requirement.marker is None or requirement.marker.evaluate(
-                    environment=environment
+                    environment=marker_environment
                 )
             except Exception as exc:
                 project["passed"] = False
@@ -666,7 +1000,7 @@ def _evaluate_dependency_payload(
                 )
                 continue
             try:
-                installed_version = version_getter(requirement.name)
+                raw_installed_version = version_getter(requirement.name)
             except importlib.metadata.PackageNotFoundError:
                 project["passed"] = False
                 project["missing"].append(safe_record)
@@ -681,18 +1015,53 @@ def _evaluate_dependency_payload(
                     }
                 )
                 continue
+            if not isinstance(raw_installed_version, str):
+                project["passed"] = False
+                project["invalid"].append(
+                    {
+                        **safe_record,
+                        "kind": "installed_version",
+                        "error_type": "InstalledVersionIsNotString",
+                    }
+                )
+                continue
+            installed_version_sha256 = hashlib.sha256(
+                raw_installed_version.encode("utf-8")
+            ).hexdigest()
+            if len(raw_installed_version.encode("utf-8")) > MAX_INSTALLED_VERSION_BYTES:
+                project["passed"] = False
+                project["invalid"].append(
+                    {
+                        **safe_record,
+                        "kind": "installed_version",
+                        "installed_version_sha256": installed_version_sha256,
+                        "error_type": "InstalledVersionExceedsBound",
+                    }
+                )
+                continue
+            try:
+                parsed_installed_version = Version(raw_installed_version)
+            except InvalidVersion as exc:
+                project["passed"] = False
+                project["invalid"].append(
+                    {
+                        **safe_record,
+                        "kind": "installed_version",
+                        "installed_version_sha256": installed_version_sha256,
+                        "error_type": type(exc).__name__,
+                    }
+                )
+                continue
+            installed_version = str(parsed_installed_version)
             observed = {
                 **safe_record,
                 "installed_version": installed_version,
+                "installed_version_sha256": installed_version_sha256,
             }
             project["observed"].append(observed)
-            try:
-                compatible = (
-                    not requirement.specifier or Version(installed_version) in requirement.specifier
-                )
-            except InvalidVersion as exc:
-                compatible = False
-                observed["error_type"] = type(exc).__name__
+            compatible = (
+                not requirement.specifier or parsed_installed_version in requirement.specifier
+            )
             if not compatible:
                 project["passed"] = False
                 project["incompatible"].append(observed)
@@ -977,7 +1346,7 @@ def _preflight_validation_project_dependencies(
             continue
         if root not in roots:
             roots.append(root)
-        if PYTEST_COMMAND_PATTERN.search(command_text):
+        if _validation_command_invokes_pytest(command_text):
             pytest_roots.add(root)
 
     projects = [
@@ -1035,9 +1404,10 @@ def _preflight_validation_project_dependencies(
                     key: project.get(key)
                     for key in (
                         "root",
-                        "project_name",
+                        "project_name_sha256",
                         "pyproject_sha256",
                         "requirements",
+                        "requirement_marker_extras",
                         "requires_python",
                     )
                 }
