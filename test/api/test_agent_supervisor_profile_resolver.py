@@ -489,6 +489,74 @@ def test_signed_profile_beats_repository_hint_and_defaults() -> None:
     )
 
 
+def test_existing_run_binding_beats_signed_profile() -> None:
+    """Run bindings (EXISTING_RUN) outrank signed profiles on the ladder."""
+
+    run_binding = ProfileSourceLayer(
+        kind=ProfileSourceKind.EXISTING_RUN,
+        evidence_cid=_cid("run-binding"),
+        profile_name="local-worktree",
+        allowed_effects=LOCAL_WORKTREE_ALLOWED_EFFECTS,
+        worktree_strategy=WorktreeStrategy.ISOLATED,
+        merge_target="run-bound-branch",
+        max_lanes=1,
+        reviewed=True,
+        signature_verified=True,
+    )
+    signed = ProfileSourceLayer(
+        kind=ProfileSourceKind.SIGNED_PROFILE,
+        evidence_cid=_cid("signed-lower"),
+        profile_name="ci-worker",
+        allowed_effects=LOCAL_WORKTREE_ALLOWED_EFFECTS,
+        worktree_strategy=WorktreeStrategy.ISOLATED,
+        merge_target="signed-branch",
+        max_lanes=4,
+        signature_verified=True,
+    )
+    resolution = resolve_supervisor_profile(
+        _request(profile_layers=(run_binding, signed))
+    )
+
+    assert resolution.receipt.merge_target == "run-bound-branch"
+    assert resolution.receipt.lane_ceiling == 1
+    merge_decision = resolution.decision_for("merge_target")
+    assert merge_decision.selected_source is ResolutionSource.EXISTING_RUN
+
+
+def test_authenticated_server_policy_beats_repository_hint() -> None:
+    """Authenticated/server policy outranks reviewed repository hints."""
+
+    server_policy = ProfileSourceLayer(
+        kind=ProfileSourceKind.AUTHENTICATED_SERVER_POLICY,
+        evidence_cid=_cid("server-policy"),
+        profile_name="local-worktree",
+        allowed_effects=LOCAL_WORKTREE_ALLOWED_EFFECTS,
+        worktree_strategy=WorktreeStrategy.ISOLATED,
+        merge_target="policy-branch",
+        max_lanes=2,
+        signature_verified=True,
+        reviewed=True,
+    )
+    repo_hint = ProfileSourceLayer(
+        kind=ProfileSourceKind.REPOSITORY_HINT,
+        evidence_cid=_cid("repo-hint-lower"),
+        profile_name="ci-worker",
+        allowed_effects=LOCAL_WORKTREE_ALLOWED_EFFECTS,
+        worktree_strategy=WorktreeStrategy.ISOLATED,
+        merge_target="repo-branch",
+        max_lanes=8,
+        reviewed=True,
+    )
+    resolution = resolve_supervisor_profile(
+        _request(profile_layers=(server_policy, repo_hint))
+    )
+
+    assert resolution.receipt.merge_target == "policy-branch"
+    assert resolution.receipt.lane_ceiling == 2
+    merge_decision = resolution.decision_for("merge_target")
+    assert merge_decision.selected_source is ResolutionSource.AUTHENTICATED_TRANSPORT
+
+
 def test_lower_source_cannot_widen_worktree_or_lanes() -> None:
     narrow = ProfileSourceLayer(
         kind=ProfileSourceKind.SIGNED_PROFILE,
@@ -683,6 +751,17 @@ def test_unreviewed_repository_hint_rejected() -> None:
             evidence_cid=_cid("unreviewed"),
             profile_name="local-worktree",
             reviewed=False,
+        )
+
+
+def test_server_policy_requires_verification_or_review() -> None:
+    with pytest.raises(ProfileResolverError, match="verification or review"):
+        ProfileSourceLayer(
+            kind=ProfileSourceKind.AUTHENTICATED_SERVER_POLICY,
+            evidence_cid=_cid("unverified-policy"),
+            profile_name="local-worktree",
+            reviewed=False,
+            signature_verified=False,
         )
 
 
