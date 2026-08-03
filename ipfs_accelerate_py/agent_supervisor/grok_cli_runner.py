@@ -9,7 +9,10 @@ flags. Command policy lives next to other CLI peers in :mod:`llm_router`.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -25,6 +28,88 @@ if str(_PACKAGE_ROOT) not in sys.path:
 DEFAULT_GROK_MODEL = "grok-4.5"
 # Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
 DEFAULT_GROK_MAX_TURNS = 4_294_967_295
+CAPACITY_RESULT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/grok-cli-capacity-result@1"
+)
+CAPACITY_RESULT_REASON_CODES = ("capacity_unavailable", "quota_exhausted")
+# The wrapper, not the provider subprocess, owns this status.  A non-quota
+# child collision is remapped below, so a sidecar file alone cannot authorize
+# the daemon's quota route.
+HARD_QUOTA_EXIT_CODE = 75
+_CAPACITY_DIAGNOSTIC_TAIL_BYTES = 256 * 1024
+_HARD_QUOTA_LINE_PATTERNS = (
+    re.compile(
+        r"^\s*(?:error|fatal)(?:\s*[:\]]|\s+).*"
+        r"\binsufficient_quota\b",
+        re.IGNORECASE | re.MULTILINE,
+    ),
+    re.compile(
+        r"^\s*(?:error|fatal)\s*:\s*you(?:'|\u2019)?ve hit your usage limit\s*[.!]?\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    ),
+    re.compile(
+        r"^\s*(?:error|fatal)\s*:\s*.*\b(?:quota (?:has been )?exceeded|"
+        r"quota exhausted|(?:usage )?balance exhausted)\b",
+        re.IGNORECASE | re.MULTILINE,
+    ),
+    re.compile(
+        r"^\s*(?:error\s*:\s*)?(?:http\s*)?402\s+payment required\b",
+        re.IGNORECASE | re.MULTILINE,
+    ),
+)
+
+
+def _is_hard_quota_exhaustion(stderr_text: str) -> bool:
+    """Return true only for durable quota/balance exhaustion from Grok stderr."""
+
+    lowered = stderr_text.lower()
+    transient_markers = (
+        "429",
+        "rate limit",
+        "rate_limit",
+        "too many requests",
+        "resource exhausted",
+        "resource_exhausted",
+    )
+    if any(marker in lowered for marker in transient_markers):
+        return False
+    return any(pattern.search(stderr_text) for pattern in _HARD_QUOTA_LINE_PATTERNS)
+
+
+def _replace_capacity_result(path: Path, payload: dict[str, object]) -> None:
+    """Atomically publish a bounded, prompt-free runner result."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=str(path.parent),
+            delete=False,
+        ) as handle:
+            json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\n")
+            temporary_path = handle.name
+        os.replace(temporary_path, path)
+        temporary_path = ""
+    finally:
+        if temporary_path:
+            try:
+                os.unlink(temporary_path)
+            except OSError:
+                pass
+
+
+def _remove_capacity_result(path: Optional[Path]) -> None:
+    if path is None:
+        return
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
 
 
 def _resolve_grok_bin(configured: str = "") -> str:
@@ -86,6 +171,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--model", default="")
     parser.add_argument("--max-turns", default="")
     parser.add_argument(
+        "--capacity-result-path",
+        type=Path,
+        default=None,
+        help="Daemon-owned path for a typed hard-quota result (never prompt data).",
+    )
+    parser.add_argument(
         "--permission-mode",
         default="",
         help="Grok permission mode (default: bypassPermissions in agent mode).",
@@ -97,6 +188,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="agent enables tool approvals for implementation work",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
+    capacity_result_path = (
+        Path(os.path.abspath(os.path.expanduser(str(args.capacity_result_path))))
+        if args.capacity_result_path is not None
+        else None
+    )
+    _remove_capacity_result(capacity_result_path)
 
     from ipfs_accelerate_py.llm_router import (
         LLMRouterError,
@@ -174,8 +271,55 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
 
         os.chdir(workspace)
-        completed = subprocess.run(cmd, env=env, check=False)
-        return int(completed.returncode)
+        diagnostic = hashlib.sha256()
+        diagnostic_tail = b""
+        if capacity_result_path is None:
+            completed = subprocess.run(cmd, env=env, check=False)
+            return int(completed.returncode)
+
+        process = subprocess.Popen(cmd, env=env, stderr=subprocess.PIPE)
+        assert process.stderr is not None
+        try:
+            while True:
+                chunk = process.stderr.read1(64 * 1024)
+                if not chunk:
+                    break
+                diagnostic.update(chunk)
+                diagnostic_tail = (diagnostic_tail + chunk)[
+                    -_CAPACITY_DIAGNOSTIC_TAIL_BYTES:
+                ]
+                sys.stderr.write(chunk.decode("utf-8", errors="replace"))
+                sys.stderr.flush()
+        finally:
+            process.stderr.close()
+        provider_returncode = int(process.wait())
+        hard_quota = provider_returncode != 0 and _is_hard_quota_exhaustion(
+            diagnostic_tail.decode("utf-8", errors="replace")
+        )
+        # A child process cannot authorize fallback by writing this path: the
+        # runner removes/replaces it only after the child has terminated.
+        _remove_capacity_result(capacity_result_path)
+        if hard_quota and capacity_result_path is not None:
+            _replace_capacity_result(
+                capacity_result_path,
+                {
+                    "diagnostic_sha256": diagnostic.hexdigest(),
+                    "model": model,
+                    "provider": "grok_cli",
+                    "provider_returncode": provider_returncode,
+                    "reason": "provider_quota_exhausted",
+                    "reason_codes": list(CAPACITY_RESULT_REASON_CODES),
+                    "returncode": HARD_QUOTA_EXIT_CODE,
+                    "schema": CAPACITY_RESULT_SCHEMA,
+                },
+            )
+            return HARD_QUOTA_EXIT_CODE
+        # Reserve HARD_QUOTA_EXIT_CODE for a runner-verified hard-quota result.
+        # Ordinary provider failures retain their status except for this one
+        # collision, which remains an ordinary consuming failure.
+        if provider_returncode == HARD_QUOTA_EXIT_CODE:
+            return 1
+        return provider_returncode
     finally:
         if prompt_path:
             try:

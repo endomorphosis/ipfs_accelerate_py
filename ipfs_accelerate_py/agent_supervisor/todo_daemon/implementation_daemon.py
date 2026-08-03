@@ -423,6 +423,26 @@ PROVIDER_CAPACITY_PATTERNS = (
         ),
     ),
 )
+GROK_QUOTA_FALLBACK_PROVIDER = "codex_cli"
+GROK_QUOTA_FALLBACK_MODEL = "gpt-5.6-terra"
+GROK_QUOTA_FALLBACK_REASONING_EFFORT = "medium"
+GROK_QUOTA_FALLBACK_REASON_CODES = frozenset(
+    {"quota_exhausted", "capacity_unavailable"}
+)
+GROK_CAPACITY_RESULT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/grok-cli-capacity-result@1"
+)
+GROK_CAPACITY_RESULT_MAX_BYTES = 8 * 1024
+GROK_HARD_QUOTA_EXIT_CODE = 75
+TERRA_CANDIDATE_REVIEW_BACKOFF_SECONDS = 24 * 60 * 60
+TERRA_CANDIDATE_HELD_EVENT = "implementation_candidate_held"
+TERRA_CANDIDATE_HOLD_REGISTRY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/terra-candidate-hold-registry@2"
+)
+TERRA_CANDIDATE_HOLD_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/terra-candidate-hold@1"
+)
+TERRA_CANDIDATE_HOLD_REGISTRY_MAX_BYTES = 1024 * 1024
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 REQUIRE_TASK_EXECUTION_METADATA_ENV = (
     "IPFS_ACCELERATE_AGENT_REQUIRE_TASK_EXECUTION_METADATA"
@@ -1610,7 +1630,12 @@ def _grok_cli_available() -> bool:
         return False
 
 
-def _grok_cli_command(*, workspace_path: Path) -> list[str]:
+def _grok_cli_command(
+    *,
+    workspace_path: Path,
+    capacity_result_path: Path | None = None,
+    exact_model: str = "",
+) -> list[str]:
     """Build a Grok CLI agent command through llm_router.grok_cli.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
@@ -1624,7 +1649,7 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
             "Grok CLI is not authenticated. Run 'grok login' or set XAI_API_KEY"
         )
 
-    model = (
+    model = exact_model or (
         os.environ.get(_GROK_MODEL_ENV, "").strip()
         or os.environ.get("GROK_CLI_MODEL", "").strip()
         or os.environ.get("GROK_MODEL", "").strip()
@@ -1638,7 +1663,7 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
     runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
     if not runner_path.is_file():
         raise RuntimeError(f"grok_cli_runner missing at {runner_path}")
-    return [
+    command = [
         sys.executable,
         str(runner_path),
         "--workspace",
@@ -1652,6 +1677,11 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         "--mode",
         "agent",
     ]
+    if capacity_result_path is not None:
+        command.extend(
+            ["--capacity-result-path", str(capacity_result_path.absolute())]
+        )
+    return command
 
 
 def _copilot_has_auth() -> bool:
@@ -10621,6 +10651,390 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         classified["evidence"] = evidence[-4:]
         return classified
 
+    def _new_grok_capacity_result_path(
+        self,
+        *,
+        task: PortalTask | None,
+        workspace_path: Path,
+    ) -> Path:
+        """Allocate a unique daemon-owned result locator for one Grok launch."""
+
+        root = self.implementation_log_dir.absolute() / ".provider-results"
+        safe_task = re.sub(
+            r"[^a-z0-9_.-]+",
+            "-",
+            str(task.task_id if task is not None else "implementation").lower(),
+        ).strip("-") or "implementation"
+        nonce = hashlib.sha256(
+            f"{os.getpid()}:{time.time_ns()}:{workspace_path.absolute()}".encode(
+                "utf-8"
+            )
+        ).hexdigest()[:20]
+        return root / f"{safe_task}-{nonce}.grok-capacity.json"
+
+    @staticmethod
+    def _capacity_result_path_from_command(command: Sequence[str]) -> Path | None:
+        indexes = [
+            index
+            for index, value in enumerate(command)
+            if str(value) == "--capacity-result-path"
+        ]
+        if len(indexes) != 1 or indexes[0] + 1 >= len(command):
+            return None
+        return Path(os.path.abspath(os.path.expanduser(str(command[indexes[0] + 1]))))
+
+    def _grok_capacity_failure_from_invocation(
+        self,
+        *,
+        command: Sequence[str],
+        returncode: int,
+    ) -> dict[str, Any]:
+        """Verify the runner's typed marker without trusting model log text."""
+
+        path = self._capacity_result_path_from_command(command)
+        if path is None:
+            return {"exhausted": False, "providers": [], "reason": ""}
+        owned_root = Path(
+            os.path.abspath(str(self.implementation_log_dir.absolute()))
+        ) / ".provider-results"
+        descriptor = -1
+        try:
+            if os.path.commonpath((str(owned_root), str(path))) != str(owned_root):
+                return {"exhausted": False, "providers": [], "reason": ""}
+            no_follow = getattr(os, "O_NOFOLLOW", None)
+            if no_follow is None:
+                return {"exhausted": False, "providers": [], "reason": ""}
+            flags = os.O_RDONLY | no_follow
+            nonblock = getattr(os, "O_NONBLOCK", None)
+            if nonblock is None:
+                return {"exhausted": False, "providers": [], "reason": ""}
+            flags |= nonblock
+            descriptor = os.open(path, flags)
+            stat_result = os.fstat(descriptor)
+            if (
+                not stat_module.S_ISREG(stat_result.st_mode)
+                or stat_result.st_size > GROK_CAPACITY_RESULT_MAX_BYTES
+            ):
+                return {"exhausted": False, "providers": [], "reason": ""}
+            raw_payload = os.read(descriptor, GROK_CAPACITY_RESULT_MAX_BYTES + 1)
+            if len(raw_payload) != stat_result.st_size:
+                return {"exhausted": False, "providers": [], "reason": ""}
+            payload = json.loads(raw_payload.decode("utf-8"))
+        except (OSError, ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+            return {"exhausted": False, "providers": [], "reason": ""}
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+        expected_keys = {
+            "diagnostic_sha256",
+            "model",
+            "provider",
+            "provider_returncode",
+            "reason",
+            "reason_codes",
+            "returncode",
+            "schema",
+        }
+        if not isinstance(payload, dict) or set(payload) != expected_keys:
+            return {"exhausted": False, "providers": [], "reason": ""}
+        raw_reason_codes = payload.get("reason_codes")
+        marker_returncode = payload.get("returncode")
+        provider_returncode = payload.get("provider_returncode")
+        diagnostic_sha256 = payload.get("diagnostic_sha256")
+        if (
+            not isinstance(raw_reason_codes, list)
+            or any(not isinstance(item, str) for item in raw_reason_codes)
+            or isinstance(marker_returncode, bool)
+            or not isinstance(marker_returncode, int)
+            or isinstance(provider_returncode, bool)
+            or not isinstance(provider_returncode, int)
+            or provider_returncode == 0
+            or not isinstance(diagnostic_sha256, str)
+        ):
+            return {"exhausted": False, "providers": [], "reason": ""}
+        reason_codes = set(raw_reason_codes)
+        valid = (
+            payload.get("schema") == GROK_CAPACITY_RESULT_SCHEMA
+            and payload.get("provider") == "grok_cli"
+            and payload.get("model") == "grok-4.5"
+            and payload.get("reason") == "provider_quota_exhausted"
+            and reason_codes == GROK_QUOTA_FALLBACK_REASON_CODES
+            and marker_returncode == GROK_HARD_QUOTA_EXIT_CODE
+            and marker_returncode == returncode
+            and re.fullmatch(
+                r"[0-9a-f]{64}", diagnostic_sha256
+            )
+            is not None
+        )
+        if not valid:
+            return {"exhausted": False, "providers": [], "reason": ""}
+        return {
+            "exhausted": True,
+            "provider": "grok_cli",
+            "providers": ["grok_cli"],
+            "reason": "provider_capacity_exhausted",
+            "reason_codes": sorted(reason_codes),
+            "capacity_result_path": str(path),
+            "capacity_result_id": content_identity(payload),
+        }
+
+    def _provider_capacity_failure_from_invocation(
+        self,
+        *,
+        command: Sequence[str],
+        returncode: int,
+        log_path: Path,
+    ) -> dict[str, Any]:
+        provider = self._implementation_provider_from_command(command)
+        if provider == "grok_cli":
+            return self._grok_capacity_failure_from_invocation(
+                command=command,
+                returncode=returncode,
+            )
+        if self._is_exact_grok_quota_terra_command(command):
+            # The quota authority is one-shot.  Terra has no further provider
+            # fallback and its log may contain route/path words such as
+            # ``grok`` and ``quota``; legacy regex classification would both
+            # misclassify ordinary failures and create a provider loop.
+            return {"exhausted": False, "providers": [], "reason": ""}
+        return self._provider_capacity_failure_from_log(log_path)
+
+    def _is_exact_grok_quota_terra_command(
+        self,
+        command: Sequence[str],
+    ) -> bool:
+        """Recognize only the supervisor-owned Terra quota route."""
+
+        command_items = [str(item) for item in command]
+        model_indexes = [
+            index for index, item in enumerate(command_items) if item == "-m"
+        ]
+        return bool(
+            self._implementation_provider_from_command(command_items)
+            == GROK_QUOTA_FALLBACK_PROVIDER
+            and len(model_indexes) == 1
+            and model_indexes[0] + 1 < len(command_items)
+            and command_items[model_indexes[0] + 1]
+            == GROK_QUOTA_FALLBACK_MODEL
+            and "--ephemeral" in command_items
+            and "--ignore-user-config" in command_items
+            and "--dangerously-bypass-approvals-and-sandbox"
+            in command_items
+            and (
+                "model_reasoning_effort=\""
+                f"{GROK_QUOTA_FALLBACK_REASONING_EFFORT}\""
+            )
+            in command_items
+        )
+
+    def _grok_quota_fallback_authority(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Return invocation-bound Terra authority for one clean retry pass."""
+
+        declared_provider = self._task_declared_implementation_provider(task)
+        configured_provider = (
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+            or "auto"
+        )
+        # Canonical UIIR tasks own an explicit Grok implementation contract.
+        # That contract permits only this exact hard-quota route.  Legacy
+        # provider-less tasks must still use unmodified automatic routing.
+        if declared_provider not in {"", "grok"}:
+            return {}
+        if declared_provider == "" and (
+            self.implementation_command
+            or os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
+            or configured_provider != "auto"
+        ):
+            return {}
+        # A fresh task worktree is the isolation boundary between a Grok
+        # process that may have edited bytes before reporting quota and Terra.
+        if not self.use_ephemeral_worktree:
+            return {}
+        try:
+            if event_log_integrity_failure(self.events_path) is not None:
+                return {}
+            events = read_jsonl_event_sources(
+                (self.events_path,),
+                include_rotated=True,
+            )
+        except (
+            EventLogIntegrityFailure,
+            OSError,
+            TypeError,
+            ValueError,
+        ):
+            return {}
+        exhausted_index = -1
+        exhausted: Mapping[str, Any] | None = None
+        for index in range(len(events) - 1, -1, -1):
+            event = events[index]
+            if (
+                str(event.get("task_id") or "") == task.task_id
+                and str(event.get("type") or "") == "implementation_started"
+            ):
+                return {}
+            if (
+                str(event.get("task_id") or "") == task.task_id
+                and str(event.get("type") or "")
+                == "implementation_provider_exhausted"
+            ):
+                exhausted_index = index
+                exhausted = event
+                break
+        if exhausted is None:
+            return {}
+        task_identity = self._identity_for_task(task)
+        expected_binding = post_merge_task_binding_id(task)
+        retry_at = parse_timestamp(str(exhausted.get("retry_at") or ""))
+        raw_providers = exhausted.get("providers")
+        raw_reason_codes = exhausted.get("reason_codes")
+        raw_started_sequence = exhausted.get("released_started_event_sequence")
+        raw_exhausted_sequence = exhausted.get("sequence")
+        raw_attempt = exhausted.get("attempt")
+        if (
+            exhausted.get("provider") != "grok_cli"
+            or raw_providers != ["grok_cli"]
+            or not isinstance(raw_reason_codes, list)
+            or any(not isinstance(item, str) for item in raw_reason_codes)
+            or set(raw_reason_codes) != GROK_QUOTA_FALLBACK_REASON_CODES
+            or exhausted.get("reason") != "provider_capacity_exhausted"
+            or exhausted.get("attempt_consumed") is not False
+            or retry_at is None
+            or str(exhausted.get("canonical_task_key") or "")
+            != task_identity.canonical_task_key
+            or str(exhausted.get("canonical_task_cid") or "")
+            != task_identity.canonical_task_cid
+            or str(exhausted.get("task_binding_id") or "") != expected_binding
+            or not str(exhausted.get("capacity_result_id") or "")
+            or isinstance(raw_started_sequence, bool)
+            or not isinstance(raw_started_sequence, int)
+            or raw_started_sequence <= 0
+            or isinstance(raw_exhausted_sequence, bool)
+            or not isinstance(raw_exhausted_sequence, int)
+            or isinstance(raw_attempt, bool)
+            or not isinstance(raw_attempt, int)
+            or raw_attempt < 1
+        ):
+            return {}
+        started_id = str(exhausted.get("released_started_event_id") or "")
+        started_sequence = raw_started_sequence
+        if not started_id:
+            return {}
+        started = next(
+            (
+                event
+                for event in events[:exhausted_index]
+                if str(event.get("type") or "") == "implementation_started"
+                and str(event.get("event_id") or "") == started_id
+                and event.get("sequence") == started_sequence
+            ),
+            None,
+        )
+        started_attempt = started.get("attempt") if started is not None else None
+        source_workspace = (
+            str(started.get("worktree_path") or "")
+            if started is not None
+            else ""
+        )
+        source_branch = (
+            str(started.get("branch") or "") if started is not None else ""
+        )
+        cleanup_result = exhausted.get("cleanup_result")
+        lifecycle_finalize = (
+            cleanup_result.get("lifecycle_finalize")
+            if isinstance(cleanup_result, Mapping)
+            else None
+        )
+        try:
+            source_workspace_is_isolated = bool(
+                source_workspace
+                and os.path.commonpath(
+                    (
+                        str(self.worktree_root.absolute()),
+                        str(Path(source_workspace).absolute()),
+                    )
+                )
+                == str(self.worktree_root.absolute())
+            )
+        except ValueError:
+            source_workspace_is_isolated = False
+        if (
+            started is None
+            or str(started.get("task_id") or "") != task.task_id
+            or raw_exhausted_sequence <= started_sequence
+            or isinstance(started_attempt, bool)
+            or not isinstance(started_attempt, int)
+            or started_attempt != raw_attempt
+            or str(started.get("canonical_task_key") or "")
+            != task_identity.canonical_task_key
+            or str(started.get("canonical_task_cid") or "")
+            != task_identity.canonical_task_cid
+            or str(started.get("task_binding_id") or "") != expected_binding
+            or not source_workspace_is_isolated
+            or not source_branch
+            or str(exhausted.get("worktree_path") or "") != source_workspace
+            or str(exhausted.get("branch") or "") != source_branch
+            or not isinstance(cleanup_result, Mapping)
+            or cleanup_result.get("cleaned") is not True
+            or not isinstance(lifecycle_finalize, Mapping)
+            or lifecycle_finalize.get("finalized") is not True
+        ):
+            return {}
+        raw_command = started.get("command")
+        if not isinstance(raw_command, list) or any(
+            not isinstance(item, str) for item in raw_command
+        ):
+            return {}
+        command = list(raw_command)
+        result_path = self._capacity_result_path_from_command(command)
+        model_indexes = [
+            index for index, value in enumerate(command) if value == "--model"
+        ]
+        if (
+            self._implementation_provider_from_command(command) != "grok_cli"
+            or len(model_indexes) != 1
+            or model_indexes[0] + 1 >= len(command)
+            or command[model_indexes[0] + 1] != "grok-4.5"
+            or result_path is None
+            or str(result_path)
+            != str(exhausted.get("capacity_result_path") or "")
+        ):
+            return {}
+        verified_marker = self._grok_capacity_failure_from_invocation(
+            command=command,
+            returncode=(
+                exhausted.get("returncode")
+                if isinstance(exhausted.get("returncode"), int)
+                and not isinstance(exhausted.get("returncode"), bool)
+                else 0
+            ),
+        )
+        if (
+            not verified_marker.get("exhausted", False)
+            or verified_marker.get("capacity_result_id")
+            != exhausted.get("capacity_result_id")
+        ):
+            return {}
+        return {
+            "source_event_id": str(exhausted.get("event_id") or ""),
+            "source_event_sequence": int(exhausted.get("sequence") or 0),
+            "source_started_event_id": started_id,
+            "source_started_event_sequence": started_sequence,
+            "provider": GROK_QUOTA_FALLBACK_PROVIDER,
+            "model": GROK_QUOTA_FALLBACK_MODEL,
+            "reasoning_effort": GROK_QUOTA_FALLBACK_REASONING_EFFORT,
+            "reason_codes": sorted(GROK_QUOTA_FALLBACK_REASON_CODES),
+            "capacity_result_path": str(
+                exhausted.get("capacity_result_path") or ""
+            ),
+            "capacity_result_id": str(
+                exhausted.get("capacity_result_id") or ""
+            ),
+        }
+
     def _current_implementation_provider_labels(self) -> set[str]:
         """Return coarse provider labels for the active implementation runner."""
 
@@ -10648,17 +11062,387 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "grok_build",
             "grok-build",
         }:
-            return {"grok", "xai", "provider"}
+            return {"grok", "grok_cli", "xai", "provider"}
         if provider in {"codex", "copilot", "openai"}:
             return {"codex", "copilot", "provider"}
         labels: set[str] = set()
         if _goose_meta_spark_available():
             labels.update({"goose", "meta_spark", "meta", "provider"})
         if _grok_cli_available():
-            labels.update({"grok", "xai", "provider"})
+            labels.update({"grok", "grok_cli", "xai", "provider"})
         if shutil.which("codex") or (shutil.which("copilot") and _copilot_has_auth()):
             labels.update({"codex", "copilot", "provider"})
         return labels or {"provider"}
+
+    def _terra_candidate_hold_registry_path(self) -> Path:
+        # A Terra hold fences provider dispatch for the entire repository, not
+        # merely one supervisor lane.  Keep it beside the checkout-wide lock
+        # family so sibling state directories observe the same registry.
+        return (
+            checkout_mutation_lock_path(self.repo_root).parent
+            / "terra_candidate_holds.json"
+        )
+
+    def _load_terra_candidate_hold_registry(
+        self,
+    ) -> tuple[dict[str, dict[str, Any]], str]:
+        """Load the non-rotating, content-addressed Terra hold registry."""
+
+        path = self._terra_candidate_hold_registry_path()
+        if not path.exists():
+            return {}, ""
+        try:
+            if path.stat().st_size > TERRA_CANDIDATE_HOLD_REGISTRY_MAX_BYTES:
+                return {}, "registry_oversized"
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return {}, "registry_unreadable"
+        if not isinstance(payload, dict) or set(payload) != {
+            "entries",
+            "registry_id",
+            "schema",
+        }:
+            return {}, "registry_shape_invalid"
+        material = {
+            "schema": payload.get("schema"),
+            "entries": payload.get("entries"),
+        }
+        if (
+            material["schema"] != TERRA_CANDIDATE_HOLD_REGISTRY_SCHEMA
+            or not isinstance(material["entries"], dict)
+            or len(material["entries"]) > 1024
+            or content_identity(material) != payload.get("registry_id")
+        ):
+            return {}, "registry_identity_invalid"
+        expected_record_keys = {
+            "attempt",
+            "baseline_ref",
+            "board_namespace",
+            "candidate_tree",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "completion_authoritative",
+            "created_at",
+            "hold_id",
+            "implementation_commit",
+            "merge_authorized",
+            "model",
+            "provider",
+            "provider_route_authority",
+            "reason",
+            "reasoning_effort",
+            "rescue_branch",
+            "rescue_ref",
+            "schema",
+            "task_binding_id",
+            "task_id",
+            "target_branch",
+            "target_repository_id",
+        }
+        entries: dict[str, dict[str, Any]] = {}
+        for key, raw_record in material["entries"].items():
+            if (
+                not isinstance(key, str)
+                or not isinstance(raw_record, dict)
+                or set(raw_record) != expected_record_keys
+            ):
+                return {}, "registry_record_shape_invalid"
+            record = dict(raw_record)
+            hold_id = record.pop("hold_id", None)
+            attempt = record.get("attempt")
+            if (
+                record.get("schema") != TERRA_CANDIDATE_HOLD_SCHEMA
+                or record.get("canonical_task_cid") != key
+                or content_identity(record) != hold_id
+                or isinstance(attempt, bool)
+                or not isinstance(attempt, int)
+                or attempt < 1
+                or not _FULL_GIT_COMMIT_ID.fullmatch(
+                    str(record.get("baseline_ref") or "")
+                )
+                or not _FULL_GIT_COMMIT_ID.fullmatch(
+                    str(record.get("implementation_commit") or "")
+                )
+                or not _FULL_GIT_COMMIT_ID.fullmatch(
+                    str(record.get("candidate_tree") or "")
+                )
+                or not str(record.get("rescue_ref") or "").startswith(
+                    "refs/heads/rescue/"
+                )
+                or record.get("provider")
+                != GROK_QUOTA_FALLBACK_PROVIDER
+                or record.get("model") != GROK_QUOTA_FALLBACK_MODEL
+                or record.get("reasoning_effort")
+                != GROK_QUOTA_FALLBACK_REASONING_EFFORT
+                or record.get("merge_authorized") is not False
+                or record.get("completion_authoritative") is not False
+                or not isinstance(
+                    record.get("provider_route_authority"), dict
+                )
+                or not all(
+                    isinstance(record.get(field_name), str)
+                    and bool(str(record.get(field_name) or "").strip())
+                    for field_name in (
+                        "board_namespace",
+                        "canonical_task_cid",
+                        "canonical_task_key",
+                        "created_at",
+                        "rescue_branch",
+                        "task_binding_id",
+                        "task_id",
+                        "target_branch",
+                        "target_repository_id",
+                    )
+                )
+                or record.get("reason")
+                != "independent_non_codex_review_pending"
+                or parse_timestamp(str(record.get("created_at") or ""))
+                is None
+                or record.get("rescue_ref")
+                != f"refs/heads/{record.get('rescue_branch')}"
+            ):
+                return {}, "registry_record_identity_invalid"
+            entries[key] = {**record, "hold_id": hold_id}
+        return entries, ""
+
+    def _persist_terra_candidate_hold_registry(
+        self,
+        entries: Mapping[str, Mapping[str, Any]],
+    ) -> Path:
+        normalized = {
+            str(key): dict(value)
+            for key, value in sorted(entries.items())
+        }
+        if len(normalized) > 1024:
+            raise RuntimeError("Terra hold registry entry bound exceeded")
+        material = {
+            "schema": TERRA_CANDIDATE_HOLD_REGISTRY_SCHEMA,
+            "entries": normalized,
+        }
+        payload = {
+            **material,
+            "registry_id": content_identity(material),
+        }
+        encoded = (
+            json.dumps(payload, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        if len(encoded) > TERRA_CANDIDATE_HOLD_REGISTRY_MAX_BYTES:
+            raise RuntimeError("Terra hold registry byte bound exceeded")
+        path = self._terra_candidate_hold_registry_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _shared_atomic_write_json(path, payload)
+        return path
+
+    def _register_terra_candidate_hold(
+        self,
+        record: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], Path]:
+        registry_path = self._terra_candidate_hold_registry_path()
+        with serialized_lock_update(registry_path):
+            entries, error = (
+                self._load_terra_candidate_hold_registry()
+            )
+            if error:
+                raise RuntimeError(
+                    f"Terra hold registry is invalid: {error}"
+                )
+            material = dict(record)
+            material["schema"] = TERRA_CANDIDATE_HOLD_SCHEMA
+            hold = {**material, "hold_id": content_identity(material)}
+            canonical_task_cid = str(hold["canonical_task_cid"])
+            existing = entries.get(canonical_task_cid)
+            if existing is not None and existing != hold:
+                raise RuntimeError(
+                    "active Terra candidate hold already exists"
+                )
+            if any(
+                active.get("task_id") == hold.get("task_id")
+                and active.get("hold_id") != hold.get("hold_id")
+                for active in entries.values()
+            ):
+                raise RuntimeError(
+                    "same task already has an active Terra candidate hold"
+                )
+            entries[canonical_task_cid] = hold
+            path = self._persist_terra_candidate_hold_registry(entries)
+            return hold, path
+
+    def _terra_candidate_rescue_refs_for_task(
+        self,
+        task: PortalTask,
+    ) -> dict[str, str]:
+        """Return every durable, repository-wide Terra rescue ref.
+
+        An unregistered ref is a crash latch.  It must fence every task even
+        if the task's display ID changed between the ref write and restart.
+        ``task`` remains explicit so callers cannot mistake this for a generic
+        rescue namespace scan with broader lifecycle authority.
+        """
+
+        del task
+        observed = subprocess.run(
+            [
+                "git",
+                "for-each-ref",
+                "--format=%(refname)%09%(objectname)",
+                "refs/heads/rescue/",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if observed.returncode != 0:
+            git_marker = self.repo_root / ".git"
+            git_head_exists = False
+            try:
+                if git_marker.is_dir():
+                    git_head_exists = (git_marker / "HEAD").is_file()
+                elif git_marker.is_file():
+                    marker_text = git_marker.read_text(
+                        encoding="utf-8"
+                    )[:4096]
+                    if marker_text.startswith("gitdir:"):
+                        git_dir = Path(
+                            marker_text.partition(":")[2].strip()
+                        )
+                        if not git_dir.is_absolute():
+                            git_dir = (self.repo_root / git_dir).resolve()
+                        git_head_exists = (git_dir / "HEAD").is_file()
+            except OSError:
+                git_head_exists = True
+            if not git_head_exists:
+                return {}
+            return {"__lookup_failed__": ""}
+        refs: dict[str, str] = {}
+        for line in observed.stdout.splitlines():
+            ref_name, separator, commit = line.partition("\t")
+            if (
+                separator
+                and ref_name.startswith("refs/heads/rescue/")
+                and ref_name.endswith("-provider-review-pending")
+            ):
+                refs[ref_name] = commit.strip()
+        return refs
+
+    def _active_terra_candidate_hold(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Return an exact still-referenced Terra candidate hold, if any."""
+
+        entries, error = self._load_terra_candidate_hold_registry()
+        if error:
+            return {
+                "registry_invalid": True,
+                "registry_error": error,
+                "reason": "terra_candidate_hold_registry_invalid",
+            }
+        identity = self._identity_for_task(task)
+        record = entries.get(identity.canonical_task_cid)
+        if record is None:
+            prior_same_task = next(
+                (
+                    candidate
+                    for candidate in entries.values()
+                    if candidate.get("task_id") == task.task_id
+                ),
+                None,
+            )
+            if prior_same_task is not None:
+                return {
+                    **prior_same_task,
+                    "registry_invalid": True,
+                    "reason": "terra_candidate_hold_task_binding_changed",
+                }
+        accounted_refs = {
+            str(candidate.get("rescue_ref") or ""): str(
+                candidate.get("implementation_commit") or ""
+            )
+            for candidate in entries.values()
+        }
+        rescue_refs = self._terra_candidate_rescue_refs_for_task(task)
+        if "__lookup_failed__" in rescue_refs:
+            return {
+                "registry_invalid": True,
+                "reason": "terra_candidate_rescue_ref_lookup_failed",
+            }
+        orphan_refs = {
+            ref_name: commit
+            for ref_name, commit in rescue_refs.items()
+            if accounted_refs.get(ref_name) != commit
+        }
+        if orphan_refs:
+            return {
+                "registry_invalid": True,
+                "orphan_rescue_refs": orphan_refs,
+                "reason": "terra_candidate_orphan_rescue_ref",
+            }
+        if record is None:
+            return {}
+        commit = str(record.get("implementation_commit") or "")
+        rescue_ref = str(record.get("rescue_ref") or "")
+        if (
+            str(record.get("task_id") or "") != task.task_id
+            or str(record.get("canonical_task_key") or "")
+            != identity.canonical_task_key
+            or str(record.get("task_binding_id") or "")
+            != post_merge_task_binding_id(task)
+        ):
+            return {
+                **record,
+                "registry_invalid": True,
+                "reason": "terra_candidate_hold_task_binding_changed",
+            }
+        if (
+            str(record.get("target_repository_id") or "")
+            != self.merge_target_repository_id
+            or str(record.get("target_branch") or "")
+            != self.resolved_merge_target_branch
+        ):
+            return {
+                **record,
+                "registry_invalid": True,
+                "reason": "terra_candidate_hold_target_binding_changed",
+            }
+        observed = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", rescue_ref],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if observed.returncode != 0 or observed.stdout.strip() != commit:
+            return {
+                **record,
+                "registry_invalid": True,
+                "reason": "terra_candidate_hold_rescue_ref_changed",
+            }
+        return {
+            **record,
+            "registry_path": str(self._terra_candidate_hold_registry_path()),
+            "reason": "independent_non_codex_review_pending",
+        }
+
+    def _defer_for_active_terra_candidate_hold(
+        self,
+        *,
+        task: PortalTask,
+        state: PortalTaskState,
+        hold: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        hold_reason = str(
+            hold.get("reason")
+            or "independent_non_codex_review_pending"
+        )
+        result = self._defer_unavailable_implementation_provider(
+            task=task,
+            state=state,
+            reason=hold_reason,
+            backoff_seconds=TERRA_CANDIDATE_REVIEW_BACKOFF_SECONDS,
+        )
+        result["candidate_hold"] = dict(hold)
+        return result
 
     def _provider_capacity_backoff_schedule(self) -> dict[str, Any]:
         """Return the latest invocation-bound provider retry schedule, if any.
@@ -10832,8 +11616,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "log_path": str(log_path),
             "deferred": True,
             "reason": "provider_capacity_exhausted",
+            "provider": str(failure.get("provider") or ""),
             "providers": list(failure.get("providers") or []),
+            "reason_codes": list(failure.get("reason_codes") or []),
             "evidence": list(failure.get("evidence") or []),
+            "capacity_result_path": str(
+                failure.get("capacity_result_path") or ""
+            ),
+            "capacity_result_id": str(
+                failure.get("capacity_result_id") or ""
+            ),
             "retry_at": retry_at,
             "attempt_consumed": False,
             "released_started_event_id": str(started_event_id or ""),
@@ -10920,6 +11712,51 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         return result
 
+    def _defer_unavailable_implementation_provider(
+        self,
+        *,
+        task: PortalTask,
+        state: PortalTaskState,
+        reason: str,
+        backoff_seconds: int = 300,
+    ) -> dict[str, Any]:
+        """Defer before worktree/provider launch without charging an attempt."""
+
+        backoff_seconds = max(1, int(backoff_seconds))
+        canonical_task_cid = self._canonical_ref(task)
+        self.task_queue.defer(
+            canonical_task_cid,
+            backoff_seconds,
+            reason=reason,
+        )
+        self.task_queue.save()
+        current = PortalTaskState.load(self.state_path)
+        owns_idle_projection = (
+            current.active_task_id == task.task_id
+            and current.active_task_cid == canonical_task_cid
+            and not current.implementation_in_progress
+        )
+        if owns_idle_projection:
+            self._clear_active_execution_state(current, clear_task=True)
+            current.selection_idle_reason = (
+                f"implementation_retry_deferred:{reason}"
+            )
+            current.save(self.state_path)
+            state.__dict__.update(asdict(current))
+        result = {
+            "skipped": True,
+            "deferred": True,
+            "reason": reason,
+            "task_id": task.task_id,
+            "attempt": self._task_attempt(state, task),
+            "provider_call_allowed": False,
+            "attempt_consumed": False,
+            "backoff_seconds": backoff_seconds,
+            "active_task_cleared": owns_idle_projection,
+        }
+        self._record_event("implementation_retry_deferred", result)
+        return result
+
     def _run_implementation(
         self,
         task: PortalTask,
@@ -10929,6 +11766,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             Mapping[str, Any] | None
         ) = None,
     ) -> dict[str, Any]:
+        active_terra_hold = self._active_terra_candidate_hold(task)
+        if active_terra_hold:
+            return self._defer_for_active_terra_candidate_hold(
+                task=task,
+                state=state,
+                hold=active_terra_hold,
+            )
         policy_blockers = self._task_direct_implementation_blockers(task)
         if policy_blockers:
             result = {
@@ -10979,9 +11823,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     preflight=submodule_preflight,
                     phase="before_task_claim",
                 )
-        provider_backoff = (
+        provider_route_authority = (
             {}
             if deterministic_only
+            else self._grok_quota_fallback_authority(task)
+        )
+        provider_backoff = (
+            {}
+            if deterministic_only or provider_route_authority
             else self._active_provider_capacity_backoff()
         )
         if provider_backoff:
@@ -10994,6 +11843,46 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             }
             self._record_event("implementation_skipped", result)
             return result
+        if not deterministic_only:
+            declared_provider = self._task_declared_implementation_provider(task)
+            configured_provider = (
+                os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+                or "auto"
+            )
+            custom_command = bool(
+                (self.implementation_command and not declared_provider)
+                or (
+                    os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
+                    and not declared_provider
+                )
+            )
+            grok_providers = {
+                "auto",
+                "grok",
+                "grok_cli",
+                "grok-cli",
+                "grok_build",
+                "grok-build",
+                "xai_cli",
+                "xai-cli",
+            }
+            if provider_route_authority and not shutil.which("codex"):
+                return self._defer_unavailable_implementation_provider(
+                    task=task,
+                    state=state,
+                    reason="grok_quota_fallback_codex_cli_unavailable",
+                )
+            if (
+                not provider_route_authority
+                and not custom_command
+                and (declared_provider or configured_provider) in grok_providers
+                and not _grok_cli_available()
+            ):
+                return self._defer_unavailable_implementation_provider(
+                    task=task,
+                    state=state,
+                    reason="grok_cli_unavailable_or_unauthenticated",
+                )
         inflight = self._find_live_inflight_implementation()
         if inflight is not None:
             result = {
@@ -11041,30 +11930,36 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             canonical_task_cid=self._canonical_ref(task),
         )
         legacy_task_claim_path = self._implementation_task_claim_path(task.task_id)
-        if legacy_task_claim_path != task_claim_path and legacy_task_claim_path.exists():
-            legacy_claim = load_json_dict(legacy_task_claim_path)
-            if legacy_claim is not None and self._implementation_task_claim_owner_is_active(legacy_claim):
-                result = {
-                    "skipped": True,
-                    "reason": "task_claim_lock_exists",
-                    "task_id": task.task_id,
-                    "attempt": attempt,
-                    "lock_owner_pid": int(legacy_claim.get("pid") or 0),
-                    "lock_owner_task_id": str(legacy_claim.get("task_id") or ""),
-                    "lock_owner_state_dir": str(legacy_claim.get("state_dir") or ""),
-                }
-                self._record_event("implementation_skipped", result)
-                return result
+        task_claim_paths = tuple(
+            dict.fromkeys((legacy_task_claim_path, task_claim_path))
+        )
         task_claim_metadata = self._build_implementation_task_claim_metadata(task, attempt, started_at)
         lock_path = self._implementation_lock_path()
         lock_metadata = self._build_implementation_lock_metadata(task, attempt, started_at)
-        acquired_task_claim, task_claim_reason, existing_task_claim = (
-            self._try_acquire_implementation_task_claim(
-                task_claim_path,
+        acquired_task_claim_paths: list[Path] = []
+        acquired_task_claim = False
+        task_claim_reason = "lock_unavailable"
+        existing_task_claim: dict[str, Any] | None = None
+        for claim_path in task_claim_paths:
+            (
+                claim_acquired,
+                task_claim_reason,
+                existing_task_claim,
+            ) = self._try_acquire_implementation_task_claim(
+                claim_path,
                 task_claim_metadata,
             )
-        )
+            if not claim_acquired:
+                break
+            acquired_task_claim_paths.append(claim_path)
+        else:
+            acquired_task_claim = True
         if not acquired_task_claim:
+            if acquired_task_claim_paths:
+                self._release_implementation_task_claims(
+                    acquired_task_claim_paths,
+                    task_claim_metadata,
+                )
             result = {
                 "skipped": True,
                 "reason": f"task_claim_{task_claim_reason}",
@@ -11077,6 +11972,30 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 result["lock_owner_state_dir"] = str(existing_task_claim.get("state_dir") or "")
             self._record_event("implementation_skipped", result)
             return result
+
+        # The first hold check is only an early scheduling optimization.  A
+        # sibling lane can publish a durable Terra hold while this lane waits
+        # for the canonical claim, so recheck inside that fence immediately
+        # before any provider or prompt work is allowed.
+        active_terra_hold = self._active_terra_candidate_hold(task)
+        if active_terra_hold:
+            try:
+                return self._defer_for_active_terra_candidate_hold(
+                    task=task,
+                    state=state,
+                    hold=active_terra_hold,
+                )
+            finally:
+                if not self._release_implementation_task_claims(
+                    acquired_task_claim_paths,
+                    task_claim_metadata,
+                ):
+                    logger.warning(
+                        "Refusing to remove implementation task claim no "
+                        "longer owned after Terra hold recheck: %s",
+                        task_claim_path,
+                    )
+                acquired_task_claim = False
 
         if requires_post_merge_correction_authority:
             refreshed_state = (
@@ -11097,8 +12016,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "provider_call_allowed": False,
                     "attempt_consumed": False,
                 }
-                if not self._release_implementation_task_claim(
-                    task_claim_path,
+                if not self._release_implementation_task_claims(
+                    acquired_task_claim_paths,
                     task_claim_metadata,
                 ):
                     logger.warning(
@@ -11139,8 +12058,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     maintenance_claim.get("state_dir") or ""
                 ),
             }
-            if not self._release_implementation_task_claim(
-                task_claim_path,
+            if not self._release_implementation_task_claims(
+                acquired_task_claim_paths,
                 task_claim_metadata,
             ):
                 logger.warning(
@@ -11153,7 +12072,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return result
 
         acquired_lock = False
-        log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
+        route_suffix = (
+            "-grok-quota-terra-"
+            f"{int(provider_route_authority.get('source_event_sequence') or 0)}"
+            if provider_route_authority
+            else ""
+        )
+        log_path = self.implementation_log_dir / (
+            f"{task.task_id.lower()}-attempt-{attempt}{route_suffix}.log"
+        )
         try:
             if deterministic_only:
                 if not task.validation:
@@ -11235,8 +12162,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 result["active_task_cleared"] = owns_idle_projection
                 self._record_event("implementation_retry_deferred", result)
             finally:
-                if not self._release_implementation_task_claim(
-                    task_claim_path,
+                if not self._release_implementation_task_claims(
+                    acquired_task_claim_paths,
                     task_claim_metadata,
                 ):
                     logger.warning(
@@ -11248,8 +12175,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return result
         except BaseException:
             try:
-                if not self._release_implementation_task_claim(
-                    task_claim_path,
+                if not self._release_implementation_task_claims(
+                    acquired_task_claim_paths,
                     task_claim_metadata,
                 ):
                     logger.warning(
@@ -11394,6 +12321,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "post_merge_correction_authority": (
                         correction_authority
                     ),
+                    "provider_route_authority": provider_route_authority,
                 }
                 if approved_root_target_commit:
                     ephemeral_kwargs["approved_root_target_commit"] = (
@@ -11474,6 +12402,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 else self._build_implementation_command(
                     workspace_path,
                     task=task,
+                    provider_route_authority=provider_route_authority,
                 )
             )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
@@ -11546,6 +12475,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 started_payload[
                     "post_merge_correction_authority"
                 ] = dict(correction_authority)
+            if provider_route_authority:
+                started_payload["provider_route_authority"] = dict(
+                    provider_route_authority
+                )
             # Reserve the attempt in the strict ledger before the mutable
             # state save or provider launch. A concurrent stale state write
             # therefore cannot replay a one-shot repair grant after a crash.
@@ -11666,7 +12599,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "protected_path_violation": protected_path_violation,
                 }
             elif completed.returncode != 0:
-                provider_failure = self._provider_capacity_failure_from_log(log_path)
+                provider_failure = self._provider_capacity_failure_from_invocation(
+                    command=command,
+                    returncode=completed.returncode,
+                    log_path=log_path,
+                )
                 if provider_failure.get("exhausted", False):
                     protected_path_violation = (
                         self._finalize_implementation_protected_path_fence(
@@ -12040,8 +12977,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     exc_info=True,
                 )
             try:
-                if acquired_task_claim and not self._release_implementation_task_claim(
-                    task_claim_path,
+                if acquired_task_claim and not self._release_implementation_task_claims(
+                    acquired_task_claim_paths,
                     task_claim_metadata,
                 ):
                     logger.warning(
@@ -18500,6 +19437,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         implementation_commit: str,
         commit_result: Mapping[str, Any],
         validation_result: Mapping[str, Any],
+        provider_route_authority: Mapping[str, Any] | None = None,
         approved_submodule_integration_targets: (
             Mapping[str, Mapping[str, str]] | None
         ) = None,
@@ -18521,6 +19459,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             raise RuntimeError(
                 str(protected_rejection.get("reason") or "protected merge candidate rejected")
+            )
+        route_authority = dict(provider_route_authority or {})
+        if route_authority:
+            return self._hold_terra_fallback_candidate(
+                task=task,
+                attempt=attempt,
+                branch_name=branch_name,
+                baseline_ref=baseline_ref,
+                worktree_path=worktree_path,
+                implementation_commit=implementation_commit,
+                validation_result=validation_result,
+                provider_route_authority=route_authority,
             )
         approved_targets = {
             str(path): dict(entry)
@@ -18715,6 +19665,215 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
         return merge_result
 
+    def _hold_terra_fallback_candidate(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        branch_name: str,
+        baseline_ref: str,
+        worktree_path: Path,
+        implementation_commit: str,
+        validation_result: Mapping[str, Any],
+        provider_route_authority: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Preserve Terra output without claiming Grok provenance or review."""
+
+        expected_authority_keys = {
+            "capacity_result_id",
+            "capacity_result_path",
+            "model",
+            "provider",
+            "reason_codes",
+            "reasoning_effort",
+            "source_event_id",
+            "source_event_sequence",
+            "source_started_event_id",
+            "source_started_event_sequence",
+        }
+        route_authority = dict(provider_route_authority)
+        starts = self._implementation_started_events(
+            task=task,
+            attempt=attempt,
+            branch_name=branch_name,
+        )
+        started = starts[0] if len(starts) == 1 else None
+        command = (
+            started.get("command")
+            if isinstance(started, Mapping)
+            else None
+        )
+        if (
+            set(route_authority) != expected_authority_keys
+            or route_authority.get("provider")
+            != GROK_QUOTA_FALLBACK_PROVIDER
+            or route_authority.get("model") != GROK_QUOTA_FALLBACK_MODEL
+            or route_authority.get("reasoning_effort")
+            != GROK_QUOTA_FALLBACK_REASONING_EFFORT
+            or route_authority.get("reason_codes")
+            != sorted(GROK_QUOTA_FALLBACK_REASON_CODES)
+            or not str(route_authority.get("source_event_id") or "")
+            or not str(route_authority.get("source_started_event_id") or "")
+            or not str(route_authority.get("capacity_result_id") or "")
+            or not str(route_authority.get("capacity_result_path") or "")
+            or not isinstance(started, Mapping)
+            or started.get("provider_route_authority") != route_authority
+            or not isinstance(command, list)
+            or not self._is_exact_grok_quota_terra_command(command)
+            or validation_result.get("attempted") is not True
+            or validation_result.get("passed") is not True
+            or not _FULL_GIT_COMMIT_ID.fullmatch(baseline_ref)
+            or not _FULL_GIT_COMMIT_ID.fullmatch(implementation_commit)
+        ):
+            raise RuntimeError("Terra candidate hold authority is not exact")
+
+        candidate_tree = self._candidate_repository_tree(
+            implementation_commit
+        )
+        if not _FULL_GIT_COMMIT_ID.fullmatch(candidate_tree):
+            raise RuntimeError("Terra candidate tree is unavailable")
+        safe_task = re.sub(
+            r"[^a-z0-9._-]+",
+            "-",
+            task.task_id.lower(),
+        ).strip("-") or "task"
+        identity = self._identity_for_task(task)
+        rescue_branch = (
+            f"rescue/{safe_task}-{identity.short_id}-attempt-{attempt}-"
+            f"{implementation_commit[:12]}-provider-review-pending"
+        )
+        rescue_ref = f"refs/heads/{rescue_branch}"
+        existing = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", rescue_ref],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        existing_commit = (
+            existing.stdout.strip() if existing.returncode == 0 else ""
+        )
+        if existing_commit and existing_commit != implementation_commit:
+            raise RuntimeError("Terra candidate rescue ref collision")
+        if not existing_commit:
+            self._run_git(
+                [
+                    "update-ref",
+                    rescue_ref,
+                    implementation_commit,
+                    "0" * 40,
+                ],
+                cwd=self.repo_root,
+            )
+
+        hold_record, hold_registry_path = (
+            self._register_terra_candidate_hold(
+                {
+                    "task_id": task.task_id,
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "board_namespace": identity.board_namespace,
+                    "task_binding_id": post_merge_task_binding_id(task),
+                    "target_repository_id": (
+                        self.merge_target_repository_id
+                    ),
+                    "target_branch": self.resolved_merge_target_branch,
+                    "attempt": int(attempt),
+                    "baseline_ref": baseline_ref,
+                    "implementation_commit": implementation_commit,
+                    "candidate_tree": candidate_tree,
+                    "rescue_branch": rescue_branch,
+                    "rescue_ref": rescue_ref,
+                    "provider": GROK_QUOTA_FALLBACK_PROVIDER,
+                    "model": GROK_QUOTA_FALLBACK_MODEL,
+                    "reasoning_effort": (
+                        GROK_QUOTA_FALLBACK_REASONING_EFFORT
+                    ),
+                    "provider_route_authority": route_authority,
+                    "reason": "independent_non_codex_review_pending",
+                    "merge_authorized": False,
+                    "completion_authoritative": False,
+                    "created_at": utc_now(),
+                }
+            )
+        )
+        cleanup_result = self._cleanup_merged_worktree(
+            worktree_path,
+            branch_name,
+            reusable=False,
+        )
+        lifecycle_finalize = cleanup_result.get("lifecycle_finalize")
+        if (
+            cleanup_result.get("cleaned") is not True
+            or not isinstance(lifecycle_finalize, Mapping)
+            or lifecycle_finalize.get("finalized") is not True
+        ):
+            raise RuntimeError(
+                "Terra candidate was preserved but worktree cleanup did not "
+                "finalize"
+            )
+
+        canonical_task_cid = self._canonical_ref(task)
+        self.task_queue.defer(
+            canonical_task_cid,
+            TERRA_CANDIDATE_REVIEW_BACKOFF_SECONDS,
+            reason="independent_non_codex_review_pending",
+        )
+        self.task_queue.save()
+        event = self._record_event(
+            TERRA_CANDIDATE_HELD_EVENT,
+            {
+                "task_id": task.task_id,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "board_namespace": identity.board_namespace,
+                "task_binding_id": post_merge_task_binding_id(task),
+                "target_repository_id": self.merge_target_repository_id,
+                "target_branch": self.resolved_merge_target_branch,
+                "attempt": int(attempt),
+                "baseline_ref": baseline_ref,
+                "implementation_commit": implementation_commit,
+                "candidate_tree": candidate_tree,
+                "repository_tree_id": f"git-tree:{candidate_tree}",
+                "rescue_branch": rescue_branch,
+                "rescue_ref": rescue_ref,
+                "provider": GROK_QUOTA_FALLBACK_PROVIDER,
+                "model": GROK_QUOTA_FALLBACK_MODEL,
+                "reasoning_effort": GROK_QUOTA_FALLBACK_REASONING_EFFORT,
+                "provider_route_authority": route_authority,
+                "hold_id": str(hold_record["hold_id"]),
+                "hold_registry_path": str(hold_registry_path),
+                "validation_result": _bounded_merge_proof_value(
+                    dict(validation_result),
+                    field_name="validation_result",
+                ),
+                "cleanup_result": cleanup_result,
+                "reason": "independent_non_codex_review_pending",
+                "merge_authorized": False,
+                "completion_authoritative": False,
+                "attempt_consumed": True,
+            },
+        )
+        return {
+            "attempted": False,
+            "queued": False,
+            "merged": False,
+            "held": True,
+            "review_pending": True,
+            "reason": "independent_non_codex_review_pending",
+            "implementation_commit": implementation_commit,
+            "candidate_tree": candidate_tree,
+            "rescue_branch": rescue_branch,
+            "rescue_ref": rescue_ref,
+            "hold_id": str(hold_record["hold_id"]),
+            "hold_registry_path": str(hold_registry_path),
+            "candidate_held_event_id": str(event.get("event_id") or ""),
+            "candidate_held_event_sequence": int(
+                event.get("sequence") or 0
+            ),
+            "cleanup_result": cleanup_result,
+        }
+
     def _run_implementation_in_ephemeral_worktree(
         self,
         *,
@@ -18731,6 +19890,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         post_merge_correction_authority: (
             Mapping[str, Any] | None
         ) = None,
+        provider_route_authority: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
@@ -18738,7 +19898,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         safe_task_id = task.task_id.lower().replace("/", "-")
         identity_suffix = self._identity_for_task(task).short_id
         execution_id = f"{safe_task_id}-{identity_suffix}"
-        attempt_stamp = int(time.time())
+        attempt_stamp = time.time_ns()
         worktree_path = self.worktree_root / f"{execution_id}-attempt-{attempt}-{attempt_stamp}"
         branch_name = f"implementation/{execution_id}-attempt-{attempt}-{attempt_stamp}"
         baseline_ref = ""
@@ -19007,6 +20167,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 else self._build_implementation_command(
                     worktree_path,
                     task=task,
+                    provider_route_authority=provider_route_authority,
                 )
             )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
@@ -19150,7 +20311,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if post_merge_correction_authority:
                 started_payload[
                     "post_merge_correction_authority"
-                ] = dict(post_merge_correction_authority)
+                    ] = dict(post_merge_correction_authority)
+            if provider_route_authority:
+                started_payload["provider_route_authority"] = dict(
+                    provider_route_authority
+                )
             # This strict-ledger reservation precedes the mutable state charge
             # and provider launch; explicit non-consuming outcomes release it.
             try:
@@ -19337,7 +20502,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     failed_preservation_result.get("cleanup_result") or cleanup_result
                 )
             elif returncode != 0:
-                provider_failure = self._provider_capacity_failure_from_log(log_path)
+                provider_failure = self._provider_capacity_failure_from_invocation(
+                    command=command,
+                    returncode=returncode,
+                    log_path=log_path,
+                )
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
                         task=task,
@@ -19375,6 +20544,33 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     cleanup_result = dict(
                         failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
+                elif provider_failure.get("exhausted", False):
+                    # Dispose and fence the possibly mutated Grok workspace
+                    # before minting authority for a fresh Terra worktree.
+                    # Cleanup failure converts this into an ordinary consuming
+                    # provider failure; mixed-provider bytes are never reused.
+                    cleanup_result = self._cleanup_merged_worktree(
+                        worktree_path,
+                        branch_name,
+                        reusable=False,
+                    )
+                    lifecycle_finalize = cleanup_result.get(
+                        "lifecycle_finalize"
+                    )
+                    if (
+                        cleanup_result.get("cleaned") is not True
+                        or not isinstance(lifecycle_finalize, Mapping)
+                        or lifecycle_finalize.get("finalized") is not True
+                    ):
+                        provider_failure = {}
+                        validation_result = {
+                            "attempted": False,
+                            "passed": False,
+                            "returncode": 1,
+                            "results": [],
+                            "reason": "provider_quota_workspace_cleanup_failed",
+                            "cleanup_result": cleanup_result,
+                        }
             if returncode == 0 and not protected_path_violation:
                 self._mark_worktree_lifecycle_settling(worktree_path)
                 self._mark_active_phase(
@@ -19535,6 +20731,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             implementation_commit=implementation_commit,
                             commit_result=commit_result,
                             validation_result=validation_result,
+                            provider_route_authority=(
+                                provider_route_authority
+                            ),
                             approved_submodule_integration_targets=(
                                 approved_submodule_integration_targets
                             ),
@@ -19556,10 +20755,38 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         )
                         commit_result["no_change_guard"] = no_change_guard
                         if no_change_guard["allowed"]:
-                            cleanup_result = self._cleanup_merged_worktree(
-                                worktree_path,
-                                branch_name,
-                            )
+                            if provider_route_authority:
+                                # A Terra model assertion that the baseline
+                                # already satisfies the task is still a model
+                                # authored outcome.  Preserve and hold that
+                                # exact baseline for independent non-Codex
+                                # review; it must never become authoritative
+                                # no-change completion on its own.
+                                implementation_commit = current_head
+                                merge_result = (
+                                    self._hold_terra_fallback_candidate(
+                                        task=task,
+                                        attempt=attempt,
+                                        branch_name=branch_name,
+                                        baseline_ref=baseline_ref,
+                                        worktree_path=worktree_path,
+                                        implementation_commit=(
+                                            implementation_commit
+                                        ),
+                                        validation_result=validation_result,
+                                        provider_route_authority=(
+                                            provider_route_authority
+                                        ),
+                                    )
+                                )
+                                commit_result[
+                                    "reason"
+                                ] = "terra_no_change_review_pending"
+                            else:
+                                cleanup_result = self._cleanup_merged_worktree(
+                                    worktree_path,
+                                    branch_name,
+                                )
                         else:
                             returncode = 1
                             reason = "validated_candidate_missing_before_commit"
@@ -19621,7 +20848,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
                         implementation_commit = str(commit_result.get("commit", ""))
                         cleanup_result = dict(failed_preservation_result.get("cleanup_result") or cleanup_result)
-            elif not protected_path_violation:
+            elif not protected_path_violation and not cleanup_result.get(
+                "cleaned", False
+            ):
                 pool_failure_release = self._release_pooled_worktree_lease(
                     worktree_path,
                     reason="implementation_command_failed",
@@ -19812,6 +21041,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 implementation_commit=implementation_commit,
                                 commit_result=commit_result,
                                 validation_result=validation_result,
+                                provider_route_authority=(
+                                    provider_route_authority
+                                ),
                                 approved_submodule_integration_targets=(
                                     approved_submodule_integration_targets
                                 ),
@@ -19838,12 +21070,36 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 "no_change_guard"
                             ] = no_change_guard
                             if no_change_guard["allowed"]:
-                                cleanup_result = (
-                                    self._cleanup_merged_worktree(
-                                        worktree_path,
-                                        branch_name,
+                                if provider_route_authority:
+                                    implementation_commit = current_head
+                                    merge_result = (
+                                        self._hold_terra_fallback_candidate(
+                                            task=task,
+                                            attempt=attempt,
+                                            branch_name=branch_name,
+                                            baseline_ref=baseline_ref,
+                                            worktree_path=worktree_path,
+                                            implementation_commit=(
+                                                implementation_commit
+                                            ),
+                                            validation_result=(
+                                                validation_result
+                                            ),
+                                            provider_route_authority=(
+                                                provider_route_authority
+                                            ),
+                                        )
                                     )
-                                )
+                                    commit_result[
+                                        "reason"
+                                    ] = "terra_no_change_review_pending"
+                                else:
+                                    cleanup_result = (
+                                        self._cleanup_merged_worktree(
+                                            worktree_path,
+                                            branch_name,
+                                        )
+                                    )
                                 commit_handoff_ready = True
                             else:
                                 returncode = 1
@@ -19985,7 +21241,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "implementation_timeout_salvage_failed",
                         timeout_result,
                     )
-            if not worktree_path.exists():
+            if merge_result.get("held") is True:
+                held_cleanup = merge_result.get("cleanup_result")
+                if isinstance(held_cleanup, Mapping):
+                    cleanup_result = dict(held_cleanup)
+            elif not worktree_path.exists():
                 if (
                     protected_path_snapshot is not None
                     and not protected_path_violation
@@ -20229,7 +21489,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # Queueing is a successful implementation handoff, but not task
         # completion.  The train consumer records the terminal merge outcome.
         terminal_outcome = bool(board_completion.get("complete"))
-        if not merge_result.get("queued") and attempt_consumed:
+        if (
+            not merge_result.get("queued")
+            and attempt_consumed
+            and not merge_result.get("held")
+        ):
             outcome_returncode = returncode
             outcome_reason = str(
                 exception_result.get("message")
@@ -38566,6 +39830,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 return False
             return True
 
+    def _release_implementation_task_claims(
+        self,
+        lock_paths: Sequence[Path],
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        """Release a stable-alias/canonical claim pair in reverse order."""
+
+        released = True
+        for lock_path in reversed(tuple(dict.fromkeys(lock_paths))):
+            if not self._release_implementation_task_claim(
+                lock_path,
+                metadata,
+            ):
+                released = False
+        return released
+
     def _release_implementation_lock(
         self,
         lock_path: Path,
@@ -41517,7 +42797,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
             return next(iter(local_only_roles))
 
-        grok_roles = {"grok-implement", "grok-draft"}
+        grok_roles = {"grok-implement", "grok-draft", "grok"}
         codex_roles = {"codex-implement", "codex-draft"}
         wants_grok = bool(roles & grok_roles)
         wants_codex = bool(roles & codex_roles)
@@ -41573,6 +42853,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         workspace_path: Path,
         *,
         task: PortalTask | None = None,
+        provider_route_authority: Mapping[str, Any] | None = None,
     ) -> list[str]:
         workspace_path = workspace_path.resolve()
         declared_provider = self._task_declared_implementation_provider(task)
@@ -41591,6 +42872,58 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
             or "auto"
         )
+        route_authority = dict(provider_route_authority or {})
+        if route_authority:
+            declared_route_is_grok = declared_provider == "grok"
+            if (
+                task is None
+                or declared_provider not in {"", "grok"}
+                or (
+                    not declared_route_is_grok
+                    and configured_provider != "auto"
+                )
+                or route_authority != self._grok_quota_fallback_authority(task)
+            ):
+                raise RuntimeError("invalid Grok quota fallback authority")
+            codex = shutil.which("codex")
+            if not codex:
+                raise RuntimeError(
+                    "Grok quota is exhausted and exact Terra fallback requires "
+                    "the codex CLI"
+                )
+            codex_context_window = (
+                self._implementation_provider_context_window_for_task(task)[0]
+            )
+            command = [
+                codex,
+                "exec",
+                "--ephemeral",
+                "--ignore-user-config",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "-C",
+                str(workspace_path),
+                "-m",
+                GROK_QUOTA_FALLBACK_MODEL,
+            ]
+            if codex_context_window is not None:
+                command.extend(
+                    ["-c", f"model_context_window={codex_context_window}"]
+                )
+            command.extend(
+                [
+                    "-c",
+                    "model_reasoning_effort=\""
+                    f"{GROK_QUOTA_FALLBACK_REASONING_EFFORT}\"",
+                ]
+            )
+            codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
+            codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
+            if codex_max_threads:
+                command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
+            if codex_max_depth:
+                command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
+            command.append("-")
+            return command
         provider = (
             declared_provider
             or configured_provider
@@ -41640,8 +42973,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         }
         force_codex = provider in {"codex", "copilot", "openai"}
 
-        # Prefer only when the binary is actually resolvable so an auth-only
-        # readiness signal does not block auto-fallback to codex/copilot.
+        # A runnable, authenticated binary is required. Auto routing is
+        # deliberately fail-closed; only typed hard-quota authority below can
+        # select the exact Terra fallback.
         if force_grok:
             if not grok_ready:
                 raise RuntimeError(
@@ -41649,7 +42983,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     f"{provider!r} requires the Grok Build CLI (`grok`) with "
                     "login/auth (or XAI_API_KEY)"
                 )
-            return _grok_cli_command(workspace_path=workspace_path)
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                capacity_result_path=self._new_grok_capacity_result_path(
+                    task=task,
+                    workspace_path=workspace_path,
+                ),
+                exact_model="grok-4.5",
+            )
         if (
             prefer_grok
             and grok_ready
@@ -41657,7 +42998,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and not force_codex
             and not force_goose_meta
         ):
-            return _grok_cli_command(workspace_path=workspace_path)
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                capacity_result_path=self._new_grok_capacity_result_path(
+                    task=task,
+                    workspace_path=workspace_path,
+                ),
+                exact_model="grok-4.5",
+            )
+
+        if provider == "auto":
+            raise RuntimeError(
+                "Automatic implementation routing requires authenticated Grok "
+                "4.5; Terra is authorized only by a typed Grok quota-exhaustion "
+                "event"
+            )
 
         if force_goose_meta:
             if not goose_meta_ready:
@@ -44779,9 +46134,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--implementation-command",
         default="",
         help=(
-            "Command used for implementation. By default the daemon prefers "
-            "authenticated Grok, falls back to Codex when Grok is unavailable, "
-            "and may use authenticated Copilot behind Codex."
+            "Command used for implementation. By default the daemon requires "
+            "authenticated Grok 4.5. Exact gpt-5.6-terra/medium is selected "
+            "only after a typed Grok hard-quota event; missing CLI/auth and "
+            "transient failures do not authorize fallback."
         ),
     )
     parser.add_argument(

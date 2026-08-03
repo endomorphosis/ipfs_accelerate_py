@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -1763,7 +1764,7 @@ def test_implementation_daemon_default_prefers_grok_over_codex(
     )
 
 
-def test_unauthenticated_grok_falls_back_to_codex_unless_forced(
+def test_unauthenticated_grok_does_not_authorize_codex_fallback(
     tmp_path,
     monkeypatch,
 ):
@@ -1810,9 +1811,8 @@ def test_unauthenticated_grok_falls_back_to_codex_unless_forced(
         ),
     )
 
-    command = daemon._build_implementation_command(repo)
-
-    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    with pytest.raises(RuntimeError, match="requires authenticated Grok 4.5"):
+        daemon._build_implementation_command(repo)
     monkeypatch.setenv(
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
         "grok",
@@ -1821,7 +1821,10 @@ def test_unauthenticated_grok_falls_back_to_codex_unless_forced(
         daemon._build_implementation_command(repo)
 
 
-def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, monkeypatch):
+def test_implementation_daemon_rejects_all_unauthenticated_auto_fallbacks(
+    tmp_path,
+    monkeypatch,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -1856,21 +1859,8 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
     )
     monkeypatch.setattr(implementation_daemon_module, "_copilot_has_auth", lambda: False)
 
-    command = daemon._build_implementation_command(repo)
-
-    assert command[:5] == [
-        "/usr/local/bin/codex",
-        "exec",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "-C",
-        str(repo),
-    ]
-    assert command[-1] == "-"
-    assert ["-c", "model_context_window=200000"] == command[5:7]
-    assert "-c" in command
-    assert 'model_reasoning_effort="high"' in command
-    assert "agents.max_threads=10" in command
-    assert "agents.max_depth=2" in command
+    with pytest.raises(RuntimeError, match="requires authenticated Grok 4.5"):
+        daemon._build_implementation_command(repo)
 
 
 def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch):
@@ -1915,6 +1905,834 @@ def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch
     assert command[0] == sys.executable
     assert command[1].endswith("grok_cli_runner.py")
     assert command[command.index("--grok-bin") + 1] == "/usr/local/bin/grok"
+
+
+def test_typed_grok_quota_event_authorizes_exact_terra_medium_once(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+    )
+    task = PortalTask(
+        task_id="UIIR-001",
+        title="Generate UI IR",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="uiir",
+        outputs=["ipfs_datasets_py/logic/ui_ir.py"],
+        metadata={"Provider role": "grok-implement, codex-review"},
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+
+    grok_command = daemon._build_implementation_command(repo, task=task)
+    capacity_path = Path(
+        grok_command[grok_command.index("--capacity-result-path") + 1]
+    )
+    capacity_path.parent.mkdir(parents=True, exist_ok=True)
+    capacity_payload = {
+        "diagnostic_sha256": "a" * 64,
+        "model": "grok-4.5",
+        "provider": "grok_cli",
+        "provider_returncode": 23,
+        "reason": "provider_quota_exhausted",
+        "reason_codes": ["capacity_unavailable", "quota_exhausted"],
+        "returncode": implementation_daemon_module.GROK_HARD_QUOTA_EXIT_CODE,
+        "schema": implementation_daemon_module.GROK_CAPACITY_RESULT_SCHEMA,
+    }
+    capacity_path.write_text(
+        json.dumps(capacity_payload),
+        encoding="utf-8",
+    )
+    identity = daemon._identity_for_task(task)
+    binding_id = post_merge_review_module.post_merge_task_binding_id(task)
+    source_workspace = daemon.worktree_root / "grok-source-worktree"
+    source_branch = "implementation/uiir-001-grok-source"
+    started = daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "task_binding_id": binding_id,
+            "attempt": 1,
+            "command": grok_command,
+            "log_path": str(repo / "grok.log"),
+            "worktree_path": str(source_workspace),
+            "branch": source_branch,
+        },
+    )
+    failure = daemon._grok_capacity_failure_from_invocation(
+        command=grok_command,
+        returncode=implementation_daemon_module.GROK_HARD_QUOTA_EXIT_CODE,
+    )
+    exhausted = daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "task_binding_id": binding_id,
+            "attempt": 1,
+            "returncode": implementation_daemon_module.GROK_HARD_QUOTA_EXIT_CODE,
+            "provider": "grok_cli",
+            "providers": ["grok_cli"],
+            "reason": "provider_capacity_exhausted",
+            "reason_codes": ["capacity_unavailable", "quota_exhausted"],
+            "capacity_result_path": str(capacity_path),
+            "capacity_result_id": failure["capacity_result_id"],
+            "attempt_consumed": False,
+            "retry_at": (
+                datetime.now(timezone.utc) + timedelta(minutes=10)
+            ).isoformat(),
+            "released_started_event_id": started["event_id"],
+            "released_started_event_sequence": started["sequence"],
+            "worktree_path": str(source_workspace),
+            "branch": source_branch,
+            "cleanup_result": {
+                "cleaned": True,
+                "lifecycle_finalize": {"finalized": True},
+            },
+        },
+    )
+
+    authority = daemon._grok_quota_fallback_authority(task)
+    terra_command = daemon._build_implementation_command(
+        repo,
+        task=task,
+        provider_route_authority=authority,
+    )
+
+    assert authority["source_event_id"] == exhausted["event_id"]
+    assert terra_command[:4] == [
+        "/usr/local/bin/codex",
+        "exec",
+        "--ephemeral",
+        "--ignore-user-config",
+    ]
+    assert terra_command[terra_command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in terra_command
+    assert "copilot" not in " ".join(terra_command).lower()
+    assert "goose" not in " ".join(terra_command).lower()
+
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "task_binding_id": binding_id,
+            "attempt": 1,
+            "command": terra_command,
+            "log_path": str(repo / "terra.log"),
+        },
+    )
+    assert daemon._grok_quota_fallback_authority(task) == {}
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value"),
+    [
+        ("returncode", []),
+        ("provider_returncode", False),
+        ("reason_codes", [["quota_exhausted"]]),
+        ("diagnostic_sha256", 1),
+    ],
+)
+def test_malformed_grok_capacity_marker_fails_closed(
+    tmp_path,
+    monkeypatch,
+    field_name,
+    invalid_value,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    command = daemon._build_implementation_command(repo)
+    capacity_path = Path(
+        command[command.index("--capacity-result-path") + 1]
+    )
+    capacity_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "diagnostic_sha256": "a" * 64,
+        "model": "grok-4.5",
+        "provider": "grok_cli",
+        "provider_returncode": 23,
+        "reason": "provider_quota_exhausted",
+        "reason_codes": ["capacity_unavailable", "quota_exhausted"],
+        "returncode": implementation_daemon_module.GROK_HARD_QUOTA_EXIT_CODE,
+        "schema": implementation_daemon_module.GROK_CAPACITY_RESULT_SCHEMA,
+    }
+    payload[field_name] = invalid_value
+    capacity_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert daemon._grok_capacity_failure_from_invocation(
+        command=command,
+        returncode=implementation_daemon_module.GROK_HARD_QUOTA_EXIT_CODE,
+    ) == {"exhausted": False, "providers": [], "reason": ""}
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX FIFO required")
+def test_grok_capacity_fifo_fails_closed_without_blocking(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    command = daemon._build_implementation_command(repo)
+    capacity_path = Path(
+        command[command.index("--capacity-result-path") + 1]
+    )
+    capacity_path.parent.mkdir(parents=True, exist_ok=True)
+    os.mkfifo(capacity_path)
+
+    assert daemon._grok_capacity_failure_from_invocation(
+        command=command,
+        returncode=implementation_daemon_module.GROK_HARD_QUOTA_EXIT_CODE,
+    ) == {"exhausted": False, "providers": [], "reason": ""}
+
+
+def test_grok_transient_log_or_shared_checkout_cannot_authorize_terra(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    explicit_task = PortalTask(
+        task_id="UIIR-002",
+        title="Explicit Grok task",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="uiir",
+        outputs=["ipfs_datasets_py/logic/ui_ir.py"],
+        metadata={"Provider role": "grok-implement"},
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    command = daemon._build_implementation_command(repo, task=explicit_task)
+    log_path = repo / "grok.log"
+    log_path.write_text(
+        "429 Too Many Requests; quota exhausted; rate limit exceeded\n",
+        encoding="utf-8",
+    )
+
+    assert daemon._provider_capacity_failure_from_invocation(
+        command=command,
+        returncode=1,
+        log_path=log_path,
+    )["exhausted"] is False
+    assert daemon._grok_quota_fallback_authority(explicit_task) == {}
+
+
+@pytest.mark.parametrize(
+    (
+        "terra_returncode",
+        "registry_write_fails",
+        "terra_no_change",
+        "quota_restart",
+    ),
+    [
+        (7, False, False, False),
+        (0, False, False, False),
+        (0, True, False, False),
+        (0, False, True, False),
+        (0, False, False, True),
+    ],
+)
+def test_auto_grok_hard_quota_runs_fresh_exact_terra_pass(
+    tmp_path,
+    monkeypatch,
+    terra_returncode,
+    registry_write_fails,
+    terra_no_change,
+    quota_restart,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "todo.md").write_text("# Todos\n", encoding="utf-8")
+    if terra_no_change:
+        (repo / "ui_ir.py").write_text("TERRA = True\n", encoding="utf-8")
+        (repo / "test_ui_ir.py").write_text(
+            "from ui_ir import TERRA\n\n"
+            "def test_terra():\n"
+            "    assert TERRA\n",
+            encoding="utf-8",
+        )
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test Agent"], cwd=repo, check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "baseline"], cwd=repo, check=True)
+    fake_grok = repo / "grok"
+    fake_grok.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "print('ERROR insufficient_quota: quota exhausted', file=sys.stderr)\n"
+        "raise SystemExit(23)\n",
+        encoding="utf-8",
+    )
+    fake_grok.chmod(0o700)
+    codex_argv = repo / "codex-argv.json"
+    fake_codex = repo / "codex"
+    fake_codex.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, pathlib, sys\n"
+        f"pathlib.Path({str(codex_argv)!r}).write_text(json.dumps(sys.argv[1:]))\n"
+        + (
+            "pathlib.Path('ui_ir.py').write_text('TERRA = True\\n')\n"
+            "pathlib.Path('test_ui_ir.py').write_text("
+            "'from ui_ir import TERRA\\n\\ndef test_terra():\\n    assert TERRA\\n')\n"
+            if terra_returncode == 0 and not terra_no_change
+            else "print('terra generic failure')\n"
+        )
+        + f"raise SystemExit({terra_returncode})\n",
+        encoding="utf-8",
+    )
+    fake_codex.chmod(0o700)
+    state_path = repo / "state" / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_path,
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## UIIR-",
+        implement=True,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "implementation-worktrees",
+    )
+    task = PortalTask(
+        task_id="UIIR-003",
+        title="Exercise two-pass route",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="uiir",
+        outputs=["ui_ir.py", "test_ui_ir.py"],
+        validation=["python -B -m pytest -q test_ui_ir.py"],
+        metadata={"Provider role": "grok-implement, codex-review"},
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: str(fake_grok),
+    )
+    original_which = implementation_daemon_module.shutil.which
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: str(fake_codex) if name == "codex" else original_which(name),
+    )
+
+    first = daemon._run_implementation(task, TodoTaskState())
+    first_state = TodoTaskState.load(state_path)
+    assert first_state.implementation_attempts == {}
+    if quota_restart:
+        daemon._record_event("quota_rotation_probe", {"ordinal": 1})
+        daemon._record_event("quota_rotation_probe", {"ordinal": 2})
+        quota_rotation = event_log_module.rotate_event_log_if_needed(
+            daemon.events_path,
+            max_bytes=1,
+            retain_recent=1,
+            max_archives=2,
+        )
+        assert quota_rotation["rotated"] is True
+        assert not any(
+            json.loads(line)["type"]
+            == "implementation_provider_exhausted"
+            for line in daemon.events_path.read_text(
+                encoding="utf-8"
+            ).splitlines()
+        )
+        daemon = TodoImplementationDaemon(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## UIIR-",
+            implement=True,
+            use_ephemeral_worktree=True,
+            worktree_root=tmp_path / "implementation-worktrees",
+        )
+    if registry_write_fails:
+        monkeypatch.setattr(
+            daemon,
+            "_persist_terra_candidate_hold_registry",
+            lambda _entries: (_ for _ in ()).throw(
+                OSError("injected registry write failure")
+            ),
+        )
+    second = daemon._run_implementation(task, first_state)
+    events = event_log_module.read_jsonl_event_sources(
+        (daemon.events_path,),
+        include_rotated=True,
+    )
+    starts = [event for event in events if event["type"] == "implementation_started"]
+    assert codex_argv.exists(), (first, second, events)
+    terra_args = json.loads(codex_argv.read_text(encoding="utf-8"))
+
+    assert first["deferred"] is True
+    assert first["attempt_consumed"] is False
+    assert first["provider"] == "grok_cli"
+    assert second["returncode"] == (
+        1 if registry_write_fails else terra_returncode
+    )
+    assert second.get("deferred") is not True
+    assert len(starts) == 2
+    assert starts[0]["command"][starts[0]["command"].index("--model") + 1] == (
+        "grok-4.5"
+    )
+    assert starts[1]["command"][:4] == [
+        str(fake_codex),
+        "exec",
+        "--ephemeral",
+        "--ignore-user-config",
+    ]
+    assert starts[0]["log_path"] != starts[1]["log_path"]
+    assert starts[0]["worktree_path"] != starts[1]["worktree_path"]
+    assert starts[1]["provider_route_authority"]["model"] == "gpt-5.6-terra"
+    assert terra_args[terra_args.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in terra_args
+    assert [
+        event["provider"]
+        for event in events
+        if event["type"] == "implementation_provider_exhausted"
+    ] == ["grok_cli"]
+    if terra_no_change:
+        assert second["commit_result"]["reason"] == (
+            "terra_no_change_review_pending"
+        )
+        assert second["board_completion"]["complete"] is False
+        assert "todo_update_result" not in second
+    if registry_write_fails:
+        rescue_refs = subprocess.run(
+            [
+                "git",
+                "for-each-ref",
+                "--format=%(refname)%09%(objectname)",
+                "refs/heads/rescue/",
+            ],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.splitlines()
+        assert len(rescue_refs) == 1
+        rescue_ref, rescue_commit = rescue_refs[0].split("\t", 1)
+        assert rescue_ref.endswith("-provider-review-pending")
+        assert not daemon._terra_candidate_hold_registry_path().exists()
+        restarted = TodoImplementationDaemon(
+            todo_path=repo / "todo.md",
+            state_path=repo / "restart-state" / "task_state.json",
+            strategy_path=repo / "restart-state" / "strategy.json",
+            events_path=repo / "restart-state" / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## UIIR-",
+            implement=True,
+            use_ephemeral_worktree=True,
+            worktree_root=tmp_path / "restart-implementation-worktrees",
+        )
+        blocked = restarted._run_implementation(task, TodoTaskState())
+        assert blocked["deferred"] is True
+        assert blocked["provider_call_allowed"] is False
+        assert blocked["reason"] == "terra_candidate_orphan_rescue_ref"
+        assert blocked["candidate_hold"]["orphan_rescue_refs"] == {
+            rescue_ref: rescue_commit,
+        }
+        assert not any(
+            event["type"] == "implementation_started"
+            for event in (
+                json.loads(line)
+                for line in restarted.events_path.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            )
+        )
+        return
+    if terra_returncode == 0:
+        hold = second["merge_result"]
+        assert hold["held"] is True
+        assert hold["queued"] is False
+        assert hold["merged"] is False
+        assert hold["reason"] == "independent_non_codex_review_pending"
+        held_events = [
+            event
+            for event in events
+            if event["type"]
+            == implementation_daemon_module.TERRA_CANDIDATE_HELD_EVENT
+        ]
+        assert len(held_events) == 1
+        assert held_events[0]["provider"] == "codex_cli"
+        assert held_events[0]["model"] == "gpt-5.6-terra"
+        assert held_events[0]["reasoning_effort"] == "medium"
+        assert held_events[0]["merge_authorized"] is False
+        rescue = subprocess.run(
+            ["git", "rev-parse", "--verify", hold["rescue_ref"]],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+        assert rescue == second["implementation_commit"]
+        queue_entry = daemon.task_queue.get_or_create(
+            daemon._canonical_ref(task)
+        )
+        assert queue_entry.consecutive_failures == 0
+        assert queue_entry.notes == "independent_non_codex_review_pending"
+        assert queue_entry.cooldown_until > time.time() + 23 * 60 * 60
+        third = daemon._run_implementation(
+            task,
+            TodoTaskState.load(state_path),
+        )
+        assert third["deferred"] is True
+        assert third["provider_call_allowed"] is False
+        assert third["reason"] == "independent_non_codex_review_pending"
+        assert third["candidate_hold"]["implementation_commit"] == rescue
+        refreshed_events = event_log_module.read_jsonl_event_sources(
+            (daemon.events_path,),
+            include_rotated=True,
+        )
+        assert sum(
+            event["type"] == "implementation_started"
+            for event in refreshed_events
+        ) == 2
+        rotation = event_log_module.rotate_event_log_if_needed(
+            daemon.events_path,
+            max_bytes=1,
+            retain_recent=1,
+            max_archives=2,
+        )
+        assert rotation["rotated"] is True
+        active_tail = [
+            json.loads(line)
+            for line in daemon.events_path.read_text(
+                encoding="utf-8"
+            ).splitlines()
+        ]
+        assert not any(
+            event["type"]
+            == implementation_daemon_module.TERRA_CANDIDATE_HELD_EVENT
+            for event in active_tail
+        )
+        restarted = TodoImplementationDaemon(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## UIIR-",
+            implement=True,
+            use_ephemeral_worktree=True,
+            worktree_root=tmp_path / "implementation-worktrees",
+        )
+        restarted_entry = restarted.task_queue.get_or_create(
+            restarted._canonical_ref(task)
+        )
+        restarted_entry.cooldown_until = 0.0
+        restarted.task_queue.save()
+        after_rotation = restarted._run_implementation(
+            task,
+            TodoTaskState.load(state_path),
+        )
+        assert after_rotation["deferred"] is True
+        assert after_rotation["provider_call_allowed"] is False
+        assert after_rotation["candidate_hold"][
+            "implementation_commit"
+        ] == rescue
+        peer = TodoImplementationDaemon(
+            todo_path=repo / "todo.md",
+            state_path=repo / "peer-state" / "task_state.json",
+            strategy_path=repo / "peer-state" / "strategy.json",
+            events_path=repo / "peer-state" / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## UIIR-",
+            implement=True,
+            use_ephemeral_worktree=True,
+            worktree_root=tmp_path / "peer-implementation-worktrees",
+        )
+        peer_calls = 0
+        real_peer_hold_check = peer._active_terra_candidate_hold
+
+        def delayed_peer_hold_check(candidate_task):
+            nonlocal peer_calls
+            peer_calls += 1
+            if peer_calls == 1:
+                return {}
+            return real_peer_hold_check(candidate_task)
+
+        monkeypatch.setattr(
+            peer,
+            "_active_terra_candidate_hold",
+            delayed_peer_hold_check,
+        )
+        peer_result = peer._run_implementation(task, TodoTaskState())
+        assert peer_calls >= 2
+        assert peer_result["deferred"] is True
+        assert peer_result["provider_call_allowed"] is False
+        assert peer_result["candidate_hold"][
+            "implementation_commit"
+        ] == rescue
+        original_peer_target = peer.resolved_merge_target_branch
+        peer.resolved_merge_target_branch = "reconfigured-target"
+        reconfigured_hold = peer._active_terra_candidate_hold(task)
+        assert reconfigured_hold["registry_invalid"] is True
+        assert reconfigured_hold["reason"] == (
+            "terra_candidate_hold_target_binding_changed"
+        )
+        peer.resolved_merge_target_branch = original_peer_target
+        revised_task = replace(
+            task,
+            title="Exercise revised two-pass route",
+        )
+        revised = restarted._run_implementation(
+            revised_task,
+            TodoTaskState.load(state_path),
+        )
+        assert revised["provider_call_allowed"] is False
+        assert revised["reason"] == "terra_candidate_hold_task_binding_changed"
+        subprocess.run(
+            ["git", "merge", "--ff-only", rescue],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        integrated_unreviewed = restarted._run_implementation(
+            task,
+            TodoTaskState.load(state_path),
+        )
+        assert integrated_unreviewed["provider_call_allowed"] is False
+        assert integrated_unreviewed["reason"] == (
+            "independent_non_codex_review_pending"
+        )
+        post_restart_tail = [
+            json.loads(line)
+            for line in restarted.events_path.read_text(
+                encoding="utf-8"
+            ).splitlines()
+        ]
+        assert not any(
+            event["type"] == "implementation_started"
+            for event in post_restart_tail
+        )
+        registry_path = restarted._terra_candidate_hold_registry_path()
+        registry_before = registry_path.read_bytes()
+        with pytest.raises(
+            RuntimeError,
+            match="registry entry bound exceeded",
+        ):
+            restarted._persist_terra_candidate_hold_registry(
+                {
+                    f"task-cid-{index}": {}
+                    for index in range(1025)
+                }
+            )
+        assert registry_path.read_bytes() == registry_before
+    else:
+        assert not any(
+            event["type"]
+            == implementation_daemon_module.TERRA_CANDIDATE_HELD_EVENT
+            for event in events
+        )
+
+
+def test_missing_grok_is_non_consuming_pre_provider_deferral(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "todo.md").write_text("# Todos\n", encoding="utf-8")
+    state_path = repo / "state" / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_path,
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="UIIR-004",
+        title="No silent fallback",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="uiir",
+        outputs=["ui_ir.py"],
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(state_path)
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result["reason"] == "grok_cli_unavailable_or_unauthenticated"
+    assert result["provider_call_allowed"] is False
+    assert result["attempt_consumed"] is False
+    assert persisted.implementation_attempts == {}
+    assert not any(event["type"] == "implementation_started" for event in events)
+
+
+def test_missing_terra_cli_after_quota_is_non_consuming_pre_provider_deferral(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "todo.md").write_text("# Todos\n", encoding="utf-8")
+    state_path = repo / "state" / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_path,
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="UIIR-005",
+        title="Wait for Terra CLI",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="uiir",
+        outputs=["ui_ir.py"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_grok_quota_fallback_authority",
+        lambda candidate: {
+            "source_event_id": "sha256:" + "a" * 64,
+            "source_event_sequence": 2,
+            "provider": "codex_cli",
+            "model": "gpt-5.6-terra",
+            "reasoning_effort": "medium",
+        },
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: None,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(state_path)
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result["reason"] == "grok_quota_fallback_codex_cli_unavailable"
+    assert result["provider_call_allowed"] is False
+    assert result["attempt_consumed"] is False
+    assert persisted.implementation_attempts == {}
+    assert not any(event["type"] == "implementation_started" for event in events)
 
 
 def test_deterministic_only_task_cannot_dispatch_a_model(tmp_path):
@@ -3273,7 +4091,10 @@ def test_git_gc_first_run_establishes_baseline_without_aggressive_repack(
     assert reloaded.needs_aggressive_gc() is False
 
 
-def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
+def test_implementation_daemon_auto_rejects_authenticated_copilot_fallback(
+    tmp_path,
+    monkeypatch,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -3312,12 +4133,8 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
     )
     monkeypatch.setattr(implementation_daemon_module, "_copilot_has_auth", lambda: True)
 
-    command = daemon._build_implementation_command(repo)
-
-    assert command[:2] == ["bash", "-lc"]
-    assert "falling back to copilot" in command[2]
-    assert command[3:7] == ["bash", "/usr/local/bin/codex", "/usr/local/bin/copilot", str(repo)]
-    assert command[7:] == ["", "200000", "high", "10", "2", "", "high", "long_context", "30"]
+    with pytest.raises(RuntimeError, match="requires authenticated Grok 4.5"):
+        daemon._build_implementation_command(repo)
 
 
 def test_implementation_daemon_links_shared_dependencies_only_in_managed_worktrees(tmp_path):
@@ -27660,6 +28477,159 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
         for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert any(event["type"] == "implementation_timeout_salvaged" for event in events)
+
+
+def test_terra_timeout_no_change_is_held_not_completed(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## UIIR-",
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_timeout=0.1,
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+    )
+    task = PortalTask(
+        task_id="UIIR-099",
+        title="Hold Terra timeout no-change",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="uiir",
+        validation=["test -f validated.txt"],
+    )
+    held: list[dict[str, object]] = []
+
+    def fake_seed(worktree_path, _branch_name, *, task=None):
+        worktree_path.mkdir(parents=True)
+        (worktree_path / "validated.txt").write_text(
+            "complete\n",
+            encoding="utf-8",
+        )
+        return "a" * 40
+
+    def timeout_runner(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(["fake-agent"], timeout=0.1)
+
+    def fake_hold(**kwargs):
+        held.append(kwargs)
+        shutil.rmtree(kwargs["worktree_path"])
+        return {
+            "held": True,
+            "queued": False,
+            "merged": False,
+            "reason": "independent_non_codex_review_pending",
+            "cleanup_result": {
+                "cleaned": True,
+                "lifecycle_finalize": {"finalized": True},
+            },
+        }
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", fake_seed)
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_worktree_for_validation",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [
+                {"command": "test -f validated.txt", "returncode": 0}
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verify_post_validation_candidate_binding",
+        lambda *_args, validation_result, **_kwargs: dict(
+            validation_result
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_commit_worktree_changes",
+        lambda *_args, **_kwargs: {
+            "committed": False,
+            "commit": "",
+            "reason": "no_changes",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_git",
+        lambda args, **_kwargs: subprocess.CompletedProcess(
+            args,
+            0,
+            "a" * 40 + "\n",
+            "",
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_git_current_branch",
+        lambda _path: "implementation/uiir-099-attempt-1",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validated_no_change_completion_guard",
+        lambda **_kwargs: {"allowed": True, "reasons": []},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_hold_terra_fallback_candidate",
+        fake_hold,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        timeout_runner,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="implement",
+        provider_route_authority={"typed_quota_authority": True},
+    )
+
+    assert result["returncode"] == 0
+    assert result["timeout_result"]["salvaged"] is True
+    assert result["implementation_commit"] == "a" * 40
+    assert result["commit_result"]["reason"] == (
+        "terra_no_change_review_pending"
+    )
+    assert result["merge_result"]["held"] is True
+    assert result["cleanup_result"]["cleaned"] is True
+    assert result["cleanup_result"]["lifecycle_finalize"][
+        "finalized"
+    ] is True
+    assert result["board_completion"]["complete"] is False
+    assert "todo_update_result" not in result
+    assert len(held) == 1
+    assert held[0]["implementation_commit"] == "a" * 40
 
 
 def test_implementation_daemon_preserves_timed_out_work_on_rescue_branch(
