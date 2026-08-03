@@ -33,14 +33,21 @@ tqdm>=4.64.0
 numpy>=1.23.0
 toml>=0.10.2
 
+# Proof-reuse/datasets Python surfaces.  These are ordinary Python
+# distributions only: NLTK corpus downloads and the Groth16 Rust backend remain
+# explicit first-use capabilities and never run as packaging side effects.
+nltk>=3.8.1,<4
+jsonschema>=4,<5
+
 # Strict content-addressing (core).  Kept aligned with the proof-reuse extra
 # and pyproject/setup metadata.  Datasets-ZK verification is *not* core: the
-# proof-reuse lazy installer loads a reviewed local verifier with --no-deps
-# only when an exact lookup requests that capability (see
+# proof-reuse lazy installer materializes a closed exact Git-blob snapshot in
+# its owner-private content-addressed cache only when an exact lookup requests
+# that capability. It runs no pip/VCS installer or package build hook (see
 # requirements-proof-reuse.txt and [project.optional-dependencies].proof-reuse).
 multiformats>=0.3,<1
 pymultihash>=0.8.2
 
 # ipfs_datasets_py is intentionally not a core dependency.  Its distribution
-# depends back on ipfs_accelerate_py; the proof-reuse resolver installs only a
-# reviewed local verifier source with --no-deps when that capability is needed.
+# depends back on ipfs_accelerate_py; the proof-reuse resolver materializes only
+# the exact reviewed verifier snapshot without mutating global site-packages.

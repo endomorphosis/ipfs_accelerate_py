@@ -190,10 +190,16 @@ proof_reuse_requirements = _read_requirements(
 if proof_reuse_requirements:
     # Keep legacy setup.py metadata aligned with the PEP 621 extra and
     # requirements-proof-reuse.txt.  Core install_requires carries strict
-    # content-addressing (multiformats/pymultihash).  Datasets-ZK
-    # (ipfs_datasets_py verifier) remains a first-use lazy --no-deps install
-    # via ProofReuseLazyDependencyInstaller because that distribution depends
-    # back on ipfs_accelerate_py.
+    # content-addressing (multiformats/pymultihash), schema validation, and the
+    # NLTK Python distribution.  NLTK corpus/model downloads are deliberately
+    # not setuptools hooks.  Datasets-ZK
+    # (ipfs_datasets_py verifier) remains a first-use exact Git-blob snapshot
+    # materialized by ProofReuseLazyDependencyInstaller in an owner-private
+    # content-addressed cache (no pip/VCS, build hooks, submodules, or global
+    # site-packages mutation) because that distribution depends back on
+    # ipfs_accelerate_py. Groth16 is a reviewed native Cargo build, not a PyPI
+    # requirement; its separate explicit first-use provisioner never runs
+    # trusted setup or generates circuit keys.
     extras_require["proof-reuse"] = proof_reuse_requirements
 
 setup(

@@ -71,12 +71,17 @@ proof-reuse = [
   # proof-reuse environments.
   #
   # Datasets-ZK: ipfs_datasets_py is deliberately absent. The
-  # ProofReuseLazyDependencyInstaller loads a reviewed local verifier with
-  # --no-deps only on first requested certificate capability. There is no
-  # remote fallback until the reviewed verifier revision is published.
+  # ProofReuseLazyDependencyInstaller materializes a closed exact Git-blob
+  # snapshot in an owner-private content-addressed cache on first requested
+  # certificate capability. It runs no pip/VCS installer, build hook, or
+  # submodule operation and does not mutate global site-packages. No remote
+  # fallback exists until the reviewed verifier revision is published.
+  # NLTK here means only the Python distribution. Corpus downloads and the
+  # Groth16 Cargo backend remain explicit, bounded first-use operations.
   "pytest>=8.0.0",
   "multiformats>=0.3,<1",
   "jsonschema>=4,<5",
+  "nltk>=3.8.1,<4",
 ]
 dev = [
   # test runner + core test deps

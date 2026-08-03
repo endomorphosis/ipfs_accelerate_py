@@ -25,17 +25,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import ipfs_accelerate_py.testing.proof_reuse.lazy_dependencies as lazy_module
+import ipfs_accelerate_py.testing.proof_reuse.services as services_module
 import pytest
-
 from ipfs_accelerate_py.testing.proof_reuse.config import ProofReuseMode
 from ipfs_accelerate_py.testing.proof_reuse.lazy_dependencies import (
     ACCELERATOR_PROOF_REUSE_BOOTSTRAP_INTERFACE,
     PACKAGE_AUTO_INSTALL_ENV,
     PLUGIN_MODULE,
     PROOF_REUSE_LAZY_DEPENDENCY_INSTALLER_INTERFACE,
-    AcceleratorProofReuseBootstrap,
-    ProofReuseCapabilityResolution,
-    ProofReuseLazyDependencyInstaller,
     REASON_AUTO_INSTALL_DISABLED,
     REASON_AVAILABLE,
     REASON_DEPENDENCY_MISSING,
@@ -44,6 +42,9 @@ from ipfs_accelerate_py.testing.proof_reuse.lazy_dependencies import (
     REASON_OFFLINE_INDEX,
     REASON_READ_ONLY_ENVIRONMENT,
     REASON_RESOLVER_FAILURE,
+    AcceleratorProofReuseBootstrap,
+    ProofReuseCapabilityResolution,
+    ProofReuseLazyDependencyInstaller,
     get_proof_reuse_bootstrap,
     package_auto_install_policy_permits,
     proof_reuse_install_permitted,
@@ -55,7 +56,6 @@ from ipfs_accelerate_py.testing.proof_reuse.services import (
     ProofReuseDependency,
     automatic_install_enabled,
 )
-
 
 ACCELERATE_ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP = ACCELERATE_ROOT / "conftest.py"
@@ -102,9 +102,7 @@ def _environment(
         str(PYTEST_SITE),
         environment.get("PYTHONPATH", ""),
     )
-    environment["PYTHONPATH"] = os.pathsep.join(
-        part for part in python_paths if part
-    )
+    environment["PYTHONPATH"] = os.pathsep.join(part for part in python_paths if part)
     environment["IPFS_TEST_PROOF_REUSE_MODE"] = mode
     environment["HOME"] = str(tmp_path / "user-home")
     environment["IPFS_PATH"] = str(tmp_path / "user-home" / ".ipfs")
@@ -163,8 +161,11 @@ def test_content_addressing_and_datasets_zk_declared_consistently() -> None:
         "pytest>=8.0.0",
         "multiformats>=0.3,<1",
         "jsonschema>=4,<5",
+        "nltk>=3.8.1,<4",
     ]
     assert extra == scoped
+    assert "jsonschema>=4,<5" in core
+    assert "nltk>=3.8.1,<4" in core
     assert not any(item.startswith("ipfs_datasets_py") for item in core)
     assert not any(item.startswith("ipfs_datasets_py") for item in scoped)
     assert not any(item.startswith("ipfs_datasets_py") for item in extra)
@@ -179,7 +180,8 @@ def test_lazy_dependencies_module_declares_installer_interface() -> None:
     source = LAZY_DEPENDENCIES.read_text(encoding="utf-8")
     assert "ProofReuseLazyDependencyInstaller@1" in source
     assert "AcceleratorProofReuseBootstrap@1" in source
-    assert "fcntl.flock" in source
+    assert "lock_module.flock" in source
+    assert "lock_module.locking" in source
     tree = ast.parse(source)
     names = {
         node.name
@@ -218,8 +220,7 @@ def test_package_init_exposes_only_narrow_lazy_proof_reuse_facade() -> None:
     assert facade.interface == ACCELERATOR_PROOF_REUSE_BOOTSTRAP_INTERFACE
     assert package.AcceleratorProofReuseBootstrap is AcceleratorProofReuseBootstrap
     assert (
-        package.ProofReuseLazyDependencyInstaller
-        is ProofReuseLazyDependencyInstaller
+        package.ProofReuseLazyDependencyInstaller is ProofReuseLazyDependencyInstaller
     )
 
     # Facade access must not import the plugin or datasets verifier.
@@ -363,6 +364,43 @@ def test_enabled_modes_build_defaults_without_item_or_conftest_injection(
         assert services.action if hasattr(services, "action") else True
 
 
+def test_denied_package_policy_cannot_be_upgraded_by_service_composition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    environment = {
+        PROOF_REUSE_AUTO_INSTALL_ENV: "1",
+        PACKAGE_AUTO_INSTALL_ENV: "0",
+        "HOME": str(tmp_path / "home"),
+    }
+
+    def forbidden_installer(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("denied package policy must remain read-only")
+
+    monkeypatch.setattr(
+        lazy_module,
+        "ProofReuseLazyDependencyInstaller",
+        forbidden_installer,
+    )
+    monkeypatch.setattr(
+        services_module,
+        "AllowlistedPipInstaller",
+        forbidden_installer,
+    )
+
+    bootstrap = AcceleratorProofReuseBootstrap(environ=environment)
+    facade_services = bootstrap.build_default_services()
+    direct_services = services_module.compose_default_proof_reuse_services(
+        environ=environment
+    )
+
+    assert proof_reuse_install_permitted(environment) is False
+    assert bootstrap._installer is None
+    assert facade_services.resolver._installer is None
+    assert direct_services.resolver._installer is None
+    assert not (tmp_path / "home").exists()
+
+
 def test_direct_node_read_mode_runs_without_conftest_service_attributes(
     tmp_path: Path,
 ) -> None:
@@ -451,9 +489,10 @@ def test_install_requires_both_policies() -> None:
     assert proof_reuse_install_permitted(enabled) is True
     assert proof_reuse_install_permitted(disabled_proof) is False
     assert proof_reuse_install_permitted(disabled_package) is False
-    assert package_auto_install_policy_permits(
-        {PACKAGE_AUTO_INSTALL_ENV: "invalid"}
-    ) is False
+    assert (
+        package_auto_install_policy_permits({PACKAGE_AUTO_INSTALL_ENV: "invalid"})
+        is False
+    )
 
 
 def test_disabled_installer_emits_typed_reason_and_runs() -> None:
@@ -469,9 +508,7 @@ def test_disabled_installer_emits_typed_reason_and_runs() -> None:
             PROOF_REUSE_AUTO_INSTALL_ENV: "0",
             PACKAGE_AUTO_INSTALL_ENV: "1",
         },
-        importer=lambda name: (_ for _ in ()).throw(
-            ModuleNotFoundError(name=name)
-        ),
+        importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name=name)),
     )
     resolution = installer.ensure_capability("content_addressing")
     assert resolution.available is False
@@ -483,7 +520,10 @@ def test_disabled_installer_emits_typed_reason_and_runs() -> None:
 @pytest.mark.parametrize(
     ("output", "expected_reason"),
     [
-        ("Could not find a version that satisfies the requirement", REASON_OFFLINE_INDEX),
+        (
+            "Could not find a version that satisfies the requirement",
+            REASON_OFFLINE_INDEX,
+        ),
         ("Network is unreachable", REASON_OFFLINE_INDEX),
         ("Read-only file system", REASON_READ_ONLY_ENVIRONMENT),
         ("Permission denied: '/usr/lib'", REASON_READ_ONLY_ENVIRONMENT),
@@ -492,6 +532,7 @@ def test_disabled_installer_emits_typed_reason_and_runs() -> None:
     ],
 )
 def test_install_failure_modes_emit_typed_capability_reasons(
+    tmp_path: Path,
     output: str,
     expected_reason: str,
 ) -> None:
@@ -504,11 +545,8 @@ def test_install_failure_modes_emit_typed_capability_reasons(
             PROOF_REUSE_AUTO_INSTALL_ENV: "1",
             PACKAGE_AUTO_INSTALL_ENV: "1",
         },
-        importer=lambda name: (_ for _ in ()).throw(
-            ModuleNotFoundError(name=name)
-        ),
-        lock_root=Path(os.environ.get("TMPDIR", "/tmp"))
-        / "ptr139-locks",
+        importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name=name)),
+        lock_root=tmp_path / "locks",
     )
     resolution = installer.ensure_capability(MULTIFORMATS_MODULE)
     assert resolution.available is False
@@ -522,9 +560,7 @@ def test_missing_dependency_without_install_attempt_is_typed() -> None:
             PROOF_REUSE_AUTO_INSTALL_ENV: "0",
             PACKAGE_AUTO_INSTALL_ENV: "0",
         },
-        importer=lambda name: (_ for _ in ()).throw(
-            ModuleNotFoundError(name=name)
-        ),
+        importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name=name)),
     )
     resolution = installer.ensure_capability("datasets_zk")
     assert resolution.available is False
@@ -618,16 +654,12 @@ def test_interprocess_fence_serializes_concurrent_installs(tmp_path: Path) -> No
         hold.wait(timeout=2)
         with lock:
             active -= 1
-        return SimpleNamespace(
-            returncode=1, stdout="", stderr="Network is unreachable"
-        )
+        return SimpleNamespace(returncode=1, stdout="", stderr="Network is unreachable")
 
     def make_installer() -> ProofReuseLazyDependencyInstaller:
         return ProofReuseLazyDependencyInstaller(
             runner=runner,
-            importer=lambda name: (_ for _ in ()).throw(
-                ModuleNotFoundError(name=name)
-            ),
+            importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name=name)),
             environ={
                 PROOF_REUSE_AUTO_INSTALL_ENV: "1",
                 PACKAGE_AUTO_INSTALL_ENV: "1",
@@ -673,20 +705,18 @@ def test_incompatible_installed_symbols_emit_typed_reason() -> None:
     assert resolution.reason_code == REASON_INCOMPATIBLE_VERSION
 
 
-def test_read_only_environment_oserror_is_typed() -> None:
+def test_read_only_environment_oserror_is_typed(tmp_path: Path) -> None:
     def runner(*args: Any, **kwargs: Any) -> Any:
         raise OSError(30, "Read-only file system")
 
     installer = ProofReuseLazyDependencyInstaller(
         runner=runner,
-        importer=lambda name: (_ for _ in ()).throw(
-            ModuleNotFoundError(name=name)
-        ),
+        importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name=name)),
         environ={
             PROOF_REUSE_AUTO_INSTALL_ENV: "1",
             PACKAGE_AUTO_INSTALL_ENV: "1",
         },
-        lock_root="/tmp/ptr139-ro",
+        lock_root=tmp_path / "locks",
     )
     resolution = installer.ensure_capability(MULTIFORMATS_MODULE)
     assert resolution.available is False
@@ -770,9 +800,7 @@ def test_coverage_mutation_profiling_debugger_leak_modes_execute(
     }
 
     # Coverage
-    cov_env = _environment(
-        tmp_path, mode="read", autoload=False, extra=base_extra
-    )
+    cov_env = _environment(tmp_path, mode="read", autoload=False, extra=base_extra)
     cov = _run_pytest(
         project,
         cov_env,
@@ -786,9 +814,7 @@ def test_coverage_mutation_profiling_debugger_leak_modes_execute(
     _assert_success(cov, "1 passed")
 
     # Mutation-style re-execution still runs the body
-    mut_env = _environment(
-        tmp_path, mode="readwrite", autoload=False, extra=base_extra
-    )
+    mut_env = _environment(tmp_path, mode="readwrite", autoload=False, extra=base_extra)
     first = _run_pytest(project, mut_env, "test_tooling.py", "-q")
     _assert_success(first, "1 passed")
     _write(
@@ -804,9 +830,7 @@ def test_coverage_mutation_profiling_debugger_leak_modes_execute(
 
     # Profiling
     profile_out = tmp_path / "tooling.cprof"
-    prof_env = _environment(
-        tmp_path, mode="off", autoload=False, extra=base_extra
-    )
+    prof_env = _environment(tmp_path, mode="off", autoload=False, extra=base_extra)
     profiled = subprocess.run(
         [
             sys.executable,

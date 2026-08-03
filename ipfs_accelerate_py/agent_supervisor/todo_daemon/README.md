@@ -60,6 +60,18 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.<module> import ...
 
 Relative imports stay package-local (`from .<module> import ...`).
 
+## Ordered provider fallback policies
+
+`grok-codex` provider aliases use the no-shell
+`agent_supervisor/provider_fallback_runner.py`. By default, the runner preserves
+the historical `any_failure` behavior. A supervisor can opt into
+`IPFS_ACCELERATE_AGENT_PROVIDER_FALLBACK_POLICY=grok_quota_exhausted`; under
+that policy Grok must be installed and authenticated, and Codex runs only after
+the runner positively classifies a Grok quota-exhaustion error. Authentication,
+launch, timeout, transport, generic nonzero, malformed-output, and ordinary task
+failures return the Grok exit without fallback. The quota-only policy is not a
+global default and therefore does not change existing supervisor behavior.
+
 ## Extending
 
 1. Add modules here only if this package **owns** the concern ([placement table](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)).

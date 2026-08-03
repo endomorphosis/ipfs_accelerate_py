@@ -205,9 +205,7 @@ def set_proof_reuse_dependency_installer(
     if installer is not None:
         install = getattr(installer, "install", None)
         if not callable(installer) and not callable(install):
-            raise TypeError(
-                "installer must be callable or expose install()"
-            )
+            raise TypeError("installer must be callable or expose install()")
     setattr(config, DEPENDENCY_INSTALLER_ATTRIBUTE, installer)
 
 
@@ -217,9 +215,7 @@ def set_proof_reuse_service_resolver(
 ) -> None:
     """Inject a managed service resolver for hermetic environments/tests."""
 
-    if resolver is not None and not callable(
-        getattr(resolver, "resolve", None)
-    ):
+    if resolver is not None and not callable(getattr(resolver, "resolve", None)):
         raise TypeError("resolver must expose resolve()")
     setattr(config, SERVICE_RESOLVER_ATTRIBUTE, resolver)
 
@@ -267,12 +263,14 @@ def _inject_default_services(config: Any) -> None:
     ):
         return
 
+    from .lazy_dependencies import (
+        ProofReuseLazyDependencyInstaller,
+        proof_reuse_install_permitted,
+    )
     from .services import (
-        AllowlistedPipInstaller,
         DefaultProofReuseServices,
         LazyProofReuseServiceResolver,
         ProofReuseServiceResolution,
-        automatic_install_enabled,
         compose_default_proof_reuse_services,
     )
 
@@ -283,10 +281,10 @@ def _inject_default_services(config: Any) -> None:
     if (
         installer is None
         and not isinstance(worker_input, Mapping)
-        and automatic_install_enabled(os.environ)
+        and proof_reuse_install_permitted(os.environ)
     ):
         try:
-            installer = AllowlistedPipInstaller()
+            installer = ProofReuseLazyDependencyInstaller()
         except Exception:
             installer = None
     if resolver is None:
@@ -324,14 +322,10 @@ def _inject_default_services(config: Any) -> None:
             resolution = (
                 resolver.resolve(cache_root=_proof_reuse_cache_root(config))
                 if resolver is not None
-                else ProofReuseServiceResolution.unavailable(
-                    "plugin_unavailable"
-                )
+                else ProofReuseServiceResolution.unavailable("plugin_unavailable")
             )
         except Exception:
-            resolution = ProofReuseServiceResolution.unavailable(
-                "plugin_unavailable"
-            )
+            resolution = ProofReuseServiceResolution.unavailable("plugin_unavailable")
     setattr(config, SERVICE_RESOLUTION_ATTRIBUTE, resolution)
     if defaults.degraded:
         metrics = getattr(config, METRICS_ATTRIBUTE, None)
@@ -754,9 +748,7 @@ def _record_runtime_report(config: Any, item: Any, report: Any) -> None:
     outcome = str(getattr(report, "outcome", ""))
     decision = getattr(item, ITEM_DECISION_ATTRIBUTE, None)
     proof_skipped = isinstance(decision, ReuseDecision) and decision.is_skip
-    already_recorded = bool(
-        getattr(item, EXECUTION_RECORDED_ATTRIBUTE, False)
-    )
+    already_recorded = bool(getattr(item, EXECUTION_RECORDED_ATTRIBUTE, False))
     execution_terminal = (
         when == "call"
         or (when == "setup" and outcome != "passed")
@@ -775,9 +767,7 @@ def _record_runtime_report(config: Any, item: Any, report: Any) -> None:
         metrics.executed(latency_ms=duration_ms)
         setattr(item, EXECUTION_RECORDED_ATTRIBUTE, True)
 
-    if when != "teardown" or not isinstance(
-        collector, TestPassReceiptCollector
-    ):
+    if when != "teardown" or not isinstance(collector, TestPassReceiptCollector):
         return
     proof_config = get_proof_reuse_config(config)
     if (
@@ -857,9 +847,7 @@ def pytest_configure_node(node: Any) -> None:
         coordinator = ProofReuseXdistCoordinator.controller(metrics=metrics)
         setattr(config, COORDINATOR_ATTRIBUTE, coordinator)
     elif coordinator.role is ProofReuseXdistRole.STANDALONE:
-        coordinator = ProofReuseXdistCoordinator.controller(
-            metrics=coordinator.metrics
-        )
+        coordinator = ProofReuseXdistCoordinator.controller(metrics=coordinator.metrics)
         setattr(config, COORDINATOR_ATTRIBUTE, coordinator)
 
     worker_input = getattr(node, "workerinput", None)
@@ -875,9 +863,7 @@ def pytest_configure_node(node: Any) -> None:
     try:
         if not isinstance(worker_input, dict):
             raise TypeError("xdist worker input is unavailable")
-        worker_input[WORKER_INPUT_KEY] = coordinator.configure_worker(
-            worker_id
-        )
+        worker_input[WORKER_INPUT_KEY] = coordinator.configure_worker(worker_id)
     except Exception:
         coordinator.mark_controller_unavailable()
         if metrics is not None:

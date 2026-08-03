@@ -1,4 +1,4 @@
-"""Fail-closed final authority gate for proof-backed test reuse (PTR-122/PTR-142).
+"""Fail-closed final authority gate for proof-backed test reuse.
 
 The final gate is intentionally an aggregator, not another proof provider.  It
 accepts only fresh, authoritative evidence already bound to the exact current
@@ -20,7 +20,11 @@ task remains ``PTR-122``.
 
 PTR-142 refreshes the sealed production population from 41 to the exact 53-task
 board (adding the runtime-activation repair ``PTR-131`` … ``PTR-142``) and
-requires fresh runtime-activation repair evidence before the gate may pass.
+required runtime-activation repair evidence.  A later current-tree audit found
+that its injected/pseudo-certificate activation evidence was not production
+authority.  PTR-149 therefore expands the population to 60 and requires fresh
+evidence for the corrective ``PTR-143`` … ``PTR-149`` wave; historical PTR-142
+evidence cannot satisfy that premise.
 """
 
 from __future__ import annotations
@@ -129,7 +133,28 @@ RUNTIME_ACTIVATION_REPAIR_EVIDENCE_REQUIREMENT: Final = (
     "ptr/runtime-activation-repair-evidence@1"
 )
 
-# Sealed production population: all 53 implementation tasks on the board.
+# Production correction for activation claims that PTR-142 did not actually
+# establish through the ordinary default two-process path.  Keep the historical
+# constants above for replay/import compatibility; they are not the fresh
+# repair population accepted by the current production gate.
+PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS: Final = frozenset(
+    {
+        "PTR-143",
+        "PTR-144",
+        "PTR-145",
+        "PTR-146",
+        "PTR-147",
+        "PTR-148",
+        "PTR-149",
+    }
+)
+PRODUCTION_RUNTIME_ACTIVATION_ID: Final = "production-runtime-activation"
+PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT: Final = (
+    "ptr/production-runtime-activation-evidence@1"
+)
+PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID: Final = "PTR-149"
+
+# Sealed production population: all 60 implementation tasks on the board.
 REQUIRED_PTR_TASK_IDS: Final = frozenset(
     {
         "PTR-000",
@@ -174,9 +199,10 @@ REQUIRED_PTR_TASK_IDS: Final = frozenset(
         "PTR-122",
         "PTR-130",
         *RUNTIME_ACTIVATION_REPAIR_TASK_IDS,
+        *PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS,
     }
 )
-SEALED_PRODUCTION_TASK_COUNT: Final = 53
+SEALED_PRODUCTION_TASK_COUNT: Final = 60
 assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT
 # Verified child premises only — G110 is not a child premise of itself.
 REQUIRED_CHILD_GOAL_IDS: Final = frozenset(
@@ -1410,6 +1436,7 @@ class ProofTestReuseCurrentTreeGate:
             "PTR-122",
             "PTR-130",
             *RUNTIME_ACTIVATION_REPAIR_TASK_IDS,
+            *PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS,
         }
         if self.required_task_ids == REQUIRED_PTR_TASK_IDS and not sealed_expansion.issubset(
             self.required_task_ids
@@ -1421,7 +1448,7 @@ class ProofTestReuseCurrentTreeGate:
             len(self.required_task_ids) != SEALED_PRODUCTION_TASK_COUNT
         ):
             raise ProofTestReuseCurrentTreeGateError(
-                "production population must be the exact 53-task board"
+                "production population must be the exact 60-task board"
             )
         if (
             self.required_task_ids == REQUIRED_PTR_TASK_IDS
@@ -1431,6 +1458,15 @@ class ProofTestReuseCurrentTreeGate:
         ):
             raise ProofTestReuseCurrentTreeGateError(
                 "production population missing runtime-activation repair tasks"
+            )
+        if (
+            self.required_task_ids == REQUIRED_PTR_TASK_IDS
+            and not PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS.issubset(
+                self.required_task_ids
+            )
+        ):
+            raise ProofTestReuseCurrentTreeGateError(
+                "production population missing production-activation correction tasks"
             )
 
     @property
@@ -1828,10 +1864,10 @@ class ProofTestReuseCurrentTreeGate:
         return reasons, self._evidence_cid(record)
 
     def _requires_repair_evidence(self) -> bool:
-        """Production populations that include the repair wave need fresh repair evidence."""
+        """The corrective production population needs fresh activation evidence."""
 
         return bool(
-            RUNTIME_ACTIVATION_REPAIR_TASK_IDS & self.required_task_ids
+            PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS & self.required_task_ids
         )
 
     def _repair_evidence_reasons(
@@ -1840,7 +1876,7 @@ class ProofTestReuseCurrentTreeGate:
         *,
         now_ms: int,
     ) -> tuple[list[str], str]:
-        """Validate fresh runtime-activation repair evidence (PTR-142)."""
+        """Validate fresh production-runtime activation evidence (PTR-149)."""
 
         reasons: list[str] = []
         if not self._requires_repair_evidence():
@@ -1856,8 +1892,14 @@ class ProofTestReuseCurrentTreeGate:
         repair_id = _text(
             _value(record, "repair_id", "repair", "population_id")
         )
-        if repair_id != RUNTIME_ACTIVATION_REPAIR_ID:
+        if repair_id != PRODUCTION_RUNTIME_ACTIVATION_ID:
             reasons.append("repair_evidence_id_mismatch")
+
+        producer_task_id = _text(
+            _value(record, "producer_task_id", "producing_task_id", "task_id")
+        )
+        if producer_task_id != PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID:
+            reasons.append("repair_evidence_producer_task_mismatch")
 
         covered = frozenset(
             _text(item)
@@ -1867,16 +1909,15 @@ class ProofTestReuseCurrentTreeGate:
                 or ()
             )
         )
-        missing_tasks = sorted(RUNTIME_ACTIVATION_REPAIR_TASK_IDS - covered)
+        missing_tasks = sorted(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS - covered)
         if missing_tasks:
             reasons.extend(
                 _reason("repair_evidence_missing_task", task_id)
                 for task_id in missing_tasks
             )
-        # Covered tasks may only include the sealed repair wave for production.
-        unexpected = sorted(
-            covered - RUNTIME_ACTIVATION_REPAIR_TASK_IDS - self.required_task_ids
-        )
+        # Historical PTR-142 coverage cannot be mixed in to make the new
+        # corrective evidence appear complete.
+        unexpected = sorted(covered - PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS)
         if unexpected:
             reasons.extend(
                 _reason("repair_evidence_unexpected_task", task_id)
@@ -1893,6 +1934,17 @@ class ProofTestReuseCurrentTreeGate:
             reasons.append("repair_evidence_zero_false_skip_missing")
         if record.get("activation_e2e_passed") is not True:
             reasons.append("repair_evidence_activation_e2e_missing")
+        for field_name, reason_code in (
+            ("zero_injection_default_path", "repair_evidence_default_path_missing"),
+            ("three_repository_cold_warm", "repair_evidence_three_repo_missing"),
+            ("real_groth16_certificate", "repair_evidence_real_groth16_missing"),
+            ("measured_subprocess_benchmark", "repair_evidence_measured_benchmark_missing"),
+            ("historical_activation_claims_superseded", "repair_evidence_supersession_missing"),
+        ):
+            if record.get(field_name) is not True:
+                reasons.append(reason_code)
+        if record.get("sealed_task_count") != SEALED_PRODUCTION_TASK_COUNT:
+            reasons.append("repair_evidence_task_count_mismatch")
 
         requirement = _text(
             _value(
@@ -1902,7 +1954,7 @@ class ProofTestReuseCurrentTreeGate:
                 "satisfied_requirement",
             )
         )
-        if requirement and requirement != RUNTIME_ACTIVATION_REPAIR_EVIDENCE_REQUIREMENT:
+        if requirement != PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT:
             reasons.append("repair_evidence_requirement_mismatch")
 
         reasons.extend(
@@ -2369,6 +2421,10 @@ __all__ = [
     "PROOF_TEST_REUSE_CURRENT_TREE_GATE_INTERFACE",
     "PROOF_TEST_REUSE_GATE_BUNDLE_INTERFACE",
     "PROOF_TEST_REUSE_PERSISTED_GATE_BUNDLE_INTERFACE",
+    "PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT",
+    "PRODUCTION_RUNTIME_ACTIVATION_ID",
+    "PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID",
+    "PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS",
     "REQUIRED_ADVERSARIAL_POPULATIONS",
     "REQUIRED_ANALYZERS",
     "REQUIRED_CHILD_GOAL_IDS",

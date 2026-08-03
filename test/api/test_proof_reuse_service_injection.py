@@ -18,6 +18,7 @@ from ipfs_accelerate_py.testing.proof_reuse.plugin import (
     LOOKUP_SERVICE_ATTRIBUTE,
     PROVIDER_SERVICE_ATTRIBUTE,
     SERVICE_RESOLUTION_ATTRIBUTE,
+    SERVICE_RESOLVER_ATTRIBUTE,
     STORE_SERVICE_ATTRIBUTE,
     _inject_default_services,
     pytest_collection_modifyitems,
@@ -31,9 +32,11 @@ from ipfs_accelerate_py.testing.proof_reuse.services import (
     DATASETS_VERIFIER_RELEASE_BLOCKER,
     DATASETS_VERIFIER_REMOTE_SOURCE_PUBLISHED,
     DATASETS_VERIFIER_REVISION,
+    JSONSCHEMA_DEPENDENCY,
     JSONSCHEMA_MODULE,
     LOOKUP_MODULE,
     MULTIFORMATS_MODULE,
+    NLTK_MODULE,
     PROOF_REUSE_AUTO_INSTALL_ENV,
     PROOF_REUSE_DATASETS_SOURCE_ENV,
     PROVIDER_MODULE,
@@ -134,6 +137,14 @@ class _Installer:
         if self.succeeds:
             self.importer.missing.discard(dependency.module_name)
         return self.succeeds
+
+    def prepare_dependency(self, _dependency: Any) -> bool:
+        return True
+
+    def validate_module_provenance(self, _dependency: Any, _module: Any) -> bool:
+        # This injected test double is the explicit trust boundary for the
+        # synthetic module map; production installers perform digest checks.
+        return True
 
 
 class _PluginManager:
@@ -349,24 +360,29 @@ def test_dependency_plan_is_cold_complete_and_source_introspectable() -> None:
     assert pinned["datasets_requested_source"] == "reviewed_integration_sibling"
     assert local["datasets_requested_source"] == "configured_local_path"
     assert pinned["datasets_reviewed_revision"] == DATASETS_VERIFIER_REVISION
-    assert pinned["remote_source_published"] is DATASETS_VERIFIER_REMOTE_SOURCE_PUBLISHED
+    assert (
+        pinned["remote_source_published"] is DATASETS_VERIFIER_REMOTE_SOURCE_PUBLISHED
+    )
     assert pinned["remote_source_published"] is False
     assert pinned["release_blocker"] == DATASETS_VERIFIER_RELEASE_BLOCKER
     assert [item["module_name"] for item in pinned["dependencies"]] == [
         MULTIFORMATS_MODULE,
         JSONSCHEMA_MODULE,
+        NLTK_MODULE,
         DATASETS_VERIFIER_MODULE,
     ]
     assert pinned["dependencies"][1]["distribution"] == "jsonschema>=4,<5"
     assert pinned["dependencies"][1]["required_symbols"] == ["validators"]
-    datasets = pinned["dependencies"][2]
+    assert pinned["dependencies"][2]["distribution"] == "nltk>=3.8.1,<4"
+    datasets = pinned["dependencies"][3]
     assert datasets["distribution"] == DATASETS_VERIFIER_DISTRIBUTION
-    assert datasets["pip_options"] == [
-        "--no-deps",
-        "--force-reinstall",
-        "--no-build-isolation",
-    ]
-    assert pinned["external_capability_absence_action"] == "run"
+    assert datasets["packaging_source"] == "private_exact_git_blob_snapshot_cas"
+    assert datasets["pip_options"] == []
+    assert pinned["datasets_vcs_install"] is False
+    assert pinned["datasets_submodules_initialized"] is False
+    assert pinned["datasets_global_site_packages_mutated"] is False
+    assert pinned["datasets_private_target_install"] is True
+    assert pinned["external_capability_absence_action"] == "RUN_OR_DEFERRED"
     activation = pinned["runtime_activation"]
     assert activation["automatic_plugin_discovery"] is True
     assert activation["ordinary_enabled_run_effective_action"] == "run"
@@ -397,36 +413,41 @@ def test_dependency_plan_is_cold_complete_and_source_introspectable() -> None:
     }
 
 
-def test_datasets_lazy_install_uses_reviewed_sibling_without_dependencies() -> None:
+def test_datasets_lazy_install_uses_reviewed_sibling_without_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     process_calls: list[tuple[tuple[str, ...], dict[str, Any]]] = []
 
     def runner(command: tuple[str, ...], **kwargs: Any) -> Any:
         process_calls.append((command, kwargs))
         return SimpleNamespace(returncode=0)
 
-    installer = AllowlistedPipInstaller(runner=runner, environ={})
+    installer = AllowlistedPipInstaller(
+        runner=runner,
+        environ={"HOME": str(tmp_path)},
+        provision_root=tmp_path / "provision",
+    )
+    monkeypatch.setattr(installer, "_activate_private_snapshot", lambda _root: True)
 
     assert installer.install(DATASETS_VERIFIER_DEPENDENCY) is True
-    assert len(process_calls) == 1
-    command, kwargs = process_calls[0]
-    assert "--no-deps" in command
-    assert "--force-reinstall" in command
-    assert "--no-build-isolation" in command
-    sibling = Path(__file__).resolve().parents[2].parent / "ipfs_datasets"
-    assert command[-1] == f"ipfs_datasets_py @ {sibling.resolve().as_uri()}"
-    assert "git+" not in command[-1]
-    assert kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
-    assert kwargs["env"]["IPFS_DATASETS_AUTO_INSTALL"] == "false"
-    assert kwargs["env"]["IPFS_DATASETS_PY_AUTO_GROTH16_BUILD"] == "0"
-    assert kwargs["env"]["IPFS_DATASETS_PY_AUTO_NLTK_DOWNLOAD"] == "0"
-    assert kwargs["env"]["IPFS_DATASETS_PY_INCLUDE_VCS_DEPENDENCIES"] == "0"
-
-
-def test_datasets_lazy_install_prefers_valid_configured_local_source() -> None:
-    source = (
-        Path(__file__).resolve().parents[2].parent
-        / "ipfs_datasets"
+    assert process_calls == []
+    target = installer._validated_private_snapshot_target()
+    assert target is not None
+    receipt = json.loads(
+        (target / ".proof-reuse-verifier-snapshot.json").read_text(encoding="utf-8")
     )
+    assert receipt["datasets_revision"] == DATASETS_VERIFIER_REVISION
+    assert receipt["pip_install"] is False
+    assert receipt["vcs_install"] is False
+    assert receipt["submodules_initialized"] is False
+
+
+def test_datasets_lazy_install_prefers_valid_configured_local_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = Path(__file__).resolve().parents[2].parent / "ipfs_datasets"
     process_calls: list[tuple[str, ...]] = []
 
     def runner(command: tuple[str, ...], **_kwargs: Any) -> Any:
@@ -435,17 +456,21 @@ def test_datasets_lazy_install_prefers_valid_configured_local_source() -> None:
 
     installer = AllowlistedPipInstaller(
         runner=runner,
-        environ={PROOF_REUSE_DATASETS_SOURCE_ENV: str(source)},
+        environ={
+            PROOF_REUSE_DATASETS_SOURCE_ENV: str(source),
+            "HOME": str(tmp_path),
+        },
+        provision_root=tmp_path / "provision",
     )
+    monkeypatch.setattr(installer, "_activate_private_snapshot", lambda _root: True)
     equal_dependency = replace(DATASETS_VERIFIER_DEPENDENCY)
     assert equal_dependency == DATASETS_VERIFIER_DEPENDENCY
     assert equal_dependency is not DATASETS_VERIFIER_DEPENDENCY
 
     assert installer.install(equal_dependency) is True
-    assert process_calls[0][-1] == f"ipfs_datasets_py @ {source.as_uri()}"
-    assert "--no-deps" in process_calls[0]
-    assert "--force-reinstall" in process_calls[0]
-    assert "--no-build-isolation" in process_calls[0]
+    assert process_calls == []
+    assert installer.validated_local_datasets_source() == source.resolve()
+    assert installer._validated_private_snapshot_target() is not None
 
 
 def test_unversioned_configured_datasets_source_runs_no_process(
@@ -453,11 +478,7 @@ def test_unversioned_configured_datasets_source_runs_no_process(
 ) -> None:
     source = tmp_path / "ipfs_datasets"
     verifier = (
-        source
-        / "ipfs_datasets_py"
-        / "logic"
-        / "zkp"
-        / "test_execution_certificate.py"
+        source / "ipfs_datasets_py" / "logic" / "zkp" / "test_execution_certificate.py"
     )
     verifier.parent.mkdir(parents=True)
     reviewed_verifier = (
@@ -486,9 +507,7 @@ def test_invalid_configured_datasets_source_runs_no_process(
     process_calls: list[Any] = []
     installer = AllowlistedPipInstaller(
         runner=lambda *args, **kwargs: process_calls.append((args, kwargs)),
-        environ={
-            PROOF_REUSE_DATASETS_SOURCE_ENV: str(tmp_path / "missing")
-        },
+        environ={PROOF_REUSE_DATASETS_SOURCE_ENV: str(tmp_path / "missing")},
     )
 
     assert installer.install(DATASETS_VERIFIER_DEPENDENCY) is False
@@ -501,11 +520,7 @@ def test_tampered_configured_datasets_verifier_runs_no_process(
 ) -> None:
     source = tmp_path / "ipfs_datasets"
     verifier = (
-        source
-        / "ipfs_datasets_py"
-        / "logic"
-        / "zkp"
-        / "test_execution_certificate.py"
+        source / "ipfs_datasets_py" / "logic" / "zkp" / "test_execution_certificate.py"
     )
     verifier.parent.mkdir(parents=True)
     verifier.write_text("# unreviewed verifier\n", encoding="utf-8")
@@ -529,8 +544,8 @@ def test_failed_pip_install_is_memoized_without_retry() -> None:
 
     installer = AllowlistedPipInstaller(runner=runner, environ={})
 
-    assert installer.install(DATASETS_VERIFIER_DEPENDENCY) is False
-    assert installer.install(DATASETS_VERIFIER_DEPENDENCY) is False
+    assert installer.install(JSONSCHEMA_DEPENDENCY) is False
+    assert installer.install(JSONSCHEMA_DEPENDENCY) is False
     assert len(process_calls) == 1
 
 
@@ -540,7 +555,7 @@ def test_disabled_or_invalid_policy_constructs_no_installer(
     tmp_path: Path,
     policy: str,
 ) -> None:
-    from ipfs_accelerate_py.testing.proof_reuse import services
+    from ipfs_accelerate_py.testing.proof_reuse import lazy_dependencies
 
     config = _Config(tmp_path)
     monkeypatch.setenv(PROOF_REUSE_AUTO_INSTALL_ENV, policy)
@@ -548,7 +563,11 @@ def test_disabled_or_invalid_policy_constructs_no_installer(
     def forbidden_installer() -> None:
         raise AssertionError("disabled policy must not construct an installer")
 
-    monkeypatch.setattr(services, "AllowlistedPipInstaller", forbidden_installer)
+    monkeypatch.setattr(
+        lazy_dependencies,
+        "ProofReuseLazyDependencyInstaller",
+        forbidden_installer,
+    )
 
     _inject_default_services(config)
 
@@ -559,7 +578,7 @@ def test_xdist_worker_never_constructs_default_installer(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from ipfs_accelerate_py.testing.proof_reuse import services
+    from ipfs_accelerate_py.testing.proof_reuse import lazy_dependencies
 
     config = _Config(tmp_path)
     config.workerinput = {"workerid": "gw0"}
@@ -568,11 +587,78 @@ def test_xdist_worker_never_constructs_default_installer(
     def forbidden_installer() -> None:
         raise AssertionError("xdist workers must not construct installers")
 
-    monkeypatch.setattr(services, "AllowlistedPipInstaller", forbidden_installer)
+    monkeypatch.setattr(
+        lazy_dependencies,
+        "ProofReuseLazyDependencyInstaller",
+        forbidden_installer,
+    )
 
     _inject_default_services(config)
 
     assert hasattr(config, SERVICE_RESOLUTION_ATTRIBUTE)
+
+
+@pytest.mark.parametrize(
+    ("package_policy", "malformed_lock"),
+    (("0", False), ("1", True)),
+)
+def test_plugin_default_installer_honors_package_policy_and_strict_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    package_policy: str,
+    malformed_lock: bool,
+) -> None:
+    from ipfs_accelerate_py.testing.proof_reuse import (
+        lazy_dependencies,
+        services,
+    )
+
+    process_calls: list[Any] = []
+    created_installers: list[Any] = []
+    lock_root = tmp_path / "locks"
+    if malformed_lock:
+        lock_root.write_text("not a directory", encoding="utf-8")
+    monkeypatch.setenv(PROOF_REUSE_AUTO_INSTALL_ENV, "1")
+    monkeypatch.setenv("IPFS_ACCEL_AUTO_INSTALL", package_policy)
+
+    def missing_importer(module_name: str) -> Any:
+        raise ModuleNotFoundError(f"missing {module_name}", name=module_name)
+
+    real_installer_class = lazy_dependencies.ProofReuseLazyDependencyInstaller
+    real_resolver_class = services.LazyProofReuseServiceResolver
+
+    def installer_factory() -> Any:
+        installer = real_installer_class(
+            runner=lambda *args, **kwargs: process_calls.append((args, kwargs)),
+            importer=missing_importer,
+            environ=dict(os.environ),
+            lock_root=lock_root,
+            lock_timeout_seconds=0.1,
+        )
+        created_installers.append(installer)
+        return installer
+
+    monkeypatch.setattr(
+        lazy_dependencies,
+        "ProofReuseLazyDependencyInstaller",
+        installer_factory,
+    )
+    monkeypatch.setattr(
+        services,
+        "LazyProofReuseServiceResolver",
+        lambda *, installer: real_resolver_class(
+            importer=missing_importer,
+            installer=installer,
+        ),
+    )
+    config = _Config(tmp_path)
+    _inject_default_services(config)
+
+    expected_installers = 1 if package_policy == "1" else 0
+    assert len(created_installers) == expected_installers
+    resolver = getattr(config, SERVICE_RESOLVER_ATTRIBUTE)
+    assert (resolver._installer is not None) is bool(expected_installers)
+    assert process_calls == []
 
 
 def test_install_failure_leaves_services_unavailable_and_cache_untouched(
@@ -608,7 +694,8 @@ def test_pytest_configure_defers_services_until_exact_identity_lookup(
     _Provider.prove_calls = 0
     _Store.constructions = []
     importer = _Importer(_module_map())
-    resolver = LazyProofReuseServiceResolver(importer=importer)
+    installer = _Installer(importer, succeeds=True)
+    resolver = LazyProofReuseServiceResolver(importer=importer, installer=installer)
     config = _Config(tmp_path)
     set_proof_reuse_service_resolver(config, resolver)
 
@@ -619,6 +706,7 @@ def test_pytest_configure_defers_services_until_exact_identity_lookup(
     assert importer.calls == []
     assert _Provider.constructions == 0
     assert _Store.constructions == []
+    assert installer.calls == []
 
     # Ordinary collection has no exact execution identity, so optional
     # providers remain entirely untouched and the real test runs.

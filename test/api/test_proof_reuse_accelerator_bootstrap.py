@@ -83,6 +83,7 @@ def _copy_bootstrap(project: Path) -> None:
 
     (project / "conftest.py").write_text(_MINIMAL_ROOT_LOADER, encoding="utf-8")
 
+
 def _environment(
     tmp_path: Path,
     *,
@@ -97,9 +98,7 @@ def _environment(
         str(PYTEST_SITE),
         environment.get("PYTHONPATH", ""),
     )
-    environment["PYTHONPATH"] = os.pathsep.join(
-        part for part in python_paths if part
-    )
+    environment["PYTHONPATH"] = os.pathsep.join(part for part in python_paths if part)
     environment["IPFS_TEST_PROOF_REUSE_MODE"] = mode
     environment["HOME"] = str(tmp_path / "user-home")
     environment["IPFS_PATH"] = str(tmp_path / "user-home" / ".ipfs")
@@ -174,7 +173,7 @@ def test_pyproject_declares_pytest11_proof_reuse_entry_point() -> None:
 def test_setup_py_declares_pytest11_proof_reuse_entry_point() -> None:
     source = SETUP_PY.read_text(encoding="utf-8")
     assert '"pytest11"' in source or "'pytest11'" in source
-    assert "ipfs-proof-reuse=" in source or 'ipfs-proof-reuse=' in source
+    assert "ipfs-proof-reuse=" in source or "ipfs-proof-reuse=" in source
     assert PLUGIN_MODULE in source
 
 
@@ -197,9 +196,12 @@ def test_proof_reuse_dependency_metadata_is_consistent_and_non_circular() -> Non
         "pytest>=8.0.0",
         "multiformats>=0.3,<1",
         "jsonschema>=4,<5",
+        "nltk>=3.8.1,<4",
     ]
     assert extra == scoped
     assert "multiformats>=0.3,<1" in core
+    assert "jsonschema>=4,<5" in core
+    assert "nltk>=3.8.1,<4" in core
     assert not any(item.startswith("ipfs_datasets_py") for item in core)
     assert not any(item.startswith("ipfs_datasets_py") for item in scoped)
     assert "requirements-proof-reuse.txt" in setup_source
@@ -377,6 +379,7 @@ def test_bootstrap_import_performs_no_probe_write_network_or_daemon(
     output = completed.stdout + completed.stderr
     assert completed.returncode == 0, output
     assert "cold-import-ok" in completed.stdout
+
 
 # ---------------------------------------------------------------------------
 # Registration paths: pytest11 entry point + root loader (idempotent)

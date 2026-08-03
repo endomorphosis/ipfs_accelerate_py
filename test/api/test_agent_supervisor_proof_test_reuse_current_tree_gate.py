@@ -15,6 +15,10 @@ from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tre
     FINAL_GATE_GOAL_ID,
     FINAL_GATE_SATISFIED_REQUIREMENTS,
     FINAL_GATE_TASK_ID,
+    PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
+    PRODUCTION_RUNTIME_ACTIVATION_ID,
+    PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID,
+    PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS,
     REQUIRED_CHILD_GOAL_IDS,
     REQUIRED_PTR_TASK_IDS,
     REQUIRED_SUPERVISOR_LANE_IDS,
@@ -359,12 +363,23 @@ def test_production_population_includes_repair_and_closeout_tasks():
         "PTR-130",
     ):
         assert task_id in REQUIRED_PTR_TASK_IDS
-    # PTR-142 expands the sealed board from 41 to exactly 53 tasks.
-    assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT == 53
+    # PTR-149 corrects PTR-142's activation evidence and expands the sealed
+    # board from 53 to exactly 60 tasks.
+    assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT == 60
     assert RUNTIME_ACTIVATION_REPAIR_TASK_IDS <= REQUIRED_PTR_TASK_IDS
     for task_id in sorted(RUNTIME_ACTIVATION_REPAIR_TASK_IDS):
         assert task_id in REQUIRED_PTR_TASK_IDS
     assert "PTR-142" in REQUIRED_PTR_TASK_IDS
+    assert PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS <= REQUIRED_PTR_TASK_IDS
+    assert PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS == {
+        "PTR-143",
+        "PTR-144",
+        "PTR-145",
+        "PTR-146",
+        "PTR-147",
+        "PTR-148",
+        "PTR-149",
+    }
     assert FINAL_GATE_TASK_ID == "PTR-122"
     assert FINAL_GATE_GOAL_ID not in REQUIRED_CHILD_GOAL_IDS
     assert REQUIRED_CHILD_GOAL_IDS == {
@@ -389,10 +404,16 @@ def test_production_population_includes_repair_and_closeout_tasks():
         RUNTIME_ACTIVATION_REPAIR_EVIDENCE_REQUIREMENT
         == "ptr/runtime-activation-repair-evidence@1"
     )
+    assert PRODUCTION_RUNTIME_ACTIVATION_ID == "production-runtime-activation"
+    assert PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID == "PTR-149"
+    assert (
+        PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT
+        == "ptr/production-runtime-activation-evidence@1"
+    )
 
 
 def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
-    """The full 53-task population refuses to pass without fresh repair evidence."""
+    """The full 60-task population rejects historical PTR-142 evidence."""
 
     policy = ProofReuseRolloutPolicy(
         policy_id="policy:ptr",
@@ -417,7 +438,7 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         g110_objective_revision=G110_OBJECTIVE_REVISION,
         root_objective_revision=ROOT_OBJECTIVE_REVISION,
         rollout_policy=policy,
-        # Production default: exact 53-task set.
+        # Production default: exact 60-task set.
         required_child_goal_ids=GOALS,
         required_adversarial_populations=POPULATIONS,
         required_analyzers=ANALYZERS,
@@ -425,7 +446,7 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         clock=lambda: NOW_SECONDS,
     )
     assert gate.required_task_ids == REQUIRED_PTR_TASK_IDS
-    assert len(gate.required_task_ids) == 53
+    assert len(gate.required_task_ids) == 60
 
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.validation."
@@ -548,16 +569,47 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         code.startswith("repair_evidence") for code in missing.reason_codes
     )
 
+    # The formerly accepted PTR-142 packet is now historical only.
     packet["repair_evidence"] = _bound_record(
         policy_cid=gate.policy_cid,
         repair_id=RUNTIME_ACTIVATION_REPAIR_ID,
         repair_task_ids=sorted(RUNTIME_ACTIVATION_REPAIR_TASK_IDS),
+        producer_task_id="PTR-142",
         passed=True,
         false_skips=0,
         zero_false_skip_assurance=True,
         activation_e2e_passed=True,
         requirement_id=RUNTIME_ACTIVATION_REPAIR_EVIDENCE_REQUIREMENT,
         evidence_cid="repair:runtime-activation",
+    )
+    historical = gate.evaluate(**packet)
+    assert historical.passed is False
+    assert any(
+        code in {
+            "repair_evidence_id_mismatch",
+            "repair_evidence_producer_task_mismatch",
+        }
+        or code.startswith("repair_evidence_missing_task")
+        for code in historical.reason_codes
+    )
+
+    packet["repair_evidence"] = _bound_record(
+        policy_cid=gate.policy_cid,
+        repair_id=PRODUCTION_RUNTIME_ACTIVATION_ID,
+        repair_task_ids=sorted(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS),
+        producer_task_id=PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID,
+        passed=True,
+        false_skips=0,
+        zero_false_skip_assurance=True,
+        activation_e2e_passed=True,
+        zero_injection_default_path=True,
+        three_repository_cold_warm=True,
+        real_groth16_certificate=True,
+        measured_subprocess_benchmark=True,
+        historical_activation_claims_superseded=True,
+        sealed_task_count=SEALED_PRODUCTION_TASK_COUNT,
+        requirement_id=PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
+        evidence_cid="repair:production-runtime-activation",
     )
     admitted = gate.evaluate(**packet)
     assert admitted.passed is True

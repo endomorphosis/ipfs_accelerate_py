@@ -332,6 +332,11 @@ PROVIDER_RETRY_MONTHS = {
     "dec": 12,
 }
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+PROVIDER_FALLBACK_POLICY_ENV = (
+    "IPFS_ACCELERATE_AGENT_PROVIDER_FALLBACK_POLICY"
+)
+ANY_FAILURE_FALLBACK_POLICY = "any_failure"
+GROK_QUOTA_EXHAUSTED_FALLBACK_POLICY = "grok_quota_exhausted"
 GROK_CODEX_PROVIDER_ALIASES = frozenset(
     {
         "grok-codex",
@@ -1031,6 +1036,26 @@ def _codex_implementation_command(
     return command
 
 
+def _configured_provider_fallback_policy() -> str:
+    """Return the opt-in ordered-provider fallback policy."""
+
+    raw = os.environ.get(
+        PROVIDER_FALLBACK_POLICY_ENV,
+        ANY_FAILURE_FALLBACK_POLICY,
+    )
+    policy = str(raw).strip().lower().replace("-", "_")
+    if policy in {
+        ANY_FAILURE_FALLBACK_POLICY,
+        GROK_QUOTA_EXHAUSTED_FALLBACK_POLICY,
+    }:
+        return policy
+    raise RuntimeError(
+        f"unsupported {PROVIDER_FALLBACK_POLICY_ENV} value {raw!r}; "
+        f"expected {ANY_FAILURE_FALLBACK_POLICY!r} or "
+        f"{GROK_QUOTA_EXHAUSTED_FALLBACK_POLICY!r}"
+    )
+
+
 def _ordered_provider_fallback_command(
     *,
     workspace_path: Path,
@@ -1038,6 +1063,7 @@ def _ordered_provider_fallback_command(
     primary_command: Sequence[str],
     fallback_provider: str,
     fallback_command: Sequence[str],
+    fallback_policy: str = ANY_FAILURE_FALLBACK_POLICY,
 ) -> list[str]:
     """Build the no-shell ordered provider runner command."""
 
@@ -1057,6 +1083,8 @@ def _ordered_provider_fallback_command(
         json.dumps(list(primary_command), separators=(",", ":")),
         "--fallback-command-json",
         json.dumps(list(fallback_command), separators=(",", ":")),
+        "--fallback-policy",
+        fallback_policy,
     ]
 
 
@@ -36769,6 +36797,10 @@ class PortalImplementationDaemon:
         ordered_grok_codex = provider in GROK_CODEX_PROVIDER_ALIASES
 
         if ordered_grok_codex:
+            fallback_policy = _configured_provider_fallback_policy()
+            quota_only_fallback = (
+                fallback_policy == GROK_QUOTA_EXHAUSTED_FALLBACK_POLICY
+            )
             codex = shutil.which("codex")
             if not codex:
                 raise RuntimeError(
@@ -36785,6 +36817,13 @@ class PortalImplementationDaemon:
                 workspace_path=workspace_path,
                 codex_context_window=codex_context_window,
             )
+            if not grok_ready and quota_only_fallback:
+                raise RuntimeError(
+                    "Implementation provider "
+                    f"{provider!r} with {fallback_policy!r} requires the "
+                    "Grok Build CLI (`grok`) with login/auth; Codex fallback "
+                    "is allowed only after confirmed Grok quota exhaustion"
+                )
             if not grok_ready:
                 return codex_command
             try:
@@ -36793,8 +36832,11 @@ class PortalImplementationDaemon:
                 )
             except (OSError, RuntimeError):
                 # Readiness can change between the probe and command
-                # construction. The explicit policy still has a required,
-                # already-resolved Codex fallback.
+                # construction. Quota-only policy must preserve that primary
+                # failure; compatibility policy retains the historical direct
+                # Codex fallback.
+                if quota_only_fallback:
+                    raise
                 return codex_command
             return _ordered_provider_fallback_command(
                 workspace_path=workspace_path,
@@ -36802,6 +36844,7 @@ class PortalImplementationDaemon:
                 primary_command=grok_command,
                 fallback_provider="codex",
                 fallback_command=codex_command,
+                fallback_policy=fallback_policy,
             )
 
         # Prefer only when the binary is actually resolvable so an auth-only
