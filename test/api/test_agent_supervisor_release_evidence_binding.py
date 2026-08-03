@@ -32,6 +32,9 @@ from ipfs_accelerate_py.agent_supervisor.release_evidence import (
     RELEASE_EVIDENCE_GOAL_ID,
     RELEASE_EVIDENCE_INTERFACE,
     RELEASE_EVIDENCE_SCHEMA,
+    TRUSTED_SUCCESSOR_CANONICAL_TASK_CID,
+    TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY,
+    TRUSTED_SUCCESSOR_TASK_ID,
     all_covered_evidence_terms,
     content_digest,
     export_release_evidence,
@@ -277,7 +280,7 @@ def test_expected_output_never_force_stages_protected_ignored_path(
 def test_export_release_evidence_binds_durable_sources_and_is_read_only(
     tmp_path: Path,
 ) -> None:
-    repo = _init_repo(tmp_path / "repo")
+    _init_repo(tmp_path / "repo")
     # Ensure exporter path resolves for verify_release_evidence identity.
     exporter_src = Path(
         "ipfs_accelerate_py/agent_supervisor/release_evidence.py"
@@ -286,9 +289,9 @@ def test_export_release_evidence_binds_durable_sources_and_is_read_only(
 
     state_dir = tmp_path / "lane" / "state"
     state_dir.mkdir(parents=True)
-    task_id = "FVT-053"
-    canonical_task_cid = "bafytestcanonicaltaskcid000000000000000000001"
-    canonical_task_key = "task/v1/fvt-053"
+    task_id = TRUSTED_SUCCESSOR_TASK_ID
+    canonical_task_cid = TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
+    canonical_task_key = TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
     stream_id = "event-log:sha256:abc"
     snapshot_id = "event-log-snapshot:sha256:abc"
     implementation_commit = "a" * 40
