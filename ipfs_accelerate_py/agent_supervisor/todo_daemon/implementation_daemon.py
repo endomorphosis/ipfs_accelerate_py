@@ -6395,7 +6395,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         )
         merge_reconciliation = self._reconcile_failed_merges(
-            skip_task_ids=merge_skip_task_ids,
+            skip_task_ids=(
+                merge_skip_task_ids | shared_active_merge_task_ids
+            ),
             deprioritized_task_ids=strategy_deprioritized_task_ids,
         )
         merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
@@ -7889,6 +7891,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         log_path,
                         state=state,
                         proposal_validation=proposal_validation,
+                        baseline_ref=baseline_ref,
                     )
                 protected_path_violation = (
                     self._implementation_protected_path_violation(
@@ -16289,6 +16292,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             log_path,
             state=state,
             force_uncached=True,
+            baseline_ref=baseline_ref,
         )
         proposal_gate = {
             "attempted": False,
@@ -16405,6 +16409,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 log_path,
                 state=state,
                 proposal_validation=proposal_validation,
+                baseline_ref=baseline_ref,
             )
             result = self._verify_post_validation_candidate_binding(
                 workspace_path,
@@ -16457,6 +16462,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             log_path,
             state=state,
             proposal_validation=rebound_validation,
+            baseline_ref=baseline_ref,
         )
         rebound_result = self._verify_post_validation_candidate_binding(
             workspace_path,
@@ -16854,6 +16860,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     log_path,
                     state=state,
                     force_uncached=True,
+                    baseline_ref=baseline_ref,
                 )
             except Exception as exc:
                 validation_result = {
@@ -17817,6 +17824,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         state: PortalTaskState | None = None,
         proposal_validation: Any = None,
         force_uncached: bool = False,
+        baseline_ref: str = "",
     ) -> dict[str, Any]:
         if not workspace_path.exists():
             return self._missing_validation_workspace_result(workspace_path, task=task, log_path=log_path)
@@ -18022,6 +18030,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     compact_scope_adjudication(scope_adjudication)
                 )
 
+        result = self._enforce_baseline_diff_check(
+            workspace_path=workspace_path,
+            task=task,
+            baseline_ref=baseline_ref,
+            validation_result=result,
+        )
+
         scheduler_options = proof_options.get("proof_scheduler_options")
         proof_state_path = ""
         if isinstance(scheduler_options, Mapping):
@@ -18179,6 +18194,139 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
             if failure_heads:
                 result["failure_head"] = "\n".join(failure_heads)[:2000]
+        return result
+
+    @staticmethod
+    def _declares_bare_git_diff_check(
+        commands: Sequence[str],
+    ) -> bool:
+        """Return whether a shell command has an exact bare diff-check segment."""
+
+        for command in commands:
+            normalized = normalize_validation_command_text(
+                str(command)
+            ).strip()
+            try:
+                lexer = shlex.shlex(
+                    normalized,
+                    posix=True,
+                    punctuation_chars=";&|",
+                )
+                lexer.whitespace_split = True
+                segments: list[list[str]] = [[]]
+                for token in lexer:
+                    if token in {"&&", "||", ";"}:
+                        segments.append([])
+                    else:
+                        segments[-1].append(token)
+            except ValueError:
+                continue
+            if any(segment == ["git", "diff", "--check"] for segment in segments):
+                return True
+        return False
+
+    def _enforce_baseline_diff_check(
+        self,
+        *,
+        workspace_path: Path,
+        task: PortalTask,
+        baseline_ref: str,
+        validation_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Bind a declared bare whitespace check to the complete candidate.
+
+        ``git diff --check`` only inspects the worktree/index delta.  A model
+        may legitimately commit its changes before daemon validation, leaving
+        that delta empty.  When the implementation baseline is known, run an
+        uncached invariant over baseline-to-candidate state as well so committed
+        whitespace errors cannot receive passing pre-merge evidence.
+        """
+
+        result = dict(validation_result)
+        declared = self._declares_bare_git_diff_check(task.validation)
+        if (
+            not declared
+            or not str(baseline_ref or "").strip()
+            or not result.get("passed", False)
+        ):
+            return result
+
+        started_at = utc_now()
+        baseline = str(baseline_ref).strip()
+        resolved_baseline = ""
+        output = ""
+        returncode = 1
+        try:
+            resolved = subprocess.run(
+                ["git", "rev-parse", "--verify", f"{baseline}^{{commit}}"],
+                cwd=workspace_path,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=min(float(self.implementation_timeout), 600.0),
+                check=False,
+            )
+            if resolved.returncode == 0 and resolved.stdout.strip():
+                resolved_baseline = resolved.stdout.strip()
+                completed = subprocess.run(
+                    ["git", "diff", "--check", resolved_baseline, "--"],
+                    cwd=workspace_path,
+                    text=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=min(float(self.implementation_timeout), 600.0),
+                    check=False,
+                )
+                returncode = int(completed.returncode)
+                output = completed.stdout or ""
+            else:
+                returncode = int(resolved.returncode or 1)
+                output = resolved.stdout or "baseline commit could not be resolved\n"
+        except subprocess.TimeoutExpired:
+            returncode = 124
+            output = "candidate diff invariant timed out\n"
+        except OSError as exc:
+            returncode = 1
+            output = f"{type(exc).__name__}: {exc}\n"
+
+        bound_command = (
+            f"git diff --check {resolved_baseline or baseline} --"
+        )
+        record = {
+            "command": bound_command,
+            "raw_command": "git diff --check",
+            "validation_id": "candidate-diff-check:"
+            + hashlib.sha256(bound_command.encode("utf-8")).hexdigest(),
+            "returncode": returncode,
+            "passed": returncode == 0,
+            "stage": "candidate_invariant",
+            "ordinal": len(result.get("results") or []),
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "output": output,
+            "cache_hit": False,
+        }
+        records = list(result.get("results") or [])
+        records.append(record)
+        result["results"] = records
+        result["attempted"] = True
+        result["candidate_diff_check"] = {
+            key: value
+            for key, value in record.items()
+            if key != "output"
+        }
+        if returncode != 0:
+            result.update(
+                {
+                    "passed": False,
+                    "returncode": returncode,
+                    "reason": "candidate_diff_check_failed",
+                    "error": "validation_command_failed",
+                    "failed_command": bound_command,
+                }
+            )
         return result
 
     @staticmethod

@@ -791,6 +791,66 @@ def test_daemon_uses_full_pre_merge_scope_and_preserves_result_contract(tmp_path
     assert report["failed_command"] == "git diff --check"
 
 
+def test_compound_bare_diff_check_covers_committed_candidate_from_baseline(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    baseline = _repo(repo)
+    (repo / "src" / "alpha.py").write_text(
+        "VALUE = 1  \n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "src/alpha.py")
+    _git(repo, "commit", "-qm", "model-created clean candidate")
+    assert _git(repo, "status", "--porcelain") == ""
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        validation_cache_dir=repo / "validation-cache",
+        merge_queue_dir=repo / "merge-queue",
+    )
+    declared_validation = (
+        "test -f src/alpha.py && rg -q 'VALUE' src/alpha.py && "
+        "rg -qi 'value' src/alpha.py && git diff --check"
+    )
+    task = PortalTask(
+        task_id="REF-043",
+        title="committed candidate whitespace",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="validation",
+        validation=[declared_validation],
+    )
+
+    assert daemon._declares_bare_git_diff_check(task.validation) is True
+    assert daemon._declares_bare_git_diff_check(
+        ("printf '%s\\n' 'git diff --check'",)
+    ) is False
+
+    report = daemon._run_validation_commands(
+        repo,
+        task,
+        repo / "validation.log",
+        baseline_ref=baseline,
+    )
+
+    assert report["passed"] is False
+    assert report["reason"] == "candidate_diff_check_failed"
+    invariant = report["candidate_diff_check"]
+    assert invariant["stage"] == "candidate_invariant"
+    assert invariant["returncode"] != 0
+    assert invariant["command"].startswith(
+        f"git diff --check {baseline}"
+    )
+    assert "src/alpha.py:1: trailing whitespace" in (
+        repo / "validation.log"
+    ).read_text(encoding="utf-8")
+
+
 def test_daemon_python_validation_imports_configured_worktree_packages(
     tmp_path: Path,
 ) -> None:

@@ -175,7 +175,7 @@ def test_expired_processing_claim_is_recovered(tmp_path: Path) -> None:
         tmp_path / "queue",
         clock=lambda: now[0],
         max_age_seconds=10,
-        max_attempts=3,
+        max_attempts=2,
     )
     request = queue.enqueue(
         branch_name="implementation/abandoned",
@@ -194,6 +194,14 @@ def test_expired_processing_claim_is_recovered(tmp_path: Path) -> None:
     assert recovered.attempt == 2
     assert recovered.failure_count == 1
     assert recovered.failure_reason == "consumer claim expired; request recovered"
+
+    now[0] = 50.0
+    assert queue.dequeue(consumer_id="third-worker") is None
+    terminal = queue.get(request.request_id)
+    assert terminal is not None
+    assert terminal.status == "quarantined"
+    assert terminal.attempt == 2
+    assert terminal.failure_count == 2
 
 
 def test_train_rebases_candidate_on_latest_target_and_updates_target(tmp_path: Path) -> None:
@@ -283,6 +291,97 @@ def test_train_immediately_recovers_a_claim_abandoned_by_dead_consumer(tmp_path:
     assert stored.failure_count == 1
 
 
+def test_live_merge_lock_defers_without_consuming_failure_budget(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    now = [100.0]
+    queue = MergeQueue(
+        tmp_path / "queue",
+        clock=lambda: now[0],
+        max_attempts=2,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/wait-for-lock",
+        task_id="WAIT-FOR-LOCK",
+        canonical_task_id="canonical-wait-for-lock",
+        commit_sha=candidate,
+    )
+    callbacks = [
+        {
+            "attempted": False,
+            "merged": False,
+            "reason": "lock_exists",
+            "lock_owner_pid": 4321,
+        },
+        {"attempted": True, "merged": True},
+    ]
+    train = MergeTrain(
+        repo,
+        queue,
+        max_attempts=2,
+        merge_lock_deferral_seconds=10,
+        merge_callback=lambda _request: callbacks.pop(0),
+    )
+
+    deferred = train.run_once()
+
+    assert deferred is not None
+    assert deferred["status"] == "deferred"
+    assert deferred["attempted"] is False
+    assert deferred["reason"] == "lock_exists"
+    assert deferred["retry_not_before"] == 110.0
+    stored = queue.get(request.request_id)
+    assert stored is not None
+    assert stored.status == "pending"
+    assert stored.attempt == 1
+    assert stored.failure_count == 0
+    assert stored.failure_reason == ""
+    assert train.run_once() is None
+
+    now[0] = 110.0
+    merged = train.run_once()
+    assert merged is not None and merged["status"] == "merged"
+    accepted = queue.get(request.request_id)
+    assert accepted is not None and accepted.status == "completed"
+    assert accepted.attempt == 1
+    assert accepted.failure_count == 0
+
+
+def test_unverified_lock_exists_result_consumes_bounded_failure(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    queue = MergeQueue(tmp_path / "queue", max_attempts=1)
+    request = queue.enqueue(
+        branch_name="implementation/malformed-lock-result",
+        task_id="MALFORMED-LOCK",
+        commit_sha=_git(repo, "rev-parse", "HEAD"),
+    )
+    train = MergeTrain(
+        repo,
+        queue,
+        max_attempts=1,
+        merge_callback=lambda _request: {
+            "attempted": False,
+            "merged": False,
+            "reason": "lock_exists",
+            "lock_owner_pid": "not-a-pid",
+        },
+    )
+
+    result = train.run_once()
+
+    assert result is not None
+    assert result["status"] == "quarantined"
+    assert result.get("deferred", False) is False
+    stored = queue.get(request.request_id)
+    assert stored is not None
+    assert stored.status == "quarantined"
+    assert stored.failure_count == result["failure_count"] == 1
+
+
 def test_bounded_train_failures_create_durable_quarantine_receipt(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _git(repo, "switch", "-c", "implementation/broken")
@@ -316,6 +415,7 @@ def test_bounded_train_failures_create_durable_quarantine_receipt(tmp_path: Path
     assert terminal["status"] == "quarantined"
     stored = queue.get(request.request_id)
     assert stored is not None and stored.status == "quarantined"
+    assert stored.failure_count == terminal["failure_count"] == 2
     receipt = queue.quarantine_dir / f"{request.request_id}.json"
     assert receipt.exists()
     assert json.loads(receipt.read_text(encoding="utf-8"))["receipt_type"] == "merge_quarantine"
@@ -478,6 +578,13 @@ def test_cross_lane_completion_reuses_the_bound_non_main_target(
         worktree_path=None,
         task=task,
         attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "selection": {"scope": "pre_merge"},
+            "results": [],
+        },
     )
 
     result = consumer._merge_train_callback(request)
