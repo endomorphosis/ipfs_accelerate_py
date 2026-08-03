@@ -928,12 +928,11 @@ DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS = 3600.0
 
 
 def default_llm_merge_resolver_command() -> str:
-    """Return the configured resolver or the packaged agent fallback.
+    """Return the configured resolver or canonical Grok/quota-only route.
 
-    The fallback starts Codex in the conflicted workspace and uses Copilot only
-    when Codex cannot complete the repair. Keeping this as the daemon default
-    means semantic merge conflicts are actively repaired instead of merely
-    recorded for a later manual retry.
+    The default starts Grok 4.5 in the conflicted workspace.  Its parent runner
+    can start gpt-5.6-terra at medium only after a verified native Grok quota
+    event; ordinary failures fail closed and Copilot is never a default route.
     """
 
     configured = os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "").strip()
@@ -1391,10 +1390,9 @@ def _grok_cli_available() -> bool:
     """Return whether Grok is ready for non-interactive implementation work.
 
     Binary discovery alone is insufficient for the daemon: selecting an
-    unauthenticated CLI would fail after dispatch instead of allowing the
-    default route to fall back to Codex.  Keep the probe side-effect free and
-    fail closed when the shared router cannot prove both authentication and
-    provider construction.
+    unauthenticated CLI would fail after dispatch.  That must not authorize
+    Codex: the default route fails closed unless Grok starts and independently
+    proves quota exhaustion.  Keep this readiness probe side-effect free.
     """
 
     if not _grok_binary():
@@ -1409,7 +1407,11 @@ def _grok_cli_available() -> bool:
         return False
 
 
-def _grok_cli_command(*, workspace_path: Path) -> list[str]:
+def _grok_cli_command(
+    *,
+    workspace_path: Path,
+    model_override: str = "",
+) -> list[str]:
     """Build a Grok CLI agent command through llm_router.grok_cli.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
@@ -1424,7 +1426,8 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         )
 
     model = (
-        os.environ.get(_GROK_MODEL_ENV, "").strip()
+        str(model_override).strip()
+        or os.environ.get(_GROK_MODEL_ENV, "").strip()
         or os.environ.get("GROK_CLI_MODEL", "").strip()
         or os.environ.get("GROK_MODEL", "").strip()
         or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
@@ -1545,7 +1548,11 @@ def _codex_quota_fallback_command(
     command = [
         codex,
         "exec",
-        "--dangerously-bypass-approvals-and-sandbox",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--ephemeral",
+        "-s",
+        "workspace-write",
         "-C",
         str(workspace_path.resolve()),
         "-m",
@@ -7014,8 +7021,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "grok-build",
         }:
             return {"grok", "xai", "provider"}
-        if provider in {"codex", "copilot", "openai"}:
-            return {"codex", "copilot", "provider"}
+        if provider in {"codex", "openai"}:
+            return {"codex", "openai", "provider"}
+        if provider == "copilot":
+            return {"copilot", "provider"}
         labels: set[str] = set()
         if _goose_meta_spark_available():
             labels.update({"goose", "meta_spark", "meta", "provider"})
@@ -24672,7 +24681,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "muse-spark",
             "spark",
         }
-        force_codex = provider in {"codex", "copilot", "openai"}
+        force_codex = provider in {"codex", "openai"}
+        force_copilot = provider == "copilot"
 
         # Explicit providers retain their explicit semantics. The default
         # route is stricter: Grok must be ready before dispatch and only a
@@ -24690,10 +24700,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and grok_ready
             and _grok_binary()
             and not force_codex
+            and not force_copilot
             and not force_goose_meta
         ):
-            command = _grok_cli_command(workspace_path=workspace_path)
-            codex = shutil.which("codex")
+            command = _grok_cli_command(
+                workspace_path=workspace_path,
+                model_override="grok-4.5",
+            )
+            from ..grok_cli_runner import (
+                resolve_codex_quota_fallback_executable,
+            )
+
+            codex = resolve_codex_quota_fallback_executable(
+                workspace=workspace_path,
+            )
             if codex:
                 codex_context_window = (
                     self._implementation_provider_context_window_for_task(task)[0]
@@ -24730,7 +24750,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "(meta_ai_api_key / MODEL_API_KEY)"
                 )
             return _goose_meta_spark_command(workspace_path=workspace_path)
-        if prefer_goose_meta and goose_meta_ready and _goose_binary() and not force_codex:
+        if (
+            prefer_goose_meta
+            and goose_meta_ready
+            and _goose_binary()
+            and not force_codex
+            and not force_copilot
+        ):
             return _goose_meta_spark_command(workspace_path=workspace_path)
 
         codex = shutil.which("codex")
@@ -24740,6 +24766,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if task is not None
             else None
         )
+        if force_codex:
+            if not codex:
+                raise RuntimeError(
+                    f"Implementation provider {provider!r} requires codex"
+                )
+            return _codex_implementation_command(
+                codex=codex,
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
+            )
+        if force_copilot:
+            if not copilot or not _copilot_has_auth():
+                raise RuntimeError(
+                    "Implementation provider 'copilot' requires the Copilot "
+                    "CLI with authentication"
+                )
+            return _copilot_fallback_command(
+                codex=None,
+                copilot=copilot,
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
+            )
         if copilot and _copilot_has_auth():
             return _copilot_fallback_command(
                 codex=codex,

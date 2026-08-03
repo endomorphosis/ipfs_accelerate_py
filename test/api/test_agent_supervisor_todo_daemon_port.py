@@ -1177,8 +1177,7 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
         repo_root=repo,
     )
 
-    # This test exercises the explicit Codex/Copilot route; auto is
-    # intentionally Grok-only until typed quota exhaustion.
+    # Explicit Copilot is exact; auto is Grok-only until typed quota exhaustion.
     monkeypatch.setenv(
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
         "codex",
@@ -1621,8 +1620,8 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
     command = daemon._build_implementation_command(repo)
 
     assert command[:2] == ["bash", "-lc"]
-    assert "falling back to copilot" in command[2]
-    assert command[3:7] == ["bash", "/usr/local/bin/codex", "/usr/local/bin/copilot", str(repo)]
+    assert command[3:7] == ["bash", "", "/usr/local/bin/copilot", str(repo)]
+    assert "/usr/local/bin/codex" not in command[3:]
     assert command[7:] == ["", "200000", "high", "10", "2", "", "high", "long_context", "30"]
 
 
@@ -4063,7 +4062,7 @@ def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_pa
     assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
 
 
-def test_repo_implementation_multi_supervisor_launcher_uses_packaged_resolver_default(tmp_path, monkeypatch):
+def test_repo_implementation_multi_supervisor_launcher_uses_grok_resolver_default(tmp_path, monkeypatch):
     captured: dict[str, tuple[str, ...]] = {}
 
     def fake_main(argv):
@@ -4089,12 +4088,26 @@ def test_repo_implementation_multi_supervisor_launcher_uses_packaged_resolver_de
 
     args = launcher.args()
     assert "--implementation-supervisor-command" not in args
-    assert args[args.index("--implementation-supervisor-llm-merge-resolver-command") + 1] == (
-        "python-test -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
+    command = args[
+        args.index("--implementation-supervisor-llm-merge-resolver-command") + 1
+    ]
+    assert command == llm_merge_resolver_fallback_command(
+        python_executable="python-test"
     )
-    assert llm_merge_resolver_fallback_command(python_executable="python-test") == (
-        "python-test -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
+    route = shlex.split(command)
+    assert route[:3] == [
+        "python-test",
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+    ]
+    assert route[route.index("--model") + 1] == "grok-4.5"
+    fallback = json.loads(
+        route[route.index("--codex-fallback-command-json") + 1]
     )
+    assert Path(fallback[0]).name == "codex"
+    assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in fallback
+    assert all("copilot" not in argument.casefold() for argument in route)
 
 
 def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):

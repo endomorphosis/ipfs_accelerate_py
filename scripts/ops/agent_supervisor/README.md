@@ -39,10 +39,10 @@ python scripts/ops/agent_supervisor/asref_multi_lane.py verify-evidence
 python scripts/ops/agent_supervisor/asref_multi_lane.py objective-scan --refine-objective-heap
 python scripts/ops/agent_supervisor/asref_multi_lane.py objective-scan
 
-# Multi-lane implementation with Grok (or successor) as provider
-export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok
+# Multi-lane implementation: pinned Grok 4.5, quota-only Terra/medium fallback
+export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto
 python scripts/ops/agent_supervisor/asref_multi_lane.py launch \
-  --implementation-provider grok \
+  --implementation-provider auto \
   --enable-objective-refill \
   --dry-run   # remove --dry-run to start
 ```
@@ -51,8 +51,8 @@ python scripts/ops/agent_supervisor/asref_multi_lane.py launch \
 
 | Env / flag | Meaning |
 |---|---|
-| `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok` | Prefer Grok CLI (ASREF-G100 default) |
-| `=auto` / `goose` / `codex` / `copilot` | Other selectable providers |
+| `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto` | Default: Grok 4.5 first; `gpt-5.6-terra` at medium only after verified Grok quota exhaustion |
+| `=grok` / `goose` / `codex` / `copilot` | Explicit provider routes; forced Grok does not fall back |
 | `IMPLEMENTATION_DAEMON_COMMAND=...` | Full command override |
 
 Provider wiring stays in **integrations/runtime**. Package-move tasks must not
