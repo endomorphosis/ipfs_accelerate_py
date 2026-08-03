@@ -187,6 +187,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     ObjectiveCompletionArtifactRefreshError,
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
+    _projection_is_quiescent_for_heartbeat_fallback,
     parse_args as parse_implementation_supervisor_args,
     supervisor_config_from_args,
 )
@@ -15718,7 +15719,9 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     assert loop_config.watchdog_accept_fresh_child_log is True
 
 
-def test_supervisor_loop_accepts_fresh_child_log_for_delta_only_idle_state(tmp_path):
+def test_supervisor_loop_accepts_fresh_child_log_for_empty_backlog_projection(
+    tmp_path,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
@@ -15747,16 +15750,32 @@ def test_supervisor_loop_accepts_fresh_child_log_for_delta_only_idle_state(tmp_p
             log_prefix="child",
             watchdog_stale_after_seconds=60,
             watchdog_log_heartbeat_fallback=True,
+            watchdog_quiescent_status_predicate=(
+                _projection_is_quiescent_for_heartbeat_fallback
+            ),
         )
     )
     loop.last_log_path = str(latest_log)
     stale_status = {
         "heartbeat_at": "2000-01-01T00:00:00+00:00",
         "heartbeat_pid": os.getpid(),
+        "active_task_id": "",
+        "implementation_in_progress": False,
+        "ready_count": 0,
+        "selectable_ready_count": 0,
+        "eligible_ready_count": 0,
+        "blocked_count": 0,
+        "selection_idle_reason": "no_tasks_found",
     }
 
     decision = loop.default_watchdog(
-        SimpleNamespace(pid=os.getpid()),
+        SupervisedChild(
+            pid=os.getpid(),
+            command=(sys.executable, "-c", "pass"),
+            log_path=latest_log,
+            latest_log_path=latest_log,
+            child_pid_path=state_dir / "child.pid",
+        ),
         stale_status,
     )
 
