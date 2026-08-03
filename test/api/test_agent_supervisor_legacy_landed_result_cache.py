@@ -338,6 +338,7 @@ def test_cache_key_binds_every_review_dimension_and_is_closed(
         replace(key, policy_id=key.policy_id + "x"),
         replace(key, current_head="c" * 40),
         replace(key, current_tree_id="d" * 40),
+        replace(key, task_id="ASE-999"),
         replace(key, canonical_task_cid=key.canonical_task_cid + "x"),
         replace(key, provider="another-provider"),
     ):
@@ -513,6 +514,21 @@ def test_snapshot_inventory_is_exact_during_concurrent_insert_and_tamper_fails(
     assert len(imported.records()) == 1
     assert imported.import_snapshot(snapshot.manifest_cid, backend=backend) == 0
 
+    version_one = dict(snapshot.manifest)
+    version_one["schema"] = (
+        cache_module.LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA_V1
+    )
+    version_one.pop("replication_pin_requested")
+    version_one_cid = backend.put_dag_json(version_one).cid
+    version_one_cache = LegacyLandedLeafResultCache(
+        tmp_path / "version-one.duckdb",
+        policy=policy,
+        operator_key_path=key_path,
+    )
+    assert version_one_cache.import_snapshot(
+        version_one_cid, backend=backend
+    ) == 1
+
     storage._blocks[snapshot.parquet_cid] = b"tampered"  # noqa: SLF001
     empty = LegacyLandedLeafResultCache(
         tmp_path / "empty.duckdb",
@@ -612,6 +628,28 @@ def test_snapshot_bound_fails_explicitly_and_existing_cid_is_never_overwritten(
     monkeypatch.setattr(cache_module, "MAX_SNAPSHOT_RECORDS", 0)
     with pytest.raises(LegacyLandedLeafCacheError, match="bound exceeded"):
         cache.export_snapshot(tmp_path / "bounded", backend=backend)
+
+
+def test_export_enforces_parquet_byte_bound_before_backend_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache, policy, task, manifest, _key_path = _cache_fixture(tmp_path)
+    cache.review_leaf(
+        task=task,
+        manifest=manifest,
+        leaf=manifest["leaves"][0],
+        provider=policy.grok,
+        invoker=_ApprovingProvider(),
+        review_run_id="legacy-review:" + "a" * 48,
+    )
+    storage = InMemoryConformantBackend()
+    backend = VerifiedIPLDBackend(backend=storage)
+    monkeypatch.setattr(cache_module, "MAX_SNAPSHOT_PARQUET_BYTES", 1)
+
+    with pytest.raises(LegacyLandedLeafCacheError, match="byte bound"):
+        cache.export_snapshot(tmp_path / "too-large", backend=backend)
+    assert storage._blocks == {}  # noqa: SLF001
 
 
 def test_cache_never_replays_validation_receipts(tmp_path: Path) -> None:

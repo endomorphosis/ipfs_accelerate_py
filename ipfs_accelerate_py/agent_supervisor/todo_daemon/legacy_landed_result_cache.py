@@ -55,6 +55,7 @@ from .legacy_landed_attestation import (
 from .legacy_landed_review import (
     LEGACY_LANDED_LEAF_DECISION_SCHEMA,
     LEGACY_LANDED_LEAF_REVIEW_RECEIPT_SCHEMA,
+    LegacyLandedReviewError,
     LegacyLandedReviewPolicy,
     LegacyLeafReviewRequest,
     LegacyProviderInvoker,
@@ -73,8 +74,11 @@ LEGACY_LANDED_LEAF_CACHE_RECORD_SCHEMA: Final = (
 LEGACY_LANDED_LEAF_CACHE_RECORD_INTERFACE: Final = (
     "LegacyLandedLeafCacheRecord@1"
 )
-LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA: Final = (
+LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA_V1: Final = (
     "ipfs_accelerate_py/agent-supervisor/legacy-landed-leaf-cache-snapshot@1"
+)
+LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/legacy-landed-leaf-cache-snapshot@2"
 )
 LEGACY_LANDED_LEAF_CACHE_SIGNATURE_ALGORITHM: Final = "Ed25519"
 DEFAULT_LEAF_LEASE_SECONDS: Final = 360
@@ -713,7 +717,7 @@ class LegacyLandedLeafResultCache:
             )
         try:
             task = self.policy.task(key.task_id)
-        except ValueError as exc:
+        except (LegacyLandedReviewError, ValueError) as exc:
             raise LegacyLandedLeafCacheError(
                 "legacy leaf cache task is outside the pinned policy"
             ) from exc
@@ -1348,6 +1352,10 @@ class LegacyLandedLeafResultCache:
             with temporary.open("rb") as stream:
                 parquet_bytes = stream.read()
                 os.fsync(stream.fileno())
+            if not 1 <= len(parquet_bytes) <= MAX_SNAPSHOT_PARQUET_BYTES:
+                raise LegacyLandedLeafCacheError(
+                    "legacy leaf cache snapshot Parquet byte bound exceeded"
+                )
             put = backend.put_raw(parquet_bytes, pin=pin)
             parquet_cid = admit_cid(put.cid, codecs=("raw",))
             admitted_bytes, _raw_receipt = backend.get_raw(parquet_cid)
@@ -1489,7 +1497,7 @@ class LegacyLandedLeafResultCache:
                 "legacy cache snapshot manifest exceeds its byte bound"
             )
         manifest = _strict_object(manifest_bytes)
-        if set(manifest) != {
+        common_fields = {
             "schema",
             "policy_id",
             "current_head",
@@ -1500,20 +1508,33 @@ class LegacyLandedLeafResultCache:
             "parquet_cid",
             "parquet_codec",
             "parquet_byte_length",
-            "replication_pin_requested",
             "signed_records_only",
             "mutable_lock_or_lease_store",
             "completion_authoritative",
             "proof_authoritative",
-        }:
+        }
+        schema = manifest.get("schema")
+        expected_fields = (
+            common_fields
+            if schema == LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA_V1
+            else common_fields | {"replication_pin_requested"}
+        )
+        if set(manifest) != expected_fields:
             raise LegacyLandedLeafCacheError("legacy cache snapshot shape is invalid")
         if (
-            manifest.get("schema") != LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA
+            schema
+            not in {
+                LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA_V1,
+                LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA,
+            }
             or manifest.get("policy_id") != self.policy.policy_id
             or manifest.get("current_head") != self.policy.current_head
             or manifest.get("current_tree_id") != self.policy.current_tree_id
             or manifest.get("parquet_codec") != "raw"
-            or type(manifest.get("replication_pin_requested")) is not bool
+            or (
+                schema == LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA
+                and type(manifest.get("replication_pin_requested")) is not bool
+            )
             or manifest.get("signed_records_only") is not True
             or manifest.get("mutable_lock_or_lease_store") is not False
             or manifest.get("completion_authoritative") is not False
@@ -1630,6 +1651,7 @@ __all__ = [
     "LEGACY_LANDED_LEAF_CACHE_RECORD_INTERFACE",
     "LEGACY_LANDED_LEAF_CACHE_RECORD_SCHEMA",
     "LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA",
+    "LEGACY_LANDED_LEAF_CACHE_SNAPSHOT_SCHEMA_V1",
     "LegacyLandedLeafCacheAuthority",
     "LegacyLandedLeafCacheError",
     "LegacyLandedLeafCacheKey",
