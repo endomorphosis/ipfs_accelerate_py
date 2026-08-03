@@ -76,9 +76,11 @@ authoritative gates become decorative.
 ## Decision
 
 The control plane treats **all model and optional-provider generative output as
-proposals**. Only deterministic, typed, tree-bound evidence—admitted through
-policy gates—may authorize advancement. **Neither fluent model output nor a
-landed commit independently authorizes task or goal completion.**
+proposals**. Deterministic policy evaluation over typed, bound evidence
+authorizes advancement. Generative output starts at proposal tier; an
+independently admitted provider review may satisfy only its own configured
+gate. **Neither fluent model output nor a landed commit independently
+authorizes task or goal completion.**
 
 Normative rules:
 
@@ -97,7 +99,9 @@ Normative rules:
    re-derived assurance levels. Weaker classes (query/GraphRAG fact,
    observation, solver candidate) must not be renamed or cached into stronger
    ones (kernel proof, attestation). Proof-cache hits **re-derive** assurance;
-   they do not invent it.
+   they do not invent it. A typed, independently reviewed `provider_review`
+   result can satisfy that gate when policy requires it; it does not become
+   deterministic proof or satisfy unrelated gates.
 4. **Merge is implementation landing, not acceptance.** A successful merge
    (implementation commit, merge commit, queue/train state, Git ancestry) is
    evidence that code landed. The authoritative completion module records
@@ -118,15 +122,16 @@ Normative rules:
    - Authoritative task completion: `todo_daemon/authoritative_completion.py`
    - Goal completion: `objectives/goal_completion.py`
 
-Authority ladder (must not skip rungs):
+Typical gated lifecycle (policy selects the required evidence classes; not
+every class is mandatory for every task):
 
 ```text
-1. Intent        objective / task identity
-2. Proposal      model plan or patch
-3. Validation    deterministic checks / tests / scope policy
-4. Isolation     lease, worktree, protected paths
-5. Evidence      receipts, cache-backed proofs, audits
-6. Mutation      merge, state update, completion mark
+1. Intent                 objective / task identity
+2. Proposal               model plan or patch
+3. Pre-merge admission    validation, scope policy, lease/worktree isolation
+4. Landing                merge commit and merge receipt
+5. Post-merge admission   fresh bound evidence and recomputed configured gates
+6. Completion mutation    separately authorized task/goal state promotion
 ```
 
 ## Alternatives
@@ -234,7 +239,7 @@ Authority ladder (must not skip rungs):
 | Goal completion is two-phase | `objectives/goal_completion.py` | Provisional vs verified |
 | Evidence tiers refuse silent promotion | `proof/code_claim_contracts.py` `EvidenceTier`; claim/evidence contract doc | Closed ladder |
 | Cache re-derives, does not invent | `proof/formal_verification_cache.py`; PLANNING_AND_ASSURANCE § cache miss | Hit ≠ trust root |
-| Merge train revalidates post-merge | `merge/merge_train.py` post-merge admission path | Reconstructs receipt before authority |
+| Merge train can revalidate post-merge | `merge/merge_train.py` optional `post_merge_validation` callback | When configured, admits post-merge evidence; otherwise the train only lands work and acceptance remains separately pending or denied |
 
 ## Verification
 

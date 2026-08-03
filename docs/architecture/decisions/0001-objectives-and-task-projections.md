@@ -117,7 +117,7 @@ proof trust.
 | Rule | Intent preserved |
 | --- | --- |
 | Project, do not absorb | Refinery emits tasks from objectives; it does not replace the heap with the board |
-| Protect operator inputs | Paths listed as protected / operator-owned heaps and sealed plans are fail-closed unless the task `Outputs` explicitly own them |
+| Protect operator inputs | Paths listed as protected / operator-owned heaps and sealed plans remain off-limits even when a task lists them in `Outputs`; authorized maintenance and refill use a separate trusted control protocol |
 | Stable task identity | Keep `## PREFIX-###` headers; do not renumber foreign tasks; use `task_identity` content rules for semantic identity |
 | Bounded generation | Durable ledgers / generation records dedupe refill so the same gap does not thrash the board into rewriting intent |
 | Policy-gated mutations | Objective refine/reconcile and backlog refill are control **mutation** operations under authorization, effects, and (when configured) lease/fence—not free agent file edits |
@@ -130,7 +130,7 @@ proof trust.
 | Proposal ≠ completion | Model patches and provider exit codes never mark goals complete |
 | Merge ≠ acceptance | Landing code on a branch does not by itself complete a goal or authorize board “done” as goal truth |
 | Authoritative completion separate | `authoritative_completion` recompute gates admit board/goal promotion; callers cannot self-assert completion authority on receipts |
-| No foreign board rewrites | Implementation lanes do not edit protected heaps, sealed plans, or foreign task sections unless declared outputs allow it |
+| No foreign board rewrites | Implementation lanes do not edit protected heaps, sealed plans, or foreign task sections; declaring one as an output does not grant authority |
 
 #### During recovery (restart, reconcile, rescue, quarantine)
 
@@ -140,7 +140,7 @@ proof trust.
 | Immutable receipts | Recovery and restart publish typed receipts; they do not silently rewrite objective heaps to match a dirty board |
 | Fence stale actors | Stale leases/fencing epochs cannot mutate state after recovery ownership moves |
 | Operator-gated dirty reconcile | Unknown dirty checkout content is not auto-committed, stashed, or discarded to “fix” the board; reconciliation guardrails stay operator-visible |
-| Reopen on stale evidence | Post-merge or post-recovery validation that goes stale reopens acceptance rather than preserving a false complete mark |
+| Explicit reopen on stale evidence | Recovery receipts alone neither complete nor reopen work. Stale post-merge evidence reopens acceptance only through the explicit `reopen_acceptance_for_stale_post_merge_validation` path |
 
 ### 4. Ownership summary
 
