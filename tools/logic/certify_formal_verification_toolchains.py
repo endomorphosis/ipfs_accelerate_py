@@ -79,6 +79,9 @@ RUNTIME_MTL_VENDOR_RECEIPT_RELATIVE: Final = Path(
 AUTHORIZATION_VENDOR_RECEIPT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_authorization_vendor_install_receipt.json"
 )
+HYPERPROPERTY_VENDOR_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json"
+)
 RUNTIME_MTL_VENDOR_TOOL_ID: Final = "runtime-mtl-external"
 RUNTIME_MTL_VENDOR_PACKAGE_IDENTITY: Final = (
     "@ipfs-datasets/logic-runtime-mtl"
@@ -91,6 +94,9 @@ CHECKED_VENDOR_FANIN_SCHEMA: Final = (
 )
 CHECKED_VENDOR_CAPABILITY_READINESS_SCHEMA: Final = (
     "formal-verification-checked-vendor-capability-readiness/v1"
+)
+CHECKED_HYPER_VENDOR_FANIN_EVIDENCE_CLASS: Final = (
+    "checked_hyperproperty_vendor_bounded_authority"
 )
 
 # Pre-merge release candidate fan-in (FVT-G213 / FVT-066). The certificate
@@ -3767,6 +3773,7 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
         "selector": "engine",
         "evidence_class": "hermetic_adapter_shim",
         "production_elevation_allowed": False,
+        "identity_from_receipt": True,
     },
     {
         "lane_id": "runtime_mtl_external",
@@ -3901,6 +3908,31 @@ CHECKED_VENDOR_FANIN_SPECS: Final[Mapping[str, Mapping[str, Any]]] = {
             "checked_native_souffle_vendor_shadow"
         ),
     },
+}
+
+# Hyperproperty vendor certification is intentionally separate from the
+# Runtime/Auth differential join above.  These three reviewed engines are the
+# bounded authority-bearing tools themselves, so no independent reference is
+# claimed.  Their complete 3 x 22 live vendor corpus and exact checked receipt
+# form a multi-engine adapter to the existing hyperproperty lane.
+CHECKED_HYPER_VENDOR_FANIN_SPEC: Final[Mapping[str, Any]] = {
+    "lane_id": "hyperltl",
+    "module_relative": Path("tools/logic/certification/hyperproperty.py"),
+    "callable_name": "certify_hyperproperty_vendor_toolchains",
+    "checked_receipt_relative": HYPERPROPERTY_VENDOR_RECEIPT_RELATIVE,
+    "checked_receipt_schema": (
+        "formal-verification-hyperproperty-vendor-install-receipt/v1"
+    ),
+    "live_schema": "hyperproperty-vendor-toolchain-certification/v1",
+    "interface": "HyperpropertyVendorToolchainCertification@1",
+    "goal_id": "FVT-G208",
+    "task_id": "FVT-061",
+    "repair_task_id": "FVT-077",
+    "targets": ("hyperltl", "autohyper", "mchyper"),
+    "checks_per_target": 22,
+    "expected_vendor_checks": 66,
+    "evidence_class": CHECKED_HYPER_VENDOR_FANIN_EVIDENCE_CLASS,
+    "vendor_authority": "bounded_hyperproperty_authority",
 }
 
 # Acceptance-required specialized certifier families (FVT-G203).
@@ -5199,6 +5231,689 @@ def _bind_checked_vendor_fanin_to_receipt(
     return _refresh_semantic_receipt_self_digests(bound)
 
 
+def _adapt_hyper_vendor_checks(
+    tool_id: str,
+    raw_checks: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Retain every vendor check while projecting violation to PNMR negative."""
+
+    adapted: list[dict[str, Any]] = []
+    for index, raw_check in enumerate(raw_checks):
+        check = dict(raw_check)
+        source_kind = str(check.get("kind") or "").lower()
+        check["check_id"] = str(
+            check.get("check_id") or f"{tool_id}.vendor.{index}"
+        )
+        check["tool_id"] = tool_id
+        check["kind"] = (
+            "negative" if source_kind == "violation" else source_kind
+        )
+        check["source_vendor_kind"] = source_kind
+        check["source_check_digest_sha256"] = content_digest(raw_check)
+        adapted.append(check)
+    return adapted
+
+
+def _build_checked_hyper_vendor_adapter(
+    *,
+    repo_root: Path,
+    sealed_root: Path | None,
+    semantic_spec: Mapping[str, Any],
+    semantic_module: Any,
+    reference_receipt: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Authenticate the complete 3 x 22 bounded Hyper vendor certificate."""
+
+    spec = CHECKED_HYPER_VENDOR_FANIN_SPEC
+    targets = tuple(str(item) for item in spec["targets"])
+    checked_relative = Path(spec["checked_receipt_relative"])
+    checked_path = repo_root / checked_relative
+    module_relative = Path(spec["module_relative"])
+    module_path = repo_root / module_relative
+    failures: list[str] = []
+    host_platform = observed_platform_id()
+
+    try:
+        checked_receipt = json.loads(checked_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        checked_receipt = None
+        failures.append("checked_hyper_vendor_receipt_unreadable")
+    if not isinstance(checked_receipt, Mapping):
+        checked_receipt = {}
+        failures.append("checked_hyper_vendor_receipt_not_mapping")
+    for field_name, expected in {
+        "schema_version": spec["checked_receipt_schema"],
+        "interface": spec["interface"],
+        "goal_id": spec["goal_id"],
+        "task_id": spec["task_id"],
+        "repair_task_id": spec["repair_task_id"],
+        "host_platform": host_platform,
+        "authority_ceiling": "bounded",
+        "certified": True,
+    }.items():
+        if checked_receipt.get(field_name) != expected:
+            failures.append(
+                f"checked_hyper_vendor_receipt_{field_name}_mismatch"
+            )
+    checked_self_digest = content_digest(
+        {
+            key: value
+            for key, value in checked_receipt.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    if not _digest_matches(
+        checked_receipt.get("receipt_digest_sha256"),
+        checked_self_digest,
+    ):
+        failures.append("checked_hyper_vendor_receipt_self_digest_mismatch")
+    checked_summary = checked_receipt.get("summary")
+    checked_summary = (
+        checked_summary if isinstance(checked_summary, Mapping) else {}
+    )
+    if (
+        checked_summary.get("vendor_certified") is not True
+        or checked_summary.get("checks_passed")
+        != spec["expected_vendor_checks"]
+        or checked_summary.get("checks_total")
+        != spec["expected_vendor_checks"]
+        or list(checked_summary.get("block_reasons") or ())
+    ):
+        failures.append("checked_hyper_vendor_summary_invalid")
+    checked_policy = checked_receipt.get("policy")
+    checked_policy = (
+        checked_policy if isinstance(checked_policy, Mapping) else {}
+    )
+    if (
+        checked_policy.get("never_grants_theorem_authority") is not True
+        or checked_policy.get("never_authorizes_universal_proof") is not True
+        or checked_policy.get("grants_theorem_authority") is not False
+        or checked_policy.get("authorizes_universal_proof") is not False
+        or checked_policy.get("authority_ceiling") != "bounded"
+    ):
+        failures.append("checked_hyper_vendor_authority_policy_invalid")
+    for tool_id in targets:
+        engine = checked_receipt.get(tool_id)
+        engine = engine if isinstance(engine, Mapping) else {}
+        if (
+            engine.get("tool_id") != tool_id
+            or engine.get("certified") is not True
+            or engine.get("usable") is not True
+            or engine.get("is_vendor_build") is not True
+            or engine.get("is_hermetic_engine") is not False
+            or engine.get("role") != "authority"
+            or engine.get("authority_ceiling") != "bounded"
+            or engine.get("never_authorizes_universal_proof") is not True
+            or engine.get("never_grants_theorem_authority") is not True
+            or not SHA256_RE.fullmatch(
+                str(engine.get("artifact_sha256") or "")
+            )
+        ):
+            failures.append(f"checked_hyper_vendor_{tool_id}_identity_invalid")
+
+    if sealed_root is None:
+        failures.append("sealed_hyper_vendor_root_unavailable")
+    else:
+        failures.extend(
+            _checked_vendor_sealed_root_failures(
+                sealed_root,
+                install_root=sealed_root,
+                dependency_prefix=None,
+            )
+        )
+    if checked_receipt.get("host_platform") != host_platform:
+        failures.append("checked_hyper_vendor_host_platform_mismatch")
+
+    live_certificate: Mapping[str, Any] = {}
+    if not module_path.is_file():
+        failures.append("checked_hyper_vendor_certifier_missing")
+    elif sealed_root is not None and not failures:
+        try:
+            vendor_module = _load_module_from_path(
+                module_path,
+                "fvt_checked_hyper_vendor_fanin",
+            )
+            callable_ = getattr(
+                vendor_module,
+                str(spec["callable_name"]),
+                None,
+            )
+            if not callable(callable_):
+                raise AttributeError("Hyper vendor certifier not callable")
+            observed = callable_(
+                install_root=sealed_root,
+                engines=targets,
+                force_install=False,
+                skip_install=True,
+                platform_id=host_platform,
+                repo_root=repo_root,
+                lock_path=repo_root / DEFAULT_LOCK_RELATIVE,
+                dependency_roots=None,
+                write_receipt_path=None,
+            )
+            if not isinstance(observed, Mapping):
+                raise TypeError("Hyper vendor certifier returned non-mapping")
+            live_certificate = observed
+        except Exception as exc:  # noqa: BLE001 — fail closed without paths
+            failures.append(
+                f"checked_hyper_vendor_certifier_error:{type(exc).__name__}"
+            )
+
+    live_by_target: dict[str, Mapping[str, Any]] = {}
+    raw_checks_by_target: dict[str, list[dict[str, Any]]] = {}
+    adapted_checks_by_target: dict[str, list[dict[str, Any]]] = {}
+    cases_by_target: dict[str, list[dict[str, Any]]] = {}
+    artifacts_by_target: dict[str, list[dict[str, Any]]] = {}
+    if live_certificate:
+        for field_name, expected in {
+            "schema_version": spec["live_schema"],
+            "interface": spec["interface"],
+            "goal_id": spec["goal_id"],
+            "task_id": spec["task_id"],
+            "repair_task_id": spec["repair_task_id"],
+            "host_platform": host_platform,
+            "authority_ceiling": "bounded",
+            "certified": True,
+        }.items():
+            if live_certificate.get(field_name) != expected:
+                failures.append(f"live_hyper_vendor_{field_name}_mismatch")
+        repair = live_certificate.get("objective_validation_repair")
+        repair = repair if isinstance(repair, Mapping) else {}
+        if (
+            repair.get("status") != "satisfied"
+            or repair.get("vendor_certified") is not True
+            or live_certificate.get("forbids_theorem_authority") is not True
+            or live_certificate.get(
+                "forbids_universal_claims_beyond_bounds"
+            )
+            is not True
+            or live_certificate.get("install") is not None
+        ):
+            failures.append("live_hyper_vendor_authority_or_repair_invalid")
+        outer_digest = _checked_vendor_outer_digest(
+            live_certificate,
+            repo_root=repo_root,
+            uses_public_projection=True,
+        )
+        if not _digest_matches(
+            live_certificate.get("certificate_digest_sha256"),
+            outer_digest,
+        ):
+            failures.append("live_hyper_vendor_self_digest_mismatch")
+        if live_certificate.get("install_receipt") != checked_receipt:
+            failures.append("live_hyper_vendor_nested_receipt_mismatch")
+        live_summary = live_certificate.get("summary")
+        live_summary = (
+            live_summary if isinstance(live_summary, Mapping) else {}
+        )
+        if (
+            live_summary.get("vendor_certified") is not True
+            or live_summary.get("checks_passed")
+            != spec["expected_vendor_checks"]
+            or live_summary.get("checks_total")
+            != spec["expected_vendor_checks"]
+            or list(live_summary.get("block_reasons") or ())
+        ):
+            failures.append("live_hyper_vendor_summary_invalid")
+
+        engine_list = [
+            engine
+            for engine in live_certificate.get("engines") or ()
+            if isinstance(engine, Mapping)
+        ]
+        engine_ids = [str(engine.get("engine_id") or "") for engine in engine_list]
+        if engine_ids != list(targets) or len(set(engine_ids)) != len(targets):
+            failures.append("live_hyper_vendor_engine_population_invalid")
+        listed = {str(engine.get("engine_id") or ""): engine for engine in engine_list}
+        for tool_id in targets:
+            engine = live_certificate.get(tool_id)
+            engine = engine if isinstance(engine, Mapping) else {}
+            live_by_target[tool_id] = engine
+            if engine != listed.get(tool_id):
+                failures.append(
+                    f"live_hyper_vendor_{tool_id}_section_list_mismatch"
+                )
+            raw_checks = [
+                dict(check)
+                for check in engine.get("checks") or ()
+                if isinstance(check, Mapping)
+            ]
+            cases = [
+                dict(case)
+                for case in engine.get("case_results") or ()
+                if isinstance(case, Mapping)
+            ]
+            raw_checks_by_target[tool_id] = raw_checks
+            cases_by_target[tool_id] = cases
+            adapted_checks_by_target[tool_id] = _adapt_hyper_vendor_checks(
+                tool_id,
+                raw_checks,
+            )
+            check_ids = [
+                str(check.get("check_id") or "") for check in raw_checks
+            ]
+            if (
+                engine.get("engine_id") != tool_id
+                or engine.get("certified") is not True
+                or engine.get("usable") is not True
+                or engine.get("role") != "authority"
+                or engine.get("authority_ceiling") != "bounded"
+                or engine.get("is_vendor_build") is not True
+                or engine.get("is_hermetic_engine") is not False
+                or engine.get("authorizes_universal_proof") is not False
+                or list(engine.get("block_reasons") or ())
+                or len(raw_checks) != spec["checks_per_target"]
+                or len(check_ids) != spec["checks_per_target"]
+                or any(not check_id for check_id in check_ids)
+                or len(set(check_ids)) != spec["checks_per_target"]
+                or any(check.get("status") != "passed" for check in raw_checks)
+            ):
+                failures.append(
+                    f"live_hyper_vendor_{tool_id}_full_check_set_invalid"
+                )
+            executable_raw = str(engine.get("executable") or "")
+            if sealed_root is None or not executable_raw:
+                failures.append(
+                    f"live_hyper_vendor_{tool_id}_executable_missing"
+                )
+            else:
+                executable_path = Path(executable_raw)
+                for failure in _runtime_mtl_sealed_path_failures(
+                    sealed_root,
+                    executable_path,
+                    expected_directory=False,
+                    executable=True,
+                ):
+                    failures.append(
+                        f"live_hyper_vendor_{tool_id}_executable:{failure}"
+                    )
+                executable_sha = file_digest(executable_path)
+                executable_bare_sha = _bare_file_digest(executable_path)
+                executable_class = classify_executable_artifact(executable_path)
+                expected_class = (
+                    "launcher_script"
+                    if tool_id == "mchyper"
+                    else "native_or_managed_binary"
+                )
+                if (
+                    not _digest_matches(
+                        engine.get("artifact_sha256"),
+                        executable_bare_sha,
+                    )
+                    or executable_class != expected_class
+                ):
+                    failures.append(
+                        f"live_hyper_vendor_{tool_id}_executable_identity_invalid"
+                    )
+                engine_artifacts = [
+                    {
+                        "kind": "vendor_engine_executable",
+                        "path": executable_raw,
+                        "sha256": executable_sha,
+                        "artifact_class": executable_class,
+                    }
+                ]
+                if tool_id == "mchyper":
+                    version_root = executable_path.parent.parent
+                    dependency_paths = (
+                        (
+                            "launcher_runtime",
+                            sealed_root
+                            / "build-dependencies"
+                            / "mchyper"
+                            / "python-2.7.18"
+                            / "bin"
+                            / "python2.7",
+                        ),
+                        (
+                            "launcher_target",
+                            executable_path.parent / "src" / "Main",
+                        ),
+                        ("runtime_dependency_abc", version_root / "abc" / "abc"),
+                        (
+                            "runtime_dependency_aigtoaig",
+                            version_root / "aiger" / "aigtoaig",
+                        ),
+                    )
+                    for artifact_kind, dependency_path in dependency_paths:
+                        dependency_failures = _runtime_mtl_sealed_path_failures(
+                            sealed_root,
+                            dependency_path,
+                            expected_directory=False,
+                            executable=True,
+                        )
+                        dependency_class = classify_executable_artifact(
+                            dependency_path
+                        )
+                        dependency_sha = file_digest(dependency_path)
+                        if (
+                            dependency_failures
+                            or dependency_class != "native_or_managed_binary"
+                            or not dependency_sha
+                        ):
+                            failures.append(
+                                "live_hyper_vendor_mchyper_"
+                                f"{artifact_kind}_identity_invalid"
+                            )
+                        engine_artifacts.append(
+                            {
+                                "kind": artifact_kind,
+                                "path": str(dependency_path),
+                                "sha256": dependency_sha,
+                                "artifact_class": dependency_class,
+                            }
+                        )
+                artifacts_by_target[tool_id] = engine_artifacts
+
+    checked_artifact = _checked_vendor_receipt_artifact(
+        repo_root=repo_root,
+        receipt_relative=checked_relative,
+        checked_receipt=checked_receipt,
+    )
+    vendor_failures = sorted(set(failures))
+    vendor_valid = not vendor_failures
+
+    base_engines: list[dict[str, Any]] = []
+    for tool_id in targets:
+        live_engine = live_by_target.get(tool_id, {})
+        base_engines.append(
+            {
+                "engine_id": tool_id,
+                "version": live_engine.get("version"),
+                "usable": vendor_valid,
+                "identity_probed": vendor_valid,
+                "certified": vendor_valid,
+                "role": "authority",
+                "authority_ceiling": "bounded",
+                "authorizes_universal_proof": False,
+                "is_theorem_authority": False,
+                "checks": adapted_checks_by_target.get(tool_id, []),
+                "case_results": cases_by_target.get(tool_id, []),
+                "block_reasons": (
+                    []
+                    if vendor_valid
+                    else [f"checked_hyper_vendor_fanin_invalid:{tool_id}"]
+                ),
+                "executable": live_engine.get("executable"),
+                "executable_sha256": next(
+                    (
+                        artifact.get("sha256")
+                        for artifact in artifacts_by_target.get(tool_id, [])
+                        if artifact.get("kind") == "vendor_engine_executable"
+                    ),
+                    None,
+                ),
+                "executable_artifact_class": classify_executable_artifact(
+                    live_engine.get("executable")
+                ),
+                "artifact_identities": [
+                    *[
+                        dict(artifact)
+                        for artifact in artifacts_by_target.get(tool_id, [])
+                    ],
+                    dict(checked_artifact),
+                ],
+                "source_vendor_certificate_digest_sha256": (
+                    live_certificate.get("certificate_digest_sha256")
+                ),
+                "independent_reference_available": False,
+                "authority_basis": "complete_live_vendor_bounded_corpus",
+            }
+        )
+    adapter: dict[str, Any] = {
+        "schema_version": str(getattr(semantic_module, "SCHEMA_VERSION", "")),
+        "interface": str(semantic_spec["interface"]),
+        "goal_id": str(getattr(semantic_module, "GOAL_ID", "")),
+        "task_id": str(getattr(semantic_module, "TASK_ID", "")),
+        "program": "formal-verification-tactician/hyperproperty-vendor-adapter",
+        "lane_id": str(semantic_spec["lane_id"]),
+        "handler_id": "checked_hyperproperty_vendor_adapter@1",
+        "host_platform": host_platform,
+        "authority_ceiling": "bounded",
+        "forbids_theorem_authority": True,
+        "forbids_universal_claims_beyond_bounds": True,
+        "certified": vendor_valid,
+        "engines": base_engines,
+        "engine_ids": list(targets),
+        "install_attempted": False,
+        "download_attempted": False,
+        "network_used": False,
+        "policy": {
+            "no_install": True,
+            "no_download": True,
+            "no_network": True,
+            "checked_vendor_receipt_required": True,
+            "complete_vendor_corpus_required": True,
+            "independent_reference_claimed": False,
+            "authority_ceiling": "bounded",
+            "never_grants_theorem_authority": True,
+            "never_authorizes_universal_proof": True,
+        },
+        "summary": {
+            "engines_certified": len(targets) if vendor_valid else 0,
+            "engines_total": len(targets),
+            "checks_passed": sum(
+                check.get("status") == "passed"
+                for checks in adapted_checks_by_target.values()
+                for check in checks
+            ),
+            "checks_total": sum(
+                len(checks) for checks in adapted_checks_by_target.values()
+            ),
+            "block_reasons": vendor_failures,
+        },
+        "independent_reference": {
+            "available": False,
+            "claimed": False,
+            "reason": (
+                "The reviewed vendor engines are the bounded capability "
+                "targets; no independent peer is relabelled or fabricated."
+            ),
+        },
+        "digest_sha256": "",
+    }
+    adapter["digest_sha256"] = content_digest(
+        {key: value for key, value in adapter.items() if key != "digest_sha256"}
+    )
+    binding_receipt = (
+        reference_receipt
+        if isinstance(reference_receipt, Mapping) and reference_receipt
+        else adapter
+    )
+    receipt_integrity = _validate_semantic_receipt_integrity(
+        binding_receipt,
+        spec=semantic_spec,
+        module=semantic_module,
+    )
+    target_bindings: dict[str, Any] = {}
+    target_failures: dict[str, list[str]] = {}
+    for tool_id in targets:
+        tool_failures: list[str] = []
+        certified, raw_checks, block_reasons = (
+            _tool_certified_from_semantic_receipt(
+                tool_id,
+                binding_receipt,
+                certified_key=str(semantic_spec["certified_key"]),
+                selector=str(semantic_spec.get("selector") or "engine"),
+            )
+        )
+        normalized = _normalize_semantic_checks(tool_id, raw_checks)
+        normalized_payload = [check.to_dict() for check in normalized]
+        source_digests = [
+            str(check.get("source_check_digest_sha256") or "")
+            for check in raw_checks
+            if isinstance(check, Mapping)
+        ]
+        expected_source_digests = [
+            content_digest(check)
+            for check in raw_checks_by_target.get(tool_id, [])
+        ]
+        kinds = sorted({check.kind for check in normalized})
+        if receipt_integrity.get("valid") is not True:
+            tool_failures.append("hyper_adapter_receipt_integrity_invalid")
+        if not certified or block_reasons:
+            tool_failures.append("hyper_adapter_target_not_certified")
+        if (
+            len(raw_checks) != spec["checks_per_target"]
+            or len(normalized) != spec["checks_per_target"]
+            or any(check.status != "passed" for check in normalized)
+            or not {"positive", "negative", "mutation", "replay"} <= set(kinds)
+        ):
+            tool_failures.append("hyper_adapter_pnmr_projection_invalid")
+        if source_digests != expected_source_digests:
+            tool_failures.append("hyper_adapter_source_check_binding_invalid")
+        target_bindings[tool_id] = {
+            "certified": not tool_failures,
+            "checks_passed": sum(
+                check.status == "passed" for check in normalized
+            ),
+            "checks_total": len(normalized),
+            "expected_checks_total": spec["checks_per_target"],
+            "check_kinds_present": kinds,
+            "check_set_digest_sha256": content_digest(normalized_payload),
+            "source_vendor_check_set_digest_sha256": content_digest(
+                raw_checks_by_target.get(tool_id, [])
+            ),
+            "source_check_digests_sha256": expected_source_digests,
+            "independent_reference_available": False,
+            "vendor_pnmr_projection": True,
+            "authority_ceiling": "bounded",
+        }
+        target_failures[tool_id] = sorted(set(tool_failures))
+
+    eligible = [
+        tool_id
+        for tool_id in targets
+        if vendor_valid and not target_failures.get(tool_id)
+    ]
+    flattened_checks = [
+        check
+        for tool_id in targets
+        for check in raw_checks_by_target.get(tool_id, [])
+    ]
+    flattened_cases = [
+        case
+        for tool_id in targets
+        for case in cases_by_target.get(tool_id, [])
+    ]
+    fanin: dict[str, Any] = {
+        "schema_version": CHECKED_VENDOR_FANIN_SCHEMA,
+        "configured": True,
+        "lane_id": str(spec["lane_id"]),
+        "vendor_tool_id": "hyperproperty-vendor",
+        "vendor_authority": str(spec["vendor_authority"]),
+        "reference_authority_retained_by": list(targets),
+        "evidence_class": str(spec["evidence_class"]),
+        "vendor_valid": vendor_valid,
+        "complete": len(eligible) == len(targets),
+        "eligible_tool_ids": eligible,
+        "failures": vendor_failures,
+        "per_tool_failures": target_failures,
+        "reference_bindings": target_bindings,
+        "checked_install_receipt": {
+            "path": checked_relative.as_posix(),
+            "file_sha256": file_digest(checked_path),
+            "self_digest_sha256": checked_receipt.get(
+                "receipt_digest_sha256"
+            ),
+            "content_digest_sha256": content_digest(checked_receipt),
+            "exact_live_nested_match": bool(
+                live_certificate
+                and live_certificate.get("install_receipt")
+                == checked_receipt
+            ),
+        },
+        "checked_install_receipt_artifact": checked_artifact,
+        "live_certificate": {
+            "schema_version": live_certificate.get("schema_version"),
+            "interface": live_certificate.get("interface"),
+            "goal_id": live_certificate.get("goal_id"),
+            "task_id": live_certificate.get("task_id"),
+            "repair_task_id": live_certificate.get("repair_task_id"),
+            "host_platform": live_certificate.get("host_platform"),
+            "certificate_digest_sha256": live_certificate.get(
+                "certificate_digest_sha256"
+            ),
+            "certified": live_certificate.get("certified") is True,
+            "checks_passed": sum(
+                check.get("status") == "passed" for check in flattened_checks
+            ),
+            "checks_total": len(flattened_checks),
+            "check_ids": [
+                str(check.get("check_id") or "")
+                for check in flattened_checks
+            ],
+            "check_set_digest_sha256": content_digest(flattened_checks),
+            "case_results_total": len(flattened_cases),
+            "case_result_set_digest_sha256": content_digest(flattened_cases),
+            "nested_install_receipt_digest_sha256": (
+                live_certificate.get("install_receipt") or {}
+            ).get("receipt_digest_sha256")
+            if isinstance(live_certificate.get("install_receipt"), Mapping)
+            else None,
+            "per_engine": {
+                tool_id: {
+                    "checks_passed": sum(
+                        check.get("status") == "passed"
+                        for check in raw_checks_by_target.get(tool_id, [])
+                    ),
+                    "checks_total": len(
+                        raw_checks_by_target.get(tool_id, [])
+                    ),
+                    "check_set_digest_sha256": content_digest(
+                        raw_checks_by_target.get(tool_id, [])
+                    ),
+                    "case_results_total": len(
+                        cases_by_target.get(tool_id, [])
+                    ),
+                    "case_result_set_digest_sha256": content_digest(
+                        cases_by_target.get(tool_id, [])
+                    ),
+                    "artifact_sha256": live_by_target.get(tool_id, {}).get(
+                        "artifact_sha256"
+                    ),
+                    "artifact_identities": [
+                        dict(artifact)
+                        for artifact in artifacts_by_target.get(tool_id, [])
+                    ],
+                }
+                for tool_id in targets
+            },
+        },
+        "source_module": {
+            "path": module_relative.as_posix(),
+            "sha256": file_digest(module_path),
+        },
+        "sealed_root_binding": {
+            "environment": RUNTIME_MTL_SEALED_ROOT_ENV,
+            "explicit": sealed_root is not None,
+            "install_root_relative": ".",
+            "dependency_prefix_relative": None,
+            "ambient_path_discovery": False,
+            "skip_install": True,
+            "force_install": False,
+            "platform_id": host_platform,
+        },
+        "policy": {
+            "complete_three_engine_vendor_corpus_required": True,
+            "exact_nested_install_receipt_required": True,
+            "section_list_identity_required": True,
+            "independent_reference_claimed": False,
+            "vendor_pnmr_projection_retains_every_check": True,
+            "bounded_authority_only": True,
+            "never_grants_theorem_authority": True,
+            "never_authorizes_universal_proof": True,
+        },
+    }
+    fanin["digest_sha256"] = content_digest(fanin)
+    bound_adapter = _bind_checked_vendor_fanin_to_receipt(
+        adapter,
+        semantic_spec=semantic_spec,
+        fanin=fanin,
+    )
+    return {"fanin": fanin, "adapter_receipt": bound_adapter}
+
+
 def _build_checked_vendor_fanin(
     *,
     repo_root: Path,
@@ -5675,16 +6390,406 @@ def _build_checked_vendor_fanin(
     return fanin
 
 
+def _recover_hyper_vendor_raw_check(
+    adapted_check: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Invert the narrow Hyper PNMR projection for digest verification."""
+
+    recovered = dict(adapted_check)
+    source_kind = str(recovered.pop("source_vendor_kind", "") or "")
+    recovered.pop("source_check_digest_sha256", None)
+    recovered.pop("tool_id", None)
+    recovered["kind"] = source_kind
+    return recovered
+
+
+def _recorded_checked_hyper_vendor_fanin_eligibility(
+    *,
+    repo_root: Path,
+    semantic_spec: Mapping[str, Any],
+    result_fanin: Any,
+    receipt_fanin: Any,
+    semantic_receipt: Any = None,
+) -> set[str]:
+    """Reconstruct the bounded Hyper fan-in from its digest-bound adapter."""
+
+    spec = CHECKED_HYPER_VENDOR_FANIN_SPEC
+    targets = tuple(str(item) for item in spec["targets"])
+    expected_targets = set(targets)
+    if (
+        str(semantic_spec.get("lane_id") or "") != spec["lane_id"]
+        or tuple(str(item) for item in semantic_spec.get("tool_ids") or ())
+        != targets
+        or not isinstance(result_fanin, Mapping)
+        or not isinstance(receipt_fanin, Mapping)
+        or not isinstance(semantic_receipt, Mapping)
+        or dict(result_fanin) != dict(receipt_fanin)
+        or semantic_receipt.get("checked_vendor_fanin") != dict(result_fanin)
+    ):
+        return set()
+    fanin = dict(result_fanin)
+    if str(fanin.get("digest_sha256") or "") != content_digest(
+        {key: value for key, value in fanin.items() if key != "digest_sha256"}
+    ):
+        return set()
+
+    checked_relative = Path(spec["checked_receipt_relative"])
+    checked_path = repo_root / checked_relative
+    try:
+        checked_payload = json.loads(checked_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return set()
+    if not isinstance(checked_payload, Mapping):
+        return set()
+    checked_self_digest = content_digest(
+        {
+            key: value
+            for key, value in checked_payload.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    checked = fanin.get("checked_install_receipt")
+    checked = checked if isinstance(checked, Mapping) else {}
+    live = fanin.get("live_certificate")
+    live = live if isinstance(live, Mapping) else {}
+    bindings = fanin.get("reference_bindings")
+    bindings = bindings if isinstance(bindings, Mapping) else {}
+    per_tool_failures = fanin.get("per_tool_failures")
+    per_tool_failures = (
+        per_tool_failures if isinstance(per_tool_failures, Mapping) else {}
+    )
+    per_engine = live.get("per_engine")
+    per_engine = per_engine if isinstance(per_engine, Mapping) else {}
+    eligible = {str(item) for item in fanin.get("eligible_tool_ids") or ()}
+    expected_checked_artifact = _checked_vendor_receipt_artifact(
+        repo_root=repo_root,
+        receipt_relative=checked_relative,
+        checked_receipt=checked_payload,
+    )
+    artifact = fanin.get("checked_install_receipt_artifact")
+    if (
+        checked_payload.get("receipt_digest_sha256") != checked_self_digest
+        or fanin.get("schema_version") != CHECKED_VENDOR_FANIN_SCHEMA
+        or fanin.get("configured") is not True
+        or fanin.get("lane_id") != spec["lane_id"]
+        or fanin.get("vendor_tool_id") != "hyperproperty-vendor"
+        or fanin.get("vendor_authority") != spec["vendor_authority"]
+        or fanin.get("evidence_class") != spec["evidence_class"]
+        or set(fanin.get("reference_authority_retained_by") or ())
+        != expected_targets
+        or fanin.get("vendor_valid") is not True
+        or fanin.get("complete") is not True
+        or eligible != expected_targets
+        or list(fanin.get("failures") or ())
+        or set(per_tool_failures) != expected_targets
+        or any(list(per_tool_failures.get(tool_id) or ()) for tool_id in targets)
+        or checked.get("path") != checked_relative.as_posix()
+        or checked.get("file_sha256") != file_digest(checked_path)
+        or checked.get("content_digest_sha256")
+        != content_digest(checked_payload)
+        or checked.get("self_digest_sha256") != checked_self_digest
+        or checked.get("exact_live_nested_match") is not True
+        or artifact != expected_checked_artifact
+        or _validate_artifact_identities(
+            [artifact] if isinstance(artifact, Mapping) else [],
+            repo_root=repo_root,
+        ).get("has_production_binding")
+        is not True
+        or live.get("schema_version") != spec["live_schema"]
+        or live.get("interface") != spec["interface"]
+        or live.get("goal_id") != spec["goal_id"]
+        or live.get("task_id") != spec["task_id"]
+        or live.get("repair_task_id") != spec["repair_task_id"]
+        or live.get("host_platform") != observed_platform_id()
+        or checked_payload.get("host_platform") != observed_platform_id()
+        or live.get("certified") is not True
+        or live.get("checks_passed") != spec["expected_vendor_checks"]
+        or live.get("checks_total") != spec["expected_vendor_checks"]
+        or len(live.get("check_ids") or ()) != spec["expected_vendor_checks"]
+        or any(not str(item) for item in live.get("check_ids") or ())
+        or len(set(live.get("check_ids") or ()))
+        != spec["expected_vendor_checks"]
+        or live.get("nested_install_receipt_digest_sha256")
+        != checked_self_digest
+        or set(per_engine) != expected_targets
+        or fanin.get("source_module")
+        != {
+            "path": Path(spec["module_relative"]).as_posix(),
+            "sha256": file_digest(
+                repo_root / Path(spec["module_relative"])
+            ),
+        }
+        or fanin.get("sealed_root_binding")
+        != {
+            "environment": RUNTIME_MTL_SEALED_ROOT_ENV,
+            "explicit": True,
+            "install_root_relative": ".",
+            "dependency_prefix_relative": None,
+            "ambient_path_discovery": False,
+            "skip_install": True,
+            "force_install": False,
+            "platform_id": observed_platform_id(),
+        }
+    ):
+        return set()
+    policy = fanin.get("policy")
+    policy = policy if isinstance(policy, Mapping) else {}
+    if (
+        policy.get("complete_three_engine_vendor_corpus_required") is not True
+        or policy.get("exact_nested_install_receipt_required") is not True
+        or policy.get("section_list_identity_required") is not True
+        or policy.get("independent_reference_claimed") is not False
+        or policy.get("vendor_pnmr_projection_retains_every_check") is not True
+        or policy.get("bounded_authority_only") is not True
+        or policy.get("never_grants_theorem_authority") is not True
+        or policy.get("never_authorizes_universal_proof") is not True
+    ):
+        return set()
+
+    try:
+        semantic_module = _load_module_from_path(
+            repo_root / Path(semantic_spec["module_relative"]),
+            "fvt_recorded_checked_hyper_vendor_fanin",
+        )
+    except Exception:  # noqa: BLE001 — fail closed on current source mismatch
+        return set()
+    if (
+        _validate_semantic_receipt_integrity(
+            semantic_receipt,
+            spec=semantic_spec,
+            module=semantic_module,
+        ).get("valid")
+        is not True
+        or semantic_receipt.get("certified") is not True
+        or semantic_receipt.get("host_platform") != observed_platform_id()
+        or semantic_receipt.get("authority_ceiling") != "bounded"
+        or semantic_receipt.get("forbids_theorem_authority") is not True
+        or semantic_receipt.get("forbids_universal_claims_beyond_bounds")
+        is not True
+        or semantic_receipt.get("independent_reference")
+        != {
+            "available": False,
+            "claimed": False,
+            "reason": (
+                "The reviewed vendor engines are the bounded capability "
+                "targets; no independent peer is relabelled or fabricated."
+            ),
+        }
+    ):
+        return set()
+    receipt_policy = semantic_receipt.get("policy")
+    receipt_policy = (
+        receipt_policy if isinstance(receipt_policy, Mapping) else {}
+    )
+    if (
+        receipt_policy.get("no_install") is not True
+        or receipt_policy.get("no_download") is not True
+        or receipt_policy.get("no_network") is not True
+        or receipt_policy.get("checked_vendor_receipt_required") is not True
+        or receipt_policy.get("complete_vendor_corpus_required") is not True
+        or receipt_policy.get("independent_reference_claimed") is not False
+        or receipt_policy.get("authority_ceiling") != "bounded"
+        or receipt_policy.get("never_grants_theorem_authority") is not True
+        or receipt_policy.get("never_authorizes_universal_proof") is not True
+    ):
+        return set()
+    receipt_engines = [
+        engine
+        for engine in semantic_receipt.get("engines") or ()
+        if isinstance(engine, Mapping)
+    ]
+    if (
+        [str(engine.get("engine_id") or "") for engine in receipt_engines]
+        != list(targets)
+        or len(receipt_engines) != len(targets)
+    ):
+        return set()
+    receipt_by_target = {
+        str(engine.get("engine_id") or ""): engine for engine in receipt_engines
+    }
+
+    derived: set[str] = set()
+    recovered_flattened_checks: list[dict[str, Any]] = []
+    flattened_cases: list[dict[str, Any]] = []
+    for tool_id in targets:
+        binding = bindings.get(tool_id)
+        binding = binding if isinstance(binding, Mapping) else {}
+        engine = per_engine.get(tool_id)
+        engine = engine if isinstance(engine, Mapping) else {}
+        receipt_engine = receipt_by_target.get(tool_id)
+        receipt_engine = (
+            receipt_engine if isinstance(receipt_engine, Mapping) else {}
+        )
+        adapted_checks = [
+            dict(check)
+            for check in receipt_engine.get("checks") or ()
+            if isinstance(check, Mapping)
+        ]
+        recovered_checks = [
+            _recover_hyper_vendor_raw_check(check)
+            for check in adapted_checks
+        ]
+        cases = [
+            dict(case)
+            for case in receipt_engine.get("case_results") or ()
+            if isinstance(case, Mapping)
+        ]
+        normalized = _normalize_semantic_checks(tool_id, adapted_checks)
+        normalized_payload = [check.to_dict() for check in normalized]
+        engine_artifacts = [
+            dict(artifact)
+            for artifact in engine.get("artifact_identities") or ()
+            if isinstance(artifact, Mapping)
+        ]
+        receipt_artifacts = [
+            dict(artifact)
+            for artifact in receipt_engine.get("artifact_identities") or ()
+            if isinstance(artifact, Mapping)
+        ]
+        expected_artifact_kinds = (
+            {
+                "vendor_engine_executable",
+                "launcher_runtime",
+                "launcher_target",
+                "runtime_dependency_abc",
+                "runtime_dependency_aigtoaig",
+            }
+            if tool_id == "mchyper"
+            else {"vendor_engine_executable"}
+        )
+        artifact_validation = _validate_artifact_identities(
+            receipt_artifacts,
+            repo_root=repo_root,
+        )
+        source_digests = list(
+            binding.get("source_check_digests_sha256") or ()
+        )
+        if (
+            binding.get("certified") is not True
+            or binding.get("checks_passed") != spec["checks_per_target"]
+            or binding.get("checks_total") != spec["checks_per_target"]
+            or binding.get("expected_checks_total")
+            != spec["checks_per_target"]
+            or not {"positive", "negative", "mutation", "replay"}
+            <= set(binding.get("check_kinds_present") or ())
+            or binding.get("independent_reference_available") is not False
+            or binding.get("vendor_pnmr_projection") is not True
+            or binding.get("authority_ceiling") != "bounded"
+            or len(source_digests) != spec["checks_per_target"]
+            or any(not SHA256_RE.fullmatch(str(item)) for item in source_digests)
+            or engine.get("checks_passed") != spec["checks_per_target"]
+            or engine.get("checks_total") != spec["checks_per_target"]
+            or engine.get("check_set_digest_sha256")
+            != binding.get("source_vendor_check_set_digest_sha256")
+            or receipt_engine.get("engine_id") != tool_id
+            or receipt_engine.get("usable") is not True
+            or receipt_engine.get("identity_probed") is not True
+            or receipt_engine.get("certified") is not True
+            or receipt_engine.get("role") != "authority"
+            or receipt_engine.get("authority_ceiling") != "bounded"
+            or receipt_engine.get("authorizes_universal_proof") is not False
+            or receipt_engine.get("is_theorem_authority") is not False
+            or receipt_engine.get("independent_reference_available")
+            is not False
+            or receipt_engine.get("authority_basis")
+            != "complete_live_vendor_bounded_corpus"
+            or receipt_engine.get(
+                "source_vendor_certificate_digest_sha256"
+            )
+            != live.get("certificate_digest_sha256")
+            or list(receipt_engine.get("block_reasons") or ())
+            or receipt_artifacts != [*engine_artifacts, expected_checked_artifact]
+            or {str(item.get("kind") or "") for item in engine_artifacts}
+            != expected_artifact_kinds
+            or artifact_validation.get("valid") is not True
+            or artifact_validation.get("has_production_binding") is not True
+            or receipt_engine.get("executable")
+            != engine_artifacts[0].get("path")
+            or receipt_engine.get("executable_sha256")
+            != engine_artifacts[0].get("sha256")
+            or receipt_engine.get("executable_artifact_class")
+            != engine_artifacts[0].get("artifact_class")
+            or not _digest_matches(
+                engine.get("artifact_sha256"),
+                str(receipt_engine.get("executable_sha256") or "").removeprefix(
+                    "sha256:"
+                ),
+            )
+            or len(adapted_checks) != spec["checks_per_target"]
+            or len(normalized) != spec["checks_per_target"]
+            or any(check.status != "passed" for check in normalized)
+            or content_digest(normalized_payload)
+            != binding.get("check_set_digest_sha256")
+            or [
+                str(check.get("source_check_digest_sha256") or "")
+                for check in adapted_checks
+            ]
+            != source_digests
+            or [content_digest(check) for check in recovered_checks]
+            != source_digests
+            or content_digest(recovered_checks)
+            != binding.get("source_vendor_check_set_digest_sha256")
+            or engine.get("case_results_total") != len(cases)
+            or engine.get("case_result_set_digest_sha256")
+            != content_digest(cases)
+            or not SHA256_RE.fullmatch(
+                str(engine.get("artifact_sha256") or "")
+            )
+        ):
+            continue
+        recovered_flattened_checks.extend(recovered_checks)
+        flattened_cases.extend(cases)
+        derived.add(tool_id)
+    if derived != expected_targets:
+        return set()
+    receipt_summary = semantic_receipt.get("summary")
+    receipt_summary = (
+        receipt_summary if isinstance(receipt_summary, Mapping) else {}
+    )
+    if (
+        sum(
+            int((per_engine.get(tool_id) or {}).get("checks_total") or 0)
+            for tool_id in targets
+        )
+        != spec["expected_vendor_checks"]
+        or [str(check.get("check_id") or "") for check in recovered_flattened_checks]
+        != list(live.get("check_ids") or ())
+        or content_digest(recovered_flattened_checks)
+        != live.get("check_set_digest_sha256")
+        or len(flattened_cases) != live.get("case_results_total")
+        or content_digest(flattened_cases)
+        != live.get("case_result_set_digest_sha256")
+        or receipt_summary.get("engines_certified") != len(targets)
+        or receipt_summary.get("engines_total") != len(targets)
+        or receipt_summary.get("checks_passed")
+        != spec["expected_vendor_checks"]
+        or receipt_summary.get("checks_total")
+        != spec["expected_vendor_checks"]
+        or list(receipt_summary.get("block_reasons") or ())
+    ):
+        return set()
+    return derived
+
+
 def _recorded_checked_vendor_fanin_eligibility(
     *,
     repo_root: Path,
     semantic_spec: Mapping[str, Any],
     result_fanin: Any,
     receipt_fanin: Any,
+    semantic_receipt: Any = None,
 ) -> set[str]:
     """Fail closed unless the two digest-bound fan-in projections agree."""
 
     lane_id = str(semantic_spec.get("lane_id") or "")
+    if lane_id == CHECKED_HYPER_VENDOR_FANIN_SPEC["lane_id"]:
+        return _recorded_checked_hyper_vendor_fanin_eligibility(
+            repo_root=repo_root,
+            semantic_spec=semantic_spec,
+            result_fanin=result_fanin,
+            receipt_fanin=receipt_fanin,
+            semantic_receipt=semantic_receipt,
+        )
     vendor_spec = CHECKED_VENDOR_FANIN_SPECS.get(lane_id)
     if not isinstance(vendor_spec, Mapping):
         return set()
@@ -6865,22 +7970,33 @@ def _run_semantic_lane_certifiers_with_prebuilt(
             if not callable(certifier):
                 raise AttributeError(f"{callable_name} not callable on {module_path}")
 
-            semantic_extra_kwargs: dict[str, Any] = {}
-            if lane_id == "runtime_mtl" and runtime_mtl_prebuilt_invocation:
-                semantic_extra_kwargs = {
-                    "typescript_prebuilt_root": (
-                        runtime_mtl_prebuilt_invocation["sealed_root"]
-                    ),
-                    "typescript_prebuilt_timeout_seconds": (
-                        runtime_mtl_prebuilt_invocation["timeout_seconds"]
-                    ),
-                }
-            receipt = _invoke_semantic_certifier(
-                certifier,
-                repo_root=repo_root,
-                env=env,
-                extra_kwargs=semantic_extra_kwargs,
-            )
+            precomputed_vendor_fanin: Mapping[str, Any] | None = None
+            if lane_id == CHECKED_HYPER_VENDOR_FANIN_SPEC["lane_id"]:
+                hyper_adapter = _build_checked_hyper_vendor_adapter(
+                    repo_root=repo_root,
+                    sealed_root=sealed_vendor_root,
+                    semantic_spec=spec,
+                    semantic_module=module,
+                )
+                receipt = hyper_adapter["adapter_receipt"]
+                precomputed_vendor_fanin = hyper_adapter["fanin"]
+            else:
+                semantic_extra_kwargs: dict[str, Any] = {}
+                if lane_id == "runtime_mtl" and runtime_mtl_prebuilt_invocation:
+                    semantic_extra_kwargs = {
+                        "typescript_prebuilt_root": (
+                            runtime_mtl_prebuilt_invocation["sealed_root"]
+                        ),
+                        "typescript_prebuilt_timeout_seconds": (
+                            runtime_mtl_prebuilt_invocation["timeout_seconds"]
+                        ),
+                    }
+                receipt = _invoke_semantic_certifier(
+                    certifier,
+                    repo_root=repo_root,
+                    env=env,
+                    extra_kwargs=semantic_extra_kwargs,
+                )
         except Exception as exc:  # noqa: BLE001 — fail closed per lane
             entry["status"] = "certifier_error"
             entry["block_reasons"] = [f"{type(exc).__name__}:{exc}"]
@@ -6906,12 +8022,16 @@ def _run_semantic_lane_certifiers_with_prebuilt(
             str(item)
             for item in live_specialized.get("eligible_tool_ids") or ()
         }
-        checked_vendor_fanin = _build_checked_vendor_fanin(
-            repo_root=repo_root,
-            sealed_root=sealed_vendor_root,
-            semantic_spec=spec,
-            semantic_module=module,
-            reference_receipt=receipt,
+        checked_vendor_fanin = (
+            dict(precomputed_vendor_fanin)
+            if isinstance(precomputed_vendor_fanin, Mapping)
+            else _build_checked_vendor_fanin(
+                repo_root=repo_root,
+                sealed_root=sealed_vendor_root,
+                semantic_spec=spec,
+                semantic_module=module,
+                reference_receipt=receipt,
+            )
         )
         configured_vendor_fanin = (
             checked_vendor_fanin.get("configured") is True
@@ -6946,7 +8066,8 @@ def _run_semantic_lane_certifiers_with_prebuilt(
             entry["evidence_class"] = "live_specialized_semantic_receipt"
         elif eligible_vendor_tool_ids:
             entry["evidence_class"] = str(
-                CHECKED_VENDOR_FANIN_SPECS[lane_id]["evidence_class"]
+                checked_vendor_fanin.get("evidence_class")
+                or spec["evidence_class"]
             )
         entry["receipt_integrity"] = _validate_semantic_receipt_integrity(
             receipt,
@@ -7099,6 +8220,7 @@ def apply_semantic_elevations(
                 semantic_spec=spec,
                 result_fanin=result.get("checked_vendor_fanin"),
                 receipt_fanin=receipt_fanin,
+                semantic_receipt=receipt,
             )
         )
         if live_eligible_tool_ids or vendor_eligible_tool_ids:

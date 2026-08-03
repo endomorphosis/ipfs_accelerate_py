@@ -4233,6 +4233,343 @@ def _audited_checked_vendor_fanin_policy(
     }
 
 
+def _audited_checked_hyper_vendor_fanin_policy(
+    *,
+    certifier,
+    repo_root: Path,
+    spec: Mapping[str, Any],
+    semantic_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Freshly replay and independently reconstruct bounded Hyper authority."""
+
+    hyper_spec = _safe_dict(
+        getattr(certifier, "CHECKED_HYPER_VENDOR_FANIN_SPEC", {})
+    )
+    expected_tool_ids = [
+        str(value) for value in _safe_list(hyper_spec.get("targets"))
+    ]
+    default_evidence_class = str(spec.get("evidence_class") or "")
+    receipt = _safe_dict(semantic_result.get("receipt"))
+    recorded = _safe_dict(semantic_result.get("checked_vendor_fanin"))
+    receipt_recorded = _safe_dict(receipt.get("checked_vendor_fanin"))
+    if semantic_result.get("status") != "ran":
+        failures = []
+        if recorded or receipt_recorded:
+            failures.append("non_ran_lane_claimed_checked_hyper_vendor_fanin")
+        return {
+            "valid": not failures,
+            "failures": failures,
+            "live_claimed": False,
+            "vendor_claimed": bool(recorded or receipt_recorded),
+            "fanin_satisfied": False,
+            "eligible_tool_ids": [],
+            "production_allowed_tool_ids": [],
+            "lane_production_elevation_allowed": False,
+            "evidence_class": default_evidence_class,
+        }
+
+    failures: list[str] = []
+    if (
+        not hyper_spec
+        or str(hyper_spec.get("lane_id") or "")
+        != str(spec.get("lane_id") or "")
+        or expected_tool_ids
+        != [str(item) for item in _safe_list(spec.get("tool_ids"))]
+        or bool(spec.get("production_elevation_allowed"))
+    ):
+        failures.append("checked_hyper_vendor_policy_configuration_invalid")
+
+    module = None
+    try:
+        module = certifier._load_module_from_path(
+            repo_root / Path(spec["module_relative"]),
+            "fvt_builder_checked_hyper_vendor_reference",
+        )
+    except Exception as exc:  # noqa: BLE001
+        failures.append(
+            f"checked_hyper_vendor_module_unavailable:{type(exc).__name__}"
+        )
+
+    audit_env = certifier.offline_env(os.environ)
+    prebuilt = certifier._runtime_mtl_managed_prebuilt_binding(
+        repo_root,
+        env=audit_env,
+    )
+    invocation = _safe_dict(prebuilt.get("invocation"))
+    sealed_root = (
+        Path(str(invocation["sealed_root"]))
+        if invocation.get("sealed_root")
+        else None
+    )
+    if (
+        _safe_dict(prebuilt.get("public")).get("authenticated") is not True
+        or _safe_dict(prebuilt.get("public")).get("bound") is not True
+        or sealed_root is None
+    ):
+        failures.append("checked_hyper_vendor_sealed_root_not_authenticated")
+
+    fresh: dict[str, Any] = {}
+    fresh_adapter: dict[str, Any] = {}
+    if module is not None and hyper_spec:
+        replay = certifier._build_checked_hyper_vendor_adapter(
+            repo_root=repo_root,
+            sealed_root=sealed_root,
+            semantic_spec=spec,
+            semantic_module=module,
+            reference_receipt=receipt,
+        )
+        fresh = _safe_dict(replay.get("fanin"))
+        fresh_adapter = _safe_dict(replay.get("adapter_receipt"))
+
+    for label, value in (
+        ("recorded", recorded),
+        ("receipt", receipt_recorded),
+        ("fresh", fresh),
+    ):
+        declared = str(value.get("digest_sha256") or "")
+        computed = certifier.content_digest(
+            {
+                key: item
+                for key, item in value.items()
+                if key != "digest_sha256"
+            }
+        )
+        if not declared or declared != computed:
+            failures.append(
+                f"checked_hyper_vendor_fanin_{label}_self_digest_invalid"
+            )
+    if recorded != receipt_recorded:
+        failures.append(
+            "checked_hyper_vendor_fanin_recording_disagrees_with_receipt"
+        )
+    if recorded != fresh:
+        failures.append("checked_hyper_vendor_fanin_fresh_replay_mismatch")
+    if fresh_adapter != receipt:
+        failures.append("checked_hyper_vendor_adapter_fresh_replay_mismatch")
+
+    expected_checks = int(hyper_spec.get("expected_vendor_checks") or 0)
+    checks_per_target = int(hyper_spec.get("checks_per_target") or 0)
+    fresh_checked = _safe_dict(fresh.get("checked_install_receipt"))
+    fresh_live = _safe_dict(fresh.get("live_certificate"))
+    fresh_per_engine = _safe_dict(fresh_live.get("per_engine"))
+    fresh_policy = _safe_dict(fresh.get("policy"))
+    independent_reference = _safe_dict(receipt.get("independent_reference"))
+    live_ids = [str(item) for item in _safe_list(fresh_live.get("check_ids"))]
+    vendor_ready = bool(
+        fresh
+        and fresh.get("configured") is True
+        and fresh.get("vendor_valid") is True
+        and fresh.get("complete") is True
+        and not _safe_list(fresh.get("failures"))
+        and fresh.get("vendor_authority")
+        == hyper_spec.get("vendor_authority")
+        and fresh.get("evidence_class") == hyper_spec.get("evidence_class")
+        and fresh_checked.get("exact_live_nested_match") is True
+        and fresh_live.get("schema_version") == hyper_spec.get("live_schema")
+        and fresh_live.get("interface") == hyper_spec.get("interface")
+        and fresh_live.get("goal_id") == hyper_spec.get("goal_id")
+        and fresh_live.get("task_id") == hyper_spec.get("task_id")
+        and fresh_live.get("repair_task_id") == hyper_spec.get("repair_task_id")
+        and fresh_live.get("host_platform")
+        == certifier.observed_platform_id()
+        and fresh_live.get("certified") is True
+        and int(fresh_live.get("checks_passed") or 0) == expected_checks
+        and int(fresh_live.get("checks_total") or 0) == expected_checks
+        and len(live_ids) == expected_checks
+        and len(set(live_ids)) == expected_checks
+        and all(live_ids)
+        and set(fresh_per_engine) == set(expected_tool_ids)
+        and fresh_policy.get(
+            "complete_three_engine_vendor_corpus_required"
+        )
+        is True
+        and fresh_policy.get("independent_reference_claimed") is False
+        and fresh_policy.get("bounded_authority_only") is True
+        and fresh_policy.get("never_grants_theorem_authority") is True
+        and fresh_policy.get("never_authorizes_universal_proof") is True
+        and independent_reference.get("available") is False
+        and independent_reference.get("claimed") is False
+        and receipt.get("authority_ceiling") == "bounded"
+        and receipt.get("forbids_theorem_authority") is True
+        and receipt.get("forbids_universal_claims_beyond_bounds") is True
+    )
+
+    compact_tools = _safe_dict(semantic_result.get("per_tool"))
+    fresh_bindings = _safe_dict(fresh.get("reference_bindings"))
+    eligible: list[str] = []
+    reference_audits: dict[str, Any] = {}
+    for tool_id in expected_tool_ids:
+        binding = _safe_dict(fresh_bindings.get(tool_id))
+        engine = _safe_dict(fresh_per_engine.get(tool_id))
+        compact_tool = _safe_dict(compact_tools.get(tool_id))
+        pnmr = _independent_pnmr_reconstruction(
+            certifier=certifier,
+            semantic_result=semantic_result,
+            tool_id=tool_id,
+            compact_tool=compact_tool,
+        )
+        raw_certified, raw_checks, raw_reasons = (
+            certifier._tool_certified_from_semantic_receipt(
+                tool_id,
+                receipt,
+                certified_key=str(spec["certified_key"]),
+                selector=str(spec.get("selector") or "engine"),
+            )
+        )
+        adapted_checks = [
+            _safe_dict(item)
+            for item in raw_checks
+            if isinstance(item, Mapping)
+        ]
+        recovered_checks = [
+            certifier._recover_hyper_vendor_raw_check(check)
+            for check in adapted_checks
+        ]
+        source_digests = [
+            str(check.get("source_check_digest_sha256") or "")
+            for check in adapted_checks
+        ]
+        expected_source_digests = [
+            str(item)
+            for item in _safe_list(
+                binding.get("source_check_digests_sha256")
+            )
+        ]
+        normalized = certifier.recompute_semantic_tool_check_binding(
+            semantic_result,
+            tool_id,
+        )
+        identity = certifier._semantic_tool_identity(
+            tool_id,
+            receipt,
+            selector=str(spec.get("selector") or "engine"),
+            repo_root=repo_root,
+        )
+        identity_validation = certifier._validate_artifact_identities(
+            [
+                item
+                for item in _safe_list(identity.get("artifacts"))
+                if isinstance(item, Mapping)
+            ],
+            repo_root=repo_root,
+        )
+        artifact_identities = [
+            _safe_dict(item)
+            for item in _safe_list(engine.get("artifact_identities"))
+            if isinstance(item, Mapping)
+        ]
+        required_artifact_kinds = (
+            {
+                "vendor_engine_executable",
+                "launcher_runtime",
+                "launcher_target",
+                "runtime_dependency_abc",
+                "runtime_dependency_aigtoaig",
+            }
+            if tool_id == "mchyper"
+            else {"vendor_engine_executable"}
+        )
+        target_ready = bool(
+            vendor_ready
+            and raw_certified
+            and not raw_reasons
+            and len(adapted_checks) == checks_per_target
+            and pnmr.get("valid") is True
+            and normalized.get("valid") is True
+            and int(normalized.get("checks_passed") or 0)
+            == checks_per_target
+            and int(normalized.get("checks_total") or 0)
+            == checks_per_target
+            and normalized.get("check_set_digest_sha256")
+            == binding.get("check_set_digest_sha256")
+            and binding.get("certified") is True
+            and binding.get("independent_reference_available") is False
+            and binding.get("vendor_pnmr_projection") is True
+            and binding.get("authority_ceiling") == "bounded"
+            and source_digests == expected_source_digests
+            and [
+                certifier.content_digest(check)
+                for check in recovered_checks
+            ]
+            == expected_source_digests
+            and certifier.content_digest(recovered_checks)
+            == binding.get("source_vendor_check_set_digest_sha256")
+            and int(engine.get("checks_passed") or 0) == checks_per_target
+            and int(engine.get("checks_total") or 0) == checks_per_target
+            and engine.get("check_set_digest_sha256")
+            == binding.get("source_vendor_check_set_digest_sha256")
+            and {
+                str(item.get("kind") or "") for item in artifact_identities
+            }
+            == required_artifact_kinds
+            and identity.get("identity_probed") is True
+            and identity_validation.get("valid") is True
+            and identity_validation.get("has_production_binding") is True
+        )
+        reference_audits[tool_id] = {
+            "valid": target_ready,
+            "checks_total": len(adapted_checks),
+            "pnmr": pnmr,
+            "check_set_digest_sha256": normalized.get(
+                "check_set_digest_sha256"
+            ),
+            "source_vendor_check_set_digest_sha256": certifier.content_digest(
+                recovered_checks
+            ),
+            "identity_validation": {
+                "valid": identity_validation.get("valid") is True,
+                "has_production_binding": identity_validation.get(
+                    "has_production_binding"
+                )
+                is True,
+            },
+            "independent_reference_available": False,
+            "block_reasons": list(raw_reasons),
+        }
+        if target_ready:
+            eligible.append(tool_id)
+
+    expected_eligible = sorted(eligible)
+    if sorted(
+        str(item) for item in _safe_list(fresh.get("eligible_tool_ids"))
+    ) != expected_eligible:
+        failures.append("checked_hyper_vendor_fresh_eligibility_mismatch")
+    if sorted(
+        str(item) for item in _safe_list(recorded.get("eligible_tool_ids"))
+    ) != expected_eligible:
+        failures.append("checked_hyper_vendor_recorded_eligibility_mismatch")
+    expected_evidence_class = (
+        str(hyper_spec.get("evidence_class") or default_evidence_class)
+        if eligible
+        else default_evidence_class
+    )
+    if semantic_result.get("production_elevation_allowed") is not bool(eligible):
+        failures.append("checked_hyper_vendor_lane_policy_flag_mismatch")
+    if semantic_result.get("evidence_class") != expected_evidence_class:
+        failures.append("checked_hyper_vendor_lane_evidence_class_mismatch")
+    if failures:
+        eligible = []
+        expected_evidence_class = default_evidence_class
+    return {
+        "valid": not failures,
+        "failures": sorted(set(failures)),
+        "live_claimed": False,
+        "vendor_claimed": True,
+        "fanin_satisfied": bool(vendor_ready and not failures),
+        "eligible_tool_ids": eligible,
+        "production_allowed_tool_ids": eligible,
+        "lane_production_elevation_allowed": bool(eligible),
+        "evidence_class": expected_evidence_class,
+        "reference_audits": reference_audits,
+        "independent_reference_available": False,
+        "authority_ceiling": "bounded",
+        "sealed_root_authenticated": bool(
+            _safe_dict(prebuilt.get("public")).get("authenticated") is True
+            and sealed_root is not None
+        ),
+    }
+
+
 def _audited_semantic_elevation_policy(
     *,
     certifier,
@@ -4248,6 +4585,16 @@ def _audited_semantic_elevation_policy(
     ]
     static_allowed = bool(spec.get("production_elevation_allowed"))
     lane_id = str(spec.get("lane_id") or "")
+    hyper_spec = _safe_dict(
+        getattr(certifier, "CHECKED_HYPER_VENDOR_FANIN_SPEC", {})
+    )
+    if lane_id == str(hyper_spec.get("lane_id") or ""):
+        return _audited_checked_hyper_vendor_fanin_policy(
+            certifier=certifier,
+            repo_root=repo_root,
+            spec=spec,
+            semantic_result=semantic_result,
+        )
     if lane_id in getattr(certifier, "CHECKED_VENDOR_FANIN_SPECS", {}):
         return _audited_checked_vendor_fanin_policy(
             certifier=certifier,
