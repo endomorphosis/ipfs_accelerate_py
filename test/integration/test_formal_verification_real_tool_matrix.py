@@ -443,9 +443,7 @@ def test_relocated_state_manifest_rebinds_only_exact_suffixes_and_hashes(
         "payload_sha256": certifier._bare_sha256(
             certifier.file_digest(payload)
         ),
-        "java_executable": str(
-            old_root / "legacy-jdk" / "bin" / "java"
-        ),
+        "java_executable": str(old_root / java.relative_to(root)),
         "launchers": {
             name: {
                 "path": str(old_root / path.relative_to(root)),
@@ -494,6 +492,13 @@ def test_relocated_state_manifest_rebinds_only_exact_suffixes_and_hashes(
         certifier,
         "APPROVED_IMMUTABLE_DEPLOYMENT_ROOTS",
         (deployment_root,),
+    )
+    from ipfs_datasets_py.logic.backends.installers import state_model
+
+    monkeypatch.setattr(
+        state_model,
+        "APALACHE_SHA256",
+        manifest["artifact_sha256"],
     )
 
     rebound = certifier._relocated_state_manifest_binding(
