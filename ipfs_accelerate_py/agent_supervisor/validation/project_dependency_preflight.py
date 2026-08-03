@@ -61,7 +61,7 @@ MAX_DEPENDENCY_CLOSURE_REQUIREMENTS = 4096
 MAX_DEPENDENCY_CLOSURE_CONTEXTS = 4096
 MAX_DEPENDENCY_CLOSURE_REQUIREMENT_BYTES = MAX_REQUIREMENT_BYTES
 MAX_DEPENDENCY_CLOSURE_METADATA_TEXT_BYTES = 2 * 1024 * 1024
-MAX_DEPENDENCY_CLOSURE_INSTALLED_VERSION_BYTES = 256
+MAX_DEPENDENCY_CLOSURE_INSTALLED_VERSION_BYTES = MAX_INSTALLED_VERSION_BYTES
 DEPENDENCY_PROBE_TIMEOUT_SECONDS = 30.0
 PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
     "test",
@@ -1254,6 +1254,8 @@ class _DependencyClosureEvaluator:
         )
         if source == "project" and active_extra:
             safe_record["selected_extra"] = active_extra
+        elif source == "distribution_metadata" and requirement.marker is not None:
+            safe_record["marker_extra"] = active_extra
         marker_environment = dict(self.marker_environment)
         marker_environment["extra"] = active_extra
         try:

@@ -49,7 +49,7 @@ def _payload(*requirements: object) -> dict[str, object]:
         "projects": [
             {
                 "root": "ipfs_kit_py",
-                "project_name": "ipfs_kit_py",
+                "project_name_sha256": "b" * 64,
                 "pyproject_sha256": "a" * 64,
                 "requirements": list(requirements),
                 "requirement_marker_extras": [""] * len(requirements),
@@ -102,11 +102,18 @@ def test_requested_eth_hash_extra_checks_pycryptodome(
             for item in project["observed"]
         }
         assert observed["pycryptodome"] == "3.23.0"
+        child = next(
+            item
+            for item in project["observed"]
+            if item["name"] == "pycryptodome"
+        )
+        assert child["marker_extra"] == "pycryptodome"
         assert project["missing"] == []
     else:
         assert project["missing"][0]["name"] == "pycryptodome"
         assert project["missing"][0]["parent_name"] == "eth-hash"
         assert project["missing"][0]["depth"] == 1
+        assert project["missing"][0]["marker_extra"] == "pycryptodome"
 
 
 def test_nested_incompatible_dependency_is_reported_with_parent() -> None:
