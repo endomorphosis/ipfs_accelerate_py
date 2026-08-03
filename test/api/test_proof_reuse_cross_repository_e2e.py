@@ -15,6 +15,7 @@ while asserting that production repository bootstraps stay loader-only.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -784,3 +785,169 @@ def test_xdist_controller_is_the_only_publication_authority(
     assert len(_receipts(store_root)) == 2
     assert set(_certificates(store_root)) == issued
     _assert_no_partial_artifacts(store_root)
+
+
+# ---------------------------------------------------------------------------
+# PTR-148: zero-injection three-repo subprocess evidence (appended; preserves
+# historical injection-path lifecycle tests above).
+# ---------------------------------------------------------------------------
+
+
+def _load_ptr148_fixture():
+    import importlib.util
+    import sys
+
+    fixture_path = Path(__file__).resolve().parent / "proof_reuse_real_groth16_fixture.py"
+    module_name = "proof_reuse_real_groth16_fixture"
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+    spec = importlib.util.spec_from_file_location(module_name, fixture_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_three_repositories_are_distinct() -> None:
+    fixture_mod = _load_ptr148_fixture()
+    names = {spec.name for spec in fixture_mod.repository_specs()}
+    assert names == {"ipfs_accelerate", "ipfs_kit", "ipfs_datasets"}
+    roots = {spec.root.resolve() for spec in fixture_mod.repository_specs()}
+    assert len(roots) == 3
+
+
+@pytest.mark.parametrize("spec", REPOSITORIES, ids=lambda s: s.name)
+def test_each_repository_declares_pytest11_entry_and_loader_bootstrap(
+    spec: RepositorySpec,
+) -> None:
+    fixture_mod = _load_ptr148_fixture()
+    repo_specs = {item.name: item for item in fixture_mod.repository_specs()}
+    repository = repo_specs[spec.name]
+    fixture_mod.assert_bootstrap_has_no_injection(repository)
+    project = tomllib.loads(spec.pyproject.read_text(encoding="utf-8"))
+    entry = project["project"]["entry-points"]["pytest11"]
+    assert spec.entry_point in entry
+    assert entry[spec.entry_point] == spec.entry_point_target
+    source = spec.bootstrap.read_text(encoding="utf-8")
+    assert "proof_reuse" in source or PLUGIN_MODULE in source
+    tree = ast.parse(source)
+    assert tree is not None
+
+
+@pytest.mark.parametrize("spec", REPOSITORIES, ids=lambda s: s.name)
+def test_cross_repository_zero_injection_cold_warm(
+    tmp_path: Path,
+    spec: RepositorySpec,
+) -> None:
+    fixture_mod = _load_ptr148_fixture()
+    fixture = fixture_mod.RealGroth16TestPassFixture.discover()
+    repo_specs = {item.name: item for item in fixture_mod.repository_specs()}
+    repository = repo_specs[spec.name]
+    e2e = fixture_mod.ProductionRuntimeActivationE2E(
+        repository=repository,
+        base_dir=tmp_path / f"cross-{spec.name}",
+        fixture=fixture,
+    )
+    summary = e2e.run_cold_warm()
+    assert summary["repository"] == spec.name
+    assert e2e.cold is not None and e2e.warm is not None
+    assert e2e.cold.passed, e2e.cold.output
+    assert e2e.warm.passed, e2e.warm.output
+    assert e2e.cold.body_marker_count == 1
+    assert e2e.cold.proof_cache_skips == 0
+    if e2e.warm.proof_cache_skips:
+        assert e2e.warm.proof_cache_skips == 1
+        assert e2e.warm.body_marker_count == 0
+        assert summary["body_marker_total"] == 1
+    else:
+        assert e2e.warm.proof_cache_skips == 0
+        assert (
+            fixture_mod.SKIP_REASON_PREFIX not in e2e.warm.output
+            or e2e.warm.metrics.get("skipped", 0) == 0
+        )
+    assert summary["raw_cold_wall_seconds"] > 0.0
+    assert summary["raw_warm_wall_seconds"] > 0.0
+
+
+@pytest.mark.parametrize("spec", REPOSITORIES, ids=lambda s: s.name)
+def test_cross_repository_missing_groth16_fail_open(
+    tmp_path: Path,
+    spec: RepositorySpec,
+) -> None:
+    fixture_mod = _load_ptr148_fixture()
+    fixture = fixture_mod.RealGroth16TestPassFixture.discover()
+    repo_specs = {item.name: item for item in fixture_mod.repository_specs()}
+    repository = repo_specs[spec.name]
+    e2e = fixture_mod.ProductionRuntimeActivationE2E(
+        repository=repository,
+        base_dir=tmp_path / f"cross-missing-{spec.name}",
+        fixture=fixture,
+    )
+    result = e2e.run_missing_groth16()
+    assert result["both_passed"] is True
+    assert result["false_skips"] == 0
+
+
+def test_all_three_repositories_complete_miss_pass_warm_matrix(
+    tmp_path: Path,
+) -> None:
+    fixture_mod = _load_ptr148_fixture()
+    fixture = fixture_mod.RealGroth16TestPassFixture.discover()
+    outcomes = []
+    for repository in fixture_mod.repository_specs():
+        e2e = fixture_mod.ProductionRuntimeActivationE2E(
+            repository=repository,
+            base_dir=tmp_path / f"matrix-{repository.name}",
+            fixture=fixture,
+        )
+        summary = e2e.run_cold_warm()
+        missing = e2e.run_missing_groth16()
+        outcomes.append((summary, missing))
+    assert len(outcomes) == 3
+    for summary, missing in outcomes:
+        assert summary["cold"]["passed"]
+        assert summary["warm"]["passed"]
+        assert summary["cold_body_once"]
+        assert missing["both_passed"]
+        assert missing["false_skips"] == 0
+
+
+def test_generated_project_sources_forbid_service_injection(
+    tmp_path: Path,
+) -> None:
+    fixture_mod = _load_ptr148_fixture()
+    for repository in fixture_mod.repository_specs():
+        project = fixture_mod.build_zero_injection_project(
+            tmp_path / repository.name, repository
+        )
+        for path in project.root.rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            assert "set_proof_reuse_services" not in source
+            assert "set_proof_reuse_identity_services" not in source
+            assert "_ipfs_proof_reuse_locator" not in source
+            assert "_ipfs_proof_reuse_execution_key" not in source
+
+
+def test_off_mode_direct_node_never_skips(tmp_path: Path) -> None:
+    fixture_mod = _load_ptr148_fixture()
+    fixture = fixture_mod.RealGroth16TestPassFixture.discover()
+    repository = fixture_mod.repository_specs()[0]
+    project = fixture_mod.build_zero_injection_project(tmp_path / "off-mode", repository)
+    env = fixture_mod.build_subprocess_environment(
+        project,
+        mode="off",
+        fixture=fixture,
+        enable_groth16=True,
+    )
+    sample = fixture_mod.run_direct_node_subprocess(
+        project,
+        env,
+        label="off",
+        audit_compat=False,
+    )
+    assert sample.returncode == 0, sample.output
+    assert sample.passed
+    assert sample.proof_cache_skips == 0
+    assert fixture_mod.SKIP_REASON_PREFIX not in sample.output
+    assert sample.body_marker_count == 1

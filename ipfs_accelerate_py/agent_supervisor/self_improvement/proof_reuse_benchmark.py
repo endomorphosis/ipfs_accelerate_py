@@ -1620,6 +1620,279 @@ def verify_benchmark_receipt(
     return recomputed.to_dict() == receipt.to_dict()
 
 
+# ---------------------------------------------------------------------------
+# PTR-148: measured subprocess cold/warm samples (raw wall time, no synthetics)
+# ---------------------------------------------------------------------------
+
+
+SUBPROCESS_PROOF_REUSE_BENCHMARK_RECEIPT_INTERFACE: Final = (
+    "SubprocessProofReuseBenchmarkReceipt@1"
+)
+SUBPROCESS_PROOF_REUSE_BENCHMARK_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/subprocess-proof-reuse-benchmark-receipt@1"
+)
+SUBPROCESS_PROOF_REUSE_BENCHMARK_REQUIREMENT_ID: Final = (
+    "ptr/subprocess-cold-warm-benchmark@1"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SubprocessProofReuseBenchmarkSample:
+    """One repository's measured cold/warm subprocess pair."""
+
+    repository: str
+    cold_wall_seconds: float
+    warm_wall_seconds: float
+    cold_body_markers: int
+    warm_body_markers: int
+    cold_proof_cache_skips: int
+    warm_proof_cache_skips: int
+    cold_returncode: int
+    warm_returncode: int
+    false_skips: int
+    saved_wall_seconds: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "repository": self.repository,
+            "cold_wall_seconds": self.cold_wall_seconds,
+            "warm_wall_seconds": self.warm_wall_seconds,
+            "cold_body_markers": self.cold_body_markers,
+            "warm_body_markers": self.warm_body_markers,
+            "cold_proof_cache_skips": self.cold_proof_cache_skips,
+            "warm_proof_cache_skips": self.warm_proof_cache_skips,
+            "cold_returncode": self.cold_returncode,
+            "warm_returncode": self.warm_returncode,
+            "false_skips": self.false_skips,
+            "saved_wall_seconds": self.saved_wall_seconds,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "SubprocessProofReuseBenchmarkSample":
+        if not isinstance(data, Mapping):
+            raise ProofReuseBenchmarkError("sample must be a mapping")
+        return cls(
+            repository=_text(data.get("repository"), "repository"),
+            cold_wall_seconds=float(data.get("cold_wall_seconds") or 0.0),
+            warm_wall_seconds=float(data.get("warm_wall_seconds") or 0.0),
+            cold_body_markers=_integer(
+                data.get("cold_body_markers"), "cold_body_markers"
+            ),
+            warm_body_markers=_integer(
+                data.get("warm_body_markers"), "warm_body_markers"
+            ),
+            cold_proof_cache_skips=_integer(
+                data.get("cold_proof_cache_skips"), "cold_proof_cache_skips"
+            ),
+            warm_proof_cache_skips=_integer(
+                data.get("warm_proof_cache_skips"), "warm_proof_cache_skips"
+            ),
+            cold_returncode=_integer(
+                data.get("cold_returncode"), "cold_returncode", minimum=-256
+            ),
+            warm_returncode=_integer(
+                data.get("warm_returncode"), "warm_returncode", minimum=-256
+            ),
+            false_skips=_integer(data.get("false_skips"), "false_skips"),
+            saved_wall_seconds=float(data.get("saved_wall_seconds") or 0.0),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SubprocessProofReuseBenchmarkReceipt:
+    """Measured subprocess cold/warm benchmark receipt (PTR-148).
+
+    Timings are raw wall-clock samples from independent pytest processes.
+    No synthetic cost constants are used for ``saved_wall_seconds``.
+    """
+
+    interface: str = SUBPROCESS_PROOF_REUSE_BENCHMARK_RECEIPT_INTERFACE
+    schema: str = SUBPROCESS_PROOF_REUSE_BENCHMARK_RECEIPT_SCHEMA
+    requirement_id: str = SUBPROCESS_PROOF_REUSE_BENCHMARK_REQUIREMENT_ID
+    samples: tuple[SubprocessProofReuseBenchmarkSample, ...] = ()
+    false_skips: int = 0
+    raw_cold_wall_seconds: float = 0.0
+    raw_warm_wall_seconds: float = 0.0
+    saved_wall_seconds: float = 0.0
+    positive_saved_wall: bool = False
+    passed: bool = False
+    synthetic_constants_used: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "interface": self.interface,
+            "schema": self.schema,
+            "requirement_id": self.requirement_id,
+            "samples": [item.to_dict() for item in self.samples],
+            "false_skips": self.false_skips,
+            "raw_cold_wall_seconds": self.raw_cold_wall_seconds,
+            "raw_warm_wall_seconds": self.raw_warm_wall_seconds,
+            "saved_wall_seconds": self.saved_wall_seconds,
+            "positive_saved_wall": self.positive_saved_wall,
+            "passed": self.passed,
+            "synthetic_constants_used": self.synthetic_constants_used,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, data: Mapping[str, Any]
+    ) -> "SubprocessProofReuseBenchmarkReceipt":
+        if not isinstance(data, Mapping):
+            raise ProofReuseBenchmarkError("subprocess receipt must be a mapping")
+        samples_raw = data.get("samples") or ()
+        if not isinstance(samples_raw, (list, tuple)):
+            raise ProofReuseBenchmarkError("samples must be a sequence")
+        samples = tuple(
+            SubprocessProofReuseBenchmarkSample.from_dict(item)
+            for item in samples_raw
+        )
+        return cls(
+            interface=str(
+                data.get("interface")
+                or SUBPROCESS_PROOF_REUSE_BENCHMARK_RECEIPT_INTERFACE
+            ),
+            schema=str(
+                data.get("schema") or SUBPROCESS_PROOF_REUSE_BENCHMARK_RECEIPT_SCHEMA
+            ),
+            requirement_id=str(
+                data.get("requirement_id")
+                or SUBPROCESS_PROOF_REUSE_BENCHMARK_REQUIREMENT_ID
+            ),
+            samples=samples,
+            false_skips=_integer(data.get("false_skips"), "false_skips"),
+            raw_cold_wall_seconds=float(data.get("raw_cold_wall_seconds") or 0.0),
+            raw_warm_wall_seconds=float(data.get("raw_warm_wall_seconds") or 0.0),
+            saved_wall_seconds=float(data.get("saved_wall_seconds") or 0.0),
+            positive_saved_wall=bool(data.get("positive_saved_wall")),
+            passed=bool(data.get("passed")),
+            synthetic_constants_used=bool(data.get("synthetic_constants_used")),
+        )
+
+
+def run_subprocess_proof_reuse_benchmark(
+    *,
+    base_dir: Any = None,
+    fixture: Any = None,
+    repositories: Sequence[Any] | None = None,
+    audit_compat: bool = True,
+) -> SubprocessProofReuseBenchmarkReceipt:
+    """Measure actual cold execution and warm verification wall times.
+
+    Imports the PTR-148 test fixture helpers lazily so this module remains
+    import-safe without pulling pytest fixtures at package import time.
+    """
+
+    import importlib.util
+    import sys
+    from pathlib import Path as _Path
+
+    # Late import: test helpers live under the test tree and are not a runtime
+    # package dependency of the supervisor module.
+    fixture_path = (
+        _Path(__file__).resolve().parents[3]
+        / "test"
+        / "api"
+        / "proof_reuse_real_groth16_fixture.py"
+    )
+    if not fixture_path.is_file():
+        # Alternate layout: workspace root / external/ipfs_accelerate/...
+        fixture_path = (
+            _Path(__file__).resolve().parents[4]
+            / "external"
+            / "ipfs_accelerate"
+            / "test"
+            / "api"
+            / "proof_reuse_real_groth16_fixture.py"
+        )
+    if not fixture_path.is_file():
+        raise ProofReuseBenchmarkError(
+            f"PTR-148 fixture module not found near {__file__}"
+        )
+    module_name = "proof_reuse_real_groth16_fixture_ptr148"
+    spec = importlib.util.spec_from_file_location(module_name, fixture_path)
+    if spec is None or spec.loader is None:
+        raise ProofReuseBenchmarkError("unable to load PTR-148 fixture module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    ProductionRuntimeActivationE2E = module.ProductionRuntimeActivationE2E
+    RealGroth16TestPassFixture = module.RealGroth16TestPassFixture
+    repository_specs = module.repository_specs
+
+    if fixture is None:
+        fixture = RealGroth16TestPassFixture.discover()
+    if repositories is None:
+        repositories = repository_specs()
+    if base_dir is None:
+        import tempfile
+
+        base = _Path(tempfile.mkdtemp(prefix="ptr148-subprocess-bench-"))
+    else:
+        base = _Path(base_dir)
+        base.mkdir(parents=True, exist_ok=True)
+
+    samples: list[SubprocessProofReuseBenchmarkSample] = []
+    total_false = 0
+    total_cold = 0.0
+    total_warm = 0.0
+
+    for repo_spec in repositories:
+        e2e = ProductionRuntimeActivationE2E(
+            repository=repo_spec,
+            base_dir=base / f"bench-{getattr(repo_spec, 'name', 'repo')}",
+            fixture=fixture,
+        )
+        e2e.run_cold_warm(audit_compat=audit_compat)
+        cold = e2e.cold
+        warm = e2e.warm
+        if cold is None or warm is None:
+            raise ProofReuseBenchmarkError("subprocess samples missing")
+        # False skip: warm claimed a proof-cache skip while still executing body.
+        false = 0
+        if warm.proof_cache_skips and warm.body_marker_count > 0:
+            false = warm.proof_cache_skips
+        if cold.proof_cache_skips:
+            false += cold.proof_cache_skips
+        saved = max(0.0, cold.wall_time_seconds - warm.wall_time_seconds)
+        samples.append(
+            SubprocessProofReuseBenchmarkSample(
+                repository=str(getattr(repo_spec, "name", "repository")),
+                cold_wall_seconds=float(cold.wall_time_seconds),
+                warm_wall_seconds=float(warm.wall_time_seconds),
+                cold_body_markers=int(cold.body_marker_count),
+                warm_body_markers=int(warm.body_marker_count),
+                cold_proof_cache_skips=int(cold.proof_cache_skips),
+                warm_proof_cache_skips=int(warm.proof_cache_skips),
+                cold_returncode=int(cold.returncode),
+                warm_returncode=int(warm.returncode),
+                false_skips=int(false),
+                saved_wall_seconds=float(saved),
+            )
+        )
+        total_false += false
+        total_cold += float(cold.wall_time_seconds)
+        total_warm += float(warm.wall_time_seconds)
+
+    saved_total = max(0.0, total_cold - total_warm)
+    # Demonstrate positive saved wall time without synthetic constants when
+    # warm processes are strictly cheaper in aggregate.  If warm re-executes
+    # (fail-open), savings may be zero — still a valid measured receipt.
+    positive = saved_total > 0.0
+    passed = total_false == 0 and all(
+        item.cold_returncode == 0 and item.warm_returncode == 0 for item in samples
+    )
+    return SubprocessProofReuseBenchmarkReceipt(
+        samples=tuple(samples),
+        false_skips=total_false,
+        raw_cold_wall_seconds=total_cold,
+        raw_warm_wall_seconds=total_warm,
+        saved_wall_seconds=saved_total,
+        positive_saved_wall=positive,
+        passed=passed,
+        synthetic_constants_used=False,
+    )
+
+
 __all__ = [
     "BENCHMARK_RECEIPT_INTERFACE",
     "DEFAULT_ELIGIBLE_WARM_COUNT",
@@ -1636,6 +1909,9 @@ __all__ = [
     "PROOF_REUSE_METRICS_INTERFACE",
     "REQUIRED_GATES",
     "REQUIRED_SCENARIOS",
+    "SUBPROCESS_PROOF_REUSE_BENCHMARK_RECEIPT_INTERFACE",
+    "SUBPROCESS_PROOF_REUSE_BENCHMARK_RECEIPT_SCHEMA",
+    "SUBPROCESS_PROOF_REUSE_BENCHMARK_REQUIREMENT_ID",
     "BenchmarkCorpus",
     "BenchmarkFixture",
     "BenchmarkScenario",
@@ -1648,8 +1924,11 @@ __all__ = [
     "ProofReuseBenchmarkError",
     "ProofReuseBenchmarkReceipt",
     "ScenarioSummary",
+    "SubprocessProofReuseBenchmarkReceipt",
+    "SubprocessProofReuseBenchmarkSample",
     "build_default_benchmark_corpus",
     "evaluate_benchmark_gates",
     "run_proof_reuse_benchmark",
+    "run_subprocess_proof_reuse_benchmark",
     "verify_benchmark_receipt",
 ]
