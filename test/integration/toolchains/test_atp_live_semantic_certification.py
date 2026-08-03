@@ -77,6 +77,8 @@ REQUIRED_BINDING_FIELDS = {
     "conclusion",
     "limits",
     "reconstruction_status",
+    "independent_kernel_reconstruction",
+    "kernel_reconstruction_claimed",
     "raw_szs_output_digest",
 }
 
@@ -179,6 +181,11 @@ def test_live_corpus_schema_and_required_cases(atp_cert) -> None:
     assert manifest["policy"][
         "kernel_reconstruction_required_for_theorem_authority"
     ] is True
+    assert manifest["policy"]["kernel_reconstruction_receipt_validated"] is False
+    assert (
+        manifest["policy"]["boolean_reconstruction_claim_cannot_elevate"]
+        is True
+    )
     assert manifest["policy"]["live_execution_required_for_production"] is True
     assert manifest["policy"]["fixture_or_parser_cannot_satisfy_live_goal"] is True
     assert manifest["policy"]["no_install"] is True
@@ -319,10 +326,15 @@ def test_proof_object_and_reconstruction(live_receipt: dict[str, Any]) -> None:
         assert proof["authority"] == "candidate"
         assert proof["proof_object_present"] is True or proof["proof_bound"] is True
         assert proof["reconstruction_status"] == "unreconstructed"
-        assert recon["status"] == "theorem_authority"
-        assert recon["authority"] == "theorem"
-        assert recon["independent_kernel_reconstruction"] is True
-        assert recon["reconstruction_status"] == "kernel_reconstructed"
+        assert recon["status"] == "theorem_candidate"
+        assert recon["authority"] == "candidate"
+        assert recon["independent_kernel_reconstruction"] is False
+        assert recon["kernel_reconstruction_claimed"] is True
+        assert recon["reconstruction_status"] == "kernel_receipt_missing"
+        assert (
+            "kernel_reconstruction_receipt_required"
+            in recon["reason_codes"]
+        )
 
 
 def test_authority_ceiling_without_reconstruction(live_receipt: dict[str, Any], atp_cert) -> None:
@@ -332,16 +344,22 @@ def test_authority_ceiling_without_reconstruction(live_receipt: dict[str, Any], 
     assert (
         boundary["sample_without_reconstruction"]["authority"] == "candidate"
     )
-    assert boundary["sample_with_reconstruction"]["authority"] == "theorem"
+    assert (
+        boundary["sample_with_reconstruction"]["authority"]
+        == "candidate"
+    )
+    assert (
+        "kernel_reconstruction_receipt_required"
+        in boundary["sample_with_reconstruction"]["reason_codes"]
+    )
+    assert boundary["kernel_reconstruction_receipt_validated"] is False
+    assert boundary["boolean_reconstruction_claim_cannot_elevate"] is True
 
     for case in live_receipt.get("cases") or []:
         if case.get("execution_mode") == "skipped":
             continue
-        if case.get("authority") == "theorem":
-            assert case.get("independent_kernel_reconstruction") is True
-            assert case.get("reconstruction_status") == "kernel_reconstructed"
-        else:
-            assert case.get("authority") == "candidate"
+        assert case.get("authority") == "candidate"
+        assert case.get("independent_kernel_reconstruction") is False
 
 
 def test_receipt_binds_required_fields(live_receipt: dict[str, Any]) -> None:
