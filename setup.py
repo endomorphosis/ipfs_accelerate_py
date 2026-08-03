@@ -184,6 +184,14 @@ long_description = (this_directory / "README.md").read_text() if (this_directory
 
 install_requires = _read_requirements(this_directory / "requirements.txt")
 extras_require = _read_optional_deps(this_directory / "pyproject.toml")
+proof_reuse_requirements = _read_requirements(
+    this_directory / "requirements-proof-reuse.txt"
+)
+if proof_reuse_requirements:
+    # Keep legacy setup.py metadata aligned with the PEP 621 extra.  The
+    # ipfs_datasets_py verifier remains a lazy --no-deps install because that
+    # distribution depends back on ipfs_accelerate_py.
+    extras_require["proof-reuse"] = proof_reuse_requirements
 
 setup(
     name="ipfs_accelerate_py",

@@ -1,0 +1,10 @@
+# Non-circular dependencies for proof-backed pytest reuse.
+#
+# The ipfs_datasets_py verifier is deliberately absent from this file because
+# that distribution depends back on ipfs_accelerate_py.  When an exact lookup
+# needs it, the allowlisted resolver uses a validated configured checkout or
+# the reviewed integration sibling with --no-deps and no build isolation. There is no remote fallback
+# until the reviewed datasets verifier revision is published.
+pytest>=8.0.0
+multiformats>=0.3,<1
+jsonschema>=4,<5

@@ -7,29 +7,42 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from ipfs_accelerate_py.testing.proof_reuse.plugin import (
     ITEM_METADATA_ATTRIBUTE,
     LOOKUP_SERVICE_ATTRIBUTE,
     PROVIDER_SERVICE_ATTRIBUTE,
     SERVICE_RESOLUTION_ATTRIBUTE,
     STORE_SERVICE_ATTRIBUTE,
+    _inject_default_services,
     pytest_collection_modifyitems,
     pytest_configure,
     set_proof_reuse_service_resolver,
 )
 from ipfs_accelerate_py.testing.proof_reuse.services import (
+    DATASETS_VERIFIER_DEPENDENCY,
+    DATASETS_VERIFIER_DISTRIBUTION,
     DATASETS_VERIFIER_MODULE,
+    DATASETS_VERIFIER_RELEASE_BLOCKER,
+    DATASETS_VERIFIER_REMOTE_SOURCE_PUBLISHED,
+    DATASETS_VERIFIER_REVISION,
+    JSONSCHEMA_MODULE,
     LOOKUP_MODULE,
     MULTIFORMATS_MODULE,
+    PROOF_REUSE_AUTO_INSTALL_ENV,
+    PROOF_REUSE_DATASETS_SOURCE_ENV,
     PROVIDER_MODULE,
     STORE_MODULE,
     AllowlistedPipInstaller,
     LazyProofReuseServiceResolver,
     ProofReuseDependency,
+    automatic_install_enabled,
+    proof_reuse_dependency_plan,
 )
 
 
@@ -77,6 +90,7 @@ def _module_map() -> dict[str, Any]:
             CID=object(),
             multihash=object(),
         ),
+        JSONSCHEMA_MODULE: SimpleNamespace(validators=object()),
         DATASETS_VERIFIER_MODULE: SimpleNamespace(
             verify_test_execution_certificate=lambda *_args, **_kwargs: False,
         ),
@@ -262,15 +276,17 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
     assert not cache_root.exists()
 
 
+@pytest.mark.parametrize("missing_module", (MULTIFORMATS_MODULE, JSONSCHEMA_MODULE))
 def test_missing_allowlisted_dependency_is_installed_only_once(
     tmp_path: Path,
+    missing_module: str,
 ) -> None:
     _Provider.constructions = 0
     _Provider.prove_calls = 0
     _Store.constructions = []
     importer = _Importer(
         _module_map(),
-        missing=(MULTIFORMATS_MODULE,),
+        missing=(missing_module,),
     )
     installer = _Installer(importer, succeeds=True)
     resolver = LazyProofReuseServiceResolver(
@@ -283,14 +299,15 @@ def test_missing_allowlisted_dependency_is_installed_only_once(
 
     assert first is second
     assert first.available is True
-    assert first.installed_modules == (MULTIFORMATS_MODULE,)
-    assert installer.calls == [MULTIFORMATS_MODULE]
-    assert importer.calls.count(MULTIFORMATS_MODULE) == 2
+    assert first.installed_modules == (missing_module,)
+    assert installer.calls == [missing_module]
+    assert importer.calls.count(missing_module) == 2
     assert _Provider.constructions == 1
     assert _Provider.prove_calls == 0
     assert _Store.constructions == [tmp_path / "cache"]
     assert set(importer.calls) == {
         MULTIFORMATS_MODULE,
+        JSONSCHEMA_MODULE,
         DATASETS_VERIFIER_MODULE,
         STORE_MODULE,
         PROVIDER_MODULE,
@@ -310,6 +327,252 @@ def test_pip_installer_rejects_non_allowlisted_package_without_process() -> None
 
     assert installer.install(unknown) is False
     assert process_calls == []
+
+
+def test_auto_install_defaults_on_with_explicit_fail_closed_opt_out() -> None:
+    assert automatic_install_enabled({}) is True
+    assert automatic_install_enabled({PROOF_REUSE_AUTO_INSTALL_ENV: "1"}) is True
+    assert automatic_install_enabled({PROOF_REUSE_AUTO_INSTALL_ENV: "off"}) is False
+    assert automatic_install_enabled({PROOF_REUSE_AUTO_INSTALL_ENV: "invalid"}) is False
+
+
+def test_dependency_plan_is_cold_complete_and_source_introspectable() -> None:
+    pinned = proof_reuse_dependency_plan({})
+    local = proof_reuse_dependency_plan(
+        {PROOF_REUSE_DATASETS_SOURCE_ENV: "/reviewed/local/datasets"}
+    )
+
+    assert pinned["interface"] == "ProofReuseDependencyPlan@1"
+    assert pinned["lazy"] is True
+    assert pinned["cold_import_inert"] is True
+    assert pinned["fail_open_to_run"] is True
+    assert pinned["datasets_requested_source"] == "reviewed_integration_sibling"
+    assert local["datasets_requested_source"] == "configured_local_path"
+    assert pinned["datasets_reviewed_revision"] == DATASETS_VERIFIER_REVISION
+    assert pinned["remote_source_published"] is DATASETS_VERIFIER_REMOTE_SOURCE_PUBLISHED
+    assert pinned["remote_source_published"] is False
+    assert pinned["release_blocker"] == DATASETS_VERIFIER_RELEASE_BLOCKER
+    assert [item["module_name"] for item in pinned["dependencies"]] == [
+        MULTIFORMATS_MODULE,
+        JSONSCHEMA_MODULE,
+        DATASETS_VERIFIER_MODULE,
+    ]
+    assert pinned["dependencies"][1]["distribution"] == "jsonschema>=4,<5"
+    assert pinned["dependencies"][1]["required_symbols"] == ["validators"]
+    datasets = pinned["dependencies"][2]
+    assert datasets["distribution"] == DATASETS_VERIFIER_DISTRIBUTION
+    assert datasets["pip_options"] == [
+        "--no-deps",
+        "--force-reinstall",
+        "--no-build-isolation",
+    ]
+    assert pinned["external_capability_absence_action"] == "run"
+    activation = pinned["runtime_activation"]
+    assert activation["automatic_plugin_discovery"] is True
+    assert activation["ordinary_enabled_run_effective_action"] == "run"
+    assert activation["default_identity_service_factory_configured"] is False
+    assert activation["two_stage_candidate_revalidation_configured"] is False
+    assert activation["post_pass_receipt_requires_runtime_trace"] is False
+    assert activation["deferred_request_transport_compatible"] is False
+    assert activation["issuer_in_lazy_service_resolution"] is False
+    assert activation["authoritative_candidate_publication_configured"] is False
+    assert activation["receipt_content_identity_profiles"] == {
+        "accelerator": "cidv1-base32-dag-json-sha2-256",
+        "datasets_statement": "sha256-canonical-json-v1",
+        "exact_conformance": False,
+    }
+    assert activation["ordinary_warm_skip_path_complete"] is False
+    assert activation["completion_authority"] is False
+    assert len(activation["activation_blocker_codes"]) == 9
+    assert activation["required_identity_providers"] == [
+        "repository_forest_provider",
+        "analysis_index_provider",
+        "component_inputs_provider",
+        "policy_inputs_provider",
+        "runtime_evidence_provider",
+    ]
+    assert activation["required_implementation_sequence"][-1] == {
+        "goals": ["PTR-G110"],
+        "work": "activated_warm_benchmark_and_rollout_evidence",
+    }
+
+
+def test_datasets_lazy_install_uses_reviewed_sibling_without_dependencies() -> None:
+    process_calls: list[tuple[tuple[str, ...], dict[str, Any]]] = []
+
+    def runner(command: tuple[str, ...], **kwargs: Any) -> Any:
+        process_calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0)
+
+    installer = AllowlistedPipInstaller(runner=runner, environ={})
+
+    assert installer.install(DATASETS_VERIFIER_DEPENDENCY) is True
+    assert len(process_calls) == 1
+    command, kwargs = process_calls[0]
+    assert "--no-deps" in command
+    assert "--force-reinstall" in command
+    assert "--no-build-isolation" in command
+    sibling = Path(__file__).resolve().parents[2].parent / "ipfs_datasets"
+    assert command[-1] == f"ipfs_datasets_py @ {sibling.resolve().as_uri()}"
+    assert "git+" not in command[-1]
+    assert kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
+    assert kwargs["env"]["IPFS_DATASETS_AUTO_INSTALL"] == "false"
+    assert kwargs["env"]["IPFS_DATASETS_PY_AUTO_GROTH16_BUILD"] == "0"
+    assert kwargs["env"]["IPFS_DATASETS_PY_AUTO_NLTK_DOWNLOAD"] == "0"
+    assert kwargs["env"]["IPFS_DATASETS_PY_INCLUDE_VCS_DEPENDENCIES"] == "0"
+
+
+def test_datasets_lazy_install_prefers_valid_configured_local_source() -> None:
+    source = (
+        Path(__file__).resolve().parents[2].parent
+        / "ipfs_datasets"
+    )
+    process_calls: list[tuple[str, ...]] = []
+
+    def runner(command: tuple[str, ...], **_kwargs: Any) -> Any:
+        process_calls.append(command)
+        return SimpleNamespace(returncode=0)
+
+    installer = AllowlistedPipInstaller(
+        runner=runner,
+        environ={PROOF_REUSE_DATASETS_SOURCE_ENV: str(source)},
+    )
+    equal_dependency = replace(DATASETS_VERIFIER_DEPENDENCY)
+    assert equal_dependency == DATASETS_VERIFIER_DEPENDENCY
+    assert equal_dependency is not DATASETS_VERIFIER_DEPENDENCY
+
+    assert installer.install(equal_dependency) is True
+    assert process_calls[0][-1] == f"ipfs_datasets_py @ {source.as_uri()}"
+    assert "--no-deps" in process_calls[0]
+    assert "--force-reinstall" in process_calls[0]
+    assert "--no-build-isolation" in process_calls[0]
+
+
+def test_unversioned_configured_datasets_source_runs_no_process(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "ipfs_datasets"
+    verifier = (
+        source
+        / "ipfs_datasets_py"
+        / "logic"
+        / "zkp"
+        / "test_execution_certificate.py"
+    )
+    verifier.parent.mkdir(parents=True)
+    reviewed_verifier = (
+        Path(__file__).resolve().parents[2].parent
+        / "ipfs_datasets"
+        / "ipfs_datasets_py"
+        / "logic"
+        / "zkp"
+        / "test_execution_certificate.py"
+    )
+    verifier.write_bytes(reviewed_verifier.read_bytes())
+    (source / "pyproject.toml").write_text("[build-system]\n", encoding="utf-8")
+    process_calls: list[Any] = []
+    installer = AllowlistedPipInstaller(
+        runner=lambda *args, **kwargs: process_calls.append((args, kwargs)),
+        environ={PROOF_REUSE_DATASETS_SOURCE_ENV: str(source)},
+    )
+
+    assert installer.install(DATASETS_VERIFIER_DEPENDENCY) is False
+    assert process_calls == []
+
+
+def test_invalid_configured_datasets_source_runs_no_process(
+    tmp_path: Path,
+) -> None:
+    process_calls: list[Any] = []
+    installer = AllowlistedPipInstaller(
+        runner=lambda *args, **kwargs: process_calls.append((args, kwargs)),
+        environ={
+            PROOF_REUSE_DATASETS_SOURCE_ENV: str(tmp_path / "missing")
+        },
+    )
+
+    assert installer.install(DATASETS_VERIFIER_DEPENDENCY) is False
+    assert installer.install(DATASETS_VERIFIER_DEPENDENCY) is False
+    assert process_calls == []
+
+
+def test_tampered_configured_datasets_verifier_runs_no_process(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "ipfs_datasets"
+    verifier = (
+        source
+        / "ipfs_datasets_py"
+        / "logic"
+        / "zkp"
+        / "test_execution_certificate.py"
+    )
+    verifier.parent.mkdir(parents=True)
+    verifier.write_text("# unreviewed verifier\n", encoding="utf-8")
+    (source / "pyproject.toml").write_text("[build-system]\n", encoding="utf-8")
+    process_calls: list[Any] = []
+    installer = AllowlistedPipInstaller(
+        runner=lambda *args, **kwargs: process_calls.append((args, kwargs)),
+        environ={PROOF_REUSE_DATASETS_SOURCE_ENV: str(source)},
+    )
+
+    assert installer.install(DATASETS_VERIFIER_DEPENDENCY) is False
+    assert process_calls == []
+
+
+def test_failed_pip_install_is_memoized_without_retry() -> None:
+    process_calls: list[Any] = []
+
+    def runner(*args: Any, **kwargs: Any) -> Any:
+        process_calls.append((args, kwargs))
+        return SimpleNamespace(returncode=1)
+
+    installer = AllowlistedPipInstaller(runner=runner, environ={})
+
+    assert installer.install(DATASETS_VERIFIER_DEPENDENCY) is False
+    assert installer.install(DATASETS_VERIFIER_DEPENDENCY) is False
+    assert len(process_calls) == 1
+
+
+@pytest.mark.parametrize("policy", ("0", "invalid"))
+def test_disabled_or_invalid_policy_constructs_no_installer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    policy: str,
+) -> None:
+    from ipfs_accelerate_py.testing.proof_reuse import services
+
+    config = _Config(tmp_path)
+    monkeypatch.setenv(PROOF_REUSE_AUTO_INSTALL_ENV, policy)
+
+    def forbidden_installer() -> None:
+        raise AssertionError("disabled policy must not construct an installer")
+
+    monkeypatch.setattr(services, "AllowlistedPipInstaller", forbidden_installer)
+
+    _inject_default_services(config)
+
+    assert hasattr(config, SERVICE_RESOLUTION_ATTRIBUTE)
+
+
+def test_xdist_worker_never_constructs_default_installer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.testing.proof_reuse import services
+
+    config = _Config(tmp_path)
+    config.workerinput = {"workerid": "gw0"}
+    monkeypatch.delenv(PROOF_REUSE_AUTO_INSTALL_ENV, raising=False)
+
+    def forbidden_installer() -> None:
+        raise AssertionError("xdist workers must not construct installers")
+
+    monkeypatch.setattr(services, "AllowlistedPipInstaller", forbidden_installer)
+
+    _inject_default_services(config)
+
+    assert hasattr(config, SERVICE_RESOLUTION_ATTRIBUTE)
 
 
 def test_install_failure_leaves_services_unavailable_and_cache_untouched(

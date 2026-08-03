@@ -24,6 +24,9 @@ ACCELERATE_ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP = ACCELERATE_ROOT / "conftest.py"
 PYPROJECT = ACCELERATE_ROOT / "pyproject.toml"
 SETUP_PY = ACCELERATE_ROOT / "setup.py"
+REQUIREMENTS = ACCELERATE_ROOT / "requirements.txt"
+PROOF_REUSE_REQUIREMENTS = ACCELERATE_ROOT / "requirements-proof-reuse.txt"
+MANIFEST = ACCELERATE_ROOT / "MANIFEST.in"
 PYTEST_INI = ACCELERATE_ROOT / "pytest.ini"
 PLUGIN_MODULE = "ipfs_accelerate_py.testing.proof_reuse.plugin"
 PLUGIN_ENTRY_POINT = "ipfs-proof-reuse"
@@ -173,6 +176,44 @@ def test_setup_py_declares_pytest11_proof_reuse_entry_point() -> None:
     assert '"pytest11"' in source or "'pytest11'" in source
     assert "ipfs-proof-reuse=" in source or 'ipfs-proof-reuse=' in source
     assert PLUGIN_MODULE in source
+
+
+def _requirements(path: Path) -> list[str]:
+    return [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
+def test_proof_reuse_dependency_metadata_is_consistent_and_non_circular() -> None:
+    project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    core = _requirements(REQUIREMENTS)
+    scoped = _requirements(PROOF_REUSE_REQUIREMENTS)
+    extra = project["project"]["optional-dependencies"]["proof-reuse"]
+    setup_source = SETUP_PY.read_text(encoding="utf-8")
+
+    assert scoped == [
+        "pytest>=8.0.0",
+        "multiformats>=0.3,<1",
+        "jsonschema>=4,<5",
+    ]
+    assert extra == scoped
+    assert "multiformats>=0.3,<1" in core
+    assert not any(item.startswith("ipfs_datasets_py") for item in core)
+    assert not any(item.startswith("ipfs_datasets_py") for item in scoped)
+    assert "requirements-proof-reuse.txt" in setup_source
+    assert 'extras_require["proof-reuse"]' in setup_source
+
+
+def test_sdist_manifest_retains_dynamic_requirement_inputs() -> None:
+    included = {
+        line.removeprefix("include ").strip()
+        for line in MANIFEST.read_text(encoding="utf-8").splitlines()
+        if line.startswith("include ")
+    }
+
+    assert {"requirements.txt", "requirements-proof-reuse.txt"} <= included
 
 
 def test_pytest_ini_registers_proof_reuse_markers() -> None:

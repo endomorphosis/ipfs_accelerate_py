@@ -29,6 +29,9 @@ from typing import Any
 TEST_REUSE_CAPABILITY_REPORT_SCHEMA = "TestReuseCapabilityReport@1"
 TEST_REUSE_CAPABILITY_SCHEMA_VERSION = TEST_REUSE_CAPABILITY_REPORT_SCHEMA
 TEST_REUSE_CAPABILITY_REPORT_VERSION = 1
+TEST_REUSE_CACHE_MODULE = (
+    "ipfs_accelerate_py.agent_supervisor.proof.test_certificate_store"
+)
 DEFAULT_TEST_REUSE_CAPABILITY_TIMEOUT_SECONDS = 0.5
 DEFAULT_TEST_REUSE_CAPABILITY_MAX_CHECKS = 48
 
@@ -1118,10 +1121,7 @@ class TestReuseCapabilityProbe:
         )
 
     def _probe_cache(self, budget: _ProbeBudget) -> _Check:
-        module = self._module(
-            "ipfs_accelerate_py.agent_supervisor.proof.mcp_contract_proof_cache",
-            budget,
-        )
+        module = self._module(TEST_REUSE_CACHE_MODULE, budget)
         configured = self._configured_directory(
             self.config.cache_path,
             ("IPFS_TEST_PROOF_REUSE_CACHE_DIR",),
@@ -1266,6 +1266,7 @@ __all__ = [
     "TEST_REUSE_CAPABILITY_REPORT_SCHEMA",
     "TEST_REUSE_CAPABILITY_REPORT_VERSION",
     "TEST_REUSE_CAPABILITY_SCHEMA_VERSION",
+    "TEST_REUSE_CACHE_MODULE",
     "TestReuseCapability",
     "TestReuseCapabilityEvidence",
     "TestReuseCapabilityEvidenceKind",

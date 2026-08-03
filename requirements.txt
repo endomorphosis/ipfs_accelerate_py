@@ -32,5 +32,9 @@ PyGithub>=2.3.0
 tqdm>=4.64.0
 numpy>=1.23.0
 toml>=0.10.2
-multiformats>=0.3.0
+multiformats>=0.3,<1
 pymultihash>=0.8.2
+
+# ipfs_datasets_py is intentionally not a core dependency.  Its distribution
+# depends back on ipfs_accelerate_py; the proof-reuse resolver installs only a
+# reviewed local verifier source with --no-deps when that capability is needed.

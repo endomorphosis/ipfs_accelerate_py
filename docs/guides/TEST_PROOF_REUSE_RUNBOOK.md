@@ -60,12 +60,30 @@ Managed environments can inject capabilities before collection with:
 - `set_proof_reuse_identity_services(config, services)` for current forest,
   AST, component, policy, and runtime-evidence providers.
 
-The built-in pip installer is disabled by default. To permit its closed
-allowlist on first actual use, set
-`IPFS_TEST_PROOF_REUSE_AUTO_INSTALL=1`. Override the local store location with
+Install the non-circular Python prerequisites up front with
+`pip install '.[proof-reuse]'` or
+`pip install -r requirements-proof-reuse.txt`. The datasets verifier is not a
+hard dependency because its distribution depends back on
+`ipfs_accelerate_py`. On first actual use, the closed lazy installer selects
+`IPFS_TEST_PROOF_REUSE_DATASETS_SOURCE` when it names a valid local datasets
+checkout; otherwise it validates the reviewed `external/ipfs_datasets` sibling
+revision and verifier-source digest. It installs the selected local provider with
+`--no-deps --force-reinstall --no-build-isolation`. Configured and sibling
+sources must both be at that exact reviewed revision; a matching verifier file
+inside an otherwise unreviewed build tree is not sufficient. The reviewed
+verifier revision is not yet published remotely, so there is deliberately no
+network fallback; an absent or
+mismatched local source produces a typed `RUN` until that release blocker is
+closed.
+
+The lazy installer is enabled by default but remains behind the enabled-mode,
+exact-identity boundary. Set `IPFS_TEST_PROOF_REUSE_AUTO_INSTALL=0` to prohibit
+every installer process/network attempt. It never runs during import, in
+`off` mode, or in an xdist worker. Override the local store location with
 `IPFS_TEST_PROOF_REUSE_CACHE_DIR`; otherwise the enabled session uses
-`.pytest_cache/proof-reuse` below its pytest root. An install, import, cache,
-provider, verifier, or Groth16 failure always results in `RUN`.
+`.pytest_cache/proof-reuse` below its pytest root. An invalid install policy,
+invalid local source, install/import/cache/provider/verifier failure, or absent
+Groth16/ProveKit binary, endpoint, key, or circuit always results in `RUN`.
 
 Automatic collection cannot safely claim that a prior runtime trace is current.
 Tests receive a typed `RUN` result unless the identity service supplies fresh
@@ -73,6 +91,19 @@ controlled-preflight evidence bound to the exact node, repository forest,
 static trace, component root, and runtime policy. Even then, identity assembly
 only creates a lookup request; the local verifier remains the sole authority
 that can return `SKIP`.
+
+At the current revision, entry-point discovery and the cache/verifier service
+bundle are automatic, but production identity activation is not. No default
+factory supplies the repository-forest, AST-index, component, policy, or fresh
+runtime-evidence providers, and no default producer attaches the runtime trace
+or deferred certificate request. The lazy bundle also has no issuer. In
+addition, accelerator receipts use CIDv1/dag-json/sha2-256 identity while the
+datasets statement issuer currently opens receipt bytes as `sha256:<hex>`;
+that profile mismatch must be resolved before automatic issuance can publish a
+candidate that the accelerator lookup will accept. Until these gaps are closed,
+ordinary tests discover the plugin but deliberately execute rather than skip.
+`proof_reuse_dependency_plan()` reports the dependency-ordered work sequence
+and its goal alignment.
 
 ## Promotion procedure
 

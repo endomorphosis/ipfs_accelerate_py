@@ -12,8 +12,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
-from ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_test_certificate_provider import (
+from ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_test_certificate_provider import (  # noqa: E501
     DEFAULT_VERIFIER_MODULE,
     IPFS_DATASETS_TEST_CERTIFICATE_PROVIDER_ID,
     TEST_CERTIFICATE_PROVIDER_INTERFACE,
@@ -852,17 +851,8 @@ def test_live_datasets_offline_conformance_backend_when_available() -> None:
         package_identity="package:provider-live",
         node_id="test/api/test_live.py::test_live",
     )
-    execution_key = TestExecutionKey(
-        locator_cid=locator.locator_id,
-        repository_forest_cid="cid:repository-forest",
-        static_trace_root_cid="cid:static-trace",
-        runtime_trace_root_cid="cid:runtime-trace",
-        runtime_completeness_policy="complete-v1",
-        policy_cid=statement.public_inputs.policy_cid,
-    )
-    # Force execution key id by using certificate's execution_key_cid via a
-    # receipt that we align manually through public inputs rather than identity
-    # equality of the TestExecutionKey helper.
+    # Use the statement's execution-key CID via a receipt aligned manually
+    # through public inputs rather than a TestExecutionKey helper identity.
     receipt = TestPassReceipt(
         execution_key_cid=statement.public_inputs.execution_key_cid,
         locator_cid=statement.public_inputs.locator_cid
@@ -883,6 +873,8 @@ def test_live_datasets_offline_conformance_backend_when_available() -> None:
     # through verify_fn injection that wraps the real verifier while still using
     # the provider's retained-byte / pin machinery on an accelerator certificate
     # built from the same public pins.
+    assert statement.public_inputs.receipt_cid.startswith("sha256:")
+    assert receipt.receipt_id != statement.public_inputs.receipt_cid
     accel_cert = TestProofCertificate(
         receipt_cid=receipt.receipt_id,
         execution_key_cid=receipt.execution_key_cid,

@@ -16,9 +16,9 @@ import subprocess
 import sys
 import textwrap
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.proof.test_certificate_store import (
@@ -30,7 +30,6 @@ from ipfs_accelerate_py.agent_supervisor.proof.test_execution_contracts import (
     TestPassReceipt,
     TestProofCertificate,
 )
-
 
 ACCELERATE_ROOT = Path(__file__).resolve().parents[2]
 EXTERNAL_ROOT = ACCELERATE_ROOT.parent
@@ -55,6 +54,8 @@ class RepositorySpec:
     root: Path
     bootstrap: Path
     entry_point: str
+    entry_point_target: str
+    autoload_plugin_name: str
 
     @property
     def pyproject(self) -> Path:
@@ -67,11 +68,15 @@ REPOSITORIES = (
         ACCELERATE_ROOT,
         ACCELERATE_ROOT / "conftest.py",
         "ipfs-proof-reuse",
+        PLUGIN_MODULE,
+        "ipfs-proof-reuse",
     ),
     RepositorySpec(
         "ipfs_kit",
         EXTERNAL_ROOT / "ipfs_kit",
         EXTERNAL_ROOT / "ipfs_kit" / "conftest.py",
+        "ipfs-kit-proof-reuse",
+        "ipfs_kit_py.pytest_proof_reuse",
         "ipfs-proof-reuse",
     ),
     RepositorySpec(
@@ -79,6 +84,8 @@ REPOSITORIES = (
         EXTERNAL_ROOT / "ipfs_datasets",
         EXTERNAL_ROOT / "ipfs_datasets" / "tests" / "conftest.py",
         "ipfs-datasets-proof-reuse",
+        "ipfs_datasets_py.pytest_proof_reuse",
+        "ipfs-proof-reuse",
     ),
 )
 
@@ -140,9 +147,26 @@ def _install_entry_point(metadata_root: Path, spec: RepositorySpec) -> None:
         distribution / "entry_points.txt",
         f"""
         [pytest11]
-        {spec.entry_point} = {PLUGIN_MODULE}
+        {spec.entry_point} = {spec.entry_point_target}
         """,
     )
+    if spec.entry_point_target != PLUGIN_MODULE:
+        accelerator = metadata_root / "ptr_093_accelerator-0.dist-info"
+        _write(
+            accelerator / "METADATA",
+            """
+            Metadata-Version: 2.1
+            Name: ptr-093-accelerator
+            Version: 0
+            """,
+        )
+        _write(
+            accelerator / "entry_points.txt",
+            f"""
+            [pytest11]
+            ipfs-proof-reuse = {PLUGIN_MODULE}
+            """,
+        )
 
 
 def _service_conftest_source(spec: RepositorySpec) -> str:
@@ -385,7 +409,7 @@ def _environment(
     environment.pop("PYTEST_ADDOPTS", None)
     if autoload:
         environment.pop("PYTEST_DISABLE_PLUGIN_AUTOLOAD", None)
-        environment["PTR_EXPECT_PLUGIN"] = spec.entry_point
+        environment["PTR_EXPECT_PLUGIN"] = spec.autoload_plugin_name
     else:
         environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
         environment["PTR_EXPECT_PLUGIN"] = PLUGIN_MODULE
@@ -542,7 +566,7 @@ def test_repository_declares_entry_point_and_import_safe_fallback(
     project = tomllib.loads(spec.pyproject.read_text(encoding="utf-8"))
     assert (
         project["project"]["entry-points"]["pytest11"][spec.entry_point]
-        == PLUGIN_MODULE
+        == spec.entry_point_target
     )
 
     source = spec.bootstrap.read_text(encoding="utf-8")

@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.integrations.test_reuse_capabilities import (
+    TEST_REUSE_CACHE_MODULE,
     TEST_REUSE_CAPABILITY_REPORT_SCHEMA,
     _find_spec_without_import,
     probe_test_reuse_capabilities,
@@ -32,7 +33,7 @@ ALL_MODULES = {
     "ipfs_datasets_py.logic.zkp",
     "ipfs_datasets_py.logic.zkp.backends.groth16",
     "ipfs_datasets_py.logic.zkp.backends.provekit",
-    "ipfs_accelerate_py.agent_supervisor.proof.mcp_contract_proof_cache",
+    TEST_REUSE_CACHE_MODULE,
     "ipfshttpclient",
     "ipfs_datasets_py.logic.zkp.zkp_verifier",
 }
@@ -216,6 +217,27 @@ def test_missing_optional_capabilities_fall_through_to_test_execution() -> None:
     assert report.unavailable_is_non_blocking
     assert all(fact.test_action == "run" for fact in report.capabilities)
     assert report.capability("local_verifier").reason_code == ("local_verifier_not_configured")
+
+
+def test_cache_probe_targets_live_certificate_store() -> None:
+    discovery = FakeDiscovery(modules={TEST_REUSE_CACHE_MODULE})
+
+    report = CapabilityProbe(
+        find_spec=discovery.find_spec,
+        which=discovery.which,
+        environ={},
+    ).probe()
+
+    cache = report.capability("cache")
+    assert cache.status is CapabilityStatus.AVAILABLE
+    assert [item.subject for item in cache.evidence] == [
+        TEST_REUSE_CACHE_MODULE
+    ]
+    assert TEST_REUSE_CACHE_MODULE in discovery.package_calls
+    assert not any(
+        "mcp_contract_proof_cache" in module
+        for module in discovery.package_calls
+    )
 
 
 def test_metadata_distinguishes_every_status_without_provider_discovery() -> None:

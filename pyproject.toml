@@ -1,5 +1,8 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = [
+  "setuptools>=61.0",
+  "tomli>=1.2; python_version < '3.11'",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -59,6 +62,15 @@ package-dir = {"" = "."}
 dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
+proof-reuse = [
+  # Keep the install-time extra non-circular. The datasets verifier is selected
+  # lazily from a configured local checkout or the reviewed integration sibling
+  # and installed with --no-deps only after an exact lookup needs it. There is
+  # no remote fallback until the reviewed verifier revision is published.
+  "pytest>=8.0.0",
+  "multiformats>=0.3,<1",
+  "jsonschema>=4,<5",
+]
 dev = [
   # test runner + core test deps
   "pytest>=8.0.0",
