@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.implementation_failure_review import (
     FAILURE_REVIEW_SCHEMA,
     FailureReviewDecision,
@@ -13,6 +10,9 @@ from ipfs_accelerate_py.agent_supervisor.implementation_failure_review import (
     ImplementationFailureReviewReceipt,
     compact_failure_review,
     review_implementation_failure,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    canonical_json,
 )
 
 
@@ -462,6 +462,117 @@ def test_daemon_normalize_failure_keeps_review_projection() -> None:
     assert normalized["validation"]["failure_review"]["decision"] == (
         "guide_rescue"
     )
+
+
+def test_daemon_normalize_oversized_review_bounds_repeated_guidance() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    guidance = (
+        "BEGIN: create src/prover.py and rerun the focused proof test. "
+        + ("diagnostic context " * 700)
+        + " END: keep tests/prover/test_goal.py green."
+    )
+    review = {
+        "receipt_id": "bafy-reviewed-failure",
+        "decision": "guide_rescue",
+        "accepted": False,
+        "reason_codes": ["incomplete_expected_outputs"],
+        "finding_codes": ["path_outside_scope"],
+        "missing_expected_outputs": ["src/prover.py"],
+        "denied_paths": ["src/undeclared_helper.py"],
+        "failed_commands": [
+            "python -m pytest tests/prover/test_goal.py -q"
+        ],
+        "next_attempt_prompt_addendum": guidance,
+        "policy_version": "deterministic-failure-review-v2",
+    }
+    normalized = PortalImplementationDaemon._normalize_implementation_failure(
+        {
+            "kind": "validation_failure",
+            "returncode": 78,
+            "failure_review": review,
+            "next_attempt_prompt_addendum": guidance,
+            "validation_environment_guidance": "sandbox contract " * 500,
+            "validation_result": {
+                "passed": False,
+                "returncode": 78,
+                "reason": "proposal_gate_failed",
+                "failed_commands": review["failed_commands"],
+                "failure_review": review,
+            },
+        }
+    )
+
+    assert len(canonical_json(normalized).encode("utf-8")) <= 16_384
+    assert normalized["failure_review"]["receipt_id"] == (
+        "bafy-reviewed-failure"
+    )
+    assert normalized["failure_review"]["decision"] == "guide_rescue"
+    assert normalized["failure_review"]["reason_codes"] == [
+        "incomplete_expected_outputs"
+    ]
+    assert normalized["failure_review"]["missing_expected_outputs"] == [
+        "src/prover.py"
+    ]
+    assert "test_goal.py" in normalized["failure_review"]["failed_commands"][0]
+    assert "BEGIN: create src/prover.py" in normalized[
+        "next_attempt_prompt_addendum"
+    ]
+    assert "END: keep tests/prover/test_goal.py green" in normalized[
+        "next_attempt_prompt_addendum"
+    ]
+    assert normalized["normalization"]["source_bytes"] > 16_384
+    assert normalized["normalization"]["truncated_field_count"] > 0
+
+
+def test_daemon_normalize_bounds_json_escapes_and_is_canonical() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    guidance = "BEGIN retry\n" + ("\x00" * 20_000) + "\nEND retry"
+    forward_kind = {
+        "alpha": "a" * 10_000,
+        "omega": "z" * 10_000,
+    }
+    reverse_kind = dict(reversed(tuple(forward_kind.items())))
+
+    def normalize(kind: dict[str, str]) -> dict[str, object]:
+        return PortalImplementationDaemon._normalize_implementation_failure(
+            {
+                "kind": kind,
+                "reason": "reviewed validation failure",
+                "returncode": 10**3_000,
+                "failure_review": {
+                    "receipt_id": "bafy-control-review",
+                    "decision": "guide_rescue",
+                    "reason_codes": ["validation_command_failed"],
+                    "missing_expected_outputs": ["src/prover.py"],
+                    "failed_commands": [
+                        "python -m pytest tests/prover/test_goal.py -q"
+                    ],
+                    "next_attempt_prompt_addendum": guidance,
+                },
+                "next_attempt_prompt_addendum": guidance,
+            }
+        )
+
+    forward = normalize(forward_kind)
+    reverse = normalize(reverse_kind)
+
+    assert forward == reverse
+    assert len(canonical_json(forward).encode("utf-8")) <= 16_384
+    assert forward["normalization"]["source_failure_id"] == reverse[
+        "normalization"
+    ]["source_failure_id"]
+    assert "BEGIN retry" in forward["next_attempt_prompt_addendum"]
+    assert "END retry" in forward["next_attempt_prompt_addendum"]
+    assert forward["failure_review"]["decision"] == "guide_rescue"
+    assert forward["failure_review"]["missing_expected_outputs"] == [
+        "src/prover.py"
+    ]
 
 
 def test_directory_outputs_satisfied_by_descendant_changes() -> None:

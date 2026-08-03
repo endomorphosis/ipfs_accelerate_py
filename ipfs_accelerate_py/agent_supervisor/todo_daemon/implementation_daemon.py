@@ -40798,9 +40798,559 @@ class PortalImplementationDaemon:
         if not selected:
             selected = {"kind": "implementation_failure", "reason": "unknown"}
         encoded = canonical_json(selected).encode("utf-8")
-        if len(encoded) > 16_384:
-            raise ValueError("normalized implementation failure exceeds 16 KiB")
-        return selected
+        maximum_bytes = 16_384
+        if len(encoded) <= maximum_bytes:
+            return selected
+
+        # Reviewed failures can repeat the same bounded prompt addendum at the
+        # top level, in ``failure_review``, and again below ``validation``.
+        # Raising here loses the useful diagnosis and turns an ordinary retry
+        # into a supervisor failure.  Project verbose evidence deterministically
+        # instead: retain authority/identity fields and actionable paths,
+        # commands, and head/tail guidance while bounding every variable-width
+        # field.  The source identity makes truncation explicit and auditable.
+        truncated_fields: set[str] = set()
+
+        def bounded_text(value: Any, *, limit: int, field: str) -> str:
+            if isinstance(value, (set, frozenset)):
+                text = canonical_json(
+                    sorted(value, key=lambda item: canonical_json(item))
+                ).strip()
+            elif isinstance(value, (Mapping, Sequence)) and not isinstance(
+                value,
+                (str, bytes, bytearray),
+            ):
+                # Structured values in a nominal scalar field are malformed,
+                # but still project them canonically so insertion order cannot
+                # change the diagnostic identity.
+                text = canonical_json(value).strip()
+            else:
+                text = str(value or "").strip()
+            if len(canonical_json(text).encode("utf-8")) <= limit:
+                return text
+            truncated_fields.add(field)
+            marker = " ...<truncated>... "
+
+            def candidate(kept_characters: int) -> str:
+                head_characters = (kept_characters * 2) // 3
+                tail_characters = kept_characters - head_characters
+                head = text[:head_characters]
+                tail = text[-tail_characters:] if tail_characters else ""
+                return head.rstrip() + marker + tail.lstrip()
+
+            # Budget the canonical JSON representation, not raw UTF-8: control
+            # characters may expand sixfold as ``\u0000`` escapes.
+            low = 0
+            high = len(text)
+            result = marker.strip()
+            while low <= high:
+                midpoint = (low + high) // 2
+                projected = candidate(midpoint)
+                if len(canonical_json(projected).encode("utf-8")) <= limit:
+                    result = projected
+                    low = midpoint + 1
+                else:
+                    high = midpoint - 1
+            return result
+
+        def bounded_scalar(value: Any, *, limit: int, field: str) -> Any:
+            if value is None or isinstance(value, (bool, float)):
+                return value
+            if isinstance(value, int):
+                if len(canonical_json(value).encode("utf-8")) <= limit:
+                    return value
+                truncated_fields.add(field)
+                return bounded_text(value, limit=limit, field=field)
+            return bounded_text(value, limit=limit, field=field)
+
+        def bounded_strings(
+            value: Any,
+            *,
+            count: int,
+            width: int,
+            field: str,
+        ) -> list[str]:
+            if isinstance(value, Sequence) and not isinstance(
+                value,
+                (str, bytes, bytearray),
+            ):
+                candidates = value
+            elif value not in (None, ""):
+                candidates = (value,)
+            else:
+                candidates = ()
+            if len(candidates) > count:
+                truncated_fields.add(field)
+            result: list[str] = []
+            for index, item in enumerate(candidates[:count]):
+                bounded = bounded_text(
+                    item,
+                    limit=width,
+                    field=f"{field}[{index}]",
+                )
+                if bounded:
+                    result.append(bounded)
+            return result
+
+        def project_review(
+            value: Any,
+            *,
+            field: str,
+            include_guidance: bool,
+            minimal: bool = False,
+        ) -> dict[str, Any]:
+            if not isinstance(value, Mapping):
+                return {}
+            result: dict[str, Any] = {}
+            for name in (
+                "receipt_id",
+                "task_id",
+                "attempt",
+                "decision",
+                "accepted",
+                "policy_version",
+                "proof_authoritative",
+                "completion_authoritative",
+            ):
+                item = value.get(name)
+                if item not in (None, "", (), [], {}):
+                    result[name] = bounded_scalar(
+                        item,
+                        limit=192,
+                        field=f"{field}.{name}",
+                    )
+            sequence_limits = {
+                "reason_codes": (4 if minimal else 6, 96),
+                "finding_codes": (4 if minimal else 6, 96),
+                "missing_expected_outputs": (2 if minimal else 4, 192),
+                "out_of_scope_paths": (1 if minimal else 2, 192),
+                "justified_paths": (1 if minimal else 2, 192),
+                "denied_paths": (2, 192),
+                "contract_gap_paths": (2, 192),
+                "failed_commands": (1, 256),
+            }
+            for name, (count, width) in sequence_limits.items():
+                items = bounded_strings(
+                    value.get(name),
+                    count=count,
+                    width=width,
+                    field=f"{field}.{name}",
+                )
+                if items:
+                    result[name] = items
+            addendum = value.get("next_attempt_prompt_addendum")
+            if include_guidance and addendum not in (None, ""):
+                result["next_attempt_prompt_addendum"] = bounded_text(
+                    addendum,
+                    limit=1_536 if minimal else 2_048,
+                    field=f"{field}.next_attempt_prompt_addendum",
+                )
+            elif addendum not in (None, ""):
+                truncated_fields.add(
+                    f"{field}.next_attempt_prompt_addendum"
+                )
+            return result
+
+        bounded: dict[str, Any] = {}
+        for name in (
+            "kind",
+            "reason",
+            "returncode",
+            "exception_type",
+            "phase",
+            "counterexample_id",
+            "timeout_reason",
+        ):
+            value = selected.get(name)
+            if value not in (None, "", (), [], {}):
+                bounded[name] = bounded_scalar(
+                    value,
+                    limit=192,
+                    field=name,
+                )
+        for name, count, width in (
+            ("counterexample_ids", 2, 128),
+            ("reason_codes", 6, 96),
+            ("failed_commands", 2, 256),
+            ("failing_checks", 2, 192),
+            ("missing_outputs", 4, 192),
+        ):
+            values = bounded_strings(
+                selected.get(name),
+                count=count,
+                width=width,
+                field=name,
+            )
+            if values:
+                bounded[name] = values
+
+        root_addendum = selected.get("next_attempt_prompt_addendum")
+        if root_addendum not in (None, ""):
+            bounded["next_attempt_prompt_addendum"] = bounded_text(
+                root_addendum,
+                limit=2_048,
+                field="next_attempt_prompt_addendum",
+            )
+        environment_guidance = selected.get(
+            "validation_environment_guidance"
+        )
+        if environment_guidance not in (None, ""):
+            bounded["validation_environment_guidance"] = bounded_text(
+                environment_guidance,
+                limit=512,
+                field="validation_environment_guidance",
+            )
+
+        review_source = selected.get("failure_review")
+        review_addendum = (
+            review_source.get("next_attempt_prompt_addendum")
+            if isinstance(review_source, Mapping)
+            else None
+        )
+        review = project_review(
+            review_source,
+            field="failure_review",
+            include_guidance=(
+                review_addendum not in (None, "", root_addendum)
+            ),
+        )
+        if review:
+            bounded["failure_review"] = review
+
+        validation = selected.get("validation")
+        if isinstance(validation, Mapping):
+            compact_validation: dict[str, Any] = {}
+            for name in ("passed", "returncode", "reason"):
+                value = validation.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_validation[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"validation.{name}",
+                    )
+            for name, count, width in (
+                ("reason_codes", 4, 96),
+                ("failed_commands", 1, 256),
+            ):
+                values = bounded_strings(
+                    validation.get(name),
+                    count=count,
+                    width=width,
+                    field=f"validation.{name}",
+                )
+                if values:
+                    compact_validation[name] = values
+            nested_review = project_review(
+                validation.get("failure_review"),
+                field="validation.failure_review",
+                include_guidance=(
+                    validation.get("failure_review", {}).get(
+                        "next_attempt_prompt_addendum"
+                    )
+                    not in (None, "", root_addendum, review_addendum)
+                    if isinstance(validation.get("failure_review"), Mapping)
+                    else False
+                ),
+                minimal=True,
+            )
+            if nested_review:
+                compact_validation["failure_review"] = nested_review
+            if compact_validation:
+                bounded["validation"] = compact_validation
+
+        proposal = selected.get("proposal_gate")
+        if isinstance(proposal, Mapping):
+            compact_proposal: dict[str, Any] = {}
+            for name in (
+                "proposal_id",
+                "policy_id",
+                "receipt_id",
+                "repository_tree_id",
+            ):
+                value = proposal.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_proposal[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"proposal_gate.{name}",
+                    )
+            reason_codes = bounded_strings(
+                proposal.get("reason_codes"),
+                count=4,
+                width=96,
+                field="proposal_gate.reason_codes",
+            )
+            if reason_codes:
+                compact_proposal["reason_codes"] = reason_codes
+            if compact_proposal:
+                bounded["proposal_gate"] = compact_proposal
+
+        scope = selected.get("scope_adjudication")
+        if isinstance(scope, Mapping):
+            compact_scope: dict[str, Any] = {}
+            for name in ("accepted", "receipt_id", "proposal_id"):
+                value = scope.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_scope[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"scope_adjudication.{name}",
+                    )
+            for name in ("authorized_paths", "denied_paths"):
+                values = bounded_strings(
+                    scope.get(name),
+                    count=2,
+                    width=192,
+                    field=f"scope_adjudication.{name}",
+                )
+                if values:
+                    compact_scope[name] = values
+            if scope.get("decisions") not in (None, "", (), [], {}):
+                truncated_fields.add("scope_adjudication.decisions")
+            if compact_scope:
+                bounded["scope_adjudication"] = compact_scope
+
+        timeout_policy = selected.get("timeout_policy")
+        if isinstance(timeout_policy, Mapping):
+            compact_timeout: dict[str, Any] = {}
+            for name in (
+                "configured_timeout_seconds",
+                "progress_timeout_seconds",
+                "max_timeout_seconds",
+                "progress_aware",
+                "source",
+            ):
+                value = timeout_policy.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_timeout[name] = bounded_scalar(
+                        value,
+                        limit=128,
+                        field=f"timeout_policy.{name}",
+                    )
+            if compact_timeout:
+                bounded["timeout_policy"] = compact_timeout
+
+        checkpoint = selected.get("checkpoint_manifest")
+        if isinstance(checkpoint, Mapping):
+            compact_checkpoint: dict[str, Any] = {}
+            for name in (
+                "schema",
+                "task_id",
+                "canonical_task_cid",
+                "file_count",
+                "total_size_bytes",
+                "truncated",
+                "manifest_cid",
+            ):
+                value = checkpoint.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_checkpoint[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"checkpoint_manifest.{name}",
+                    )
+            if checkpoint.get("files") not in (None, "", (), [], {}):
+                truncated_fields.add("checkpoint_manifest.files")
+            if compact_checkpoint:
+                bounded["checkpoint_manifest"] = compact_checkpoint
+
+        source_failure_id = content_identity(selected)
+
+        def normalization_metadata(projection: str) -> dict[str, Any]:
+            fields = sorted(truncated_fields)
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "bounded-implementation-failure@1"
+                ),
+                "projection": projection,
+                "source_failure_id": source_failure_id,
+                "source_bytes": len(encoded),
+                "maximum_bytes": maximum_bytes,
+                "truncated_field_count": len(fields),
+                "truncated_fields": [
+                    bounded_text(
+                        field,
+                        limit=96,
+                        field="normalization.truncated_fields",
+                    )
+                    for field in fields[:12]
+                ],
+            }
+
+        bounded["normalization"] = normalization_metadata("bounded")
+        if len(canonical_json(bounded).encode("utf-8")) <= maximum_bytes:
+            return bounded
+
+        # A hostile or unusually broad reviewed failure can still contain many
+        # individually useful fields.  The minimal projection keeps the retry
+        # decision, reasons, paths, commands, and guidance plus the immutable
+        # source identity, while dropping lower-priority duplicated context.
+        minimal: dict[str, Any] = {
+            name: bounded[name]
+            for name in (
+                "kind",
+                "reason",
+                "returncode",
+                "exception_type",
+                "phase",
+                "timeout_reason",
+            )
+            if name in bounded
+        }
+        minimal_review = project_review(
+            review_source,
+            field="failure_review",
+            include_guidance=(
+                review_addendum not in (None, "", root_addendum)
+            ),
+            minimal=True,
+        )
+        if minimal_review:
+            minimal["failure_review"] = minimal_review
+        for output_name, sources in (
+            (
+                "reason_codes",
+                (
+                    selected.get("reason_codes"),
+                    (
+                        selected.get("failure_review", {}).get("reason_codes")
+                        if isinstance(selected.get("failure_review"), Mapping)
+                        else ()
+                    ),
+                ),
+            ),
+            (
+                "missing_outputs",
+                (
+                    selected.get("missing_outputs"),
+                    (
+                        selected.get("failure_review", {}).get(
+                            "missing_expected_outputs"
+                        )
+                        if isinstance(selected.get("failure_review"), Mapping)
+                        else ()
+                    ),
+                ),
+            ),
+            (
+                "failed_commands",
+                (
+                    selected.get("failed_commands"),
+                    (
+                        selected.get("failure_review", {}).get("failed_commands")
+                        if isinstance(selected.get("failure_review"), Mapping)
+                        else ()
+                    ),
+                ),
+            ),
+        ):
+            merged: list[Any] = []
+            for source in sources:
+                if isinstance(source, Sequence) and not isinstance(
+                    source,
+                    (str, bytes, bytearray),
+                ):
+                    merged.extend(source)
+                elif source not in (None, ""):
+                    merged.append(source)
+            values = bounded_strings(
+                merged,
+                count=4 if output_name != "failed_commands" else 2,
+                width=192 if output_name != "failed_commands" else 256,
+                field=output_name,
+            )
+            if values:
+                minimal[output_name] = list(dict.fromkeys(values))
+        retry_guidance = root_addendum
+        if retry_guidance in (None, "") and isinstance(
+            selected.get("failure_review"), Mapping
+        ):
+            retry_guidance = selected["failure_review"].get(
+                "next_attempt_prompt_addendum"
+            )
+        if retry_guidance not in (None, ""):
+            minimal["next_attempt_prompt_addendum"] = bounded_text(
+                retry_guidance,
+                limit=1_536,
+                field="next_attempt_prompt_addendum",
+            )
+        if isinstance(validation, Mapping):
+            minimal_validation = {
+                name: bounded_scalar(
+                    validation[name],
+                    limit=128,
+                    field=f"validation.{name}",
+                )
+                for name in ("passed", "returncode", "reason")
+                if validation.get(name) not in (None, "", (), [], {})
+            }
+            if minimal_validation:
+                minimal["validation"] = minimal_validation
+        minimal["normalization"] = normalization_metadata("minimal")
+        minimal_encoded = canonical_json(minimal).encode("utf-8")
+        if len(minimal_encoded) <= maximum_bytes:
+            return minimal
+
+        # Last-resort projection has a fixed small shape and therefore cannot
+        # turn valid diagnostic input into a supervisor exception. It retains
+        # the reviewed action, its source identity, and bounded retry guidance.
+        source_review = (
+            selected.get("failure_review")
+            if isinstance(selected.get("failure_review"), Mapping)
+            else {}
+        )
+        emergency_review: dict[str, Any] = {}
+        for name in ("receipt_id", "decision", "accepted", "policy_version"):
+            value = source_review.get(name)
+            if value not in (None, "", (), [], {}):
+                emergency_review[name] = bounded_scalar(
+                    value,
+                    limit=128,
+                    field=f"failure_review.{name}",
+                )
+        for name, count, width in (
+            ("reason_codes", 4, 96),
+            ("missing_expected_outputs", 2, 160),
+            ("denied_paths", 2, 160),
+            ("failed_commands", 1, 192),
+        ):
+            values = bounded_strings(
+                source_review.get(name),
+                count=count,
+                width=width,
+                field=f"failure_review.{name}",
+            )
+            if values:
+                emergency_review[name] = values
+        emergency: dict[str, Any] = {}
+        for name in ("kind", "reason", "returncode", "exception_type", "phase"):
+            value = selected.get(name)
+            if value not in (None, "", (), [], {}):
+                emergency[name] = bounded_scalar(
+                    value,
+                    limit=128,
+                    field=name,
+                )
+        if emergency_review:
+            emergency["failure_review"] = emergency_review
+        if retry_guidance not in (None, ""):
+            emergency["next_attempt_prompt_addendum"] = bounded_text(
+                retry_guidance,
+                limit=512,
+                field="next_attempt_prompt_addendum",
+            )
+        emergency["normalization"] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "bounded-implementation-failure@1"
+            ),
+            "projection": "emergency",
+            "source_failure_id": source_failure_id,
+            "source_bytes": len(encoded),
+            "maximum_bytes": maximum_bytes,
+        }
+        return emergency
 
     @staticmethod
     def _implementation_context_file_stem(task: PortalTask) -> str:
