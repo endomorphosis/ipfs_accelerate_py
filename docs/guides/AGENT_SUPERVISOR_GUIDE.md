@@ -75,7 +75,7 @@ Defaults used by multi-lane programs in this repo:
 
 | Role | Variable | Recommended value |
 | --- | --- | --- |
-| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `grok` (Grok Build CLI) |
+| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `auto` (prefer Grok, fall back to Codex) |
 | Grok model | `IPFS_ACCELERATE_AGENT_GROK_MODEL` | `grok-4.5` |
 | Grok binary | `IPFS_ACCELERATE_AGENT_GROK_BIN` | path to `grok` (e.g. `~/.local/bin/grok`) |
 | Grok permissions | `IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE` | `bypassPermissions` for unattended lanes |
@@ -84,7 +84,7 @@ Defaults used by multi-lane programs in this repo:
 Example `implementation.env` for a runtime directory:
 
 ```bash
-export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok
+export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto
 export IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.5
 export IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE=bypassPermissions
 export IPFS_ACCELERATE_AGENT_GROK_BIN=/home/barberb/.local/bin/grok
@@ -93,9 +93,15 @@ export IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra
 
 Notes:
 
-- `provider=grok` forces the Grok Build path when the CLI is available.  
-- Codex is used when the provider is `codex` / `openai`, or as a fallback when
-  Grok is not selected and `codex` is on `PATH`. Always set
+- `provider=auto` selects an authenticated Grok Build CLI first and uses Codex
+  when Grok is unavailable before dispatch. Generated tasks use the soft
+  `grok, codex-review` role so they preserve this selector policy.
+- `provider=grok` forces the Grok Build path and intentionally disables that
+  pre-dispatch fallback; `provider=codex` / `openai` forces Codex.
+- A Grok attempt that has already started is never handed to Codex in the same
+  mutable worktree. Quota, runtime, validation, or policy failure is deferred
+  or rejected through the normal retry gates.
+- Always set
   `IPFS_ACCELERATE_AGENT_CODEX_MODEL` so fallback does not inherit an unrelated
   interactive Codex default.  
 - Source the env **before** starting multi-supervisor / daemons; children

@@ -226,7 +226,7 @@ Default provider env (ops may override):
 
 | Path | Typical setting |
 | --- | --- |
-| Grok | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok` |
+| Grok-first with Codex fallback | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto` |
 | Codex | `IPFS_ACCELERATE_AGENT_CODEX_MODEL=…` |
 
 ---
