@@ -360,9 +360,27 @@
     "ergoai": {
       "version": "3.0",
       "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
-      "sha256": "",
+      "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
       "identity_kind": "immutable_release_tag",
-      "release_tag": "v3.0_release"
+      "release_tag": "v3.0_release",
+      "artifact_size_bytes": 53064767,
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01"
+        },
+        "linux-aarch64": {
+          "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01"
+        }
+      },
+      "build_dependencies": {
+        "sh": "POSIX",
+        "make": ">=3.81",
+        "gcc": ">=4.8",
+        "flex": ">=2.6",
+        "bison": ">=3.0"
+      }
     },
     "hyperltl": {
       "version": "e3a41290",
@@ -1803,10 +1821,12 @@
           "tool_id": "ergoai",
           "version": "3.0",
           "artifact_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
-          "sha256": "",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
           "platform": "linux-x86_64",
-          "notes": "Official ErgoAI 3.0 .run installer; checksum verified at explicit install",
-          "is_checksummed": false,
+          "release_tag": "v3.0_release",
+          "artifact_size_bytes": 53064767,
+          "notes": "Official source-bearing ErgoAI 3.0 .run installer; checksum verified before execution",
+          "is_checksummed": true,
           "license": "Apache-2.0",
           "source": "https://github.com/ErgoAI/ErgoEngine"
         },
@@ -1814,11 +1834,13 @@
           "schema_version": "verification-toolchain-pin/v1",
           "tool_id": "ergoai",
           "version": "3.0",
-          "artifact_url": "",
-          "sha256": "",
-          "platform": "source",
-          "notes": "Git source fallback ErgoAI/ErgoEngine",
-          "is_checksummed": false,
+          "artifact_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+          "platform": "linux-aarch64",
+          "release_tag": "v3.0_release",
+          "artifact_size_bytes": 53064767,
+          "notes": "Official source-bearing ErgoAI 3.0 .run installer, compiled and semantically exercised on Linux aarch64; checksum verified before execution",
+          "is_checksummed": true,
           "license": "Apache-2.0",
           "source": "https://github.com/ErgoAI/ErgoEngine"
         }
@@ -1845,7 +1867,25 @@
         "requires_checksum_at_install": true,
         "unsupported_platforms_fail_closed": true,
         "supported_platforms": [
-          "linux-x86_64"
+          "linux-x86_64",
+          "linux-aarch64"
+        ],
+        "license_components": [
+          "Apache-2.0",
+          "LGPL-2.0"
+        ],
+        "required_build_commands": [
+          "sh",
+          "make",
+          "gcc",
+          "flex",
+          "bison"
+        ],
+        "live_semantic_checks_required": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay"
         ]
       }
     },

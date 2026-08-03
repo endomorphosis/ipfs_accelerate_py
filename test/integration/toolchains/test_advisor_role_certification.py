@@ -16,6 +16,7 @@ Covers:
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -180,6 +181,78 @@ def test_strict_install_selects_locked_symbolicai_and_ergoai(installer) -> None:
     }
 
 
+def test_ergoai_linux_aarch64_pin_is_exact_and_checksummed(installer) -> None:
+    pin = installer.select_strict_pin(
+        "ergoai",
+        platform_key="linux-aarch64",
+        repo_root=REPO_ROOT,
+        allow_source_fallback=False,
+    )
+    assert pin.version == LOCKED_ERGOAI_VERSION
+    assert pin.platform == "linux-aarch64"
+    assert pin.release_tag == "v3.0_release"
+    assert pin.is_checksummed is True
+    assert pin.sha256 == installer.ERGOAI_RELEASE_SHA256
+    assert pin.artifact_size_bytes == installer.ERGOAI_RELEASE_SIZE_BYTES
+
+
+def test_ergoai_unsupported_platform_fails_closed(installer, install_root) -> None:
+    receipt = installer.ensure_ergoai(
+        yes=True,
+        strict=False,
+        force=True,
+        install_root=install_root / "unsupported-ergoai",
+        repo_root=REPO_ROOT,
+        platform_key="darwin-arm64",
+        hermetic_shim=False,
+    )
+    assert not receipt.ok
+    assert receipt.phase == "pin_selection"
+    assert "pin_selection_failed" in receipt.reason_codes
+    assert receipt.install_attempted is False
+
+
+def test_ergoai_live_path_rejects_bad_prefetched_checksum(
+    installer, install_root
+) -> None:
+    artifact = install_root / "bad-ergoAI_3.0.run"
+    artifact.write_bytes(b"not the official release")
+    receipt = installer.ensure_ergoai(
+        yes=True,
+        strict=False,
+        force=True,
+        install_root=install_root / "bad-checksum",
+        repo_root=REPO_ROOT,
+        platform_key="linux-aarch64",
+        hermetic_shim=False,
+        artifact_path=artifact,
+    )
+    assert not receipt.ok
+    assert receipt.phase == "checksum"
+    assert "download_or_checksum_failed" in receipt.reason_codes
+    assert receipt.install_attempted is False
+
+
+def test_ergoai_live_request_never_substitutes_offline_shim(
+    installer, install_root, monkeypatch
+) -> None:
+    root = install_root / "offline-live-request"
+    monkeypatch.setenv("FORMAL_VERIFICATION_CERTIFY_OFFLINE", "1")
+    receipt = installer.ensure_ergoai(
+        yes=True,
+        strict=False,
+        force=True,
+        install_root=root,
+        repo_root=REPO_ROOT,
+        platform_key="linux-aarch64",
+        hermetic_shim=False,
+    )
+    assert not receipt.ok
+    assert receipt.phase == "offline_policy"
+    assert "offline_policy_blocks_live_install" in receipt.reason_codes
+    assert not (root / "advisors" / "ergoai" / "3.0" / "identity.json").exists()
+
+
 def test_strict_pin_rejects_wrong_symbolicai_version(installer) -> None:
     fake_lock = {
         "managed_pin_versions": {"symbolicai": ">=9.9.0,<10.0.0"},
@@ -340,6 +413,95 @@ def test_ensure_hermetic_install_records_identities(installer, install_root) -> 
     banner = (completed.stdout or "") + (completed.stderr or "")
     assert LOCKED_ERGOAI_VERSION in banner
     assert "ergoai" in banner.casefold() or "hermetic" in banner.casefold()
+
+
+def test_live_ergoai_certifier_requires_provenance_and_real_semantics(
+    installer, advisors_cert, install_root, monkeypatch
+) -> None:
+    root = install_root / "live-ergoai-fixture"
+    executable = root / "bin" / "ergoai"
+    executable.parent.mkdir(parents=True)
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "from pathlib import Path\n"
+        "import re, sys\n"
+        "if len(sys.argv) > 1 and sys.argv[1] in {'--version', '-v', 'version'}:\n"
+        "    print('ErgoAI 3.0 (managed linux-aarch64; v3.0_release)')\n"
+        "    raise SystemExit(0)\n"
+        "data = sys.stdin.read()\n"
+        "match = re.search(r\"load\\{'([^']+)'\\}\", data)\n"
+        "program = Path(match.group(1)).read_text() if match else ''\n"
+        "verdict = 'No' if 'fvt_ergo_absent' in data or 'fvt_ergo_mutated' in program else 'Yes'\n"
+        "print('Yes')\n"
+        "print(verdict)\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    xsb = root / "advisors" / "ergoai" / "3.0" / "vendor" / "XSB" / "config" / "aarch64-unknown-linux-gnu" / "bin" / "xsb"
+    xsb.parent.mkdir(parents=True)
+    xsb.write_bytes(b"fixture-xsb-aarch64")
+    xsb.chmod(0o755)
+    release = root / "downloads" / "ergoAI_3.0.run"
+    release.parent.mkdir(parents=True)
+    release.write_bytes(b"fixture-official-release")
+    release_digest = hashlib.sha256(release.read_bytes()).hexdigest()
+    monkeypatch.setattr(installer, "ERGOAI_RELEASE_SHA256", release_digest)
+    monkeypatch.setattr(installer, "ERGOAI_RELEASE_SIZE_BYTES", release.stat().st_size)
+
+    identity_path = root / "advisors" / "ergoai" / "3.0" / "identity.json"
+    identity_path.parent.mkdir(parents=True, exist_ok=True)
+    identity = {
+        "schema_version": "ergoai-managed-vendor-identity/v1",
+        "tool_id": "ergoai",
+        "version": "3.0",
+        "selected_platform": "linux-aarch64",
+        "release_tag": "v3.0_release",
+        "release_url": installer.ERGOAI_RELEASE_URL,
+        "release_artifact_path": str(release),
+        "release_artifact_sha256": release_digest,
+        "release_artifact_size_bytes": release.stat().st_size,
+        "vendor_executable": str(executable),
+        "vendor_executable_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+        "xsb_executable": str(xsb),
+        "xsb_executable_sha256": hashlib.sha256(xsb.read_bytes()).hexdigest(),
+        "xsb_configuration": "aarch64-unknown-linux-gnu",
+        "launcher_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+        "identity_digest_sha256": "fixture-identity",
+        "license_components": ["Apache-2.0", "LGPL-2.0"],
+        "checksum_verified": True,
+        "is_live_vendor": True,
+        "is_hermetic_advisor_shim": False,
+        "grants_proof_authority": False,
+    }
+    identity_path.write_text(json.dumps(identity), encoding="utf-8")
+
+    receipt = advisors_cert.certify_live_ergoai_vendor(
+        executable=executable,
+        install_root=root,
+        repo_root=REPO_ROOT,
+        platform_key="linux-aarch64",
+    )
+    assert receipt["interface"] == "LiveErgoAIAdvisorCertification@1"
+    assert receipt["vendor_certified"] is True
+    assert receipt["authoritative_live_evidence"] is True
+    assert receipt["evidence_class"] == "checksummed_authoritative_vendor_execution"
+    assert receipt["grants_proof_authority"] is False
+    assert receipt["promotion_blocked"] is True
+    assert not receipt["block_reasons"]
+    by_id = {check["check_id"]: check for check in receipt["checks"]}
+    for kind in ("positive", "negative", "mutation", "replay"):
+        assert by_id[f"advisors.ergoai_live.{kind}"]["status"] == "passed"
+
+    xsb.write_bytes(b"tampered-xsb")
+    rejected = advisors_cert.certify_live_ergoai_vendor(
+        executable=executable,
+        install_root=root,
+        repo_root=REPO_ROOT,
+        platform_key="linux-aarch64",
+    )
+    assert rejected["vendor_certified"] is False
+    assert rejected["authoritative_live_evidence"] is False
+    assert "xsb_executable_digest_mismatch" in rejected["block_reasons"]
 
 
 def test_authorize_install_forbids_import_and_requires_yes(installer) -> None:

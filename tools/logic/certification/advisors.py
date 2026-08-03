@@ -90,6 +90,9 @@ CERTIFICATION_SURFACE: Final = "tools.logic.certification.advisors"
 HANDLER_ID: Final = "advisor_role_certification@1"
 AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.ADVISORY.value
 AUTHORITY_SCOPE: Final = "candidate_generation_only"
+LIVE_ERGOAI_INTERFACE: Final = "LiveErgoAIAdvisorCertification@1"
+LIVE_ERGOAI_SCHEMA_VERSION: Final = "live-ergoai-advisor-certification/v1"
+LIVE_ERGOAI_EVIDENCE_CLASS: Final = "checksummed_authoritative_vendor_execution"
 
 ADVISOR_TOOL_IDS: Final = (
     "symbolicai",
@@ -1040,9 +1043,10 @@ def certify_install_identities(
         platform_key="any",
         repo_root=root,
     )
+    ergo_platform = advisors_installer.detect_platform_key()
     ergo_pin = advisors_installer.select_strict_pin(
         "ergoai",
-        platform_key="linux-x86_64",
+        platform_key=ergo_platform,
         repo_root=root,
     )
     pin_ok = (
@@ -1077,7 +1081,7 @@ def certify_install_identities(
             force=True,
             install_root=target,
             repo_root=root,
-            platform_key="linux-x86_64",
+            platform_key=ergo_platform,
             hermetic_shim=True,
             test_mode=True,
         )
@@ -1113,6 +1117,245 @@ def certify_install_identities(
             "hermetic_offline": True,
         },
     }
+
+
+def certify_live_ergoai_vendor(
+    *,
+    executable: str | Path | None = None,
+    install_root: str | Path | None = None,
+    repo_root: Path | None = None,
+    platform_key: str | None = None,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    """Certify a real, checksum-bound ErgoAI runtime without installing it.
+
+    This is deliberately separate from the offline advisor-role receipt.  It
+    replays managed artifact digests and executes positive, negative, mutation,
+    and replay F-logic cases.  Passing proves the vendor runtime is usable for
+    bounded candidate/advisor work; it never elevates ErgoAI to solver or
+    theorem authority.
+    """
+
+    root = repo_root or repo_root_from()
+    if advisors_installer is None:
+        payload = {
+            "interface": LIVE_ERGOAI_INTERFACE,
+            "schema_version": LIVE_ERGOAI_SCHEMA_VERSION,
+            "goal_id": GOAL_ID,
+            "task_id": TASK_ID,
+            "tool_id": "ergoai",
+            "vendor_certified": False,
+            "authoritative_live_evidence": False,
+            "production_certified": False,
+            "promotion_blocked": True,
+            "authority_scope": AUTHORITY_SCOPE,
+            "authority_ceiling": AUTHORITY_CEILING,
+            "grants_proof_authority": False,
+            "block_reasons": ["advisors_installer_unavailable"],
+            "checks": [],
+        }
+        payload["receipt_digest_sha256"] = content_digest(payload)
+        return payload
+
+    selected_platform = platform_key or advisors_installer.detect_platform_key()
+    resolved_root = advisors_installer.expand_user_local_root(install_root)
+    probe = advisors_installer.probe_ergoai_identity(
+        expected_version=LOCKED_ERGOAI_VERSION,
+        executable=str(executable) if executable is not None else None,
+        install_root=resolved_root,
+        require_managed_vendor=True,
+        platform_key=selected_platform,
+    )
+    resolved_executable = str(probe.get("executable_path") or "")
+    semantics = (
+        advisors_installer.run_ergoai_semantic_checks(
+            resolved_executable,
+            timeout=timeout,
+        )
+        if resolved_executable and probe.get("version_match")
+        else {
+            "schema_version": "ergoai-live-semantic-checks/v1",
+            "passed": False,
+            "checks": {},
+            "replay_bound": False,
+        }
+    )
+
+    checks: list[CheckResult] = []
+    identity_ok = bool(probe.get("path_present") and probe.get("version_match"))
+    checks.append(
+        CheckResult(
+            check_id="advisors.ergoai_live.identity",
+            kind="install",
+            status="passed" if identity_ok else "failed",
+            expected=f"ErgoAI {LOCKED_ERGOAI_VERSION}",
+            observed=str(probe.get("version_string") or probe.get("probe_error")),
+            tool_id="ergoai",
+            reason_codes=[] if identity_ok else [str(probe.get("probe_error") or "identity_failed")],
+            bindings={
+                "executable_path": resolved_executable or None,
+                "platform": selected_platform,
+            },
+        )
+    )
+    provenance_ok = bool(probe.get("managed_vendor_provenance_verified"))
+    checks.append(
+        CheckResult(
+            check_id="advisors.ergoai_live.provenance",
+            kind="policy",
+            status="passed" if provenance_ok else "failed",
+            expected="checksummed_non_shim_managed_vendor_identity",
+            observed=(
+                "verified"
+                if provenance_ok
+                else ",".join(str(v) for v in probe.get("reason_codes") or ())
+                or "unverified"
+            ),
+            tool_id="ergoai",
+            reason_codes=[] if provenance_ok else list(probe.get("reason_codes") or ()),
+            bindings={
+                "identity_manifest_path": probe.get("identity_manifest_path"),
+                "is_hermetic_advisor_shim": bool(
+                    probe.get("is_hermetic_advisor_shim")
+                ),
+            },
+        )
+    )
+
+    semantic_checks = semantics.get("checks") or {}
+    for kind in ("positive", "negative", "mutation", "replay"):
+        observed = semantic_checks.get(kind) or {}
+        passed = bool(observed.get("passed"))
+        checks.append(
+            CheckResult(
+                check_id=f"advisors.ergoai_live.{kind}",
+                kind=kind,
+                status="passed" if passed else "failed",
+                expected=str(observed.get("expected") or ("yes" if kind in {"positive", "replay"} else "no")),
+                observed=str(observed.get("verdict") or "unavailable"),
+                tool_id="ergoai",
+                reason_codes=[] if passed else [f"{kind}_semantic_check_failed"],
+                bindings={
+                    key: observed.get(key)
+                    for key in (
+                        "returncode",
+                        "program_digest_sha256",
+                        "query_digest_sha256",
+                        "output_digest_sha256",
+                    )
+                },
+            )
+        )
+    authority_ok = (
+        AUTHORITY_CEILING == ToolchainAuthorityCeiling.ADVISORY.value
+        and not can_satisfy_certified_authority_requirement("ergoai")
+    )
+    checks.append(
+        CheckResult(
+            check_id="advisors.ergoai_live.authority_boundary",
+            kind="authority",
+            status="passed" if authority_ok else "failed",
+            expected="advisor_only_never_proof_authority",
+            observed=f"ceiling={AUTHORITY_CEILING};can_satisfy={not authority_ok}",
+            tool_id="ergoai",
+        )
+    )
+
+    vendor_certified = bool(
+        identity_ok
+        and provenance_ok
+        and semantics.get("passed")
+        and semantics.get("replay_bound")
+        and authority_ok
+    )
+    block_reasons = sorted(
+        {
+            reason
+            for check in checks
+            if check.status != "passed"
+            for reason in (check.reason_codes or [check.check_id])
+        }
+    )
+    manifest = probe.get("manifest") or {}
+    manifest_projection = {
+        key: manifest.get(key)
+        for key in (
+            "schema_version",
+            "tool_id",
+            "version",
+            "selected_platform",
+            "release_tag",
+            "release_url",
+            "release_artifact_sha256",
+            "release_artifact_size_bytes",
+            "vendor_executable_sha256",
+            "xsb_configuration",
+            "xsb_executable_sha256",
+            "launcher_sha256",
+            "identity_digest_sha256",
+            "license_components",
+            "checksum_verified",
+            "is_live_vendor",
+            "is_hermetic_advisor_shim",
+        )
+    }
+    identity_manifest_path = Path(str(probe.get("identity_manifest_path") or ""))
+    identity_manifest_digest = (
+        content_digest(identity_manifest_path.read_bytes())
+        if identity_manifest_path.is_file()
+        else None
+    )
+    payload = {
+        "interface": LIVE_ERGOAI_INTERFACE,
+        "schema_version": LIVE_ERGOAI_SCHEMA_VERSION,
+        "goal_id": GOAL_ID,
+        "task_id": TASK_ID,
+        "program": PROGRAM,
+        "tool_id": "ergoai",
+        "evidence_class": (
+            LIVE_ERGOAI_EVIDENCE_CLASS if vendor_certified else "unverified_or_incomplete"
+        ),
+        "vendor_certified": vendor_certified,
+        "authoritative_live_evidence": vendor_certified,
+        # Production-certified here means the advisor runtime is deployable in
+        # its declared role.  It remains non-authoritative for proofs.
+        "production_certified": vendor_certified,
+        "promotion_blocked": True,
+        "authority_scope": AUTHORITY_SCOPE,
+        "authority_ceiling": AUTHORITY_CEILING,
+        "grants_theorem_authority": False,
+        "grants_proof_authority": False,
+        "advisors_never_promote_alone": True,
+        "network_used": False,
+        "install_attempted": False,
+        "download_attempted": False,
+        "selected_platform": selected_platform,
+        "executable_path": resolved_executable or None,
+        "identity_manifest_path": str(identity_manifest_path)
+        if identity_manifest_path.is_file()
+        else None,
+        "identity_manifest_digest_sha256": identity_manifest_digest,
+        "managed_identity": manifest_projection,
+        "semantic_evidence_digest_sha256": semantics.get(
+            "normalized_evidence_digest_sha256"
+        ),
+        "checks": [check.to_dict() for check in checks],
+        "block_reasons": block_reasons,
+        "source_binding": {
+            "repo_root": str(root),
+            "release_url": getattr(
+                advisors_installer, "ERGOAI_RELEASE_URL", ""
+            ),
+            "release_sha256": getattr(
+                advisors_installer, "ERGOAI_RELEASE_SHA256", ""
+            ),
+            "release_tag": getattr(
+                advisors_installer, "ERGOAI_RELEASE_TAG", ""
+            ),
+        },
+    }
+    payload["receipt_digest_sha256"] = content_digest(payload)
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -1459,11 +1702,51 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Repository root (auto-detected when omitted)",
     )
+    parser.add_argument(
+        "--live-ergoai",
+        action="store_true",
+        help="Run checksum/provenance-bound live ErgoAI semantic certification",
+    )
+    parser.add_argument(
+        "--ergoai-executable",
+        type=Path,
+        default=None,
+        help="Managed ErgoAI launcher to certify (auto-discovered when omitted)",
+    )
+    parser.add_argument(
+        "--install-root",
+        type=Path,
+        default=None,
+        help="Managed prover root containing the ErgoAI identity manifest",
+    )
+    parser.add_argument(
+        "--platform-key",
+        default=None,
+        help="Expected lock platform, such as linux-aarch64",
+    )
     args = parser.parse_args(argv)
 
-    receipt = build_certification_receipt(repo_root=args.repo_root)
+    if args.live_ergoai:
+        receipt = certify_live_ergoai_vendor(
+            executable=args.ergoai_executable,
+            install_root=args.install_root,
+            repo_root=args.repo_root,
+            platform_key=args.platform_key,
+        )
+        success_key = "vendor_certified"
+    else:
+        receipt = build_certification_receipt(repo_root=args.repo_root)
+        success_key = "production_certified"
     if args.json:
         print(json.dumps(receipt, indent=2, sort_keys=True))
+    elif args.live_ergoai:
+        print(f"{LIVE_ERGOAI_INTERFACE} goal={GOAL_ID} task={TASK_ID}")
+        print(
+            f"  vendor_certified={receipt['vendor_certified']} "
+            f"authoritative_live_evidence={receipt['authoritative_live_evidence']} "
+            f"promotion_blocked={receipt['promotion_blocked']}"
+        )
+        print(f"  digest={receipt.get('receipt_digest_sha256', '')[:16]}…")
     else:
         print(f"{INTERFACE} goal={GOAL_ID} task={TASK_ID}")
         print(
@@ -1474,7 +1757,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"  advisors={','.join(ADVISOR_TOOL_IDS)}")
         print(f"  digest={receipt.get('receipt_digest_sha256', '')[:16]}…")
-    return 0 if receipt.get("production_certified") else 1
+    return 0 if receipt.get(success_key) else 1
 
 
 if __name__ == "__main__":
@@ -1493,6 +1776,9 @@ __all__ = [
     "HANDLER_ID",
     "AUTHORITY_CEILING",
     "AUTHORITY_SCOPE",
+    "LIVE_ERGOAI_INTERFACE",
+    "LIVE_ERGOAI_SCHEMA_VERSION",
+    "LIVE_ERGOAI_EVIDENCE_CLASS",
     "ADVISOR_TOOL_IDS",
     "LOCKED_SYMBOLICAI_VERSION",
     "LOCKED_ERGOAI_VERSION",
@@ -1507,6 +1793,7 @@ __all__ = [
     "advisors_cannot_promote_hammer_lane",
     "evaluate_corpus_case",
     "certify_install_identities",
+    "certify_live_ergoai_vendor",
     "run_certification_suite",
     "build_certification_receipt",
     "lane_handler",
