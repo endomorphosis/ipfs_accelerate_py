@@ -33,6 +33,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.legacy_landed_attestation i
     legacy_landed_review_key_id,
     verify_legacy_landed_review_attestation,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.legacy_landed_provider_cli import (
+    build_legacy_landed_cli_provider_pair,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
+    LLM_USAGE_MODE_ENFORCE,
+    LlmChildResultEnvelope,
+)
 
 HEAD = "a" * 40
 TREE = "b" * 40
@@ -558,3 +565,97 @@ def test_bundle_and_child_supervisor_forward_only_two_explicit_legacy_paths(
     incomplete = replace(config, legacy_landed_review_key_path=None)
     with pytest.raises(ValueError):
         PortalImplementationSupervisor(incomplete)._build_daemon_command()
+
+
+def test_cli_adapters_send_exact_envelope_and_observe_no_fallback_effective_child(
+    tmp_path: Path,
+) -> None:
+    _private, issuer = _private_key_file(tmp_path / "key")
+    policy = legacy.parse_legacy_landed_review_policy(
+        _policy_payload(issuer_key_id=issuer)
+    )
+    task = policy.task("ASE-005")
+    manifest = legacy.build_legacy_landed_byte_manifest(policy, _binding(task))
+    observed: list[tuple[str, Any]] = []
+
+    def invoke(prompt: str, config: Any):
+        observed.append((prompt, config))
+        request_payload = json.loads(prompt)
+        leaf = request_payload["payload"]["leaf"]
+        response = {
+            "schema": legacy.LEGACY_LANDED_LEAF_DECISION_SCHEMA,
+            "decision": "approve",
+            "manifest_id": request_payload["payload"]["manifest_id"],
+            "leaf_id": leaf["leaf_id"],
+            "findings": [],
+        }
+        return json.dumps(response), LlmChildResultEnvelope(
+            usage_mode=LLM_USAGE_MODE_ENFORCE,
+            request_id=config.request_id,
+            idempotency_key=config.idempotency_key,
+            supervisor_receipt_id="supervisor:" + config.request_id,
+            endpoint_receipt_id="endpoint:" + config.request_id,
+            execution_result_id="result:" + config.request_id,
+            effective_provider=config.provider,
+            text_chars=len(json.dumps(response)),
+            exit_code=0,
+        )
+
+    grok, codex = build_legacy_landed_cli_provider_pair(policy, invoker=invoke)
+    leaf = manifest["leaves"][0]
+    grok_request = legacy._leaf_review_request(  # noqa: SLF001
+        policy=policy,
+        task=task,
+        manifest=manifest,
+        leaf=leaf,
+        provider=policy.grok,
+    )
+    codex_request = legacy._leaf_review_request(  # noqa: SLF001
+        policy=policy,
+        task=task,
+        manifest=manifest,
+        leaf=leaf,
+        provider=policy.codex,
+    )
+    grok_observation = grok(grok_request)
+    codex_observation = codex(codex_request)
+
+    assert observed[0][0].encode("ascii") == grok_request.canonical_prompt
+    assert observed[1][0].encode("ascii") == codex_request.canonical_prompt
+    assert all(config.repo_root != tmp_path for _prompt, config in observed)
+    assert all(config.allow_local_fallback is False for _prompt, config in observed)
+    assert all(config.usage_mode == LLM_USAGE_MODE_ENFORCE for _prompt, config in observed)
+    assert grok_observation.effective_provider == "grok_cli"
+    assert codex_observation.effective_provider == "codex_cli"
+    assert grok_observation.provider_chain == ("grok_cli",)
+    assert codex_observation.provider_chain == ("codex_cli",)
+    assert grok_observation.observation_id != codex_observation.observation_id
+
+
+def test_cli_adapter_rejects_child_effective_provider_mismatch(tmp_path: Path) -> None:
+    _private, issuer = _private_key_file(tmp_path / "key")
+    policy = legacy.parse_legacy_landed_review_policy(
+        _policy_payload(issuer_key_id=issuer)
+    )
+    task = policy.task("ASE-005")
+    manifest = legacy.build_legacy_landed_byte_manifest(policy, _binding(task))
+
+    def invoke(_prompt: str, config: Any):
+        return "{}", LlmChildResultEnvelope(
+            usage_mode=LLM_USAGE_MODE_ENFORCE,
+            request_id=config.request_id,
+            idempotency_key=config.idempotency_key,
+            effective_provider="codex_cli",
+            exit_code=0,
+        )
+
+    grok, _codex = build_legacy_landed_cli_provider_pair(policy, invoker=invoke)
+    request = legacy._leaf_review_request(  # noqa: SLF001
+        policy=policy,
+        task=task,
+        manifest=manifest,
+        leaf=manifest["leaves"][0],
+        provider=policy.grok,
+    )
+    with pytest.raises(RuntimeError, match="not exactly bound"):
+        grok(request)
