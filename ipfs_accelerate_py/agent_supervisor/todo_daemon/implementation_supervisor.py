@@ -5262,6 +5262,7 @@ class PortalImplementationSupervisor:
                 commit_outputs=commit_outputs,
                 repo_root=self.config.repo_root,
                 commit_subject=commit_subject,
+                merge_queue_dir=self.config.merge_queue_dir,
             ),
         )
         if findings:

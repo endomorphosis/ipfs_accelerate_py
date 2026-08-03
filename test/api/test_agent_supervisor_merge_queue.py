@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
+    POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA,
+    POST_MERGE_CORRECTION_FAILURE_SCHEMA,
+    POST_MERGE_CORRECTION_LEGACY_FAILURE_ANCHOR_SCHEMA,
+    POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA,
+    POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA,
     MergeQueue,
     MergeQueueFenceError,
     MergeQueueFullError,
     MergeQueueIntegrityError,
-    POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
@@ -128,6 +132,127 @@ def _evolved_post_merge_denial_record(
     evolved.pop("denial_id")
     evolved["denial_id"] = content_identity(evolved)
     return evolved
+
+
+def _correction_common(
+    denial: dict[str, object],
+    *,
+    attempt: int,
+) -> dict[str, object]:
+    return {
+        "denial_id": denial["denial_id"],
+        "target_repository_id": denial["target_repository_id"],
+        "target_branch": denial["target_branch"],
+        "task_id": denial["task_id"],
+        "canonical_task_key": denial["canonical_task_key"],
+        "canonical_task_cid": denial["canonical_task_cid"],
+        "board_namespace": denial["board_namespace"],
+        "task_binding_id": denial["task_binding_id"],
+        "attempt": attempt,
+        "origin_stream_id": denial["correction_origin_stream_id"],
+    }
+
+
+def _correction_consumption(
+    denial: dict[str, object],
+    *,
+    attempt: int,
+    authority_kind: str,
+    authority_id: str,
+    sequence: int,
+) -> dict[str, object]:
+    return {
+        "schema": POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA,
+        **_correction_common(denial, attempt=attempt),
+        "authority_kind": authority_kind,
+        "authority_id": authority_id,
+        "started_event_id": f"event-started-{sequence}",
+        "started_event_sequence": sequence,
+    }
+
+
+def _correction_failure(
+    denial: dict[str, object],
+    *,
+    attempt: int,
+    authority_kind: str,
+    authority_id: str,
+    sequence: int,
+    failure_kind: str = "implementation",
+) -> dict[str, object]:
+    return {
+        "schema": POST_MERGE_CORRECTION_FAILURE_SCHEMA,
+        **_correction_common(denial, attempt=attempt),
+        "authority_kind": authority_kind,
+        "authority_id": authority_id,
+        "terminal_event_id": f"event-terminal-{sequence}",
+        "terminal_event_sequence": sequence,
+        "failure_kind": failure_kind,
+    }
+
+
+def _correction_grant(
+    denial: dict[str, object],
+    *,
+    attempt: int,
+    failure_record: dict[str, object],
+    sequence: int,
+    grant_id: str,
+    recovery_seed: dict[str, str] | None = None,
+) -> dict[str, object]:
+    failure_detail = failure_record["detail"]
+    assert isinstance(failure_detail, dict)
+    return {
+        "schema": POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA,
+        **_correction_common(denial, attempt=attempt),
+        "grant_id": grant_id,
+        "grant_event_id": f"event-grant-{sequence}",
+        "grant_event_sequence": sequence,
+        "failure_record_id": failure_record["record_id"],
+        "failure_event_id": failure_detail["terminal_event_id"],
+        "failure_event_sequence": failure_detail[
+            "terminal_event_sequence"
+        ],
+        "failure_kind": failure_detail["failure_kind"],
+        "repair_task_id": f"REPAIR-{attempt}",
+        "repair_task_binding_id": f"repair-task-binding-{attempt}",
+        "repair_binding_id": f"repair-binding-{attempt}",
+        **(
+            recovery_seed
+            or {
+                "recovery_seed_ref": "",
+                "recovery_seed_tree_id": "",
+                "recovery_seed_submodule_path": "",
+                "recovery_seed_submodule_commit": "",
+            }
+        ),
+    }
+
+
+def _legacy_correction_failure_anchor(
+    denial: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "schema": POST_MERGE_CORRECTION_LEGACY_FAILURE_ANCHOR_SCHEMA,
+        **_correction_common(denial, attempt=3),
+        "authority_kind": "review_denial",
+        "authority_id": denial["denial_id"],
+        "correction_attempt": 2,
+        "correction_started_event_id": "legacy-start-attempt-2",
+        "correction_started_event_sequence": 1993,
+        "correction_terminal_event_id": "legacy-terminal-attempt-2",
+        "correction_terminal_event_sequence": 2024,
+        "superseding_started_event_id": "legacy-start-attempt-3",
+        "superseding_started_event_sequence": 2078,
+        "terminal_event_id": "legacy-terminal-attempt-3",
+        "terminal_event_sequence": 2109,
+        "failure_kind": "implementation",
+        "migration_reason": "legacy_untyped_retry_lineage",
+        "recovery_seed_ref": "",
+        "recovery_seed_tree_id": "",
+        "recovery_seed_submodule_path": "ipfs_datasets_py",
+        "recovery_seed_submodule_commit": "8" * 40,
+    }
 
 
 def test_post_merge_denial_registry_is_permanent_idempotent_and_restart_safe(
@@ -289,6 +414,572 @@ def test_post_merge_denial_correction_authority_promotes_monotonically(
     assert queue.record_post_merge_review_denial(authorized) == authorized
     assert queue.record_post_merge_review_denial(terminal_only) == authorized
     assert queue.verified_post_merge_review_denials() == (authorized,)
+
+
+def test_post_merge_correction_registry_is_one_shot_and_restart_safe(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'1' * 64}"
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    queue.record_post_merge_review_denial(denial)
+    authority = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert authority["authority_available"] is True
+    assert authority["authority_kind"] == "review_denial"
+    assert authority["authorized_attempt"] == 2
+
+    consumption = _correction_consumption(
+        denial,
+        attempt=2,
+        authority_kind="review_denial",
+        authority_id=str(denial["denial_id"]),
+        sequence=10,
+    )
+    consumed = queue.record_post_merge_correction_consumption(
+        consumption,
+        expected_parent_record_id=str(denial["denial_id"]),
+    )
+    assert queue.record_post_merge_correction_consumption(
+        consumption,
+        expected_parent_record_id=str(denial["denial_id"]),
+    ) == consumed
+    conflicting = dict(consumption)
+    conflicting["started_event_id"] = "different-start"
+    with pytest.raises(MergeQueueFenceError, match="consumed"):
+        queue.record_post_merge_correction_consumption(
+            conflicting,
+            expected_parent_record_id=str(denial["denial_id"]),
+        )
+
+    failure = queue.record_post_merge_correction_failure(
+        _correction_failure(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=20,
+        ),
+        expected_parent_record_id=str(consumed["record_id"]),
+    )
+    grant = queue.record_post_merge_correction_repair_grant(
+        _correction_grant(
+            denial,
+            attempt=3,
+            failure_record=failure,
+            sequence=30,
+            grant_id="grant-attempt-3",
+        ),
+        expected_parent_record_id=str(failure["record_id"]),
+    )
+
+    restarted = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    assert restarted.verified_post_merge_correction_chain(
+        str(denial["denial_id"])
+    ) == (consumed, failure, grant)
+    authority = restarted.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert authority["authority_available"] is True
+    assert authority["authority_kind"] == "repair_grant"
+    assert authority["authority_id"] == "grant-attempt-3"
+    assert authority["authorized_attempt"] == 3
+
+
+def test_post_merge_correction_failed_grant_can_receive_next_repair(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'2' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    queue.record_post_merge_review_denial(denial)
+    denial_consumed = queue.record_post_merge_correction_consumption(
+        _correction_consumption(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=10,
+        ),
+        expected_parent_record_id=str(denial["denial_id"]),
+    )
+    first_failure = queue.record_post_merge_correction_failure(
+        _correction_failure(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=20,
+        ),
+        expected_parent_record_id=str(denial_consumed["record_id"]),
+    )
+    first_grant = queue.record_post_merge_correction_repair_grant(
+        _correction_grant(
+            denial,
+            attempt=3,
+            failure_record=first_failure,
+            sequence=30,
+            grant_id="grant-attempt-3",
+        ),
+        expected_parent_record_id=str(first_failure["record_id"]),
+    )
+    grant_consumed = queue.record_post_merge_correction_consumption(
+        _correction_consumption(
+            denial,
+            attempt=3,
+            authority_kind="repair_grant",
+            authority_id="grant-attempt-3",
+            sequence=40,
+        ),
+        expected_parent_record_id=str(first_grant["record_id"]),
+    )
+    second_failure = queue.record_post_merge_correction_failure(
+        _correction_failure(
+            denial,
+            attempt=3,
+            authority_kind="repair_grant",
+            authority_id="grant-attempt-3",
+            sequence=50,
+        ),
+        expected_parent_record_id=str(grant_consumed["record_id"]),
+    )
+    second_grant = queue.record_post_merge_correction_repair_grant(
+        _correction_grant(
+            denial,
+            attempt=4,
+            failure_record=second_failure,
+            sequence=60,
+            grant_id="grant-attempt-4",
+        ),
+        expected_parent_record_id=str(second_failure["record_id"]),
+    )
+
+    authority = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert authority["authority_available"] is True
+    assert authority["authority_id"] == "grant-attempt-4"
+    assert authority["authorized_attempt"] == 4
+    assert queue.verified_post_merge_correction_chain(
+        str(denial["denial_id"])
+    )[-1] == second_grant
+
+
+def test_post_merge_correction_registry_rejects_gaps_and_identity_drift(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'3' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    queue.record_post_merge_review_denial(denial)
+    root_failure = _correction_failure(
+        denial,
+        attempt=2,
+        authority_kind="review_denial",
+        authority_id=str(denial["denial_id"]),
+        sequence=20,
+    )
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="root lacks one-shot authority",
+    ):
+        queue.record_post_merge_correction_failure(
+            root_failure,
+            expected_parent_record_id=str(denial["denial_id"]),
+        )
+    drifted = _correction_consumption(
+        denial,
+        attempt=2,
+        authority_kind="review_denial",
+        authority_id=str(denial["denial_id"]),
+        sequence=10,
+    )
+    drifted["board_namespace"] = "foreign-board"
+    with pytest.raises(MergeQueueFenceError, match="identity differs"):
+        queue.record_post_merge_correction_consumption(
+            drifted,
+            expected_parent_record_id=str(denial["denial_id"]),
+        )
+    consumed = queue.record_post_merge_correction_consumption(
+        _correction_consumption(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=10,
+        ),
+        expected_parent_record_id=str(denial["denial_id"]),
+    )
+    evolved = _evolved_post_merge_denial_record(
+        denial,
+        marker="a",
+        correction_authorized=True,
+    )
+    evolved["correction_origin_stream_id"] = "event-log:sha256:000"
+    evolved.pop("denial_id")
+    evolved["denial_id"] = content_identity(evolved)
+    with pytest.raises(MergeQueueFenceError, match="cannot evolve"):
+        queue.record_post_merge_review_denial(evolved)
+    assert queue.verified_post_merge_correction_chain(
+        str(denial["denial_id"])
+    ) == (consumed,)
+
+
+def test_post_merge_correction_cas_allows_only_one_concurrent_child(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'4' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    queue.record_post_merge_review_denial(denial)
+    candidates = [
+        _correction_consumption(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=sequence,
+        )
+        for sequence in (10, 11)
+    ]
+
+    def append(value: dict[str, object]) -> str:
+        try:
+            result = queue.record_post_merge_correction_consumption(
+                value,
+                expected_parent_record_id=str(denial["denial_id"]),
+            )
+            return str(result["record_id"])
+        except MergeQueueFenceError:
+            return "fenced"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(append, candidates))
+
+    assert outcomes.count("fenced") == 1
+    assert len(queue.verified_post_merge_correction_chain()) == 1
+
+
+def test_post_merge_correction_registry_migrates_legacy_denial_head_once(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'5' * 64}"
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    queue.record_post_merge_review_denial(denial)
+    with queue._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        # Model a genuine pre-registry database. A one-time migration may
+        # create a pristine head only when the durable deployment marker is
+        # absent.
+        connection.execute(
+            """DELETE FROM agent_supervisor_store_metadata
+               WHERE key='post_merge_correction_registry:migrated'"""
+        )
+        connection.execute(
+            """DELETE FROM post_merge_correction_chain_heads
+               WHERE denial_id=?""",
+            (denial["denial_id"],),
+        )
+        connection.commit()
+    migrated = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    assert migrated.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )["authority_available"] is True
+
+
+def test_post_merge_correction_registry_rejects_full_consumed_rollback(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'5' * 64}"
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    queue.record_post_merge_review_denial(denial)
+
+    queue.record_post_merge_correction_consumption(
+        _correction_consumption(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=10,
+        ),
+        expected_parent_record_id=str(denial["denial_id"]),
+    )
+    with queue._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """DELETE FROM post_merge_correction_chain_records
+               WHERE denial_id=?""",
+            (denial["denial_id"],),
+        )
+        connection.execute(
+            """DELETE FROM post_merge_correction_chain_heads
+               WHERE denial_id=?""",
+            (denial["denial_id"],),
+        )
+        connection.commit()
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="head coverage changed",
+    ):
+        MergeQueue(
+            queue_path,
+            target_repository_id=repository_id,
+            target_branch="agent/uiir",
+            require_target_binding=True,
+        )
+
+
+def test_post_merge_correction_legacy_anchor_binds_only_seeded_next_attempt(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'6' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    queue.record_post_merge_review_denial(denial)
+    anchor_value = _legacy_correction_failure_anchor(denial)
+    anchor = queue.record_post_merge_correction_legacy_failure_anchor(
+        anchor_value,
+        expected_parent_record_id=str(denial["denial_id"]),
+    )
+    assert queue.record_post_merge_correction_legacy_failure_anchor(
+        anchor_value,
+        expected_parent_record_id=str(denial["denial_id"]),
+    ) == anchor
+    state = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert state["state"] == "legacy_failure_anchored"
+    assert state["authority_available"] is False
+    assert state["recovery_seed_ref"] == ""
+
+    without_seed = _correction_grant(
+        denial,
+        attempt=4,
+        failure_record=anchor,
+        sequence=2200,
+        grant_id="legacy-grant-attempt-4",
+    )
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="legacy recovery seed is required",
+    ):
+        queue.record_post_merge_correction_repair_grant(
+            without_seed,
+            expected_parent_record_id=str(anchor["record_id"]),
+        )
+    seed = {
+        "recovery_seed_ref": "6" * 40,
+        "recovery_seed_tree_id": f"git-tree:{'7' * 40}",
+        "recovery_seed_submodule_path": str(
+            anchor_value["recovery_seed_submodule_path"]
+        ),
+        "recovery_seed_submodule_commit": str(
+            anchor_value["recovery_seed_submodule_commit"]
+        ),
+    }
+    wrong_postimage = dict(seed)
+    wrong_postimage["recovery_seed_submodule_commit"] = "9" * 40
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="crosses failure identity",
+    ):
+        queue.record_post_merge_correction_repair_grant(
+            _correction_grant(
+                denial,
+                attempt=4,
+                failure_record=anchor,
+                sequence=2200,
+                grant_id="wrong-postimage-grant",
+                recovery_seed=wrong_postimage,
+            ),
+            expected_parent_record_id=str(anchor["record_id"]),
+        )
+    grant = queue.record_post_merge_correction_repair_grant(
+        _correction_grant(
+            denial,
+            attempt=4,
+            failure_record=anchor,
+            sequence=2200,
+            grant_id="legacy-grant-attempt-4",
+            recovery_seed=seed,
+        ),
+        expected_parent_record_id=str(anchor["record_id"]),
+    )
+    state = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert state["authority_available"] is True
+    assert state["authorized_attempt"] == 4
+    assert {
+        name: state[name] for name in seed
+    } == seed
+
+    consumed = queue.record_post_merge_correction_consumption(
+        _correction_consumption(
+            denial,
+            attempt=4,
+            authority_kind="repair_grant",
+            authority_id="legacy-grant-attempt-4",
+            sequence=2300,
+        ),
+        expected_parent_record_id=str(grant["record_id"]),
+    )
+    assert consumed["attempt"] == 4
+    consumed_state = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert consumed_state["authority_available"] is False
+    assert consumed_state["recovery_seed_ref"] == ""
+
+
+def test_post_merge_correction_history_mirror_is_atomic_and_prefix_safe(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'7' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    queue.record_post_merge_review_denial(denial)
+    consumption = _correction_consumption(
+        denial,
+        attempt=2,
+        authority_kind="review_denial",
+        authority_id=str(denial["denial_id"]),
+        sequence=10,
+    )
+    first = queue.mirror_post_merge_correction_history([consumption])
+    failure_value = _correction_failure(
+        denial,
+        attempt=2,
+        authority_kind="review_denial",
+        authority_id=str(denial["denial_id"]),
+        sequence=20,
+    )
+    full = queue.mirror_post_merge_correction_history(
+        [consumption, failure_value]
+    )
+    assert full[:1] == first
+    assert queue.mirror_post_merge_correction_history(
+        [consumption]
+    ) == full
+
+    conflicting = dict(consumption)
+    conflicting["started_event_id"] = "conflicting-ledger-event"
+    with pytest.raises(MergeQueueFenceError, match="conflicts"):
+        queue.mirror_post_merge_correction_history([conflicting])
+
+    second_queue = MergeQueue(
+        tmp_path / "atomic",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    second_queue.record_post_merge_review_denial(denial)
+    invalid_grant = {
+        "schema": POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA,
+        **_correction_common(denial, attempt=3),
+        "grant_id": "gap-grant",
+        "grant_event_id": "gap-grant-event",
+        "grant_event_sequence": 30,
+        "failure_record_id": "missing-failure-record",
+        "failure_event_id": "missing-failure-event",
+        "failure_event_sequence": 20,
+        "failure_kind": "implementation",
+        "repair_task_id": "REPAIR-3",
+        "repair_task_binding_id": "repair-task-binding-3",
+        "repair_binding_id": "repair-binding-3",
+        "recovery_seed_ref": "",
+        "recovery_seed_tree_id": "",
+        "recovery_seed_submodule_path": "",
+        "recovery_seed_submodule_commit": "",
+    }
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="state transition",
+    ):
+        second_queue.mirror_post_merge_correction_history(
+            [consumption, invalid_grant]
+        )
+    assert second_queue.verified_post_merge_correction_chain() == ()
 
 
 def test_batch_claims_have_a_deterministic_total_order_and_unique_fences(

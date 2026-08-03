@@ -66,6 +66,17 @@ POST_MERGE_REVIEW_CORRECTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-review-correction@1"
 )
+POST_MERGE_CORRECTION_QUEUE_RECONCILED_EVENT = (
+    "post_merge_correction_queue_reconciled"
+)
+POST_MERGE_CORRECTION_QUEUE_RECONCILIATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-queue-reconciliation@1"
+)
+POST_MERGE_CORRECTION_QUEUE_TERMINAL_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-queue-terminal@1"
+)
 VERIFIED_IMPLEMENTER_PROVENANCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "verified-implementation-provider-provenance@1"
@@ -2379,6 +2390,7 @@ def verified_post_merge_review_corrections_from_strict_ledger(
     events_path: Path,
     *,
     include_superseded: bool = False,
+    require_local_provenance: bool = False,
 ) -> tuple[dict[str, Any], ...]:
     """Project active, exact-commit review denials into bounded retry evidence.
 
@@ -2479,6 +2491,7 @@ def verified_post_merge_review_corrections_from_strict_ledger(
 
     corrections_by_task: dict[str, dict[str, Any]] = {}
     all_verified_denials: list[dict[str, Any]] = []
+    all_locally_verified_denials: list[dict[str, Any]] = []
     for event in ledger:
         if event.get("type") != POST_MERGE_INDEPENDENT_REVIEW_DENIED_EVENT:
             continue
@@ -2703,6 +2716,7 @@ def verified_post_merge_review_corrections_from_strict_ledger(
         local_provenance_matches = False
         started_event_sequence = 0
         finished_event_sequence = 0
+        finished_event: Mapping[str, Any] | None = None
         try:
             started_event_sequence = positive_int(
                 implementer_provenance.get("started_event_sequence"),
@@ -2950,10 +2964,33 @@ def verified_post_merge_review_corrections_from_strict_ledger(
             )
 
         all_verified_denials.append(correction)
-        latest_finished = latest_finished_by_task.get(task_id)
         if (
             not local_provenance_matches
-            or latest_finished is None
+            or finished_event is None
+            or not _FULL_OBJECT_ID.fullmatch(
+                str(finished_event.get("implementation_commit") or "")
+            )
+            or str(finished_event.get("canonical_task_key") or "")
+            != canonical_task_key
+            or str(
+                finished_event.get("canonical_task_cid")
+                or finished_event.get("canonical_task_id")
+                or ""
+            )
+            != canonical_task_cid
+            or str(finished_event.get("board_namespace") or "")
+            != board_namespace
+        ):
+            # Historical mode may retain a locally proven denial after a
+            # newer terminal attempt supersedes it. It must never admit a
+            # receipt-valid denial whose originating implementation was not
+            # itself proven in this exact ledger.
+            continue
+
+        all_locally_verified_denials.append(correction)
+        latest_finished = latest_finished_by_task.get(task_id)
+        if (
+            latest_finished is None
             or int(latest_finished["sequence"])
             != finished_event_sequence
             or int(latest_finished["sequence"])
@@ -2988,7 +3025,11 @@ def verified_post_merge_review_corrections_from_strict_ledger(
     if include_superseded:
         return tuple(
             sorted(
-                all_verified_denials,
+                (
+                    all_locally_verified_denials
+                    if require_local_provenance
+                    else all_verified_denials
+                ),
                 key=lambda item: (
                     int(item["source_event_sequence"]),
                     str(item["task_id"]),
@@ -3016,6 +3057,7 @@ def verified_consumed_post_merge_review_correction_keys_from_strict_ledger(
     denials = verified_post_merge_review_corrections_from_strict_ledger(
         path,
         include_superseded=True,
+        require_local_provenance=True,
     )
     consumed: set[tuple[str, str, str, str, str]] = set()
     for denial in denials:
@@ -3061,6 +3103,935 @@ def verified_consumed_post_merge_review_correction_keys_from_strict_ledger(
             )
             break
     return frozenset(consumed)
+
+
+def _post_merge_correction_failure_kind(
+    event: Mapping[str, Any],
+) -> str:
+    validation = event.get("validation_result") or {}
+    validation_failed = False
+    if isinstance(validation, Mapping) and not validation.get(
+        "passed",
+        False,
+    ):
+        reason = str(validation.get("reason") or "").strip()
+        validation_failed = bool(
+            validation.get("attempted", False)
+            or validation.get("error")
+            or validation.get("coverage_errors")
+            or (
+                reason
+                and reason not in {"no_commands", "not_run"}
+            )
+        )
+        if not validation_failed:
+            try:
+                validation_failed = (
+                    int(validation.get("returncode")) != 0
+                )
+            except (TypeError, ValueError):
+                pass
+    merge_result = event.get("merge_result") or {}
+    merge_failed = bool(
+        isinstance(merge_result, Mapping)
+        and merge_result.get("attempted", False)
+        and not merge_result.get("merged", False)
+        and str(merge_result.get("reason") or "")
+        != "not_attempted"
+    )
+    return (
+        "validation"
+        if validation_failed
+        else "merge"
+        if merge_failed
+        else "implementation"
+    )
+
+
+def _verified_post_merge_correction_queue_reconciliations(
+    ledger: Sequence[Mapping[str, Any]],
+    *,
+    local_stream_id: str,
+) -> tuple[dict[str, Any], ...]:
+    """Verify exact queue-quarantine terminals for queued correction attempts."""
+
+    finished_by_event_id: dict[str, dict[str, Any]] = {}
+    latest_finished_by_attempt: dict[
+        tuple[str, int],
+        dict[str, Any],
+    ] = {}
+    for event in ledger:
+        if (
+            event.get("type") != "implementation_finished"
+            or str(event.get("stream_id") or "") != local_stream_id
+        ):
+            continue
+        raw_sequence = event.get("sequence")
+        raw_attempt = event.get("attempt")
+        raw_returncode = event.get("returncode")
+        event_id = str(event.get("event_id") or "")
+        task_id = str(event.get("task_id") or "")
+        if (
+            not event_id
+            or not task_id
+            or isinstance(raw_sequence, bool)
+            or not isinstance(raw_sequence, int)
+            or raw_sequence < 1
+            or isinstance(raw_attempt, bool)
+            or not isinstance(raw_attempt, int)
+            or raw_attempt < 1
+            or isinstance(raw_returncode, bool)
+            or not isinstance(raw_returncode, int)
+        ):
+            continue
+        projected = dict(event)
+        finished_by_event_id[event_id] = projected
+        attempt_key = (task_id, raw_attempt)
+        prior = latest_finished_by_attempt.get(attempt_key)
+        if prior is None or raw_sequence > int(prior["sequence"]):
+            latest_finished_by_attempt[attempt_key] = projected
+
+    verified_by_source_id: dict[str, dict[str, Any]] = {}
+    terminal_fields = frozenset(
+        {
+            "schema",
+            "status",
+            "request_id",
+            "task_id",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+            "task_binding_id",
+            "implementation_commit",
+            "implementation_attempt",
+            "branch",
+            "target_repository_id",
+            "target_branch",
+            "failure_count",
+            "failure_reason",
+        }
+    )
+    for event in ledger:
+        if (
+            event.get("type")
+            != POST_MERGE_CORRECTION_QUEUE_RECONCILED_EVENT
+            or str(event.get("stream_id") or "") != local_stream_id
+        ):
+            continue
+        raw_sequence = event.get("sequence")
+        raw_attempt = event.get("attempt")
+        raw_returncode = event.get("returncode")
+        raw_source_sequence = event.get(
+            "source_implementation_finished_event_sequence"
+        )
+        queue_terminal = event.get("queue_terminal")
+        if (
+            event.get("schema")
+            != POST_MERGE_CORRECTION_QUEUE_RECONCILIATION_SCHEMA
+            or isinstance(raw_sequence, bool)
+            or not isinstance(raw_sequence, int)
+            or raw_sequence < 1
+            or isinstance(raw_attempt, bool)
+            or not isinstance(raw_attempt, int)
+            or raw_attempt < 1
+            or isinstance(raw_returncode, bool)
+            or raw_returncode != 1
+            or event.get("attempt_consumed") is not True
+            or event.get("reason") != "merge_queue_quarantined"
+            or isinstance(raw_source_sequence, bool)
+            or not isinstance(raw_source_sequence, int)
+            or raw_source_sequence < 1
+            or not isinstance(queue_terminal, Mapping)
+            or frozenset(queue_terminal) != terminal_fields
+        ):
+            continue
+        terminal = dict(queue_terminal)
+        terminal_attempt = terminal.get("implementation_attempt")
+        terminal_failure_count = terminal.get("failure_count")
+        if (
+            terminal.get("schema")
+            != POST_MERGE_CORRECTION_QUEUE_TERMINAL_SCHEMA
+            or terminal.get("status") != "quarantined"
+            or isinstance(terminal_attempt, bool)
+            or not isinstance(terminal_attempt, int)
+            or terminal_attempt != raw_attempt
+            or isinstance(terminal_failure_count, bool)
+            or not isinstance(terminal_failure_count, int)
+            or terminal_failure_count < 0
+            or not isinstance(terminal.get("failure_reason"), str)
+            or len(
+                str(terminal.get("failure_reason") or "").encode(
+                    "utf-8"
+                )
+            )
+            > 4000
+        ):
+            continue
+        material = {
+            "schema": str(event.get("schema") or ""),
+            "source_implementation_finished_event_id": str(
+                event.get(
+                    "source_implementation_finished_event_id"
+                )
+                or ""
+            ),
+            "source_implementation_finished_event_sequence": (
+                raw_source_sequence
+            ),
+            "request_id": str(event.get("request_id") or ""),
+            "task_id": str(event.get("task_id") or ""),
+            "canonical_task_key": str(
+                event.get("canonical_task_key") or ""
+            ),
+            "canonical_task_cid": str(
+                event.get("canonical_task_cid")
+                or event.get("canonical_task_id")
+                or ""
+            ),
+            "board_namespace": str(
+                event.get("board_namespace") or ""
+            ),
+            "task_binding_id": str(
+                event.get("task_binding_id") or ""
+            ),
+            "attempt": raw_attempt,
+            "branch": str(event.get("branch") or ""),
+            "implementation_commit": str(
+                event.get("implementation_commit") or ""
+            ),
+            "target_repository_id": str(
+                event.get("target_repository_id") or ""
+            ),
+            "target_branch": str(
+                event.get("target_branch") or ""
+            ),
+            "queue_terminal": terminal,
+        }
+        reconciliation_id = str(
+            event.get("reconciliation_id") or ""
+        )
+        source_id = str(
+            material["source_implementation_finished_event_id"]
+        )
+        source = finished_by_event_id.get(source_id)
+        source_merge_result = (
+            source.get("merge_result")
+            if isinstance(source, Mapping)
+            else None
+        )
+        reconciliation_merge_result = event.get("merge_result")
+        latest_source = latest_finished_by_attempt.get(
+            (str(material["task_id"]), raw_attempt)
+        )
+        expected_values = {
+            "request_id": str(material["request_id"]),
+            "task_id": str(material["task_id"]),
+            "canonical_task_key": str(
+                material["canonical_task_key"]
+            ),
+            "canonical_task_cid": str(
+                material["canonical_task_cid"]
+            ),
+            "board_namespace": str(
+                material["board_namespace"]
+            ),
+            "task_binding_id": str(
+                material["task_binding_id"]
+            ),
+            "implementation_commit": str(
+                material["implementation_commit"]
+            ),
+            "branch": str(material["branch"]),
+            "target_repository_id": str(
+                material["target_repository_id"]
+            ),
+            "target_branch": str(material["target_branch"]),
+        }
+        if (
+            not reconciliation_id
+            or content_identity(material) != reconciliation_id
+            or not source_id
+            or source is None
+            or latest_source is None
+            or str(latest_source.get("event_id") or "") != source_id
+            or raw_sequence <= raw_source_sequence
+            or int(source.get("sequence") or 0)
+            != raw_source_sequence
+            or int(source.get("attempt") or 0) != raw_attempt
+            or source.get("returncode") != 0
+            or source.get("attempt_consumed", True) is not True
+            or not isinstance(source_merge_result, Mapping)
+            or source_merge_result.get("queued") is not True
+            or source_merge_result.get("merged") is True
+            or not isinstance(reconciliation_merge_result, Mapping)
+            or reconciliation_merge_result.get("attempted") is not True
+            or reconciliation_merge_result.get("merged") is not False
+            or reconciliation_merge_result.get("queued") is not False
+            or reconciliation_merge_result.get("reason")
+            != "merge_queue_quarantined"
+            or str(
+                reconciliation_merge_result.get("request_id") or ""
+            )
+            != expected_values["request_id"]
+            or str(
+                reconciliation_merge_result.get(
+                    "implementation_commit"
+                )
+                or ""
+            )
+            != expected_values["implementation_commit"]
+            or str(
+                reconciliation_merge_result.get(
+                    "target_repository_id"
+                )
+                or ""
+            )
+            != expected_values["target_repository_id"]
+            or str(
+                reconciliation_merge_result.get("target_branch")
+                or ""
+            )
+            != expected_values["target_branch"]
+            or any(not value for value in expected_values.values())
+            or str(source_merge_result.get("request_id") or "")
+            != expected_values["request_id"]
+            or str(
+                source_merge_result.get("implementation_commit")
+                or source.get("implementation_commit")
+                or ""
+            )
+            != expected_values["implementation_commit"]
+            or str(
+                source_merge_result.get("target_repository_id")
+                or ""
+            )
+            != expected_values["target_repository_id"]
+            or str(
+                source_merge_result.get("target_branch") or ""
+            )
+            != expected_values["target_branch"]
+            or str(source.get("task_id") or "")
+            != expected_values["task_id"]
+            or str(source.get("canonical_task_key") or "")
+            != expected_values["canonical_task_key"]
+            or str(
+                source.get("canonical_task_cid")
+                or source.get("canonical_task_id")
+                or ""
+            )
+            != expected_values["canonical_task_cid"]
+            or str(source.get("board_namespace") or "")
+            != expected_values["board_namespace"]
+            or str(source.get("task_binding_id") or "")
+            != expected_values["task_binding_id"]
+            or str(source.get("branch") or "")
+            != expected_values["branch"]
+            or any(
+                str(terminal.get(field_name) or "")
+                != expected_value
+                for field_name, expected_value in expected_values.items()
+                if field_name
+                not in {"request_id"}
+            )
+            or str(terminal.get("request_id") or "")
+            != expected_values["request_id"]
+            or int(terminal["implementation_attempt"])
+            != raw_attempt
+        ):
+            continue
+        # The first valid exact terminal wins. Repeated writers may append
+        # the same content ID, but they cannot create multiple repair grants.
+        verified_by_source_id.setdefault(source_id, dict(event))
+    return tuple(
+        sorted(
+            verified_by_source_id.values(),
+            key=lambda item: (
+                int(item["sequence"]),
+                str(item["reconciliation_id"]),
+            ),
+        )
+    )
+
+
+def verified_post_merge_correction_queue_reconciliations_from_strict_ledger(
+    events_path: Path,
+) -> tuple[dict[str, Any], ...]:
+    """Return exact, deduplicated queued-correction quarantine terminals."""
+
+    path = Path(events_path)
+    return _verified_post_merge_correction_queue_reconciliations(
+        _strict_event_ledger(path),
+        local_stream_id=str(
+            _event_log_runtime._event_stream_binding(path)[0]
+        ),
+    )
+
+
+def _strict_terminal_implementation_events(
+    ledger: Sequence[Mapping[str, Any]],
+    *,
+    local_stream_id: str,
+) -> tuple[
+    dict[tuple[str, int], dict[str, Any]],
+    dict[str, dict[str, Any]],
+    dict[tuple[str, int], dict[str, Any]],
+]:
+    by_attempt: dict[tuple[str, int], dict[str, Any]] = {}
+    latest_by_task: dict[str, dict[str, Any]] = {}
+    outstanding_starts: dict[tuple[str, int], dict[str, Any]] = {}
+    for event in ledger:
+        event_type = str(event.get("type") or "")
+        if str(event.get("stream_id") or "") != local_stream_id:
+            continue
+        task_id = str(event.get("task_id") or "")
+        raw_sequence = event.get("sequence")
+        raw_attempt = event.get("attempt")
+        if (
+            not task_id
+            or isinstance(raw_sequence, bool)
+            or not isinstance(raw_sequence, int)
+            or raw_sequence < 1
+            or isinstance(raw_attempt, bool)
+            or not isinstance(raw_attempt, int)
+            or raw_attempt < 1
+        ):
+            continue
+        attempt_key = (task_id, raw_attempt)
+
+        if event_type == "implementation_started":
+            outstanding_starts[attempt_key] = dict(event)
+            continue
+        if event_type == "implementation_provider_exhausted":
+            # A capacity classification is derived from provider-controlled
+            # log text after launch. It cannot prove request non-admission,
+            # so it never releases a one-shot correction reservation.
+            continue
+        if event_type != "implementation_finished":
+            continue
+        if event.get("attempt_consumed", True) is not True:
+            # Post-launch deferrals may follow substantive model work. They
+            # retain the durable start reservation and are recovered as an
+            # exact failed correction instead of replaying the same grant.
+            continue
+        raw_returncode = event.get("returncode")
+        if (
+            isinstance(raw_returncode, bool)
+            or not isinstance(raw_returncode, int)
+        ):
+            continue
+        projected = dict(event)
+        outstanding_starts.pop(attempt_key, None)
+        prior_attempt = by_attempt.get(attempt_key)
+        if (
+            prior_attempt is None
+            or raw_sequence > int(prior_attempt["sequence"])
+        ):
+            by_attempt[attempt_key] = projected
+        prior_latest = latest_by_task.get(task_id)
+        if (
+            prior_latest is None
+            or raw_attempt > int(prior_latest["attempt"])
+            or (
+                raw_attempt == int(prior_latest["attempt"])
+                and raw_sequence > int(prior_latest["sequence"])
+            )
+        ):
+            latest_by_task[task_id] = projected
+    for projected in (
+        _verified_post_merge_correction_queue_reconciliations(
+            ledger,
+            local_stream_id=local_stream_id,
+        )
+    ):
+        task_id = str(projected["task_id"])
+        raw_attempt = int(projected["attempt"])
+        raw_sequence = int(projected["sequence"])
+        attempt_key = (task_id, raw_attempt)
+        prior_attempt = by_attempt.get(attempt_key)
+        if (
+            prior_attempt is None
+            or raw_sequence > int(prior_attempt["sequence"])
+        ):
+            by_attempt[attempt_key] = dict(projected)
+        prior_latest = latest_by_task.get(task_id)
+        if (
+            prior_latest is None
+            or raw_attempt > int(prior_latest["attempt"])
+            or (
+                raw_attempt == int(prior_latest["attempt"])
+                and raw_sequence > int(prior_latest["sequence"])
+            )
+        ):
+            latest_by_task[task_id] = dict(projected)
+    return by_attempt, latest_by_task, outstanding_starts
+
+
+def _project_post_merge_correction_failure(
+    event: Mapping[str, Any],
+    *,
+    denial_id: str,
+    denial_source_event_sequence: int,
+    target_attempt: int,
+    task_binding_id: str,
+    origin_stream_id: str,
+    parent_grant_id: str = "",
+) -> dict[str, Any]:
+    projected = {
+        **event,
+        "post_merge_correction_denial_id": denial_id,
+        "post_merge_correction_source_event_sequence": (
+            denial_source_event_sequence
+        ),
+        "post_merge_correction_target_attempt": target_attempt,
+        "post_merge_correction_task_binding_id": task_binding_id,
+        "post_merge_correction_origin_stream_id": origin_stream_id,
+        "post_merge_correction_failure_kind": (
+            _post_merge_correction_failure_kind(event)
+        ),
+    }
+    if parent_grant_id:
+        projected[
+            "post_merge_correction_parent_grant_id"
+        ] = parent_grant_id
+    return projected
+
+
+def _verified_post_merge_correction_repair_chain(
+    events_path: Path,
+) -> tuple[
+    tuple[dict[str, Any], ...],
+    tuple[dict[str, Any], ...],
+]:
+    """Verify the monotonic failure/repair chain in one strict-ledger pass."""
+
+    path = Path(events_path)
+    ledger = _strict_event_ledger(path)
+    local_stream_id = str(
+        _event_log_runtime._event_stream_binding(path)[0]
+    )
+    (
+        terminals_by_attempt,
+        latest_terminal_by_task,
+        outstanding_starts_by_attempt,
+    ) = (
+        _strict_terminal_implementation_events(
+            ledger,
+            local_stream_id=local_stream_id,
+        )
+    )
+    latest_consumption_by_task = dict(latest_terminal_by_task)
+    for (task_id, attempt), started in (
+        outstanding_starts_by_attempt.items()
+    ):
+        prior = latest_consumption_by_task.get(task_id)
+        if (
+            prior is None
+            or attempt > int(prior["attempt"])
+            or (
+                attempt == int(prior["attempt"])
+                and int(started["sequence"])
+                > int(prior["sequence"])
+            )
+        ):
+            latest_consumption_by_task[task_id] = started
+    denials = verified_post_merge_review_corrections_from_strict_ledger(
+        path,
+        include_superseded=True,
+        require_local_provenance=True,
+    )
+    known_failures_by_event_id: dict[str, dict[str, Any]] = {}
+    for denial in denials:
+        task_id = str(denial["task_id"])
+        target_attempt = int(
+            denial["target_implementation_attempt"]
+        )
+        event = terminals_by_attempt.get(
+            (task_id, target_attempt)
+        )
+        if (
+            event is None
+            or int(event["sequence"])
+            <= int(denial["source_event_sequence"])
+            or int(event["returncode"]) == 0
+            or str(event.get("canonical_task_key") or "")
+            != str(denial["canonical_task_key"])
+            or str(
+                event.get("canonical_task_cid")
+                or event.get("canonical_task_id")
+                or ""
+            )
+            != str(denial["canonical_task_cid"])
+            or str(event.get("board_namespace") or "")
+            != str(denial["board_namespace"])
+            or str(event.get("task_binding_id") or "")
+            != str(denial["task_binding_id"])
+            or str(
+                denial.get("correction_origin_stream_id") or ""
+            )
+            != local_stream_id
+        ):
+            continue
+        projected = _project_post_merge_correction_failure(
+            event,
+            denial_id=str(
+                denial.get("denial_id")
+                or denial.get("source_event_id")
+                or ""
+            ),
+            denial_source_event_sequence=int(
+                denial["source_event_sequence"]
+            ),
+            target_attempt=target_attempt,
+            task_binding_id=str(denial["task_binding_id"]),
+            origin_stream_id=local_stream_id,
+        )
+        event_id = str(projected.get("event_id") or "")
+        if event_id:
+            known_failures_by_event_id[event_id] = projected
+
+    verified_by_id: dict[str, dict[str, Any]] = {}
+    for event in ledger:
+        if (
+            event.get("type") != "task_retry_budget_reset"
+            or str(event.get("stream_id") or "") != local_stream_id
+        ):
+            continue
+        raw_event_sequence = event.get("sequence")
+        if (
+            isinstance(raw_event_sequence, bool)
+            or not isinstance(raw_event_sequence, int)
+            or raw_event_sequence < 1
+        ):
+            continue
+        raw_resets = event.get("resets")
+        if not isinstance(raw_resets, list):
+            continue
+        for reset in raw_resets:
+            if not isinstance(reset, Mapping):
+                continue
+            grant = reset.get(
+                "post_merge_correction_repair_grant"
+            )
+            if not isinstance(grant, Mapping):
+                continue
+            material = dict(grant)
+            grant_id = str(material.pop("grant_id", "") or "")
+            try:
+                target_attempt = int(
+                    material.get("target_attempt")
+                )
+                failure_event_sequence = int(
+                    material.get("failure_event_sequence")
+                )
+            except (TypeError, ValueError):
+                continue
+            failure = known_failures_by_event_id.get(
+                str(material.get("failure_event_id") or "")
+            )
+            advanced_baselines = (
+                reset.get("advanced_retry_budget_baselines")
+            )
+            try:
+                advanced_baseline = int(
+                    (
+                        advanced_baselines.get(
+                            str(
+                                material.get(
+                                    "source_canonical_task_cid"
+                                )
+                                or ""
+                            ),
+                            0,
+                        )
+                        if isinstance(advanced_baselines, Mapping)
+                        else 0
+                    )
+                    or 0
+                )
+            except (TypeError, ValueError):
+                continue
+            if (
+                material.get("schema")
+                != "post-merge-correction-repair-grant-v1"
+                or not grant_id
+                or content_identity(material) != grant_id
+                or failure is None
+                or raw_event_sequence <= failure_event_sequence
+                or failure_event_sequence
+                != int(failure.get("sequence") or 0)
+                or target_attempt
+                != int(
+                    failure.get(
+                        "post_merge_correction_target_attempt"
+                    )
+                    or 0
+                )
+                or str(material.get("source_task_id") or "")
+                != str(failure.get("task_id") or "")
+                or str(
+                    material.get("source_canonical_task_key")
+                    or ""
+                )
+                != str(failure.get("canonical_task_key") or "")
+                or str(
+                    material.get("source_canonical_task_cid")
+                    or ""
+                )
+                != str(
+                    failure.get("canonical_task_cid")
+                    or failure.get("canonical_task_id")
+                    or ""
+                )
+                or str(
+                    material.get("source_task_binding_id") or ""
+                )
+                != str(
+                    failure.get(
+                        "post_merge_correction_task_binding_id"
+                    )
+                    or ""
+                )
+                or str(material.get("denial_id") or "")
+                != str(
+                    failure.get(
+                        "post_merge_correction_denial_id"
+                    )
+                    or ""
+                )
+                or str(material.get("failure_kind") or "")
+                != str(
+                    failure.get(
+                        "post_merge_correction_failure_kind"
+                    )
+                    or ""
+                )
+                or str(material.get("origin_stream_id") or "")
+                != local_stream_id
+                or str(material.get("origin_stream_id") or "")
+                != str(
+                    failure.get(
+                        "post_merge_correction_origin_stream_id"
+                    )
+                    or ""
+                )
+                or str(reset.get("source_task_id") or "")
+                != str(material.get("source_task_id") or "")
+                or str(reset.get("repair_task_id") or "")
+                != str(material.get("repair_task_id") or "")
+                or not str(
+                    material.get("repair_binding_id") or ""
+                )
+                or not str(
+                    material.get("repair_task_binding_id") or ""
+                )
+                or not isinstance(advanced_baselines, Mapping)
+                or advanced_baseline != target_attempt
+            ):
+                continue
+            authorized_attempt = target_attempt + 1
+            terminal = terminals_by_attempt.get(
+                (
+                    str(material.get("source_task_id") or ""),
+                    authorized_attempt,
+                )
+            )
+            latest_consumption = latest_consumption_by_task.get(
+                str(material.get("source_task_id") or "")
+            )
+            consuming_event = (
+                latest_consumption
+                if (
+                    latest_consumption is not None
+                    and int(latest_consumption["attempt"])
+                    >= authorized_attempt
+                )
+                else None
+            )
+            if (
+                consuming_event is not None
+                and int(consuming_event["sequence"])
+                <= raw_event_sequence
+            ):
+                # A reset cannot authorize an attempt that was already
+                # terminal (or surpassed) when the grant was recorded.
+                # Treating it as live would let a restored state snapshot
+                # replay an earlier attempt number.
+                continue
+            verified_grant = {
+                **material,
+                "grant_id": grant_id,
+                "grant_event_id": str(
+                    event.get("event_id") or ""
+                ),
+                "grant_event_sequence": raw_event_sequence,
+                "authorized_attempt": authorized_attempt,
+                "authorized_attempt_consumed": (
+                    consuming_event is not None
+                ),
+                "consuming_event_id": (
+                    str(consuming_event.get("event_id") or "")
+                    if consuming_event is not None
+                    else ""
+                ),
+                "consuming_event_sequence": (
+                    int(consuming_event["sequence"])
+                    if consuming_event is not None
+                    else 0
+                ),
+                "consuming_attempt": (
+                    int(consuming_event["attempt"])
+                    if consuming_event is not None
+                    else 0
+                ),
+                "consuming_event_type": (
+                    str(consuming_event.get("type") or "")
+                    if consuming_event is not None
+                    else ""
+                ),
+            }
+            verified_by_id[grant_id] = verified_grant
+
+            if (
+                terminal is None
+                or int(terminal["sequence"]) <= raw_event_sequence
+                or int(terminal["returncode"]) == 0
+                or str(terminal.get("canonical_task_key") or "")
+                != str(
+                    material.get("source_canonical_task_key")
+                    or ""
+                )
+                or str(
+                    terminal.get("canonical_task_cid")
+                    or terminal.get("canonical_task_id")
+                    or ""
+                )
+                != str(
+                    material.get("source_canonical_task_cid")
+                    or ""
+                )
+                or str(terminal.get("board_namespace") or "")
+                != str(failure.get("board_namespace") or "")
+                or str(terminal.get("task_binding_id") or "")
+                != str(
+                    material.get("source_task_binding_id")
+                    or ""
+                )
+            ):
+                continue
+            terminal_event_id = str(
+                terminal.get("event_id") or ""
+            )
+            if terminal_event_id not in known_failures_by_event_id:
+                known_failures_by_event_id[terminal_event_id] = (
+                    _project_post_merge_correction_failure(
+                        terminal,
+                        denial_id=str(
+                            material.get("denial_id") or ""
+                        ),
+                        denial_source_event_sequence=int(
+                            failure.get(
+                                "post_merge_correction_source_event_sequence"
+                            )
+                            or 0
+                        ),
+                        target_attempt=authorized_attempt,
+                        task_binding_id=str(
+                            material.get("source_task_binding_id")
+                            or ""
+                        ),
+                        origin_stream_id=local_stream_id,
+                        parent_grant_id=grant_id,
+                    )
+                )
+
+    repairable_failures = [
+        failure
+        for failure in known_failures_by_event_id.values()
+        if (
+            (
+                latest := latest_terminal_by_task.get(
+                    str(failure.get("task_id") or "")
+                )
+            )
+            is not None
+            and str(latest.get("event_id") or "")
+            == str(failure.get("event_id") or "")
+        )
+    ]
+    return (
+        tuple(
+            sorted(
+                repairable_failures,
+                key=lambda failure: (
+                    int(failure["sequence"]),
+                    str(failure["task_id"]),
+                ),
+            )
+        ),
+        tuple(
+            sorted(
+                verified_by_id.values(),
+                key=lambda grant: (
+                    int(grant["grant_event_sequence"]),
+                    str(grant["grant_id"]),
+                ),
+            )
+        ),
+    )
+
+
+def verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+    events_path: Path,
+) -> tuple[dict[str, Any], ...]:
+    """Return the latest one-shot repairable failure for each denied task."""
+
+    failures, _grants = (
+        _verified_post_merge_correction_repair_chain(
+            Path(events_path)
+        )
+    )
+    return failures
+
+
+def verified_outstanding_implementation_starts_from_strict_ledger(
+    events_path: Path,
+) -> tuple[dict[str, Any], ...]:
+    """Return locally reserved attempts without an exact terminal or release."""
+
+    path = Path(events_path)
+    ledger = _strict_event_ledger(path)
+    local_stream_id = str(
+        _event_log_runtime._event_stream_binding(path)[0]
+    )
+    _terminals, _latest, outstanding = (
+        _strict_terminal_implementation_events(
+            ledger,
+            local_stream_id=local_stream_id,
+        )
+    )
+    return tuple(
+        sorted(
+            outstanding.values(),
+            key=lambda event: (
+                int(event["sequence"]),
+                str(event["task_id"]),
+                int(event["attempt"]),
+            ),
+        )
+    )
+
+
+def verified_post_merge_correction_repair_grants_from_strict_ledger(
+    events_path: Path,
+) -> tuple[dict[str, Any], ...]:
+    """Return causally-later, content-bound correction repair grants."""
+
+    _failures, grants = (
+        _verified_post_merge_correction_repair_chain(
+            Path(events_path)
+        )
+    )
+    return grants
 
 
 def verified_retained_post_merge_review_correction_authority(
@@ -4119,6 +5090,9 @@ __all__ = [
     "POST_MERGE_INDEPENDENT_REVIEW_RESPONSE_SCHEMA",
     "POST_MERGE_REVIEW_CORRECTION_SCHEMA",
     "POST_MERGE_REVIEWER_EXECUTION_RECEIPT_SCHEMA",
+    "POST_MERGE_CORRECTION_QUEUE_RECONCILED_EVENT",
+    "POST_MERGE_CORRECTION_QUEUE_RECONCILIATION_SCHEMA",
+    "POST_MERGE_CORRECTION_QUEUE_TERMINAL_SCHEMA",
     "VERIFIED_IMPLEMENTER_PROVENANCE_SCHEMA",
     "PostMergeReviewError",
     "PostMergeReviewOutcome",
@@ -4131,6 +5105,10 @@ __all__ = [
     "post_merge_task_binding_id",
     "verified_implementer_provenance_from_events",
     "verified_implementer_provenance_from_ledger",
+    "verified_failed_post_merge_review_correction_attempts_from_strict_ledger",
+    "verified_outstanding_implementation_starts_from_strict_ledger",
+    "verified_post_merge_correction_repair_grants_from_strict_ledger",
+    "verified_post_merge_correction_queue_reconciliations_from_strict_ledger",
     "verified_post_merge_review_corrections_from_strict_ledger",
     "verify_post_merge_review_receipt",
 ]

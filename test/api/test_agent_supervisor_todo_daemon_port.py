@@ -9,7 +9,9 @@ import shlex
 import signal
 import subprocess
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -494,6 +496,7 @@ def _post_merge_denial_case(
     )
     task = daemon._load_tasks()[0]
     identity = daemon._identity_for_task(task)
+    daemon._register_task_identities((task,))
     assert post_merge_review_module.post_merge_task_binding_id(
         task
     ) == post_merge_review_module.post_merge_task_binding_id(
@@ -1884,6 +1887,160 @@ def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
 
     assert "wallet_interface/ui/new-context.ts" in paths
     assert "wallet_interface/ui/tracked.css" not in paths
+
+
+def test_empty_recovery_seed_fields_do_not_block_ordinary_repair_grant(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "todo.md").write_text("# Todos\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        merge_target_branch="main",
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Ordinary correction",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["feature.py"],
+    )
+    authority = daemon._post_merge_correction_authority_descriptor(
+        authority_kind="repair_grant",
+        authority_id="grant-1",
+        authority_event_sequence=1,
+        task=task,
+        attempt=2,
+        extra={
+            "recovery_seed_ref": "",
+            "recovery_seed_tree_id": "",
+            "recovery_seed_submodule_path": "",
+            "recovery_seed_submodule_commit": "",
+        },
+    )
+
+    plan = daemon._prior_attempt_seed_plan(
+        state=TodoTaskState(),
+        attempt=2,
+        task=task,
+        post_merge_correction_authority=authority,
+    )
+
+    assert plan["recovery_seed_present"] is False
+    assert plan["recovery_seed_valid"] is False
+    assert plan["reason"] == "no_prior_attempt_commit"
+
+
+def test_post_merge_recovery_seed_materializes_one_verified_gitlink(
+    tmp_path,
+):
+    child_source = tmp_path / "child-source"
+    child_source.mkdir()
+    _git(child_source, "init")
+    _git(child_source, "checkout", "-b", "main")
+    _git(child_source, "config", "user.name", "Test User")
+    _git(child_source, "config", "user.email", "test@example.invalid")
+    (child_source / "contract.txt").write_text(
+        "baseline\n",
+        encoding="utf-8",
+    )
+    _git(child_source, "add", "contract.txt")
+    _git(child_source, "commit", "-m", "child baseline")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "todo.md").write_text("# Todos\n", encoding="utf-8")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child_source),
+        "external/child",
+    )
+    _git(repo, "add", ".gitmodules", "external/child", "todo.md")
+    _git(repo, "commit", "-m", "root baseline")
+    target_commit = _git(repo, "rev-parse", "HEAD")
+
+    child = repo / "external" / "child"
+    _git(child, "config", "user.name", "Test User")
+    _git(child, "config", "user.email", "test@example.invalid")
+    (child / "contract.txt").write_text(
+        "reviewed repair\n",
+        encoding="utf-8",
+    )
+    _git(child, "add", "contract.txt")
+    _git(child, "commit", "-m", "reviewed child repair")
+    child_commit = _git(child, "rev-parse", "HEAD")
+    status_before = _git(repo, "status", "--porcelain=v1")
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        merge_target_branch="main",
+        worktree_submodule_paths=["external/child"],
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Recover reviewed child repair",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["external/child/contract.txt"],
+    )
+
+    fields = daemon._materialize_post_merge_recovery_seed(
+        task=task,
+        recovery_seed_submodule_path="external/child",
+        recovery_seed_submodule_commit=child_commit,
+    )
+
+    assert fields["recovery_seed_submodule_commit"] == child_commit
+    seed_commit = fields["recovery_seed_ref"]
+    assert _git(repo, "rev-parse", f"{seed_commit}^") == target_commit
+    assert _git(repo, "status", "--porcelain=v1") == status_before
+    authority = daemon._post_merge_correction_authority_descriptor(
+        authority_kind="repair_grant",
+        authority_id="grant-1",
+        authority_event_sequence=1,
+        task=task,
+        attempt=5,
+        extra=fields,
+    )
+    plan = daemon._prior_attempt_seed_plan(
+        state=TodoTaskState(),
+        attempt=5,
+        task=task,
+        post_merge_correction_authority=authority,
+        expected_target_commit=target_commit,
+    )
+    assert plan["recovery_seed_present"] is True
+    assert plan["recovery_seed_valid"] is True
+    assert plan["seed_ref"] == seed_commit
+    assert plan["baseline_ref"] == target_commit
+    assert plan["reason"] == "post_merge_recovery_seed"
 
 
 def test_validation_prunes_unchanged_start_context_after_daemon_restart(tmp_path):
@@ -8850,6 +9007,41 @@ def test_non_positive_local_provenance_sequence_cannot_open_correction(
         daemon._post_merge_review_correction_for_task(case.task)
         is None
     )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": case.identity.canonical_task_key,
+            "canonical_task_cid": case.identity.canonical_task_cid,
+            "board_namespace": case.identity.board_namespace,
+            "attempt": 2,
+            "returncode": 1,
+            "attempt_consumed": True,
+        },
+    )
+    assert len(
+        post_merge_review_module
+        .verified_post_merge_review_corrections_from_strict_ledger(
+            daemon.events_path,
+            include_superseded=True,
+        )
+    ) == 1
+    assert (
+        post_merge_review_module
+        .verified_post_merge_review_corrections_from_strict_ledger(
+            daemon.events_path,
+            include_superseded=True,
+            require_local_provenance=True,
+        )
+        == ()
+    )
+    assert (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            daemon.events_path
+        )
+        == ()
+    )
 
 
 @pytest.mark.parametrize(
@@ -8990,7 +9182,7 @@ def test_latest_local_denial_reopens_only_origin_lane_despite_completed_cid(
     monkeypatch.setattr(
         case.daemon,
         "_run_implementation",
-        lambda selected, state: implementation_calls.append(
+        lambda selected, state, **_kwargs: implementation_calls.append(
             (
                 selected.task_id,
                 case.daemon._task_attempt(state, selected),
@@ -9959,9 +10151,30 @@ def test_failed_target_correction_attempt_cannot_reopen_later_attempt(
             },
         },
     )
+    failed_corrections = (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+    )
+    assert len(failed_corrections) == 1
+    assert failed_corrections[0]["task_id"] == case.task.task_id
+    assert failed_corrections[0][
+        "post_merge_correction_target_attempt"
+    ] == 2
     assert (
         case.daemon._post_merge_review_correction_for_task(case.task)
         is None
+    )
+    retry_prompt = json.loads(
+        case.daemon._build_implementation_prompt(case.task, 3)
+    )
+    assert "post_merge_review_correction_binding" not in retry_prompt[
+        "goal"
+    ]
+    assert all(
+        "Preserve every existing test function symbol" not in rule
+        for rule in retry_prompt["authority"]["generic_prompt_policy"]
     )
     TodoTaskState(
         implementation_attempts={case.task.task_id: 2},
@@ -10001,6 +10214,2261 @@ def test_failed_target_correction_attempt_cannot_reopen_later_attempt(
         case.task,
         3,
     ) == ""
+
+
+def _record_queued_post_merge_correction_quarantine(case):
+    attempt = 2
+    branch = "implementation/rev-001-attempt-2"
+    implementation_commit = "2" * 40
+    request_id = "queued-correction-request-2"
+    task_binding_id = (
+        post_merge_review_module.post_merge_task_binding_id(
+            case.task
+        )
+    )
+    authority = (
+        case.daemon._post_merge_correction_authority_descriptor(
+            authority_kind="review_denial",
+            authority_id=case.denial["event_id"],
+            authority_event_sequence=case.denial["sequence"],
+            task=case.task,
+            attempt=attempt,
+            extra={
+                "denial_id": case.denial["event_id"],
+                "implementation_commit": (
+                    case.implementation_commit
+                ),
+            },
+        )
+    )
+    started = case.daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": (
+                case.identity.canonical_task_key
+            ),
+            "canonical_task_cid": (
+                case.identity.canonical_task_cid
+            ),
+            "board_namespace": case.identity.board_namespace,
+            "task_binding_id": task_binding_id,
+            "attempt": attempt,
+            "branch": branch,
+            "command": ["grok", "run"],
+            "post_merge_correction_authority": authority,
+        },
+    )
+    finished = case.daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": (
+                case.identity.canonical_task_key
+            ),
+            "canonical_task_cid": (
+                case.identity.canonical_task_cid
+            ),
+            "board_namespace": case.identity.board_namespace,
+            "task_binding_id": task_binding_id,
+            "attempt": attempt,
+            "branch": branch,
+            "implementation_commit": implementation_commit,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+            },
+            "merge_result": {
+                "attempted": False,
+                "merged": False,
+                "queued": True,
+                "reason": "merge_queued",
+                "request_id": request_id,
+                "implementation_commit": implementation_commit,
+                "target_repository_id": (
+                    case.daemon.merge_target_repository_id
+                ),
+                "target_branch": (
+                    case.daemon.resolved_merge_target_branch
+                ),
+            },
+            "cleanup_result": {
+                "cleaned": False,
+                "reason": "not_attempted",
+            },
+        },
+    )
+    request = SimpleNamespace(
+        request_id=request_id,
+        task_id=case.task.task_id,
+        canonical_task_key=case.identity.canonical_task_key,
+        canonical_task_id=case.identity.canonical_task_cid,
+        board_namespace=case.identity.board_namespace,
+        task_binding_id=task_binding_id,
+        commit_sha=implementation_commit,
+        attempt=attempt,
+        branch_name=branch,
+        target_repository_id=(
+            case.daemon.merge_target_repository_id
+        ),
+        target_branch=(
+            case.daemon.resolved_merge_target_branch
+        ),
+        status="quarantined",
+        failure_count=3,
+        failure_reason="bounded queue attempts exhausted",
+        metadata={
+            "canonical_task_key": (
+                case.identity.canonical_task_key
+            ),
+            "canonical_task_cid": (
+                case.identity.canonical_task_cid
+            ),
+            "board_namespace": case.identity.board_namespace,
+            "task_binding_id": task_binding_id,
+            "implementation_attempt": attempt,
+            "implementation_commit": implementation_commit,
+            "target_repository_id": (
+                case.daemon.merge_target_repository_id
+            ),
+            "target_branch": (
+                case.daemon.resolved_merge_target_branch
+            ),
+        },
+    )
+    queue = SimpleNamespace(
+        get=lambda candidate_request_id: (
+            request
+            if candidate_request_id == request.request_id
+            else None
+        ),
+    )
+    case.daemon.merge_queue = queue
+    return SimpleNamespace(
+        started=started,
+        finished=finished,
+        request=request,
+        queue=queue,
+    )
+
+
+def test_quarantined_queued_correction_projects_exact_merge_failure(
+    post_merge_denial_case_factory,
+):
+    case = post_merge_denial_case_factory()
+    queued = _record_queued_post_merge_correction_quarantine(case)
+
+    reconciled = (
+        case.daemon._reconcile_quarantined_post_merge_corrections(
+            tasks=(case.task,),
+        )
+    )
+
+    assert len(reconciled) == 1
+    terminal = reconciled[0]
+    assert terminal["type"] == (
+        post_merge_review_module
+        .POST_MERGE_CORRECTION_QUEUE_RECONCILED_EVENT
+    )
+    assert terminal[
+        "source_implementation_finished_event_id"
+    ] == queued.finished["event_id"]
+    assert terminal["request_id"] == queued.request.request_id
+    assert terminal["queue_terminal"]["status"] == "quarantined"
+    verified = (
+        post_merge_review_module
+        .verified_post_merge_correction_queue_reconciliations_from_strict_ledger(
+            case.daemon.events_path
+        )
+    )
+    assert [event["event_id"] for event in verified] == [
+        terminal["event_id"]
+    ]
+    failures = (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+    )
+    assert len(failures) == 1
+    assert failures[0]["event_id"] == terminal["event_id"]
+    assert failures[0][
+        "post_merge_correction_failure_kind"
+    ] == "merge"
+    assert failures[0][
+        "post_merge_correction_target_attempt"
+    ] == 2
+
+
+def test_queued_correction_quarantine_reconciliation_is_restart_idempotent(
+    post_merge_denial_case_factory,
+):
+    case = post_merge_denial_case_factory()
+    queued = _record_queued_post_merge_correction_quarantine(case)
+
+    first = case.daemon._reconcile_quarantined_post_merge_corrections(
+        tasks=(case.task,),
+    )
+    second = case.daemon._reconcile_quarantined_post_merge_corrections(
+        tasks=(case.task,),
+    )
+    restarted = TodoImplementationDaemon(
+        todo_path=case.todo_path,
+        state_path=case.daemon.state_path,
+        strategy_path=case.daemon.strategy_path,
+        events_path=case.daemon.events_path,
+        repo_root=case.repo,
+        task_header_prefix="## REV-",
+        merge_queue=case.queue,
+        worktree_submodule_paths=[],
+    )
+    restarted_task = restarted._load_tasks()[0]
+    restarted._register_task_identities((restarted_task,))
+    restarted.merge_queue = queued.queue
+    after_restart = (
+        restarted._reconcile_quarantined_post_merge_corrections(
+            tasks=(restarted_task,),
+        )
+    )
+
+    assert len(first) == 1
+    assert second == []
+    assert after_restart == []
+    terminals = [
+        event
+        for event in restarted._iter_events()
+        if event.get("type")
+        == (
+            post_merge_review_module
+            .POST_MERGE_CORRECTION_QUEUE_RECONCILED_EVENT
+        )
+    ]
+    assert len(terminals) == 1
+
+
+@pytest.mark.parametrize(
+    ("field_name", "mismatched_value"),
+    (
+        ("task_id", "REV-OTHER"),
+        ("canonical_task_key", "task-key-other"),
+        ("canonical_task_id", "task-cid-other"),
+        ("board_namespace", "board-other"),
+        ("task_binding_id", "task-binding-other"),
+        ("commit_sha", "3" * 40),
+        ("branch_name", "implementation/rev-other-attempt-2"),
+        ("target_repository_id", "repository-other"),
+        ("target_branch", "branch-other"),
+    ),
+)
+def test_queued_correction_quarantine_rejects_request_identity_mismatch(
+    post_merge_denial_case_factory,
+    field_name,
+    mismatched_value,
+):
+    case = post_merge_denial_case_factory()
+    queued = _record_queued_post_merge_correction_quarantine(case)
+    setattr(queued.request, field_name, mismatched_value)
+
+    reconciled = (
+        case.daemon._reconcile_quarantined_post_merge_corrections(
+            tasks=(case.task,),
+        )
+    )
+
+    assert reconciled == []
+    assert (
+        post_merge_review_module
+        .verified_post_merge_correction_queue_reconciliations_from_strict_ledger(
+            case.daemon.events_path
+        )
+        == ()
+    )
+    assert (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+        == ()
+    )
+
+
+def test_queued_correction_quarantine_uses_stable_implementation_attempt(
+    post_merge_denial_case_factory,
+):
+    case = post_merge_denial_case_factory()
+    queued = _record_queued_post_merge_correction_quarantine(case)
+    # Queue retry accounting is mutable and may no longer equal the
+    # implementation attempt that produced the immutable candidate.
+    queued.request.attempt += 1
+
+    reconciled = (
+        case.daemon._reconcile_quarantined_post_merge_corrections(
+            tasks=(case.task,),
+        )
+    )
+
+    assert len(reconciled) == 1
+    assert reconciled[0]["queue_terminal"][
+        "implementation_attempt"
+    ] == queued.finished["attempt"]
+
+
+def test_queued_correction_quarantine_rejects_metadata_attempt_mismatch(
+    post_merge_denial_case_factory,
+):
+    case = post_merge_denial_case_factory()
+    queued = _record_queued_post_merge_correction_quarantine(case)
+    queued.request.metadata["implementation_attempt"] += 1
+
+    assert (
+        case.daemon._reconcile_quarantined_post_merge_corrections(
+            tasks=(case.task,),
+        )
+        == []
+    )
+
+
+def test_reconciled_correction_quarantine_cannot_be_revived_by_queue_status(
+    post_merge_denial_case_factory,
+):
+    case = post_merge_denial_case_factory()
+    queued = _record_queued_post_merge_correction_quarantine(case)
+    terminal = (
+        case.daemon._reconcile_quarantined_post_merge_corrections(
+            tasks=(case.task,),
+        )
+    )[0]
+    queued.request.status = "pending"
+
+    assert (
+        case.daemon._reconcile_quarantined_post_merge_corrections(
+            tasks=(case.task,),
+        )
+        == []
+    )
+    latest = {case.task.task_id: queued.finished}
+    assert case.daemon._pending_queued_merge_task_ids(latest) == set()
+    assert case.daemon._quarantined_queued_merge_task_ids(
+        latest
+    ) == {case.task.task_id}
+    failures = (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+    )
+    assert [failure["event_id"] for failure in failures] == [
+        terminal["event_id"]
+    ]
+
+
+def _record_consumed_post_merge_correction_failure(case):
+    return case.daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": case.identity.canonical_task_key,
+            "canonical_task_cid": case.identity.canonical_task_cid,
+            "board_namespace": case.identity.board_namespace,
+            "attempt": 2,
+            "branch": "implementation/rev-001-attempt-2",
+            "implementation_commit": "",
+            "returncode": 78,
+            "attempt_consumed": True,
+            "merge_result": {
+                "attempted": False,
+                "merged": False,
+                "reason": "not_attempted",
+            },
+            "validation_result": {
+                "attempted": False,
+                "passed": False,
+                "returncode": 78,
+                "reason": "proposal_gate_failed",
+                "error": "proposal_validation_failed",
+            },
+            "cleanup_result": {
+                "cleaned": True,
+                "reason": "failed_attempt_cleaned",
+            },
+        },
+    )
+
+
+def _durable_post_merge_correction_registry(
+    case,
+    failure,
+    *,
+    record_kind="correction_failed",
+    record_attempt=None,
+):
+    denial_id = str(
+        failure["post_merge_correction_denial_id"]
+    )
+    task_binding_id = (
+        post_merge_review_module.post_merge_task_binding_id(
+            case.task
+        )
+    )
+    target_attempt = int(
+        failure["post_merge_correction_target_attempt"]
+    )
+    origin_stream_id = str(
+        failure["post_merge_correction_origin_stream_id"]
+    )
+    denial = {
+        "denial_id": denial_id,
+        "target_repository_id": "test-repository",
+        "target_branch": "main",
+        "task_id": case.task.task_id,
+        "canonical_task_key": (
+            case.identity.canonical_task_key
+        ),
+        "canonical_task_cid": (
+            case.identity.canonical_task_cid
+        ),
+        "board_namespace": case.identity.board_namespace,
+        "task_binding_id": task_binding_id,
+        "target_implementation_attempt": target_attempt,
+    }
+    attempt = (
+        int(record_attempt)
+        if record_attempt is not None
+        else target_attempt
+    )
+    detail = {}
+    if record_kind in {
+        "correction_failed",
+        "legacy_failure_anchored",
+    }:
+        detail = {
+            "failure_kind": str(
+                failure[
+                    "post_merge_correction_failure_kind"
+                ]
+            ),
+            "terminal_event_id": str(failure["event_id"]),
+            "terminal_event_sequence": int(
+                failure["sequence"]
+            ),
+        }
+    record = {
+        "record_id": f"sha256:{record_kind}:{attempt}",
+        "denial_id": denial_id,
+        "ordinal": 1,
+        "record_kind": record_kind,
+        "target_repository_id": "test-repository",
+        "target_branch": "main",
+        "task_id": case.task.task_id,
+        "canonical_task_key": (
+            case.identity.canonical_task_key
+        ),
+        "canonical_task_cid": (
+            case.identity.canonical_task_cid
+        ),
+        "board_namespace": case.identity.board_namespace,
+        "task_binding_id": task_binding_id,
+        "attempt": attempt,
+        "origin_stream_id": origin_stream_id,
+        "detail": detail,
+    }
+    return SimpleNamespace(
+        verified_post_merge_review_denials=lambda: (denial,),
+        verified_post_merge_correction_chain=lambda: (record,),
+    )
+
+
+def _record_bound_implementation_start(
+    case,
+    attempt: int,
+    *,
+    board_namespace: str | None = None,
+    task_binding_id: str | None = None,
+):
+    return case.daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": (
+                case.identity.canonical_task_key
+            ),
+            "canonical_task_cid": (
+                case.identity.canonical_task_cid
+            ),
+            "board_namespace": (
+                case.identity.board_namespace
+                if board_namespace is None
+                else board_namespace
+            ),
+            "task_binding_id": (
+                post_merge_review_module.post_merge_task_binding_id(
+                    case.task
+                )
+                if task_binding_id is None
+                else task_binding_id
+            ),
+            "attempt": attempt,
+            "command": ["grok", "run"],
+        },
+    )
+
+
+def _generate_completed_post_merge_retry_repair(case) -> str:
+    from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+        record_retry_budget_findings,
+    )
+
+    findings = record_retry_budget_findings(
+        todo_path=case.todo_path,
+        events_path=case.daemon.events_path,
+        strategy_path=case.daemon.strategy_path,
+        discovery_dir=case.repo / "discovery",
+        task_header_prefix_value="## REV-",
+        task_prefix="REV-",
+        validation_retry_budget=3,
+        implementation_retry_budget=3,
+        merge_retry_budget=3,
+        discovery_output_path="discovery",
+    )
+    assert len(findings) == 1
+    repair_task_id = findings[0]["follow_up_task_id"]
+    case.todo_path.write_text(
+        case.todo_path.read_text(encoding="utf-8").replace(
+            "- Status: todo",
+            "- Status: completed",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    return repair_task_id
+
+
+def test_failed_correction_projection_rejects_malformed_and_stale_events(
+    post_merge_denial_case_factory,
+):
+    case = post_merge_denial_case_factory()
+
+    def record(attempt, *, attempt_consumed):
+        return case.daemon._record_event(
+            "implementation_finished",
+            {
+                "task_id": case.task.task_id,
+                "canonical_task_key": (
+                    case.identity.canonical_task_key
+                ),
+                "canonical_task_cid": (
+                    case.identity.canonical_task_cid
+                ),
+                "board_namespace": case.identity.board_namespace,
+                "attempt": attempt,
+                "branch": (
+                    f"implementation/rev-001-attempt-{attempt}"
+                ),
+                "implementation_commit": "",
+                "returncode": 1,
+                "attempt_consumed": attempt_consumed,
+                "merge_result": {
+                    "attempted": False,
+                    "merged": False,
+                    "reason": "implementation_failed",
+                },
+            },
+        )
+
+    record(2, attempt_consumed="false")
+    assert (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+        == ()
+    )
+    record(2, attempt_consumed=True)
+    assert len(
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+    ) == 1
+    record(3, attempt_consumed=True)
+    assert (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+        == ()
+    )
+    record(2, attempt_consumed=True)
+    assert (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+        == ()
+    )
+
+
+def test_failed_correction_projection_rejects_foreign_task_binding(
+    post_merge_denial_case_factory,
+):
+    case = post_merge_denial_case_factory()
+    case.daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": (
+                case.identity.canonical_task_key
+            ),
+            "canonical_task_cid": (
+                case.identity.canonical_task_cid
+            ),
+            "board_namespace": case.identity.board_namespace,
+            "task_binding_id": f"sha256:{'f' * 64}",
+            "attempt": 2,
+            "returncode": 1,
+            "attempt_consumed": True,
+        },
+    )
+
+    assert (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+        == ()
+    )
+
+
+def test_completed_retry_repair_reopens_consumed_post_merge_correction(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    _complete_post_merge_denial_queue(case)
+    _record_consumed_post_merge_correction_failure(case)
+    repair_task_id = _generate_completed_post_merge_retry_repair(case)
+    TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    ).save(case.daemon.state_path)
+    implementation_calls: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        case.daemon,
+        "_consume_one_merge_candidate",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_implementation",
+        lambda selected, state, **_kwargs: implementation_calls.append(
+            (
+                selected.task_id,
+                case.daemon._task_attempt(state, selected),
+            )
+        )
+        or {"returncode": 0},
+    )
+    case.daemon.implement = True
+
+    result = case.daemon.run_once()
+    state = TodoTaskState.load(case.daemon.state_path)
+
+    assert result["shared_completed_task_ids"] == [case.task.task_id]
+    assert result[
+        "retry_budget_reopened_post_merge_task_ids"
+    ] == [case.task.task_id]
+    assert result["active_task_id"] == case.task.task_id
+    assert implementation_calls == [(case.task.task_id, 3)]
+    assert state.task_statuses[case.task.task_id] == "ready"
+    assert state.retry_budget_attempt_baselines_by_cid[
+        case.identity.canonical_task_cid
+    ] == 2
+    grants = (
+        post_merge_review_module
+        .verified_post_merge_correction_repair_grants_from_strict_ledger(
+            case.daemon.events_path
+        )
+    )
+    assert len(grants) == 1
+    assert grants[0]["repair_task_id"] == repair_task_id
+    assert grants[0]["target_attempt"] == 2
+    repair_prompt = json.loads(
+        case.daemon._build_implementation_prompt(case.task, 3)
+    )
+    assert any(
+        "Preserve every existing test function symbol" in rule
+        for rule in repair_prompt["authority"][
+            "generic_prompt_policy"
+        ]
+    )
+    state.implementation_attempts[case.task.task_id] = 3
+    state.implementation_attempts_by_cid[
+        case.identity.canonical_task_cid
+    ] = 3
+    assert (
+        case.daemon._retry_budget_reopened_post_merge_task_ids(
+            case.daemon._load_tasks(),
+            state=state,
+        )
+        == set()
+    )
+
+
+def test_unbound_completed_retry_repair_cannot_reopen_post_merge_correction(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    _complete_post_merge_denial_queue(case)
+    _record_consumed_post_merge_correction_failure(case)
+    case.todo_path.write_text(
+        case.todo_path.read_text(encoding="utf-8").rstrip()
+        + f"""
+
+## REV-099 Resolve validation retry-budget failure for {case.task.task_id}
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on:
+- Outputs: evidence/rev-099.md
+- Validation: test -f verified.txt
+- Acceptance: Use the repair evidence, then release {case.task.task_id} from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    ).save(case.daemon.state_path)
+    monkeypatch.setattr(
+        case.daemon,
+        "_consume_one_merge_candidate",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_implementation",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unbound repair reopened a consumed correction"
+        ),
+    )
+    case.daemon.implement = True
+
+    result = case.daemon.run_once()
+    state = TodoTaskState.load(case.daemon.state_path)
+
+    assert result[
+        "retry_budget_reopened_post_merge_task_ids"
+    ] == []
+    assert result["active_task_id"] == ""
+    assert state.task_statuses[case.task.task_id] == "waiting"
+    assert (
+        post_merge_review_module
+        .verified_post_merge_correction_repair_grants_from_strict_ledger(
+            case.daemon.events_path
+        )
+        == ()
+    )
+
+
+def test_completed_correction_repair_cannot_be_replayed_after_crashed_attempt(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    _complete_post_merge_denial_queue(case)
+    _record_consumed_post_merge_correction_failure(case)
+    repair_task_id = _generate_completed_post_merge_retry_repair(case)
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    state.save(case.daemon.state_path)
+    tasks = case.daemon._load_tasks()
+    resets, deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            tasks,
+        )
+    )
+    assert len(resets) == 1
+    assert deferred == []
+
+    todo_text = case.todo_path.read_text(encoding="utf-8")
+    repair_start = todo_text.index(f"## {repair_task_id} ")
+    duplicate = todo_text[repair_start:].replace(
+        f"## {repair_task_id} ",
+        "## REV-099 ",
+        1,
+    )
+    case.todo_path.write_text(
+        todo_text.rstrip() + "\n\n" + duplicate.strip() + "\n",
+        encoding="utf-8",
+    )
+    state.implementation_attempts[case.task.task_id] = 3
+    state.implementation_attempts_by_cid[
+        case.identity.canonical_task_cid
+    ] = 3
+    state.save(case.daemon.state_path)
+    monkeypatch.setattr(
+        case.daemon,
+        "_consume_one_merge_candidate",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_implementation",
+        lambda *_args, **_kwargs: pytest.fail(
+            "completed repair was replayed after attempt consumption"
+        ),
+    )
+    case.daemon.implement = True
+
+    result = case.daemon.run_once()
+    recovered = TodoTaskState.load(case.daemon.state_path)
+
+    assert result[
+        "retry_budget_reopened_post_merge_task_ids"
+    ] == []
+    assert result["active_task_id"] == ""
+    assert recovered.task_statuses[case.task.task_id] == "waiting"
+
+
+def test_correction_repair_waits_for_transient_ledger_verification(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    repair_task_id = _generate_completed_post_merge_retry_repair(case)
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    tasks = case.daemon._load_tasks()
+    verifier = case.daemon._verified_failed_post_merge_corrections
+    monkeypatch.setattr(
+        case.daemon,
+        "_verified_failed_post_merge_corrections",
+        lambda: None,
+    )
+
+    resets, deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            tasks,
+        )
+    )
+
+    assert resets == []
+    assert deferred[0]["reason"] == (
+        "post_merge_correction_evidence_unavailable"
+    )
+    assert state.retry_budget_repair_receipts == {}
+    assert state.retry_budget_attempt_baselines_by_cid == {}
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_verified_failed_post_merge_corrections",
+        verifier,
+    )
+    resets, deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            tasks,
+        )
+    )
+    assert len(resets) == 1
+    assert deferred == []
+    assert state.retry_budget_repair_receipts[
+        case.task.task_id
+    ] == repair_task_id
+
+
+def test_correction_repair_recovers_state_saved_before_grant_event(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    repair_task_id = _generate_completed_post_merge_retry_repair(case)
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    tasks = case.daemon._load_tasks()
+    record_event = case.daemon._record_event
+
+    def crash_before_grant(event_type, payload, **kwargs):
+        if event_type == "task_retry_budget_reset":
+            raise RuntimeError("simulated reset-event crash")
+        return record_event(event_type, payload, **kwargs)
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_record_event",
+        crash_before_grant,
+    )
+    with pytest.raises(RuntimeError, match="simulated reset-event crash"):
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            tasks,
+        )
+    persisted = TodoTaskState.load(case.daemon.state_path)
+    assert persisted.retry_budget_repair_receipts[
+        case.task.task_id
+    ] == repair_task_id
+    assert (
+        post_merge_review_module
+        .verified_post_merge_correction_repair_grants_from_strict_ledger(
+            case.daemon.events_path
+        )
+        == ()
+    )
+
+    monkeypatch.setattr(case.daemon, "_record_event", record_event)
+    resets, deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            persisted,
+            tasks,
+        )
+    )
+    assert len(resets) == 1
+    assert deferred == []
+    assert len(
+        post_merge_review_module
+        .verified_post_merge_correction_repair_grants_from_strict_ledger(
+            case.daemon.events_path
+        )
+    ) == 1
+
+
+@pytest.mark.parametrize(
+    "authority_change",
+    (
+        "attempt_started",
+        "attempt_consumed",
+        "higher_attempt_consumed",
+        "repair_removed",
+    ),
+)
+def test_repair_selected_work_revalidates_authority_before_dispatch(
+    post_merge_denial_case_factory,
+    monkeypatch,
+    authority_change,
+):
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    repair_task_id = _generate_completed_post_merge_retry_repair(case)
+    stale_state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    tasks = case.daemon._load_tasks()
+    resets, deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            stale_state,
+            tasks,
+        )
+    )
+    assert len(resets) == 1
+    assert deferred == []
+    stale_state = deepcopy(stale_state)
+    correction_authority = (
+        case.daemon
+        ._projected_post_merge_correction_dispatch_authority(
+            case.task,
+            stale_state,
+            3,
+        )
+    )
+    assert correction_authority
+
+    if authority_change == "attempt_started":
+        case.daemon._record_event(
+            "implementation_started",
+            {
+                "task_id": case.task.task_id,
+                "canonical_task_key": (
+                    case.identity.canonical_task_key
+                ),
+                "canonical_task_cid": (
+                    case.identity.canonical_task_cid
+                ),
+                "board_namespace": case.identity.board_namespace,
+                "task_binding_id": (
+                    post_merge_review_module.post_merge_task_binding_id(
+                        case.task
+                    )
+                ),
+                "attempt": 3,
+                "command": ["grok", "run"],
+            },
+        )
+        # Simulate the overlapping daemon pass restoring its pre-launch
+        # snapshot before the provider owner crashes.
+        current_state = deepcopy(stale_state)
+        current_state.save(case.daemon.state_path)
+    elif authority_change in {
+        "attempt_consumed",
+        "higher_attempt_consumed",
+    }:
+        case.daemon._record_event(
+            "implementation_finished",
+            {
+                "task_id": case.task.task_id,
+                "canonical_task_key": (
+                    case.identity.canonical_task_key
+                ),
+                "canonical_task_cid": (
+                    case.identity.canonical_task_cid
+                ),
+                "board_namespace": case.identity.board_namespace,
+                "attempt": (
+                    4
+                    if authority_change == "higher_attempt_consumed"
+                    else 3
+                ),
+                "returncode": 1,
+                "attempt_consumed": True,
+            },
+        )
+        # Deliberately restore the pre-dispatch snapshot after the terminal
+        # event. Ledger-backed grant consumption must still prevent replay.
+        current_state = deepcopy(stale_state)
+        current_state.save(case.daemon.state_path)
+    else:
+        todo_text = case.todo_path.read_text(encoding="utf-8")
+        repair_start = todo_text.index(f"## {repair_task_id} ")
+        case.todo_path.write_text(
+            todo_text[:repair_start].rstrip() + "\n",
+            encoding="utf-8",
+        )
+
+    case.daemon.use_ephemeral_worktree = False
+    monkeypatch.setattr(
+        case.daemon,
+        "_active_provider_capacity_backoff",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_find_live_inflight_implementation",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "provider prompt compiled after repair authority changed"
+        ),
+    )
+
+    result = case.daemon._run_implementation(
+        case.task,
+        stale_state,
+        post_merge_correction_authority=correction_authority,
+    )
+
+    assert result["skipped"] is True
+    assert result["reason"] == (
+        "post_merge_correction_authority_stale"
+    )
+    assert result["provider_call_allowed"] is False
+    assert result["attempt_consumed"] is False
+
+
+def test_initial_denial_revalidates_after_stale_selection_before_dispatch(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    stale_state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 1},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 1,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    stale_state.save(case.daemon.state_path)
+    authority = (
+        case.daemon
+        ._projected_post_merge_correction_dispatch_authority(
+            case.task,
+            stale_state,
+            2,
+        )
+    )
+    assert authority["authority_kind"] == "review_denial"
+    _record_bound_implementation_start(case, 2)
+    stale_state.save(case.daemon.state_path)
+    monkeypatch.setattr(
+        case.daemon,
+        "_implementation_process_active",
+        lambda _event: False,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "stale denial authority compiled a provider prompt"
+        ),
+    )
+
+    result = case.daemon._run_implementation(
+        case.task,
+        stale_state,
+        post_merge_correction_authority=authority,
+    )
+
+    assert result["skipped"] is True
+    assert result["reason"] == (
+        "post_merge_correction_authority_stale"
+    )
+    assert result["provider_call_allowed"] is False
+    starts = [
+        event
+        for event in case.daemon._iter_events()
+        if (
+            event.get("type") == "implementation_started"
+            and event.get("task_id") == case.task.task_id
+            and event.get("attempt") == 2
+        )
+    ]
+    assert len(starts) == 1
+
+
+@pytest.mark.parametrize("lineage_kind", ("initial_denial", "repair"))
+def test_failed_correction_never_falls_through_to_ordinary_retry(
+    post_merge_denial_case_factory,
+    monkeypatch,
+    lineage_kind,
+):
+    case = post_merge_denial_case_factory()
+    if lineage_kind == "initial_denial":
+        state = TodoTaskState(
+            implementation_attempts={case.task.task_id: 2},
+            implementation_attempts_by_cid={
+                case.identity.canonical_task_cid: 2,
+            },
+            task_identities={
+                case.task.task_id: case.identity.to_dict(),
+            },
+        )
+        _record_consumed_post_merge_correction_failure(case)
+    else:
+        _record_consumed_post_merge_correction_failure(case)
+        _generate_completed_post_merge_retry_repair(case)
+        state = TodoTaskState(
+            implementation_attempts={case.task.task_id: 2},
+            implementation_attempts_by_cid={
+                case.identity.canonical_task_cid: 2,
+            },
+            task_identities={
+                case.task.task_id: case.identity.to_dict(),
+            },
+        )
+        tasks = case.daemon._load_tasks()
+        resets, deferred = (
+            case.daemon
+            ._reset_attempt_budgets_for_completed_retry_repairs(
+                state,
+                tasks,
+            )
+        )
+        assert len(resets) == 1
+        assert deferred == []
+        case.daemon._record_event(
+            "implementation_finished",
+            {
+                "task_id": case.task.task_id,
+                "canonical_task_key": (
+                    case.identity.canonical_task_key
+                ),
+                "canonical_task_cid": (
+                    case.identity.canonical_task_cid
+                ),
+                "board_namespace": case.identity.board_namespace,
+                "task_binding_id": (
+                    post_merge_review_module
+                    .post_merge_task_binding_id(case.task)
+                ),
+                "attempt": 3,
+                "returncode": 1,
+                "attempt_consumed": True,
+            },
+        )
+        state.implementation_attempts[case.task.task_id] = 3
+        state.implementation_attempts_by_cid[
+            case.identity.canonical_task_cid
+        ] = 3
+    state.save(case.daemon.state_path)
+    monkeypatch.setattr(
+        case.daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "failed correction fell through to ordinary retry"
+        ),
+    )
+
+    result = case.daemon._run_implementation(
+        case.task,
+        state,
+    )
+
+    assert result["skipped"] is True
+    assert result["reason"] == (
+        "post_merge_correction_authority_required"
+    )
+    assert result["provider_call_allowed"] is False
+
+
+def test_unavailable_correction_verifiers_fail_closed_before_prompt(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 1},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 1,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+        completed_task_ids=[case.task.task_id],
+    )
+    state.save(case.daemon.state_path)
+    monkeypatch.setattr(
+        case.daemon,
+        "_verified_post_merge_review_denials",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        case.daemon.merge_queue,
+        "verified_post_merge_review_denials",
+        lambda: (_ for _ in ()).throw(
+            RuntimeError("registry unavailable")
+        ),
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_verified_failed_post_merge_corrections",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unavailable correction verification failed open"
+        ),
+    )
+
+    result = case.daemon._run_implementation(case.task, state)
+
+    assert result["reason"] == (
+        "post_merge_correction_authority_required"
+    )
+    assert result["provider_call_allowed"] is False
+
+
+def test_post_launch_provider_outcome_does_not_replay_repair_grant(
+    post_merge_denial_case_factory,
+):
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    _generate_completed_post_merge_retry_repair(case)
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    tasks = case.daemon._load_tasks()
+    resets, deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            tasks,
+        )
+    )
+    assert len(resets) == 1
+    assert deferred == []
+    started = case.daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": (
+                case.identity.canonical_task_key
+            ),
+            "canonical_task_cid": (
+                case.identity.canonical_task_cid
+            ),
+            "board_namespace": case.identity.board_namespace,
+            "task_binding_id": post_merge_review_module.post_merge_task_binding_id(
+                case.task
+            ),
+            "attempt": 3,
+            "command": ["grok", "run"],
+        },
+    )
+    assert (
+        case.daemon._retry_budget_reopened_post_merge_task_ids(
+            tasks,
+            state=state,
+        )
+        == set()
+    )
+
+    case.daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": case.identity.canonical_task_key,
+            "canonical_task_cid": case.identity.canonical_task_cid,
+            "board_namespace": case.identity.board_namespace,
+            "attempt": 3,
+            "returncode": 75,
+            "attempt_consumed": False,
+            "reason": "provider_capacity_exhausted",
+            "deferred": True,
+            "released_started_event_id": started["event_id"],
+            "released_started_event_sequence": started["sequence"],
+        },
+    )
+
+    assert (
+        case.daemon._retry_budget_reopened_post_merge_task_ids(
+            tasks,
+            state=state,
+        )
+        == set()
+    )
+    outstanding = (
+        post_merge_review_module
+        .verified_outstanding_implementation_starts_from_strict_ledger(
+            case.daemon.events_path
+        )
+    )
+    assert [event["event_id"] for event in outstanding] == [
+        started["event_id"]
+    ]
+
+
+def test_orphaned_started_repair_attempt_becomes_new_repairable_failure(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+        record_retry_budget_findings,
+    )
+
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    first_repair_id = _generate_completed_post_merge_retry_repair(case)
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    tasks = case.daemon._load_tasks()
+    resets, deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            tasks,
+        )
+    )
+    assert len(resets) == 1
+    assert deferred == []
+    case.daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": (
+                case.identity.canonical_task_key
+            ),
+            "canonical_task_cid": (
+                case.identity.canonical_task_cid
+            ),
+            "board_namespace": case.identity.board_namespace,
+            "task_binding_id": (
+                post_merge_review_module.post_merge_task_binding_id(
+                    case.task
+                )
+            ),
+            "attempt": 3,
+            "command": ["grok", "run"],
+        },
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_implementation_process_active",
+        lambda _event: False,
+    )
+
+    recovered = (
+        case.daemon._recover_orphaned_post_merge_repair_attempts(
+            tasks=tasks,
+            state=state,
+        )
+    )
+
+    assert len(recovered) == 1
+    assert recovered[0]["attempt"] == 3
+    assert state.implementation_attempts_by_cid[
+        case.identity.canonical_task_cid
+    ] == 3
+    failures = (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+    )
+    assert len(failures) == 1
+    assert failures[0][
+        "post_merge_correction_target_attempt"
+    ] == 3
+    findings = record_retry_budget_findings(
+        todo_path=case.todo_path,
+        events_path=case.daemon.events_path,
+        strategy_path=case.daemon.strategy_path,
+        discovery_dir=case.repo / "discovery",
+        task_header_prefix_value="## REV-",
+        task_prefix="REV-",
+        validation_retry_budget=3,
+        implementation_retry_budget=3,
+        merge_retry_budget=3,
+        discovery_output_path="discovery",
+    )
+    assert len(findings) == 1
+    assert findings[0]["follow_up_task_id"] != first_repair_id
+    assert findings[0]["failure_kind"] == "implementation"
+
+
+def test_initial_denial_orphan_becomes_exact_repairable_failure(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 1},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 1,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    state.save(case.daemon.state_path)
+    started = _record_bound_implementation_start(case, 2)
+    monkeypatch.setattr(
+        case.daemon,
+        "_implementation_process_active",
+        lambda _event: False,
+    )
+
+    recovered = (
+        case.daemon._recover_orphaned_post_merge_repair_attempts(
+            tasks=case.daemon._load_tasks(),
+            state=state,
+        )
+    )
+
+    assert len(recovered) == 1
+    assert recovered[0]["authority_kind"] == "review_denial"
+    assert recovered[0]["started_event_id"] == started["event_id"]
+    failures = (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+    )
+    assert len(failures) == 1
+    assert failures[0][
+        "post_merge_correction_target_attempt"
+    ] == 2
+
+
+def test_orphan_recovery_is_single_writer_across_concurrent_callers(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    _generate_completed_post_merge_retry_repair(case)
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    tasks = case.daemon._load_tasks()
+    resets, deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            tasks,
+        )
+    )
+    assert len(resets) == 1
+    assert deferred == []
+    started = _record_bound_implementation_start(case, 3)
+    monkeypatch.setattr(
+        case.daemon,
+        "_implementation_process_active",
+        lambda _event: False,
+    )
+    barrier = threading.Barrier(2)
+    acquire = case.daemon._try_acquire_implementation_task_claim
+
+    def synchronized_acquire(*args, **kwargs):
+        barrier.wait(timeout=5)
+        return acquire(*args, **kwargs)
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_try_acquire_implementation_task_claim",
+        synchronized_acquire,
+    )
+    states = (deepcopy(state), deepcopy(state))
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda candidate_state: (
+                    case.daemon
+                    ._recover_orphaned_post_merge_repair_attempts(
+                        tasks=tasks,
+                        state=candidate_state,
+                    )
+                ),
+                states,
+            )
+        )
+
+    assert sorted(len(result) for result in results) == [0, 1]
+    terminals = [
+        event
+        for event in case.daemon._iter_events()
+        if (
+            event.get("type") == "implementation_finished"
+            and event.get(
+                "recovered_orphaned_correction_attempt"
+            )
+            is True
+            and event.get("attempt") == 3
+        )
+    ]
+    assert len(terminals) == 1
+    assert terminals[0]["exception_result"][
+        "recovered_from_started_event_id"
+    ] == started["event_id"]
+
+
+def test_orphan_recovery_retries_after_state_save_event_append_crash(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    _generate_completed_post_merge_retry_repair(case)
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    tasks = case.daemon._load_tasks()
+    resets, deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            tasks,
+        )
+    )
+    assert len(resets) == 1
+    assert deferred == []
+    _record_bound_implementation_start(case, 3)
+    monkeypatch.setattr(
+        case.daemon,
+        "_implementation_process_active",
+        lambda _event: False,
+    )
+    record_event = case.daemon._record_event
+
+    def crash_on_terminal(event_type, payload, **kwargs):
+        if (
+            event_type == "implementation_finished"
+            and payload.get(
+                "recovered_orphaned_correction_attempt"
+            )
+            is True
+        ):
+            raise RuntimeError("simulated orphan terminal crash")
+        return record_event(event_type, payload, **kwargs)
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_record_event",
+        crash_on_terminal,
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="simulated orphan terminal crash",
+    ):
+        case.daemon._recover_orphaned_post_merge_repair_attempts(
+            tasks=tasks,
+            state=state,
+        )
+
+    persisted = TodoTaskState.load(case.daemon.state_path)
+    assert persisted.implementation_attempts_by_cid[
+        case.identity.canonical_task_cid
+    ] == 3
+    assert not case.daemon._implementation_lock_path().exists()
+    assert not case.daemon._implementation_task_claim_path(
+        case.task.task_id,
+        canonical_task_cid=case.identity.canonical_task_cid,
+    ).exists()
+
+    monkeypatch.setattr(case.daemon, "_record_event", record_event)
+    recovered = (
+        case.daemon._recover_orphaned_post_merge_repair_attempts(
+            tasks=tasks,
+            state=persisted,
+        )
+    )
+    assert len(recovered) == 1
+
+
+@pytest.mark.parametrize(
+    ("board_namespace", "task_binding_id"),
+    (
+        ("foreign-board", None),
+        (None, f"sha256:{'e' * 64}"),
+    ),
+)
+def test_foreign_started_identity_cannot_be_laundered_by_recovery(
+    post_merge_denial_case_factory,
+    monkeypatch,
+    board_namespace,
+    task_binding_id,
+):
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    _generate_completed_post_merge_retry_repair(case)
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    tasks = case.daemon._load_tasks()
+    resets, deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            tasks,
+        )
+    )
+    assert len(resets) == 1
+    assert deferred == []
+    _record_bound_implementation_start(
+        case,
+        3,
+        board_namespace=board_namespace,
+        task_binding_id=task_binding_id,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_implementation_process_active",
+        lambda _event: False,
+    )
+
+    recovered = (
+        case.daemon._recover_orphaned_post_merge_repair_attempts(
+            tasks=tasks,
+            state=state,
+        )
+    )
+
+    assert recovered == []
+    failures = (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+    )
+    assert [
+        failure["post_merge_correction_target_attempt"]
+        for failure in failures
+    ] == [2]
+
+
+def test_failed_repair_grant_can_receive_a_new_one_shot_repair(
+    post_merge_denial_case_factory,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+        record_retry_budget_findings,
+    )
+
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    first_repair_id = _generate_completed_post_merge_retry_repair(
+        case
+    )
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 2},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 2,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    tasks = case.daemon._load_tasks()
+    first_resets, first_deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            tasks,
+        )
+    )
+    assert len(first_resets) == 1
+    assert first_deferred == []
+    case.daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": case.identity.canonical_task_key,
+            "canonical_task_cid": case.identity.canonical_task_cid,
+            "board_namespace": case.identity.board_namespace,
+            "attempt": 3,
+            "returncode": 78,
+            "attempt_consumed": True,
+            "validation_result": {
+                "attempted": False,
+                "passed": False,
+                "returncode": 78,
+                "reason": "proposal_gate_failed",
+                "error": "proposal_validation_failed",
+            },
+        },
+    )
+    state.implementation_attempts[case.task.task_id] = 3
+    state.implementation_attempts_by_cid[
+        case.identity.canonical_task_cid
+    ] = 3
+    state.save(case.daemon.state_path)
+    failures = (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )
+    )
+    assert len(failures) == 1
+    assert failures[0][
+        "post_merge_correction_target_attempt"
+    ] == 3
+
+    findings = record_retry_budget_findings(
+        todo_path=case.todo_path,
+        events_path=case.daemon.events_path,
+        strategy_path=case.daemon.strategy_path,
+        discovery_dir=case.repo / "discovery",
+        task_header_prefix_value="## REV-",
+        task_prefix="REV-",
+        validation_retry_budget=3,
+        implementation_retry_budget=3,
+        merge_retry_budget=3,
+        discovery_output_path="discovery",
+    )
+    assert len(findings) == 1
+    second_repair_id = findings[0]["follow_up_task_id"]
+    assert second_repair_id != first_repair_id
+    todo_text = case.todo_path.read_text(encoding="utf-8")
+    second_start = todo_text.index(f"## {second_repair_id} ")
+    second_status = todo_text.index(
+        "- Status: todo",
+        second_start,
+    )
+    case.todo_path.write_text(
+        todo_text[:second_status]
+        + "- Status: completed"
+        + todo_text[second_status + len("- Status: todo"):],
+        encoding="utf-8",
+    )
+
+    second_resets, second_deferred = (
+        case.daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            case.daemon._load_tasks(),
+        )
+    )
+
+    assert len(second_resets) == 1
+    assert second_deferred == []
+    grants = (
+        post_merge_review_module
+        .verified_post_merge_correction_repair_grants_from_strict_ledger(
+            case.daemon.events_path
+        )
+    )
+    assert [grant["target_attempt"] for grant in grants] == [2, 3]
+    assert (
+        case.daemon._retry_budget_reopened_post_merge_task_ids(
+            case.daemon._load_tasks(),
+            state=state,
+        )
+        == {case.task.task_id}
+    )
+
+
+def test_retry_reopened_post_merge_task_bypasses_artifact_completion_projection(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    _complete_post_merge_denial_queue(case)
+    case.todo_path.write_text(
+        case.todo_path.read_text(encoding="utf-8").replace(
+            "- Completion: manual",
+            "- Completion: artifact",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_retry_budget_reopened_post_merge_task_ids",
+        lambda _tasks, *, state: {case.task.task_id},
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_consume_one_merge_candidate",
+        lambda: None,
+    )
+
+    result = case.daemon.run_once()
+    state = TodoTaskState.load(case.daemon.state_path)
+
+    assert result[
+        "retry_budget_reopened_post_merge_task_ids"
+    ] == [case.task.task_id]
+    assert case.task.task_id not in state.completed_task_ids
+    assert state.task_statuses[case.task.task_id] == "ready"
+
+
+def test_consumed_failed_correction_files_immediate_retry_guardrail(
+    post_merge_denial_case_factory,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+        record_retry_budget_findings,
+    )
+
+    case = post_merge_denial_case_factory()
+    case.daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": case.identity.canonical_task_key,
+            "canonical_task_cid": case.identity.canonical_task_cid,
+            "board_namespace": case.identity.board_namespace,
+            "attempt": 2,
+            "branch": "implementation/rev-001-attempt-2",
+            "implementation_commit": "",
+            "returncode": 78,
+            "merge_result": {
+                "attempted": False,
+                "merged": False,
+                "reason": "not_attempted",
+            },
+            "validation_result": {
+                "attempted": False,
+                "passed": False,
+                "returncode": 78,
+                "reason": "proposal_gate_failed",
+                "error": "proposal_validation_failed",
+            },
+            "cleanup_result": {
+                "cleaned": True,
+                "reason": "failed_attempt_cleaned",
+            },
+        },
+    )
+
+    findings = record_retry_budget_findings(
+        todo_path=case.todo_path,
+        events_path=case.daemon.events_path,
+        strategy_path=case.daemon.strategy_path,
+        discovery_dir=case.repo / "discovery",
+        task_header_prefix_value="## REV-",
+        task_prefix="REV-",
+        validation_retry_budget=3,
+        implementation_retry_budget=3,
+        merge_retry_budget=3,
+        discovery_output_path="discovery",
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["source_task_id"] == case.task.task_id
+    assert findings[0]["failure_kind"] == "validation"
+    assert findings[0]["failure_count"] == 1
+    assert findings[0]["guardrail_trigger"] == (
+        "consumed_post_merge_correction"
+    )
+    assert findings[0]["configured_retry_budget"] == 3
+    assert (
+        f"Resolve validation retry-budget failure for {case.task.task_id}"
+        in case.todo_path.read_text(encoding="utf-8")
+    )
+    todo_text = case.todo_path.read_text(encoding="utf-8")
+    assert "Post-merge correction denial ID:" in todo_text
+    assert "Post-merge correction failure event ID:" in todo_text
+    assert "Post-merge correction source task binding ID:" in todo_text
+
+
+def test_durable_failed_correction_survives_strict_ledger_rotation(
+    post_merge_denial_case_factory,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+        record_retry_budget_findings,
+    )
+
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    failure = (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )[-1]
+    )
+    registry = _durable_post_merge_correction_registry(
+        case,
+        failure,
+    )
+    case.daemon.events_path.rename(
+        case.daemon.events_path.with_name(
+            f"{case.daemon.events_path.name}.rotated-test"
+        )
+    )
+
+    findings = record_retry_budget_findings(
+        todo_path=case.todo_path,
+        events_path=case.daemon.events_path,
+        strategy_path=case.daemon.strategy_path,
+        discovery_dir=case.repo / "discovery",
+        task_header_prefix_value="## REV-",
+        task_prefix="REV-",
+        validation_retry_budget=3,
+        implementation_retry_budget=3,
+        merge_retry_budget=3,
+        discovery_output_path="discovery",
+        post_merge_correction_registry=registry,
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["failure_kind"] == "validation"
+    assert findings[0]["failure_count"] == 1
+    assert findings[0]["guardrail_trigger"] == (
+        "consumed_post_merge_correction"
+    )
+    todo_text = case.todo_path.read_text(encoding="utf-8")
+    assert (
+        f"Post-merge correction failure event ID: "
+        f"{failure['event_id']}"
+        in todo_text
+    )
+
+
+def test_retry_budget_fails_closed_when_durable_registry_is_unavailable(
+    post_merge_denial_case_factory,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+        record_retry_budget_findings,
+    )
+
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    todo_before = case.todo_path.read_text(encoding="utf-8")
+    strategy_before = (
+        case.daemon.strategy_path.read_text(encoding="utf-8")
+        if case.daemon.strategy_path.exists()
+        else None
+    )
+
+    def unavailable():
+        raise RuntimeError("durable registry unavailable")
+
+    findings = record_retry_budget_findings(
+        todo_path=case.todo_path,
+        events_path=case.daemon.events_path,
+        strategy_path=case.daemon.strategy_path,
+        discovery_dir=case.repo / "discovery",
+        task_header_prefix_value="## REV-",
+        task_prefix="REV-",
+        validation_retry_budget=3,
+        implementation_retry_budget=3,
+        merge_retry_budget=3,
+        discovery_output_path="discovery",
+        post_merge_correction_registry=SimpleNamespace(
+            verified_post_merge_review_denials=unavailable,
+            verified_post_merge_correction_chain=lambda: (),
+        ),
+    )
+
+    assert findings == []
+    assert case.todo_path.read_text(encoding="utf-8") == todo_before
+    if strategy_before is None:
+        assert not case.daemon.strategy_path.exists()
+    else:
+        assert (
+            case.daemon.strategy_path.read_text(encoding="utf-8")
+            == strategy_before
+        )
+
+
+def test_durable_terminal_state_suppresses_legacy_retry_projection(
+    post_merge_denial_case_factory,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+        record_retry_budget_findings,
+    )
+
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    failure = (
+        post_merge_review_module
+        .verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+            case.daemon.events_path
+        )[-1]
+    )
+    registry = _durable_post_merge_correction_registry(
+        case,
+        failure,
+        record_kind="repair_granted",
+        record_attempt=(
+            int(
+                failure[
+                    "post_merge_correction_target_attempt"
+                ]
+            )
+            + 1
+        ),
+    )
+    todo_before = case.todo_path.read_text(encoding="utf-8")
+
+    findings = record_retry_budget_findings(
+        todo_path=case.todo_path,
+        events_path=case.daemon.events_path,
+        strategy_path=case.daemon.strategy_path,
+        discovery_dir=case.repo / "discovery",
+        task_header_prefix_value="## REV-",
+        task_prefix="REV-",
+        validation_retry_budget=1,
+        implementation_retry_budget=1,
+        merge_retry_budget=1,
+        discovery_output_path="discovery",
+        post_merge_correction_registry=registry,
+    )
+
+    assert findings == []
+    assert case.todo_path.read_text(encoding="utf-8") == todo_before
+
+
+def test_stale_failed_correction_does_not_block_revised_task(
+    post_merge_denial_case_factory,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+        record_retry_budget_findings,
+    )
+
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    case.todo_path.write_text(
+        case.todo_path.read_text(encoding="utf-8").replace(
+            "Both exact nested artifacts are complete and coherent.",
+            (
+                "Both exact nested artifacts are complete, coherent, and "
+                "revision-two bound."
+            ),
+        ),
+        encoding="utf-8",
+    )
+
+    findings = record_retry_budget_findings(
+        todo_path=case.todo_path,
+        events_path=case.daemon.events_path,
+        strategy_path=case.daemon.strategy_path,
+        discovery_dir=case.repo / "discovery",
+        task_header_prefix_value="## REV-",
+        task_prefix="REV-",
+        validation_retry_budget=3,
+        implementation_retry_budget=3,
+        merge_retry_budget=3,
+        discovery_output_path="discovery",
+    )
+
+    assert findings == []
+    strategy = json.loads(
+        case.daemon.strategy_path.read_text(encoding="utf-8")
+    )
+    assert case.task.task_id not in strategy.get(
+        "blocked_tasks",
+        [],
+    )
+
+
+def test_new_failed_denial_gets_distinct_retry_repair(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives import (
+        backlog_refinery,
+    )
+
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+
+    def record():
+        return backlog_refinery.record_retry_budget_findings(
+            todo_path=case.todo_path,
+            events_path=case.daemon.events_path,
+            strategy_path=case.daemon.strategy_path,
+            discovery_dir=case.repo / "discovery",
+            task_header_prefix_value="## REV-",
+            task_prefix="REV-",
+            validation_retry_budget=3,
+            implementation_retry_budget=3,
+            merge_retry_budget=3,
+            discovery_output_path="discovery",
+        )
+
+    first = record()
+    assert len(first) == 1
+    failure = (
+        backlog_refinery.verified_failed_post_merge_corrections(
+            case.daemon.events_path
+        )[case.task.task_id]
+    )
+    later_failure = {
+        **failure,
+        "event_id": f"sha256:{'b' * 64}",
+        "sequence": int(failure["sequence"]) + 10,
+        "post_merge_correction_denial_id": (
+            f"sha256:{'c' * 64}"
+        ),
+        "post_merge_correction_target_attempt": 4,
+    }
+    monkeypatch.setattr(
+        backlog_refinery,
+        "verified_failed_post_merge_corrections",
+        lambda _events_path: {
+            case.task.task_id: later_failure,
+        },
+    )
+
+    second = record()
+
+    assert len(second) == 1
+    assert second[0]["follow_up_task_id"] != first[0][
+        "follow_up_task_id"
+    ]
+    todo_text = case.todo_path.read_text(encoding="utf-8")
+    assert (
+        todo_text.count("Resolve validation retry-budget failure")
+        == 2
+    )
+    assert str(
+        failure["post_merge_correction_denial_id"]
+    ) in todo_text
+    assert str(
+        later_failure["post_merge_correction_denial_id"]
+    ) in todo_text
+
+
+def test_correction_failure_routes_only_to_matching_repair_kind(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives import (
+        backlog_refinery,
+    )
+
+    case = post_merge_denial_case_factory()
+    failure = _record_consumed_post_merge_correction_failure(case)
+    monkeypatch.setattr(
+        backlog_refinery,
+        "consecutive_implementation_failures",
+        lambda _events, _task_id: [failure, failure, failure],
+    )
+
+    findings = backlog_refinery.record_retry_budget_findings(
+        todo_path=case.todo_path,
+        events_path=case.daemon.events_path,
+        strategy_path=case.daemon.strategy_path,
+        discovery_dir=case.repo / "discovery",
+        task_header_prefix_value="## REV-",
+        task_prefix="REV-",
+        validation_retry_budget=3,
+        implementation_retry_budget=3,
+        merge_retry_budget=3,
+        discovery_output_path="discovery",
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["failure_kind"] == "validation"
+    todo_text = case.todo_path.read_text(encoding="utf-8")
+    assert "Resolve validation retry-budget failure" in todo_text
+    assert "Resolve implementation retry-budget failure" not in todo_text
 
 
 def test_retry_budget_repair_preserves_consumed_correction_attempt_identity(
@@ -10245,7 +12713,15 @@ def test_non_consuming_target_event_preserves_exact_correction_attempt(
         lambda: None,
     )
 
-    def implement(selected, state):
+    def implement(
+        selected,
+        state,
+        *,
+        post_merge_correction_authority=None,
+    ):
+        assert (
+            post_merge_correction_authority or {}
+        ).get("authority_kind") == "review_denial"
         attempt = case.daemon._task_attempt(state, selected)
         prompt = case.daemon._build_implementation_prompt(
             selected,
@@ -15481,6 +17957,68 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
     assert daemon._find_live_inflight_implementation() is None
 
 
+def test_implementation_repair_round_is_relative_to_latest_verified_base(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", "feature.py")
+    _git(repo, "commit", "-m", "seed")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_max_repair_rounds=3,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Repair from a refreshed base",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["feature.py"],
+        acceptance="Keep the verified feature contract.",
+    )
+
+    daemon._compile_implementation_context(task, attempt=4)
+    daemon._persist_implementation_context_receipt_unchecked(
+        task,
+        attempt=4,
+    )
+    daemon.record_implementation_failure_context(
+        task,
+        {
+            "kind": "validation_failure",
+            "returncode": 1,
+            "validation": {"passed": False},
+        },
+        changed_files=("feature.py",),
+        unresolved_requirements=("feature-contract",),
+    )
+
+    assert daemon._implementation_repair_round(task, attempt=5) == 1
+    daemon._build_implementation_prompt(task, attempt=5)
+    assert daemon._last_implementation_retry is not None
+    assert daemon._last_implementation_retry.capsule.repair_round == 1
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="implementation repair round budget exhausted",
+    ):
+        daemon._build_implementation_prompt(task, attempt=8)
+
+
 def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(
     tmp_path,
     monkeypatch,
@@ -15595,6 +18133,77 @@ def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(
 
     assert decision.action == "continue"
     assert maintenance_calls == ["maintenance"]
+
+
+def test_retry_round_budget_is_relative_to_latest_verified_base_context(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Repair from a newer verified base
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Outputs: feature.py
+- Validation: test -f feature.py
+- Acceptance: Preserve bounded retry provenance across a new base context.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_max_repair_rounds=3,
+    )
+    task = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )[0]
+
+    daemon._compile_implementation_context(task, attempt=4)
+    daemon._persist_implementation_context_receipt_unchecked(
+        task,
+        attempt=4,
+    )
+    daemon.record_implementation_failure_context(
+        task,
+        {
+            "kind": "validation_failure",
+            "returncode": 1,
+            "validation": {
+                "passed": False,
+                "reason": "test_failed",
+            },
+        },
+        changed_files=("feature.py",),
+    )
+
+    assert daemon._implementation_repair_round(task, attempt=5) == 1
+    daemon._build_implementation_prompt(task, attempt=5)
+    assert daemon._last_implementation_retry is not None
+    assert daemon._last_implementation_retry.capsule.repair_round == 1
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="implementation repair round budget exhausted",
+    ):
+        daemon._build_implementation_prompt(task, attempt=8)
 
 
 def test_retry_deferral_does_not_overwrite_newer_active_projection(
@@ -17823,6 +20432,360 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     assert enqueued[0]["implementation_commit"] == "provider-root-commit"
     assert "todo_update_result" not in result
     assert queue_outcomes == []
+
+
+def test_exact_recovery_seed_requires_zero_edit_promotion_guard_before_queue(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## UIR-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+    )
+    task = PortalTask(
+        task_id="UIR-002",
+        title="Recover a reviewed UIIR child commit",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="logic",
+        outputs=["external/ipfs_datasets_py/ipfs_datasets_py/logic/UI_UX_IR.py"],
+        validation=["python -m pytest"],
+    )
+    state = TodoTaskState()
+    baseline = "1" * 40
+    recovery_seed = "2" * 40
+    recovery_path = "external/ipfs_datasets_py"
+    branch_names: list[str] = []
+    guard_calls: list[dict[str, object]] = []
+    enqueued: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        daemon,
+        "_prior_attempt_seed_plan",
+        lambda **_kwargs: {
+            "reuse_prior_attempt": True,
+            "recovery_seed_present": True,
+            "recovery_seed_required": True,
+            "recovery_seed_valid": True,
+            "recovery_seed_ref": recovery_seed,
+            "recovery_seed_tree_id": "git-tree:" + ("3" * 40),
+            "recovery_seed_submodule_path": recovery_path,
+            "recovery_seed_submodule_commit": "4" * 40,
+            "recovery_seed_parent_commit": baseline,
+            "baseline_ref": baseline,
+            "seed_ref": recovery_seed,
+            "reason": "post_merge_recovery_seed",
+        },
+    )
+
+    def fake_seed(
+        worktree_path,
+        branch_name,
+        *,
+        task=None,
+        base_ref="",
+    ):
+        worktree_path.mkdir(parents=True)
+        branch_names.append(branch_name)
+        assert base_ref == baseline
+        return baseline
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", fake_seed)
+    monkeypatch.setattr(
+        daemon,
+        "_resolve_git_commit_in_repo",
+        lambda _repo, ref: baseline if ref == "HEAD" else "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_apply_prior_attempt_seed",
+        lambda *_args, **_kwargs: {
+            "applied": True,
+            "reason": "post_merge_recovery_seed",
+            "seed_ref": recovery_seed,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_synchronize_prior_attempt_seed_submodules",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_worktree_for_validation",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validate_implementation_patch",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            proposal=SimpleNamespace(candidate_diff=())
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verify_post_validation_candidate_binding",
+        lambda *_args, validation_result, **_kwargs: dict(
+            validation_result
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_commit_worktree_changes",
+        lambda *_args, **_kwargs: {
+            "committed": True,
+            "commit": recovery_seed,
+            "reason": "existing_commit",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_git_current_branch",
+        lambda _path: branch_names[-1] if branch_names else "",
+    )
+
+    def fake_guard(**kwargs):
+        guard_calls.append(kwargs)
+        return {
+            "applicable": True,
+            "allowed": True,
+            "recovery_seed_ref": recovery_seed,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_validated_recovery_seed_zero_edit_promotion_guard",
+        fake_guard,
+    )
+
+    def fake_enqueue(**kwargs):
+        enqueued.append(kwargs)
+        return {"queued": True, "merged": False, "reason": "queued"}
+
+    monkeypatch.setattr(daemon, "_enqueue_validated_worktree", fake_enqueue)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=5,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="verify the recovery seed",
+        approved_root_target_commit=baseline,
+    )
+
+    assert result["returncode"] == 0
+    assert result["implementation_commit"] == recovery_seed
+    assert result["merge_result"]["queued"] is True
+    assert len(guard_calls) == 1
+    assert guard_calls[0]["baseline_ref"] == baseline
+    assert guard_calls[0]["current_head"] == recovery_seed
+    assert guard_calls[0]["expected_branch"] == branch_names[-1]
+    assert guard_calls[0]["seed_plan"]["recovery_seed_valid"] is True
+    assert enqueued[0]["implementation_commit"] == recovery_seed
+    assert enqueued[0]["commit_result"][
+        "recovery_seed_zero_edit_promotion_guard"
+    ]["allowed"] is True
+
+
+def test_recovery_seed_zero_edit_promotion_guard_revalidates_all_bindings(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "implementation/uir-002")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    candidate_path = "external/ipfs_datasets_py/UI_UX_IR.py"
+    target = repo / candidate_path
+    target.parent.mkdir(parents=True)
+    target.write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", candidate_path)
+    _git(repo, "commit", "-m", "baseline")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    target.write_text("recovered\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "recovery seed")
+    recovery_seed = _git(repo, "rev-parse", "HEAD")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## UIR-",
+    )
+    task = PortalTask(
+        task_id="UIR-002",
+        title="Recover a reviewed UIIR child commit",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="logic",
+        outputs=[candidate_path],
+        validation=["python -m pytest"],
+    )
+    recovery_path = "external/ipfs_datasets_py"
+    verified_seed = {
+        "recovery_seed_ref": recovery_seed,
+        "recovery_seed_tree_id": "git-tree:" + _git(
+            repo,
+            "rev-parse",
+            f"{recovery_seed}^{{tree}}",
+        ),
+        "recovery_seed_submodule_path": recovery_path,
+        "recovery_seed_submodule_commit": "4" * 40,
+        "recovery_seed_parent_commit": baseline,
+    }
+    seed_plan = {
+        **verified_seed,
+        "recovery_seed_valid": True,
+    }
+    authority = {
+        "authority_id": "grant-1",
+        "authority_event_sequence": 41,
+        "authority_binding_id": "binding-1",
+    }
+    started = {
+        "type": "implementation_started",
+        "event_id": "event-42",
+        "sequence": 42,
+        "task_id": task.task_id,
+        "attempt": 5,
+        "baseline_ref": baseline,
+        "branch": "implementation/uir-002",
+        "post_merge_correction_authority": dict(authority),
+    }
+    entry = SimpleNamespace(
+        to_dict=lambda include_sources=False: {
+            "old_path": candidate_path,
+            "new_path": candidate_path,
+            "change_kind": "modify",
+            "before_source": "baseline",
+            "after_source": "recovered",
+        }
+    )
+    fingerprint = daemon._proposal_candidate_fingerprint((entry,))
+    validation_result = {
+        "attempted": True,
+        "passed": True,
+        "proposal_gate": {
+            "attempted": True,
+            "accepted": True,
+            "repository_tree_id": baseline,
+            "changed_paths": [candidate_path],
+        },
+        "candidate_binding": {
+            "verified": True,
+            "expected_fingerprint": fingerprint,
+            "current_fingerprint": fingerprint,
+        },
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_validated_post_merge_recovery_seed_authority",
+        lambda **_kwargs: (dict(verified_seed), ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_collect_proposal_candidate_diff",
+        lambda *_args, **_kwargs: ((entry,), ()),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_revalidate_orphaned_correction_reservation",
+        lambda **_kwargs: {"consumed": True},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verified_post_merge_correction_repair_grants",
+        lambda: (
+            {
+                "grant_id": authority["authority_id"],
+                "grant_event_sequence": authority[
+                    "authority_event_sequence"
+                ],
+                "authorized_attempt_consumed": True,
+                "authorized_attempt": 5,
+                "consuming_event_id": started["event_id"],
+                "consuming_event_sequence": started["sequence"],
+                "consuming_event_type": "implementation_started",
+                **{
+                    field_name: seed_plan[field_name]
+                    for field_name in (
+                        "recovery_seed_ref",
+                        "recovery_seed_tree_id",
+                        "recovery_seed_submodule_path",
+                        "recovery_seed_submodule_commit",
+                    )
+                },
+            },
+        ),
+    )
+
+    result = daemon._validated_recovery_seed_zero_edit_promotion_guard(
+        task=task,
+        attempt=5,
+        worktree_path=repo,
+        baseline_ref=baseline,
+        current_head=recovery_seed,
+        expected_branch="implementation/uir-002",
+        current_branch="implementation/uir-002",
+        validation_result=validation_result,
+        seed_plan=seed_plan,
+        post_merge_correction_authority=authority,
+        implementation_started_event=started,
+    )
+
+    assert result["applicable"] is True
+    assert result["allowed"] is True
+    assert result["reasons"] == []
+    assert result["durable_consumption_verified"] is True
 
 
 def test_implementation_daemon_promotes_fully_validated_timeout_work(
@@ -20281,6 +23244,7 @@ def test_implementation_supervisor_records_retry_budget_guardrail(tmp_path):
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
     }
     events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    merge_queue_dir = state_dir / "merge-queue"
     config = TodoSupervisorConfig(
         todo_path=todo_path,
         state_path=state_dir / "auto_task_state.json",
@@ -20294,11 +23258,13 @@ def test_implementation_supervisor_records_retry_budget_guardrail(tmp_path):
         validation_retry_budget=0,
         merge_retry_budget=0,
         retry_budget_discovery_dir=repo / "discovery",
+        merge_queue_dir=merge_queue_dir,
     )
 
     result = TodoImplementationSupervisor(config).run_once()
 
     assert result["retry_budget_count"] == 1
+    assert (merge_queue_dir / "merge_queue.duckdb").exists()
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "## AUTO-002 Resolve implementation retry-budget failure for AUTO-001" in todo_text
     assert "- Provider role: grok-implement, codex-review" in todo_text

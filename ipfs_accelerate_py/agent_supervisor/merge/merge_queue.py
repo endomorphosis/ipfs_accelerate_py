@@ -17,18 +17,18 @@ import re
 import tempfile
 import time
 import uuid
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Optional
 
+from ..proof.formal_verification_contracts import content_identity
 from ..task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBRow,
     initialize_duckdb_database,
     open_duckdb_connection,
 )
-from ..proof.formal_verification_contracts import content_identity
-
 
 _PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 _ACTIVE_STATES = ("pending", "processing")
@@ -59,9 +59,157 @@ POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-review-denial-tombstone@2"
 )
+POST_MERGE_CORRECTION_CHAIN_RECORD_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-chain-record@1"
+)
+POST_MERGE_CORRECTION_CHAIN_HEAD_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-chain-head@1"
+)
+POST_MERGE_CORRECTION_AUTHORITY_STATE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-authority-state@1"
+)
+POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-authority-consumption@1"
+)
+POST_MERGE_CORRECTION_FAILURE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-failure@1"
+)
+POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-repair-grant@1"
+)
+POST_MERGE_CORRECTION_LEGACY_FAILURE_ANCHOR_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-legacy-failure-anchor@1"
+)
+POST_MERGE_CORRECTION_LEGACY_HIGH_WATER_ANCHOR_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-legacy-high-water-anchor@2"
+)
+_POST_MERGE_CORRECTION_REGISTRY_MIGRATION_KEY = (
+    "post_merge_correction_registry:migrated"
+)
+_POST_MERGE_CORRECTION_REGISTRY_MIGRATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-registry-migration@1"
+)
 _FULL_GIT_OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _GIT_TREE_ID = re.compile(r"^git-tree:[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _MAX_DENIAL_RECORD_BYTES = 16 * 1024
+_MAX_CORRECTION_CHAIN_RECORD_BYTES = 16 * 1024
+_POST_MERGE_CORRECTION_COMMON_FIELDS = frozenset(
+    {
+        "schema",
+        "denial_id",
+        "target_repository_id",
+        "target_branch",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "task_binding_id",
+        "attempt",
+        "origin_stream_id",
+    }
+)
+_POST_MERGE_CORRECTION_TRANSITION_FIELDS = {
+    "denial_consumed": frozenset(
+        {
+            "authority_kind",
+            "authority_id",
+            "started_event_id",
+            "started_event_sequence",
+        }
+    ),
+    "correction_failed": frozenset(
+        {
+            "authority_kind",
+            "authority_id",
+            "terminal_event_id",
+            "terminal_event_sequence",
+            "failure_kind",
+        }
+    ),
+    "repair_granted": frozenset(
+        {
+            "grant_id",
+            "grant_event_id",
+            "grant_event_sequence",
+            "failure_record_id",
+            "failure_event_id",
+            "failure_event_sequence",
+            "failure_kind",
+            "repair_task_id",
+            "repair_task_binding_id",
+            "repair_binding_id",
+            "recovery_seed_ref",
+            "recovery_seed_tree_id",
+            "recovery_seed_submodule_path",
+            "recovery_seed_submodule_commit",
+        }
+    ),
+    "grant_consumed": frozenset(
+        {
+            "authority_kind",
+            "authority_id",
+            "started_event_id",
+            "started_event_sequence",
+        }
+    ),
+    "legacy_failure_anchored": frozenset(
+        {
+            "authority_kind",
+            "authority_id",
+            "correction_attempt",
+            "correction_started_event_id",
+            "correction_started_event_sequence",
+            "correction_terminal_event_id",
+            "correction_terminal_event_sequence",
+            "superseding_started_event_id",
+            "superseding_started_event_sequence",
+            "terminal_event_id",
+            "terminal_event_sequence",
+            "failure_kind",
+            "migration_reason",
+            "recovery_seed_ref",
+            "recovery_seed_tree_id",
+            "recovery_seed_submodule_path",
+            "recovery_seed_submodule_commit",
+        }
+    ),
+    "legacy_high_water_anchored": frozenset(
+        {
+            "authority_kind",
+            "authority_id",
+            "first_correction_attempt",
+            "attempt_events",
+            "terminal_event_id",
+            "terminal_event_sequence",
+            "failure_kind",
+            "migration_reason",
+            "recovery_seed_ref",
+            "recovery_seed_tree_id",
+            "recovery_seed_submodule_path",
+            "recovery_seed_submodule_commit",
+        }
+    ),
+}
+_POST_MERGE_CORRECTION_SCHEMA_KIND = {
+    POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA: "consumption",
+    POST_MERGE_CORRECTION_FAILURE_SCHEMA: "correction_failed",
+    POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA: "repair_granted",
+    POST_MERGE_CORRECTION_LEGACY_FAILURE_ANCHOR_SCHEMA: (
+        "legacy_failure_anchored"
+    ),
+    POST_MERGE_CORRECTION_LEGACY_HIGH_WATER_ANCHOR_SCHEMA: (
+        "legacy_high_water_anchored"
+    ),
+}
 
 
 class MergeQueueFullError(RuntimeError):
@@ -280,6 +428,1082 @@ def _validated_post_merge_review_denial(
             "post-merge denial content identity is invalid"
         )
     return record, _canonical_json(record)
+
+
+def _canonical_correction_chain_json(value: Mapping[str, Any]) -> str:
+    try:
+        encoded = json.dumps(
+            dict(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain record is not canonical JSON"
+        ) from exc
+    if (
+        len(encoded.encode("utf-8"))
+        > _MAX_CORRECTION_CHAIN_RECORD_BYTES
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain record exceeds its persistence bound"
+        )
+    return encoded
+
+
+def _validated_post_merge_recovery_seed(
+    value: Mapping[str, Any],
+    *,
+    required: bool,
+    allow_unresolved_root: bool = False,
+) -> dict[str, str]:
+    seed = {
+        "recovery_seed_ref": str(
+            value.get("recovery_seed_ref") or ""
+        ),
+        "recovery_seed_tree_id": str(
+            value.get("recovery_seed_tree_id") or ""
+        ),
+        "recovery_seed_submodule_path": str(
+            value.get("recovery_seed_submodule_path") or ""
+        ),
+        "recovery_seed_submodule_commit": str(
+            value.get("recovery_seed_submodule_commit") or ""
+        ),
+    }
+    if any(not isinstance(value.get(name), str) for name in seed):
+        raise MergeQueueIntegrityError(
+            "post-merge recovery seed binding is invalid"
+        )
+    if not any(seed.values()):
+        if required:
+            raise MergeQueueIntegrityError(
+                "post-merge legacy recovery seed is required"
+            )
+        return seed
+    submodule_path = seed["recovery_seed_submodule_path"]
+    root_seed_is_absent = (
+        not seed["recovery_seed_ref"]
+        and not seed["recovery_seed_tree_id"]
+    )
+    if (
+        not _FULL_GIT_OBJECT_ID.fullmatch(
+            seed["recovery_seed_submodule_commit"]
+        )
+        or not submodule_path
+        or submodule_path != submodule_path.strip()
+        or submodule_path.startswith("/")
+        or "\\" in submodule_path
+        or any(
+            component in {"", ".", ".."}
+            for component in submodule_path.split("/")
+        )
+        or (
+            root_seed_is_absent
+            and not allow_unresolved_root
+        )
+        or (
+            not root_seed_is_absent
+            and (
+                not _FULL_GIT_OBJECT_ID.fullmatch(
+                    seed["recovery_seed_ref"]
+                )
+                or not _GIT_TREE_ID.fullmatch(
+                    seed["recovery_seed_tree_id"]
+                )
+            )
+        )
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge recovery seed binding is invalid"
+        )
+    return seed
+
+
+def _validated_legacy_high_water_attempt_events(
+    value: Any,
+    *,
+    first_attempt: int,
+    high_water_attempt: int,
+) -> tuple[dict[str, Any], ...]:
+    """Validate one bounded, contiguous legacy attempt history."""
+
+    if (
+        not isinstance(value, list)
+        or not value
+        or len(value) > 32
+        or first_attempt < 1
+        or high_water_attempt < first_attempt
+        or len(value) != high_water_attempt - first_attempt + 1
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge legacy high-water attempt history is invalid"
+        )
+    expected_fields = {
+        "attempt",
+        "started_event_id",
+        "started_event_sequence",
+        "terminal_event_id",
+        "terminal_event_sequence",
+        "terminal_event_type",
+    }
+    allowed_terminal_types = {
+        "implementation_finished",
+        "implementation_state_recovered",
+        "post_merge_correction_queue_reconciled",
+    }
+    verified: list[dict[str, Any]] = []
+    previous_sequence = 0
+    seen_event_ids: set[str] = set()
+    for offset, raw_entry in enumerate(value):
+        if not isinstance(raw_entry, Mapping):
+            raise MergeQueueIntegrityError(
+                "post-merge legacy high-water attempt entry is invalid"
+            )
+        entry = dict(raw_entry)
+        attempt = entry.get("attempt")
+        started_sequence = entry.get("started_event_sequence")
+        terminal_sequence = entry.get("terminal_event_sequence")
+        started_event_id = entry.get("started_event_id")
+        terminal_event_id = entry.get("terminal_event_id")
+        terminal_event_type = entry.get("terminal_event_type")
+        if (
+            set(entry) != expected_fields
+            or isinstance(attempt, bool)
+            or not isinstance(attempt, int)
+            or attempt != first_attempt + offset
+            or isinstance(started_sequence, bool)
+            or not isinstance(started_sequence, int)
+            or isinstance(terminal_sequence, bool)
+            or not isinstance(terminal_sequence, int)
+            or started_sequence <= previous_sequence
+            or terminal_sequence <= started_sequence
+            or not isinstance(started_event_id, str)
+            or not started_event_id
+            or not isinstance(terminal_event_id, str)
+            or not terminal_event_id
+            or started_event_id == terminal_event_id
+            or started_event_id in seen_event_ids
+            or terminal_event_id in seen_event_ids
+            or terminal_event_type not in allowed_terminal_types
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge legacy high-water attempt entry is invalid"
+            )
+        seen_event_ids.update((started_event_id, terminal_event_id))
+        previous_sequence = terminal_sequence
+        verified.append(entry)
+    return tuple(verified)
+
+
+def _validated_post_merge_correction_transition(
+    value: Mapping[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Validate one semantic transition before assigning chain position."""
+
+    if not isinstance(value, Mapping):
+        raise MergeQueueIntegrityError(
+            "post-merge correction transition must be an object"
+        )
+    material = dict(value)
+    schema = str(material.get("schema") or "")
+    schema_kind = _POST_MERGE_CORRECTION_SCHEMA_KIND.get(schema)
+    if schema_kind is None:
+        raise MergeQueueIntegrityError(
+            "post-merge correction transition schema is invalid"
+        )
+    authority_kind = str(material.get("authority_kind") or "")
+    if schema_kind == "consumption":
+        if authority_kind == "review_denial":
+            record_kind = "denial_consumed"
+        elif authority_kind == "repair_grant":
+            record_kind = "grant_consumed"
+        else:
+            raise MergeQueueIntegrityError(
+                "post-merge correction consumption authority kind is invalid"
+            )
+    else:
+        record_kind = schema_kind
+    expected_fields = (
+        _POST_MERGE_CORRECTION_COMMON_FIELDS
+        | _POST_MERGE_CORRECTION_TRANSITION_FIELDS[record_kind]
+    )
+    if set(material) != expected_fields:
+        raise MergeQueueIntegrityError(
+            "post-merge correction transition schema fields changed"
+        )
+    required_text = (
+        "denial_id",
+        "target_repository_id",
+        "target_branch",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "task_binding_id",
+        "origin_stream_id",
+    )
+    if any(
+        not isinstance(material.get(name), str) or not material[name]
+        for name in required_text
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge correction transition identity is incomplete"
+        )
+    attempt = material.get("attempt")
+    if (
+        isinstance(attempt, bool)
+        or not isinstance(attempt, int)
+        or attempt < 1
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge correction transition attempt must be positive"
+        )
+    if record_kind in {"denial_consumed", "grant_consumed"}:
+        sequence = material.get("started_event_sequence")
+        text_fields = ("authority_id", "started_event_id")
+        expected_authority_kind = (
+            "review_denial"
+            if record_kind == "denial_consumed"
+            else "repair_grant"
+        )
+        if authority_kind != expected_authority_kind:
+            raise MergeQueueIntegrityError(
+                "post-merge correction consumption authority changed"
+            )
+    elif record_kind == "correction_failed":
+        sequence = material.get("terminal_event_sequence")
+        text_fields = (
+            "authority_kind",
+            "authority_id",
+            "terminal_event_id",
+            "failure_kind",
+        )
+        if authority_kind not in {"review_denial", "repair_grant"}:
+            raise MergeQueueIntegrityError(
+                "post-merge correction failure authority kind is invalid"
+            )
+        if material.get("failure_kind") not in {
+            "implementation",
+            "validation",
+            "merge",
+        }:
+            raise MergeQueueIntegrityError(
+                "post-merge correction failure kind is invalid"
+            )
+    elif record_kind == "repair_granted":
+        sequence = material.get("grant_event_sequence")
+        text_fields = (
+            "grant_id",
+            "grant_event_id",
+            "failure_record_id",
+            "failure_event_id",
+            "failure_kind",
+            "repair_task_id",
+            "repair_task_binding_id",
+            "repair_binding_id",
+        )
+        failure_sequence = material.get("failure_event_sequence")
+        if (
+            isinstance(failure_sequence, bool)
+            or not isinstance(failure_sequence, int)
+            or failure_sequence < 1
+            or material.get("failure_kind")
+            not in {"implementation", "validation", "merge"}
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge correction repair grant failure binding is invalid"
+            )
+        _validated_post_merge_recovery_seed(
+            material,
+            required=False,
+        )
+    elif record_kind == "legacy_failure_anchored":
+        sequence = material.get("terminal_event_sequence")
+        text_fields = (
+            "authority_kind",
+            "authority_id",
+            "correction_started_event_id",
+            "correction_terminal_event_id",
+            "superseding_started_event_id",
+            "terminal_event_id",
+            "failure_kind",
+            "migration_reason",
+        )
+        correction_attempt = material.get("correction_attempt")
+        ordered_sequences = (
+            material.get("correction_started_event_sequence"),
+            material.get("correction_terminal_event_sequence"),
+            material.get("superseding_started_event_sequence"),
+            material.get("terminal_event_sequence"),
+        )
+        if (
+            authority_kind != "review_denial"
+            or isinstance(correction_attempt, bool)
+            or not isinstance(correction_attempt, int)
+            or correction_attempt < 1
+            or material["attempt"] != correction_attempt + 1
+            or any(
+                isinstance(item, bool)
+                or not isinstance(item, int)
+                or item < 1
+                for item in ordered_sequences
+            )
+            or tuple(sorted(ordered_sequences)) != ordered_sequences
+            or len(set(ordered_sequences)) != len(ordered_sequences)
+            or material.get("failure_kind")
+            not in {"implementation", "validation", "merge"}
+            or material.get("migration_reason")
+            != "legacy_untyped_retry_lineage"
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge correction legacy failure anchor is invalid"
+            )
+        _validated_post_merge_recovery_seed(
+            material,
+            required=True,
+            allow_unresolved_root=True,
+        )
+    elif record_kind == "legacy_high_water_anchored":
+        sequence = material.get("terminal_event_sequence")
+        text_fields = (
+            "authority_kind",
+            "authority_id",
+            "terminal_event_id",
+            "failure_kind",
+            "migration_reason",
+        )
+        first_attempt = material.get("first_correction_attempt")
+        if (
+            authority_kind != "review_denial"
+            or isinstance(first_attempt, bool)
+            or not isinstance(first_attempt, int)
+            or first_attempt < 1
+            or first_attempt > attempt
+            or material.get("failure_kind")
+            not in {"implementation", "validation", "merge"}
+            or material.get("migration_reason")
+            != "legacy_untyped_retry_high_water"
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge correction legacy high-water anchor is invalid"
+            )
+        attempt_events = _validated_legacy_high_water_attempt_events(
+            material.get("attempt_events"),
+            first_attempt=first_attempt,
+            high_water_attempt=attempt,
+        )
+        last_attempt = attempt_events[-1]
+        if (
+            material.get("terminal_event_id")
+            != last_attempt["terminal_event_id"]
+            or material.get("terminal_event_sequence")
+            != last_attempt["terminal_event_sequence"]
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge correction legacy high-water terminal changed"
+            )
+        _validated_post_merge_recovery_seed(
+            material,
+            required=True,
+            allow_unresolved_root=True,
+        )
+    else:  # pragma: no cover - guarded by the schema map above.
+        raise MergeQueueIntegrityError(
+            "post-merge correction transition kind is invalid"
+        )
+    if (
+        isinstance(sequence, bool)
+        or not isinstance(sequence, int)
+        or sequence < 1
+        or any(
+            not isinstance(material.get(name), str)
+            or not material[name]
+            for name in text_fields
+        )
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge correction transition event binding is invalid"
+        )
+    _canonical_correction_chain_json(material)
+    return record_kind, material
+
+
+def _post_merge_correction_chain_record(
+    transition: Mapping[str, Any],
+    *,
+    terminal_key_id: str,
+    ordinal: int,
+    parent_record_id: str,
+) -> dict[str, Any]:
+    """Content-address one already validated semantic transition."""
+
+    record_kind, material = (
+        _validated_post_merge_correction_transition(transition)
+    )
+    common = {
+        name: material[name]
+        for name in _POST_MERGE_CORRECTION_COMMON_FIELDS
+        if name != "schema"
+    }
+    detail_fields = _POST_MERGE_CORRECTION_TRANSITION_FIELDS[
+        record_kind
+    ]
+    detail = {
+        "schema": material["schema"],
+        **{name: material[name] for name in detail_fields},
+    }
+    record_material: dict[str, Any] = {
+        "schema": POST_MERGE_CORRECTION_CHAIN_RECORD_SCHEMA,
+        "terminal_key_id": str(terminal_key_id or ""),
+        "denial_id": str(material["denial_id"]),
+        "ordinal": int(ordinal),
+        "parent_record_id": str(parent_record_id or ""),
+        "record_kind": record_kind,
+        **common,
+        "detail": detail,
+    }
+    return {
+        **record_material,
+        "record_id": content_identity(record_material),
+    }
+
+
+def _validated_post_merge_correction_chain_record(
+    value: Mapping[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Return one exact content-addressed correction-chain record."""
+
+    if not isinstance(value, Mapping):
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain record must be an object"
+        )
+    record = dict(value)
+    expected_fields = {
+        "schema",
+        "record_id",
+        "terminal_key_id",
+        "denial_id",
+        "ordinal",
+        "parent_record_id",
+        "record_kind",
+        "target_repository_id",
+        "target_branch",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "task_binding_id",
+        "attempt",
+        "origin_stream_id",
+        "detail",
+    }
+    required_text = (
+        "terminal_key_id",
+        "denial_id",
+        "parent_record_id",
+        "record_kind",
+        "target_repository_id",
+        "target_branch",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "task_binding_id",
+        "origin_stream_id",
+    )
+    if (
+        set(record) != expected_fields
+        or record.get("schema")
+        != POST_MERGE_CORRECTION_CHAIN_RECORD_SCHEMA
+        or any(
+            not isinstance(record.get(name), str) or not record[name]
+            for name in required_text
+        )
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain record schema is invalid"
+        )
+    for name in ("ordinal", "attempt"):
+        item = record.get(name)
+        if (
+            isinstance(item, bool)
+            or not isinstance(item, int)
+            or item < 1
+        ):
+            raise MergeQueueIntegrityError(
+                f"post-merge correction chain {name} must be positive"
+            )
+    detail = record.get("detail")
+    if not isinstance(detail, Mapping):
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain detail must be an object"
+        )
+    transition = {
+        "schema": detail.get("schema"),
+        "denial_id": record["denial_id"],
+        "target_repository_id": record["target_repository_id"],
+        "target_branch": record["target_branch"],
+        "task_id": record["task_id"],
+        "canonical_task_key": record["canonical_task_key"],
+        "canonical_task_cid": record["canonical_task_cid"],
+        "board_namespace": record["board_namespace"],
+        "task_binding_id": record["task_binding_id"],
+        "attempt": record["attempt"],
+        "origin_stream_id": record["origin_stream_id"],
+        **{
+            name: detail.get(name)
+            for name in detail
+            if name != "schema"
+        },
+    }
+    record_kind, _material = (
+        _validated_post_merge_correction_transition(transition)
+    )
+    if record_kind != record["record_kind"]:
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain kind and detail disagree"
+        )
+    record_material = dict(record)
+    record_id = str(record_material.pop("record_id", "") or "")
+    if record_id != content_identity(record_material):
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain content identity is invalid"
+        )
+    return record, _canonical_correction_chain_json(record)
+
+
+def _post_merge_correction_chain_head(
+    *,
+    terminal_key_id: str,
+    denial_id: str,
+    head_record_id: str,
+    head_ordinal: int,
+) -> dict[str, Any]:
+    material = {
+        "schema": POST_MERGE_CORRECTION_CHAIN_HEAD_SCHEMA,
+        "terminal_key_id": str(terminal_key_id or ""),
+        "denial_id": str(denial_id or ""),
+        "head_record_id": str(head_record_id or ""),
+        "head_ordinal": int(head_ordinal),
+    }
+    return {
+        **material,
+        "head_state_id": content_identity(material),
+    }
+
+
+def _validated_post_merge_correction_chain_head(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain head must be an object"
+        )
+    head = dict(value)
+    if set(head) != {
+        "schema",
+        "terminal_key_id",
+        "denial_id",
+        "head_record_id",
+        "head_ordinal",
+        "head_state_id",
+    }:
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain head schema fields changed"
+        )
+    if (
+        head.get("schema") != POST_MERGE_CORRECTION_CHAIN_HEAD_SCHEMA
+        or any(
+            not isinstance(head.get(name), str) or not head[name]
+            for name in (
+                "terminal_key_id",
+                "denial_id",
+                "head_record_id",
+            )
+        )
+        or isinstance(head.get("head_ordinal"), bool)
+        or not isinstance(head.get("head_ordinal"), int)
+        or int(head["head_ordinal"]) < 0
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain head binding is invalid"
+        )
+    material = dict(head)
+    head_state_id = str(material.pop("head_state_id", "") or "")
+    if head_state_id != content_identity(material):
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain head identity is invalid"
+        )
+    return head
+
+
+def _decoded_post_merge_review_denial_row(
+    row: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify both the denial JSON and its independently indexed bindings."""
+
+    try:
+        decoded = json.loads(str(row["record_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise MergeQueueIntegrityError(
+            "post-merge denial registry contains malformed JSON"
+        ) from exc
+    record, canonical = _validated_post_merge_review_denial(decoded)
+    row_bindings = {
+        "terminal_key_id": str(row["terminal_key_id"]),
+        "denial_id": str(row["denial_id"]),
+        "target_repository_id": str(row["target_repository_id"]),
+        "target_branch": str(row["target_branch"]),
+        "task_id": str(row["task_id"]),
+        "canonical_task_key": str(row["canonical_task_key"]),
+        "canonical_task_cid": str(row["canonical_task_cid"]),
+        "task_binding_id": str(row["task_binding_id"]),
+        "implementation_commit": str(row["implementation_commit"]),
+    }
+    if (
+        canonical != str(row["record_json"])
+        or any(record[name] != item for name, item in row_bindings.items())
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge denial registry row binding changed"
+        )
+    return record
+
+
+def _decoded_post_merge_correction_chain_row(
+    row: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify one append-only chain row against its indexed columns."""
+
+    try:
+        decoded = json.loads(str(row["record_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise MergeQueueIntegrityError(
+            "post-merge correction registry contains malformed JSON"
+        ) from exc
+    record, canonical = _validated_post_merge_correction_chain_record(
+        decoded
+    )
+    row_bindings: dict[str, Any] = {
+        "record_id": str(row["record_id"]),
+        "terminal_key_id": str(row["terminal_key_id"]),
+        "denial_id": str(row["denial_id"]),
+        "ordinal": int(row["ordinal"]),
+        "parent_record_id": str(row["parent_record_id"]),
+        "record_kind": str(row["record_kind"]),
+        "target_repository_id": str(row["target_repository_id"]),
+        "target_branch": str(row["target_branch"]),
+        "task_id": str(row["task_id"]),
+        "canonical_task_key": str(row["canonical_task_key"]),
+        "canonical_task_cid": str(row["canonical_task_cid"]),
+        "board_namespace": str(row["board_namespace"]),
+        "task_binding_id": str(row["task_binding_id"]),
+        "attempt": int(row["attempt"]),
+        "origin_stream_id": str(row["origin_stream_id"]),
+    }
+    if (
+        canonical != str(row["record_json"])
+        or any(record[name] != item for name, item in row_bindings.items())
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge correction registry row binding changed"
+        )
+    return record
+
+
+def _decoded_post_merge_correction_head_row(
+    row: Mapping[str, Any],
+) -> dict[str, Any]:
+    return _validated_post_merge_correction_chain_head(
+        {
+            "schema": POST_MERGE_CORRECTION_CHAIN_HEAD_SCHEMA,
+            "terminal_key_id": str(row["terminal_key_id"]),
+            "denial_id": str(row["denial_id"]),
+            "head_record_id": str(row["head_record_id"]),
+            "head_ordinal": int(row["head_ordinal"]),
+            "head_state_id": str(row["head_state_id"]),
+        }
+    )
+
+
+def _post_merge_correction_identity_from_denial(
+    denial: Mapping[str, Any],
+) -> dict[str, str]:
+    return {
+        "target_repository_id": str(denial["target_repository_id"]),
+        "target_branch": str(denial["target_branch"]),
+        "task_id": str(denial["task_id"]),
+        "canonical_task_key": str(denial["canonical_task_key"]),
+        "canonical_task_cid": str(denial["canonical_task_cid"]),
+        "board_namespace": str(denial["board_namespace"]),
+        "task_binding_id": str(denial["task_binding_id"]),
+        "origin_stream_id": str(
+            denial["correction_origin_stream_id"]
+        ),
+    }
+
+
+def _post_merge_correction_transition_from_chain_record(
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    detail = dict(record["detail"])
+    return {
+        "schema": detail.pop("schema"),
+        "denial_id": str(record["denial_id"]),
+        "target_repository_id": str(record["target_repository_id"]),
+        "target_branch": str(record["target_branch"]),
+        "task_id": str(record["task_id"]),
+        "canonical_task_key": str(record["canonical_task_key"]),
+        "canonical_task_cid": str(record["canonical_task_cid"]),
+        "board_namespace": str(record["board_namespace"]),
+        "task_binding_id": str(record["task_binding_id"]),
+        "attempt": int(record["attempt"]),
+        "origin_stream_id": str(record["origin_stream_id"]),
+        **detail,
+    }
+
+
+def _post_merge_correction_primary_events(
+    record: Mapping[str, Any],
+) -> tuple[tuple[str, int], ...]:
+    detail = record["detail"]
+    kind = str(record["record_kind"])
+    if kind in {"denial_consumed", "grant_consumed"}:
+        return (
+            (
+                str(detail["started_event_id"]),
+                int(detail["started_event_sequence"]),
+            ),
+        )
+    if kind == "correction_failed":
+        return (
+            (
+                str(detail["terminal_event_id"]),
+                int(detail["terminal_event_sequence"]),
+            ),
+        )
+    if kind == "repair_granted":
+        return (
+            (
+                str(detail["grant_event_id"]),
+                int(detail["grant_event_sequence"]),
+            ),
+        )
+    if kind == "legacy_high_water_anchored":
+        attempt_events = _validated_legacy_high_water_attempt_events(
+            detail["attempt_events"],
+            first_attempt=int(detail["first_correction_attempt"]),
+            high_water_attempt=int(record["attempt"]),
+        )
+        return tuple(
+            event
+            for attempt_event in attempt_events
+            for event in (
+                (
+                    str(attempt_event["started_event_id"]),
+                    int(attempt_event["started_event_sequence"]),
+                ),
+                (
+                    str(attempt_event["terminal_event_id"]),
+                    int(attempt_event["terminal_event_sequence"]),
+                ),
+            )
+        )
+    return (
+        (
+            str(detail["correction_started_event_id"]),
+            int(detail["correction_started_event_sequence"]),
+        ),
+        (
+            str(detail["correction_terminal_event_id"]),
+            int(detail["correction_terminal_event_sequence"]),
+        ),
+        (
+            str(detail["superseding_started_event_id"]),
+            int(detail["superseding_started_event_sequence"]),
+        ),
+        (
+            str(detail["terminal_event_id"]),
+            int(detail["terminal_event_sequence"]),
+        ),
+    )
+
+
+def _validate_post_merge_correction_chain(
+    denial: Mapping[str, Any],
+    records: Sequence[Mapping[str, Any]],
+    head: Mapping[str, Any],
+    *,
+    seen_primary_events: set[tuple[str, str]],
+    seen_primary_positions: set[tuple[str, int]],
+    seen_grant_ids: set[str],
+    seen_repair_bindings: set[str],
+    seen_repair_task_bindings: set[str],
+) -> None:
+    """Verify a complete one-shot authority state machine and its high-water."""
+
+    terminal_key_id = str(denial["terminal_key_id"])
+    denial_id = str(denial["denial_id"])
+    expected_identity = _post_merge_correction_identity_from_denial(
+        denial
+    )
+    if (
+        head["terminal_key_id"] != terminal_key_id
+        or head["denial_id"] != denial_id
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge correction head crosses denial identity"
+        )
+    if not records:
+        if (
+            int(head["head_ordinal"]) != 0
+            or head["head_record_id"] != denial_id
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge correction chain high-water was rolled back"
+            )
+        return
+
+    parent_record_id = denial_id
+    previous: Mapping[str, Any] | None = None
+    previous_sequence = 0
+    target_attempt = int(denial["target_implementation_attempt"])
+    for ordinal, record in enumerate(records, start=1):
+        if (
+            int(record["ordinal"]) != ordinal
+            or record["terminal_key_id"] != terminal_key_id
+            or record["denial_id"] != denial_id
+            or record["parent_record_id"] != parent_record_id
+            or any(
+                record[name] != expected
+                for name, expected in expected_identity.items()
+            )
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge correction chain identity or order changed"
+            )
+        primary_events = _post_merge_correction_primary_events(record)
+        if (
+            primary_events[0][1] <= previous_sequence
+            or any(
+                sequence <= previous_sequence
+                for _event_id, sequence in primary_events
+            )
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge correction event order is not monotonic"
+            )
+        origin_stream_id = str(record["origin_stream_id"])
+        for event_id, sequence in primary_events:
+            event_key = (origin_stream_id, event_id)
+            event_position = (origin_stream_id, sequence)
+            if (
+                event_key in seen_primary_events
+                or event_position in seen_primary_positions
+            ):
+                raise MergeQueueIntegrityError(
+                    "post-merge correction event is reused"
+                )
+            seen_primary_events.add(event_key)
+            seen_primary_positions.add(event_position)
+            if sequence < 1:
+                raise MergeQueueIntegrityError(
+                    "post-merge correction event sequence is invalid"
+                )
+        detail = record["detail"]
+        kind = str(record["record_kind"])
+        attempt = int(record["attempt"])
+        if previous is None:
+            if (
+                denial.get("correction_authorized") is not True
+                or kind
+                not in {
+                    "denial_consumed",
+                    "legacy_failure_anchored",
+                    "legacy_high_water_anchored",
+                }
+            ):
+                raise MergeQueueIntegrityError(
+                    "post-merge correction root lacks one-shot authority"
+                )
+            if kind == "denial_consumed":
+                if (
+                    attempt != target_attempt
+                    or detail["authority_kind"] != "review_denial"
+                    or detail["authority_id"] != denial_id
+                ):
+                    raise MergeQueueIntegrityError(
+                        "post-merge denial consumption binding changed"
+                    )
+            elif kind == "legacy_failure_anchored" and (
+                int(detail["correction_attempt"]) != target_attempt
+                or attempt != target_attempt + 1
+                or detail["authority_kind"] != "review_denial"
+                or detail["authority_id"] != denial_id
+            ):
+                raise MergeQueueIntegrityError(
+                    "post-merge legacy anchor does not bind the denial"
+                )
+            elif kind == "legacy_high_water_anchored" and (
+                int(detail["first_correction_attempt"])
+                != target_attempt
+                or attempt < target_attempt
+                or detail["authority_kind"] != "review_denial"
+                or detail["authority_id"] != denial_id
+            ):
+                raise MergeQueueIntegrityError(
+                    "post-merge legacy high-water anchor does not bind the denial"
+                )
+        else:
+            previous_kind = str(previous["record_kind"])
+            previous_detail = previous["detail"]
+            previous_attempt = int(previous["attempt"])
+            allowed = {
+                "denial_consumed": "correction_failed",
+                "grant_consumed": "correction_failed",
+                "correction_failed": "repair_granted",
+                "legacy_failure_anchored": "repair_granted",
+                "legacy_high_water_anchored": "repair_granted",
+                "repair_granted": "grant_consumed",
+            }
+            if allowed.get(previous_kind) != kind:
+                raise MergeQueueIntegrityError(
+                    "post-merge correction state transition is invalid"
+                )
+            if kind == "correction_failed":
+                if (
+                    attempt != previous_attempt
+                    or detail["authority_kind"]
+                    != previous_detail["authority_kind"]
+                    or detail["authority_id"]
+                    != previous_detail["authority_id"]
+                    or int(detail["terminal_event_sequence"])
+                    <= int(previous_detail["started_event_sequence"])
+                ):
+                    raise MergeQueueIntegrityError(
+                        "post-merge correction failure crosses consumption"
+                    )
+            elif kind == "repair_granted":
+                expected_failure_event_id = str(
+                    previous_detail["terminal_event_id"]
+                )
+                expected_failure_sequence = int(
+                    previous_detail["terminal_event_sequence"]
+                )
+                recovery_seed = (
+                    _validated_post_merge_recovery_seed(
+                        detail,
+                        required=(
+                            previous_kind
+                            in {
+                                "legacy_failure_anchored",
+                                "legacy_high_water_anchored",
+                            }
+                        ),
+                    )
+                )
+                if previous_kind in {
+                    "legacy_failure_anchored",
+                    "legacy_high_water_anchored",
+                }:
+                    recovery_seed_matches = (
+                        recovery_seed[
+                            "recovery_seed_submodule_path"
+                        ]
+                        == previous_detail[
+                            "recovery_seed_submodule_path"
+                        ]
+                        and recovery_seed[
+                            "recovery_seed_submodule_commit"
+                        ]
+                        == previous_detail[
+                            "recovery_seed_submodule_commit"
+                        ]
+                        and (
+                            not previous_detail[
+                                "recovery_seed_ref"
+                            ]
+                            or (
+                                recovery_seed[
+                                    "recovery_seed_ref"
+                                ]
+                                == previous_detail[
+                                    "recovery_seed_ref"
+                                ]
+                                and recovery_seed[
+                                    "recovery_seed_tree_id"
+                                ]
+                                == previous_detail[
+                                    "recovery_seed_tree_id"
+                                ]
+                            )
+                        )
+                    )
+                else:
+                    recovery_seed_matches = not any(
+                        recovery_seed.values()
+                    )
+                if (
+                    attempt != previous_attempt + 1
+                    or detail["failure_record_id"]
+                    != previous["record_id"]
+                    or detail["failure_event_id"]
+                    != expected_failure_event_id
+                    or int(detail["failure_event_sequence"])
+                    != expected_failure_sequence
+                    or detail["failure_kind"]
+                    != previous_detail["failure_kind"]
+                    or int(detail["grant_event_sequence"])
+                    <= expected_failure_sequence
+                    or not recovery_seed_matches
+                ):
+                    raise MergeQueueIntegrityError(
+                        "post-merge repair grant crosses failure identity"
+                    )
+                grant_id = str(detail["grant_id"])
+                repair_binding_id = str(detail["repair_binding_id"])
+                repair_task_binding_id = str(
+                    detail["repair_task_binding_id"]
+                )
+                if (
+                    grant_id in seen_grant_ids
+                    or repair_binding_id in seen_repair_bindings
+                    or repair_task_binding_id
+                    in seen_repair_task_bindings
+                ):
+                    raise MergeQueueIntegrityError(
+                        "post-merge correction repair identity is reused"
+                    )
+                seen_grant_ids.add(grant_id)
+                seen_repair_bindings.add(repair_binding_id)
+                seen_repair_task_bindings.add(
+                    repair_task_binding_id
+                )
+            elif (
+                attempt != previous_attempt
+                or detail["authority_kind"] != "repair_grant"
+                or detail["authority_id"]
+                != previous_detail["grant_id"]
+                or int(detail["started_event_sequence"])
+                <= int(previous_detail["grant_event_sequence"])
+            ):
+                raise MergeQueueIntegrityError(
+                    "post-merge repair grant consumption binding changed"
+                )
+        previous = record
+        previous_sequence = primary_events[-1][1]
+        parent_record_id = str(record["record_id"])
+
+    if (
+        int(head["head_ordinal"]) != len(records)
+        or head["head_record_id"] != records[-1]["record_id"]
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge correction chain high-water changed"
+        )
 
 
 @dataclass(frozen=True)
@@ -577,7 +1801,12 @@ class MergeQueue:
         initialize_duckdb_database(
             self.database_path,
             legacy_sqlite_path=self._legacy_database_path,
-            table_names=("merge_requests",),
+            table_names=(
+                "merge_requests",
+                "post_merge_review_denials",
+                "post_merge_correction_chain_records",
+                "post_merge_correction_chain_heads",
+            ),
             value_transform=lambda table, column, value: (
                 None
                 if table == "merge_requests"
@@ -640,8 +1869,956 @@ class MergeQueue:
                     target_branch,
                     task_id
                   );
+                CREATE TABLE IF NOT EXISTS
+                  post_merge_correction_chain_records (
+                    record_id TEXT PRIMARY KEY,
+                    terminal_key_id TEXT NOT NULL,
+                    denial_id TEXT NOT NULL,
+                    ordinal BIGINT NOT NULL,
+                    parent_record_id TEXT NOT NULL UNIQUE,
+                    record_kind TEXT NOT NULL,
+                    target_repository_id TEXT NOT NULL,
+                    target_branch TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    canonical_task_key TEXT NOT NULL,
+                    canonical_task_cid TEXT NOT NULL,
+                    board_namespace TEXT NOT NULL,
+                    task_binding_id TEXT NOT NULL,
+                    attempt BIGINT NOT NULL,
+                    origin_stream_id TEXT NOT NULL,
+                    record_json TEXT NOT NULL,
+                    created_at DOUBLE NOT NULL,
+                    UNIQUE(terminal_key_id, ordinal)
+                );
+                CREATE INDEX IF NOT EXISTS
+                  post_merge_correction_chain_records_target
+                  ON post_merge_correction_chain_records(
+                    target_repository_id,
+                    target_branch,
+                    task_id
+                  );
+                CREATE INDEX IF NOT EXISTS
+                  post_merge_correction_chain_records_denial
+                  ON post_merge_correction_chain_records(denial_id);
+                CREATE TABLE IF NOT EXISTS
+                  post_merge_correction_chain_heads (
+                    terminal_key_id TEXT PRIMARY KEY,
+                    denial_id TEXT NOT NULL UNIQUE,
+                    head_record_id TEXT NOT NULL,
+                    head_ordinal BIGINT NOT NULL,
+                    head_state_id TEXT NOT NULL,
+                    updated_at DOUBLE NOT NULL
+                );
                 """,
         )
+        self._initialize_post_merge_correction_registry()
+
+    @staticmethod
+    def _post_merge_review_denial_rows(
+        connection: DuckDBConnection,
+    ) -> list[DuckDBRow]:
+        return connection.execute(
+            """SELECT terminal_key_id, denial_id,
+                      target_repository_id, target_branch, task_id,
+                      canonical_task_key, canonical_task_cid,
+                      task_binding_id, implementation_commit,
+                      record_json
+               FROM post_merge_review_denials
+               ORDER BY created_at, terminal_key_id"""
+        ).fetchall()
+
+    @staticmethod
+    def _post_merge_correction_record_rows(
+        connection: DuckDBConnection,
+    ) -> list[DuckDBRow]:
+        return connection.execute(
+            """SELECT record_id, terminal_key_id, denial_id, ordinal,
+                      parent_record_id, record_kind,
+                      target_repository_id, target_branch, task_id,
+                      canonical_task_key, canonical_task_cid,
+                      board_namespace, task_binding_id, attempt,
+                      origin_stream_id, record_json
+               FROM post_merge_correction_chain_records
+               ORDER BY terminal_key_id, ordinal, record_id"""
+        ).fetchall()
+
+    @staticmethod
+    def _post_merge_correction_head_rows(
+        connection: DuckDBConnection,
+    ) -> list[DuckDBRow]:
+        return connection.execute(
+            """SELECT terminal_key_id, denial_id, head_record_id,
+                      head_ordinal, head_state_id
+               FROM post_merge_correction_chain_heads
+               ORDER BY terminal_key_id"""
+        ).fetchall()
+
+    @staticmethod
+    def _validate_post_merge_correction_registry_components(
+        denials_by_id: Mapping[str, Mapping[str, Any]],
+        chains_by_denial_id: Mapping[
+            str, Sequence[Mapping[str, Any]]
+        ],
+        heads_by_denial_id: Mapping[str, Mapping[str, Any]],
+    ) -> None:
+        if set(heads_by_denial_id) != set(denials_by_id):
+            raise MergeQueueIntegrityError(
+                "post-merge correction head coverage changed"
+            )
+        if not set(chains_by_denial_id).issubset(denials_by_id):
+            raise MergeQueueIntegrityError(
+                "post-merge correction chain is orphaned"
+            )
+        seen_primary_events: set[tuple[str, str]] = set()
+        seen_primary_positions: set[tuple[str, int]] = set()
+        seen_grant_ids: set[str] = set()
+        seen_repair_bindings: set[str] = set()
+        seen_repair_task_bindings: set[str] = set()
+        for denial_id, denial in denials_by_id.items():
+            _validate_post_merge_correction_chain(
+                denial,
+                chains_by_denial_id.get(denial_id, ()),
+                heads_by_denial_id[denial_id],
+                seen_primary_events=seen_primary_events,
+                seen_primary_positions=seen_primary_positions,
+                seen_grant_ids=seen_grant_ids,
+                seen_repair_bindings=seen_repair_bindings,
+                seen_repair_task_bindings=(
+                    seen_repair_task_bindings
+                ),
+            )
+
+    def _verified_post_merge_correction_registry(
+        self,
+        connection: DuckDBConnection,
+    ) -> tuple[
+        dict[str, dict[str, Any]],
+        dict[str, tuple[dict[str, Any], ...]],
+        dict[str, dict[str, Any]],
+    ]:
+        denials_by_id: dict[str, dict[str, Any]] = {}
+        terminal_keys: set[str] = set()
+        for row in self._post_merge_review_denial_rows(connection):
+            denial = _decoded_post_merge_review_denial_row(row)
+            denial_id = str(denial["denial_id"])
+            terminal_key_id = str(denial["terminal_key_id"])
+            if (
+                denial_id in denials_by_id
+                or terminal_key_id in terminal_keys
+            ):
+                raise MergeQueueIntegrityError(
+                    "post-merge denial registry identity is duplicated"
+                )
+            denials_by_id[denial_id] = denial
+            terminal_keys.add(terminal_key_id)
+
+        mutable_chains: dict[str, list[dict[str, Any]]] = {}
+        for row in self._post_merge_correction_record_rows(connection):
+            record = _decoded_post_merge_correction_chain_row(row)
+            mutable_chains.setdefault(
+                str(record["denial_id"]), []
+            ).append(record)
+        chains_by_denial_id = {
+            denial_id: tuple(records)
+            for denial_id, records in mutable_chains.items()
+        }
+
+        heads_by_denial_id: dict[str, dict[str, Any]] = {}
+        seen_head_terminals: set[str] = set()
+        for row in self._post_merge_correction_head_rows(connection):
+            head = _decoded_post_merge_correction_head_row(row)
+            denial_id = str(head["denial_id"])
+            terminal_key_id = str(head["terminal_key_id"])
+            if (
+                denial_id in heads_by_denial_id
+                or terminal_key_id in seen_head_terminals
+            ):
+                raise MergeQueueIntegrityError(
+                    "post-merge correction head identity is duplicated"
+                )
+            heads_by_denial_id[denial_id] = head
+            seen_head_terminals.add(terminal_key_id)
+
+        self._validate_post_merge_correction_registry_components(
+            denials_by_id,
+            chains_by_denial_id,
+            heads_by_denial_id,
+        )
+        return (
+            denials_by_id,
+            chains_by_denial_id,
+            heads_by_denial_id,
+        )
+
+    def _ensure_post_merge_correction_chain_head(
+        self,
+        connection: DuckDBConnection,
+        denial: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Create a migration base head or update an unconsumed one."""
+
+        terminal_key_id = str(denial["terminal_key_id"])
+        denial_id = str(denial["denial_id"])
+        rows = connection.execute(
+            """SELECT terminal_key_id, denial_id, head_record_id,
+                      head_ordinal, head_state_id
+               FROM post_merge_correction_chain_heads
+               WHERE terminal_key_id=? OR denial_id=?""",
+            (terminal_key_id, denial_id),
+        ).fetchall()
+        record_count_row = connection.execute(
+            """SELECT COUNT(*) AS count
+               FROM post_merge_correction_chain_records
+               WHERE terminal_key_id=? OR denial_id=?""",
+            (terminal_key_id, denial_id),
+        ).fetchone()
+        record_count = (
+            int(record_count_row["count"])
+            if record_count_row is not None
+            else 0
+        )
+        if not rows:
+            if record_count:
+                raise MergeQueueIntegrityError(
+                    "post-merge correction records lack a durable head"
+                )
+            head = _post_merge_correction_chain_head(
+                terminal_key_id=terminal_key_id,
+                denial_id=denial_id,
+                head_record_id=denial_id,
+                head_ordinal=0,
+            )
+            connection.execute(
+                """INSERT INTO post_merge_correction_chain_heads (
+                     terminal_key_id, denial_id, head_record_id,
+                     head_ordinal, head_state_id, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    head["terminal_key_id"],
+                    head["denial_id"],
+                    head["head_record_id"],
+                    head["head_ordinal"],
+                    head["head_state_id"],
+                    self._clock(),
+                ),
+            )
+            return head
+        if len(rows) != 1:
+            raise MergeQueueIntegrityError(
+                "post-merge correction head conflicts across denials"
+            )
+        existing = _decoded_post_merge_correction_head_row(rows[0])
+        if existing["terminal_key_id"] != terminal_key_id:
+            raise MergeQueueIntegrityError(
+                "post-merge correction head crosses terminal keys"
+            )
+        if existing["denial_id"] == denial_id:
+            if (
+                int(existing["head_ordinal"]) == 0
+                and (
+                    existing["head_record_id"] != denial_id
+                    or record_count
+                )
+            ):
+                raise MergeQueueIntegrityError(
+                    "post-merge correction base head is inconsistent"
+                )
+            return existing
+        if int(existing["head_ordinal"]) != 0 or record_count:
+            raise MergeQueueFenceError(
+                "post-merge denial cannot evolve after authority consumption"
+            )
+        replacement = _post_merge_correction_chain_head(
+            terminal_key_id=terminal_key_id,
+            denial_id=denial_id,
+            head_record_id=denial_id,
+            head_ordinal=0,
+        )
+        connection.execute(
+            """UPDATE post_merge_correction_chain_heads
+               SET denial_id=?, head_record_id=?, head_ordinal=?,
+                   head_state_id=?, updated_at=?
+               WHERE terminal_key_id=? AND head_state_id=?""",
+            (
+                replacement["denial_id"],
+                replacement["head_record_id"],
+                replacement["head_ordinal"],
+                replacement["head_state_id"],
+                self._clock(),
+                terminal_key_id,
+                existing["head_state_id"],
+            ),
+        )
+        stored = connection.execute(
+            """SELECT terminal_key_id, denial_id, head_record_id,
+                      head_ordinal, head_state_id
+               FROM post_merge_correction_chain_heads
+               WHERE terminal_key_id=?""",
+            (terminal_key_id,),
+        ).fetchone()
+        if (
+            stored is None
+            or _decoded_post_merge_correction_head_row(stored)
+            != replacement
+        ):
+            raise MergeQueueFenceError(
+                "post-merge correction base-head CAS failed"
+            )
+        return replacement
+
+    def _initialize_post_merge_correction_registry(self) -> None:
+        """Backfill legacy heads once; never repair a deployed registry."""
+
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                migration = connection.execute(
+                    """SELECT value
+                       FROM agent_supervisor_store_metadata
+                       WHERE key=?""",
+                    (_POST_MERGE_CORRECTION_REGISTRY_MIGRATION_KEY,),
+                ).fetchone()
+                if migration is not None and str(migration["value"]) != (
+                    _POST_MERGE_CORRECTION_REGISTRY_MIGRATION_SCHEMA
+                ):
+                    raise MergeQueueIntegrityError(
+                        "post-merge correction registry migration marker changed"
+                    )
+                if migration is None:
+                    for row in self._post_merge_review_denial_rows(
+                        connection
+                    ):
+                        denial = _decoded_post_merge_review_denial_row(row)
+                        self._ensure_post_merge_correction_chain_head(
+                            connection,
+                            denial,
+                        )
+                self._verified_post_merge_correction_registry(connection)
+                if migration is None:
+                    connection.execute(
+                        """INSERT INTO agent_supervisor_store_metadata (
+                             key, value
+                           ) VALUES (?, ?)""",
+                        (
+                            _POST_MERGE_CORRECTION_REGISTRY_MIGRATION_KEY,
+                            _POST_MERGE_CORRECTION_REGISTRY_MIGRATION_SCHEMA,
+                        ),
+                    )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+    def _assert_post_merge_correction_target(
+        self,
+        transition: Mapping[str, Any],
+    ) -> None:
+        if (
+            self.target_repository_id
+            and (
+                transition["target_repository_id"]
+                != self.target_repository_id
+                or transition["target_branch"] != self.target_branch
+            )
+        ):
+            raise MergeQueueFenceError(
+                "post-merge correction target differs from queue binding"
+            )
+        if self.require_target_binding and not self.target_repository_id:
+            raise MergeQueueFenceError(
+                "bound merge queue lacks a correction target"
+            )
+
+    @staticmethod
+    def _insert_post_merge_correction_chain_record(
+        connection: DuckDBConnection,
+        record: Mapping[str, Any],
+        canonical: str,
+        created_at: float,
+    ) -> None:
+        connection.execute(
+            """INSERT INTO post_merge_correction_chain_records (
+                 record_id, terminal_key_id, denial_id, ordinal,
+                 parent_record_id, record_kind,
+                 target_repository_id, target_branch, task_id,
+                 canonical_task_key, canonical_task_cid,
+                 board_namespace, task_binding_id, attempt,
+                 origin_stream_id, record_json, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                record["record_id"],
+                record["terminal_key_id"],
+                record["denial_id"],
+                record["ordinal"],
+                record["parent_record_id"],
+                record["record_kind"],
+                record["target_repository_id"],
+                record["target_branch"],
+                record["task_id"],
+                record["canonical_task_key"],
+                record["canonical_task_cid"],
+                record["board_namespace"],
+                record["task_binding_id"],
+                record["attempt"],
+                record["origin_stream_id"],
+                canonical,
+                float(created_at),
+            ),
+        )
+
+    def _advance_post_merge_correction_head(
+        self,
+        connection: DuckDBConnection,
+        *,
+        current_head: Mapping[str, Any],
+        record: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        next_head = _post_merge_correction_chain_head(
+            terminal_key_id=str(record["terminal_key_id"]),
+            denial_id=str(record["denial_id"]),
+            head_record_id=str(record["record_id"]),
+            head_ordinal=int(record["ordinal"]),
+        )
+        connection.execute(
+            """UPDATE post_merge_correction_chain_heads
+               SET head_record_id=?, head_ordinal=?, head_state_id=?,
+                   updated_at=?
+               WHERE terminal_key_id=? AND denial_id=?
+                 AND head_record_id=? AND head_ordinal=?
+                 AND head_state_id=?""",
+            (
+                next_head["head_record_id"],
+                next_head["head_ordinal"],
+                next_head["head_state_id"],
+                self._clock(),
+                current_head["terminal_key_id"],
+                current_head["denial_id"],
+                current_head["head_record_id"],
+                current_head["head_ordinal"],
+                current_head["head_state_id"],
+            ),
+        )
+        stored = connection.execute(
+            """SELECT terminal_key_id, denial_id, head_record_id,
+                      head_ordinal, head_state_id
+               FROM post_merge_correction_chain_heads
+               WHERE terminal_key_id=?""",
+            (record["terminal_key_id"],),
+        ).fetchone()
+        if (
+            stored is None
+            or _decoded_post_merge_correction_head_row(stored)
+            != next_head
+        ):
+            raise MergeQueueFenceError(
+                "post-merge correction head CAS failed"
+            )
+        return next_head
+
+    def record_post_merge_correction_transition(
+        self,
+        value: Mapping[str, Any],
+        *,
+        expected_parent_record_id: str,
+    ) -> dict[str, Any]:
+        """CAS-append one exact one-shot correction transition."""
+
+        _record_kind, transition = (
+            _validated_post_merge_correction_transition(value)
+        )
+        self._assert_post_merge_correction_target(transition)
+        expected_parent = str(expected_parent_record_id or "")
+        if not expected_parent:
+            raise MergeQueueFenceError(
+                "post-merge correction CAS parent is required"
+            )
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                (
+                    denials,
+                    chains,
+                    heads,
+                ) = self._verified_post_merge_correction_registry(
+                    connection
+                )
+                denial_id = str(transition["denial_id"])
+                denial = denials.get(denial_id)
+                if denial is None:
+                    raise MergeQueueFenceError(
+                        "post-merge correction denial is unavailable"
+                    )
+                if any(
+                    transition[name] != expected
+                    for name, expected in (
+                        _post_merge_correction_identity_from_denial(
+                            denial
+                        ).items()
+                    )
+                ):
+                    raise MergeQueueFenceError(
+                        "post-merge correction identity differs from denial"
+                    )
+                chain = list(chains.get(denial_id, ()))
+                current_head = heads[denial_id]
+                parent_ordinal = (
+                    0 if expected_parent == denial_id else None
+                )
+                if parent_ordinal is None:
+                    parent_record = next(
+                        (
+                            record
+                            for record in chain
+                            if record["record_id"] == expected_parent
+                        ),
+                        None,
+                    )
+                    if parent_record is not None:
+                        parent_ordinal = int(parent_record["ordinal"])
+                if parent_ordinal is None:
+                    raise MergeQueueFenceError(
+                        "post-merge correction CAS parent is foreign"
+                    )
+                candidate = _post_merge_correction_chain_record(
+                    transition,
+                    terminal_key_id=str(denial["terminal_key_id"]),
+                    ordinal=parent_ordinal + 1,
+                    parent_record_id=expected_parent,
+                )
+                candidate, canonical = (
+                    _validated_post_merge_correction_chain_record(
+                        candidate
+                    )
+                )
+                existing_child = next(
+                    (
+                        record
+                        for record in chain
+                        if record["parent_record_id"] == expected_parent
+                    ),
+                    None,
+                )
+                if existing_child is not None:
+                    if existing_child != candidate:
+                        raise MergeQueueFenceError(
+                            "post-merge correction CAS parent was consumed"
+                        )
+                    connection.commit()
+                    return existing_child
+                if current_head["head_record_id"] != expected_parent:
+                    raise MergeQueueFenceError(
+                        "post-merge correction CAS parent is stale"
+                    )
+                next_head = _post_merge_correction_chain_head(
+                    terminal_key_id=str(candidate["terminal_key_id"]),
+                    denial_id=denial_id,
+                    head_record_id=str(candidate["record_id"]),
+                    head_ordinal=int(candidate["ordinal"]),
+                )
+                prospective_chains = dict(chains)
+                prospective_chains[denial_id] = (*chain, candidate)
+                prospective_heads = dict(heads)
+                prospective_heads[denial_id] = next_head
+                self._validate_post_merge_correction_registry_components(
+                    denials,
+                    prospective_chains,
+                    prospective_heads,
+                )
+                self._insert_post_merge_correction_chain_record(
+                    connection,
+                    candidate,
+                    canonical,
+                    self._clock(),
+                )
+                self._advance_post_merge_correction_head(
+                    connection,
+                    current_head=current_head,
+                    record=candidate,
+                )
+                connection.commit()
+                return candidate
+            except Exception:
+                connection.rollback()
+                raise
+
+    def record_post_merge_correction_consumption(
+        self,
+        value: Mapping[str, Any],
+        *,
+        expected_parent_record_id: str,
+    ) -> dict[str, Any]:
+        kind, _transition = _validated_post_merge_correction_transition(
+            value
+        )
+        if kind not in {"denial_consumed", "grant_consumed"}:
+            raise MergeQueueIntegrityError(
+                "post-merge correction consumption schema is required"
+            )
+        return self.record_post_merge_correction_transition(
+            value,
+            expected_parent_record_id=expected_parent_record_id,
+        )
+
+    def record_post_merge_correction_failure(
+        self,
+        value: Mapping[str, Any],
+        *,
+        expected_parent_record_id: str,
+    ) -> dict[str, Any]:
+        kind, _transition = _validated_post_merge_correction_transition(
+            value
+        )
+        if kind != "correction_failed":
+            raise MergeQueueIntegrityError(
+                "post-merge correction failure schema is required"
+            )
+        return self.record_post_merge_correction_transition(
+            value,
+            expected_parent_record_id=expected_parent_record_id,
+        )
+
+    def record_post_merge_correction_repair_grant(
+        self,
+        value: Mapping[str, Any],
+        *,
+        expected_parent_record_id: str,
+    ) -> dict[str, Any]:
+        kind, _transition = _validated_post_merge_correction_transition(
+            value
+        )
+        if kind != "repair_granted":
+            raise MergeQueueIntegrityError(
+                "post-merge correction repair-grant schema is required"
+            )
+        return self.record_post_merge_correction_transition(
+            value,
+            expected_parent_record_id=expected_parent_record_id,
+        )
+
+    def record_post_merge_correction_legacy_failure_anchor(
+        self,
+        value: Mapping[str, Any],
+        *,
+        expected_parent_record_id: str,
+    ) -> dict[str, Any]:
+        """Apply one explicit exact operator migration; never infer lineage."""
+
+        kind, _transition = _validated_post_merge_correction_transition(
+            value
+        )
+        if kind != "legacy_failure_anchored":
+            raise MergeQueueIntegrityError(
+                "post-merge correction legacy anchor schema is required"
+            )
+        return self.record_post_merge_correction_transition(
+            value,
+            expected_parent_record_id=expected_parent_record_id,
+        )
+
+    def record_post_merge_correction_legacy_high_water_anchor(
+        self,
+        value: Mapping[str, Any],
+        *,
+        expected_parent_record_id: str,
+    ) -> dict[str, Any]:
+        """Apply one explicit bounded legacy high-water migration."""
+
+        kind, _transition = _validated_post_merge_correction_transition(
+            value
+        )
+        if kind != "legacy_high_water_anchored":
+            raise MergeQueueIntegrityError(
+                "post-merge correction legacy high-water anchor schema is required"
+            )
+        return self.record_post_merge_correction_transition(
+            value,
+            expected_parent_record_id=expected_parent_record_id,
+        )
+
+    def mirror_post_merge_correction_history(
+        self,
+        transitions: Sequence[Mapping[str, Any]],
+    ) -> tuple[dict[str, Any], ...]:
+        """Atomically import a verified full prefix from a rotating ledger."""
+
+        verified_transitions = [
+            _validated_post_merge_correction_transition(value)[1]
+            for value in transitions
+        ]
+        if not verified_transitions:
+            return ()
+        denial_ids = {
+            str(transition["denial_id"])
+            for transition in verified_transitions
+        }
+        if len(denial_ids) != 1:
+            raise MergeQueueIntegrityError(
+                "one mirrored correction history must bind one denial"
+            )
+        for transition in verified_transitions:
+            self._assert_post_merge_correction_target(transition)
+        denial_id = denial_ids.pop()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                (
+                    denials,
+                    chains,
+                    heads,
+                ) = self._verified_post_merge_correction_registry(
+                    connection
+                )
+                denial = denials.get(denial_id)
+                if denial is None:
+                    raise MergeQueueFenceError(
+                        "mirrored post-merge correction denial is unavailable"
+                    )
+                expected_identity = (
+                    _post_merge_correction_identity_from_denial(denial)
+                )
+                expected_records: list[dict[str, Any]] = []
+                parent_record_id = denial_id
+                for ordinal, transition in enumerate(
+                    verified_transitions,
+                    start=1,
+                ):
+                    if any(
+                        transition[name] != expected
+                        for name, expected in expected_identity.items()
+                    ):
+                        raise MergeQueueFenceError(
+                            "mirrored correction identity differs from denial"
+                        )
+                    record = _post_merge_correction_chain_record(
+                        transition,
+                        terminal_key_id=str(denial["terminal_key_id"]),
+                        ordinal=ordinal,
+                        parent_record_id=parent_record_id,
+                    )
+                    record, _canonical = (
+                        _validated_post_merge_correction_chain_record(
+                            record
+                        )
+                    )
+                    expected_records.append(record)
+                    parent_record_id = str(record["record_id"])
+                existing = list(chains.get(denial_id, ()))
+                shared_length = min(
+                    len(existing), len(expected_records)
+                )
+                if (
+                    existing[:shared_length]
+                    != expected_records[:shared_length]
+                ):
+                    raise MergeQueueFenceError(
+                        "mirrored correction history conflicts with registry"
+                    )
+                if len(existing) >= len(expected_records):
+                    connection.commit()
+                    return tuple(existing)
+
+                prospective_chains = dict(chains)
+                prospective_chains[denial_id] = tuple(expected_records)
+                prospective_heads = dict(heads)
+                prospective_heads[denial_id] = (
+                    _post_merge_correction_chain_head(
+                        terminal_key_id=str(denial["terminal_key_id"]),
+                        denial_id=denial_id,
+                        head_record_id=str(
+                            expected_records[-1]["record_id"]
+                        ),
+                        head_ordinal=len(expected_records),
+                    )
+                )
+                self._validate_post_merge_correction_registry_components(
+                    denials,
+                    prospective_chains,
+                    prospective_heads,
+                )
+                current_head = heads[denial_id]
+                for record in expected_records[len(existing) :]:
+                    _verified, canonical = (
+                        _validated_post_merge_correction_chain_record(
+                            record
+                        )
+                    )
+                    self._insert_post_merge_correction_chain_record(
+                        connection,
+                        record,
+                        canonical,
+                        self._clock(),
+                    )
+                    current_head = (
+                        self._advance_post_merge_correction_head(
+                            connection,
+                            current_head=current_head,
+                            record=record,
+                        )
+                    )
+                connection.commit()
+                return tuple(expected_records)
+            except Exception:
+                connection.rollback()
+                raise
+
+    def verified_post_merge_correction_chain(
+        self,
+        denial_id: str = "",
+    ) -> tuple[dict[str, Any], ...]:
+        """Return a fully verified durable chain, optionally for one denial."""
+
+        selected_denial_id = str(denial_id or "")
+        with self._connect() as connection:
+            denials, chains, _heads = (
+                self._verified_post_merge_correction_registry(connection)
+            )
+        selected: list[dict[str, Any]] = []
+        for current_denial_id, denial in denials.items():
+            if (
+                selected_denial_id
+                and current_denial_id != selected_denial_id
+            ):
+                continue
+            if (
+                self.target_repository_id
+                and (
+                    denial["target_repository_id"]
+                    != self.target_repository_id
+                    or denial["target_branch"] != self.target_branch
+                )
+            ):
+                continue
+            selected.extend(chains.get(current_denial_id, ()))
+        return tuple(selected)
+
+    def verified_post_merge_correction_authority(
+        self,
+        denial_id: str,
+    ) -> dict[str, Any]:
+        """Project the sole live authority without consulting retained events."""
+
+        selected_denial_id = str(denial_id or "")
+        if not selected_denial_id:
+            return {}
+        with self._connect() as connection:
+            denials, chains, heads = (
+                self._verified_post_merge_correction_registry(connection)
+            )
+        denial = denials.get(selected_denial_id)
+        if denial is None:
+            return {}
+        if (
+            self.target_repository_id
+            and (
+                denial["target_repository_id"]
+                != self.target_repository_id
+                or denial["target_branch"] != self.target_branch
+            )
+        ):
+            return {}
+        chain = chains.get(selected_denial_id, ())
+        head = heads[selected_denial_id]
+        authority_available = False
+        authority_kind = ""
+        authority_id = ""
+        authority_event_sequence = 0
+        authorized_attempt = 0
+        state = "unavailable"
+        grant_binding = {
+            "failure_record_id": "",
+            "failure_event_id": "",
+            "failure_event_sequence": 0,
+            "failure_kind": "",
+            "repair_task_id": "",
+            "repair_task_binding_id": "",
+            "repair_binding_id": "",
+        }
+        recovery_seed = {
+            "recovery_seed_ref": "",
+            "recovery_seed_tree_id": "",
+            "recovery_seed_submodule_path": "",
+            "recovery_seed_submodule_commit": "",
+        }
+        if not chain:
+            if denial["correction_authorized"] is True:
+                authority_available = True
+                authority_kind = "review_denial"
+                authority_id = selected_denial_id
+                authority_event_sequence = int(
+                    denial["review_attempt"]
+                )
+                authorized_attempt = int(
+                    denial["target_implementation_attempt"]
+                )
+                state = "available"
+            else:
+                state = "not_authorized"
+        else:
+            terminal = chain[-1]
+            detail = terminal["detail"]
+            kind = str(terminal["record_kind"])
+            if kind == "repair_granted":
+                authority_available = True
+                authority_kind = "repair_grant"
+                authority_id = str(detail["grant_id"])
+                authority_event_sequence = int(
+                    detail["grant_event_sequence"]
+                )
+                authorized_attempt = int(terminal["attempt"])
+                state = "available"
+                grant_binding = {
+                    name: detail[name]
+                    for name in grant_binding
+                }
+                recovery_seed = (
+                    _validated_post_merge_recovery_seed(
+                        detail,
+                        required=False,
+                    )
+                )
+            elif kind in {"denial_consumed", "grant_consumed"}:
+                authority_kind = str(detail["authority_kind"])
+                authority_id = str(detail["authority_id"])
+                authorized_attempt = int(terminal["attempt"])
+                state = "consumed"
+            elif kind == "correction_failed":
+                authority_kind = str(detail["authority_kind"])
+                authority_id = str(detail["authority_id"])
+                authorized_attempt = int(terminal["attempt"])
+                state = "failed"
+            elif kind == "legacy_failure_anchored":
+                authority_kind = "review_denial"
+                authority_id = selected_denial_id
+                authorized_attempt = int(terminal["attempt"])
+                state = "legacy_failure_anchored"
+            else:
+                authority_kind = "review_denial"
+                authority_id = selected_denial_id
+                authorized_attempt = int(terminal["attempt"])
+                state = "legacy_high_water_anchored"
+        material: dict[str, Any] = {
+            "schema": POST_MERGE_CORRECTION_AUTHORITY_STATE_SCHEMA,
+            "terminal_key_id": str(denial["terminal_key_id"]),
+            "denial_id": selected_denial_id,
+            "implementation_commit": str(
+                denial["implementation_commit"]
+            ),
+            **_post_merge_correction_identity_from_denial(denial),
+            "head_record_id": str(head["head_record_id"]),
+            "head_ordinal": int(head["head_ordinal"]),
+            "state": state,
+            "authority_available": authority_available,
+            "authority_kind": authority_kind,
+            "authority_id": authority_id,
+            "authority_event_sequence": authority_event_sequence,
+            "authorized_attempt": authorized_attempt,
+            **grant_binding,
+            **recovery_seed,
+        }
+        return {
+            **material,
+            "authority_state_id": content_identity(material),
+        }
 
     def record_post_merge_review_denial(
         self,
@@ -720,6 +2897,13 @@ class MergeQueue:
                         str(existing[0]["denial_id"]) == denial_id
                         and existing_canonical == canonical
                     ):
+                        self._ensure_post_merge_correction_chain_head(
+                            connection,
+                            existing_record,
+                        )
+                        self._verified_post_merge_correction_registry(
+                            connection
+                        )
                         connection.commit()
                         return existing_record
                     candidates: list[
@@ -759,8 +2943,19 @@ class MergeQueue:
                         _validated_post_merge_review_denial(selected)
                     )
                     if selected_canonical == existing_canonical:
+                        self._ensure_post_merge_correction_chain_head(
+                            connection,
+                            existing_record,
+                        )
+                        self._verified_post_merge_correction_registry(
+                            connection
+                        )
                         connection.commit()
                         return existing_record
+                    self._ensure_post_merge_correction_chain_head(
+                        connection,
+                        selected_record,
+                    )
                     connection.execute(
                         """UPDATE post_merge_review_denials
                            SET denial_id=?, record_json=?
@@ -770,6 +2965,9 @@ class MergeQueue:
                             selected_canonical,
                             terminal_key_id,
                         ),
+                    )
+                    self._verified_post_merge_correction_registry(
+                        connection
                     )
                     connection.commit()
                     return selected_record
@@ -795,6 +2993,11 @@ class MergeQueue:
                         self._clock(),
                     ),
                 )
+                self._ensure_post_merge_correction_chain_head(
+                    connection,
+                    record,
+                )
+                self._verified_post_merge_correction_registry(connection)
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -807,50 +3010,11 @@ class MergeQueue:
         """Return all permanent denial tombstones or fail on any corruption."""
 
         with self._connect() as connection:
-            rows = connection.execute(
-                """SELECT terminal_key_id, denial_id,
-                          target_repository_id, target_branch, task_id,
-                          canonical_task_key, canonical_task_cid,
-                          task_binding_id, implementation_commit,
-                          record_json
-                   FROM post_merge_review_denials
-                   ORDER BY created_at, terminal_key_id"""
-            ).fetchall()
+            denials, _chains, _heads = (
+                self._verified_post_merge_correction_registry(connection)
+            )
         verified: list[dict[str, Any]] = []
-        for row in rows:
-            try:
-                decoded = json.loads(str(row["record_json"]))
-            except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                raise MergeQueueIntegrityError(
-                    "post-merge denial registry contains malformed JSON"
-                ) from exc
-            record, canonical = _validated_post_merge_review_denial(decoded)
-            row_bindings = {
-                "terminal_key_id": str(row["terminal_key_id"]),
-                "denial_id": str(row["denial_id"]),
-                "target_repository_id": str(
-                    row["target_repository_id"]
-                ),
-                "target_branch": str(row["target_branch"]),
-                "task_id": str(row["task_id"]),
-                "canonical_task_key": str(
-                    row["canonical_task_key"]
-                ),
-                "canonical_task_cid": str(
-                    row["canonical_task_cid"]
-                ),
-                "task_binding_id": str(row["task_binding_id"]),
-                "implementation_commit": str(
-                    row["implementation_commit"]
-                ),
-            }
-            if (
-                canonical != str(row["record_json"])
-                or any(record[name] != item for name, item in row_bindings.items())
-            ):
-                raise MergeQueueIntegrityError(
-                    "post-merge denial registry row binding changed"
-                )
+        for record in denials.values():
             if (
                 self.target_repository_id
                 and (
@@ -2254,6 +4418,16 @@ __all__ = [
     "MergeQueue",
     "MergeQueueFullError",
     "MergeQueueFenceError",
+    "MergeQueueIntegrityError",
     "MergeRequest",
+    "POST_MERGE_CORRECTION_AUTHORITY_STATE_SCHEMA",
+    "POST_MERGE_CORRECTION_CHAIN_HEAD_SCHEMA",
+    "POST_MERGE_CORRECTION_CHAIN_RECORD_SCHEMA",
+    "POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA",
+    "POST_MERGE_CORRECTION_FAILURE_SCHEMA",
+    "POST_MERGE_CORRECTION_LEGACY_FAILURE_ANCHOR_SCHEMA",
+    "POST_MERGE_CORRECTION_LEGACY_HIGH_WATER_ANCHOR_SCHEMA",
+    "POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA",
+    "POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA",
     "_PRIORITY_ORDER",
 ]

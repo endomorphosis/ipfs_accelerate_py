@@ -5169,6 +5169,508 @@ def consecutive_implementation_failures(events: Sequence[Mapping[str, Any]], tas
     return failures
 
 
+def verified_failed_post_merge_corrections(
+    events_path: Path,
+) -> dict[str, dict[str, Any]]:
+    """Return fail-closed, exact-correction failures keyed by source task."""
+
+    try:
+        from ..todo_daemon.post_merge_review import (
+            PostMergeReviewError,
+            verified_failed_post_merge_review_correction_attempts_from_strict_ledger,
+        )
+
+        failures = (
+            verified_failed_post_merge_review_correction_attempts_from_strict_ledger(
+                Path(events_path)
+            )
+        )
+    except (
+        OSError,
+        PostMergeReviewError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return {}
+    return {
+        str(event["task_id"]): dict(event)
+        for event in failures
+        if str(event.get("task_id") or "")
+    }
+
+
+@dataclass(frozen=True)
+class VerifiedPostMergeCorrectionLineage:
+    """One durable denial and its fully verified terminal chain state."""
+
+    denial: dict[str, Any]
+    terminal_record: dict[str, Any] | None = None
+    failure_event: dict[str, Any] | None = None
+
+
+def _required_post_merge_correction_text(
+    value: Mapping[str, Any],
+    name: str,
+) -> str:
+    text = str(value.get(name) or "")
+    if not text:
+        raise ValueError(
+            f"durable post-merge correction {name} is unavailable"
+        )
+    return text
+
+
+def _durable_post_merge_correction_failure_event(
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project one verified durable failure into retry-budget event shape."""
+
+    detail = record.get("detail")
+    if not isinstance(detail, Mapping):
+        raise ValueError(
+            "durable post-merge correction failure detail is unavailable"
+        )
+    failure_kind = _required_post_merge_correction_text(
+        detail,
+        "failure_kind",
+    )
+    if failure_kind not in {"implementation", "validation", "merge"}:
+        raise ValueError(
+            "durable post-merge correction failure kind is invalid"
+        )
+    event_id = _required_post_merge_correction_text(
+        detail,
+        "terminal_event_id",
+    )
+    sequence = detail.get("terminal_event_sequence")
+    attempt = record.get("attempt")
+    if (
+        isinstance(sequence, bool)
+        or not isinstance(sequence, int)
+        or sequence < 1
+        or isinstance(attempt, bool)
+        or not isinstance(attempt, int)
+        or attempt < 1
+    ):
+        raise ValueError(
+            "durable post-merge correction failure position is invalid"
+        )
+    validation_result: dict[str, Any]
+    if failure_kind == "validation":
+        validation_result = {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "durable_post_merge_correction_failure",
+            "error": "post_merge_correction_validation_failed",
+        }
+    else:
+        validation_result = {
+            "attempted": False,
+            "passed": False,
+            "returncode": 0,
+            "reason": "not_run",
+        }
+    merge_result = (
+        {
+            "attempted": True,
+            "merged": False,
+            "reason": "durable_post_merge_correction_failure",
+        }
+        if failure_kind == "merge"
+        else {
+            "attempted": False,
+            "merged": False,
+            "reason": "not_attempted",
+        }
+    )
+    return {
+        "type": "implementation_finished",
+        "event_id": event_id,
+        "sequence": sequence,
+        "task_id": _required_post_merge_correction_text(
+            record,
+            "task_id",
+        ),
+        "canonical_task_key": _required_post_merge_correction_text(
+            record,
+            "canonical_task_key",
+        ),
+        "canonical_task_cid": _required_post_merge_correction_text(
+            record,
+            "canonical_task_cid",
+        ),
+        "board_namespace": _required_post_merge_correction_text(
+            record,
+            "board_namespace",
+        ),
+        "attempt": attempt,
+        "returncode": 1 if failure_kind == "implementation" else 0,
+        "attempt_consumed": True,
+        "validation_result": validation_result,
+        "merge_result": merge_result,
+        "post_merge_correction_denial_id": (
+            _required_post_merge_correction_text(
+                record,
+                "denial_id",
+            )
+        ),
+        "post_merge_correction_target_attempt": attempt,
+        "post_merge_correction_failure_kind": failure_kind,
+        "post_merge_correction_task_binding_id": (
+            _required_post_merge_correction_text(
+                record,
+                "task_binding_id",
+            )
+        ),
+        "post_merge_correction_origin_stream_id": (
+            _required_post_merge_correction_text(
+                record,
+                "origin_stream_id",
+            )
+        ),
+        "post_merge_correction_registry_record_id": (
+            _required_post_merge_correction_text(
+                record,
+                "record_id",
+            )
+        ),
+    }
+
+
+def verified_durable_post_merge_correction_lineages(
+    *,
+    merge_queue_dir: Path | None = None,
+    post_merge_correction_registry: Any | None = None,
+) -> tuple[VerifiedPostMergeCorrectionLineage, ...] | None:
+    """Read the durable correction registry, or ``None`` when not configured.
+
+    The merge queue readers verify the complete denial and transition
+    registries before returning any projection.  This helper adds defensive
+    shape and cross-binding checks so a custom registry cannot accidentally
+    weaken that contract.
+    """
+
+    if (
+        merge_queue_dir is None
+        and post_merge_correction_registry is None
+    ):
+        return None
+    registry = post_merge_correction_registry
+    if registry is None:
+        from ..merge.merge_queue import MergeQueue
+
+        if merge_queue_dir is None:
+            raise ValueError(
+                "durable post-merge correction registry is unavailable"
+            )
+        registry = MergeQueue(Path(merge_queue_dir))
+    denials = tuple(registry.verified_post_merge_review_denials())
+    records = tuple(registry.verified_post_merge_correction_chain())
+    denials_by_id: dict[str, dict[str, Any]] = {}
+    identity_fields = (
+        "target_repository_id",
+        "target_branch",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "task_binding_id",
+    )
+    for raw_denial in denials:
+        if not isinstance(raw_denial, Mapping):
+            raise ValueError(
+                "durable post-merge correction denial is invalid"
+            )
+        denial = dict(raw_denial)
+        denial_id = _required_post_merge_correction_text(
+            denial,
+            "denial_id",
+        )
+        if denial_id in denials_by_id:
+            raise ValueError(
+                "durable post-merge correction denial is duplicated"
+            )
+        for name in identity_fields:
+            _required_post_merge_correction_text(denial, name)
+        target_attempt = denial.get("target_implementation_attempt")
+        if (
+            isinstance(target_attempt, bool)
+            or not isinstance(target_attempt, int)
+            or target_attempt < 1
+        ):
+            raise ValueError(
+                "durable post-merge correction denial attempt is invalid"
+            )
+        denials_by_id[denial_id] = denial
+
+    chains_by_denial: dict[str, list[dict[str, Any]]] = {
+        denial_id: []
+        for denial_id in denials_by_id
+    }
+    for raw_record in records:
+        if not isinstance(raw_record, Mapping):
+            raise ValueError(
+                "durable post-merge correction chain record is invalid"
+            )
+        record = dict(raw_record)
+        denial_id = _required_post_merge_correction_text(
+            record,
+            "denial_id",
+        )
+        denial = denials_by_id.get(denial_id)
+        if denial is None:
+            raise ValueError(
+                "durable post-merge correction chain has no denial"
+            )
+        for name in identity_fields:
+            if (
+                _required_post_merge_correction_text(record, name)
+                != str(denial[name])
+            ):
+                raise ValueError(
+                    "durable post-merge correction identity changed"
+                )
+        ordinal = record.get("ordinal")
+        attempt = record.get("attempt")
+        if (
+            isinstance(ordinal, bool)
+            or not isinstance(ordinal, int)
+            or ordinal < 1
+            or isinstance(attempt, bool)
+            or not isinstance(attempt, int)
+            or attempt < 1
+        ):
+            raise ValueError(
+                "durable post-merge correction chain position is invalid"
+            )
+        _required_post_merge_correction_text(record, "record_id")
+        _required_post_merge_correction_text(record, "origin_stream_id")
+        if str(record.get("record_kind") or "") not in {
+            "denial_consumed",
+            "grant_consumed",
+            "correction_failed",
+            "repair_granted",
+            "legacy_failure_anchored",
+            "legacy_high_water_anchored",
+        }:
+            raise ValueError(
+                "durable post-merge correction chain state is invalid"
+            )
+        chains_by_denial[denial_id].append(record)
+
+    lineages: list[VerifiedPostMergeCorrectionLineage] = []
+    for denial_id, denial in denials_by_id.items():
+        chain = sorted(
+            chains_by_denial[denial_id],
+            key=lambda record: int(record["ordinal"]),
+        )
+        if [int(record["ordinal"]) for record in chain] != list(
+            range(1, len(chain) + 1)
+        ):
+            raise ValueError(
+                "durable post-merge correction chain is discontinuous"
+            )
+        terminal = chain[-1] if chain else None
+        failure_event = None
+        if terminal and str(terminal["record_kind"]) in {
+            "correction_failed",
+            "legacy_failure_anchored",
+            "legacy_high_water_anchored",
+        }:
+            failure_event = (
+                _durable_post_merge_correction_failure_event(terminal)
+            )
+        lineages.append(
+            VerifiedPostMergeCorrectionLineage(
+                denial=dict(denial),
+                terminal_record=(
+                    dict(terminal) if terminal is not None else None
+                ),
+                failure_event=failure_event,
+            )
+        )
+    return tuple(lineages)
+
+
+def post_merge_correction_failure_kind(
+    event: Mapping[str, Any],
+) -> str:
+    """Classify one verified consumed correction for its repair guardrail."""
+
+    projected = str(
+        event.get("post_merge_correction_failure_kind") or ""
+    )
+    if projected in {"validation", "implementation", "merge"}:
+        return projected
+    validation = event.get("validation_result") or {}
+    if validation_result_is_failure(validation):
+        return "validation"
+    merge_result = event_merge_result(event)
+    if (
+        merge_result.get("attempted", False)
+        and not merge_result.get("merged", False)
+        and str(merge_result.get("reason") or "") != "not_attempted"
+    ):
+        return "merge"
+    return "implementation"
+
+
+def post_merge_correction_repair_metadata(
+    event: Mapping[str, Any] | None,
+) -> str:
+    """Render the immutable failed-correction binding on a repair task."""
+
+    if not event:
+        return ""
+    fields = (
+        (
+            "Post-merge correction repair schema",
+            "post-merge-correction-repair-v1",
+        ),
+        (
+            "Post-merge correction denial ID",
+            event.get("post_merge_correction_denial_id"),
+        ),
+        (
+            "Post-merge correction target attempt",
+            event.get("post_merge_correction_target_attempt"),
+        ),
+        (
+            "Post-merge correction failure event ID",
+            event.get("event_id"),
+        ),
+        (
+            "Post-merge correction failure event sequence",
+            event.get("sequence"),
+        ),
+        (
+            "Post-merge correction failure kind",
+            post_merge_correction_failure_kind(event),
+        ),
+        (
+            "Post-merge correction source task binding ID",
+            event.get("post_merge_correction_task_binding_id"),
+        ),
+        (
+            "Post-merge correction source canonical task key",
+            event.get("canonical_task_key"),
+        ),
+        (
+            "Post-merge correction source canonical task CID",
+            event.get("canonical_task_cid")
+            or event.get("canonical_task_id"),
+        ),
+        (
+            "Post-merge correction origin stream ID",
+            event.get("post_merge_correction_origin_stream_id"),
+        ),
+    )
+    if any(not str(value or "").strip() for _label, value in fields):
+        return ""
+    return "\n".join(
+        f"- {label}: {str(value).strip()}"
+        for label, value in fields
+    )
+
+
+def post_merge_correction_failure_matches_task(
+    event: Mapping[str, Any] | None,
+    task: Any,
+) -> bool:
+    """Fail closed when consumed-correction evidence belongs to an old task."""
+
+    if not event:
+        return False
+    try:
+        from ..todo_daemon.post_merge_review import (
+            PostMergeReviewError,
+            post_merge_task_binding_id,
+        )
+
+        task_binding_id = post_merge_task_binding_id(task)
+    except (
+        AttributeError,
+        PostMergeReviewError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+    task_canonical_key = str(
+        getattr(task, "canonical_task_key", "") or ""
+    )
+    task_canonical_cid = str(
+        getattr(task, "canonical_task_cid", "") or ""
+    )
+    return bool(
+        str(event.get("task_id") or "")
+        == str(getattr(task, "task_id", "") or "")
+        and str(
+            event.get("post_merge_correction_task_binding_id")
+            or event.get("task_binding_id")
+            or ""
+        )
+        == task_binding_id
+        and str(event.get("canonical_task_key") or "")
+        == task_canonical_key
+        and str(
+            event.get("canonical_task_cid")
+            or event.get("canonical_task_id")
+            or ""
+        )
+        == task_canonical_cid
+        and str(event.get("board_namespace") or "")
+        == str(getattr(task, "board_namespace", "") or "")
+    )
+
+
+def durable_post_merge_correction_for_task(
+    lineages: Sequence[VerifiedPostMergeCorrectionLineage],
+    task: Any,
+) -> tuple[dict[str, Any] | None, bool]:
+    """Return the newest exact durable failure and whether lineage exists."""
+
+    matching = [
+        lineage
+        for lineage in lineages
+        if post_merge_correction_failure_matches_task(
+            lineage.denial,
+            task,
+        )
+    ]
+    if not matching:
+        return None, False
+
+    def lineage_position(
+        lineage: VerifiedPostMergeCorrectionLineage,
+    ) -> tuple[int, int, str]:
+        terminal = lineage.terminal_record or {}
+        attempt = terminal.get("attempt")
+        if isinstance(attempt, bool) or not isinstance(attempt, int):
+            attempt = lineage.denial.get(
+                "target_implementation_attempt",
+                0,
+            )
+        ordinal = terminal.get("ordinal", 0)
+        if isinstance(ordinal, bool) or not isinstance(ordinal, int):
+            ordinal = 0
+        return (
+            int(attempt),
+            int(ordinal),
+            str(lineage.denial.get("denial_id") or ""),
+        )
+
+    selected = max(matching, key=lineage_position)
+    return (
+        dict(selected.failure_event)
+        if selected.failure_event is not None
+        else None,
+        True,
+    )
+
+
 def write_retry_budget_discovery(
     *,
     discovery_dir: Path,
@@ -5320,6 +5822,7 @@ def validation_retry_task_block(
     depends_on: Sequence[str] = (),
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     launch_playwright_validation_gate: bool = False,
+    correction_repair_metadata: str = "",
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
     if discovery_output_path not in outputs:
@@ -5352,6 +5855,7 @@ def validation_retry_task_block(
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
 {execution_metadata}
+{correction_repair_metadata}
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{validation_scope_acceptance}{launch_gate_acceptance}
 """
 
@@ -5458,6 +5962,7 @@ def implementation_retry_task_block(
     strategy_path: Path,
     depends_on: Sequence[str] = (),
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    correction_repair_metadata: str = "",
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
     if discovery_output_path not in outputs:
@@ -5474,6 +5979,7 @@ def implementation_retry_task_block(
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
 {execution_metadata}
+{correction_repair_metadata}
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
 """
 
@@ -5495,6 +6001,7 @@ def merge_retry_task_block(
     strategy_path: Path,
     depends_on: Sequence[str] = (),
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    correction_repair_metadata: str = "",
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
     if discovery_output_path not in outputs:
@@ -5518,6 +6025,7 @@ def merge_retry_task_block(
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
 {execution_metadata}
+{correction_repair_metadata}
 - Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the merge blocker, verify the intended implementation changes are committed in their owning repository or submodule, run `ipfs-accelerate-agent-merge-resolver --events-path ... --apply` when the conflict is semantic, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
 """
 
@@ -5539,6 +6047,8 @@ def record_retry_budget_findings(
     commit_outputs: bool = False,
     repo_root: Path | None = None,
     commit_subject: str = "Agent: record retry-budget guardrail outputs",
+    merge_queue_dir: Path | None = None,
+    post_merge_correction_registry: Any | None = None,
 ) -> list[dict[str, Any]]:
     """Append follow-up tasks for repeated implementation, validation, or merge failures."""
 
@@ -5557,6 +6067,74 @@ def record_retry_budget_findings(
         if is_retry_budget_repair_task(task)
     }
     events = iter_jsonl(events_path)
+    failed_post_merge_corrections = (
+        verified_failed_post_merge_corrections(events_path)
+    )
+    try:
+        durable_post_merge_correction_lineages = (
+            verified_durable_post_merge_correction_lineages(
+                merge_queue_dir=merge_queue_dir,
+                post_merge_correction_registry=(
+                    post_merge_correction_registry
+                ),
+            )
+        )
+    except Exception as exc:
+        logger.warning(
+            "Retry-budget guardrail withheld because the durable "
+            "post-merge correction registry is unavailable: %s",
+            exc,
+        )
+        return []
+
+    def correction_state_for_task(
+        task: Any,
+    ) -> tuple[dict[str, Any] | None, bool]:
+        strict_failure = failed_post_merge_corrections.get(task.task_id)
+        if not post_merge_correction_failure_matches_task(
+            strict_failure,
+            task,
+        ):
+            strict_failure = None
+        if durable_post_merge_correction_lineages is None:
+            return (
+                dict(strict_failure)
+                if strict_failure is not None
+                else None,
+                False,
+            )
+        durable_failure, lineage_known = (
+            durable_post_merge_correction_for_task(
+                durable_post_merge_correction_lineages,
+                task,
+            )
+        )
+        return durable_failure, lineage_known
+
+    if durable_post_merge_correction_lineages is not None:
+        for task in tasks:
+            strict_failure = failed_post_merge_corrections.get(
+                task.task_id
+            )
+            if not post_merge_correction_failure_matches_task(
+                strict_failure,
+                task,
+            ):
+                continue
+            _durable_failure, lineage_known = (
+                durable_post_merge_correction_for_task(
+                    durable_post_merge_correction_lineages,
+                    task,
+                )
+            )
+            if not lineage_known:
+                logger.warning(
+                    "Retry-budget guardrail withheld because strict-ledger "
+                    "post-merge correction lineage is absent from the "
+                    "durable registry for %s",
+                    task.task_id,
+                )
+                return []
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
     findings: list[dict[str, Any]] = []
@@ -5568,21 +6146,63 @@ def record_retry_budget_findings(
                 continue
             if task.task_id in retry_budget_repair_task_ids:
                 continue
-            marker = f"implementation retry-budget failure for {task.task_id}"
+            correction_failure, durable_lineage_known = (
+                correction_state_for_task(task)
+            )
+            if durable_lineage_known and correction_failure is None:
+                continue
+            if (
+                correction_failure
+                and post_merge_correction_failure_kind(
+                    correction_failure
+                )
+                != "implementation"
+            ):
+                continue
+            correction_failure_event_id = str(
+                (correction_failure or {}).get(
+                    "event_id"
+                )
+                or ""
+            )
+            marker = (
+                "Post-merge correction failure event ID: "
+                f"{correction_failure_event_id}"
+                if correction_failure_event_id
+                else (
+                    "implementation retry-budget failure for "
+                    f"{task.task_id}"
+                )
+            )
             if marker in todo_text:
                 continue
             failures = consecutive_implementation_failures(events, task.task_id)
-            if len(failures) < implementation_retry_budget:
+            correction_exhausted = bool(
+                correction_failure
+                and post_merge_correction_failure_kind(
+                    correction_failure
+                )
+                == "implementation"
+            )
+            if (
+                len(failures) < implementation_retry_budget
+                and not correction_exhausted
+            ):
                 continue
+            if correction_exhausted and not failures:
+                failures = [dict(correction_failure)]
             follow_up_task_id = next_task_id(todo_text, task_prefix=task_prefix)
             failed_command = implementation_failure_label(failures[-1])
+            effective_retry_budget = (
+                1 if correction_exhausted else implementation_retry_budget
+            )
             discovery_path = write_retry_budget_discovery(
                 discovery_dir=discovery_dir,
                 task_id=follow_up_task_id,
                 source_task_id=task.task_id,
                 failed_command=failed_command,
                 failures=failures,
-                retry_budget=implementation_retry_budget,
+                retry_budget=effective_retry_budget,
                 failure_kind="implementation",
             )
             generated_paths.append(discovery_path)
@@ -5593,6 +6213,11 @@ def record_retry_budget_findings(
                 strategy_path=strategy_path,
                 depends_on=task.depends_on,
                 discovery_output_path=discovery_output_path,
+                correction_repair_metadata=(
+                    post_merge_correction_repair_metadata(
+                        correction_failure
+                    )
+                ),
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             task_ids.add(follow_up_task_id)
@@ -5606,6 +6231,14 @@ def record_retry_budget_findings(
                     "failed_command": failed_command,
                     "discovery_path": str(discovery_path),
                     "failure_kind": "implementation",
+                    "guardrail_trigger": (
+                        "consumed_post_merge_correction"
+                        if correction_exhausted
+                        else "retry_budget"
+                    ),
+                    "configured_retry_budget": (
+                        implementation_retry_budget
+                    ),
                 }
             )
 
@@ -5615,12 +6248,48 @@ def record_retry_budget_findings(
                 continue
             if task.task_id in retry_budget_repair_task_ids:
                 continue
-            marker = f"retry-budget failure for {task.task_id}"
+            correction_failure, durable_lineage_known = (
+                correction_state_for_task(task)
+            )
+            if durable_lineage_known and correction_failure is None:
+                continue
+            if (
+                correction_failure
+                and post_merge_correction_failure_kind(
+                    correction_failure
+                )
+                != "validation"
+            ):
+                continue
+            correction_failure_event_id = str(
+                (correction_failure or {}).get(
+                    "event_id"
+                )
+                or ""
+            )
+            marker = (
+                "Post-merge correction failure event ID: "
+                f"{correction_failure_event_id}"
+                if correction_failure_event_id
+                else f"retry-budget failure for {task.task_id}"
+            )
             if marker in todo_text:
                 continue
             failures = consecutive_validation_failures(events, task.task_id)
-            if len(failures) < validation_retry_budget:
+            correction_exhausted = bool(
+                correction_failure
+                and post_merge_correction_failure_kind(
+                    correction_failure
+                )
+                == "validation"
+            )
+            if (
+                len(failures) < validation_retry_budget
+                and not correction_exhausted
+            ):
                 continue
+            if correction_exhausted and not failures:
+                failures = [dict(correction_failure)]
             latest_validation = failures[-1].get("validation_result") or {}
             failed_command = validation_failure_label(
                 latest_validation,
@@ -5633,7 +6302,9 @@ def record_retry_budget_findings(
                 source_task_id=task.task_id,
                 failed_command=failed_command,
                 failures=failures,
-                retry_budget=validation_retry_budget,
+                retry_budget=(
+                    1 if correction_exhausted else validation_retry_budget
+                ),
             )
             generated_paths.append(discovery_path)
             depends_on = list(validation_depends_on) if validation_depends_on else list(task.depends_on)
@@ -5655,6 +6326,11 @@ def record_retry_budget_findings(
                 depends_on=depends_on,
                 discovery_output_path=discovery_output_path,
                 launch_playwright_validation_gate=launch_playwright_validation_gate,
+                correction_repair_metadata=(
+                    post_merge_correction_repair_metadata(
+                        correction_failure
+                    )
+                ),
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             task_ids.add(follow_up_task_id)
@@ -5669,6 +6345,14 @@ def record_retry_budget_findings(
                     "discovery_path": str(discovery_path),
                     "failure_kind": "validation",
                     "launch_playwright_validation_gate": launch_playwright_validation_gate,
+                    "guardrail_trigger": (
+                        "consumed_post_merge_correction"
+                        if correction_exhausted
+                        else "retry_budget"
+                    ),
+                    "configured_retry_budget": (
+                        validation_retry_budget
+                    ),
                 }
             )
 
@@ -5678,12 +6362,50 @@ def record_retry_budget_findings(
                 continue
             if task.task_id in retry_budget_repair_task_ids:
                 continue
-            marker = f"merge retry-budget failure for {task.task_id}"
+            correction_failure, durable_lineage_known = (
+                correction_state_for_task(task)
+            )
+            if durable_lineage_known and correction_failure is None:
+                continue
+            if (
+                correction_failure
+                and post_merge_correction_failure_kind(
+                    correction_failure
+                )
+                != "merge"
+            ):
+                continue
+            correction_failure_event_id = str(
+                (correction_failure or {}).get(
+                    "event_id"
+                )
+                or ""
+            )
+            marker = (
+                "Post-merge correction failure event ID: "
+                f"{correction_failure_event_id}"
+                if correction_failure_event_id
+                else (
+                    f"merge retry-budget failure for {task.task_id}"
+                )
+            )
             if marker in todo_text:
                 continue
             failures = consecutive_merge_failures(events, task.task_id)
-            if len(failures) < merge_retry_budget:
+            correction_exhausted = bool(
+                correction_failure
+                and post_merge_correction_failure_kind(
+                    correction_failure
+                )
+                == "merge"
+            )
+            if (
+                len(failures) < merge_retry_budget
+                and not correction_exhausted
+            ):
                 continue
+            if correction_exhausted and not failures:
+                failures = [dict(correction_failure)]
             latest_merge_result = event_merge_result(failures[-1])
             if not latest_merge_result:
                 continue
@@ -5695,7 +6417,9 @@ def record_retry_budget_findings(
                 source_task_id=task.task_id,
                 failed_command=failed_command,
                 failures=failures,
-                retry_budget=merge_retry_budget,
+                retry_budget=(
+                    1 if correction_exhausted else merge_retry_budget
+                ),
                 failure_kind="merge",
             )
             generated_paths.append(discovery_path)
@@ -5706,6 +6430,11 @@ def record_retry_budget_findings(
                 strategy_path=strategy_path,
                 depends_on=task.depends_on,
                 discovery_output_path=discovery_output_path,
+                correction_repair_metadata=(
+                    post_merge_correction_repair_metadata(
+                        correction_failure
+                    )
+                ),
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             task_ids.add(follow_up_task_id)
@@ -5719,6 +6448,12 @@ def record_retry_budget_findings(
                     "failed_command": failed_command,
                     "discovery_path": str(discovery_path),
                     "failure_kind": "merge",
+                    "guardrail_trigger": (
+                        "consumed_post_merge_correction"
+                        if correction_exhausted
+                        else "retry_budget"
+                    ),
+                    "configured_retry_budget": merge_retry_budget,
                 }
             )
 
@@ -7686,6 +8421,8 @@ def record_configured_retry_budget_findings(
     commit_outputs: bool = False,
     repo_root: Path | None = None,
     commit_subject: str = "Agent: record retry-budget guardrail outputs",
+    merge_queue_dir: Path | None = None,
+    post_merge_correction_registry: Any | None = None,
 ) -> list[dict[str, Any]]:
     """Run retry-budget guardrails with common wrapper-level defaults."""
 
@@ -7718,6 +8455,8 @@ def record_configured_retry_budget_findings(
         commit_outputs=commit_outputs,
         repo_root=resolved_repo_root,
         commit_subject=commit_subject,
+        merge_queue_dir=merge_queue_dir,
+        post_merge_correction_registry=post_merge_correction_registry,
     )
     if strip_validation_failure_kind:
         for finding in findings:
@@ -7867,6 +8606,8 @@ class ConfiguredRetryBudgetRecorder:
     commit_outputs: bool = False
     repo_root: Path | None = None
     commit_subject: str = "Agent: record retry-budget guardrail outputs"
+    merge_queue_dir: Path | None = None
+    post_merge_correction_registry: Any | None = None
     prepare_environment: Callable[[], None] | None = None
 
     def __call__(self, **overrides: Any) -> list[dict[str, Any]]:
@@ -8152,6 +8893,8 @@ def build_namespace_retry_budget_recorder(
     commit_outputs: bool = False,
     repo_root: Path | str | None = None,
     commit_subject: str = "Agent: record retry-budget guardrail outputs",
+    merge_queue_dir: Path | str | None = None,
+    post_merge_correction_registry: Any | None = None,
     prepare_environment: Callable[[], None] | None = None,
 ) -> ConfiguredRetryBudgetRecorder:
     """Build a retry-budget recorder using a standard namespace discovery path."""
@@ -8173,6 +8916,14 @@ def build_namespace_retry_budget_recorder(
         commit_outputs=commit_outputs,
         repo_root=Path(repo_root) if repo_root is not None else None,
         commit_subject=commit_subject,
+        merge_queue_dir=(
+            Path(merge_queue_dir)
+            if merge_queue_dir is not None
+            else None
+        ),
+        post_merge_correction_registry=(
+            post_merge_correction_registry
+        ),
         prepare_environment=prepare_environment,
     )
 
@@ -8185,6 +8936,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--state-path", type=Path, default=None)
     parser.add_argument("--strategy-path", type=Path, default=None)
     parser.add_argument("--events-path", type=Path, default=None)
+    parser.add_argument("--merge-queue-dir", type=Path, default=None)
     parser.add_argument("--discovery-dir", type=Path, default=None)
     parser.add_argument("--discovery-output-path", default=DEFAULT_DISCOVERY_OUTPUT_PATH)
     parser.add_argument("--objective-path", type=Path, default=None)
@@ -8270,6 +9022,7 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
     bundle_dir = (args.bundle_dir or state_root / "objective_bundles").resolve()
     state_path = args.state_path.resolve() if args.state_path else None
     events_path = args.events_path.resolve() if args.events_path else state_root / "events.jsonl"
+    configured_merge_queue_dir = getattr(args, "merge_queue_dir", None)
     depends_on = split_csv(args.depends_on)
     validation_depends_on = split_csv(args.validation_depends_on)
     skip_prefixes = tuple(args.skip_prefix) if args.skip_prefix else CODEBASE_SCAN_SKIP_PREFIXES
@@ -8368,6 +9121,11 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
             discovery_output_path=args.discovery_output_path,
             commit_outputs=args.commit_generated_outputs,
             repo_root=repo_root,
+            merge_queue_dir=(
+                configured_merge_queue_dir.resolve()
+                if configured_merge_queue_dir
+                else None
+            ),
         )
     if args.dependency_guardrail or run_all:
         dependency_findings = record_dependency_guardrail_findings(
