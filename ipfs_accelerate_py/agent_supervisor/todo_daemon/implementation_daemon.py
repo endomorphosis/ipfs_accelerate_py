@@ -10781,13 +10781,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 pool_failure_release = self._release_pooled_worktree_lease(
                     worktree_path,
                     reason="implementation_command_failed",
+                    lifecycle_terminal_reason=(
+                        "failed_implementation_pool_lease_released"
+                    ),
                 )
                 if pool_failure_release.get("attempted", False):
+                    lifecycle_finalize = dict(
+                        pool_failure_release.get("lifecycle_finalize") or {}
+                    )
                     cleanup_result = {
-                        "cleaned": bool(pool_failure_release.get("released", False)),
+                        "cleaned": bool(
+                            pool_failure_release.get("released", False)
+                            and lifecycle_finalize.get("finalized", False)
+                        ),
                         "reason": "failed_implementation_pool_lease_released",
                         "pooled": bool(pool_failure_release.get("pooled", False)),
                         "pool_release": pool_failure_release,
+                        "lifecycle_finalize": lifecycle_finalize,
                     }
         except subprocess.TimeoutExpired as timeout_exc:
             returncode = 124
@@ -11953,6 +11963,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         reason: str,
         reusable: bool = True,
+        lifecycle_terminal_reason: str = "",
     ) -> dict[str, Any]:
         """Release a pooled checkout while retaining its durable task branch."""
 
@@ -11961,13 +11972,50 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         except OSError:
             lease_key = worktree_path
         self._forget_seeded_worktree_context(worktree_path)
-        lease = self._worktree_pool_leases.pop(lease_key, None)
+        lease = self._worktree_pool_leases.get(lease_key)
         if lease is None:
             return {
                 "attempted": False,
                 "released": False,
                 "reason": "worktree_not_pooled",
                 "worktree_path": str(worktree_path),
+            }
+        lifecycle_settling: dict[str, Any] = {}
+        if lifecycle_terminal_reason:
+            lifecycle_auth = self._authorize_worktree_cleanup(
+                worktree_path,
+                caller_lease_id=self._active_worktree_lifecycle_lease_id(),
+            )
+            if not lifecycle_auth.get("allowed", False):
+                return {
+                    "attempted": True,
+                    "released": False,
+                    "reason": "worktree_lifecycle_fenced",
+                    "handoff_reason": reason,
+                    "worktree_path": str(worktree_path),
+                    "lifecycle": lifecycle_auth,
+                }
+            settling = self._mark_worktree_lifecycle_settling(worktree_path)
+            if (
+                settling is None
+                or settling.state
+                not in {
+                    WorkspaceLifecycleState.SETTLING,
+                    WorkspaceLifecycleState.TERMINAL,
+                }
+            ):
+                return {
+                    "attempted": True,
+                    "released": False,
+                    "reason": "worktree_lifecycle_settling_failed",
+                    "handoff_reason": reason,
+                    "worktree_path": str(worktree_path),
+                }
+            lifecycle_settling = {
+                "state": settling.state.value,
+                "record_id": settling.record_id,
+                "lease_id": settling.lease_id,
+                "fence": settling.fence,
             }
         release_result = lease.release(reusable=reusable)
         result = {
@@ -11976,6 +12024,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "worktree_path": str(worktree_path),
             **release_result,
         }
+        if lifecycle_settling:
+            result["lifecycle_settling"] = lifecycle_settling
+        if not result.get("released", False):
+            # A failed release leaves the pool checkout fenced by both the
+            # in-memory lease and the durable nonterminal lifecycle record.
+            # Terminalizing here would expose a checkout we did not release.
+            result["pool_lease_reference_retained"] = True
+            result["lifecycle_fence_retained"] = True
+            self._record_event("worktree_pool_lease_release_failed", result)
+            return result
+
+        # The pool has confirmed that this lease is no longer held. Remove
+        # only the exact in-memory authority we just released; a replacement
+        # lease must never be popped by this completion path.
+        if self._worktree_pool_leases.get(lease_key) is lease:
+            self._worktree_pool_leases.pop(lease_key, None)
+        if lifecycle_terminal_reason:
+            lifecycle_finalize = self._finalize_worktree_lifecycle(
+                worktree_path,
+                reason=lifecycle_terminal_reason,
+            )
+            result["lifecycle_finalize"] = lifecycle_finalize
         self._record_event("worktree_pool_lease_released", result)
         return result
 
@@ -21696,6 +21766,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             loaded = self.worktree_lifecycle.load_workspace(worktree_path)
             if loaded is not None:
                 record = loaded
+            elif record is not None and normalize_workspace_path(
+                record.workspace_path
+            ) != normalize_workspace_path(worktree_path):
+                return None
         if record is None or record.is_terminal:
             return record
         if record.state is WorkspaceLifecycleState.SETTLING:
@@ -21777,13 +21851,69 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         reason: str = "cleanup_finished",
     ) -> dict[str, Any]:
-        """Mark the active (or path-bound) lifecycle record terminal after disposal."""
+        """Mark the owner-held lifecycle record terminal after disposal."""
 
         record = self._active_worktree_lifecycle
         if worktree_path is not None:
             loaded = self.worktree_lifecycle.load_workspace(worktree_path)
             if loaded is not None:
+                if loaded.is_terminal:
+                    if record is None:
+                        return {
+                            "finalized": True,
+                            "reason": "already_terminal",
+                            "fence": loaded.fence,
+                        }
+                    if (
+                        loaded.record_id != record.record_id
+                        or loaded.lease_id != record.lease_id
+                    ):
+                        return {
+                            "finalized": False,
+                            "reason": "lifecycle_finalize_foreign_owner",
+                            "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                            "attempt_consumed": False,
+                            "provider_call_allowed": False,
+                        }
+                    if record is not None:
+                        self._active_worktree_lifecycle = None
+                    return {
+                        "finalized": True,
+                        "reason": "already_terminal",
+                        "fence": loaded.fence,
+                    }
+                if record is None:
+                    return {
+                        "finalized": False,
+                        "reason": "lifecycle_finalize_not_owner",
+                        "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                        "attempt_consumed": False,
+                        "provider_call_allowed": False,
+                    }
+                if (
+                    loaded.record_id != record.record_id
+                    or loaded.lease_id != record.lease_id
+                ):
+                    return {
+                        "finalized": False,
+                        "reason": "lifecycle_finalize_foreign_owner",
+                        "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                        "attempt_consumed": False,
+                        "provider_call_allowed": False,
+                    }
+                # A same-owner heartbeat/settling transition may have advanced
+                # the fence. Adopt only that lease's latest durable record.
                 record = loaded
+            elif record is not None and normalize_workspace_path(
+                record.workspace_path
+            ) != normalize_workspace_path(worktree_path):
+                return {
+                    "finalized": False,
+                    "reason": "lifecycle_finalize_path_mismatch",
+                    "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                    "attempt_consumed": False,
+                    "provider_call_allowed": False,
+                }
         if record is None:
             return {"finalized": False, "reason": "no_lifecycle_record"}
         if record.is_terminal:
@@ -21800,11 +21930,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 expected_fence=record.fence,
                 reason=reason,
             )
-            self.worktree_lifecycle.compare_and_delete(
+            deleted = self.worktree_lifecycle.compare_and_delete(
                 terminal.workspace_path,
                 expected_fence=terminal.fence,
                 lease_id=terminal.lease_id,
             )
+            if not deleted:
+                self._active_worktree_lifecycle = None
+                return {
+                    "finalized": False,
+                    "reason": "lifecycle_finalize_compare_delete_race",
+                    "fence": terminal.fence,
+                    "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                    "attempt_consumed": False,
+                    "provider_call_allowed": False,
+                }
             self._active_worktree_lifecycle = None
             return {
                 "finalized": True,

@@ -10001,6 +10001,239 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
     assert daemon._find_live_inflight_implementation() is None
 
 
+def _pooled_quota_implementation(
+    tmp_path,
+    monkeypatch,
+    *,
+    task_id,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "quota.sh").write_text(
+        "printf \"ERROR: You've hit your usage limit.\\n\"\nexit 1\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md", "quota.sh")
+    _git(repo, "commit", "-m", "seed")
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="bash quota.sh",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=True,
+    )
+    task = PortalTask(
+        task_id=task_id,
+        title="Release failed provider pool lease durably",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+    )
+    return daemon, task
+
+
+def test_pooled_provider_failure_releases_before_terminalizing_lifecycle(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import (
+        WorktreeLease,
+    )
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        WorkspaceLifecycleState,
+    )
+
+    daemon, task = _pooled_quota_implementation(
+        tmp_path,
+        monkeypatch,
+        task_id="ACCEL-POOL-QUOTA",
+    )
+    observed_release_states = []
+    original_release = WorktreeLease.release
+
+    def observing_release(lease, *, reusable=True):
+        record = daemon.worktree_lifecycle.load_workspace(lease.path)
+        observed_release_states.append(None if record is None else record.state)
+        return original_release(lease, reusable=reusable)
+
+    monkeypatch.setattr(WorktreeLease, "release", observing_release)
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["deferred"] is True
+    cleanup = result["cleanup_result"]
+    assert cleanup["reason"] == "failed_implementation_pool_lease_released"
+    assert cleanup["cleaned"] is True
+    assert cleanup["pool_release"]["released"] is True
+    assert observed_release_states == [WorkspaceLifecycleState.SETTLING]
+    assert cleanup["lifecycle_finalize"]["finalized"] is True
+    assert cleanup["lifecycle_finalize"]["state"] == (
+        WorkspaceLifecycleState.TERMINAL.value
+    )
+    assert daemon._active_worktree_lifecycle is None
+    assert not any(
+        record.is_nonterminal
+        for record in daemon.worktree_lifecycle.iter_records()
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP",
+        "1",
+    )
+    restarted = TodoImplementationDaemon(
+        todo_path=daemon.todo_path,
+        state_path=daemon.state_path,
+        strategy_path=daemon.strategy_path,
+        events_path=daemon.events_path,
+        repo_root=daemon.repo_root,
+        task_header_prefix="## ACCEL-",
+        worktree_pool_enabled=False,
+    )
+    assert restarted.worktree_lifecycle_restart_recovery == []
+
+
+def test_failed_pool_release_retains_nonterminal_lifecycle_and_lease(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        WorkspaceLifecycleState,
+    )
+
+    daemon, task = _pooled_quota_implementation(
+        tmp_path,
+        monkeypatch,
+        task_id="ACCEL-POOL-RELEASE-FAIL",
+    )
+    observed_release_states = []
+
+    def failed_release(lease, *, reusable=True):
+        record = daemon.worktree_lifecycle.load_workspace(lease.path)
+        observed_release_states.append(None if record is None else record.state)
+        return {
+            "released": False,
+            "pooled": False,
+            "reason": "injected_release_failure",
+        }
+
+    assert daemon.worktree_pool is not None
+    monkeypatch.setattr(daemon.worktree_pool, "release", failed_release)
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    cleanup = result["cleanup_result"]
+    release = cleanup["pool_release"]
+    assert result["deferred"] is True
+    assert cleanup["cleaned"] is False
+    assert release["released"] is False
+    assert release["pool_lease_reference_retained"] is True
+    assert release["lifecycle_fence_retained"] is True
+    assert "lifecycle_finalize" not in release
+    assert observed_release_states == [WorkspaceLifecycleState.SETTLING]
+    active = daemon._active_worktree_lifecycle
+    assert active is not None
+    assert active.state is WorkspaceLifecycleState.SETTLING
+    preserved = daemon.worktree_lifecycle.load_workspace(active.workspace_path)
+    assert preserved is not None
+    assert preserved.state is WorkspaceLifecycleState.SETTLING
+    assert preserved.lease_id == active.lease_id
+    retained_lease = daemon._worktree_pool_leases.get(
+        Path(active.workspace_path).resolve()
+    )
+    assert retained_lease is not None
+    assert retained_lease._released is True
+
+
+def test_lifecycle_finalizer_refuses_foreign_live_owner(tmp_path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        WorkspaceLifecycleState,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_pool_enabled=False,
+    )
+    owned_workspace = repo / "worktrees" / "owned"
+    owned = daemon.worktree_lifecycle.begin_preparing(
+        task_id="ACCEL-OWNED",
+        canonical_task_cid="cid:accel-owned",
+        attempt=1,
+        lane_id="owned-lane",
+        workspace_path=owned_workspace,
+        branch="implementation/accel-owned",
+        merge_target="main",
+        state_dir=str(repo / "owned-state"),
+    )
+    owned = daemon.worktree_lifecycle.mark_active(
+        owned_workspace,
+        lease_id=owned.lease_id,
+        expected_fence=owned.fence,
+    )
+    daemon._active_worktree_lifecycle = owned
+    missing_result = daemon._finalize_worktree_lifecycle(
+        repo / "worktrees" / "missing",
+        reason="must_not_finalize_unrelated_active_record",
+    )
+    assert missing_result["finalized"] is False
+    assert missing_result["reason"] == "lifecycle_finalize_path_mismatch"
+    assert daemon.worktree_lifecycle.load_workspace(owned_workspace) == owned
+
+    workspace = repo / "worktrees" / "foreign-live-owner"
+    record = daemon.worktree_lifecycle.begin_preparing(
+        task_id="ACCEL-FOREIGN",
+        canonical_task_cid="cid:accel-foreign",
+        attempt=1,
+        lane_id="foreign-lane",
+        workspace_path=workspace,
+        branch="implementation/accel-foreign",
+        merge_target="main",
+        state_dir=str(repo / "foreign-state"),
+    )
+    record = daemon.worktree_lifecycle.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+
+    result = daemon._finalize_worktree_lifecycle(
+        workspace,
+        reason="must_not_reclaim_foreign_owner",
+    )
+
+    assert result["finalized"] is False
+    assert result["reason"] == "lifecycle_finalize_foreign_owner"
+    preserved = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert preserved is not None
+    assert preserved.state is WorkspaceLifecycleState.ACTIVE
+    assert preserved.fence == record.fence
+    assert daemon._active_worktree_lifecycle == owned
+
+
 def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(
     tmp_path,
     monkeypatch,
