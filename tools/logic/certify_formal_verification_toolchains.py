@@ -4927,8 +4927,16 @@ def _checked_vendor_reference_bindings(
                 manifest_meta if isinstance(manifest_meta, Mapping) else {}
             )
             raw_manifest_path = str(manifest_meta.get("path") or "")
-            manifest_path = Path(raw_manifest_path)
-            if not manifest_path.is_absolute():
+            if raw_manifest_path.startswith("<repo-root>/"):
+                manifest_path = repo_root / raw_manifest_path.removeprefix(
+                    "<repo-root>/"
+                )
+            else:
+                manifest_path = Path(raw_manifest_path)
+            if (
+                not manifest_path.is_absolute()
+                and not raw_manifest_path.startswith("<repo-root>/")
+            ):
                 manifest_path = repo_root / manifest_path
             try:
                 resolved_manifest = manifest_path.resolve(strict=True)

@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 import pytest
 
+from tools.logic import build_formal_verification_tactician_receipt as builder
 from tools.logic import certify_formal_verification_toolchains as certifier
 
 
@@ -274,6 +275,86 @@ def _install_fake_vendor(
     return calls
 
 
+def _compact_semantic_result(
+    *,
+    lane_id: str,
+    receipt: Mapping[str, Any],
+    fanin: Mapping[str, Any],
+) -> dict[str, Any]:
+    spec = _semantic_spec(lane_id)
+    per_tool: dict[str, Any] = {}
+    for tool_id in spec["tool_ids"]:
+        certified, raw_checks, block_reasons = (
+            certifier._tool_certified_from_semantic_receipt(
+                tool_id,
+                receipt,
+                certified_key=str(spec["certified_key"]),
+                selector=str(spec["selector"]),
+            )
+        )
+        normalized = certifier._normalize_semantic_checks(
+            tool_id,
+            raw_checks,
+        )
+        identity = certifier._semantic_tool_identity(
+            tool_id,
+            receipt,
+            selector=str(spec["selector"]),
+            repo_root=REPO_ROOT,
+        )
+        module_artifact = {
+            "kind": "semantic_certifier_module",
+            "path": Path(spec["module_relative"]).as_posix(),
+            "sha256": certifier.file_digest(
+                REPO_ROOT / Path(spec["module_relative"])
+            ),
+            "artifact_class": "repository_source",
+        }
+        identity["artifacts"].append(module_artifact)
+        full_tool = {
+            "certified": certified,
+            "block_reasons": list(block_reasons),
+            "check_kinds_present": sorted(
+                {
+                    str(check.get("kind"))
+                    for check in raw_checks
+                    if isinstance(check, Mapping)
+                }
+            ),
+            "checks_retained_without_kind_collapse": True,
+            "checks_passed": sum(
+                check.status == "passed" for check in normalized
+            ),
+            "checks_total": len(normalized),
+            "checks": [check.to_dict() for check in normalized],
+            "check_set_digest_sha256": certifier.content_digest(
+                [check.to_dict() for check in normalized]
+            ),
+            "identity": identity,
+            "artifact_validation": certifier._validate_artifact_identities(
+                identity["artifacts"],
+                repo_root=REPO_ROOT,
+            ),
+            "handler_key": (
+                f"{spec.get('property_lane_id') or lane_id}::{tool_id}"
+            ),
+        }
+        per_tool[tool_id] = certifier._compact_semantic_tool_projection(
+            full_tool
+        )
+    return {
+        "lane_id": lane_id,
+        "status": "ran",
+        "receipt": dict(receipt),
+        "checked_vendor_fanin": dict(fanin),
+        "production_elevation_allowed": True,
+        "evidence_class": certifier.CHECKED_VENDOR_FANIN_SPECS[lane_id][
+            "evidence_class"
+        ],
+        "per_tool": per_tool,
+    }
+
+
 @pytest.mark.parametrize(
     ("lane_id", "expected_targets"),
     [
@@ -476,4 +557,135 @@ def test_forged_recorded_eligible_population_is_rejected(
         semantic_spec=spec,
         result_fanin=forged,
         receipt_fanin=forged,
+    )
+
+
+@pytest.mark.parametrize("lane_id", ["runtime_mtl", "datalog_secpal"])
+def test_builder_freshly_replays_vendor_join_and_reference_pnmr(
+    monkeypatch: pytest.MonkeyPatch,
+    lane_id: str,
+) -> None:
+    live = _live_vendor_certificate(lane_id)
+    _install_fake_vendor(monkeypatch, lane_id, live)
+    reference = (
+        _runtime_reference_receipt()
+        if lane_id == "runtime_mtl"
+        else _authorization_reference_receipt()
+    )
+    spec = _semantic_spec(lane_id)
+    fanin = certifier._build_checked_vendor_fanin(
+        repo_root=REPO_ROOT,
+        sealed_root=SEALED_ROOT,
+        semantic_spec=spec,
+        semantic_module=_semantic_module(lane_id),
+        reference_receipt=reference,
+    )
+    receipt = certifier._bind_checked_vendor_fanin_to_receipt(
+        reference,
+        semantic_spec=spec,
+        fanin=fanin,
+    )
+    semantic_result = _compact_semantic_result(
+        lane_id=lane_id,
+        receipt=receipt,
+        fanin=fanin,
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_runtime_mtl_managed_prebuilt_binding",
+        lambda *_args, **_kwargs: {
+            "public": {"authenticated": True},
+            "invocation": {"sealed_root": str(SEALED_ROOT)},
+        },
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_build_checked_vendor_fanin",
+        lambda **_kwargs: dict(fanin),
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_load_module_from_path",
+        lambda *_args, **_kwargs: _semantic_module(lane_id),
+    )
+
+    policy = builder._audited_semantic_elevation_policy(
+        certifier=certifier,
+        repo_root=REPO_ROOT,
+        spec=spec,
+        semantic_result=semantic_result,
+    )
+
+    assert policy["valid"] is True
+    assert policy["fanin_satisfied"] is True
+    assert set(policy["eligible_tool_ids"]) == set(spec["tool_ids"])
+    assert set(policy["production_allowed_tool_ids"]) == set(
+        spec["tool_ids"]
+    )
+    assert all(
+        audit["valid"] for audit in policy["reference_audits"].values()
+    )
+
+
+def test_builder_rejects_forged_central_vendor_eligibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lane_id = "runtime_mtl"
+    live = _live_vendor_certificate(lane_id)
+    _install_fake_vendor(monkeypatch, lane_id, live)
+    spec = _semantic_spec(lane_id)
+    reference = _runtime_reference_receipt()
+    fanin = certifier._build_checked_vendor_fanin(
+        repo_root=REPO_ROOT,
+        sealed_root=SEALED_ROOT,
+        semantic_spec=spec,
+        semantic_module=_semantic_module(lane_id),
+        reference_receipt=reference,
+    )
+    receipt = certifier._bind_checked_vendor_fanin_to_receipt(
+        reference,
+        semantic_spec=spec,
+        fanin=fanin,
+    )
+    semantic_result = _compact_semantic_result(
+        lane_id=lane_id,
+        receipt=receipt,
+        fanin=fanin,
+    )
+    forged = json.loads(json.dumps(fanin))
+    forged["eligible_tool_ids"] = ["runtime-mtl-external"]
+    forged["digest_sha256"] = certifier.content_digest(
+        {key: value for key, value in forged.items() if key != "digest_sha256"}
+    )
+    semantic_result["checked_vendor_fanin"] = forged
+    monkeypatch.setattr(
+        certifier,
+        "_runtime_mtl_managed_prebuilt_binding",
+        lambda *_args, **_kwargs: {
+            "public": {"authenticated": True},
+            "invocation": {"sealed_root": str(SEALED_ROOT)},
+        },
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_build_checked_vendor_fanin",
+        lambda **_kwargs: dict(fanin),
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_load_module_from_path",
+        lambda *_args, **_kwargs: _semantic_module(lane_id),
+    )
+
+    policy = builder._audited_semantic_elevation_policy(
+        certifier=certifier,
+        repo_root=REPO_ROOT,
+        spec=spec,
+        semantic_result=semantic_result,
+    )
+
+    assert policy["valid"] is False
+    assert policy["eligible_tool_ids"] == []
+    assert "checked_vendor_fanin_recording_disagrees_with_receipt" in (
+        policy["failures"]
     )

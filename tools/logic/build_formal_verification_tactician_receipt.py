@@ -3984,6 +3984,254 @@ def _matching_approved_redacted_artifacts(
     return tuple(unique.values())
 
 
+def _audited_checked_vendor_fanin_policy(
+    *,
+    certifier,
+    repo_root: Path,
+    spec: Mapping[str, Any],
+    semantic_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Freshly rerun and independently join a checked vendor differential lane."""
+
+    lane_id = str(spec.get("lane_id") or "")
+    vendor_spec = _safe_dict(
+        getattr(certifier, "CHECKED_VENDOR_FANIN_SPECS", {}).get(lane_id)
+    )
+    expected_tool_ids = [
+        str(value) for value in _safe_list(spec.get("tool_ids"))
+    ]
+    static_allowed = bool(spec.get("production_elevation_allowed"))
+    default_evidence_class = str(spec.get("evidence_class") or "")
+    receipt = _safe_dict(semantic_result.get("receipt"))
+    recorded = _safe_dict(semantic_result.get("checked_vendor_fanin"))
+    receipt_recorded = _safe_dict(receipt.get("checked_vendor_fanin"))
+    if semantic_result.get("status") != "ran":
+        failures = []
+        if recorded or receipt_recorded:
+            failures.append("non_ran_lane_claimed_checked_vendor_fanin")
+        return {
+            "valid": not failures,
+            "failures": failures,
+            "live_claimed": False,
+            "vendor_claimed": bool(recorded or receipt_recorded),
+            "fanin_satisfied": False,
+            "eligible_tool_ids": [],
+            "production_allowed_tool_ids": (
+                expected_tool_ids if static_allowed else []
+            ),
+            "lane_production_elevation_allowed": static_allowed,
+            "evidence_class": default_evidence_class,
+        }
+
+    failures: list[str] = []
+    configured_targets = {
+        str(tool_id)
+        for tool_id in _safe_dict(
+            vendor_spec.get("expected_reference_checks")
+        )
+    }
+    if not vendor_spec:
+        failures.append("checked_vendor_fanin_policy_not_configured")
+    if configured_targets != set(expected_tool_ids):
+        failures.append("checked_vendor_fanin_target_population_mismatch")
+
+    module = None
+    try:
+        module_path = repo_root / Path(spec["module_relative"])
+        module = certifier._load_module_from_path(
+            module_path,
+            f"fvt_builder_checked_vendor_reference_{lane_id}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        failures.append(
+            f"checked_vendor_reference_module_unavailable:{type(exc).__name__}"
+        )
+
+    audit_env = certifier.offline_env(os.environ)
+    prebuilt = certifier._runtime_mtl_managed_prebuilt_binding(
+        repo_root,
+        env=audit_env,
+    )
+    invocation = _safe_dict(prebuilt.get("invocation"))
+    sealed_root = (
+        Path(str(invocation["sealed_root"]))
+        if invocation.get("sealed_root")
+        else None
+    )
+    fresh: dict[str, Any] = {}
+    if module is not None and vendor_spec:
+        fresh = certifier._build_checked_vendor_fanin(
+            repo_root=repo_root,
+            sealed_root=sealed_root,
+            semantic_spec=spec,
+            semantic_module=module,
+            reference_receipt=receipt,
+        )
+
+    for label, value in (
+        ("recorded", recorded),
+        ("receipt", receipt_recorded),
+        ("fresh", fresh),
+    ):
+        declared = str(value.get("digest_sha256") or "")
+        computed = certifier.content_digest(
+            {
+                key: item
+                for key, item in value.items()
+                if key != "digest_sha256"
+            }
+        )
+        if not declared or declared != computed:
+            failures.append(
+                f"checked_vendor_fanin_{label}_self_digest_invalid"
+            )
+    if recorded != receipt_recorded:
+        failures.append("checked_vendor_fanin_recording_disagrees_with_receipt")
+    if recorded != fresh:
+        failures.append("checked_vendor_fanin_fresh_replay_mismatch")
+
+    expected_vendor_checks = int(
+        vendor_spec.get("expected_vendor_checks") or 0
+    )
+    fresh_checked = _safe_dict(fresh.get("checked_install_receipt"))
+    fresh_live = _safe_dict(fresh.get("live_certificate"))
+    vendor_ready = bool(
+        fresh
+        and not _safe_list(fresh.get("failures"))
+        and fresh_checked.get("exact_live_nested_match") is True
+        and fresh_live.get("certified") is True
+        and int(fresh_live.get("checks_passed") or 0)
+        == expected_vendor_checks
+        and int(fresh_live.get("checks_total") or 0)
+        == expected_vendor_checks
+        and len(_safe_list(fresh_live.get("check_ids")))
+        == expected_vendor_checks
+        and len(set(_safe_list(fresh_live.get("check_ids"))))
+        == expected_vendor_checks
+        and all(
+            str(check_id)
+            for check_id in _safe_list(fresh_live.get("check_ids"))
+        )
+        and str(
+            fresh_live.get("nested_install_receipt_digest_sha256")
+            or ""
+        )
+        == str(fresh_checked.get("self_digest_sha256") or "")
+    )
+
+    compact_tools = _safe_dict(semantic_result.get("per_tool"))
+    fresh_references = _safe_dict(fresh.get("reference_bindings"))
+    eligible: list[str] = []
+    reference_audits: dict[str, Any] = {}
+    for tool_id in expected_tool_ids:
+        binding = _safe_dict(fresh_references.get(tool_id))
+        compact_tool = _safe_dict(compact_tools.get(tool_id))
+        pnmr = _independent_pnmr_reconstruction(
+            certifier=certifier,
+            semantic_result=semantic_result,
+            tool_id=tool_id,
+            compact_tool=compact_tool,
+        )
+        raw_certified, raw_checks, raw_reasons = (
+            certifier._tool_certified_from_semantic_receipt(
+                tool_id,
+                receipt,
+                certified_key=str(spec["certified_key"]),
+                selector=str(spec.get("selector") or "root"),
+            )
+        )
+        expected_marker = _safe_dict(
+            vendor_spec.get("expected_reference_checks")
+        ).get(tool_id)
+        try:
+            expected_count = int(binding.get("expected_checks_total"))
+        except (TypeError, ValueError):
+            expected_count = -1
+        expected_count_valid = expected_count > 0
+        if expected_marker != "closed_manifest":
+            try:
+                expected_count_valid = (
+                    expected_count == int(expected_marker)
+                )
+            except (TypeError, ValueError):
+                expected_count_valid = False
+        normalized = certifier.recompute_semantic_tool_check_binding(
+            semantic_result,
+            tool_id,
+        )
+        reference_ready = bool(
+            raw_certified
+            and not raw_reasons
+            and len(raw_checks) == expected_count
+            and expected_count_valid
+            and pnmr.get("valid") is True
+            and normalized.get("valid") is True
+            and normalized.get("checks_passed") == expected_count
+            and normalized.get("checks_total") == expected_count
+            and str(normalized.get("check_set_digest_sha256") or "")
+            == str(binding.get("check_set_digest_sha256") or "")
+        )
+        reference_audits[tool_id] = {
+            "valid": reference_ready,
+            "expected_checks_total": expected_count,
+            "raw_checks_total": len(raw_checks),
+            "pnmr": pnmr,
+            "check_set_digest_sha256": normalized.get(
+                "check_set_digest_sha256"
+            ),
+            "block_reasons": list(raw_reasons),
+        }
+        if vendor_ready and reference_ready:
+            eligible.append(tool_id)
+
+    expected_eligible = sorted(eligible)
+    if sorted(str(item) for item in _safe_list(fresh.get("eligible_tool_ids"))) != (
+        expected_eligible
+    ):
+        failures.append("checked_vendor_fanin_fresh_eligibility_mismatch")
+    if sorted(str(item) for item in _safe_list(recorded.get("eligible_tool_ids"))) != (
+        expected_eligible
+    ):
+        failures.append("checked_vendor_fanin_recorded_eligibility_mismatch")
+
+    production_allowed_ids = sorted(
+        set(expected_tool_ids if static_allowed else ()) | set(eligible)
+    )
+    lane_allowed = bool(production_allowed_ids)
+    expected_evidence_class = (
+        str(vendor_spec.get("evidence_class") or default_evidence_class)
+        if eligible
+        else default_evidence_class
+    )
+    if semantic_result.get("production_elevation_allowed") is not lane_allowed:
+        failures.append("checked_vendor_fanin_lane_policy_flag_mismatch")
+    if semantic_result.get("evidence_class") != expected_evidence_class:
+        failures.append("checked_vendor_fanin_lane_evidence_class_mismatch")
+    if failures:
+        eligible = []
+        production_allowed_ids = (
+            expected_tool_ids if static_allowed else []
+        )
+        lane_allowed = static_allowed
+        expected_evidence_class = default_evidence_class
+    return {
+        "valid": not failures,
+        "failures": sorted(set(failures)),
+        "live_claimed": False,
+        "vendor_claimed": True,
+        "fanin_satisfied": bool(vendor_ready and not failures),
+        "eligible_tool_ids": eligible,
+        "production_allowed_tool_ids": production_allowed_ids,
+        "lane_production_elevation_allowed": lane_allowed,
+        "evidence_class": expected_evidence_class,
+        "reference_audits": reference_audits,
+        "sealed_root_authenticated": bool(
+            _safe_dict(prebuilt.get("public")).get("authenticated") is True
+            and sealed_root is not None
+        ),
+    }
+
+
 def _audited_semantic_elevation_policy(
     *,
     certifier,
@@ -3998,6 +4246,14 @@ def _audited_semantic_elevation_policy(
         str(value) for value in _safe_list(spec.get("tool_ids"))
     ]
     static_allowed = bool(spec.get("production_elevation_allowed"))
+    lane_id = str(spec.get("lane_id") or "")
+    if lane_id in getattr(certifier, "CHECKED_VENDOR_FANIN_SPECS", {}):
+        return _audited_checked_vendor_fanin_policy(
+            certifier=certifier,
+            repo_root=repo_root,
+            spec=spec,
+            semantic_result=semantic_result,
+        )
     live_summary = _safe_dict(
         semantic_result.get("live_specialized_receipt")
     )
@@ -4791,8 +5047,13 @@ def _audit_semantic_lane_results(
             semantic_result=result,
         )
         if elevation_policy.get("valid") is not True:
+            policy_prefix = (
+                "checked_vendor"
+                if elevation_policy.get("vendor_claimed")
+                else "live_specialized"
+            )
             lane_failures.extend(
-                f"live_specialized:{failure}"
+                f"{policy_prefix}:{failure}"
                 for failure in _safe_list(
                     elevation_policy.get("failures")
                 )
@@ -6317,12 +6578,18 @@ def _reconstruct_specialized_source(
         compact_per_tool = _safe_dict(result.get("per_tool"))
         full_per_tool: dict[str, dict[str, Any]] = {}
         if result.get("status") == "ran":
-            elevation_policy = _audited_semantic_elevation_policy(
-                certifier=certifier,
-                repo_root=repo_root,
-                spec=spec,
-                semantic_result=result,
+            elevation_policy = _safe_dict(
+                _safe_dict(
+                    _safe_dict(semantic_audit.get("lanes")).get(lane_id)
+                ).get("elevation_policy")
             )
+            if not elevation_policy:
+                elevation_policy = _audited_semantic_elevation_policy(
+                    certifier=certifier,
+                    repo_root=repo_root,
+                    spec=spec,
+                    semantic_result=result,
+                )
             production_allowed_tool_ids = {
                 str(value)
                 for value in _safe_list(
