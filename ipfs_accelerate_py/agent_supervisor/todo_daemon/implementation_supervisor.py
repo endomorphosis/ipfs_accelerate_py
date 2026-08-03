@@ -2232,7 +2232,9 @@ class PortalImplementationSupervisor:
             if stop_signal is not None:
                 cleanup = self._terminate_managed_daemon_tree()
                 interrupted_reconciliation = (
-                    self._reconcile_interrupted_implementation_after_shutdown()
+                    self._reconcile_interrupted_implementation_after_shutdown(
+                        expected_owner_pid=int(cleanup.get("pid") or 0),
+                    )
                 )
                 try:
                     self._record_event(
@@ -7052,12 +7054,16 @@ class PortalImplementationSupervisor:
 
     def _reconcile_interrupted_implementation_after_shutdown(
         self,
+        *,
+        expected_owner_pid: int = 0,
     ) -> dict[str, Any]:
         """Close an interrupted attempt only after proving it is quiescent."""
 
         try:
             daemon = self._build_worktree_reconciliation_daemon()
-            return daemon.reconcile_quiesced_active_attempt()
+            return daemon.reconcile_quiesced_active_attempt(
+                expected_owner_pid=expected_owner_pid,
+            )
         except Exception as exc:
             logger.exception(
                 "Could not reconcile interrupted implementation during "
