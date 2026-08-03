@@ -120,6 +120,12 @@ _REQUIRED_OPEN_FRONTIER_KINDS: Final[frozenset[str]] = frozenset(
         FrontierKind.STRING_DISPATCH.value,
         FrontierKind.GENERATED_CODE.value,
         FrontierKind.NATIVE_FFI.value,
+        "dynamic_dispatch",
+        "dynamic_import",
+        "concurrency",
+        "type_analysis",
+        "type_inference",
+        "cfg_control_flow",
         "unknown_dispatch",
         "unsupported_interprocedural",
         "unsupported",
@@ -229,6 +235,10 @@ class DoctorImpactReason(str, Enum):
     GENERATED_CODE_FRONTIER = "generated_code_frontier"
     NATIVE_FFI_FRONTIER = "native_ffi_frontier"
     INTERPROCEDURAL_FRONTIER = "unsupported_interprocedural_frontier"
+    CONCURRENCY_FRONTIER = "concurrency_frontier"
+    TYPE_FRONTIER = "type_analysis_frontier"
+    AUTHORITATIVE_CLOSURE_REQUIRED = "authoritative_impact_closure_required"
+    AUTHORITATIVE_CONSUMER_CONFLICT = "authoritative_consumer_conflict"
     NO_MODEL_INVARIANT = "no_model_invariant"
     PLAN_ADMITTED = "plan_admitted"
     PLAN_ABSTAINED = "plan_abstained"
@@ -704,6 +714,7 @@ class DoctorImpactRequest:
     current_ast_cid: str = ""
     evidence_refs: tuple[str, ...] = ()
     proof_refs: tuple[str, ...] = ()
+    require_authoritative_closure: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.roots, DoctorAuthorityRoots):
@@ -828,6 +839,11 @@ class DoctorImpactRequest:
         )
         object.__setattr__(self, "evidence_refs", _ids(self.evidence_refs, "evidence_refs"))
         object.__setattr__(self, "proof_refs", _ids(self.proof_refs, "proof_refs"))
+        object.__setattr__(
+            self,
+            "require_authoritative_closure",
+            _bool(self.require_authoritative_closure, "require_authoritative_closure"),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1218,14 +1234,14 @@ class DoctorImpactClosureReceipt(CanonicalContract):
                 return False
         # Current CIDs must bind when claimed on roots.
         if self.current_graph_cid and self.roots.graph_id:
-            if self.current_graph_cid not in {
-                self.roots.graph_id,
-                f"cid:{self.roots.graph_id}",
-            } and not self.current_graph_cid.startswith("cid:"):
-                # Accept exact match or opaque current CID distinct only if equal.
-                if self.current_graph_cid != self.roots.graph_id:
-                    # Allow independently supplied current CIDs that equal roots.
-                    pass
+            if self.current_graph_cid != self.roots.graph_id:
+                return False
+        if self.current_index_cid and self.roots.index_id:
+            if self.current_index_cid != self.roots.index_id:
+                return False
+        if self.current_ast_cid and self.roots.ast_root_id:
+            if self.current_ast_cid != self.roots.ast_root_id:
+                return False
         return True
 
     @property
@@ -1639,6 +1655,8 @@ def _frontier_reason_for_kind(kind: str) -> DoctorImpactReason:
     if k in {
         "unknown_dispatch",
         "string_dispatch",
+        "dynamic_dispatch",
+        "dynamic_import",
         FrontierKind.STRING_DISPATCH.value,
         "getattr",
         "eval",
@@ -1650,6 +1668,16 @@ def _frontier_reason_for_kind(kind: str) -> DoctorImpactReason:
         return DoctorImpactReason.NATIVE_FFI_FRONTIER
     if k in {"unsupported_interprocedural", "interprocedural", "unsupported"}:
         return DoctorImpactReason.INTERPROCEDURAL_FRONTIER
+    if k in {"concurrency", "concurrent", "thread", "async_concurrency"}:
+        return DoctorImpactReason.CONCURRENCY_FRONTIER
+    if k in {
+        "type",
+        "type_analysis",
+        "type_inference",
+        "python_only_full_type_inference",
+        "cfg_control_flow",
+    }:
+        return DoctorImpactReason.TYPE_FRONTIER
     return DoctorImpactReason.OPEN_REQUIRED_FRONTIER
 
 
@@ -1660,6 +1688,8 @@ def _normalize_frontier_kind(kind: str) -> str:
         "getattr": "unknown_dispatch",
         "eval": "unknown_dispatch",
         "string_dispatch": "unknown_dispatch",
+        "dynamic_dispatch": "unknown_dispatch",
+        "dynamic_import": "unknown_dispatch",
         "unknown_dispatch": "unknown_dispatch",
         "generated": FrontierKind.GENERATED_CODE.value,
         "generated_code": FrontierKind.GENERATED_CODE.value,
@@ -1669,6 +1699,13 @@ def _normalize_frontier_kind(kind: str) -> str:
         "unsupported_interprocedural": "unsupported_interprocedural",
         "interprocedural": "unsupported_interprocedural",
         "unsupported": "unsupported_interprocedural",
+        "concurrent": "concurrency",
+        "thread": "concurrency",
+        "async_concurrency": "concurrency",
+        "type": "type_analysis",
+        "type_inference": "type_analysis",
+        "python_only_full_type_inference": "type_analysis",
+        "cfg_control_flow": "type_analysis",
     }
     return aliases.get(raw, raw)
 
@@ -1855,10 +1892,77 @@ class DeterministicDoctorImpactAnalyzer:
             )
             underlying = result.receipt
 
+        # Live checkout diagnosis may not infer completeness from fixture-style
+        # observations or expected ID lists.  Exact propagation closure is
+        # mandatory, current-root-bound, and dominates any caller annotations.
+        authority_errors: list[str] = []
+        if underlying is not None and req.require_authoritative_closure:
+            if underlying.roots != prop_roots:
+                authority_errors.append(DoctorImpactReason.STALE_ROOTS.value)
+            if underlying.delta_id != candidate_delta.content_id:
+                authority_errors.append(DoctorImpactReason.STALE_CID.value)
+            if authority_errors:
+                underlying = None
+        if req.require_authoritative_closure and underlying is None:
+            authority_errors.append(
+                DoctorImpactReason.AUTHORITATIVE_CLOSURE_REQUIRED.value
+            )
+
         # Merge consumer observations + second-order + underlying receipt.
-        observations = self._merge_consumers(req, underlying)
+        observations = self._merge_consumers(
+            req,
+            underlying,
+            authoritative=req.require_authoritative_closure,
+        )
         frontiers = self._merge_frontiers(req, underlying)
+        # Consumer-edge observations may expose an unresolved route even when
+        # a separate frontier adapter was unavailable.  Preserve the gap; an
+        # edge tag is never sufficient to close it.
+        for observation in observations:
+            for edge_kind in observation.edge_kinds:
+                normalized_kind = _normalize_frontier_kind(edge_kind)
+                if normalized_kind in _REQUIRED_OPEN_FRONTIER_KINDS:
+                    frontiers.append(
+                        DoctorImpactFrontierObservation(
+                            kind=normalized_kind,
+                            route=f"consumer:{observation.consumer_id}:{edge_kind}",
+                            required=observation.mandatory,
+                            reason="unresolved consumer edge route",
+                        )
+                    )
+        if req.require_authoritative_closure and underlying is None:
+            frontiers.append(
+                DoctorImpactFrontierObservation(
+                    kind="unsupported_interprocedural",
+                    route="authoritative-impact-closure",
+                    required=True,
+                    reason="live checkout requires exact graph-derived impact closure",
+                )
+            )
         ownership_cycles = _detect_ownership_cycles(req.edges)
+
+        authority_conflict_ids: tuple[str, ...] = ()
+        if underlying is not None and req.require_authoritative_closure:
+            authoritative_by_id = {
+                item.consumer_id: item for item in underlying.consumers
+            }
+            conflicts: set[str] = set()
+            for item in (*req.consumers, *req.second_order_consumers):
+                exact = authoritative_by_id.get(item.consumer_id)
+                if exact is None:
+                    continue
+                if (
+                    item.path != (exact.node.path or "unknown/path.py")
+                    or item.symbol_id != exact.node.symbol_id
+                    or item.depth != exact.depth
+                    or item.mandatory != exact.mandatory
+                ):
+                    conflicts.add(item.consumer_id)
+            authority_conflict_ids = tuple(sorted(conflicts))
+            if authority_conflict_ids:
+                authority_errors.append(
+                    DoctorImpactReason.AUTHORITATIVE_CONSUMER_CONFLICT.value
+                )
 
         # Duplicate / missed / stale detection.
         seen: dict[str, int] = defaultdict(int)
@@ -1875,26 +1979,45 @@ class DeterministicDoctorImpactAnalyzer:
         )
 
         expected = set(req.expected_consumer_ids)
+        if underlying is not None and req.require_authoritative_closure:
+            expected.update(
+                item.consumer_id for item in underlying.consumers if item.mandatory
+            )
         present = set(by_id)
         missed_ids = tuple(sorted(expected - present)) if expected else ()
         stale_ids = tuple(
-            sorted(obs.consumer_id for obs in unique_obs if obs.stale)
+            sorted(
+                {obs.consumer_id for obs in unique_obs if obs.stale}
+                | set(authority_conflict_ids)
+            )
         )
 
         open_frontiers: list[str] = []
         frontier_kinds: list[str] = []
         reason_codes: list[str] = [DoctorImpactReason.DELTA_REBUILT.value]
+        reason_codes.extend(authority_errors)
         for fr in frontiers:
             kind = _normalize_frontier_kind(fr.kind)
             frontier_kinds.append(kind)
-            if fr.required and not fr.closed:
+            if fr.required and (not fr.closed or req.require_authoritative_closure):
                 open_frontiers.append(f"frontier:{kind}:{fr.route}")
                 reason_codes.append(_frontier_reason_for_kind(kind).value)
 
-        if req.dynamic_frontier is not None:
-            for entry_id in req.dynamic_frontier.open_required_entry_ids:
+        dynamic_frontier = req.dynamic_frontier
+        if dynamic_frontier is not None and req.require_authoritative_closure:
+            if (
+                dynamic_frontier.roots != prop_roots
+                or dynamic_frontier.delta_id != candidate_delta.content_id
+            ):
+                dynamic_frontier = None
+                authority_errors.append(DoctorImpactReason.STALE_ROOTS.value)
+                reason_codes.append(DoctorImpactReason.STALE_ROOTS.value)
+                open_frontiers.append("frontier:dynamic:stale-root-binding")
+                frontier_kinds.append("unknown_dispatch")
+        if dynamic_frontier is not None:
+            for entry_id in dynamic_frontier.open_required_entry_ids:
                 open_frontiers.append(f"dynamic:{entry_id}")
-            for entry in req.dynamic_frontier.entries:
+            for entry in dynamic_frontier.entries:
                 if entry.is_open_required:
                     frontier_kinds.append(entry.kind.value)
                     reason_codes.append(_frontier_reason_for_kind(entry.kind.value).value)
@@ -1909,19 +2032,18 @@ class DeterministicDoctorImpactAnalyzer:
         frontier_kinds = sorted(set(frontier_kinds))
 
         # CID currency: graph/index must match roots when current_* provided.
-        stale_cid = False
-        if req.current_graph_cid and req.roots.graph_id:
-            if req.current_graph_cid != req.roots.graph_id and not (
-                req.current_graph_cid == f"cid:{req.roots.graph_id}"
-            ):
-                # Allow current CID to be an independent content id as long as
-                # it is non-empty and explicitly supplied as "current".
-                # Fail only when the request marks a different graph root.
-                if req.current_graph_cid.startswith("stale:") or (
-                    req.current_graph_cid.startswith("graph:")
-                    and req.current_graph_cid != req.roots.graph_id
-                ):
-                    stale_cid = True
+        stale_cid = any(
+            supplied and expected and supplied != expected
+            for supplied, expected in (
+                (req.current_graph_cid, req.roots.graph_id),
+                (req.current_index_cid, req.roots.index_id),
+                (req.current_ast_cid, req.roots.ast_root_id),
+            )
+        )
+        if req.require_authoritative_closure and not all(
+            (req.current_graph_cid, req.current_index_cid, req.current_ast_cid)
+        ):
+            stale_cid = True
         if stale_cid:
             reason_codes.append(DoctorImpactReason.STALE_CID.value)
 
@@ -2016,6 +2138,7 @@ class DeterministicDoctorImpactAnalyzer:
             or ownership_cycles
             or stale_cid
             or forbidden_hits
+            or authority_conflict_ids
         ):
             completeness = ImpactCompleteness.ABSTAINED
             reason_codes.append(DoctorImpactReason.INCOMPLETE_CLOSURE.value)
@@ -2206,9 +2329,31 @@ class DeterministicDoctorImpactAnalyzer:
         self,
         req: DoctorImpactRequest,
         underlying: ImpactClosureReceipt | None,
+        *,
+        authoritative: bool = False,
     ) -> list[DoctorImpactConsumerObservation]:
-        merged: list[DoctorImpactConsumerObservation] = list(req.consumers)
+        merged: list[DoctorImpactConsumerObservation] = []
+        if underlying is not None and authoritative:
+            for consumer in underlying.consumers:
+                merged.append(
+                    DoctorImpactConsumerObservation(
+                        consumer_id=consumer.consumer_id,
+                        path=consumer.node.path or "unknown/path.py",
+                        symbol_id=consumer.node.symbol_id,
+                        depth=consumer.depth,
+                        mandatory=consumer.mandatory,
+                        edge_refs=consumer.edge_refs,
+                        node_id=consumer.node.node_id,
+                        disposition=None,
+                    )
+                )
+        authoritative_ids = {item.consumer_id for item in merged}
+        merged.extend(
+            item for item in req.consumers if item.consumer_id not in authoritative_ids
+        )
         for obs in req.second_order_consumers:
+            if obs.consumer_id in authoritative_ids:
+                continue
             merged.append(
                 DoctorImpactConsumerObservation(
                     consumer_id=obs.consumer_id,
