@@ -1106,7 +1106,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-091 Deliver protected launch profiles, lifecycle controls, kill switch, and runbook
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
