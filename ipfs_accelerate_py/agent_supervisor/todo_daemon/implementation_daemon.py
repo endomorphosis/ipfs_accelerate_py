@@ -18958,6 +18958,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         denial_id: str,
         legacy_denial_consumption_id: str,
         attempt_events: Sequence[Mapping[str, Any]],
+        migration_target_commit: str,
         recovery_seed_submodule_path: str,
         recovery_seed_submodule_commit: str,
     ) -> dict[str, Any]:
@@ -19182,8 +19183,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self.events_path
         )
         legacy_task_bindings = (
-            self._verified_legacy_terminal_task_bindings(
-                self.events_path
+            self._verified_legacy_high_water_task_bindings(
+                task=task,
+                events=ledger,
+                expected_target_commit=migration_target_commit,
+                required_event_ids={
+                    str(entry[field])
+                    for entry in normalized
+                    for field in (
+                        "started_event_id",
+                        "terminal_event_id",
+                    )
+                },
             )
         )
         verified_queue_reconciliations = {
@@ -19647,6 +19658,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     legacy_denial_consumption_id
                 ),
                 attempt_events=normalized,
+                migration_target_commit=migration_target_commit,
                 recovery_seed_submodule_path=(
                     recovery_seed_submodule_path
                 ),
@@ -19693,6 +19705,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     legacy_denial_consumption_id
                 ),
                 attempt_events=normalized,
+                migration_target_commit=migration_target_commit,
                 recovery_seed_submodule_path=(
                     recovery_seed_submodule_path
                 ),
@@ -35981,6 +35994,179 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self._legacy_terminal_binding_cache_value = dict(
                 verified
             )
+        return verified
+
+    def _verified_legacy_high_water_task_bindings(
+        self,
+        *,
+        task: PortalTask,
+        events: Sequence[Mapping[str, Any]],
+        expected_target_commit: str,
+        required_event_ids: set[str],
+    ) -> dict[str, str]:
+        """Bind selected pre-upgrade events to their historical task spec.
+
+        Explicit high-water recovery may span later, unrelated task-board
+        edits.  Unlike automatic denial consumption, this operator-directed
+        migration therefore proves the exact source task at each event's Git
+        baseline instead of requiring the complete board blob to remain
+        byte-identical.  Every missing binding still fails closed unless the
+        baseline is a commit containing exactly one task whose complete
+        post-merge projection matches the currently denied task.
+        """
+
+        if (
+            self.task_source is not None
+            or not required_event_ids
+            or not _FULL_GIT_COMMIT_ID.fullmatch(
+                expected_target_commit
+            )
+        ):
+            return {}
+        try:
+            repository_root = self.repo_root.resolve()
+            todo_path = self.todo_path.resolve()
+            relative_todo_path = todo_path.relative_to(
+                repository_root
+            ).as_posix()
+        except (OSError, ValueError):
+            return {}
+        if (
+            not relative_todo_path
+            or ":" in relative_todo_path
+            or "\n" in relative_todo_path
+            or "\r" in relative_todo_path
+        ):
+            return {}
+
+        try:
+            task_binding_id = post_merge_task_binding_id(task)
+        except (PostMergeReviewError, TypeError, ValueError):
+            return {}
+        try:
+            current_matches = [
+                current_task
+                for current_task in self._load_tasks()
+                if current_task.task_id == task.task_id
+            ]
+        except (OSError, TypeError, ValueError):
+            return {}
+        try:
+            current_matches_task = bool(
+                len(current_matches) == 1
+                and post_merge_task_binding_id(current_matches[0])
+                == task_binding_id
+            )
+        except (PostMergeReviewError, TypeError, ValueError):
+            current_matches_task = False
+        if not current_matches_task:
+            return {}
+
+        baseline_matches: dict[str, bool] = {}
+
+        def baseline_has_exact_task(baseline_ref: str) -> bool:
+            if not _FULL_GIT_COMMIT_ID.fullmatch(baseline_ref):
+                return False
+            cached = baseline_matches.get(baseline_ref)
+            if cached is not None:
+                return cached
+            commit_result = subprocess.run(
+                [
+                    "git",
+                    "cat-file",
+                    "-e",
+                    f"{baseline_ref}^{{commit}}",
+                ],
+                cwd=repository_root,
+                capture_output=True,
+                check=False,
+            )
+            board_result = subprocess.run(
+                [
+                    "git",
+                    "cat-file",
+                    "blob",
+                    f"{baseline_ref}:{relative_todo_path}",
+                ],
+                cwd=repository_root,
+                capture_output=True,
+                check=False,
+            )
+            matches = False
+            if (
+                commit_result.returncode == 0
+                and board_result.returncode == 0
+            ):
+                try:
+                    historical_tasks = parse_task_text(
+                        board_result.stdout.decode("utf-8"),
+                        source_path=self.todo_path,
+                        task_header_prefix=self.task_header_prefix,
+                    )
+                    historical_matches = [
+                        historical_task
+                        for historical_task in historical_tasks
+                        if historical_task.task_id == task.task_id
+                    ]
+                    matches = bool(
+                        len(historical_matches) == 1
+                        and post_merge_task_binding_id(
+                            historical_matches[0]
+                        )
+                        == task_binding_id
+                    )
+                except (
+                    PostMergeReviewError,
+                    TypeError,
+                    UnicodeDecodeError,
+                    ValueError,
+                ):
+                    matches = False
+            baseline_matches[baseline_ref] = matches
+            return matches
+
+        if not baseline_has_exact_task(expected_target_commit):
+            return {}
+
+        baseline_is_target_ancestor: dict[str, bool] = {}
+        verified: dict[str, str] = {}
+        for event in events:
+            event_id = str(event.get("event_id") or "")
+            if (
+                event_id not in required_event_ids
+                or event.get("type")
+                not in {
+                    "implementation_started",
+                    "implementation_finished",
+                    "implementation_state_recovered",
+                }
+                or str(event.get("task_binding_id") or "")
+                or str(event.get("task_id") or "") != task.task_id
+            ):
+                continue
+            baseline_ref = str(event.get("baseline_ref") or "")
+            if not baseline_has_exact_task(baseline_ref):
+                continue
+            is_ancestor = baseline_is_target_ancestor.get(baseline_ref)
+            if is_ancestor is None:
+                is_ancestor = (
+                    subprocess.run(
+                        [
+                            "git",
+                            "merge-base",
+                            "--is-ancestor",
+                            baseline_ref,
+                            expected_target_commit,
+                        ],
+                        cwd=repository_root,
+                        capture_output=True,
+                        check=False,
+                    ).returncode
+                    == 0
+                )
+                baseline_is_target_ancestor[baseline_ref] = is_ancestor
+            if is_ancestor:
+                verified[event_id] = task_binding_id
         return verified
 
     @staticmethod

@@ -2114,10 +2114,15 @@ def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
                 enrich=False,
             )
         else:
+            terminal_identity = dict(common)
+            if attempt == 2:
+                # The oldest pre-upgrade failure omitted the binding on both
+                # its start and terminal events.
+                terminal_identity.pop("task_binding_id")
             terminal = case.daemon._record_event(
                 "implementation_finished",
                 {
-                    **common,
+                    **terminal_identity,
                     "attempt": attempt,
                     "branch": (
                         f"implementation/rev-001-attempt-{attempt}"
@@ -2296,27 +2301,69 @@ def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
         ],
     }
 
-    original_board = case.daemon.todo_path.read_bytes()
-    case.daemon.todo_path.write_bytes(
-        original_board + b"\n<!-- legacy baseline mismatch -->\n"
+    historical_board = case.daemon.todo_path.read_bytes()
+    current_board = historical_board + (
+        b"\n## REV-999 Document an unrelated follow-up\n\n"
+        b"- Status: todo\n"
+        b"- Completion: manual\n"
+        b"- Priority: P2\n"
+        b"- Track: docs\n"
+        b"- Outputs: docs/unrelated.md\n"
+        b"- Validation: test -f docs/unrelated.md\n"
+        b"- Acceptance: The unrelated document exists.\n"
+        b"- Board namespace: uiir-test\n"
     )
-    try:
-        with pytest.raises(
-            MergeQueueIntegrityError,
-            match="ledger binding changed",
-        ):
-            case.daemon.migrate_legacy_post_merge_correction_high_water(
-                **migration_kwargs
-            )
-    finally:
-        case.daemon.todo_path.write_bytes(original_board)
-    assert materializations == []
-
+    case.daemon.todo_path.write_bytes(current_board)
+    _git(case.repo, "add", "tasks.todo.md")
+    _git(case.repo, "commit", "-m", "add unrelated later task")
     strict_ledger = list(
         post_merge_review_module._strict_event_ledger(
             case.daemon.events_path
         )
     )
+    missing_binding_event_ids = {
+        str(event["event_id"])
+        for event in strict_ledger
+        if event.get("type")
+        in {"implementation_started", "implementation_finished"}
+        and not event.get("task_binding_id")
+        and event.get("attempt") in {2, 3, 4}
+    }
+    assert case.daemon._verified_legacy_high_water_task_bindings(
+        task=case.task,
+        events=strict_ledger,
+        expected_target_commit=_git(case.repo, "rev-parse", "HEAD"),
+        required_event_ids={
+            str(entry[field])
+            for entry in attempt_events
+            for field in ("started_event_id", "terminal_event_id")
+        },
+    ) == {
+        event_id: task_binding_id
+        for event_id in missing_binding_event_ids
+    }
+
+    mutated_board = current_board.replace(
+        b"## REV-001 Review a nested implementation",
+        b"## REV-001 Review a mutated nested implementation",
+        1,
+    )
+    assert mutated_board != current_board
+    case.daemon.todo_path.write_bytes(
+        mutated_board
+    )
+    try:
+        with pytest.raises(
+            MergeQueueFenceError,
+            match="task revision changed",
+        ):
+            case.daemon.migrate_legacy_post_merge_correction_high_water(
+                **migration_kwargs
+            )
+    finally:
+        case.daemon.todo_path.write_bytes(current_board)
+    assert materializations == []
+
     recovery_event_id = attempt_events[-1]["terminal_event_id"]
 
     def rejected_with_ledger(
