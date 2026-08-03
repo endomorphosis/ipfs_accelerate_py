@@ -465,6 +465,147 @@ def _shell_tokens(command: str) -> list[str]:
 
 
 _DYNAMIC_PATH_CHARACTERS = frozenset("*?[]{}$`;&|<>")
+_CWD_INDETERMINATE_SHELL_BUILTINS = frozenset(
+    {
+        ".",
+        "case",
+        "coproc",
+        "do",
+        "done",
+        "elif",
+        "else",
+        "esac",
+        "eval",
+        "fi",
+        "for",
+        "function",
+        "if",
+        "popd",
+        "pushd",
+        "select",
+        "source",
+        "then",
+        "until",
+        "while",
+        "{",
+        "}",
+    }
+)
+_NESTED_SHELL_EXECUTABLES = frozenset(
+    {
+        "ash",
+        "bash",
+        "dash",
+        "ksh",
+        "sh",
+        "zsh",
+    }
+)
+
+
+def _has_unquoted_shell_grouping(command: str) -> bool:
+    escaped = False
+    in_single_quote = False
+    in_double_quote = False
+    for character in command:
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and not in_single_quote:
+            escaped = True
+            continue
+        if character == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+            continue
+        if character == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+            continue
+        if character in {"(", ")"} and not in_single_quote and not in_double_quote:
+            return True
+    return False
+
+
+def _shell_structure_tokens(command: str) -> list[str]:
+    try:
+        lexer = shlex.shlex(
+            command,
+            posix=True,
+            punctuation_chars=";&|()",
+        )
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        return list(lexer)
+    except ValueError:
+        return []
+
+
+def _shell_command_segments(tokens: Sequence[str]) -> tuple[tuple[str, ...], ...]:
+    segments: list[tuple[str, ...]] = []
+    current: list[str] = []
+    for token in tokens:
+        if token in {"&", "&&", ";", "|", "||"}:
+            if current:
+                segments.append(tuple(current))
+                current = []
+            continue
+        current.append(token)
+    if current:
+        segments.append(tuple(current))
+    return tuple(segments)
+
+
+def _shell_segment_command_index(segment: Sequence[str]) -> int | None:
+    index = 0
+    while index < len(segment):
+        token = segment[index]
+        if _ENV_ASSIGNMENT_RE.match(token) or token == "!":
+            index += 1
+            continue
+        if token in {"builtin", "command", "exec", "nohup", "time"}:
+            index += 1
+            while index < len(segment) and segment[index].startswith("-"):
+                index += 1
+            continue
+        if token == "env":
+            index += 1
+            while index < len(segment) and (
+                segment[index].startswith("-")
+                or _ENV_ASSIGNMENT_RE.match(segment[index])
+            ):
+                index += 1
+            continue
+        return index
+    return None
+
+
+def _shell_segment_command(segment: Sequence[str]) -> tuple[str, int] | None:
+    index = _shell_segment_command_index(segment)
+    if index is None:
+        return None
+    raw_command = str(segment[index]).replace("\\", "/")
+    command = (
+        raw_command
+        if raw_command in _CWD_INDETERMINATE_SHELL_BUILTINS
+        else PurePosixPath(raw_command).name
+    )
+    return command, index
+
+
+def _uses_nested_shell_command(
+    segments: Sequence[Sequence[str]],
+) -> bool:
+    for segment in segments:
+        command = _shell_segment_command(segment)
+        if command is None or command[0] not in _NESTED_SHELL_EXECUTABLES:
+            continue
+        for option in segment[command[1] + 1 :]:
+            if option == "--":
+                break
+            if not option.startswith("-"):
+                break
+            if "c" in option.lstrip("-"):
+                return True
+    return False
 
 
 def _safe_literal_repository_path(
@@ -516,19 +657,40 @@ def validation_command_repository_root(command: str) -> str | None:
     tokens = _shell_tokens(text)
     if not tokens:
         return "" if not text else None
-    cd_positions = tuple(
-        index for index, token in enumerate(tokens) if token == "cd"
+    structure_tokens = _shell_structure_tokens(text)
+    if not structure_tokens:
+        return None
+    segments = _shell_command_segments(structure_tokens)
+    commands = tuple(
+        command
+        for segment in segments
+        if (command := _shell_segment_command(segment)) is not None
     )
-    if not cd_positions:
+    if _has_unquoted_shell_grouping(text) or _uses_nested_shell_command(
+        segments
+    ):
+        return None
+    if any(
+        command_name in _CWD_INDETERMINATE_SHELL_BUILTINS
+        for command_name, _index in commands
+    ):
+        return None
+    cd_commands = tuple(
+        (segment_index, command_index)
+        for segment_index, (command_name, command_index) in enumerate(commands)
+        if command_name == "cd"
+    )
+    if not cd_commands:
         return ""
     if (
-        cd_positions != (0,)
-        or len(tokens) < 4
-        or tokens[2] != "&&"
+        cd_commands != ((0, 0),)
+        or len(structure_tokens) < 4
+        or structure_tokens[0] != "cd"
+        or structure_tokens[2] != "&&"
     ):
         return None
     return _safe_literal_repository_path(
-        tokens[1],
+        structure_tokens[1],
         allow_current_directory=True,
     )
 
