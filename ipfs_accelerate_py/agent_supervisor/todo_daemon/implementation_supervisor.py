@@ -185,6 +185,7 @@ def _projection_is_quiescent_for_heartbeat_fallback(
         "no_eligible_ready_tasks_after_selection_filters",
         "all_selectable_ready_tasks_reached_max_task_attempts",
         "provider_capacity_backoff",
+        "no_tasks_found",
     }
     resource_claim_prefix = "resource_claim_deferred:"
     resource_claim_race = idle_reason.startswith(resource_claim_prefix) and bool(
@@ -208,6 +209,8 @@ def _projection_is_quiescent_for_heartbeat_fallback(
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             return False
         counts[field_name] = value
+    if idle_reason == "no_tasks_found":
+        return all(value == 0 for value in counts.values())
     if idle_reason == "no_shard_selectable_ready_tasks":
         # Strict sharding can leave this lane with no selectable work even
         # though the board-wide projection still reports ready or blocked
