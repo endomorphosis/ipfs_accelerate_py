@@ -1,27 +1,31 @@
 # Proof-Backed Test Reuse: Runtime Activation Operator Handoff
 
-Status: reviewed corrective handoff; live closeout remains unavailable until PTR-149 closes
-Interfaces: `ProofReuseActivationContract@1`, `RuntimeContextRevalidator@1`, `PytestProofReusePlugin@1`, `ProofTestReuseCurrentTreeGateDecision@1`, `RuntimeActivationE2E@1`
-Evidence: genuine three-repository two-process cold/warm receipts, real Groth16 certificate, zero-false-skip matrix, measured subprocess benchmark, refreshed 60-task gate
+Status: PTR-149 deliverables complete; live closeout remains operator-owned and
+unavailable until the board is closed, the refreshed 60-task gate admits fresh
+production-runtime-activation evidence, and a human reviews the protected
+lifecycle update
+Interfaces: `ProofReuseActivationContract@1`, `RuntimeContextRevalidator@1`, `PytestProofReusePlugin@1`, `ProofTestReuseCurrentTreeGateDecision@1`, `ProofReuseRuntimeActivationReport@1`, `RuntimeActivationE2E@1`
+Evidence: genuine three-repository two-process cold/warm receipts, real Groth16 certificate, zero-false-skip matrix, measured subprocess benchmark, live typed capability report, refreshed 60-task gate
 Controllers:
 
 * Outer objective closeout: `scripts/proof_backed_test_reuse_supervisor.py closeout`
 * Board validation: `scripts/validate_proof_backed_test_reuse_board.py`
+* Live capability report: `proof_reuse_runtime_activation_report` (`ProofReuseRuntimeActivationReport@1`)
 
 ## Purpose
 
 Document why the historical runtime-activation evidence from `PTR-138`,
 `PTR-140`, and `PTR-142` is not production authority, how the corrective wave
 (`PTR-143` … `PTR-149`) expands the final current-tree gate to **exactly 60**
-tasks with fresh production-activation evidence, and how an operator invokes
-the **existing** outer closeout controller only after validation succeeds and a
-human reviews the protected lifecycle update.
+tasks with fresh production-activation evidence, how live capability reporting
+derives readiness from typed services and bounded non-mutating probes, and how
+an operator invokes the **existing** outer closeout controller only after
+validation succeeds and a human reviews the protected lifecycle update.
 
-The final handoff is produced by **PTR-149**. This reviewed revision seals its
-required inputs but is not evidence that PTR-149 is complete. Completing all
-seven corrective tasks is a precondition for invoking live closeout.
-**Task completion precedes, and does not itself constitute, the live operator
-closeout.**
+**PTR-149** produces this handoff, the live activation report, and the refreshed
+gate. Completing all seven corrective tasks is a precondition for invoking live
+closeout. **Task completion precedes, and does not itself constitute, the live
+operator closeout.**
 
 ## Non-negotiable doctrine
 
@@ -64,6 +68,21 @@ closeout.**
 | Real issuance | Default issuer has no real prover and its public path does not return publishable verified certificate material | PTR-144, PTR-147 |
 | Activation e2e | Tests inject services/item identity or construct a deterministic pseudo-certificate instead of using two independent default pytest processes | PTR-148 |
 | Benchmark/reporting/gate | Timing is synthetic, reporting is hard-coded, and the 53-task gate accepts the historical claim | PTR-148, PTR-149 |
+
+### Live capability reporting (PTR-149)
+
+`proof_reuse_runtime_activation_report` / `ProofReuseRuntimeActivationReport@1`
+derives availability only from already-composed default services and bounded
+non-mutating probes:
+
+* native Groth16 installation/readiness is reported separately from
+  test-certificate authority;
+* the generic pre-PTR-144 `knowledge_of_axioms` backend can never satisfy
+  test-certificate authority, even when native readiness is true;
+* the report never installs packages, never starts a prove/setup/network
+  process, and never imports optional stacks merely to claim readiness;
+* cold `proof_reuse_dependency_plan` inventory remains static plan metadata and
+  is not admission authority for live readiness.
 
 PTR-138, PTR-140, and PTR-142 retain historical completion provenance. They do
 not satisfy the new production-activation premise and are not reopened; the
@@ -275,7 +294,11 @@ and operator preconditions expand.
 * Autonomous gap or codebase refill remains disabled.
 * PTR-149 does not rewrite completed task contracts for PTR-000 … PTR-148.
 * PTR-149 does not promote state-root candidates into the protected objective
-  file.
+  file; only the existing fenced outer closeout may emit a state-root candidate,
+  and only after the board is closed, the refreshed gate passes, and an operator
+  reviews the protected lifecycle update.
 * Synthetic or simulated certificates are never deployment authority.
 * The proof-reuse cache used during ordinary development is never the authority
   for validating this implementation (use disposable stores and MODE=off gates).
+* Hard-coded cold dependency-plan activation booleans are never live readiness
+  claims; use `ProofReuseRuntimeActivationReport@1`.

@@ -35,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tre
     ProofTestReuseCurrentTreeGateDecision,
     ProofTestReuseCurrentTreeGateError,
     ProofTestReusePersistedGateBundle,
+    build_production_runtime_activation_evidence,
     verify_persisted_current_tree_gate_bundle,
 )
 from ipfs_accelerate_py.testing.proof_reuse.rollout import (
@@ -593,28 +594,67 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         for code in historical.reason_codes
     )
 
-    packet["repair_evidence"] = _bound_record(
+    packet["repair_evidence"] = build_production_runtime_activation_evidence(
+        repository_id=gate.repository_id,
+        tree_id=gate.tree_id,
+        commit_id=gate.commit_id,
+        gitlink_state_cid=gate.gitlink_state_cid,
+        repository_forest_cid=gate.repository_forest_cid,
+        capability_cid=gate.capability_cid,
+        verifying_key_cid=gate.verifying_key_cid,
+        circuit_cid=gate.circuit_cid,
         policy_cid=gate.policy_cid,
-        repair_id=PRODUCTION_RUNTIME_ACTIVATION_ID,
-        repair_task_ids=sorted(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS),
-        producer_task_id=PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID,
-        passed=True,
-        false_skips=0,
-        zero_false_skip_assurance=True,
-        activation_e2e_passed=True,
-        zero_injection_default_path=True,
-        three_repository_cold_warm=True,
-        real_groth16_certificate=True,
-        measured_subprocess_benchmark=True,
-        historical_activation_claims_superseded=True,
-        sealed_task_count=SEALED_PRODUCTION_TASK_COUNT,
-        requirement_id=PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
+        objective_completion_tree_id=gate.objective_completion_tree_id,
+        observed_at_ms=FRESH_FROM,
+        fresh_until_ms=FRESH_UNTIL,
         evidence_cid="repair:production-runtime-activation",
     )
     admitted = gate.evaluate(**packet)
     assert admitted.passed is True
     assert admitted.final_gate_completion_evidence is not None
     assert admitted.root_completion_evidence is not None
+
+    # Injected / pseudo-certificate / synthetic timing evidence fails closed.
+    for flag, reason in (
+        ("injected", "repair_evidence_injected"),
+        ("pseudo_certificate", "repair_evidence_pseudo_certificate"),
+        ("synthetic_timing", "repair_evidence_synthetic_timing"),
+        ("service_injection", "repair_evidence_service_injection"),
+    ):
+        bad = dict(packet["repair_evidence"])
+        bad[flag] = True
+        packet["repair_evidence"] = bad
+        rejected = gate.evaluate(**packet)
+        assert rejected.passed is False
+        assert reason in rejected.reason_codes
+
+    # 53-task sealed count is historical and inadmissible.
+    fifty_three = dict(
+        build_production_runtime_activation_evidence(
+            repository_id=gate.repository_id,
+            tree_id=gate.tree_id,
+            commit_id=gate.commit_id,
+            gitlink_state_cid=gate.gitlink_state_cid,
+            repository_forest_cid=gate.repository_forest_cid,
+            capability_cid=gate.capability_cid,
+            verifying_key_cid=gate.verifying_key_cid,
+            circuit_cid=gate.circuit_cid,
+            policy_cid=gate.policy_cid,
+            objective_completion_tree_id=gate.objective_completion_tree_id,
+            observed_at_ms=FRESH_FROM,
+            fresh_until_ms=FRESH_UNTIL,
+            evidence_cid="repair:historical-53",
+        )
+    )
+    fifty_three["sealed_task_count"] = 53
+    packet["repair_evidence"] = fifty_three
+    historical_count = gate.evaluate(**packet)
+    assert historical_count.passed is False
+    assert "repair_evidence_task_count_mismatch" in historical_count.reason_codes
+    assert (
+        "repair_evidence_historical_53_task_population"
+        in historical_count.reason_codes
+    )
 
 
 def test_gate_rejects_g110_as_child_premise_configuration():

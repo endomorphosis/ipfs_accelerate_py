@@ -509,6 +509,14 @@ def proof_reuse_dependency_plan(
             "shared_cache_or_local_cache_directory",
         ],
         "external_capability_absence_action": "RUN_OR_DEFERRED",
+        # Cold static plan only.  Live readiness/composition claims must come
+        # from ``live_runtime_activation_inventory`` /
+        # ``ProofReuseRuntimeActivationReport@1`` (PTR-149), never from these
+        # hard-coded booleans alone.
+        "runtime_activation_live_report_interface": (
+            "ProofReuseRuntimeActivationReport@1"
+        ),
+        "runtime_activation_live_probe_required": True,
         "runtime_activation": {
             "automatic_plugin_discovery": True,
             "ordinary_enabled_run_effective_action": "run",
@@ -2032,6 +2040,437 @@ class LazyRealTestCertificateIssuer:
     __call__ = issue
 
 
+# Live composition / capability probe interfaces (PTR-149).  These never claim
+# readiness from source-symbol inventory or cold dependency-plan constants.
+LIVE_TYPED_SERVICE_PROBE_INTERFACE: Final = "ProofReuseLiveTypedServiceProbe@1"
+NATIVE_GROTH16_READINESS_PROBE_INTERFACE: Final = (
+    "ProofReuseNativeGroth16ReadinessProbe@1"
+)
+TEST_CERTIFICATE_AUTHORITY_PROBE_INTERFACE: Final = (
+    "ProofReuseTestCertificateAuthorityProbe@1"
+)
+# Pre-PTR-144 generic circuit family — never certificate-authority alone.
+_GENERIC_KNOWLEDGE_OF_AXIOMS_CIRCUIT_PREFIX: Final = "knowledge_of_axioms@"
+_TEST_PASS_ARTIFACT_VERSION: Final = 4
+
+
+def _service_handle_probe(value: Any) -> dict[str, Any]:
+    """Describe one already-composed service handle without importing packages."""
+
+    present = value is not None
+    interface = ""
+    type_name = ""
+    if present:
+        interface = str(getattr(value, "interface", "") or "")[:96]
+        type_name = type(value).__name__[:96]
+    return {
+        "present": present,
+        "interface": interface,
+        "type_name": type_name,
+    }
+
+
+def probe_live_typed_services(
+    services: Any,
+    *,
+    source: str = "defaults",
+) -> dict[str, Any]:
+    """Report which typed default services are actually composed in-process.
+
+    Pure attribute inspection: no import, install, network, or process start.
+    Source-symbol presence is never treated as availability.
+    """
+
+    if services is None:
+        handles = {
+            name: _service_handle_probe(None)
+            for name in (
+                "identity_services",
+                "lookup",
+                "store",
+                "candidate_store",
+                "provider",
+                "issuer",
+                "revalidator",
+                "current_context_provider",
+                "resolver",
+            )
+        }
+        return {
+            "interface": LIVE_TYPED_SERVICE_PROBE_INTERFACE,
+            "source": str(source or "missing")[:32],
+            "degraded": True,
+            "reason_code": "services_missing",
+            "handles": handles,
+            "required_handles_present": False,
+            "ordinary_default_composition_usable": False,
+            "network_attempted": False,
+            "install_attempted": False,
+            "import_for_readiness": False,
+        }
+
+    handles = {
+        "identity_services": _service_handle_probe(
+            getattr(services, "identity_services", None)
+        ),
+        "lookup": _service_handle_probe(getattr(services, "lookup", None)),
+        "store": _service_handle_probe(getattr(services, "store", None)),
+        "candidate_store": _service_handle_probe(
+            getattr(services, "candidate_store", None)
+        ),
+        "provider": _service_handle_probe(getattr(services, "provider", None)),
+        "issuer": _service_handle_probe(getattr(services, "issuer", None)),
+        "revalidator": _service_handle_probe(
+            getattr(services, "revalidator", None)
+        ),
+        "current_context_provider": _service_handle_probe(
+            getattr(services, "current_context_provider", None)
+        ),
+        "resolver": _service_handle_probe(getattr(services, "resolver", None)),
+    }
+    # Production default path needs these for ordinary cold/warm composition.
+    required = (
+        "identity_services",
+        "lookup",
+        "store",
+        "candidate_store",
+        "issuer",
+        "revalidator",
+        "current_context_provider",
+    )
+    required_present = all(handles[name]["present"] for name in required)
+    degraded = bool(getattr(services, "degraded", False))
+    reason = str(getattr(services, "reason_code", "") or "")
+    return {
+        "interface": LIVE_TYPED_SERVICE_PROBE_INTERFACE,
+        "source": str(
+            getattr(services, "source", None) or source or "defaults"
+        )[:32],
+        "degraded": degraded,
+        "reason_code": reason[:96],
+        "handles": handles,
+        "required_handles_present": required_present,
+        "ordinary_default_composition_usable": required_present and not degraded,
+        "network_attempted": False,
+        "install_attempted": False,
+        "import_for_readiness": False,
+    }
+
+
+def probe_native_groth16_readiness(
+    *,
+    installer: Any = None,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Bounded non-mutating native Groth16 installation/readiness probe.
+
+    Never starts a cargo build, trusted setup, network call, or package install.
+    Uses the lazy installer's consent=False path when an installer is supplied.
+    """
+
+    env = environ if environ is not None else os.environ
+    diagnostics: dict[str, Any] = {
+        "build_policy_enabled": groth16_build_enabled(env),
+        "binary_env": str(env.get(DATASETS_GROTH16_BINARY_ENV, "") or "")[:256],
+        "artifacts_env": str(
+            env.get(DATASETS_GROTH16_ARTIFACTS_ROOT_ENV, "") or ""
+        )[:256],
+        "circuit_ref": str(
+            env.get(PROOF_REUSE_GROTH16_CIRCUIT_REF_ENV, "") or ""
+        )[:96],
+        "endpoint_configured": bool(
+            str(env.get(PROOF_REUSE_GROTH16_ENDPOINT_ENV, "") or "").strip()
+        ),
+    }
+    circuit_ref = diagnostics["circuit_ref"]
+    diagnostics["knowledge_of_axioms_circuit"] = circuit_ref.startswith(
+        _GENERIC_KNOWLEDGE_OF_AXIOMS_CIRCUIT_PREFIX
+    )
+
+    installed = False
+    ready = False
+    reason = "installer_unavailable"
+    runtime_status: dict[str, Any] = {}
+    process_started = False
+    network_attempted = False
+
+    if installer is not None:
+        # Prefer inspect_groth16_runtime (non-mutating aggregate).
+        inspect_runtime = getattr(installer, "inspect_groth16_runtime", None)
+        if callable(inspect_runtime):
+            try:
+                raw = inspect_runtime()
+                if isinstance(raw, Mapping):
+                    runtime_status = {
+                        key: raw[key]
+                        for key in (
+                            "ready",
+                            "readiness_scope",
+                            "action",
+                            "test_certificate_authority_ready",
+                            "test_certificate_authority_reason",
+                            "skip_authority",
+                            "network_attempted",
+                            "process_started",
+                            "trusted_setup_attempted",
+                        )
+                        if key in raw
+                    }
+                    ready = bool(raw.get("ready"))
+                    network_attempted = bool(raw.get("network_attempted"))
+                    process_started = bool(raw.get("process_started"))
+                    reason = "ready" if ready else "native_or_endpoint_unready"
+            except Exception:
+                reason = "runtime_inspect_failed"
+        # Non-mutating native install probe (consent=False never builds).
+        ensure = getattr(installer, "ensure_groth16_native_backend", None)
+        if callable(ensure):
+            try:
+                resolution = ensure(consent=False)
+                available = bool(getattr(resolution, "available", False))
+                installed = available
+                if available and not ready:
+                    # Binary present but runtime aggregate may still be unready.
+                    reason = str(
+                        getattr(resolution, "reason_code", "") or "native_present"
+                    )[:96]
+                elif not available:
+                    reason = str(
+                        getattr(resolution, "reason_code", "") or reason
+                    )[:96]
+            except Exception:
+                reason = "native_probe_failed"
+    else:
+        # Filesystem-only binary existence when no installer is injected.
+        binary = str(env.get(DATASETS_GROTH16_BINARY_ENV, "") or "").strip()
+        if binary and Path(binary).is_file():
+            installed = True
+            ready = False  # binary alone never implies full runtime readiness
+            reason = "binary_present_runtime_unconfirmed"
+        else:
+            reason = "installer_unavailable"
+
+    return {
+        "interface": NATIVE_GROTH16_READINESS_PROBE_INTERFACE,
+        "installed": installed,
+        "ready": ready,
+        "reason_code": reason[:96],
+        "readiness_scope": str(
+            runtime_status.get("readiness_scope")
+            or "generic_native_or_endpoint_capability"
+        )[:96],
+        "knowledge_of_axioms_circuit": bool(
+            diagnostics["knowledge_of_axioms_circuit"]
+        ),
+        "skip_authority": False,  # native readiness never grants skip alone
+        "network_attempted": network_attempted,
+        "process_started": process_started,
+        "install_attempted": False,
+        "trusted_setup_attempted": bool(
+            runtime_status.get("trusted_setup_attempted")
+        ),
+        "diagnostics": diagnostics,
+        "runtime_status": runtime_status,
+    }
+
+
+def probe_test_certificate_authority(
+    *,
+    environ: Mapping[str, str] | None = None,
+    artifacts_root: str | os.PathLike[str] | None = None,
+    binary_path: str | os.PathLike[str] | None = None,
+    installer: Any = None,
+) -> dict[str, Any]:
+    """Probe real test-pass certificate authority without proving or installing.
+
+    Separates native Groth16 installation/readiness from certificate authority.
+    The generic pre-PTR-144 ``knowledge_of_axioms`` backend alone can never
+    satisfy this probe, even when native readiness is true.
+    """
+
+    env = environ if environ is not None else os.environ
+    circuit_ref = str(env.get(PROOF_REUSE_GROTH16_CIRCUIT_REF_ENV, "") or "").strip()
+    knowledge_of_axioms = circuit_ref.startswith(
+        _GENERIC_KNOWLEDGE_OF_AXIOMS_CIRCUIT_PREFIX
+    )
+
+    # Native aggregate may already refuse certificate authority (always for
+    # knowledge_of_axioms-style generic readiness).
+    native = probe_native_groth16_readiness(installer=installer, environ=env)
+
+    bindings_payload: dict[str, Any] = {
+        "provenance_ready": False,
+        "reason_code": "artifact_probe_not_run",
+        "circuit_cid": "",
+        "verifying_key_cid": "",
+        "backend_circuit_version": _TEST_PASS_ARTIFACT_VERSION,
+    }
+    try:
+        from .publication import Groth16ArtifactIdentityBindings
+
+        bindings = Groth16ArtifactIdentityBindings.from_activated_artifacts(
+            artifacts_root=artifacts_root,
+            environ=env,
+            binary_path=binary_path,
+            circuit_version=_TEST_PASS_ARTIFACT_VERSION,
+        )
+        bindings_payload = {
+            "provenance_ready": bool(bindings.provenance_ready),
+            "reason_code": str(bindings.reason_code or "")[:96],
+            "circuit_cid": str(bindings.circuit_cid or "")[:128],
+            "verifying_key_cid": str(bindings.verifying_key_cid or "")[:128],
+            "backend_circuit_version": int(bindings.backend_circuit_version),
+            "artifacts_root": str(bindings.artifacts_root or "")[:256],
+        }
+    except Exception as exc:
+        bindings_payload["reason_code"] = f"binding_probe_failed:{type(exc).__name__}"[
+            :96
+        ]
+
+    # Authority requires exact test-pass artifact provenance.  Never promote
+    # knowledge_of_axioms (or any generic native readiness) to certificate
+    # authority.
+    ready = bool(bindings_payload.get("provenance_ready"))
+    reason = str(bindings_payload.get("reason_code") or "unready")
+    if knowledge_of_axioms and not ready:
+        reason = "knowledge_of_axioms_cannot_satisfy_test_certificate_authority"
+    elif knowledge_of_axioms and ready:
+        # Even with co-located keys, a knowledge_of_axioms circuit binding is
+        # not the test-pass ruleset; refuse certificate authority.
+        ready = False
+        reason = "knowledge_of_axioms_cannot_satisfy_test_certificate_authority"
+    elif not ready and native.get("ready") and not bindings_payload.get(
+        "provenance_ready"
+    ):
+        reason = "native_ready_without_test_pass_provenance"
+
+    return {
+        "interface": TEST_CERTIFICATE_AUTHORITY_PROBE_INTERFACE,
+        "ready": ready,
+        "reason_code": reason[:96],
+        "skip_authority": ready,  # only exact test-pass provenance may skip
+        "knowledge_of_axioms_rejected": knowledge_of_axioms,
+        "knowledge_of_axioms_circuit": knowledge_of_axioms,
+        "native_groth16_ready": bool(native.get("ready")),
+        "native_groth16_installed": bool(native.get("installed")),
+        "artifact_bindings": bindings_payload,
+        "network_attempted": False,
+        "process_started": False,
+        "install_attempted": False,
+        "import_for_readiness": False,
+        "prove_attempted": False,
+    }
+
+
+def live_runtime_activation_inventory(
+    services: Any,
+    *,
+    installer: Any = None,
+    environ: Mapping[str, str] | None = None,
+    artifacts_root: str | os.PathLike[str] | None = None,
+    binary_path: str | os.PathLike[str] | None = None,
+) -> dict[str, Any]:
+    """Derive runtime-activation inventory from live handles and probes.
+
+    Replaces hard-coded cold dependency-plan booleans for readiness claims.
+    """
+
+    composition = probe_live_typed_services(services)
+    handles = composition["handles"]
+    native = probe_native_groth16_readiness(installer=installer, environ=environ)
+    certificate = probe_test_certificate_authority(
+        environ=environ,
+        artifacts_root=artifacts_root,
+        binary_path=binary_path,
+        installer=installer,
+    )
+
+    identity_configured = handles["identity_services"]["present"]
+    candidate_store_configured = handles["candidate_store"]["present"]
+    revalidator_configured = handles["revalidator"]["present"]
+    two_stage = handles["lookup"]["present"] and revalidator_configured
+    issuer_configured = handles["issuer"]["present"]
+    current_context = handles["current_context_provider"]["present"]
+    store_configured = handles["store"]["present"]
+
+    blockers: list[str] = []
+    if not identity_configured:
+        blockers.append("identity_services_unconfigured")
+    if not candidate_store_configured:
+        blockers.append("candidate_store_unconfigured")
+    if not revalidator_configured:
+        blockers.append("revalidator_unconfigured")
+    if not two_stage:
+        blockers.append("two_stage_lookup_unconfigured")
+    if not current_context:
+        blockers.append("current_context_provider_unconfigured")
+    if not issuer_configured:
+        blockers.append("issuer_unconfigured")
+    if not store_configured:
+        blockers.append("certificate_store_unconfigured")
+    if not certificate["ready"]:
+        blockers.append("test_certificate_authority_unready")
+
+    ordinary_warm = (
+        identity_configured
+        and candidate_store_configured
+        and revalidator_configured
+        and two_stage
+        and current_context
+        and store_configured
+        and issuer_configured
+    )
+
+    return {
+        "automatic_plugin_discovery": True,
+        "ordinary_enabled_run_effective_action": "run",
+        "default_identity_services_injected": False,
+        "default_identity_service_factory_configured": identity_configured,
+        "production_identity_injector_configured": identity_configured,
+        "required_identity_providers": [
+            "repository_forest_provider",
+            "analysis_index_provider",
+            "component_inputs_provider",
+            "policy_inputs_provider",
+            "runtime_evidence_provider",
+        ],
+        "default_identity_compiler_available": identity_configured,
+        "candidate_context_store_configured": candidate_store_configured,
+        "two_stage_candidate_revalidation_configured": two_stage,
+        "lookup_requires_exact_execution_key_before_candidate_read": True,
+        "runtime_trace_attribute_producer_configured": ordinary_warm,
+        "post_pass_runtime_trace_capture_configured": ordinary_warm,
+        "post_pass_receipt_requires_runtime_trace": ordinary_warm,
+        "deferred_request_builder_configured": issuer_configured,
+        "deferred_request_transport_compatible": issuer_configured,
+        "deferred_certificate_issuer_configured": issuer_configured,
+        "issuer_in_lazy_service_bundle": issuer_configured,
+        "issuer_in_lazy_service_resolution": issuer_configured,
+        "candidate_certificate_publication_configured": (
+            candidate_store_configured and store_configured
+        ),
+        "authoritative_candidate_publication_configured": (
+            candidate_store_configured and store_configured and issuer_configured
+        ),
+        "ordinary_warm_skip_path_complete": ordinary_warm and certificate["ready"],
+        "missing_provider_action": "run",
+        "completion_authority": False,
+        "native_groth16_installed": native["installed"],
+        "native_groth16_ready": native["ready"],
+        "test_certificate_authority_ready": certificate["ready"],
+        "test_certificate_authority_reason": certificate["reason_code"],
+        "knowledge_of_axioms_cannot_satisfy_test_certificate_authority": True,
+        "activation_blocker_codes": blockers,
+        "live_probe": True,
+        "network_attempted": False,
+        "install_attempted": False,
+        "import_for_readiness": False,
+        "composition": composition,
+        "native_groth16": native,
+        "test_certificate_authority": certificate,
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class DefaultProofReuseServices:
     """Session-scoped default dependency injection for one pytest process.
@@ -2063,6 +2502,29 @@ class DefaultProofReuseServices:
     @property
     def available(self) -> bool:
         return not self.degraded
+
+    def probe_live_composition(self) -> dict[str, Any]:
+        """Non-mutating probe of which typed handles this bundle holds."""
+
+        return probe_live_typed_services(self, source=self.source)
+
+    def live_runtime_activation_inventory(
+        self,
+        *,
+        installer: Any = None,
+        environ: Mapping[str, str] | None = None,
+        artifacts_root: str | os.PathLike[str] | None = None,
+        binary_path: str | os.PathLike[str] | None = None,
+    ) -> dict[str, Any]:
+        """Live activation inventory derived from this bundle and local probes."""
+
+        return live_runtime_activation_inventory(
+            self,
+            installer=installer,
+            environ=environ,
+            artifacts_root=artifacts_root,
+            binary_path=binary_path,
+        )
 
     def with_overrides(
         self,
@@ -2356,6 +2818,7 @@ __all__ = [
     "DefaultProofReuseServices",
     "DEFAULT_NLTK_DATA_RESOURCES",
     "LAZY_REAL_TEST_CERTIFICATE_ISSUER_INTERFACE",
+    "LIVE_TYPED_SERVICE_PROBE_INTERFACE",
     "LOOKUP_MODULE",
     "JSONSCHEMA_DEPENDENCY",
     "JSONSCHEMA_MODULE",
@@ -2363,6 +2826,7 @@ __all__ = [
     "LazyRealTestCertificateIssuer",
     "MULTIFORMATS_DEPENDENCY",
     "MULTIFORMATS_MODULE",
+    "NATIVE_GROTH16_READINESS_PROBE_INTERFACE",
     "NLTK_DATA_RESOURCE_ALLOWLIST",
     "NLTK_DEPENDENCY",
     "NLTK_MODULE",
@@ -2381,9 +2845,14 @@ __all__ = [
     "ProofReuseDependency",
     "ProofReuseServiceResolution",
     "STORE_MODULE",
+    "TEST_CERTIFICATE_AUTHORITY_PROBE_INTERFACE",
     "automatic_install_enabled",
     "compose_default_proof_reuse_services",
     "groth16_build_enabled",
+    "live_runtime_activation_inventory",
     "nltk_data_download_enabled",
+    "probe_live_typed_services",
+    "probe_native_groth16_readiness",
+    "probe_test_certificate_authority",
     "proof_reuse_dependency_plan",
 ]

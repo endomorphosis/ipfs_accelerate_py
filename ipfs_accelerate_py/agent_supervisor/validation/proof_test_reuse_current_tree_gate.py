@@ -1943,8 +1943,23 @@ class ProofTestReuseCurrentTreeGate:
         ):
             if record.get(field_name) is not True:
                 reasons.append(reason_code)
-        if record.get("sealed_task_count") != SEALED_PRODUCTION_TASK_COUNT:
+        # Explicitly fail closed on historical/synthetic claim markers.
+        if record.get("injected") is True:
+            reasons.append("repair_evidence_injected")
+        if record.get("pseudo_certificate") is True:
+            reasons.append("repair_evidence_pseudo_certificate")
+        if record.get("synthetic_timing") is True:
+            reasons.append("repair_evidence_synthetic_timing")
+        if record.get("service_injection") is True:
+            reasons.append("repair_evidence_service_injection")
+        sealed = record.get("sealed_task_count")
+        if sealed != SEALED_PRODUCTION_TASK_COUNT:
             reasons.append("repair_evidence_task_count_mismatch")
+        # Historical 53-task packets cannot be re-admitted by omission tricks.
+        if sealed == 53:
+            reasons.append("repair_evidence_historical_53_task_population")
+        if producer_task_id == "PTR-142" or repair_id == RUNTIME_ACTIVATION_REPAIR_ID:
+            reasons.append("repair_evidence_historical_ptr142_inadmissible")
 
         requirement = _text(
             _value(
@@ -2410,6 +2425,96 @@ class ProofTestReuseCurrentTreeGate:
         )
 
 
+def build_production_runtime_activation_evidence(
+    *,
+    repository_id: str,
+    tree_id: str,
+    commit_id: str,
+    gitlink_state_cid: str,
+    repository_forest_cid: str,
+    capability_cid: str,
+    verifying_key_cid: str,
+    circuit_cid: str,
+    policy_cid: str,
+    objective_completion_tree_id: str = "",
+    observed_at_ms: int,
+    fresh_until_ms: int,
+    evidence_cid: str,
+    false_skips: int = 0,
+    activation_e2e_passed: bool = True,
+    zero_injection_default_path: bool = True,
+    three_repository_cold_warm: bool = True,
+    real_groth16_certificate: bool = True,
+    measured_subprocess_benchmark: bool = True,
+    historical_activation_claims_superseded: bool = True,
+    zero_false_skip_assurance: bool = True,
+    passed: bool = True,
+    supervisor_healthy: bool = True,
+    injected: bool = False,
+    pseudo_certificate: bool = False,
+    synthetic_timing: bool = False,
+    service_injection: bool = False,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a fresh PTR-149 production-runtime-activation evidence record.
+
+    Callers must supply genuine current-tree bindings and only set the boolean
+    activation claims after the corresponding no-injection e2e, real Groth16,
+    and measured subprocess evidence has actually been observed.
+    """
+
+    if false_skips != 0:
+        passed = False
+        zero_false_skip_assurance = False
+    if injected or pseudo_certificate or synthetic_timing or service_injection:
+        passed = False
+    record: dict[str, Any] = {
+        "authority": _AUTHORITATIVE,
+        "repair_id": PRODUCTION_RUNTIME_ACTIVATION_ID,
+        "producer_task_id": PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID,
+        "repair_task_ids": sorted(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS),
+        "passed": bool(passed),
+        "false_skips": int(false_skips),
+        "zero_false_skip_assurance": bool(zero_false_skip_assurance),
+        "activation_e2e_passed": bool(activation_e2e_passed),
+        "zero_injection_default_path": bool(zero_injection_default_path),
+        "three_repository_cold_warm": bool(three_repository_cold_warm),
+        "real_groth16_certificate": bool(real_groth16_certificate),
+        "measured_subprocess_benchmark": bool(measured_subprocess_benchmark),
+        "historical_activation_claims_superseded": bool(
+            historical_activation_claims_superseded
+        ),
+        "sealed_task_count": SEALED_PRODUCTION_TASK_COUNT,
+        "requirement_id": PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
+        "repository_id": repository_id,
+        "tree_id": tree_id,
+        "commit_id": commit_id,
+        "gitlink_state_cid": gitlink_state_cid,
+        "gitlink_closure_complete": True,
+        "repository_forest_cid": repository_forest_cid,
+        "objective_completion_tree_id": objective_completion_tree_id,
+        "capability_cid": capability_cid,
+        "verifying_key_cid": verifying_key_cid,
+        "circuit_cid": circuit_cid,
+        "policy_cid": policy_cid,
+        "observed_at_ms": int(observed_at_ms),
+        "fresh_until_ms": int(fresh_until_ms),
+        "evidence_cid": evidence_cid,
+        "supervisor_healthy": bool(supervisor_healthy),
+        "injected": bool(injected),
+        "pseudo_certificate": bool(pseudo_certificate),
+        "synthetic_timing": bool(synthetic_timing),
+        "service_injection": bool(service_injection),
+    }
+    if extra:
+        for key, value in extra.items():
+            name = str(key)
+            if name in record:
+                continue
+            record[name] = value
+    return record
+
+
 __all__ = [
     "DEFAULT_PRODUCER_CHANNEL",
     "FINAL_GATE_ACCEPTANCE_CRITERION",
@@ -2446,5 +2551,6 @@ __all__ = [
     "ProofTestReuseCurrentTreeGateError",
     "ProofTestReusePersistedGateBundle",
     "TaskCompletionProvenanceKind",
+    "build_production_runtime_activation_evidence",
     "verify_persisted_current_tree_gate_bundle",
 ]

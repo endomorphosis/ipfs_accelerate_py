@@ -3,21 +3,35 @@
 The reporting contract intentionally contains aggregates only.  Node ids,
 paths, parameter values, receipt bodies, exception text, and test output are
 never accepted into a metrics snapshot, including xdist worker snapshots.
+
+PTR-149 also publishes :class:`ProofReuseRuntimeActivationReport`, a live
+typed composition and capability snapshot.  That report derives availability
+only from already-composed services and bounded non-mutating probes; it never
+imports or installs packages merely to claim readiness, and it always
+separates native Groth16 installation from test-certificate authority.
 """
 
 from __future__ import annotations
 
 import math
+import os
 import threading
 from collections import Counter
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any, Final
 
 PROOF_REUSE_METRICS_INTERFACE: Final = "ProofReuseMetrics@1"
 PROOF_REUSE_METRICS_SCHEMA: Final = (
     "ipfs_accelerate_py/testing/proof-reuse-metrics@1"
+)
+PROOF_REUSE_RUNTIME_ACTIVATION_REPORT_INTERFACE: Final = (
+    "ProofReuseRuntimeActivationReport@1"
+)
+PROOF_REUSE_RUNTIME_ACTIVATION_REPORT_SCHEMA: Final = (
+    "ipfs_accelerate_py/testing/proof-reuse-runtime-activation-report@1"
 )
 MAX_REASON_CODES: Final = 128
 MAX_REASON_LENGTH: Final = 96
@@ -363,11 +377,292 @@ class ProofReuseSessionMetrics:
         return f"proof reuse: {values}"
 
 
+def _bounded_mapping(payload: Mapping[str, Any] | None, *, depth: int = 0) -> dict[str, Any]:
+    """Copy a mapping with bounded depth/size for safe report embedding."""
+
+    if not isinstance(payload, Mapping) or depth > 4:
+        return {}
+    out: dict[str, Any] = {}
+    for index, (raw_key, value) in enumerate(payload.items()):
+        if index >= 64:
+            break
+        key = str(raw_key)[:96]
+        if isinstance(value, bool) or value is None or isinstance(value, int):
+            out[key] = value
+        elif isinstance(value, float):
+            if math.isfinite(value):
+                out[key] = value
+        elif isinstance(value, str):
+            out[key] = value[:256]
+        elif isinstance(value, Mapping):
+            out[key] = _bounded_mapping(value, depth=depth + 1)
+        elif isinstance(value, (list, tuple)):
+            items: list[Any] = []
+            for item in list(value)[:32]:
+                if isinstance(item, Mapping):
+                    items.append(_bounded_mapping(item, depth=depth + 1))
+                elif isinstance(item, (bool, int)) or item is None:
+                    items.append(item)
+                elif isinstance(item, str):
+                    items.append(item[:128])
+                else:
+                    items.append(type(item).__name__[:64])
+            out[key] = items
+        else:
+            out[key] = type(value).__name__[:64]
+    return out
+
+
+@dataclass(frozen=True, slots=True)
+class ProofReuseRuntimeActivationReport:
+    """Live typed runtime-activation and capability report (PTR-149).
+
+    Availability is derived only from composed service handles and bounded
+    non-mutating probes.  Native Groth16 installation/readiness is always
+    reported separately from test-certificate authority; the generic
+    pre-PTR-144 knowledge-of-axioms backend can never satisfy the latter.
+    """
+
+    interface: str = PROOF_REUSE_RUNTIME_ACTIVATION_REPORT_INTERFACE
+    schema: str = PROOF_REUSE_RUNTIME_ACTIVATION_REPORT_SCHEMA
+    live: bool = True
+    network_attempted: bool = False
+    install_attempted: bool = False
+    import_for_readiness: bool = False
+    process_started: bool = False
+    prove_attempted: bool = False
+    composition: Mapping[str, Any] = field(default_factory=dict)
+    native_groth16: Mapping[str, Any] = field(default_factory=dict)
+    test_certificate_authority: Mapping[str, Any] = field(default_factory=dict)
+    inventory: Mapping[str, Any] = field(default_factory=dict)
+    activation_blocker_codes: tuple[str, ...] = ()
+    ordinary_default_composition_usable: bool = False
+    ordinary_warm_skip_path_complete: bool = False
+    native_groth16_installed: bool = False
+    native_groth16_ready: bool = False
+    test_certificate_authority_ready: bool = False
+    knowledge_of_axioms_cannot_satisfy_test_certificate_authority: bool = True
+    source: str = "live"
+    reason_code: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "interface": self.interface,
+            "live": True,
+            "network_attempted": False,
+            "install_attempted": False,
+            "import_for_readiness": False,
+            "process_started": bool(self.process_started),
+            "prove_attempted": False,
+            "composition": _bounded_mapping(self.composition),
+            "native_groth16": _bounded_mapping(self.native_groth16),
+            "test_certificate_authority": _bounded_mapping(
+                self.test_certificate_authority
+            ),
+            "inventory": _bounded_mapping(self.inventory),
+            "activation_blocker_codes": list(self.activation_blocker_codes),
+            "ordinary_default_composition_usable": (
+                self.ordinary_default_composition_usable
+            ),
+            "ordinary_warm_skip_path_complete": (
+                self.ordinary_warm_skip_path_complete
+            ),
+            "native_groth16_installed": self.native_groth16_installed,
+            "native_groth16_ready": self.native_groth16_ready,
+            "test_certificate_authority_ready": (
+                self.test_certificate_authority_ready
+            ),
+            "knowledge_of_axioms_cannot_satisfy_test_certificate_authority": True,
+            "source": str(self.source)[:32],
+            "reason_code": str(self.reason_code)[:96],
+        }
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ProofReuseRuntimeActivationReport":
+        if not isinstance(payload, Mapping):
+            raise ValueError("activation report must be a mapping")
+        if payload.get("schema") != PROOF_REUSE_RUNTIME_ACTIVATION_REPORT_SCHEMA:
+            raise ValueError("activation report schema mismatch")
+        if (
+            payload.get("interface")
+            != PROOF_REUSE_RUNTIME_ACTIVATION_REPORT_INTERFACE
+        ):
+            raise ValueError("activation report interface mismatch")
+        blockers_raw = payload.get("activation_blocker_codes") or ()
+        if not isinstance(blockers_raw, (list, tuple)):
+            raise ValueError("activation_blocker_codes must be a sequence")
+        blockers = tuple(str(item)[:96] for item in blockers_raw[:64])
+        return cls(
+            composition=_bounded_mapping(payload.get("composition") or {}),
+            native_groth16=_bounded_mapping(payload.get("native_groth16") or {}),
+            test_certificate_authority=_bounded_mapping(
+                payload.get("test_certificate_authority") or {}
+            ),
+            inventory=_bounded_mapping(payload.get("inventory") or {}),
+            activation_blocker_codes=blockers,
+            ordinary_default_composition_usable=bool(
+                payload.get("ordinary_default_composition_usable")
+            ),
+            ordinary_warm_skip_path_complete=bool(
+                payload.get("ordinary_warm_skip_path_complete")
+            ),
+            native_groth16_installed=bool(payload.get("native_groth16_installed")),
+            native_groth16_ready=bool(payload.get("native_groth16_ready")),
+            test_certificate_authority_ready=bool(
+                payload.get("test_certificate_authority_ready")
+            ),
+            process_started=bool(payload.get("process_started")),
+            source=str(payload.get("source") or "live")[:32],
+            reason_code=str(payload.get("reason_code") or "")[:96],
+        )
+
+
+def proof_reuse_runtime_activation_report(
+    *,
+    services: Any = None,
+    mode: Any = None,
+    root_path: str | os.PathLike[str] | None = None,
+    cache_root: str | os.PathLike[str] | None = None,
+    config: Any = None,
+    environ: Mapping[str, str] | None = None,
+    installer: Any = None,
+    artifacts_root: str | os.PathLike[str] | None = None,
+    binary_path: str | os.PathLike[str] | None = None,
+    compose_if_missing: bool = True,
+) -> ProofReuseRuntimeActivationReport:
+    """Build a live runtime-activation report from typed services and probes.
+
+    Never installs packages, never starts a prove/setup/network process, and
+    never imports optional stacks merely to flip readiness booleans.  When
+    ``services`` is omitted and ``compose_if_missing`` is true, default
+    composition is assembled with the supplied installer (which must itself
+    refuse installs when consent is denied).
+    """
+
+    env = environ if environ is not None else os.environ
+    resolved_services = services
+    source = "explicit"
+    reason = ""
+
+    if resolved_services is None and compose_if_missing:
+        source = "composed_defaults"
+        try:
+            from .services import compose_default_proof_reuse_services
+
+            resolved_services = compose_default_proof_reuse_services(
+                mode=mode,
+                root_path=root_path,
+                cache_root=cache_root,
+                config=config,
+                installer=installer,
+                environ=env,
+            )
+        except Exception as exc:
+            reason = f"compose_failed:{type(exc).__name__}"[:96]
+            resolved_services = None
+    elif resolved_services is None:
+        source = "missing"
+        reason = "services_missing"
+
+    try:
+        from .services import live_runtime_activation_inventory
+    except Exception as exc:
+        return ProofReuseRuntimeActivationReport(
+            source=source,
+            reason_code=f"probe_import_failed:{type(exc).__name__}"[:96],
+        )
+
+    inventory = live_runtime_activation_inventory(
+        resolved_services,
+        installer=installer,
+        environ=env,
+        artifacts_root=artifacts_root,
+        binary_path=binary_path,
+    )
+    composition = inventory.get("composition") or {}
+    native = inventory.get("native_groth16") or {}
+    certificate = inventory.get("test_certificate_authority") or {}
+    blockers = tuple(
+        str(item)[:96]
+        for item in (inventory.get("activation_blocker_codes") or ())[:64]
+    )
+
+    # Hard invariant: knowledge-of-axioms can never satisfy certificate authority.
+    cert_ready = bool(inventory.get("test_certificate_authority_ready"))
+    if certificate.get("knowledge_of_axioms_circuit") and cert_ready:
+        cert_ready = False
+        certificate = dict(certificate)
+        certificate["ready"] = False
+        certificate["reason_code"] = (
+            "knowledge_of_axioms_cannot_satisfy_test_certificate_authority"
+        )
+
+    return ProofReuseRuntimeActivationReport(
+        composition=_bounded_mapping(composition if isinstance(composition, Mapping) else {}),
+        native_groth16=_bounded_mapping(native if isinstance(native, Mapping) else {}),
+        test_certificate_authority=_bounded_mapping(
+            certificate if isinstance(certificate, Mapping) else {}
+        ),
+        inventory=_bounded_mapping(inventory if isinstance(inventory, Mapping) else {}),
+        activation_blocker_codes=blockers,
+        ordinary_default_composition_usable=bool(
+            composition.get("ordinary_default_composition_usable")
+            if isinstance(composition, Mapping)
+            else False
+        ),
+        ordinary_warm_skip_path_complete=bool(
+            inventory.get("ordinary_warm_skip_path_complete")
+        )
+        and cert_ready,
+        native_groth16_installed=bool(inventory.get("native_groth16_installed")),
+        native_groth16_ready=bool(inventory.get("native_groth16_ready")),
+        test_certificate_authority_ready=cert_ready,
+        process_started=bool(
+            native.get("process_started") if isinstance(native, Mapping) else False
+        ),
+        source=source,
+        reason_code=reason
+        or str(getattr(resolved_services, "reason_code", "") or "")[:96],
+    )
+
+
+def proof_reuse_runtime_activation_report_from_root(
+    root_path: str | os.PathLike[str],
+    *,
+    mode: Any = None,
+    cache_root: str | os.PathLike[str] | None = None,
+    environ: Mapping[str, str] | None = None,
+    installer: Any = None,
+) -> ProofReuseRuntimeActivationReport:
+    """Convenience wrapper that composes defaults under ``root_path``."""
+
+    root = Path(root_path)
+    resolved_cache = (
+        Path(cache_root) if cache_root is not None else root / ".proof-reuse-cache"
+    )
+    return proof_reuse_runtime_activation_report(
+        mode=mode,
+        root_path=root,
+        cache_root=resolved_cache,
+        environ=environ,
+        installer=installer,
+        compose_if_missing=True,
+    )
+
+
 __all__ = [
     "MAX_REASON_CODES",
     "PROOF_REUSE_METRICS_INTERFACE",
     "PROOF_REUSE_METRICS_SCHEMA",
+    "PROOF_REUSE_RUNTIME_ACTIVATION_REPORT_INTERFACE",
+    "PROOF_REUSE_RUNTIME_ACTIVATION_REPORT_SCHEMA",
     "ProofReuseMetricsSnapshot",
     "ProofReuseOutcome",
+    "ProofReuseRuntimeActivationReport",
     "ProofReuseSessionMetrics",
+    "proof_reuse_runtime_activation_report",
+    "proof_reuse_runtime_activation_report_from_root",
 ]
