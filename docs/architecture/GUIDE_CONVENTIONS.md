@@ -373,9 +373,10 @@ Minimum contents:
 5. **Capability honesty** — optional paths described as optional; no universal
    hardware/provider claims without probes.
 
-Example skeleton:
+Example skeleton (outer fence uses four backticks so an inner command block
+can nest safely):
 
-```markdown
+````markdown
 ## Verification
 
 ```bash
@@ -387,7 +388,7 @@ rg -n 'symbol_or_operation' path/to/primary_module.py
 
 Review: status/audience/scope present; Source anchors current; Rationale,
 alternatives, consequences, and failure semantics present; no invented APIs.
-```
+````
 
 Supervisor-facing hubs may also require
 `scripts/docs/check_agent_supervisor_docs.py` when that script’s scope includes
@@ -397,7 +398,7 @@ the page.
 
 ## 12. Compact template (copy-paste)
 
-```markdown
+````markdown
 # <Title>
 
 **Status:** Current  
@@ -458,7 +459,7 @@ git diff --check
 ## Related guides and ADRs
 
 - …
-```
+````
 
 ---
 
