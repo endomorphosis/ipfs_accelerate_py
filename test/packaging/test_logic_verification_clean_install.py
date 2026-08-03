@@ -208,11 +208,13 @@ def module_to_source_path(module: str) -> Path:
 
 def test_offline_toolchain_lock_contract() -> None:
     lock = _load_lock()
-    assert lock["schema_version"] == LOCK_SCHEMA
-    assert lock["interface"] == LOCK_INTERFACE
+    # The deployment lock is now v2, but it deliberately embeds the v1
+    # offline-lock contract that this clean-install suite certifies.
+    assert lock["offline_toolchain_lock_schema"] == LOCK_SCHEMA
+    assert lock["offline_toolchain_lock_interface"] == LOCK_INTERFACE
     assert lock["packaging_gate_interface"] == PACKAGING_GATE_INTERFACE
-    assert lock["goal_id"] == GOAL_ID
-    assert lock["task_id"] == TASK_ID
+    assert lock["predecessor_goal_id"] == GOAL_ID
+    assert lock["predecessor_task_id"] == TASK_ID
 
     policy = lock["offline_verification_policy"]
     for key in (
@@ -616,7 +618,7 @@ def test_offline_verification_policy_forbids_network_install_download() -> None:
 
 def test_packaging_gate_interfaces_are_declared() -> None:
     lock = _load_lock()
-    assert lock["interface"] == LOCK_INTERFACE
+    assert lock["offline_toolchain_lock_interface"] == LOCK_INTERFACE
     assert lock["packaging_gate_interface"] == PACKAGING_GATE_INTERFACE
     ts_packages = lock["typescript_packages"]
     assert ts_packages
