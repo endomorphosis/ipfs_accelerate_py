@@ -18,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+    ProcessGroupCancelled,
     run_process_group_stream,
 )
 
@@ -199,6 +200,62 @@ def test_silent_process_hits_progress_idle_timeout(tmp_path: Path) -> None:
                 termination_grace_seconds=0.05,
             )
     assert getattr(raised.value, "timeout_reason") == "progress_idle_timeout"
+
+
+def test_streamed_runner_cancellation_fences_owned_process_group(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "provider.pid"
+    log_path = tmp_path / "cancelled.log"
+    script = (
+        "import os, pathlib, time; "
+        f"pathlib.Path({str(pid_path)!r}).write_text(str(os.getpid())); "
+        "time.sleep(60)"
+    )
+    termination_calls: list[tuple[int, dict[str, object]]] = []
+    real_terminate_pid_tree = supervisor_runtime.terminate_pid_tree
+
+    def terminate_pid_tree(
+        pid: int,
+        **kwargs: object,
+    ) -> bool:
+        termination_calls.append((pid, dict(kwargs)))
+        return real_terminate_pid_tree(pid, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "terminate_pid_tree",
+        terminate_pid_tree,
+    )
+    provider_pid = 0
+    with log_path.open("w", encoding="utf-8") as log_fh:
+        with pytest.raises(ProcessGroupCancelled) as raised:
+            run_process_group_stream(
+                [sys.executable, "-c", script],
+                cwd=tmp_path,
+                stdout=log_fh,
+                timeout_seconds=60.0,
+                cancel_requested=lambda: (
+                    "canonical_task_completed" if pid_path.exists() else ""
+                ),
+                progress_poll_seconds=0.02,
+                termination_grace_seconds=0.05,
+            )
+    provider_pid = int(pid_path.read_text(encoding="utf-8"))
+    assert raised.value.reason == "canonical_task_completed"
+    assert termination_calls == [
+        (
+            provider_pid,
+            {
+                "grace_seconds": 0.05,
+                "freeze_first": True,
+                "require_gone": True,
+                "owned_process_group_id": provider_pid,
+            },
+        )
+    ]
+    assert not pid_alive(provider_pid)
 
 
 @pytest.mark.skipif(

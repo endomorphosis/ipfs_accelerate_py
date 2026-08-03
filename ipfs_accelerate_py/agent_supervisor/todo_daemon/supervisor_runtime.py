@@ -829,6 +829,14 @@ def _captured_process_text(value: Any) -> str:
     return str(value)
 
 
+class ProcessGroupCancelled(RuntimeError):
+    """Raised after a cancellation predicate fences an owned process group."""
+
+    def __init__(self, reason: str = "cancellation_requested") -> None:
+        self.reason = str(reason or "cancellation_requested")
+        super().__init__(self.reason)
+
+
 def run_process_group_capture(
     command: Sequence[str],
     *,
@@ -920,6 +928,8 @@ def run_process_group_stream(
     max_timeout_seconds: float | None = None,
     progress_paths: Sequence[Path | str] = (),
     on_progress: Callable[[Mapping[str, Any]], None] | None = None,
+    cancel_requested: Callable[[], bool | str] | None = None,
+    cancellation_reason: str = "cancellation_requested",
     progress_poll_seconds: float = 1.0,
     termination_grace_seconds: float = 5.0,
     text: bool = True,
@@ -942,7 +952,9 @@ def run_process_group_stream(
     hard_timeout: float | None = None
     poll_seconds: float | None = None
     monitor_progress = (
-        progress_timeout_seconds is not None or on_progress is not None
+        progress_timeout_seconds is not None
+        or on_progress is not None
+        or cancel_requested is not None
     )
     if progress_timeout_seconds is not None:
         idle_timeout = float(progress_timeout_seconds)
@@ -1050,6 +1062,15 @@ def run_process_group_stream(
 
             while process.poll() is None:
                 now = time.monotonic()
+                if cancel_requested is not None:
+                    cancellation = cancel_requested()
+                    if cancellation:
+                        reason = (
+                            cancellation
+                            if isinstance(cancellation, str)
+                            else cancellation_reason
+                        )
+                        raise ProcessGroupCancelled(str(reason))
                 timeout_reason = ""
                 if now >= hard_deadline:
                     timeout_reason = (
@@ -1117,6 +1138,23 @@ def run_process_group_stream(
                             pass
             if input_thread is not None:
                 input_thread.join(timeout=0.1)
+    except ProcessGroupCancelled:
+        # A canonical-board cancellation is an authority hand-off, so the
+        # provider tree must be unable to execute before the caller can release
+        # its task/resource claims. Freeze first to close TERM-handler fork
+        # races, include the stable process group owned by the session leader,
+        # and do not return until the strict fence proves every member gone.
+        terminate_pid_tree(
+            process.pid,
+            grace_seconds=max(0.0, float(termination_grace_seconds)),
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=process.pid,
+        )
+        # The strict fence treats zombies as non-executable; reap the direct
+        # child before propagating cancellation so no process resource leaks.
+        process.wait()
+        raise
     except subprocess.TimeoutExpired as exc:
         terminate_pid_tree(
             process.pid,
