@@ -985,7 +985,7 @@ or write authority.
 
 ## KITA-031 Implement signed UCAN verification, attenuation, revocation, replay, and key lifecycle
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
