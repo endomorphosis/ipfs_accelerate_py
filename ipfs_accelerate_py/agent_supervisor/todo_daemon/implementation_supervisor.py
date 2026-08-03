@@ -85,6 +85,7 @@ from .implementation_daemon import (
     load_json_dict,
     normalize_focus_tracks,
     normalize_implementation_protected_paths,
+    normalize_llm_merge_resolver_command,
     normalize_relative_path_list,
     parse_task_file,
     parse_timestamp,
@@ -13215,7 +13216,9 @@ def supervisor_config_from_args(
     effective_repo_root = (repo_root or REPO_ROOT).resolve()
     reconciliation_only = bool(args.reconciliation_only)
     implement = bool(args.implement and not reconciliation_only)
-    llm_merge_resolver_command = args.llm_merge_resolver_command
+    llm_merge_resolver_command = normalize_llm_merge_resolver_command(
+        args.llm_merge_resolver_command
+    )
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
     production_provider_policy = str(

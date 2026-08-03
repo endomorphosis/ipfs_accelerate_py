@@ -304,6 +304,33 @@ def test_daemon_explicit_merge_resolver_overrides_default(tmp_path: Path, monkey
     assert daemon.llm_merge_resolver_command == "explicit-resolver"
 
 
+def test_daemon_and_supervisor_accept_explicit_merge_resolver_disable_sentinel(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
+        "disabled",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+    )
+    supervisor_args = parse_supervisor_args([])
+    supervisor_config = supervisor_config_from_args(
+        supervisor_args,
+        repo_root=tmp_path,
+    )
+
+    assert default_llm_merge_resolver_command() == ""
+    assert daemon.llm_merge_resolver_command == ""
+    assert parse_args([]).llm_merge_resolver_command == ""
+    assert supervisor_config.llm_merge_resolver_command == ""
+
+
 def test_daemon_resolves_relative_worktree_root_for_runner_workspace(tmp_path: Path, monkeypatch):
     for name in (
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",

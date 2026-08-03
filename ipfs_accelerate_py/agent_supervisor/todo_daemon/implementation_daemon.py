@@ -530,6 +530,9 @@ PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
 PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@2"
 )
+PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@3"
+)
 PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-authority@1"
 )
@@ -1069,6 +1072,18 @@ DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS = 3600.0
 PROTECTED_INCIDENT_REEVALUATION_WAKE_KINDS = frozenset(
     {"policy", "repository"}
 )
+LLM_MERGE_RESOLVER_DISABLED_VALUES = frozenset(
+    {"0", "disabled", "false", "none", "off"}
+)
+
+
+def normalize_llm_merge_resolver_command(value: Any) -> str:
+    """Normalize an explicit resolver command, including a disable sentinel."""
+
+    command = str(value or "").strip()
+    if command.lower() in LLM_MERGE_RESOLVER_DISABLED_VALUES:
+        return ""
+    return command
 
 
 def default_llm_merge_resolver_command() -> str:
@@ -1081,7 +1096,7 @@ def default_llm_merge_resolver_command() -> str:
 
     configured = os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "").strip()
     if configured:
-        return configured
+        return normalize_llm_merge_resolver_command(configured)
     return llm_merge_resolver_fallback_command(python_executable=sys.executable)
 
 
@@ -3915,7 +3930,9 @@ class PortalImplementationDaemon:
         self.llm_merge_resolver_command = (
             default_llm_merge_resolver_command()
             if llm_merge_resolver_command is None
-            else llm_merge_resolver_command
+            else normalize_llm_merge_resolver_command(
+                llm_merge_resolver_command
+            )
         ).strip()
         self.llm_merge_resolver_timeout_seconds = llm_merge_resolver_timeout_seconds
         self.merge_reconciliation_max_merges = (
@@ -26596,8 +26613,9 @@ class PortalImplementationDaemon:
         set, that set must remain inside the task-owned scope, and requested
         ceilings cannot exceed the daemon's immutable process bounds. The
         resulting policy uses measured sizes, not the looser declared
-        ceilings, and does not enable generated, binary, archive, or other
-        content exemptions.
+        ceilings. Schema v2 may authorize binary material and schema v3 may
+        additionally authorize archives, but only after exact changed-path
+        equality and immutable task-scope checks below.
         """
 
         defaults = {
@@ -26792,6 +26810,7 @@ class PortalImplementationDaemon:
             <= DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
             and largest_file_bytes
             <= MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+            and not declared_artifact_envelope
         ):
             if (
                 materialized_bytes
@@ -26843,18 +26862,29 @@ class PortalImplementationDaemon:
         }
         if envelope_schema == PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
             expected_fields.add("allow_binary")
+        if envelope_schema == PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA:
+            expected_fields.update(("allow_binary", "allow_archives"))
         if type(envelope) is not dict or set(envelope) != expected_fields:
             return defaults
         if envelope_schema not in {
             PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
             PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
+            PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA,
         }:
             return defaults
         allow_binary = False
-        if envelope_schema == PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
+        allow_archives = False
+        if envelope_schema in {
+            PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
+            PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA,
+        }:
             if type(envelope.get("allow_binary")) is not bool:
                 return defaults
             allow_binary = envelope["allow_binary"]
+        if envelope_schema == PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA:
+            if type(envelope.get("allow_archives")) is not bool:
+                return defaults
+            allow_archives = envelope["allow_archives"]
 
         raw_paths = envelope.get("paths")
         if type(raw_paths) is not list or not raw_paths:
@@ -26963,6 +26993,7 @@ class PortalImplementationDaemon:
         return {
             **measured_limits,
             "allow_binary": allow_binary,
+            "allow_archives": allow_archives,
         }
 
     def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
@@ -28317,6 +28348,10 @@ class PortalImplementationDaemon:
                 }
             },
         }
+        if local_envelope_limits.get("allow_binary") is True:
+            local_policy_limits["allow_binary"] = True
+        if local_envelope_limits.get("allow_archives") is True:
+            local_policy_limits["allow_archives"] = True
         policy_version = "strict-proposal-v2+local-envelope-v2"
         if not task_allows_scope_expansion:
             policy_version += "+exact-task-scope-v1"
@@ -28339,11 +28374,12 @@ class PortalImplementationDaemon:
             declared_artifact_envelope
             and "max_file_bytes" in local_envelope_limits
         ):
-            policy_version += (
-                "+declared-binary-artifact-envelope-v2"
-                if local_envelope_limits.get("allow_binary")
-                else "+declared-artifact-envelope-v1"
-            )
+            if local_envelope_limits.get("allow_archives"):
+                policy_version += "+declared-binary-archive-artifact-envelope-v3"
+            elif local_envelope_limits.get("allow_binary"):
+                policy_version += "+declared-binary-artifact-envelope-v2"
+            else:
+                policy_version += "+declared-artifact-envelope-v1"
             # The envelope helper admitted only exact set equality between
             # these changed paths and the identity-bound task outputs.
             policy_allowed_paths = changed_paths
