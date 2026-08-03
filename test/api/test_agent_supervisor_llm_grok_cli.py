@@ -7,7 +7,9 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
+import uuid
 from pathlib import Path
 
 import pytest
@@ -303,6 +305,21 @@ def test_docker_grok_command_masks_providers_and_mounts_only_workspace_rw(
         "--rm",
     ]
     assert command[command.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
+    tmpfs_specs = {
+        command[index + 1]
+        for index, item in enumerate(command[:-1])
+        if item == "--tmpfs"
+    }
+    assert tmpfs_specs == {
+        (
+            "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+        (
+            "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+    }
     assert "--cap-drop=ALL" in command
     assert "--security-opt=no-new-privileges" in command
     assert command[command.index("--name") + 1].startswith(
@@ -362,6 +379,77 @@ def test_docker_grok_command_masks_providers_and_mounts_only_workspace_rw(
     assert command[image_index + 1] == "/opt/ipfs-accelerate/grok"
     grok_cli_runner._restore_mask_permissions(mask_root)
     shutil.rmtree(mask_root)
+
+
+def test_docker_command_reads_mode_0600_prompt_as_runtime_uid(tmp_path) -> None:
+    docker_bin = grok_cli_runner._docker_isolation_binary()
+    if not docker_bin:
+        pytest.skip("pinned local Docker isolation image is unavailable")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    grok_home = tmp_path / "grok-home"
+    grok_home.mkdir(mode=0o700)
+    docker_config = tmp_path / "docker-config"
+    docker_config.mkdir(mode=0o700)
+    mask_root = tmp_path / "provider-masks"
+    cidfile = tmp_path / "container.cid"
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=tmp_path,
+        prefix="asref-grok-prompt-",
+        suffix=".txt",
+        delete=False,
+    ) as handle:
+        handle.write("private prompt is readable\n")
+        prompt_path = Path(handle.name)
+    assert prompt_path.stat().st_mode & 0o777 == 0o600
+
+    child_env = {
+        "HOME": str(grok_home),
+        "GROK_HOME": str(grok_home),
+        "PATH": "/usr/bin:/bin",
+    }
+    image_id = grok_cli_runner._docker_isolation_image_id(
+        docker_bin,
+        docker_config=docker_config,
+    )
+    command = grok_cli_runner._docker_grok_command(
+        grok_command=["/usr/bin/cat", str(prompt_path)],
+        grok_bin=Path("/usr/bin/cat"),
+        workspace=workspace,
+        prompt_path=prompt_path,
+        grok_home=grok_home,
+        base_env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
+        child_env=child_env,
+        denied_paths=(),
+        mask_root=mask_root,
+        docker_config=docker_config,
+        container_name=(
+            f"ipfs-accelerate-grok-{os.getpid()}-{uuid.uuid4().hex}"
+        ),
+        cidfile=cidfile,
+        docker_bin=docker_bin,
+        isolation_image=image_id,
+    )
+    try:
+        completed = subprocess.run(
+            command,
+            env=grok_cli_runner._docker_control_env(child_env),
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert completed.stdout == "private prompt is readable\n"
+    finally:
+        grok_cli_runner._restore_mask_permissions(mask_root)
+        shutil.rmtree(mask_root, ignore_errors=True)
+        prompt_path.unlink(missing_ok=True)
+        cidfile.unlink(missing_ok=True)
 
 
 def test_docker_control_plane_ignores_hostile_redirect_and_image_override(

@@ -1507,9 +1507,15 @@ def _docker_grok_command(
         "--interactive",
         "--read-only",
         "--tmpfs",
-        "/tmp:rw,nosuid,nodev,noexec,mode=0700",
+        (
+            "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
         "--tmpfs",
-        "/var/tmp:rw,nosuid,nodev,noexec,mode=0700",
+        (
+            "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
         "--name",
         container_name,
         "--cidfile",
