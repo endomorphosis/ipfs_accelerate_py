@@ -16,11 +16,18 @@ from cryptography.hazmat.primitives.serialization import (
     NoEncryption,
     PrivateFormat,
 )
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    implementation_supervisor_command,
+)
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     canonical_json_bytes,
     content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import legacy_landed_review as legacy
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    PortalImplementationSupervisor,
+    PortalSupervisorConfig,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.legacy_landed_attestation import (
     LegacyLandedReviewAttestation,
     legacy_landed_review_key_id,
@@ -488,3 +495,66 @@ def test_authority_projection_cannot_be_upgraded(tmp_path: Path) -> None:
     tampered["completion_authoritative"] = True
     with pytest.raises(ValueError):
         LegacyLandedReviewAttestation.from_dict(tampered)
+
+
+def test_bundle_and_child_supervisor_forward_only_two_explicit_legacy_paths(
+    tmp_path: Path,
+) -> None:
+    policy_path = tmp_path / "operator-policy.json"
+    key_path = tmp_path / "operator-key.ed25519"
+    common = {
+        "todo_path": Path("runtime.todo.md"),
+        "state_dir": Path("state"),
+        "worktree_root": Path("worktrees"),
+        "state_prefix": "ase-legacy",
+        "task_prefix": "## ASE-",
+        "implement": True,
+        "daemon_interval": 5,
+        "stale_seconds": 30,
+        "check_interval": 2,
+        "watchdog_startup_grace_seconds": None,
+        "max_restarts": 1,
+        "implementation_timeout": 300,
+    }
+    default_command = implementation_supervisor_command(**common)
+    assert "--legacy-landed-review-policy-path" not in default_command
+    assert "--legacy-landed-review-key-path" not in default_command
+
+    command = implementation_supervisor_command(
+        **common,
+        legacy_landed_review_policy_path=policy_path,
+        legacy_landed_review_key_path=key_path,
+    )
+    assert command[command.index("--legacy-landed-review-policy-path") + 1] == str(
+        policy_path
+    )
+    assert command[command.index("--legacy-landed-review-key-path") + 1] == str(
+        key_path
+    )
+    with pytest.raises(ValueError):
+        implementation_supervisor_command(
+            **common,
+            legacy_landed_review_policy_path=policy_path,
+        )
+
+    config = PortalSupervisorConfig(
+        todo_path=tmp_path / "runtime.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        state_dir=tmp_path,
+        implement=True,
+        legacy_landed_review_policy_path=policy_path,
+        legacy_landed_review_key_path=key_path,
+    )
+    daemon_command = PortalImplementationSupervisor(config)._build_daemon_command()
+    assert daemon_command[
+        daemon_command.index("--legacy-landed-review-policy-path") + 1
+    ] == str(policy_path)
+    assert daemon_command[
+        daemon_command.index("--legacy-landed-review-key-path") + 1
+    ] == str(key_path)
+
+    incomplete = replace(config, legacy_landed_review_key_path=None)
+    with pytest.raises(ValueError):
+        PortalImplementationSupervisor(incomplete)._build_daemon_command()
