@@ -7,6 +7,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    configured_board_scheduler as scheduler_module,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
     ConfiguredBoardError,
     configured_board_launch_plan,
@@ -208,7 +211,164 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
         board.protected_paths
     )
     assert plan["environment"] == {
-        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra"
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+    }
+
+
+def test_ordered_provider_contract_requires_complete_unambiguous_fields(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["provider"] = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.5",
+        "fallback_provider_id": "codex",
+        "max_concurrency": 2,
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="fallback_model_id",
+    ):
+        load_configured_board(config_path, repo_root=repo)
+
+    payload["provider"]["fallback_model_id"] = "gpt-5.6-terra"
+    payload["provider"]["provider_id"] = "auto"
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="cannot be mixed",
+    ):
+        load_configured_board(config_path, repo_root=repo)
+
+
+def test_legacy_provider_launch_environment_remains_backward_compatible(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    board = load_configured_board(config_path, repo_root=repo)
+
+    plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=True,
+        stamp="20260803T000000Z",
+    )
+
+    assert plan["environment"] == {
+        scheduler_module.PROVIDER_ENV: "codex",
+        scheduler_module.CODEX_MODEL_ENV: "test-model",
+    }
+
+
+def test_launch_config_overrides_ambient_provider_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["provider"] = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-test",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "codex-test",
+        "max_concurrency": 2,
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _git(repo, "add", "config/scheduler.json")
+    _git(repo, "commit", "-m", "configure ordered provider route")
+    observed: dict[str, str] = {}
+    controlled_names = (
+        scheduler_module.PROVIDER_ENV,
+        scheduler_module.FALLBACK_PROVIDER_ENV,
+        scheduler_module.GROK_MODEL_ENV,
+        scheduler_module.CODEX_MODEL_ENV,
+    )
+    for name in controlled_names:
+        monkeypatch.setenv(name, "ambient-value")
+
+    def fake_multi_supervisor_main(_argv: list[str]) -> int:
+        observed.update({name: scheduler_module.os.environ[name] for name in controlled_names})
+        return 0
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner.main",
+        fake_multi_supervisor_main,
+    )
+
+    result = scheduler_module.main(
+        [
+            "--repo-root",
+            str(repo),
+            "--config",
+            str(config_path),
+            "launch",
+            "--implement",
+            "--foreground",
+            "--duration-seconds",
+            "1",
+        ]
+    )
+
+    assert result == 0
+    assert observed == {
+        scheduler_module.PROVIDER_ENV: "grok_cli",
+        scheduler_module.FALLBACK_PROVIDER_ENV: "codex",
+        scheduler_module.GROK_MODEL_ENV: "grok-test",
+        scheduler_module.CODEX_MODEL_ENV: "codex-test",
+    }
+
+
+def test_sparse_legacy_launch_clears_stale_ordered_route_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["provider"] = {"max_concurrency": 2}
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _git(repo, "add", "config/scheduler.json")
+    _git(repo, "commit", "-m", "use sparse legacy provider config")
+    for name in scheduler_module.SCHEDULER_PROVIDER_ENV_NAMES:
+        monkeypatch.setenv(name, "stale-ordered-value")
+    observed: dict[str, str | None] = {}
+
+    def fake_multi_supervisor_main(_argv: list[str]) -> int:
+        observed.update(
+            {
+                name: scheduler_module.os.environ.get(name)
+                for name in scheduler_module.SCHEDULER_PROVIDER_ENV_NAMES
+            }
+        )
+        return 0
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner.main",
+        fake_multi_supervisor_main,
+    )
+
+    result = scheduler_module.main(
+        [
+            "--repo-root",
+            str(repo),
+            "--config",
+            str(config_path),
+            "launch",
+            "--implement",
+            "--foreground",
+            "--duration-seconds",
+            "1",
+        ]
+    )
+
+    assert result == 0
+    assert observed == {
+        name: None for name in scheduler_module.SCHEDULER_PROVIDER_ENV_NAMES
     }
 
 
