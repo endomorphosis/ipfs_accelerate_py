@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
+    PortalTaskState,
     TodoImplementationDaemon,
     parse_task_file,
 )
@@ -141,6 +146,123 @@ def test_no_change_acceptance_recovers_original_merged_implementation_binding(
         "provider_review",
     }
     assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_no_change_retry_reruns_fresh_post_merge_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    repo = tmp_path / "repo"
+    _initialize_repo(repo)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## AUTO-124 Revalidate merged implementation
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Outputs: feature.txt
+- Validation: test -f feature.txt
+- Acceptance: Bind a fresh validation receipt to the current merge target.
+""",
+        encoding="utf-8",
+    )
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/auto-124")
+    (repo / "feature.txt").write_text("implemented\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-124: implement feature")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", "implementation/auto-124")
+    merge_commit = _git(repo, "rev-parse", "HEAD")
+    merge_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## AUTO-",
+        implement=True,
+        implementation_command="true",
+        worktree_submodule_paths=[],
+    )
+    task = parse_task_file(todo_path, task_header_prefix="## AUTO-")[0]
+    daemon._register_task_identities([task])
+    historical_validation = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "pre-merge-validation-evidence@1"
+        ),
+        "task_id": task.task_id,
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "selection": {"scope": "pre_merge"},
+        "target_commit": implementation_commit,
+    }
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "attempt": 1,
+            "implementation_commit": implementation_commit,
+            "validation_result": historical_validation,
+            "merge_result": {"merged": True, "merge_commit": merge_commit},
+        },
+    )
+    daemon.apply_post_merge_authoritative_acceptance(
+        task,
+        implementation_commit=implementation_commit,
+        merge_commit=merge_commit,
+        repository_tree_id=f"git-tree:{merge_tree}",
+        validation_result=historical_validation,
+        model_invocation_observed=True,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=PortalTaskState(),
+        attempt=2,
+        started_at="2026-08-03T00:00:00+00:00",
+        log_path=state_dir / "implementation.log",
+        prompt="Verify the already-landed implementation.",
+    )
+
+    acceptance = result["acceptance_result"]
+    assert result["implementation_binding_recovery"]["recovered"] is True
+    assert acceptance["completion_authoritative"] is False
+    assert acceptance["pending_gates"] == ["provider_review"]
+    receipt = acceptance["receipt"]
+    for gate_kind in ("freshness", "semantic"):
+        evidence = receipt["gate_evidence"][gate_kind]
+        assert evidence["validation_scope"] == "post_merge"
+        assert evidence["passed"] is True
+        assert evidence["target_commit"] == merge_commit
+        assert evidence["repository_tree_id"] == f"git-tree:{merge_tree}"
+        assert evidence["validation_receipt_id"]
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event["type"] == "post_merge_validation_finished"
+        and event["task_id"] == task.task_id
+        and event["passed"] is True
+        for event in events
+    )
 
 
 def test_no_change_acceptance_recovery_rejects_tree_and_identity_ambiguity(

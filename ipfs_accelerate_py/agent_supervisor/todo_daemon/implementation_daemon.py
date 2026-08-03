@@ -12743,17 +12743,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 legacy_landed_result.to_dict()
                             ),
                         }
-                        acceptance_validation_result = (
-                            self._validate_exact_post_merge_commit(
-                                task,
-                                target_commit=completion_commit,
-                                repository_tree_id=(
-                                    f"git-tree:{completion_tree}"
-                                    if completion_tree
-                                    else ""
-                                ),
-                            )
-                        )
                         model_invocation_observed = True
                         state.last_implementation_commit = (
                             acceptance_implementation_commit
@@ -12781,6 +12770,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 "proof_authoritative": False,
                             },
                         )
+                # Recovered validation is historical evidence for the
+                # original implementation commit.  It cannot prove that the
+                # current merge target is still fresh or semantically valid.
+                # Always rerun the declared commands, uncached and bound to
+                # the exact current merge commit/tree, before attempting
+                # authoritative acceptance of an already-landed candidate.
+                if (
+                    not acceptance_result
+                    and acceptance_implementation_commit
+                ):
+                    acceptance_validation_result = (
+                        self._validate_exact_post_merge_commit(
+                            task,
+                            target_commit=completion_commit,
+                            repository_tree_id=(
+                                f"git-tree:{completion_tree}"
+                                if completion_tree
+                                else ""
+                            ),
+                        )
+                    )
             if not acceptance_result:
                 acceptance_result = (
                     self.apply_post_merge_authoritative_acceptance(
