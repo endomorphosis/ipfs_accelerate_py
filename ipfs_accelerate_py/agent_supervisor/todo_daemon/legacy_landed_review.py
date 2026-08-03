@@ -945,31 +945,143 @@ def _diff_boundaries(data: bytes) -> set[int]:
     return boundaries
 
 
-def _chunk_bytes(
-    data: bytes,
+def _leaf_body(
     *,
-    max_leaf_tokens: int,
+    leaf_index: int,
+    source_index: int,
+    source_kind: str,
+    path: str,
+    data: bytes,
+    start: int,
+    end: int,
+    alignment: str,
+) -> dict[str, Any]:
+    encoded = base64.b64encode(data[start:end]).decode("ascii")
+    body = {
+        "schema": LEGACY_LANDED_REVIEW_LEAF_SCHEMA,
+        "leaf_index": leaf_index,
+        "source_index": source_index,
+        "source_kind": source_kind,
+        "path": path,
+        "byte_start": start,
+        "byte_end": end,
+        "byte_length": end - start,
+        "payload_encoding": "base64",
+        "payload": encoded,
+        "payload_sha256": _sha256(data[start:end]),
+        # Retained as a useful payload-only diagnostic. Admission additionally
+        # checks the complete request envelope below.
+        "token_upper_bound": len(encoded),
+        "alignment": alignment,
+        "completion_authoritative": False,
+        "proof_authoritative": False,
+    }
+    return {**body, "leaf_id": content_identity(body)}
+
+
+_CID_LENGTH_PLACEHOLDER: Final = content_identity(
+    {"legacy_landed_review": "fixed-length-placeholder"}
+)
+
+
+def _leaf_request_fits(
+    *,
+    policy: LegacyLandedReviewPolicy,
+    task: LegacyTaskPolicy,
+    leaf: Mapping[str, Any],
+) -> bool:
+    manifest_placeholder = {
+        "manifest_id": _CID_LENGTH_PLACEHOLDER,
+        "merkle_root": _CID_LENGTH_PLACEHOLDER,
+    }
+    return all(
+        _leaf_review_request(
+            policy=policy,
+            task=task,
+            manifest=manifest_placeholder,
+            leaf=leaf,
+            provider=provider,
+        ).token_upper_bound
+        <= policy.max_leaf_tokens
+        for provider in (policy.grok, policy.codex)
+    )
+
+
+def _bounded_source_chunks(
+    *,
+    policy: LegacyLandedReviewPolicy,
+    task: LegacyTaskPolicy,
+    data: bytes,
+    source_index: int,
+    source_kind: str,
+    path: str,
+    first_leaf_index: int,
     preferred_boundaries: set[int],
 ) -> list[tuple[int, int, str]]:
-    # Base64 is the canonical provider-safe byte representation.  Its length
-    # is a conservative token upper bound, so three raw bytes consume at most
-    # four of the 4096 leaf-token budget.
-    raw_budget = max(1, (max_leaf_tokens // 4) * 3)
+    """Fit the exact canonical provider envelope, not only leaf payload."""
+
     if not data:
+        leaf = _leaf_body(
+            leaf_index=first_leaf_index,
+            source_index=source_index,
+            source_kind=source_kind,
+            path=path,
+            data=data,
+            start=0,
+            end=0,
+            alignment="empty",
+        )
+        if not _leaf_request_fits(policy=policy, task=task, leaf=leaf):
+            raise LegacyLandedReviewError("legacy_provider_request_overhead_exceeds_budget")
         return [(0, 0, "empty")]
     chunks: list[tuple[int, int, str]] = []
     start = 0
     while start < len(data):
-        hard_end = min(len(data), start + raw_budget)
-        candidates = [
+        leaf_index = first_leaf_index + len(chunks)
+        low = start + 1
+        high = len(data)
+        best = start
+        # Canonical JSON/base64 size is monotone in payload length. Binary
+        # search therefore yields the largest request admitted by both exact
+        # provider/model envelopes.
+        while low <= high:
+            candidate_end = (low + high) // 2
+            candidate = _leaf_body(
+                leaf_index=leaf_index,
+                source_index=source_index,
+                source_kind=source_kind,
+                path=path,
+                data=data,
+                start=start,
+                end=candidate_end,
+                alignment="hard_limit",
+            )
+            if _leaf_request_fits(policy=policy, task=task, leaf=candidate):
+                best = candidate_end
+                low = candidate_end + 1
+            else:
+                high = candidate_end - 1
+        if best <= start:
+            raise LegacyLandedReviewError("legacy_provider_request_overhead_exceeds_budget")
+        aligned = [
             boundary
             for boundary in preferred_boundaries
-            if start < boundary <= hard_end
+            if start < boundary <= best
         ]
-        end = max(candidates) if candidates else hard_end
-        alignment = "preferred_boundary" if end in preferred_boundaries else "hard_limit"
-        if end <= start:
-            raise LegacyLandedReviewError("legacy_manifest_chunker_stalled")
+        end = max(aligned) if aligned else best
+        alignment = "preferred_boundary" if aligned else "hard_limit"
+        final_leaf = _leaf_body(
+            leaf_index=leaf_index,
+            source_index=source_index,
+            source_kind=source_kind,
+            path=path,
+            data=data,
+            start=start,
+            end=end,
+            alignment=alignment,
+        )
+        if not _leaf_request_fits(policy=policy, task=task, leaf=final_leaf):
+            raise LegacyLandedReviewError("legacy_provider_request_budget_exceeded")
         chunks.append((start, end, alignment))
         start = end
     return chunks
@@ -1033,35 +1145,30 @@ def build_legacy_landed_byte_manifest(
             if kind == "historical_diff"
             else _python_ast_boundaries(data) if path.endswith(".py") else set()
         )
-        chunks = _chunk_bytes(
-            data,
-            max_leaf_tokens=policy.max_leaf_tokens,
+        chunks = _bounded_source_chunks(
+            policy=policy,
+            task=task,
+            data=data,
+            source_index=source_index,
+            source_kind=kind,
+            path=path,
+            first_leaf_index=len(leaves),
             preferred_boundaries=boundaries,
         )
         first_leaf = len(leaves)
         for start, end, alignment in chunks:
-            encoded = base64.b64encode(data[start:end]).decode("ascii")
-            token_upper_bound = len(encoded)
-            if token_upper_bound > policy.max_leaf_tokens:
-                raise LegacyLandedReviewError("legacy_manifest_leaf_budget_exceeded")
-            leaf_body = {
-                "schema": LEGACY_LANDED_REVIEW_LEAF_SCHEMA,
-                "leaf_index": len(leaves),
-                "source_index": source_index,
-                "source_kind": kind,
-                "path": path,
-                "byte_start": start,
-                "byte_end": end,
-                "byte_length": end - start,
-                "payload_encoding": "base64",
-                "payload": encoded,
-                "payload_sha256": _sha256(data[start:end]),
-                "token_upper_bound": token_upper_bound,
-                "alignment": alignment,
-                "completion_authoritative": False,
-                "proof_authoritative": False,
-            }
-            leaves.append({**leaf_body, "leaf_id": content_identity(leaf_body)})
+            leaves.append(
+                _leaf_body(
+                    leaf_index=len(leaves),
+                    source_index=source_index,
+                    source_kind=kind,
+                    path=path,
+                    data=data,
+                    start=start,
+                    end=end,
+                    alignment=alignment,
+                )
+            )
         source_body = {
             "source_index": source_index,
             "source_kind": kind,
@@ -1246,6 +1353,28 @@ class LegacyLeafReviewRequest:
     request_id: str
     payload: dict[str, Any]
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return the exact adapter envelope sent as the provider prompt."""
+
+        return {
+            "schema": "ipfs_accelerate_py/agent-supervisor/legacy-landed-provider-envelope@1",
+            "request_id": self.request_id,
+            "role": self.role,
+            "provider": self.provider,
+            "model": self.model,
+            "payload": self.payload,
+        }
+
+    @property
+    def canonical_prompt(self) -> bytes:
+        return canonical_json_bytes(self.to_dict())
+
+    @property
+    def token_upper_bound(self) -> int:
+        # The prompt is ASCII DAG-JSON (binary source is base64). A byte count
+        # is a conservative upper bound for byte-fallback BPE tokenizers.
+        return len(self.canonical_prompt)
+
 
 @dataclass(frozen=True, slots=True)
 class LegacyProviderObservation:
@@ -1298,13 +1427,21 @@ def _leaf_review_request(
         "manifest_merkle_root": manifest["merkle_root"],
         "leaf": dict(leaf),
         "role": provider.role,
+        "maximum_request_tokens": policy.max_leaf_tokens,
         "required_decision": "approve",
         "repair_allowed": False,
         "fallback_allowed": False,
         "completion_authoritative": False,
         "proof_authoritative": False,
     }
-    request_id = content_identity(payload)
+    request_body = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/legacy-landed-provider-envelope@1",
+        "role": provider.role,
+        "provider": provider.provider,
+        "model": provider.model,
+        "payload": payload,
+    }
+    request_id = content_identity(request_body)
     return LegacyLeafReviewRequest(
         role=provider.role,
         provider=provider.provider,
@@ -1321,6 +1458,10 @@ def _review_one_leaf(
     invoker: LegacyProviderInvoker,
     review_run_id: str,
 ) -> dict[str, Any]:
+    if request.token_upper_bound > int(
+        request.payload.get("maximum_request_tokens") or 0
+    ):
+        raise LegacyLandedReviewError("legacy_provider_request_budget_exceeded")
     try:
         observation = invoker(request)
     except Exception as exc:
@@ -1359,6 +1500,7 @@ def _review_one_leaf(
         "review_run_id": review_run_id,
         "role": provider.role,
         "request_id": request.request_id,
+        "request_token_upper_bound": request.token_upper_bound,
         "manifest_id": request.payload["manifest_id"],
         "leaf_index": leaf["leaf_index"],
         "leaf_id": leaf["leaf_id"],
@@ -1486,11 +1628,14 @@ def verify_legacy_landed_review_aggregate(
                 leaf=leaf,
                 provider=provider,
             )
+            if request.token_upper_bound > policy.max_leaf_tokens:
+                failures.append("legacy_review_request_token_budget_exceeded")
             expected_receipt = {
                 "schema": LEGACY_LANDED_LEAF_REVIEW_RECEIPT_SCHEMA,
                 "review_run_id": run_id,
                 "role": provider.role,
                 "request_id": request.request_id,
+                "request_token_upper_bound": request.token_upper_bound,
                 "manifest_id": manifest.get("manifest_id"),
                 "leaf_index": index,
                 "leaf_id": leaf.get("leaf_id"),

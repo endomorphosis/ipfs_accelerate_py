@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.serialization import (
     PrivateFormat,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    canonical_json_bytes,
     content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import legacy_landed_review as legacy
@@ -255,6 +256,44 @@ def test_manifest_is_byte_complete_bounded_and_detects_gap_duplicate_reorder(
     )
 
 
+def test_near_limit_chunks_bound_the_full_grok_and_codex_adapter_envelopes(
+    tmp_path: Path,
+) -> None:
+    _private, issuer = _private_key_file(tmp_path / "key")
+    policy = legacy.parse_legacy_landed_review_policy(
+        _policy_payload(issuer_key_id=issuer)
+    )
+    task = policy.task("ASE-005")
+    ordinary = _binding(task)
+    large = replace(
+        ordinary,
+        historical_diff=b"x" * 25_000,
+        current_blobs=tuple(
+            (path, replace(blob, data=(b"value = 1\n" * 2_000)))
+            for path, blob in ordinary.current_blobs
+        ),
+    )
+    manifest = legacy.build_legacy_landed_byte_manifest(policy, large)
+    bounds: list[int] = []
+    for leaf in manifest["leaves"]:
+        for provider in (policy.grok, policy.codex):
+            request = legacy._leaf_review_request(  # noqa: SLF001
+                policy=policy,
+                task=task,
+                manifest=manifest,
+                leaf=leaf,
+                provider=provider,
+            )
+            assert request.canonical_prompt == canonical_json_bytes(
+                request.to_dict()
+            )
+            bounds.append(request.token_upper_bound)
+
+    assert len(manifest["leaves"]) > 10
+    assert max(bounds) <= 4_096
+    assert max(bounds) >= 4_080
+
+
 def test_default_off_never_invokes_providers_or_validations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -449,4 +488,3 @@ def test_authority_projection_cannot_be_upgraded(tmp_path: Path) -> None:
     tampered["completion_authoritative"] = True
     with pytest.raises(ValueError):
         LegacyLandedReviewAttestation.from_dict(tampered)
-
