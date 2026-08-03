@@ -508,7 +508,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-028 Build revision-bound steer preview and preserve live task history
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
