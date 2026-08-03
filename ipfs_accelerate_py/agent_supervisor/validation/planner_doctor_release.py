@@ -848,7 +848,10 @@ def _worktree_identity(repo_root: Path) -> dict[str, Any]:
             rows[name]["valid"] = bool(
                 completed.returncode == 0
                 and all(
-                    line.startswith(b" ")
+                    # A leading '-' is an exact index-bound but uninitialized
+                    # gitlink, not working-tree drift. '+' and 'U' remain
+                    # invalid because they denote mismatch/conflict.
+                    line.startswith((b" ", b"-"))
                     for line in completed.stdout.splitlines()
                     if line
                 )
