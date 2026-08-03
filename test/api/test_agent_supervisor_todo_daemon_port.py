@@ -11721,6 +11721,240 @@ def test_post_merge_correction_bypasses_stale_retry_context_and_addendum(
     )
 
 
+def test_removed_baseline_test_symbols_survive_retry_projection() -> None:
+    finding = SimpleNamespace(
+        code=SimpleNamespace(value="test_weakening_forbidden"),
+        path="tests/test_identity.py",
+        message="test assertions or execution were weakened",
+    )
+    proposal_validation = SimpleNamespace(
+        accepted=False,
+        findings=(finding,),
+        proposal=SimpleNamespace(
+            proposal_id="proposal:identity",
+            repository_tree_id="a" * 40,
+            changed_paths=("tests/test_identity.py",),
+            candidate_diff=(
+                SimpleNamespace(
+                    path="tests/test_identity.py",
+                    before_source=(
+                        "def test_stable_identity() -> None:\n"
+                        "    assert stable_identity()\n"
+                    ),
+                    after_source=(
+                        "def test_new_identity() -> None:\n"
+                        "    assert new_identity()\n"
+                    ),
+                ),
+            ),
+        ),
+        policy=SimpleNamespace(policy_id="policy:identity"),
+        receipt=SimpleNamespace(receipt_id="receipt:identity"),
+    )
+
+    compact = TodoImplementationDaemon._compact_proposal_validation(
+        proposal_validation
+    )
+    normalized = TodoImplementationDaemon._normalize_implementation_failure(
+        {"validation_result": {"proposal_gate": compact}}
+    )
+
+    assert compact["removed_baseline_test_symbols"] == [
+        {
+            "path": "tests/test_identity.py",
+            "missing_baseline_test_symbols": ["test_stable_identity"],
+            "missing_baseline_test_symbol_count": 1,
+            "missing_baseline_test_symbols_truncated": False,
+        }
+    ]
+    assert compact["removed_baseline_test_path_count"] == 1
+    assert compact["removed_baseline_test_paths_truncated"] is False
+    assert normalized["proposal_gate"][
+        "removed_baseline_test_symbols"
+    ] == (
+        compact["removed_baseline_test_symbols"]
+    )
+
+
+def test_removed_baseline_test_symbol_projection_is_exact_and_bounded() -> None:
+    ordinary_symbols = [
+        f"test_removed_{index:02d}" for index in range(17)
+    ]
+    oversized_symbol = "test_" + ("x" * 300)
+    before_source = "".join(
+        f"def {symbol}() -> None:\n    assert True\n"
+        for symbol in (*ordinary_symbols, oversized_symbol)
+    )
+    findings = tuple(
+        SimpleNamespace(
+            code=SimpleNamespace(value=f"unrelated_{index}"),
+            path=f"unrelated-{index}.txt",
+            message="unrelated finding",
+        )
+        for index in range(8)
+    ) + (
+        SimpleNamespace(
+            code=SimpleNamespace(value="test_weakening_forbidden"),
+            path="tests/test_identity.py",
+            message="test assertions or execution were weakened",
+        ),
+    )
+    proposal_validation = SimpleNamespace(
+        accepted=False,
+        findings=findings,
+        proposal=SimpleNamespace(
+            proposal_id="proposal:bounded-identity",
+            repository_tree_id="a" * 40,
+            changed_paths=("tests/test_identity.py",),
+            candidate_diff=(
+                SimpleNamespace(
+                    path="tests/test_identity.py",
+                    before_source=before_source,
+                    after_source=(
+                        "def test_replacement() -> None:\n"
+                        "    assert True\n"
+                    ),
+                ),
+                SimpleNamespace(
+                    path="tests/\udcff-invalid.py",
+                    before_source=(
+                        "def test_invalid_path_identity() -> None:\n"
+                        "    assert True\n"
+                    ),
+                    after_source=(
+                        "def test_replacement() -> None:\n"
+                        "    assert True\n"
+                    ),
+                ),
+            ),
+        ),
+        policy=SimpleNamespace(policy_id="policy:identity"),
+        receipt=SimpleNamespace(receipt_id="receipt:identity"),
+    )
+
+    compact = TodoImplementationDaemon._compact_proposal_validation(
+        proposal_validation
+    )
+    normalized = TodoImplementationDaemon._normalize_implementation_failure(
+        {"validation_result": {"proposal_gate": compact}}
+    )
+    record = compact["removed_baseline_test_symbols"][0]
+
+    assert record["missing_baseline_test_symbols"] == ordinary_symbols[:16]
+    assert record["missing_baseline_test_symbol_count"] == 18
+    assert record["missing_baseline_test_symbols_truncated"] is True
+    assert compact["removed_baseline_test_path_count"] == 2
+    assert compact["removed_baseline_test_paths_truncated"] is True
+    assert all(
+        symbol != oversized_symbol
+        and not oversized_symbol.startswith(symbol)
+        for symbol in record["missing_baseline_test_symbols"]
+    )
+    assert len(
+        json.dumps(
+            normalized,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ) < 16_384
+
+
+def test_removed_baseline_test_symbol_reaches_retry_provider_prompt(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    test_path = repo / "tests" / "test_identity.py"
+    test_path.parent.mkdir(parents=True)
+    test_path.write_text(
+        "def test_stable_identity() -> None:\n"
+        "    assert stable_identity()\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "tests/test_identity.py")
+    _git(repo, "commit", "-m", "baseline identity test")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="UIR-002",
+        title="Freeze identity semantics",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="identity",
+        outputs=["tests/test_identity.py"],
+        validation=["python -m pytest tests/test_identity.py -q"],
+        metadata={
+            "ast symbols": ",".join(
+                f"aaa_metadata_symbol_{index:03d}"
+                for index in range(300)
+            )
+        },
+    )
+    daemon._compile_implementation_context(task, attempt=1)
+    proposal_validation = SimpleNamespace(
+        accepted=False,
+        findings=(
+            SimpleNamespace(
+                code=SimpleNamespace(value="test_weakening_forbidden"),
+                path="tests/test_identity.py",
+                message="test assertions or execution were weakened",
+            ),
+        ),
+        proposal=SimpleNamespace(
+            proposal_id="proposal:identity",
+            repository_tree_id=_git(repo, "rev-parse", "HEAD"),
+            changed_paths=("tests/test_identity.py",),
+            candidate_diff=(
+                SimpleNamespace(
+                    path="tests/test_identity.py",
+                    before_source=(
+                        "def test_stable_identity() -> None:\n"
+                        "    assert stable_identity()\n"
+                    ),
+                    after_source=(
+                        "def test_new_identity() -> None:\n"
+                        "    assert new_identity()\n"
+                    ),
+                ),
+            ),
+        ),
+        policy=SimpleNamespace(policy_id="policy:identity"),
+        receipt=SimpleNamespace(receipt_id="receipt:identity"),
+    )
+    compact = TodoImplementationDaemon._compact_proposal_validation(
+        proposal_validation
+    )
+    diagnostic = daemon._record_failed_attempt_retry_context(
+        task,
+        returncode=78,
+        validation_result={
+            "attempted": False,
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+            "proposal_gate": compact,
+        },
+    )
+
+    assert diagnostic is not None
+    assert len(diagnostic.changed_symbols) == 256
+    assert "test_stable_identity" in diagnostic.changed_symbols
+    prompt = daemon._build_implementation_prompt(task, attempt=2)
+    assert "test_stable_identity" in prompt
+
+
 @pytest.mark.parametrize(
     "mutation",
     ("tampered_receipt", "cross_task", "cross_commit"),

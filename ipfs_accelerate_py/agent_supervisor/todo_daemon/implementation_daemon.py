@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import base64
 import fnmatch
 import hashlib
@@ -408,10 +409,18 @@ DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE = 16_384
 DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE = 8_192
 PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
 MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
+MAX_PERSISTED_PROPOSAL_REPAIR_PATHS = 8
+MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOLS = 16
+MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOL_BYTES = 256
+MAX_PERSISTED_PROPOSAL_REPAIR_PATH_BYTES = 512
 MAX_PENDING_SCOPE_ADJUDICATIONS = 256
 SECRET_CHANGE_SCOPE_EXAMINATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "secret-change-scope-examination@1"
+)
+PRIOR_ATTEMPT_SEED_REPAIR_GUIDANCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "prior-attempt-seed-repair-guidance@1"
 )
 # ProposalValidationPolicy's ordinary limits are intentionally small for
 # provider output. The daemon constructs this proposal from a local Git diff
@@ -439,6 +448,96 @@ IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME = (
 IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME = (
     "implementation-protected-path-incident.json"
 )
+
+
+def _python_test_symbol_names(source: Any) -> frozenset[str]:
+    """Extract exact Python test function identities without executing code."""
+
+    if not isinstance(source, str):
+        return frozenset()
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, TypeError, ValueError):
+        return frozenset()
+    return frozenset(
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test")
+    )
+
+
+def _strict_utf8_size(value: str) -> int | None:
+    """Return the exact UTF-8 size, or None for non-serializable surrogates."""
+
+    try:
+        return len(value.encode("utf-8", errors="strict"))
+    except UnicodeEncodeError:
+        return None
+
+
+def _removed_baseline_test_symbol_projection(
+    candidate_diff: Sequence[Any],
+) -> dict[str, Any]:
+    """Project exact removed Python test identities with deterministic bounds."""
+
+    symbols_by_path: dict[str, set[str]] = {}
+    for entry in candidate_diff:
+        path = str(getattr(entry, "path", "") or "").strip()
+        before_source = getattr(entry, "before_source", None)
+        after_source = getattr(entry, "after_source", None)
+        if (
+            not path
+            or not isinstance(before_source, str)
+            or not isinstance(after_source, str)
+        ):
+            continue
+        removed = (
+            _python_test_symbol_names(before_source)
+            - _python_test_symbol_names(after_source)
+        )
+        if removed:
+            symbols_by_path.setdefault(path, set()).update(removed)
+
+    records: list[dict[str, Any]] = []
+    remaining_symbol_budget = MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOLS
+    for path in sorted(symbols_by_path):
+        if len(records) >= MAX_PERSISTED_PROPOSAL_REPAIR_PATHS:
+            break
+        path_size = _strict_utf8_size(path)
+        if (
+            path_size is None
+            or path_size > MAX_PERSISTED_PROPOSAL_REPAIR_PATH_BYTES
+        ):
+            continue
+        removed = tuple(sorted(symbols_by_path[path]))
+        included: list[str] = []
+        for symbol in removed:
+            if remaining_symbol_budget <= 0:
+                break
+            symbol_size = _strict_utf8_size(symbol)
+            if (
+                symbol_size is None
+                or symbol_size > MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOL_BYTES
+            ):
+                continue
+            included.append(symbol)
+            remaining_symbol_budget -= 1
+        records.append(
+            {
+                "path": path,
+                "missing_baseline_test_symbols": included,
+                "missing_baseline_test_symbol_count": len(removed),
+                "missing_baseline_test_symbols_truncated": (
+                    len(included) != len(removed)
+                ),
+            }
+        )
+    return {
+        "records": records,
+        "path_count": len(symbols_by_path),
+        "paths_truncated": len(records) != len(symbols_by_path),
+    }
 
 
 def implementation_task_claim_protected_fence_paths(
@@ -12875,6 +12974,62 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         **dict(seed_apply),
                     },
                 )
+                if not deterministic_only:
+                    seed_repair_guidance = (
+                        self._prior_attempt_seed_test_symbol_guidance(
+                            worktree_path,
+                            task=task,
+                            baseline_ref=baseline_ref,
+                        )
+                    )
+                    if seed_repair_guidance is not None:
+                        supplement = (
+                            "\n\n## Prior attempt seed proposal repair "
+                            "(deterministic)\n"
+                            + canonical_json(seed_repair_guidance)
+                            + "\n"
+                        )
+                        candidate_prompt = prompt.rstrip() + supplement
+                        prompt_byte_limit = (
+                            self._task_llm_context_budget_bytes(task)
+                        )
+                        if (
+                            prompt_byte_limit is None
+                            or len(candidate_prompt.encode("utf-8"))
+                            <= prompt_byte_limit
+                        ):
+                            prompt = candidate_prompt
+                            seed_apply["repair_guidance_id"] = str(
+                                seed_repair_guidance["guidance_id"]
+                            )
+                            self._record_event(
+                                "implementation_prior_attempt_seed_repair_guided",
+                                {
+                                    "task_id": task.task_id,
+                                    "attempt": attempt,
+                                    "worktree_path": str(worktree_path),
+                                    "branch": branch_name,
+                                    **seed_repair_guidance,
+                                },
+                            )
+                        else:
+                            self._record_event(
+                                "implementation_prior_attempt_seed_repair_guidance_omitted",
+                                {
+                                    "task_id": task.task_id,
+                                    "attempt": attempt,
+                                    "guidance_id": str(
+                                        seed_repair_guidance["guidance_id"]
+                                    ),
+                                    "reason": "provider_input_byte_budget",
+                                    "provider_input_byte_limit": (
+                                        prompt_byte_limit
+                                    ),
+                                    "candidate_input_bytes": len(
+                                        candidate_prompt.encode("utf-8")
+                                    ),
+                                },
+                            )
             elif seed_plan.get("reuse_prior_attempt"):
                 # Hard conflict / apply failure: keep clean baseline but leave
                 # durable guidance for this attempt's prompt and a short
@@ -14476,6 +14631,73 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         result["synchronized_count"] = len(result["synchronized"])
         result["unchanged_count"] = len(result["unchanged"])
         return result
+
+    def _prior_attempt_seed_test_symbol_guidance(
+        self,
+        worktree_path: Path,
+        *,
+        task: PortalTask,
+        baseline_ref: str,
+    ) -> dict[str, Any] | None:
+        """Describe baseline test identities removed by a preserved retry seed.
+
+        A failed candidate can be useful retry input while still containing a
+        proposal-gate violation.  This projection gives the next implementer
+        exact, bounded repair data without granting authority to the failed
+        seed or persisting source text.
+        """
+
+        try:
+            entries, _submodule_expansions = (
+                self._collect_proposal_candidate_diff(
+                    worktree_path,
+                    baseline_ref=baseline_ref,
+                    scope_paths=self._proposal_scope_paths(task),
+                )
+            )
+        except (OSError, RuntimeError, ValueError):
+            return None
+        projection = _removed_baseline_test_symbol_projection(entries)
+        if not projection["path_count"]:
+            return None
+        repairs = [
+            {
+                "path": record["path"],
+                "missing_baseline_test_symbols": record[
+                    "missing_baseline_test_symbols"
+                ],
+                "missing_baseline_test_symbol_count": record[
+                    "missing_baseline_test_symbol_count"
+                ],
+                "missing_baseline_test_symbols_truncated": record[
+                    "missing_baseline_test_symbols_truncated"
+                ],
+            }
+            for record in projection["records"]
+        ]
+        payload = {
+            "schema": PRIOR_ATTEMPT_SEED_REPAIR_GUIDANCE_SCHEMA,
+            "task_id": task.task_id,
+            "baseline_ref": baseline_ref,
+            "repairs": repairs,
+            "repair_path_count": projection["path_count"],
+            "repair_paths_truncated": projection["paths_truncated"],
+            "instruction": (
+                "Restore every listed baseline test function identity while "
+                "retaining strengthened semantics; do not rename, remove, or "
+                "replace baseline tests."
+            ),
+            "proposal_authoritative": False,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+            "evidence_only": True,
+            "repository_write_authorized": False,
+            "edit_scope_expansion_authorized": False,
+        }
+        return {
+            **payload,
+            "guidance_id": content_identity(payload),
+        }
 
     def _record_prior_attempt_seed_failure(
         self,
@@ -18510,7 +18732,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             reason_codes.add(str(error_code).strip())
         reason_codes.discard("")
         changed_paths = tuple(getattr(proposal, "changed_paths", ()) or ())
-        return {
+        compact = {
             "attempted": True,
             "accepted": bool(getattr(proposal_validation, "accepted", False)),
             "reason_codes": sorted(reason_codes)[
@@ -18526,6 +18748,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "proof_authoritative": False,
             "completion_authoritative": False,
         }
+        if "test_weakening_forbidden" in reason_codes:
+            repair_projection = _removed_baseline_test_symbol_projection(
+                tuple(getattr(proposal, "candidate_diff", ()) or ())
+            )
+            if repair_projection["path_count"]:
+                compact.update(
+                    {
+                        "removed_baseline_test_symbols": repair_projection[
+                            "records"
+                        ],
+                        "removed_baseline_test_path_count": repair_projection[
+                            "path_count"
+                        ],
+                        "removed_baseline_test_paths_truncated": (
+                            repair_projection["paths_truncated"]
+                        ),
+                    }
+                )
+        return compact
 
     @staticmethod
     def _secret_change_scope_examination(
@@ -31592,6 +31833,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     key: proposal[key]
                     for key in (
                         "reason_codes",
+                        "removed_baseline_test_symbols",
+                        "removed_baseline_test_path_count",
+                        "removed_baseline_test_paths_truncated",
                         "proposal_id",
                         "policy_id",
                         "receipt_id",
@@ -31812,11 +32056,61 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             for item in selection.get("changed_files") or ():
                 if isinstance(item, str) and item.strip():
                     changed_files.add(item.strip())
-        changed_symbols = tuple(
+        metadata_changed_symbols = set(
             self._compact_value_list(
                 task.metadata.get("ast symbols", ""),
                 limit=256,
             )
+        )
+        repair_changed_symbols: set[str] = set()
+        if isinstance(proposal, Mapping):
+            repair_records = proposal.get(
+                "removed_baseline_test_symbols"
+            )
+            if isinstance(repair_records, Sequence) and not isinstance(
+                repair_records,
+                (str, bytes, bytearray),
+            ):
+                for repair_record in repair_records:
+                    if not isinstance(repair_record, Mapping):
+                        continue
+                    missing_symbols = repair_record.get(
+                        "missing_baseline_test_symbols"
+                    )
+                    if not (
+                        isinstance(missing_symbols, Sequence)
+                        and not isinstance(
+                            missing_symbols,
+                            (str, bytes, bytearray),
+                        )
+                    ):
+                        continue
+                    for raw_symbol in missing_symbols:
+                        if not isinstance(raw_symbol, str):
+                            continue
+                        symbol = raw_symbol.strip()
+                        symbol_size = _strict_utf8_size(symbol)
+                        if (
+                            symbol
+                            and symbol_size is not None
+                            and symbol_size
+                            <= MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOL_BYTES
+                        ):
+                            repair_changed_symbols.add(symbol)
+        prioritized_repair_symbols = tuple(
+            sorted(repair_changed_symbols)
+        )[:256]
+        remaining_changed_symbol_capacity = (
+            256 - len(prioritized_repair_symbols)
+        )
+        changed_symbols = (
+            *prioritized_repair_symbols,
+            *tuple(
+                sorted(
+                    metadata_changed_symbols
+                    - set(prioritized_repair_symbols)
+                )
+            )[:remaining_changed_symbol_capacity],
         )
         unresolved = tuple(
             content_identity({"task_id": task.task_id, "requirement": value})
