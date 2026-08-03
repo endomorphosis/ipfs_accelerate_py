@@ -6264,7 +6264,7 @@ def _bounded_validation_failure_paths(
     *,
     limit: int = 16,
 ) -> list[str]:
-    """Return safe exact failed-test paths suitable for task authority."""
+    """Return safe exact failed-test paths for diagnostics and validation."""
 
     raw_values: Sequence[Any]
     if isinstance(failed_test_paths, (str, bytes, bytearray)):
@@ -6451,9 +6451,9 @@ def validation_retry_task_block(
     exact_failure_paths = _bounded_validation_failure_paths(
         failed_test_paths
     )
-    for path in exact_failure_paths:
-        if path not in outputs:
-            outputs.append(path)
+    # A test runner can report files outside the source task's ownership.
+    # Preserve those paths as bounded evidence and focused-validation inputs,
+    # but never turn external diagnostics into write authority.
     validation_command = safe_retry_validation_command(
         failed_command,
         discovery_path=discovery_path,
@@ -6467,11 +6467,18 @@ def validation_retry_task_block(
         validation_target_paths.extend(
             infer_validation_impact_paths(validation_command)
         )
+    validation_scope_label = (
+        "validation failure paths"
+        if exact_failure_paths
+        else "validation target paths"
+    )
     validation_scope_acceptance = (
-        " The declared validation target paths "
-        f"({', '.join(validation_target_paths)}) are bounded diagnostic and "
-        "repair scope: change them only when evidence proves inherited "
-        "validation debt, and do not weaken correct assertions or policy."
+        f" The declared {validation_scope_label} "
+        f"({', '.join(validation_target_paths)}) are bounded "
+        "diagnostic/read-only metadata: they may be inspected and used to "
+        "focus validation, but do not grant write authority. Repair edits "
+        "remain limited to the source task Outputs; do not weaken correct "
+        "assertions or policy."
         if validation_target_paths
         else ""
     )
@@ -6489,7 +6496,7 @@ def validation_retry_task_block(
     validation_failure_metadata = (
         "- Validation failure paths: "
         + ", ".join(exact_failure_paths)
-        + "\n"
+        + "\n- Validation failure path authority: diagnostic-read-only\n"
         if exact_failure_paths
         else ""
     )
