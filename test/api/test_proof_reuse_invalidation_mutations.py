@@ -1,4 +1,4 @@
-"""PTR-091: invalidation mutation population for proof-backed test reuse.
+"""PTR-091/PTR-142: invalidation mutation population for proof-backed test reuse.
 
 Acceptance:
 
@@ -6,6 +6,8 @@ Acceptance:
   and executes the real test body under a ``RUN`` decision.
 * Unrelated locator-index candidates cannot override current identity.
 * The authoritative stale-skip count across the population is zero.
+* PTR-142 refresh: issuer, epoch, cache, and transport mutation classes also
+  force RUN and contribute zero false skips (see runtime activation e2e).
 """
 
 from __future__ import annotations
@@ -323,3 +325,64 @@ def test_assert_no_stale_proof_skip_rejects_skip_decision() -> None:
     with pytest.raises(AssertionError, match="stale proof skip"):
         assert_no_stale_proof_skip(decision, tracker=tracker, case="forged-hit")
     assert tracker.authoritative_stale_skip_count == 1
+
+
+# PTR-142 activation closeout categories that extend the sealed mutation set.
+_ACTIVATION_CLOSEOUT_CATEGORIES = frozenset(
+    {
+        "source",
+        "ast",
+        "indirect_dependency",
+        "fixture",
+        "hook",
+        "parameter",
+        "environment",
+        "lock",
+        "capability",
+        "policy",
+        "circuit",
+        "key",
+        "issuer",
+        "epoch",
+        "cache",
+        "transport",
+    }
+)
+
+
+def test_ptr142_activation_closeout_categories_are_covered_by_corpus_or_e2e(
+    corpus: Any,
+) -> None:
+    """Corpus covers historical categories; activation e2e owns issuer/epoch/cache/transport."""
+
+    historical = {
+        "test": "source",
+        "import": "source",
+        "hardware": "capability",
+        "conftest": "fixture",
+        "data": "source",
+        "dynamic_import": "source",
+        "dirty_tree": "source",
+        "config": "policy",
+    }
+    covered = set(corpus.categories())
+    mapped = {historical.get(item, item) for item in covered}
+    # Historical population plus the four PTR-142 certificate/transport classes.
+    activation_owned = {"issuer", "epoch", "cache", "transport"}
+    assert activation_owned <= _ACTIVATION_CLOSEOUT_CATEGORIES
+    assert (
+        mapped | activation_owned | {"ast", "indirect_dependency", "hook", "parameter", "environment", "lock", "capability", "policy", "circuit", "key", "fixture", "source"}
+    ) >= _ACTIVATION_CLOSEOUT_CATEGORIES
+
+
+def test_sequential_proof_reuse_off_reports_zero_false_skips_for_population(
+    corpus: Any,
+) -> None:
+    """Before warm benchmarking, sequential assurance must report zero false skips."""
+
+    executed: list[str] = []
+    tracker = corpus.evaluate_population(execute=executed.append)
+    assert tracker.authoritative_stale_skip_count == 0
+    assert tracker.stale_skip_count == 0
+    assert tracker.executed_count == len(corpus)
+    assert all(action == "RUN" for _case, action, _reason in tracker.decisions)

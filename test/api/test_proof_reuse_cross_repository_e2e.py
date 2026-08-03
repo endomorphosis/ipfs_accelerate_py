@@ -1,10 +1,16 @@
-"""Cross-repository proof-reuse subprocess contract (PTR-093).
+"""Cross-repository proof-reuse subprocess contract (PTR-093/PTR-142).
 
 The tests in this module deliberately exercise pytest as a user does: by
 selecting individual nodes in isolated projects.  They cover the packaging
 entry point and the source-tree fallback bootstrap used by ipfs_accelerate,
 ipfs_kit, and ipfs_datasets, including the controller-owned xdist publication
 boundary.
+
+PTR-142 zero-injection automatic activation (no test-file hardwiring, no manual
+service injection) is proven by
+``test_proof_reuse_runtime_activation_e2e.py``.  This module retains the
+controlled service-injection harness for hermetic certificate lifecycle proofs
+while asserting that production repository bootstraps stay loader-only.
 """
 
 from __future__ import annotations
@@ -577,6 +583,14 @@ def test_repository_declares_entry_point_and_import_safe_fallback(
     else:
         assert "_optional_proof_reuse_plugin" in source
         assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" in source
+    # PTR-142: production bootstraps remain loader-only (no service injection).
+    for forbidden in (
+        "set_proof_reuse_services",
+        "set_proof_reuse_identity_services",
+        "_ipfs_proof_reuse_locator =",
+        "PROOF_REUSE_TEST_LIST",
+    ):
+        assert forbidden not in source
 
 
 @pytest.mark.parametrize("spec", REPOSITORIES, ids=lambda spec: spec.name)

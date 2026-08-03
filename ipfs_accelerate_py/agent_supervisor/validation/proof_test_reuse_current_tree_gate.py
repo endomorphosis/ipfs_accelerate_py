@@ -1,4 +1,4 @@
-"""Fail-closed final authority gate for proof-backed test reuse (PTR-122).
+"""Fail-closed final authority gate for proof-backed test reuse (PTR-122/PTR-142).
 
 The final gate is intentionally an aggregator, not another proof provider.  It
 accepts only fresh, authoritative evidence already bound to the exact current
@@ -16,7 +16,11 @@ for:
 * ``ptr/cross-repository-current-tree-gate@1`` on ``PTR-G000``
 
 without claiming the other root requirements by implication.  The producing
-task is ``PTR-122``.
+task remains ``PTR-122``.
+
+PTR-142 refreshes the sealed production population from 41 to the exact 53-task
+board (adding the runtime-activation repair ``PTR-131`` … ``PTR-142``) and
+requires fresh runtime-activation repair evidence before the gate may pass.
 """
 
 from __future__ import annotations
@@ -102,7 +106,30 @@ DEFAULT_PRODUCER_CHANNEL: Final = "current-tree-authority-gate"
 DEFAULT_ANALYZER_REVISION: Final = "analyzer:current-tree-gate@1"
 DEFAULT_CONFIGURATION_REVISION: Final = "configuration:current-tree-gate@1"
 
-# Sealed production population: all 41 implementation tasks on the board.
+# Runtime-activation repair wave (PTR-131 … PTR-142).  These tasks expand the
+# sealed board from 41 to 53 and must remain present in the production set.
+RUNTIME_ACTIVATION_REPAIR_TASK_IDS: Final = frozenset(
+    {
+        "PTR-131",
+        "PTR-132",
+        "PTR-133",
+        "PTR-134",
+        "PTR-135",
+        "PTR-136",
+        "PTR-137",
+        "PTR-138",
+        "PTR-139",
+        "PTR-140",
+        "PTR-141",
+        "PTR-142",
+    }
+)
+RUNTIME_ACTIVATION_REPAIR_ID: Final = "runtime-activation"
+RUNTIME_ACTIVATION_REPAIR_EVIDENCE_REQUIREMENT: Final = (
+    "ptr/runtime-activation-repair-evidence@1"
+)
+
+# Sealed production population: all 53 implementation tasks on the board.
 REQUIRED_PTR_TASK_IDS: Final = frozenset(
     {
         "PTR-000",
@@ -146,8 +173,11 @@ REQUIRED_PTR_TASK_IDS: Final = frozenset(
         "PTR-121",
         "PTR-122",
         "PTR-130",
+        *RUNTIME_ACTIVATION_REPAIR_TASK_IDS,
     }
 )
+SEALED_PRODUCTION_TASK_COUNT: Final = 53
+assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT
 # Verified child premises only — G110 is not a child premise of itself.
 REQUIRED_CHILD_GOAL_IDS: Final = frozenset(
     {
@@ -1368,7 +1398,7 @@ class ProofTestReuseCurrentTreeGate:
             raise ProofTestReuseCurrentTreeGateError(
                 "PTR-G110 must not be required as a child premise (self-reference)"
             )
-        # Sealed expansion tasks must remain in the production population.
+        # Sealed expansion + runtime-activation repair must remain in production.
         sealed_expansion = {
             "PTR-108",
             "PTR-109",
@@ -1379,12 +1409,28 @@ class ProofTestReuseCurrentTreeGate:
             "PTR-121",
             "PTR-122",
             "PTR-130",
+            *RUNTIME_ACTIVATION_REPAIR_TASK_IDS,
         }
         if self.required_task_ids == REQUIRED_PTR_TASK_IDS and not sealed_expansion.issubset(
             self.required_task_ids
         ):
             raise ProofTestReuseCurrentTreeGateError(
                 "required task population is missing sealed expansion tasks"
+            )
+        if self.required_task_ids == REQUIRED_PTR_TASK_IDS and (
+            len(self.required_task_ids) != SEALED_PRODUCTION_TASK_COUNT
+        ):
+            raise ProofTestReuseCurrentTreeGateError(
+                "production population must be the exact 53-task board"
+            )
+        if (
+            self.required_task_ids == REQUIRED_PTR_TASK_IDS
+            and not RUNTIME_ACTIVATION_REPAIR_TASK_IDS.issubset(
+                self.required_task_ids
+            )
+        ):
+            raise ProofTestReuseCurrentTreeGateError(
+                "production population missing runtime-activation repair tasks"
             )
 
     @property
@@ -1781,6 +1827,89 @@ class ProofTestReuseCurrentTreeGate:
         )
         return reasons, self._evidence_cid(record)
 
+    def _requires_repair_evidence(self) -> bool:
+        """Production populations that include the repair wave need fresh repair evidence."""
+
+        return bool(
+            RUNTIME_ACTIVATION_REPAIR_TASK_IDS & self.required_task_ids
+        )
+
+    def _repair_evidence_reasons(
+        self,
+        record: Mapping[str, Any],
+        *,
+        now_ms: int,
+    ) -> tuple[list[str], str]:
+        """Validate fresh runtime-activation repair evidence (PTR-142)."""
+
+        reasons: list[str] = []
+        if not self._requires_repair_evidence():
+            return [], ""
+        if not record:
+            return ["repair_evidence_missing"], ""
+        reasons.extend(self._bindings(record, "repair_evidence"))
+        if _text(record.get("authority")).lower() != _AUTHORITATIVE:
+            reasons.append("repair_evidence_non_authoritative")
+        if not self._fresh(record, now_ms):
+            reasons.append("repair_evidence_stale")
+
+        repair_id = _text(
+            _value(record, "repair_id", "repair", "population_id")
+        )
+        if repair_id != RUNTIME_ACTIVATION_REPAIR_ID:
+            reasons.append("repair_evidence_id_mismatch")
+
+        covered = frozenset(
+            _text(item)
+            for item in (
+                record.get("repair_task_ids")
+                or record.get("task_ids")
+                or ()
+            )
+        )
+        missing_tasks = sorted(RUNTIME_ACTIVATION_REPAIR_TASK_IDS - covered)
+        if missing_tasks:
+            reasons.extend(
+                _reason("repair_evidence_missing_task", task_id)
+                for task_id in missing_tasks
+            )
+        # Covered tasks may only include the sealed repair wave for production.
+        unexpected = sorted(
+            covered - RUNTIME_ACTIVATION_REPAIR_TASK_IDS - self.required_task_ids
+        )
+        if unexpected:
+            reasons.extend(
+                _reason("repair_evidence_unexpected_task", task_id)
+                for task_id in unexpected
+            )
+
+        if record.get("passed") is not True:
+            reasons.append("repair_evidence_failed")
+        false_skips = record.get("false_skips")
+        if isinstance(false_skips, bool) or false_skips not in (0, None):
+            if false_skips != 0:
+                reasons.append("repair_evidence_false_skips")
+        if record.get("zero_false_skip_assurance") is not True:
+            reasons.append("repair_evidence_zero_false_skip_missing")
+        if record.get("activation_e2e_passed") is not True:
+            reasons.append("repair_evidence_activation_e2e_missing")
+
+        requirement = _text(
+            _value(
+                record,
+                "requirement_id",
+                "acceptance_criterion",
+                "satisfied_requirement",
+            )
+        )
+        if requirement and requirement != RUNTIME_ACTIVATION_REPAIR_EVIDENCE_REQUIREMENT:
+            reasons.append("repair_evidence_requirement_mismatch")
+
+        reasons.extend(
+            self._validate_premise_cid(record, prefix="repair_evidence")
+        )
+        return reasons, self._evidence_cid(record)
+
     def _validate_population(
         self,
         records: Iterable[Any],
@@ -1842,6 +1971,7 @@ class ProofTestReuseCurrentTreeGate:
         benchmark_evidence: Mapping[str, Any],
         rollout_evidence: Mapping[str, Any],
         supervisor_health_evidence: Mapping[str, Any] | None = None,
+        repair_evidence: Mapping[str, Any] | None = None,
     ) -> ProofTestReuseCurrentTreeGateDecision:
         """Evaluate all current evidence; emit G110 + G000 evidence only on success."""
 
@@ -2073,6 +2203,12 @@ class ProofTestReuseCurrentTreeGate:
         )
         reasons.extend(health_reasons)
 
+        repair = _mapping(repair_evidence)
+        repair_reasons, repair_cid = self._repair_evidence_reasons(
+            repair, now_ms=now_ms
+        )
+        reasons.extend(repair_reasons)
+
         reasons = list(dict.fromkeys(reasons))[:_MAX_REASONS]
         if reasons:
             return ProofTestReuseCurrentTreeGateDecision(
@@ -2087,7 +2223,7 @@ class ProofTestReuseCurrentTreeGate:
             (_record(item) for item in child_goal_evidence),
             (_record(item) for item in adversarial_evidence),
             (_record(item) for item in analyzer_items),
-            (benchmark, rollout, supervisor),
+            (benchmark, rollout, supervisor, repair),
         ):
             for record in collection:
                 value = _timestamp_ms(
@@ -2106,6 +2242,7 @@ class ProofTestReuseCurrentTreeGate:
                     benchmark_cid,
                     rollout_cid,
                     supervisor_cid,
+                    *( (repair_cid,) if repair_cid else () ),
                 }
             )
         )
@@ -2243,6 +2380,10 @@ __all__ = [
     "ROOT_EVIDENCE_REQUIREMENTS",
     "ROOT_GOAL_ID",
     "ROOT_SATISFIED_REQUIREMENTS",
+    "RUNTIME_ACTIVATION_REPAIR_EVIDENCE_REQUIREMENT",
+    "RUNTIME_ACTIVATION_REPAIR_ID",
+    "RUNTIME_ACTIVATION_REPAIR_TASK_IDS",
+    "SEALED_PRODUCTION_TASK_COUNT",
     "ProofTestReuseCompletionEvidence",
     "ProofTestReuseCurrentTreeGate",
     "ProofTestReuseCurrentTreeGateDecision",

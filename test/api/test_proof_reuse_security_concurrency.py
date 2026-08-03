@@ -1,10 +1,13 @@
-"""Security and concurrency assurance for proof-backed test reuse (PTR-092).
+"""Security and concurrency assurance for proof-backed test reuse (PTR-092/PTR-142).
 
 These tests deliberately cross the storage/admission boundary.  Mutable index
 entries and serialized claims are treated only as candidate hints: a test may
 be skipped only after immutable bytes are re-read and current local authority
 admits them.  Every hostile, incomplete, unavailable, or revoked case below
 must therefore execute the real test body.
+
+PTR-142 refresh: xdist/controller publication never emits duplicate, partial,
+or private authority, and adversarial populations keep zero false skips.
 """
 
 from __future__ import annotations
@@ -737,3 +740,50 @@ def test_revocation_wins_replay_and_inflight_admission_races(
     _assert_run_executes_real_test(raced)
     assert raced.reason_code is ReuseReasonCode.EXPIRED_OR_REVOKED
     assert verifier_calls == []
+
+
+def test_ptr142_publication_intents_never_carry_private_or_partial_authority(
+    tmp_path: Path,
+) -> None:
+    """Controller-owned intents stay public-only and never emit partial files."""
+
+    from ipfs_accelerate_py.testing.proof_reuse.xdist import (
+        ProofReusePublicationIntent,
+        ProofReuseXdistCoordinator,
+    )
+
+    locator, execution_key, receipt, certificate = _pair("public-only")
+    intent = ProofReusePublicationIntent.from_receipt(receipt)
+    blob = json.dumps(intent.to_dict())
+    for forbidden in (
+        "witness",
+        "private_key",
+        "private_witness",
+        "access_token",
+        "secret",
+        "password",
+    ):
+        assert forbidden not in blob
+
+    controller = ProofReuseXdistCoordinator.controller(metrics=None)
+    assert controller.queue_publication(receipt) is True
+    store = TestCertificateStore(tmp_path / "ptr142-pub")
+    published = controller.flush_publications(store)
+    assert published
+    # Second flush of the same controller must not re-publish partial authority.
+    assert controller.flush_publications(store) == ()
+    partial = [
+        path
+        for path in (tmp_path / "ptr142-pub").rglob("*")
+        if path.is_file()
+        and any(token in path.name.lower() for token in (".partial", ".tmp", ".part"))
+    ]
+    assert partial == []
+    # Hostile certificate authority still forces RUN when trust fails.
+    hostile = replace(
+        certificate,
+        authority=CertificateAuthority.NON_ATTESTED,
+        backend_mode=ProofBackendMode.SIMULATED,
+    )
+    decision = _cache(hostile).lookup(locator, execution_key)
+    _assert_run_executes_real_test(decision)

@@ -1,4 +1,9 @@
-"""PTR-100: shadow and warm proof-reuse benchmark gates."""
+"""PTR-100/PTR-142: shadow and warm proof-reuse benchmark gates.
+
+PTR-142 requires sequential proof-reuse-off zero-false-skip assurance to run
+before the warm benchmark, and warm eligible verification must remain cheaper
+than execution while meeting the configured target.
+"""
 
 from __future__ import annotations
 
@@ -48,8 +53,36 @@ def test_default_corpus_has_explicit_eligible_warm_population() -> None:
     assert corpus.corpus_id.startswith("sha256:")
 
 
+def test_sequential_proof_reuse_off_zero_false_skips_before_benchmark() -> None:
+    """PTR-142: zero-false-skip assurance must precede warm benchmarking."""
+
+    off = run_proof_reuse_benchmark()
+    off_summary = next(
+        item
+        for item in off.scenario_summaries
+        if item.scenario is BenchmarkScenario.OFF
+    )
+    assert off_summary.mode == "off"
+    assert off_summary.skipped == 0
+    assert off_summary.false_admissions == 0
+    assert off_summary.executed == off_summary.collected
+    # Only after off-mode reports zero false skips may warm evidence count.
+    assert off.false_admissions == 0
+    assert off.passed
+
+
 def test_benchmark_passes_all_acceptance_gates() -> None:
-    receipt = run_proof_reuse_benchmark()
+    # Sequential off-mode assurance first (PTR-142 ordering).
+    assurance = run_proof_reuse_benchmark()
+    off = next(
+        item
+        for item in assurance.scenario_summaries
+        if item.scenario is BenchmarkScenario.OFF
+    )
+    assert off.false_admissions == 0
+    assert off.skipped == 0
+
+    receipt = assurance
 
     assert receipt.passed
     assert receipt.false_admissions == 0

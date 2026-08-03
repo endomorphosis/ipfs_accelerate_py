@@ -22,6 +22,10 @@ from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tre
     ROOT_EVIDENCE_REQUIREMENTS,
     ROOT_GOAL_ID,
     ROOT_SATISFIED_REQUIREMENTS,
+    RUNTIME_ACTIVATION_REPAIR_EVIDENCE_REQUIREMENT,
+    RUNTIME_ACTIVATION_REPAIR_ID,
+    RUNTIME_ACTIVATION_REPAIR_TASK_IDS,
+    SEALED_PRODUCTION_TASK_COUNT,
     ProofTestReuseCompletionEvidence,
     ProofTestReuseCurrentTreeGate,
     ProofTestReuseCurrentTreeGateDecision,
@@ -355,6 +359,12 @@ def test_production_population_includes_repair_and_closeout_tasks():
         "PTR-130",
     ):
         assert task_id in REQUIRED_PTR_TASK_IDS
+    # PTR-142 expands the sealed board from 41 to exactly 53 tasks.
+    assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT == 53
+    assert RUNTIME_ACTIVATION_REPAIR_TASK_IDS <= REQUIRED_PTR_TASK_IDS
+    for task_id in sorted(RUNTIME_ACTIVATION_REPAIR_TASK_IDS):
+        assert task_id in REQUIRED_PTR_TASK_IDS
+    assert "PTR-142" in REQUIRED_PTR_TASK_IDS
     assert FINAL_GATE_TASK_ID == "PTR-122"
     assert FINAL_GATE_GOAL_ID not in REQUIRED_CHILD_GOAL_IDS
     assert REQUIRED_CHILD_GOAL_IDS == {
@@ -374,6 +384,185 @@ def test_production_population_includes_repair_and_closeout_tasks():
         "ptr_lane_1",
         "ptr_lane_2",
     }
+    assert RUNTIME_ACTIVATION_REPAIR_ID == "runtime-activation"
+    assert (
+        RUNTIME_ACTIVATION_REPAIR_EVIDENCE_REQUIREMENT
+        == "ptr/runtime-activation-repair-evidence@1"
+    )
+
+
+def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
+    """The full 53-task population refuses to pass without fresh repair evidence."""
+
+    policy = ProofReuseRolloutPolicy(
+        policy_id="policy:ptr",
+        policy_revision="revision:1",
+        approved_stages=(
+            ProofReuseRolloutStage.OFF,
+            ProofReuseRolloutStage.SHADOW,
+            ProofReuseRolloutStage.READ,
+        ),
+    )
+    gate = ProofTestReuseCurrentTreeGate(
+        repository_id="repository:current",
+        tree_id=GIT_TREE,
+        commit_id="commit:current",
+        gitlink_state_cid="gitlinks:recursive-current",
+        repository_forest_cid=FOREST,
+        objective_completion_tree_id=COMPLETION_TREE,
+        capability_cid="capability:current",
+        verifying_key_cid="key:current",
+        circuit_cid="circuit:current",
+        objective_revision=GRAPH_OBJECTIVE_REVISION,
+        g110_objective_revision=G110_OBJECTIVE_REVISION,
+        root_objective_revision=ROOT_OBJECTIVE_REVISION,
+        rollout_policy=policy,
+        # Production default: exact 53-task set.
+        required_child_goal_ids=GOALS,
+        required_adversarial_populations=POPULATIONS,
+        required_analyzers=ANALYZERS,
+        required_supervisor_lane_ids=LANES,
+        clock=lambda: NOW_SECONDS,
+    )
+    assert gate.required_task_ids == REQUIRED_PTR_TASK_IDS
+    assert len(gate.required_task_ids) == 53
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.validation."
+        "proof_test_reuse_current_tree_gate.verify_benchmark_receipt",
+        lambda receipt: receipt.passed,
+    )
+    task_evidence = [
+        _bound_record(
+            policy_cid=gate.policy_cid,
+            task_id=task_id,
+            status="complete",
+            task_cid=f"task-cid:{task_id}",
+            task_provenance=(
+                _planning_seal_provenance(gate)
+                if task_id == "PTR-000"
+                else _reviewed_integration_provenance(gate)
+                if task_id in {"PTR-001", "PTR-011"}
+                else _retrospective_provenance(gate)
+                if task_id == "PTR-041"
+                else _managed_merge_provenance(task_id)
+            ),
+            validation_receipt_cid=f"validation:{task_id}",
+            validation_disposition="executed",
+            evidence_cid=f"evidence:{task_id}",
+        )
+        for task_id in sorted(REQUIRED_PTR_TASK_IDS)
+    ]
+    goals = [
+        _bound_record(
+            policy_cid=gate.policy_cid,
+            goal_id=goal_id,
+            status="verified_complete",
+            provenance_cid=f"goal-evidence:{goal_id}",
+        )
+        for goal_id in sorted(GOALS)
+    ]
+    adversarial = [
+        _bound_record(
+            policy_cid=gate.policy_cid,
+            population_id=population,
+            passed=True,
+            false_skips=0,
+            evidence_cid=f"population-evidence:{population}",
+        )
+        for population in sorted(POPULATIONS)
+    ]
+    analyzers = [
+        _bound_record(
+            policy_cid=gate.policy_cid,
+            analyzer_id=analyzer,
+            healthy=True,
+            evidence_cid=f"analyzer-evidence:{analyzer}",
+        )
+        for analyzer in sorted(ANALYZERS)
+    ]
+    benchmark_receipt = ProofReuseBenchmarkReceipt(
+        corpus_id="corpus:current",
+        false_admissions=0,
+        warm_eligible_count=1,
+        warm_verified_skips=1,
+        warm_skip_bps=10_000,
+        passed=True,
+    )
+    promotion = ProofReusePromotionEvidence(
+        observed_at=datetime.fromtimestamp(FRESH_FROM / 1000, tz=UTC),
+        repository_id=gate.repository_id,
+        tree_id=gate.tree_id,
+        policy_id=gate.rollout_policy.policy_id,
+        policy_revision=gate.rollout_policy.policy_revision,
+        current_stage=ProofReuseRolloutStage.SHADOW,
+        target_stage=ProofReuseRolloutStage.READ,
+        mutation_false_skips=0,
+        degradation_false_skips=0,
+        authority_contradictions=0,
+        corruption_spike=False,
+        stale_keys=0,
+        key_health_ok=True,
+        revocation_health_ok=True,
+        controlled_issuer=True,
+        current_tree_gate_passed=None,
+        all_repositories_passed=True,
+    )
+    decision = ProofReuseRolloutDecision(
+        current_stage=ProofReuseRolloutStage.SHADOW,
+        requested_stage=ProofReuseRolloutStage.READ,
+        effective_stage=ProofReuseRolloutStage.READ,
+        disposition=RolloutDisposition.PROMOTE,
+        gates=(),
+        evidence_id=promotion.evidence_id,
+        policy_id=gate.rollout_policy.policy_id,
+        policy_revision=gate.rollout_policy.policy_revision,
+    )
+    packet = {
+        "objective_graph": _bound_record(
+            policy_cid=gate.policy_cid,
+            objective_revision=gate.objective_revision,
+            task_ids=sorted(REQUIRED_PTR_TASK_IDS),
+            goal_ids=sorted(GOALS | {ROOT_GOAL_ID, FINAL_GATE_GOAL_ID}),
+        ),
+        "task_evidence": task_evidence,
+        "child_goal_evidence": goals,
+        "adversarial_evidence": adversarial,
+        "analyzer_health": analyzers,
+        "benchmark_evidence": _bound_record(
+            policy_cid=gate.policy_cid,
+            receipt=benchmark_receipt,
+            evidence_cid="benchmark:current",
+        ),
+        "rollout_evidence": _bound_record(
+            policy_cid=gate.policy_cid,
+            decision=decision,
+            promotion_evidence=promotion,
+            evidence_cid="rollout:current",
+        ),
+        "supervisor_health_evidence": _supervisor_health(gate),
+    }
+    missing = gate.evaluate(**packet)
+    assert missing.passed is False
+    assert any(
+        code.startswith("repair_evidence") for code in missing.reason_codes
+    )
+
+    packet["repair_evidence"] = _bound_record(
+        policy_cid=gate.policy_cid,
+        repair_id=RUNTIME_ACTIVATION_REPAIR_ID,
+        repair_task_ids=sorted(RUNTIME_ACTIVATION_REPAIR_TASK_IDS),
+        passed=True,
+        false_skips=0,
+        zero_false_skip_assurance=True,
+        activation_e2e_passed=True,
+        requirement_id=RUNTIME_ACTIVATION_REPAIR_EVIDENCE_REQUIREMENT,
+        evidence_cid="repair:runtime-activation",
+    )
+    admitted = gate.evaluate(**packet)
+    assert admitted.passed is True
+    assert admitted.final_gate_completion_evidence is not None
+    assert admitted.root_completion_evidence is not None
 
 
 def test_gate_rejects_g110_as_child_premise_configuration():
