@@ -664,7 +664,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-041 Require semantic theorem bodies, sealed typed proof receipts, and kernel replay
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
