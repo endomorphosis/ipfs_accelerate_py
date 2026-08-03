@@ -3049,6 +3049,124 @@ def test_latched_incident_checkpoint_acknowledges_wake_and_stops_replay(
     ) == 1
 
 
+def test_latched_incident_ignores_repeated_unrelated_wakes_without_writes(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("before\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 1,
+            "workspace_path": str(tmp_path),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "content_changed",
+                }
+            ],
+        }
+    )
+    acknowledged: list[object] = []
+    daemon._runtime_wake_coordinator = SimpleNamespace(
+        acknowledge=acknowledged.append,
+    )
+    initial_wake = {"kind": "policy", "revision": "incident-latched"}
+    daemon._pending_runtime_wake_events = [initial_wake]
+
+    first = daemon.run_once()
+    checkpoint_path = daemon.runtime_checkpoint_path
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    checkpoint_mtime_ns = checkpoint_path.stat().st_mtime_ns
+    blocked_event_count = sum(
+        json.loads(line)["type"]
+        == "implementation_protected_path_incident_blocked"
+        for line in daemon.events_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+    )
+
+    unrelated_wakes = [
+        {"kind": "lease", "revision": f"lease-{index}"}
+        for index in range(3)
+    ] + [
+        {"kind": "validation", "revision": "validation-cache"},
+        {"kind": "provider_capacity", "revision": "provider"},
+        {"kind": "task_board", "revision": "unrelated-board"},
+    ]
+    results: list[dict[str, object]] = []
+    for wake in unrelated_wakes:
+        daemon._pending_runtime_wake_events = [wake]
+        results.append(daemon.run_once())
+
+    assert first["blocked"] is True
+    assert first["delta_checkpoint"]["changed"] is True
+    assert blocked_event_count == 1
+    assert all(result["blocked"] is True for result in results)
+    assert all(result["unchanged"] is True for result in results)
+    assert all(result["write_count"] == 0 for result in results)
+    assert all(
+        result["protected_path_reconciliation"][
+            "reconciliation_skipped"
+        ]
+        is True
+        for result in results
+    )
+    assert checkpoint_path.read_bytes() == checkpoint_bytes
+    assert checkpoint_path.stat().st_mtime_ns == checkpoint_mtime_ns
+    assert sum(
+        json.loads(line)["type"]
+        == "implementation_protected_path_incident_blocked"
+        for line in daemon.events_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ) == 1
+    assert acknowledged == [initial_wake, *unrelated_wakes]
+
+
+def test_latched_incident_generation_change_reenters_reconciliation(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("before\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    daemon.todo_path.write_text("# Tasks\n", encoding="utf-8")
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 1,
+            "workspace_path": str(tmp_path),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "content_changed",
+                }
+            ],
+        }
+    )
+    daemon._pending_runtime_wake_events = [{"kind": "policy"}]
+    first = daemon.run_once()
+    assert first["blocked"] is True
+
+    # Operator clearance removes the exact durable latch.  Even an otherwise
+    # unrelated wake must observe that generation change and resume the
+    # ordinary reconciliation/task-board path immediately.
+    daemon._implementation_protected_incident_path().unlink()
+    daemon._pending_runtime_wake_events = [{"kind": "lease"}]
+    after_clearance = daemon.run_once()
+
+    assert after_clearance.get("blocked") is not True
+    assert after_clearance["reason"] == "no_tasks_found"
+    assert after_clearance["wake_kinds"] == ["lease"]
+
+
 def test_supervisor_commits_generated_updates_to_protected_todo_board(
     tmp_path: Path,
 ) -> None:

@@ -1020,6 +1020,9 @@ RUNTIME_WAKE_KINDS = frozenset(
     }
 )
 DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS = 3600.0
+PROTECTED_INCIDENT_REEVALUATION_WAKE_KINDS = frozenset(
+    {"policy", "repository"}
+)
 
 
 def default_llm_merge_resolver_command() -> str:
@@ -7947,8 +7950,81 @@ class PortalImplementationDaemon:
             "events_path",
             "task_source_identity",
             "reason",
+            "protected_path_incident_generation",
         )
         return {key: result[key] for key in keys if key in result}
+
+    def _stable_latched_protected_path_incident(
+        self,
+    ) -> dict[str, Any]:
+        """Return the unchanged incident generation from the last checkpoint.
+
+        An incident latch is already a fail-closed terminal state.  Replaying
+        its expensive recovery proof for unrelated runtime wakes only appends
+        duplicate blocked events and makes the resulting event-log change
+        rewrite the checkpoint again.  Bind the quiet path to the exact
+        durable incident generation so clearance, replacement, or corruption
+        immediately invalidates it.
+        """
+
+        cached = self._runtime_last_result
+        if (
+            not isinstance(cached, Mapping)
+            or cached.get("blocked") is not True
+            or cached.get("reason")
+            != "implementation_protected_path_incident_latched"
+        ):
+            return {}
+        expected = cached.get("protected_path_incident_generation")
+        if not isinstance(expected, Mapping):
+            return {}
+        observed = durable_input_generation(
+            self._implementation_protected_incident_path()
+        )
+        if (
+            observed.get("state") != "present"
+            or not generations_match(expected, observed)
+        ):
+            return {}
+        return dict(observed)
+
+    def _acknowledge_stable_latched_protected_path_incident(
+        self,
+        *,
+        source_digest: str,
+        wake_kinds: set[str],
+        incident_generation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Acknowledge an unrelated wake without writing latch evidence."""
+
+        result = self._unchanged_runtime_result(
+            source_digest=source_digest,
+            wake_kinds=wake_kinds,
+        )
+        result.update(
+            {
+                "blocked": True,
+                "reason": (
+                    "implementation_protected_path_incident_latched"
+                ),
+                "protected_path_incident_generation": dict(
+                    incident_generation
+                ),
+                "protected_path_reconciliation": {
+                    "blocked": True,
+                    "reason": (
+                        "implementation_protected_path_incident_latched"
+                    ),
+                    "reconciliation_skipped": True,
+                    "skip_reason": (
+                        "stable_latch_unrelated_runtime_wake"
+                    ),
+                    "incident_generation": dict(incident_generation),
+                },
+                "ignored_wake_kinds": sorted(wake_kinds),
+            }
+        )
+        return result
 
     def _save_runtime_checkpoint(
         self,
@@ -8378,6 +8454,23 @@ class PortalImplementationDaemon:
             time.monotonic() - self._last_safety_reconciliation_monotonic
             >= DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS
         )
+        stable_incident_generation = (
+            self._stable_latched_protected_path_incident()
+        )
+        if (
+            stable_incident_generation
+            and not safety_reconciliation_due
+            and not wake_kinds.intersection(
+                PROTECTED_INCIDENT_REEVALUATION_WAKE_KINDS
+            )
+        ):
+            return (
+                self._acknowledge_stable_latched_protected_path_incident(
+                    source_digest=source_digest,
+                    wake_kinds=wake_kinds,
+                    incident_generation=stable_incident_generation,
+                )
+            )
         preflight_unchanged = (
             source_digest == self._runtime_last_source_digest
             and not forced_wake_kinds
@@ -8413,6 +8506,9 @@ class PortalImplementationDaemon:
             self._reconcile_implementation_protected_path_fence()
         )
         if protected_path_reconciliation.get("blocked", False):
+            incident_generation = durable_input_generation(
+                self._implementation_protected_incident_path()
+            )
             result = {
                 "blocked": True,
                 "reason": str(
@@ -8432,6 +8528,9 @@ class PortalImplementationDaemon:
                 "merge_reconciliation": [],
                 "wake_kinds": sorted(wake_kinds),
                 "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+                "protected_path_incident_generation": (
+                    incident_generation
+                ),
             }
             final_source_digest, final_sources = self._runtime_source_head()
             checkpoint_result = self._save_runtime_checkpoint(
