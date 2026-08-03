@@ -2,20 +2,23 @@
 
 ``ErgoAILiveToolchainContract@1``
 
-Proves the genuine ErgoAI advisor-toolchain path:
+Exercises the ErgoAI advisor-toolchain contract and its fail-closed boundary:
 
 * the lock binds the official ErgoAI 3.0 distribution (release tag, digests,
   license/acquisition conditions, XSB and build/runtime dependencies,
   supported OS/arch matrix, entry point, and identity probe);
 * explicit lazy installation is staged, checksum-verified, atomic, relocatable,
   and offline after acquisition (never on import / never during certification);
-* the bounded live semantic adapter covers entailment, non-entailment,
+* a deterministic process fixture exercises entailment, non-entailment,
   contradiction, rule/query mutation, deterministic replay, malformed input,
   timeout, and resource-bound cases;
 * results remain proposal/candidate evidence under an advisory authority
   ceiling and never elevate to theorem authority;
-* hermetic shims and simulation-mode wrapper fixtures are not live vendor
-  execution, and certification never installs, downloads, or opens the network.
+* fixtures cannot borrow an unrelated managed manifest or become authoritative
+  evidence; an opt-in test replays the same contract against a genuine managed
+  installation when ``IPFS_DATASETS_PY_TEST_ERGOAI_MANAGED_ROOT`` is set;
+* hermetic shims and simulation mode are not managed-vendor execution, and
+  certification never installs or downloads.
 """
 
 from __future__ import annotations
@@ -82,6 +85,8 @@ REQUIRED_LOCK_ACQUISITION_KEYS = {
     "offline_after_acquisition",
     "atomic_staged_install",
     "relocatable_install_root",
+    "bounded_acquisition",
+    "symlink_free_install_paths",
 }
 
 
@@ -111,7 +116,7 @@ def _write_executable(path: Path, body: str) -> Path:
 
 
 def _full_matrix_fixture_script() -> str:
-    """Deterministic fake ErgoAI that implements the full live case matrix."""
+    """Process test double for the semantic parser and resource boundaries."""
 
     return textwrap.dedent(
         """\
@@ -128,6 +133,9 @@ def _full_matrix_fixture_script() -> str:
         data = sys.stdin.read()
         match = re.search(r"load\\{'([^']+)'\\}", data)
         program = Path(match.group(1)).read_text(encoding="utf-8") if match else ""
+        # Real ErgoAI includes temporary source paths and timing noise.  Emit
+        # the path so replay tests cannot accidentally depend on raw bytes.
+        print(f"loaded:{match.group(1) if match else 'none'}")
 
         if "fvt_loop" in program or "fvt_loop" in data:
             while True:
@@ -143,8 +151,12 @@ def _full_matrix_fixture_script() -> str:
             print("syntax error: malformed ergo input")
             raise SystemExit(1)
 
-        if "fvt_ergo_contradiction" in data or "fvt_ergo_contradiction" in program:
+        if "fvt_ergo_unrelated" in data:
             print("No")
+            raise SystemExit(0)
+
+        if "fvt_ergo_contradiction" in data or "fvt_ergo_contradiction" in program:
+            print("Yes")
             raise SystemExit(0)
 
         if "fvt_ergo_absent" in data or "fvt_ergo_mutated" in program:
@@ -161,6 +173,8 @@ def _full_matrix_fixture_script() -> str:
 def _materialize_live_fixture(root: Path, installer) -> Path:
     executable = root / "bin" / "ergoai"
     _write_executable(executable, _full_matrix_fixture_script())
+    for alias in ("runErgo.sh", "runergo"):
+        _write_executable(root / "bin" / alias, _full_matrix_fixture_script())
 
     xsb = (
         root
@@ -185,6 +199,7 @@ def _materialize_live_fixture(root: Path, installer) -> Path:
 
     identity_path = root / "advisors" / "ergoai" / "3.0" / "identity.json"
     identity_path.parent.mkdir(parents=True, exist_ok=True)
+    executable_digest = hashlib.sha256(executable.read_bytes()).hexdigest()
     identity = {
         "schema_version": "ergoai-managed-vendor-identity/v1",
         "tool_id": "ergoai",
@@ -192,23 +207,34 @@ def _materialize_live_fixture(root: Path, installer) -> Path:
         "selected_platform": "linux-aarch64",
         "release_tag": LOCKED_RELEASE_TAG,
         "release_url": installer.ERGOAI_RELEASE_URL,
-        "release_artifact_path": str(release),
+        "release_artifact_path": str(release.relative_to(root)),
         "release_artifact_sha256": release_digest,
         "release_artifact_size_bytes": release.stat().st_size,
-        "vendor_executable": str(executable),
-        "vendor_executable_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
-        "xsb_executable": str(xsb),
+        "vendor_executable": str(executable.relative_to(root)),
+        "vendor_executable_sha256": executable_digest,
+        "xsb_executable": str(xsb.relative_to(root)),
         "xsb_executable_sha256": hashlib.sha256(xsb.read_bytes()).hexdigest(),
         "xsb_configuration": "aarch64-unknown-linux-gnu",
-        "launcher": str(executable),
-        "launcher_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
-        "identity_digest_sha256": "fixture-identity",
+        "launcher": str(executable.relative_to(root)),
+        "launcher_sha256": executable_digest,
+        "launcher_digests": {
+            name: hashlib.sha256((root / "bin" / name).read_bytes()).hexdigest()
+            for name in installer.ERGOAI_EXECUTABLES
+        },
         "license_components": ["Apache-2.0", "LGPL-2.0"],
         "checksum_verified": True,
         "is_live_vendor": True,
         "is_hermetic_advisor_shim": False,
+        "atomic_publish": True,
+        "relocatable_install": True,
+        "runtime_paths_relative": True,
+        "install_publication_model": "fixture_only",
+        "grants_theorem_authority": False,
         "grants_proof_authority": False,
     }
+    identity["identity_digest_sha256"] = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
     identity_path.write_text(json.dumps(identity), encoding="utf-8")
     return executable
 
@@ -254,21 +280,9 @@ def structural_contract(advisors_cert) -> dict[str, Any]:
 
 
 @pytest.fixture
-def live_fixture(installer, advisors_cert, tmp_path, monkeypatch):
+def live_fixture(installer, advisors_cert, tmp_path):
     root = tmp_path / "ergoai-live-fixture"
     executable = _materialize_live_fixture(root, installer)
-    # Align provenance validators with the fixture release bytes.
-    release = root / "downloads" / "ergoAI_3.0.run"
-    monkeypatch.setattr(
-        installer,
-        "ERGOAI_RELEASE_SHA256",
-        hashlib.sha256(release.read_bytes()).hexdigest(),
-    )
-    monkeypatch.setattr(
-        installer,
-        "ERGOAI_RELEASE_SIZE_BYTES",
-        release.stat().st_size,
-    )
     receipt = advisors_cert.build_ergoai_live_toolchain_contract(
         repo_root=REPO_ROOT,
         install_root=root,
@@ -305,6 +319,15 @@ def test_module_constants(installer, advisors_cert, wrapper_mod) -> None:
     assert installer.ERGOAI_RELEASE_SIZE_BYTES == LOCKED_SIZE
     assert set(installer.ERGOAI_LIVE_SEMANTIC_CASE_KINDS) == REQUIRED_CASE_KINDS
     assert "xsb" in installer.ERGOAI_RUNTIME_DEPENDENCIES
+    assert "private_runtime_workspace_tools" in (
+        installer.ERGOAI_RUNTIME_DEPENDENCIES
+    )
+    assert {"java", "which", "dirname"} == set(
+        installer.ERGOAI_OPTIONAL_JAVA_RUNTIME_COMMANDS
+    )
+    assert {"java", "javac", "jar", "which", "dirname", "touch"} == set(
+        installer.ERGOAI_OPTIONAL_JAVA_BUILD_COMMANDS
+    )
     assert installer.ERGOAI_ENTRY_POINT == "runergo"
 
     assert advisors_cert.ERGOAI_LIVE_TOOLCHAIN_INTERFACE == INTERFACE
@@ -327,7 +350,7 @@ def test_module_constants(installer, advisors_cert, wrapper_mod) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_lock_binds_official_ergoai_distribution(lock_document) -> None:
+def test_lock_binds_official_ergoai_distribution(lock_document, installer) -> None:
     versions = lock_document.get("managed_pin_versions") or {}
     assert versions.get("ergoai") == LOCKED_ERGOAI_VERSION
 
@@ -339,13 +362,24 @@ def test_lock_binds_official_ergoai_distribution(lock_document) -> None:
     assert inventory["sha256"] == LOCKED_SHA256
     assert inventory["release_tag"] == LOCKED_RELEASE_TAG
     assert inventory["artifact_size_bytes"] == LOCKED_SIZE
+    assert inventory["identity_kind"] == "immutable_release_tag"
     assert inventory["entry_point"] == "runergo"
     assert inventory["identity_probe"]["argv"] == ["--version"]
     assert "xsb" in (inventory.get("runtime_dependencies") or {})
-    for key in ("sh", "make", "gcc", "flex", "bison"):
-        assert key in (inventory.get("build_dependencies") or {})
+    expected_build_commands = set(installer.ERGOAI_BUILD_COMMANDS)
+    assert set(inventory.get("build_dependencies") or {}) == (
+        expected_build_commands
+    )
+    expected_absolute_commands = list(installer.ERGOAI_REQUIRED_ABSOLUTE_COMMANDS)
+    assert inventory["required_absolute_commands"] == expected_absolute_commands
+    expected_version_floors = {
+        name: ">=" + ".".join(str(part) for part in minimum)
+        for name, minimum in installer.ERGOAI_VERSIONED_BUILD_COMMANDS.items()
+    }
+    assert inventory["dependency_version_floors"] == expected_version_floors
     acquisition = inventory.get("acquisition_conditions") or {}
     assert REQUIRED_LOCK_ACQUISITION_KEYS <= set(acquisition)
+    assert all(acquisition[key] is True for key in REQUIRED_LOCK_ACQUISITION_KEYS)
     assert set(inventory.get("platforms") or {}) == {
         "linux-x86_64",
         "linux-aarch64",
@@ -360,6 +394,7 @@ def test_lock_binds_official_ergoai_distribution(lock_document) -> None:
     assert ergo["installer_entry"] == "ensure_ergoai"
     assert ergo["license"] == "Apache-2.0"
     assert ergo["source"] == "https://github.com/ErgoAI/ErgoEngine"
+    assert ergo["identity_kind"] == "immutable_release_tag"
     pins = ergo.get("pins") or []
     assert {pin["platform"] for pin in pins} == {"linux-x86_64", "linux-aarch64"}
     for pin in pins:
@@ -367,6 +402,7 @@ def test_lock_binds_official_ergoai_distribution(lock_document) -> None:
         assert pin["sha256"] == LOCKED_SHA256
         assert pin["is_checksummed"] is True
         assert pin["release_tag"] == LOCKED_RELEASE_TAG
+        assert pin["identity_kind"] == "immutable_release_tag"
 
     contract = ergo.get("deployment_contract") or {}
     assert contract["live_toolchain_contract_interface"] == INTERFACE
@@ -378,6 +414,28 @@ def test_lock_binds_official_ergoai_distribution(lock_document) -> None:
         REQUIRED_CASE_KINDS
     )
     assert "xsb" in (contract.get("runtime_dependencies") or {})
+    assert set(contract.get("required_build_commands") or []) == (
+        expected_build_commands
+    )
+    assert contract["required_absolute_commands"] == expected_absolute_commands
+    assert contract["dependency_version_floors"] == expected_version_floors
+    contract_acquisition = contract.get("acquisition_conditions") or {}
+    assert REQUIRED_LOCK_ACQUISITION_KEYS <= set(contract_acquisition)
+    assert all(
+        contract_acquisition[key] is True for key in REQUIRED_LOCK_ACQUISITION_KEYS
+    )
+    assert contract["optional_java_api_dependencies"] == inventory[
+        "optional_java_api_dependencies"
+    ]
+    assert contract["runtime_execution_policy"] == (
+        "private-ergoai-copy-shared-immutable-xsb/v1"
+    )
+    assert contract["java_consumer_policy"] == (
+        "private-ergoai-copy-java-consumers/v2"
+    )
+    assert contract["runtime_workspace_cleanup_policy"] == inventory[
+        "runtime_workspace_cleanup_policy"
+    ]
     lazy = contract.get("lazy_install") or {}
     assert lazy.get("staged") is True
     assert lazy.get("checksum_verified") is True
@@ -404,11 +462,17 @@ def test_structural_contract_receipt(structural_contract) -> None:
     assert structural_contract["promotion_blocked"] is True
     assert structural_contract["authority_ceiling"] == "advisory"
     assert structural_contract["network_used"] is False
+    assert structural_contract["network_isolation_enforced"] is False
     assert structural_contract["install_attempted"] is False
     assert structural_contract["download_attempted"] is False
     assert structural_contract["live_vendor_execution"] is False
     assert set(structural_contract["case_kinds"]) == REQUIRED_CASE_KINDS
     assert not structural_contract["block_reasons"]
+    by_id = {check["check_id"]: check for check in structural_contract["checks"]}
+    for kind in REQUIRED_CASE_KINDS:
+        check = by_id[f"ergoai.live_toolchain.case.{kind}"]
+        assert check["status"] == "skipped"
+        assert check["observed"] == "not_executed"
 
 
 def test_lazy_install_is_fail_closed(installer, tmp_path) -> None:
@@ -426,6 +490,25 @@ def test_lazy_install_is_fail_closed(installer, tmp_path) -> None:
     assert "yes_required" in refused.reason_codes
     assert refused.install_attempted is False
     assert refused.grants_proof_authority is False
+    assert refused.bindings["atomic_publish_supported"] is True
+    assert refused.bindings["relocatable_install_supported"] is True
+    assert "atomic_publish" not in refused.bindings
+    assert "relocatable_install" not in refused.bindings
+
+    dry_run = installer.ensure_ergoai(
+        yes=True,
+        strict=False,
+        force=True,
+        dry_run=True,
+        install_root=root / "dry-run",
+        repo_root=REPO_ROOT,
+        platform_key="linux-x86_64",
+        hermetic_shim=True,
+    )
+    assert dry_run.phase == "dry_run"
+    assert dry_run.install_attempted is False
+    assert "atomic_publish" not in dry_run.bindings
+    assert "relocatable_install" not in dry_run.bindings
 
     with pytest.raises(installer.AdvisorInstallerError):
         installer.authorize_plugin_install(
@@ -445,6 +528,7 @@ def test_lazy_install_is_fail_closed(installer, tmp_path) -> None:
             repo_root=REPO_ROOT,
             platform_key="linux-aarch64",
             hermetic_shim=False,
+            test_mode=True,
         )
     finally:
         monkeypatch.undo()
@@ -502,32 +586,44 @@ def test_semantic_matrix_through_fixture(installer, live_fixture) -> None:
         assert checks[kind]["passed"] is True, kind
     assert checks["timeout"]["timed_out"] is True
     assert checks["resource_bound"]["resource_bound_enforced"] is True
+    assert checks["resource_bound"]["termination_reason"] == "output_limit"
     assert checks["malformed"]["verdict"] == "error"
     assert checks["entailment"]["verdict"] == "yes"
     assert checks["non_entailment"]["verdict"] == "no"
     assert checks["mutation"]["verdict"] == "no"
-    assert checks["contradiction"]["verdict"] in {"no", "error", "unknown"}
+    assert checks["contradiction"]["verdict"] == "yes"
+    assert checks["contradiction"]["control_passed"] is True
+    assert checks["contradiction"]["non_explosion"]["verdict"] == "no"
+    assert (
+        checks["entailment"]["output_digest_sha256"]
+        != checks["replay"]["output_digest_sha256"]
+    )
+    assert (
+        checks["entailment"]["semantic_outcome_digest_sha256"]
+        == checks["replay"]["semantic_outcome_digest_sha256"]
+    )
     # Legacy aliases remain for role-certification fixtures.
     assert checks["positive"]["passed"] is True
     assert checks["negative"]["passed"] is True
 
 
-def test_live_toolchain_contract_with_semantics(live_fixture) -> None:
+def test_fixture_cannot_satisfy_live_toolchain_contract(live_fixture) -> None:
     receipt = live_fixture["receipt"]
     assert receipt["interface"] == INTERFACE
     assert receipt["goal_id"] == GOAL_ID
     assert receipt["task_id"] == TASK_ID
     assert receipt["structural_passed"] is True
-    assert receipt["semantic_passed"] is True
-    assert receipt["contract_passed"] is True
+    assert receipt["semantic_passed"] is False
+    assert receipt["contract_passed"] is False
     assert receipt["grants_proof_authority"] is False
     assert receipt["promotion_blocked"] is True
     assert receipt["network_used"] is False
     assert receipt["install_attempted"] is False
-    assert not receipt["block_reasons"]
+    assert receipt["live_vendor_execution"] is False
+    assert "managed_vendor_provenance_unverified" in receipt["block_reasons"]
     by_id = {check["check_id"]: check for check in receipt["checks"]}
     for kind in REQUIRED_CASE_KINDS:
-        assert by_id[f"ergoai.live_toolchain.case.{kind}"]["status"] == "passed"
+        assert by_id[f"ergoai.live_toolchain.case.{kind}"]["status"] == "failed"
     assert by_id["ergoai.live_toolchain.lock_binding"]["status"] == "passed"
     assert by_id["ergoai.live_toolchain.lazy_install_policy"]["status"] == "passed"
     assert by_id["ergoai.live_toolchain.wrapper_adapter"]["status"] == "passed"
@@ -538,7 +634,8 @@ def test_wrapper_live_adapter_through_fixture(wrapper_mod, live_fixture) -> None
     executable = live_fixture["executable"]
     wrapper = wrapper_mod.ErgoAIWrapper(binary=executable, lazy_install=False)
     assert wrapper.simulation_mode is False
-    assert wrapper.is_live_vendor_execution() is True
+    assert wrapper.is_external_process_execution() is True
+    assert wrapper.is_live_vendor_execution() is False
     adapter = wrapper.run_live_semantic_adapter(
         timeout_seconds=5.0,
         bound_timeout_seconds=0.15,
@@ -546,8 +643,12 @@ def test_wrapper_live_adapter_through_fixture(wrapper_mod, live_fixture) -> None
         require_live_binary=True,
     )
     assert adapter["interface"] == INTERFACE
-    assert adapter["live_vendor_execution"] is True
-    assert adapter["passed"] is True
+    assert adapter["live_vendor_execution"] is False
+    assert adapter["external_process_execution"] is True
+    # Semantic cases can execute, but an unmanaged process fixture must not
+    # promote the aggregate adapter result to a passing live-vendor receipt.
+    assert adapter["passed"] is False
+    assert "managed_vendor_provenance_unverified" in adapter["block_reasons"]
     assert adapter["grants_proof_authority"] is False
     assert adapter["authority_ceiling"] == "advisory"
     assert (
@@ -563,7 +664,8 @@ def test_wrapper_live_adapter_through_fixture(wrapper_mod, live_fixture) -> None
     )
     assert bounded["grants_proof_authority"] is False
     assert bounded["authority_ceiling"] == "advisory"
-    assert bounded["live_vendor_execution"] is True
+    assert bounded["live_vendor_execution"] is False
+    assert bounded["external_process_execution"] is True
     assert bounded["status"] in {"success", "failure", "error", "timeout", "unknown"}
 
 
@@ -605,21 +707,10 @@ def test_hermetic_shim_is_not_live_vendor_execution(
 
 
 def test_live_certifier_authority_ceiling(
-    installer, advisors_cert, tmp_path, monkeypatch
+    installer, advisors_cert, tmp_path
 ) -> None:
     root = tmp_path / "certifier"
     executable = _materialize_live_fixture(root, installer)
-    release = root / "downloads" / "ergoAI_3.0.run"
-    monkeypatch.setattr(
-        installer,
-        "ERGOAI_RELEASE_SHA256",
-        hashlib.sha256(release.read_bytes()).hexdigest(),
-    )
-    monkeypatch.setattr(
-        installer,
-        "ERGOAI_RELEASE_SIZE_BYTES",
-        release.stat().st_size,
-    )
     receipt = advisors_cert.certify_live_ergoai_vendor(
         executable=executable,
         install_root=root,
@@ -627,10 +718,44 @@ def test_live_certifier_authority_ceiling(
         platform_key="linux-aarch64",
         timeout=5.0,
     )
-    assert receipt["vendor_certified"] is True
+    assert receipt["vendor_certified"] is False
+    assert receipt["managed_vendor_live_evidence"] is False
+    assert receipt["authoritative_live_evidence"] is False
     assert receipt["grants_proof_authority"] is False
     assert receipt["promotion_blocked"] is True
     assert receipt["authority_ceiling"] == "advisory"
-    by_id = {check["check_id"]: check for check in receipt["checks"]}
-    for kind in ("positive", "negative", "mutation", "replay"):
-        assert by_id[f"advisors.ergoai_live.{kind}"]["status"] == "passed"
+    assert "manifest_release_sha256_mismatch" in receipt["block_reasons"]
+
+
+def test_opt_in_genuine_managed_ergoai_evidence(installer, advisors_cert) -> None:
+    configured = os.environ.get("IPFS_DATASETS_PY_TEST_ERGOAI_MANAGED_ROOT")
+    if not configured:
+        pytest.skip("set IPFS_DATASETS_PY_TEST_ERGOAI_MANAGED_ROOT for live replay")
+    root = Path(configured).expanduser().resolve()
+    executable = root / "bin" / "ergoai"
+
+    receipt = advisors_cert.certify_live_ergoai_vendor(
+        executable=executable,
+        install_root=root,
+        repo_root=REPO_ROOT,
+        platform_key=installer.detect_platform_key(),
+        timeout=30.0,
+    )
+    contract = advisors_cert.build_ergoai_live_toolchain_contract(
+        repo_root=REPO_ROOT,
+        install_root=root,
+        executable=executable,
+        platform_key=installer.detect_platform_key(),
+        run_semantics=True,
+        timeout=30.0,
+    )
+
+    assert receipt["vendor_certified"] is True
+    assert receipt["managed_vendor_live_evidence"] is True
+    assert receipt["authoritative_live_evidence"] is False
+    assert receipt["grants_proof_authority"] is False
+    assert not receipt["block_reasons"]
+    assert contract["contract_passed"] is True
+    assert contract["live_vendor_execution"] is True
+    assert contract["semantic_passed"] is True
+    assert not contract["block_reasons"]

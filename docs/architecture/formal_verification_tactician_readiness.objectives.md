@@ -1718,3 +1718,22 @@ Program invariants:
 - Conflict policy: Sole owner of the authoritative vendor release after every dependency closes; never manufacture external evidence, weaken a platform or authority gate, or attest the current task's future merge.
 - Interfaces: FormalVerificationAuthoritativeVendorRelease@1
 - Resource class: cpu-validation
+
+## FVT-G222 Complete the optional ErgoAI Java API capability
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G215, FVT-G216, FVT-G218
+- Fib priority: 196418
+- Priority: P0
+- Track: dependency-integrity
+- Bundle: formal-verification-tactician/ergoai-java-api
+- Goal: Turn the currently detected Java-runtime-only ErgoAI installation into a separately certified Java API capability by providing an authoritative, checksum-pinned, platform-bound, user-local JDK lifecycle without weakening the already working core ErgoAI lane.
+- Evidence: test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- Outputs: config/formal_verification_toolchains.lock.json, setup.py, requirements.txt, ipfs_datasets_py/setup.py, ipfs_datasets_py/pyproject.toml, ipfs_datasets_py/requirements.txt, ipfs_datasets_py/requirements-lazy.txt, ipfs_datasets_py/requirements-theorem-provers.txt, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py test/integration/toolchains/test_ergoai_live_toolchain_contract.py ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py test/packaging/test_formal_verification_distribution_contract.py -q
+- Acceptance: The lock selects reviewed Eclipse Temurin or another authoritative OpenJDK JDK artifact by exact version, publisher, immutable URL, SHA-256, signature or equivalent publisher evidence, license, OS, architecture, archive size, and required `java`, `javac`, and `jar` identities; only an explicit allow flag may perform a bounded acquisition and symlink-safe extraction into the validated user-local transaction root; interruption, checksum mismatch, archive traversal, unsupported hosts, stale dependency identities, or failed post-install probes roll back and remain unavailable; the managed ErgoAI wrapper binds the exact JDK identity used by its Java consumers and executes positive, negative, malformed, timeout, replay, relocation, and dependency-mutation cases; capability, dependency, semantic, platform, packaging, and authority axes remain independently visible; setup.py, pyproject, and requirements inventories classify the JDK as a reviewed external lazy dependency rather than an invalid mandatory Python package; import, probe, wheel installation, dry-run, and offline certification never download or install; core ErgoAI remains independently usable when the Java API capability is absent.
+- Conflict policy: Own the optional JDK lock, lazy lifecycle, ErgoAI Java binding, and its focused evidence; never download a moving `latest` target without resolving and pinning its immutable identity, trust ambient `JAVA_HOME`, make a JDK a mandatory pip dependency, elevate advisor output to proof authority, or couple core ErgoAI availability to this optional capability.
+- Interfaces: ErgoAIJavaAPIToolchainContract@1, LogicVerificationLazyInstaller@1
+- Submodules: ipfs_datasets_py
+- Resource class: io-artifact

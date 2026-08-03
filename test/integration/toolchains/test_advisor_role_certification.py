@@ -68,6 +68,13 @@ REQUIRED_CASE_KINDS = {
 }
 
 
+def _minimal_elf(machine: int) -> bytes:
+    header = bytearray(64)
+    header[:6] = b"\x7fELF\x02\x01"
+    header[18:20] = machine.to_bytes(2, "little")
+    return bytes(header)
+
+
 def _ensure_import_paths() -> None:
     datasets_root = REPO_ROOT / "ipfs_datasets_py"
     for candidate in (str(REPO_ROOT), str(datasets_root)):
@@ -226,6 +233,7 @@ def test_ergoai_live_path_rejects_bad_prefetched_checksum(
         platform_key="linux-aarch64",
         hermetic_shim=False,
         artifact_path=artifact,
+        test_mode=True,
     )
     assert not receipt.ok
     assert receipt.phase == "checksum"
@@ -246,6 +254,7 @@ def test_ergoai_live_request_never_substitutes_offline_shim(
         repo_root=REPO_ROOT,
         platform_key="linux-aarch64",
         hermetic_shim=False,
+        test_mode=True,
     )
     assert not receipt.ok
     assert receipt.phase == "offline_policy"
@@ -421,35 +430,112 @@ def test_live_ergoai_certifier_requires_provenance_and_real_semantics(
     root = install_root / "live-ergoai-fixture"
     executable = root / "bin" / "ergoai"
     executable.parent.mkdir(parents=True)
-    executable.write_text(
+    fixture_source = (
         "#!/usr/bin/env python3\n"
         "from pathlib import Path\n"
-        "import re, sys\n"
+        "import re, sys, time\n"
         "if len(sys.argv) > 1 and sys.argv[1] in {'--version', '-v', 'version'}:\n"
         "    print('ErgoAI 3.0 (managed linux-aarch64; v3.0_release)')\n"
         "    raise SystemExit(0)\n"
         "data = sys.stdin.read()\n"
         "match = re.search(r\"load\\{'([^']+)'\\}\", data)\n"
         "program = Path(match.group(1)).read_text() if match else ''\n"
-        "verdict = 'No' if 'fvt_ergo_absent' in data or 'fvt_ergo_mutated' in program else 'Yes'\n"
-        "print('Yes')\n"
-        "print(verdict)\n",
-        encoding="utf-8",
+        "if 'fvt_loop' in program or 'fvt_loop' in data:\n"
+        "    while True: time.sleep(0.01)\n"
+        "if 'fvt_ergo_emit' in program or 'fvt_ergo_emit' in data:\n"
+        "    while True:\n"
+        "        print('X' * 256, flush=True)\n"
+        "if 'not %% valid' in program:\n"
+        "    print('syntax error: malformed ergo input')\n"
+        "    raise SystemExit(1)\n"
+        "if 'fvt_ergo_unrelated' in data:\n"
+        "    print('No')\n"
+        "elif 'fvt_ergo_absent' in data or 'fvt_ergo_mutated' in program:\n"
+        "    print('No')\n"
+        "else:\n"
+        "    print('Yes')\n"
     )
+    executable.write_text(fixture_source, encoding="utf-8")
     executable.chmod(0o755)
-    xsb = root / "advisors" / "ergoai" / "3.0" / "vendor" / "XSB" / "config" / "aarch64-unknown-linux-gnu" / "bin" / "xsb"
+    for alias in ("runErgo.sh", "runergo"):
+        alias_path = root / "bin" / alias
+        alias_path.write_bytes(executable.read_bytes())
+        alias_path.chmod(0o755)
+    distribution = (
+        root
+        / "advisors"
+        / "ergoai"
+        / "3.0"
+        / "vendor-fixture-relocatable-v3"
+        / "ERGOAI_3.0"
+    )
+    vendor_executable = distribution / "ErgoAI" / "runergo"
+    vendor_executable.parent.mkdir(parents=True)
+    vendor_executable.write_text(fixture_source, encoding="utf-8")
+    vendor_executable.chmod(0o755)
+    xsb_configuration = "aarch64-unknown-linux-gnu"
+    xsb = distribution / "XSB" / "config" / xsb_configuration / "bin" / "xsb"
     xsb.parent.mkdir(parents=True)
-    xsb.write_bytes(b"fixture-xsb-aarch64")
+    xsb.write_bytes(_minimal_elf(183))
     xsb.chmod(0o755)
+    runtime_paths = vendor_executable.parent / ".ergo_paths"
+    java_settings = vendor_executable.parent / "java" / "flora_settings.sh"
+    config_file = vendor_executable.parent / "ergoAI_config.sh"
+    paths_source, java_source = installer._ergoai_relocatable_runtime_sources(
+        xsb_configuration
+    )
+    runtime_paths.write_bytes(paths_source)
+    java_settings.parent.mkdir(parents=True)
+    java_settings.write_bytes(java_source)
+    config_file.write_bytes(b"fixture-hardened-ergoai-config\n")
+    xsb_user_aux = (
+        root
+        / "advisors"
+        / "ergoai"
+        / "3.0"
+        / "runtime-state"
+        / "xsb-user-aux"
+    )
+    xsb_user_aux.mkdir(parents=True)
     release = root / "downloads" / "ergoAI_3.0.run"
     release.parent.mkdir(parents=True)
     release.write_bytes(b"fixture-official-release")
     release_digest = hashlib.sha256(release.read_bytes()).hexdigest()
     monkeypatch.setattr(installer, "ERGOAI_RELEASE_SHA256", release_digest)
     monkeypatch.setattr(installer, "ERGOAI_RELEASE_SIZE_BYTES", release.stat().st_size)
+    monkeypatch.setattr(
+        installer,
+        "ERGOAI_CONFIG_HARDENED_SHA256",
+        hashlib.sha256(config_file.read_bytes()).hexdigest(),
+    )
+
+    semantic_checks = installer.run_ergoai_semantic_checks(
+        executable,
+        timeout=1,
+        include_extended=True,
+        bound_timeout_seconds=0.05,
+        max_output_bytes=256,
+    )
+    assert semantic_checks["passed"] is True
+    dependency_identity = installer._ergoai_build_dependency_identity()
+    assert dependency_identity["satisfied"] is True
+    optional_java_identity = installer._ergoai_optional_java_dependency_identity()
+    bound_runtime_environment = (
+        installer._materialize_ergoai_bound_runtime_toolchain(
+            install_root=root,
+            version="3.0",
+            dependency_identity=dependency_identity,
+            optional_java_identity=optional_java_identity,
+        )
+    )
+    version_banner = installer.read_ergoai_version_banner(str(executable))
+    assert version_banner
 
     identity_path = root / "advisors" / "ergoai" / "3.0" / "identity.json"
     identity_path.parent.mkdir(parents=True, exist_ok=True)
+    tree_integrity = installer._ergoai_vendor_tree_integrity(
+        distribution.parent
+    )
     identity = {
         "schema_version": "ergoai-managed-vendor-identity/v1",
         "tool_id": "ergoai",
@@ -457,22 +543,103 @@ def test_live_ergoai_certifier_requires_provenance_and_real_semantics(
         "selected_platform": "linux-aarch64",
         "release_tag": "v3.0_release",
         "release_url": installer.ERGOAI_RELEASE_URL,
-        "release_artifact_path": str(release),
+        "release_artifact_path": str(release.relative_to(root)),
         "release_artifact_sha256": release_digest,
         "release_artifact_size_bytes": release.stat().st_size,
-        "vendor_executable": str(executable),
-        "vendor_executable_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
-        "xsb_executable": str(xsb),
+        "vendor_executable": str(vendor_executable.relative_to(root)),
+        "vendor_executable_sha256": hashlib.sha256(
+            vendor_executable.read_bytes()
+        ).hexdigest(),
+        "xsb_executable": str(xsb.relative_to(root)),
         "xsb_executable_sha256": hashlib.sha256(xsb.read_bytes()).hexdigest(),
-        "xsb_configuration": "aarch64-unknown-linux-gnu",
+        "xsb_configuration": xsb_configuration,
+        "xsb_elf_machine": "aarch64",
+        "xsb_user_aux_dir": str(xsb_user_aux.relative_to(root)),
+        "runtime_state_policy": (
+            "mutable-nonauthoritative-outside-vendor-identity/v1"
+        ),
+        "runtime_workspace_cleanup_policy": (
+            "normal-and-handled-signals-clean-sigkill-orphans-retained/v1"
+        ),
+        "runtime_execution_policy": (
+            "private-ergoai-copy-shared-immutable-xsb/v1"
+        ),
+        "java_consumer_policy": "private-ergoai-copy-java-consumers/v2",
+        "runtime_paths_file": str(runtime_paths.relative_to(root)),
+        "runtime_paths_sha256": hashlib.sha256(
+            runtime_paths.read_bytes()
+        ).hexdigest(),
+        "java_settings_file": str(java_settings.relative_to(root)),
+        "java_settings_sha256": hashlib.sha256(
+            java_settings.read_bytes()
+        ).hexdigest(),
+        "config_file": str(config_file.relative_to(root)),
+        "config_file_sha256": hashlib.sha256(
+            config_file.read_bytes()
+        ).hexdigest(),
+        "launcher": str(executable.relative_to(root)),
         "launcher_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
-        "identity_digest_sha256": "fixture-identity",
+        "launcher_digests": {
+            name: hashlib.sha256((root / "bin" / name).read_bytes()).hexdigest()
+            for name in installer.ERGOAI_EXECUTABLES
+        },
+        "version_banner_digest_sha256": hashlib.sha256(
+            version_banner.encode("utf-8")
+        ).hexdigest(),
+        "semantic_checks": semantic_checks,
+        "build_dependency_identity": dependency_identity,
+        "optional_java_dependency_identity": optional_java_identity,
+        "bound_runtime_environment": bound_runtime_environment,
+        "bound_build_environment": {
+            "schema_version": "ergoai-bound-build-environment/v1",
+            "ambient_toolchain_overrides_inherited": False,
+            "path_model": "private-staging-only/v1",
+            "allowlisted_environment_keys": list(
+                installer.ERGOAI_BOUND_BUILD_ENVIRONMENT_KEYS
+            ),
+            "command_count": len(installer.ERGOAI_BUILD_COMMANDS),
+            "commands_digest_sha256": "0" * 64,
+        },
+        "config_hardening": {
+            "schema_version": "ergoai-config-hardening/v1",
+            "private_xsb_workspace_required": True,
+            "exact_replacement_count": (
+                installer.ERGOAI_CONFIG_HARDENING_REPLACEMENT_COUNT
+            ),
+            "source_sha256": installer.ERGOAI_CONFIG_SOURCE_SHA256,
+            "hardened_sha256": installer.ERGOAI_CONFIG_HARDENED_SHA256,
+        },
         "license_components": ["Apache-2.0", "LGPL-2.0"],
         "checksum_verified": True,
         "is_live_vendor": True,
         "is_hermetic_advisor_shim": False,
+        "role": installer.ADVISOR_ROLE,
+        "authority_ceiling": installer.ADVISOR_AUTHORITY_CEILING,
+        "atomic_publish": True,
+        "relocatable_install": True,
+        "runtime_paths_relative": True,
+        "relocation_certification_scope": (
+            "executed-runtime-and-bundled-java-consumers/v1"
+        ),
+        "developer_rebuild_metadata_relocated": False,
+        "vendor_tree_digest_sha256": tree_integrity["digest_sha256"],
+        "vendor_tree_file_count": tree_integrity["file_count"],
+        "vendor_tree_excluded_runtime_cache_count": tree_integrity[
+            "excluded_runtime_cache_count"
+        ],
+        "vendor_tree_exclusion_policy": tree_integrity["exclusion_policy"],
+        "install_publication_model": (
+            "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4"
+        ),
+        "publication_commit_point": "atomic_identity_manifest_replace",
+        "grants_theorem_authority": False,
         "grants_proof_authority": False,
+        "license": "Apache-2.0",
+        "source": "https://github.com/ErgoAI/ErgoEngine",
     }
+    identity["identity_digest_sha256"] = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
     identity_path.write_text(json.dumps(identity), encoding="utf-8")
 
     receipt = advisors_cert.certify_live_ergoai_vendor(
@@ -483,8 +650,12 @@ def test_live_ergoai_certifier_requires_provenance_and_real_semantics(
     )
     assert receipt["interface"] == "LiveErgoAIAdvisorCertification@1"
     assert receipt["vendor_certified"] is True
-    assert receipt["authoritative_live_evidence"] is True
-    assert receipt["evidence_class"] == "checksummed_authoritative_vendor_execution"
+    assert receipt["managed_vendor_live_evidence"] is True
+    assert receipt["authoritative_live_evidence"] is False
+    assert (
+        receipt["evidence_class"]
+        == "checksummed_managed_vendor_execution_advisory_only"
+    )
     assert receipt["grants_proof_authority"] is False
     assert receipt["promotion_blocked"] is True
     assert not receipt["block_reasons"]

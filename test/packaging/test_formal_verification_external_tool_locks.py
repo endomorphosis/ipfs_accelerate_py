@@ -208,6 +208,156 @@ def test_managed_pins_include_platform_or_checksum_inventory() -> None:
                 assert meta.get("sha256") and len(meta["sha256"]) == 64
 
 
+def test_ergoai_lock_binds_bounded_immutable_acquisition_and_dependencies() -> None:
+    _ensure_datasets_on_path()
+    from ipfs_datasets_py.logic.backends.installers import advisors
+
+    lock = _load_lock()
+    inventory = lock["checksummed_release_inventory"]["ergoai"]
+    entry = _tools_by_id(lock)["ergoai"]
+    contract = entry["deployment_contract"]
+
+    assert inventory["identity_kind"] == "immutable_release_tag"
+    assert entry["identity_kind"] == "immutable_release_tag"
+    assert all(
+        pin["identity_kind"] == "immutable_release_tag" for pin in entry["pins"]
+    )
+
+    required_commands = list(advisors.ERGOAI_BUILD_COMMANDS)
+    required_absolute = list(advisors.ERGOAI_REQUIRED_ABSOLUTE_COMMANDS)
+    version_floors = {
+        name: ">=" + ".".join(str(part) for part in minimum)
+        for name, minimum in advisors.ERGOAI_VERSIONED_BUILD_COMMANDS.items()
+    }
+    assert set(inventory["build_dependencies"]) == set(required_commands)
+    assert contract["required_build_commands"] == required_commands
+    assert inventory["required_absolute_commands"] == required_absolute
+    assert contract["required_absolute_commands"] == required_absolute
+    assert inventory["dependency_version_floors"] == version_floors
+    assert contract["dependency_version_floors"] == version_floors
+
+    assert contract["runtime_dependencies"] == inventory["runtime_dependencies"]
+    assert set(contract["runtime_dependencies"]) == set(
+        advisors.ERGOAI_RUNTIME_DEPENDENCIES
+    )
+    java_floor = ".".join(
+        str(part) for part in advisors.ERGOAI_OPTIONAL_JAVA_MINIMUM_VERSION
+    )
+    expected_optional_java = {
+        "runtime": [
+            f"java>={java_floor}" if name == "java" else name
+            for name in advisors.ERGOAI_OPTIONAL_JAVA_RUNTIME_COMMANDS
+        ],
+        "build": [
+            f"java>={java_floor}" if name == "java" else name
+            for name in advisors.ERGOAI_OPTIONAL_JAVA_BUILD_COMMANDS
+        ],
+        "missing_optional_capabilities_do_not_block_core_ergoai": True,
+    }
+    assert inventory["optional_java_api_dependencies"] == expected_optional_java
+    assert contract["optional_java_api_dependencies"] == expected_optional_java
+
+    expected_config_hardening = {
+        "schema_version": "ergoai-config-hardening/v1",
+        "source_sha256": advisors.ERGOAI_CONFIG_SOURCE_SHA256,
+        "hardened_sha256": advisors.ERGOAI_CONFIG_HARDENED_SHA256,
+        "private_xsb_workspace_required": True,
+        "exact_replacement_count": (
+            advisors.ERGOAI_CONFIG_HARDENING_REPLACEMENT_COUNT
+        ),
+    }
+    assert inventory["config_hardening"] == expected_config_hardening
+    assert contract["config_hardening"] == expected_config_hardening
+
+    expected_bound_environment = {
+        "schema_version": "ergoai-bound-build-environment/v1",
+        "path_model": "private-staging-only/v1",
+        "ambient_toolchain_overrides_inherited": False,
+        "allowlisted_environment_keys": list(
+            advisors.ERGOAI_BOUND_BUILD_ENVIRONMENT_KEYS
+        ),
+    }
+    assert inventory["bound_build_environment"] == expected_bound_environment
+    assert contract["bound_build_environment"] == expected_bound_environment
+
+    expected_bound_runtime_environment = {
+        "schema_version": "ergoai-bound-runtime-environment/v1",
+        "path_model": advisors.ERGOAI_BOUND_RUNTIME_PATH_MODEL,
+        "ambient_path_inherited": False,
+        "symlink_only_exact_command_identities": True,
+        "optional_java_requires_complete_capability": True,
+    }
+    assert inventory["bound_runtime_environment_contract"] == (
+        expected_bound_runtime_environment
+    )
+    assert contract["bound_runtime_environment_contract"] == (
+        expected_bound_runtime_environment
+    )
+
+    expected_identity_probe = {
+        "method": "bounded_version_argv",
+        "argv": list(advisors.ERGOAI_IDENTITY_PROBE_ARGV),
+        "timeout_seconds": 5,
+        "network": False,
+        "expected_identity_substring": "ErgoAI 3.0",
+    }
+    assert inventory["identity_probe"] == expected_identity_probe
+    assert contract["identity_probe"] == expected_identity_probe
+
+    expected_lazy_install = {
+        "staged": True,
+        "checksum_verified": True,
+        "atomic": True,
+        "relocatable": True,
+        "offline_after_acquisition": True,
+        "never_on_import": True,
+        "never_during_certification": True,
+    }
+    assert inventory["lazy_install"] == expected_lazy_install
+    assert contract["lazy_install"] == expected_lazy_install
+
+    expected_runtime_policies = {
+        "runtime_execution_policy": (
+            "private-ergoai-copy-shared-immutable-xsb/v1"
+        ),
+        "java_consumer_policy": "private-ergoai-copy-java-consumers/v2",
+        "runtime_workspace_cleanup_policy": (
+            "normal-and-handled-signals-clean-sigkill-orphans-retained/v1"
+        ),
+        "relocation_certification_scope": (
+            "executed-runtime-and-bundled-java-consumers/v1"
+        ),
+        "developer_rebuild_metadata_relocated": False,
+        "install_publication_model": (
+            "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4"
+        ),
+        "publication_commit_point": "atomic_identity_manifest_replace",
+        "runtime_state_policy": (
+            "mutable-nonauthoritative-outside-vendor-identity/v1"
+        ),
+    }
+    for name, expected in expected_runtime_policies.items():
+        assert inventory[name] == expected
+        assert contract[name] == expected
+
+    acquisition_keys = {
+        "requires_explicit_opt_in",
+        "checksum_required_before_execute",
+        "download_during_certification_forbidden",
+        "user_local_only",
+        "offline_after_acquisition",
+        "atomic_staged_install",
+        "relocatable_install_root",
+        "bounded_acquisition",
+        "symlink_free_install_paths",
+    }
+    for acquisition in (
+        inventory["acquisition_conditions"],
+        contract["acquisition_conditions"],
+    ):
+        assert all(acquisition.get(key) is True for key in acquisition_keys)
+
+
 def test_zkp_secret_safe_deployment_artifact_schema_forbids_private_pins() -> None:
     lock = _load_lock()
     zkp = lock["zkp_deployment_artifact_schema"]

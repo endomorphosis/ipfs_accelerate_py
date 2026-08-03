@@ -29,9 +29,10 @@ import json
 import os
 import sys
 import tempfile
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Final, Mapping, Sequence
+from typing import Any, Final
 
 # Allow running as a script from a worktree without an installed package.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -42,8 +43,8 @@ for candidate in (_REPO_ROOT, _DATASETS_ROOT):
         sys.path.insert(0, text)
 
 from ipfs_datasets_py.logic.backends.toolchain_roles import (  # noqa: E402
-    ToolRole,
     ToolchainAuthorityCeiling,
+    ToolRole,
     can_satisfy_certified_authority_requirement,
     evaluate_role_aware_promotion,
     get_tool_role,
@@ -68,6 +69,8 @@ from ipfs_datasets_py.logic.formalization.proposal_advisors import (  # noqa: E4
 try:  # pragma: no cover - worktree packaging varies
     from tools.logic.certification.roles import (  # type: ignore
         bind_lane_handler as _bind_lane_handler,
+    )
+    from tools.logic.certification.roles import (
         build_role_aware_policy as _build_role_aware_policy,
     )
 except Exception:  # pragma: no cover
@@ -92,7 +95,9 @@ AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.ADVISORY.value
 AUTHORITY_SCOPE: Final = "candidate_generation_only"
 LIVE_ERGOAI_INTERFACE: Final = "LiveErgoAIAdvisorCertification@1"
 LIVE_ERGOAI_SCHEMA_VERSION: Final = "live-ergoai-advisor-certification/v1"
-LIVE_ERGOAI_EVIDENCE_CLASS: Final = "checksummed_authoritative_vendor_execution"
+LIVE_ERGOAI_EVIDENCE_CLASS: Final = (
+    "checksummed_managed_vendor_execution_advisory_only"
+)
 # FVT-G218 / FVT-085 — genuine ErgoAI advisor-toolchain path contract.
 ERGOAI_LIVE_TOOLCHAIN_INTERFACE: Final = "ErgoAILiveToolchainContract@1"
 ERGOAI_LIVE_TOOLCHAIN_SCHEMA: Final = "ergoai-live-toolchain-contract/v1"
@@ -178,8 +183,22 @@ def offline_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
     env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_OPTIONAL_LOCKS"] = "0"
-    env.setdefault("NO_PROXY", "*")
-    env.setdefault("no_proxy", "*")
+    # These guards prevent ordinary HTTP clients from inheriting a usable
+    # proxy or silently falling back to a direct connection.  They are defense
+    # in depth, not a claim of kernel-enforced network isolation (the receipt
+    # reports that distinction explicitly).
+    blocked_proxy = "http://127.0.0.1:9"
+    for key in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+    ):
+        env[key] = blocked_proxy
+    env["NO_PROXY"] = ""
+    env["no_proxy"] = ""
     env["FORMAL_VERIFICATION_CERTIFY_OFFLINE"] = "1"
     env["FORMAL_VERIFICATION_FORBID_INSTALL"] = "1"
     env["FORMAL_VERIFICATION_FORBID_NETWORK"] = "1"
@@ -677,13 +696,6 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
                     independently_validated=True,
                 )
                 status = "acceptance_gate"
-                matched = (
-                    not rejected.accepted
-                    and not half.accepted
-                    and full.accepted
-                    and not confidence_never_yields_proof(confidence=1.0)
-                    is True  # always False
-                )
                 # confidence_never_yields_proof always returns False (= not proved)
                 matched = (
                     not rejected.accepted
@@ -998,7 +1010,6 @@ def _wrap_candidate(record: Mapping[str, Any]):
 
     from ipfs_datasets_py.logic.formalization.proposal_advisors import (
         ProposalCandidate,
-        ProposalKind,
         ProposalProvider,
     )
 
@@ -1177,12 +1188,14 @@ def certify_live_ergoai_vendor(
 
     selected_platform = platform_key or advisors_installer.detect_platform_key()
     resolved_root = advisors_installer.expand_user_local_root(install_root)
+    probe_env = offline_env()
     probe = advisors_installer.probe_ergoai_identity(
         expected_version=LOCKED_ERGOAI_VERSION,
         executable=str(executable) if executable is not None else None,
         install_root=resolved_root,
         require_managed_vendor=True,
         platform_key=selected_platform,
+        env=probe_env,
     )
     resolved_executable = str(probe.get("executable_path") or "")
     # Keep the historical LiveErgoAIAdvisorCertification surface on the core
@@ -1193,6 +1206,7 @@ def certify_live_ergoai_vendor(
             resolved_executable,
             timeout=timeout,
             include_extended=False,
+            env=probe_env,
         )
         if resolved_executable and probe.get("version_match")
         else {
@@ -1247,19 +1261,6 @@ def certify_live_ergoai_vendor(
     )
 
     semantic_checks = semantics.get("checks") or {}
-    # Include both legacy aliases (positive/negative) and the FVT-G218 matrix.
-    live_kinds = (
-        "positive",
-        "negative",
-        "entailment",
-        "non_entailment",
-        "contradiction",
-        "mutation",
-        "replay",
-        "malformed",
-        "timeout",
-        "resource_bound",
-    )
     for kind in ("positive", "negative", "mutation", "replay"):
         observed = semantic_checks.get(kind) or {}
         if not observed and kind == "positive":
@@ -1309,15 +1310,40 @@ def certify_live_ergoai_vendor(
         )
     )
 
+    replay_invariant_ok = bool(semantics.get("replay_bound"))
+    checks.append(
+        CheckResult(
+            check_id="advisors.ergoai_live.replay_invariant",
+            kind="replay",
+            status="passed" if replay_invariant_ok else "failed",
+            expected="same_input_same_normalized_semantic_result",
+            observed=(
+                "normalized_semantics_match"
+                if replay_invariant_ok
+                else "normalized_semantics_mismatch"
+            ),
+            tool_id="ergoai",
+            reason_codes=(
+                []
+                if replay_invariant_ok
+                else ["replay_semantic_invariant_failed"]
+            ),
+            bindings={
+                "replay_bound": replay_invariant_ok,
+                "comparison_scope": "normalized_semantics_not_console_bytes",
+            },
+        )
+    )
+
     # Vendor certification requires the core membership/mutation/replay matrix
     # and managed provenance.  Extended timeout/resource cases are recorded when
     # the executable supports them but do not alone revoke vendor certification
-    # for legacy fixtures that only implement the core path.
+    # for the legacy advisor-role surface.
     vendor_certified = bool(
         identity_ok
         and provenance_ok
         and semantics.get("core_passed", semantics.get("passed"))
-        and semantics.get("replay_bound")
+        and replay_invariant_ok
         and authority_ok
     )
     block_reasons = sorted(
@@ -1349,6 +1375,13 @@ def certify_live_ergoai_vendor(
             "checksum_verified",
             "is_live_vendor",
             "is_hermetic_advisor_shim",
+            "atomic_publish",
+            "relocatable_install",
+            "runtime_paths_relative",
+            "runtime_workspace_cleanup_policy",
+            "relocation_certification_scope",
+            "developer_rebuild_metadata_relocated",
+            "install_publication_model",
         )
     }
     identity_manifest_path = Path(str(probe.get("identity_manifest_path") or ""))
@@ -1368,7 +1401,12 @@ def certify_live_ergoai_vendor(
             LIVE_ERGOAI_EVIDENCE_CLASS if vendor_certified else "unverified_or_incomplete"
         ),
         "vendor_certified": vendor_certified,
-        "authoritative_live_evidence": vendor_certified,
+        # This is authentic managed-vendor execution evidence, but the advisor
+        # result is not an independent proof reconstruction and therefore is
+        # never labelled authoritative proof evidence.
+        "managed_vendor_live_evidence": vendor_certified,
+        "authoritative_live_evidence": False,
+        "independent_reconstruction_complete": False,
         # Production-certified here means the advisor runtime is deployable in
         # its declared role.  It remains non-authoritative for proofs.
         "production_certified": vendor_certified,
@@ -1378,7 +1416,11 @@ def certify_live_ergoai_vendor(
         "grants_theorem_authority": False,
         "grants_proof_authority": False,
         "advisors_never_promote_alone": True,
+        # The certifier itself has no network code path.  Environment guards are
+        # applied to the child, but this receipt does not pretend they are a
+        # kernel-enforced network namespace.
         "network_used": False,
+        "network_isolation_enforced": False,
         "install_attempted": False,
         "download_attempted": False,
         "selected_platform": selected_platform,
@@ -1566,6 +1608,7 @@ def build_ergoai_live_toolchain_contract(
         block_reasons.append("strict_pin_failed")
 
     lazy_policy_ok = False
+    plugin_policy: Mapping[str, Any] = {}
     if installer_ok:
         # Prove the installer refuses import-time install and requires yes=.
         try:
@@ -1577,19 +1620,43 @@ def build_ergoai_live_toolchain_contract(
             import_blocked = False
         except Exception:
             import_blocked = True
-        refused = advisors_installer.ensure_ergoai(
-            yes=False,
-            strict=False,
-            force=True,
-            dry_run=False,
-            install_root=install_root
-            or Path(tempfile.mkdtemp(prefix="ergoai-live-toolchain-")),
-            repo_root=root,
-            platform_key=selected_platform
-            if selected_platform
-            in advisors_installer.ERGOAI_SUPPORTED_PLATFORMS
-            else advisors_installer.ERGOAI_SUPPORTED_PLATFORMS[0],
-            hermetic_shim=True,
+        # Consent must be tested against a genuinely absent install.  Reusing a
+        # valid managed root correctly reports "available" without mutation and
+        # therefore cannot exercise the yes-required branch.
+        with tempfile.TemporaryDirectory(
+            prefix="ergoai-live-toolchain-policy-"
+        ) as policy_root:
+            refused = advisors_installer.ensure_ergoai(
+                yes=False,
+                strict=False,
+                force=True,
+                dry_run=False,
+                install_root=policy_root,
+                repo_root=root,
+                platform_key=selected_platform
+                if selected_platform
+                in advisors_installer.ERGOAI_SUPPORTED_PLATFORMS
+                else advisors_installer.ERGOAI_SUPPORTED_PLATFORMS[0],
+                hermetic_shim=True,
+            )
+        plugin_policy = (
+            advisors_installer.plugin_manifest().get("policy") or {}
+        )
+        publication_ok = bool(
+            plugin_policy.get("ergoai_atomic_publish") is True
+            and plugin_policy.get("ergoai_relocatable_install") is True
+            and plugin_policy.get("ergoai_runtime_execution_policy")
+            == "private-ergoai-copy-shared-immutable-xsb/v1"
+            and plugin_policy.get("ergoai_java_consumer_policy")
+            == "private-ergoai-copy-java-consumers/v2"
+            and plugin_policy.get("ergoai_runtime_workspace_cleanup_policy")
+            == "normal-and-handled-signals-clean-sigkill-orphans-retained/v1"
+            and plugin_policy.get("ergoai_relocation_certification_scope")
+            == "executed-runtime-and-bundled-java-consumers/v1"
+            and plugin_policy.get("ergoai_developer_rebuild_metadata_relocated")
+            is False
+            and plugin_policy.get("ergoai_publication_model")
+            == "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4"
         )
         lazy_policy_ok = bool(
             import_blocked
@@ -1597,6 +1664,7 @@ def build_ergoai_live_toolchain_contract(
             and "yes_required" in refused.reason_codes
             and not refused.grants_proof_authority
             and refused.authority_ceiling == "advisory"
+            and publication_ok
         )
     checks.append(
         CheckResult(
@@ -1614,6 +1682,9 @@ def build_ergoai_live_toolchain_contract(
                 "offline_after_acquisition": True,
                 "atomic_staged": True,
                 "relocatable": True,
+                "publication_model": plugin_policy.get(
+                    "ergoai_publication_model"
+                ),
             },
         )
     )
@@ -1628,9 +1699,17 @@ def build_ergoai_live_toolchain_contract(
     try:
         from ipfs_datasets_py.logic.flogic.ergoai_wrapper import (
             AUTHORITY_CEILING as WRAPPER_CEILING,
+        )
+        from ipfs_datasets_py.logic.flogic.ergoai_wrapper import (
             EVIDENCE_CLASS as WRAPPER_EVIDENCE,
+        )
+        from ipfs_datasets_py.logic.flogic.ergoai_wrapper import (
             LIVE_CASE_KINDS as WRAPPER_KINDS,
+        )
+        from ipfs_datasets_py.logic.flogic.ergoai_wrapper import (
             LIVE_TOOLCHAIN_INTERFACE as WRAPPER_INTERFACE,
+        )
+        from ipfs_datasets_py.logic.flogic.ergoai_wrapper import (
             ErgoAIWrapper,
         )
 
@@ -1715,6 +1794,7 @@ def build_ergoai_live_toolchain_contract(
                 if installer_ok
                 else advisors_installer.detect_platform_key()
             ),
+            env=probe_env,
         )
         resolved_executable = str(probe.get("executable_path") or "")
         if (
@@ -1728,6 +1808,7 @@ def build_ergoai_live_toolchain_contract(
                 resolved_executable,
                 timeout=timeout,
                 include_extended=True,
+                env=probe_env,
             )
         elif resolved_executable and probe.get("version_match"):
             # Allow explicit fixture executables supplied for contract tests
@@ -1737,6 +1818,7 @@ def build_ergoai_live_toolchain_contract(
                 timeout=timeout,
                 include_extended=True,
                 bound_timeout_seconds=0.15,
+                env=probe_env,
             )
             live_vendor_execution = bool(
                 probe.get("managed_vendor_provenance_verified")
@@ -1748,14 +1830,22 @@ def build_ergoai_live_toolchain_contract(
         observed = semantic_checks.get(kind) or {}
         passed = bool(observed.get("passed")) if observed else False
         if not run_semantics:
-            # Contract structural pass without forcing live host execution.
-            passed = kind in set(required_kinds)
-            observed = {"verdict": "not_executed", "passed": passed}
+            # A declared case is not execution evidence.  Keep structural
+            # inspection successful while truthfully marking every live case
+            # as skipped.
+            passed = False
+            observed = {"verdict": "not_executed", "passed": False}
         checks.append(
             CheckResult(
                 check_id=f"ergoai.live_toolchain.case.{kind}",
                 kind=kind if kind in CHECK_KINDS else "acceptance",
-                status="passed" if passed else ("skipped" if not run_semantics else "failed"),
+                status=(
+                    "skipped"
+                    if not run_semantics
+                    else "passed"
+                    if passed
+                    else "failed"
+                ),
                 expected=str(
                     observed.get("expected")
                     or observed.get("expected_any")
@@ -1780,9 +1870,43 @@ def build_ergoai_live_toolchain_contract(
         if run_semantics and not passed:
             block_reasons.append(f"{kind}_failed")
 
+    replay_invariant_ok = bool(semantics.get("replay_bound"))
+    if run_semantics:
+        checks.append(
+            CheckResult(
+                check_id="ergoai.live_toolchain.replay_invariant",
+                kind="replay",
+                status="passed" if replay_invariant_ok else "failed",
+                expected="same_input_same_normalized_semantic_result",
+                observed=(
+                    "normalized_semantics_match"
+                    if replay_invariant_ok
+                    else "normalized_semantics_mismatch"
+                ),
+                tool_id="ergoai",
+                reason_codes=(
+                    []
+                    if replay_invariant_ok
+                    else ["replay_semantic_invariant_failed"]
+                ),
+                bindings={
+                    "comparison_scope": "normalized_semantics_not_console_bytes",
+                    "replay_bound": replay_invariant_ok,
+                },
+            )
+        )
+        if not replay_invariant_ok:
+            block_reasons.append("replay_semantic_invariant_failed")
+        if not live_vendor_execution:
+            block_reasons.append("managed_vendor_provenance_unverified")
+
     structural_ok = lock_ok and matrix_ok and pin_ok and lazy_policy_ok and wrapper_ok and authority_ok
     semantic_ok = (not run_semantics) or bool(semantics.get("passed"))
-    contract_passed = structural_ok and (semantic_ok if run_semantics else structural_ok)
+    contract_passed = (
+        structural_ok
+        if not run_semantics
+        else structural_ok and semantic_ok and live_vendor_execution
+    )
 
     payload = {
         "interface": ERGOAI_LIVE_TOOLCHAIN_INTERFACE,
@@ -1803,11 +1927,12 @@ def build_ergoai_live_toolchain_contract(
         "grants_theorem_authority": False,
         "grants_proof_authority": False,
         "evidence_class": (
-            "checksummed_authoritative_vendor_execution"
+            "checksummed_managed_vendor_execution_advisory_only"
             if live_vendor_execution and semantic_ok
             else "proposal_or_candidate_until_independent_reconstruction"
         ),
         "network_used": False,
+        "network_isolation_enforced": False,
         "install_attempted": False,
         "download_attempted": False,
         "case_kinds": list(ERGOAI_LIVE_CASE_KINDS),
@@ -1839,7 +1964,12 @@ def build_ergoai_live_toolchain_contract(
             "never_download_during_certification": True,
             "wrapper_fixtures_are_not_live_execution": True,
             "advisor_verdict_never_theorem_authority": True,
-            "offline_env_keys": sorted(probe_env.keys())[:0],  # keep empty intentional
+            "full_contract_requires_managed_vendor_provenance": True,
+            "offline_env_keys": sorted(
+                key
+                for key in probe_env
+                if key.startswith("FORMAL_VERIFICATION_")
+            ),
         },
         "env_policy": {
             "certification_offline": True,
@@ -1847,6 +1977,8 @@ def build_ergoai_live_toolchain_contract(
             == "1",
             "forbid_install": probe_env.get("FORMAL_VERIFICATION_FORBID_INSTALL")
             == "1",
+            "kernel_network_namespace": False,
+            "scope": "environment_guard_and_no_certifier_network_code_path",
         },
     }
     payload["receipt_digest_sha256"] = content_digest(payload)

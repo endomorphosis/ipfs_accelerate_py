@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import runpy
 import shutil
 import subprocess
 import sys
@@ -395,6 +396,145 @@ def test_root_and_datasets_dependency_inventory_is_machine_checked() -> None:
             "jsonschema",
             *THEOREM_PYTHON_BINDINGS,
         }
+
+
+def test_datasets_dependency_inventory_roles_are_machine_readable() -> None:
+    """Profile files have declared roles; full dev requirements are not runtime deps."""
+
+    datasets_pyproject = _load_toml(DATASETS_ROOT / "pyproject.toml")
+    inventory = datasets_pyproject["tool"]["ipfs-datasets-py"][
+        "dependency-inventory"
+    ]
+
+    assert inventory == {
+        "schema-version": "ipfs-datasets-dependency-inventory/v1",
+        "runtime-authority": "setup.py:install_requires",
+        "requirements-txt-role": "source-checkout-development-and-integration",
+        "requirements-lazy-role": "eager-superset-of-first-use-lazy-catalog",
+        "requirements-theorem-provers-role": "theorem-python-binding-profile",
+        "parity-scope": "formal-verification-python-bindings",
+        "shared-formal-verification-bindings": [
+            "z3-solver",
+            "cvc5",
+            "pysmt",
+            "beartype",
+            "jsonschema",
+        ],
+        "optional-formal-verification-bindings": ["symbolicai"],
+        "external-native-tools-policy": (
+            "explicit-transactional-lazy-installer-only"
+        ),
+    }
+
+    shared = set(inventory["shared-formal-verification-bindings"])
+    optional = set(inventory["optional-formal-verification-bindings"])
+    requirements = _parse_requirement_names(
+        _read_text(DATASETS_ROOT / "requirements.txt")
+    )
+    lazy = _parse_requirement_names(
+        _read_text(DATASETS_ROOT / "requirements-lazy.txt")
+    )
+    theorem = _parse_requirement_names(
+        _read_text(DATASETS_ROOT / "requirements-theorem-provers.txt")
+    )
+    project_optional = datasets_pyproject["project"]["optional-dependencies"]
+    theorem_extra = {
+        _distribution_name(item) for item in project_optional["theorem-provers"]
+    }
+    setup_text = _read_text(DATASETS_ROOT / "setup.py")
+
+    assert shared <= requirements
+    assert shared <= lazy
+    assert shared <= theorem
+    assert shared <= theorem_extra
+    for distribution in shared:
+        assert distribution in setup_text
+    assert optional <= theorem
+    assert optional <= theorem_extra
+    assert optional.isdisjoint(requirements)
+
+
+def _load_setup_namespace_without_packaging(
+    setup_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
+    """Load setup helpers while replacing setuptools' packaging mutation."""
+
+    import setuptools
+
+    setup_calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        setuptools,
+        "setup",
+        lambda **kwargs: setup_calls.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(setuptools, "find_packages", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        setuptools, "find_namespace_packages", lambda **_kwargs: []
+    )
+    namespace = runpy.run_path(str(setup_path))
+    assert len(setup_calls) == 1
+    return namespace
+
+
+def test_legacy_setup_lifecycle_side_effects_require_explicit_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy install hooks cannot download, invoke pip, or build by default."""
+
+    monkeypatch.delenv("IPFS_ACCELERATE_PY_SETUP_AUTO_TORCH", raising=False)
+    root = _load_setup_namespace_without_packaging(
+        REPO_ROOT / "setup.py", monkeypatch
+    )
+    root_globals = root["_maybe_install_torch"].__globals__
+    root_globals["_select_torch_install_mode"] = lambda: (_ for _ in ()).throw(
+        AssertionError("Torch mode detection must not run without explicit opt-in")
+    )
+    root_globals["_run"] = lambda _argv: (_ for _ in ()).throw(
+        AssertionError("pip must not run without explicit opt-in")
+    )
+    root["_maybe_install_torch"]()
+
+    monkeypatch.delenv("IPFS_DATASETS_PY_AUTO_NLTK_DOWNLOAD", raising=False)
+    monkeypatch.delenv("IPFS_DATASETS_PY_AUTO_GROTH16_BUILD", raising=False)
+    datasets = _load_setup_namespace_without_packaging(
+        DATASETS_ROOT / "setup.py", monkeypatch
+    )
+    assert datasets["_env_explicitly_enabled"](
+        "IPFS_DATASETS_PY_AUTO_NLTK_DOWNLOAD"
+    ) is False
+    assert datasets["_env_explicitly_enabled"](
+        "IPFS_DATASETS_PY_AUTO_GROTH16_BUILD"
+    ) is False
+    datasets_globals = datasets["_maybe_download_nltk_data"].__globals__
+    datasets_globals["shutil"] = type(
+        "ForbiddenShutil",
+        (),
+        {
+            "which": staticmethod(
+                lambda _name: (_ for _ in ()).throw(
+                    AssertionError(
+                        "Cargo detection must not run without explicit opt-in"
+                    )
+                )
+            )
+        },
+    )
+    import builtins
+
+    real_import = builtins.__import__
+
+    def guarded_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "nltk":
+            raise AssertionError(
+                "NLTK import/download must not run without explicit opt-in"
+            )
+        return real_import(name, *args, **kwargs)
+
+    with monkeypatch.context() as import_guard:
+        import_guard.setattr(builtins, "__import__", guarded_import)
+        datasets["_maybe_download_nltk_data"]()
+    datasets["_maybe_build_groth16_backend"]()
 
 
 def test_optional_native_provers_are_not_mandatory_pip_dependencies() -> None:

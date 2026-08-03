@@ -30,6 +30,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -361,6 +362,124 @@ def test_secpal_platform_exception_on_linux_aarch64(installer, vendor_bundle) ->
     assert "official_vendor_distribution_retired" in secpal.block_reasons
     assert "vendor_artifact_checksum_missing" in secpal.block_reasons
     assert "vendor_license_evidence_missing" in secpal.block_reasons
+
+
+def test_supported_linux_x86_64_unavailable_secpal_blocks_combined_certificate(
+    certifier,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    authz = certifier.authz_installer
+    install_root = tmp_path.resolve()
+    souffle_identity = SimpleNamespace(
+        artifact_sha256="a" * 64,
+        build_dependencies=(("cmake", ">=3.8"),),
+        dependency_prefix="",
+        install_root=str(install_root),
+        is_hermetic_shadow=False,
+        is_relocated_install=False,
+        platform_id="linux-x86_64",
+        source_archive_sha256=REQUIRED_SOURCE_SHA256,
+        source_archive_url="https://example.invalid/souffle.tar.gz",
+    )
+    secpal_receipt = authz.InstallReceipt(
+        tool_id=authz.TOOL_SECPAL,
+        status="unavailable",
+        identity=None,
+        selected_version="1.0.0-reviewed",
+        block_reasons=("authentic_vendor_artifact_unavailable",),
+        platform_id="linux-x86_64",
+        is_vendor_path=True,
+    )
+    souffle_engine = certifier.EngineCertification(
+        engine_id=authz.TOOL_SOUFFLE,
+        version="2.4.1",
+        executable="souffle",
+        usable=True,
+        certified=True,
+        role="shadow",
+        authority_ceiling="none",
+    )
+    supported_status = {
+        "tool_id": authz.TOOL_SECPAL,
+        "host_platform": "linux-x86_64",
+        "classification": "supported_here",
+        "exception": False,
+        "narrow_scope": False,
+        "installed": None,
+        "complete": None,
+        "authoritative": False,
+        "production_certified": False,
+        "supported_platforms": ["linux-x86_64"],
+        "live_ready": False,
+        "live_block_reasons": ["authentic_vendor_artifact_unavailable"],
+        "live_readiness": {
+            "ready": False,
+            "block_reasons": ["authentic_vendor_artifact_unavailable"],
+        },
+        "platform_exception_satisfies_live_readiness": False,
+    }
+
+    monkeypatch.setattr(
+        authz,
+        "pin_for_tool",
+        lambda *_args, **_kwargs: {"version": "2.4.1"},
+    )
+    monkeypatch.setattr(
+        authz,
+        "_identity_from_disk",
+        lambda *_args, **_kwargs: souffle_identity,
+    )
+    monkeypatch.setattr(authz, "ensure_secpal", lambda **_kwargs: secpal_receipt)
+    monkeypatch.setattr(
+        authz,
+        "tool_supported_on_platform",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_validated_native_souffle_evidence",
+        lambda _identity: {},
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_certify_vendor_souffle",
+        lambda *_args, **_kwargs: souffle_engine,
+    )
+    monkeypatch.setattr(
+        certifier,
+        "derive_secpal_platform_exception",
+        lambda **_kwargs: dict(supported_status),
+    )
+    monkeypatch.setattr(
+        certifier,
+        "public_evidence_projection",
+        lambda value, **_kwargs: value,
+    )
+    monkeypatch.setattr(
+        certifier,
+        "build_vendor_install_receipt",
+        lambda certificate, **_kwargs: {"certified": certificate["certified"]},
+    )
+
+    certificate = certifier.certify_external_authorization_vendor(
+        install_root=install_root,
+        skip_install=True,
+        platform_id="linux-x86_64",
+        repo_root=REPO_ROOT,
+        lock_path=LOCK_PATH,
+    )
+
+    assert certificate["certified"] is False
+    assert certificate["souffle_vendor_certified"] is True
+    assert certificate["secpal_vendor_certified"] is False
+    assert certificate["secpal_live_ready"] is False
+    assert certificate["combined_external_authorization_certified"] is False
+    assert certificate["secpal_platform_exception"]["exception"] is False
+    assert certificate["secpal_platform_exception"]["installed"] is False
+    assert "secpal_vendor_unavailable_on_supported_host" in (
+        certificate["summary"]["block_reasons"]
+    )
 
 
 def test_hermetic_shadow_cannot_satisfy_vendor(
@@ -718,6 +837,11 @@ def test_secpal_exception_in_certificate(vendor_certificate: dict[str, Any]) -> 
     assert "official_vendor_distribution_retired" in exception["live_block_reasons"]
     assert "vendor_artifact_provenance_missing" in exception["live_block_reasons"]
     assert "vendor_installer_not_implemented" in exception["live_block_reasons"]
+    assert vendor_certificate["certified"] is True
+    assert vendor_certificate["souffle_vendor_certified"] is True
+    assert vendor_certificate["secpal_vendor_certified"] is False
+    assert vendor_certificate["secpal_live_ready"] is False
+    assert vendor_certificate["combined_external_authorization_certified"] is False
 
 
 def test_vendor_lane_handler(certifier, install_root, dependency_prefix) -> None:
@@ -737,6 +861,9 @@ def test_vendor_lane_handler(certifier, install_root, dependency_prefix) -> None
     assert result["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert result["objective_validation_repair"] is True
     assert result["certified"] is True
+    assert result["souffle_vendor_certified"] is True
+    assert result["secpal_vendor_certified"] is False
+    assert result["combined_external_authorization_certified"] is False
     assert result["status"] == "certified"
     assert result["secpal_exception"] is True
     assert result["secpal_live_ready"] is False

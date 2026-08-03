@@ -512,12 +512,15 @@ def _validated_native_souffle_evidence(
         "source_archive_sha256": identity.source_archive_sha256,
     }
     if not identity.is_relocated_install:
+        # ``deployment_lock_sha256`` in the manifest is immutable build-time
+        # provenance.  ``identity.deployment_lock_sha256`` binds the current
+        # lock, whose policy and Soufflé pin contract were revalidated by the
+        # installer before this evidence pass.
         immutable_scalar_bindings.update(
             {
                 "dependency_package_set_sha256": (
                     identity.dependency_package_set_sha256
                 ),
-                "deployment_lock_sha256": identity.deployment_lock_sha256,
             }
         )
     mismatches = [
@@ -1865,6 +1868,34 @@ def _certify_vendor_souffle(
     )
 
 
+def _secpal_vendor_certification_block_reasons(
+    secpal_exception: Mapping[str, Any],
+    secpal_receipt: authz_installer.InstallReceipt | None,
+) -> list[str]:
+    """Return fail-closed SecPAL blockers for the combined vendor lane."""
+
+    if secpal_exception.get("exception"):
+        # A lock-authorized unsupported-platform exception may close the
+        # legacy Soufflé lane, but it must never claim SecPAL completion.
+        return [
+            f"secpal_exception_claimed_{key}"
+            for key in (
+                "installed",
+                "complete",
+                "authoritative",
+                "production_certified",
+            )
+            if secpal_exception.get(key) is True
+        ]
+    if secpal_receipt is None:
+        return ["secpal_vendor_receipt_missing_on_supported_host"]
+    if secpal_receipt.platform_exception:
+        return ["secpal_platform_exception_claimed_on_supported_host"]
+    if not secpal_receipt.ok or secpal_receipt.identity is None:
+        return [f"secpal_vendor_{secpal_receipt.status}_on_supported_host"]
+    return []
+
+
 def certify_external_authorization_vendor(
     *,
     install_root: Path | str | None = None,
@@ -2009,7 +2040,11 @@ def certify_external_authorization_vendor(
     secpal_exception = derive_secpal_platform_exception(
         platform_id=host, repo_root=repo_root, lock_path=lock_path
     )
-    if secpal_receipt is not None and secpal_receipt.platform_exception:
+    if (
+        secpal_receipt is not None
+        and secpal_receipt.platform_exception
+        and secpal_exception.get("exception")
+    ):
         # Reinforce fail-closed exception claims from the install receipt.
         secpal_exception = {
             **secpal_exception,
@@ -2039,6 +2074,20 @@ def certify_external_authorization_vendor(
                 else secpal_receipt.identity.to_dict()
             ),
         }
+    elif secpal_receipt is not None:
+        # A supported-host failure is evidence of non-installation, never an
+        # implicit platform exception or a successful combined certificate.
+        secpal_exception = {
+            **secpal_exception,
+            "exception": False,
+            "narrow_scope": False,
+            "installed": False,
+            "complete": False,
+            "authoritative": False,
+            "production_certified": False,
+            "install_status": secpal_receipt.status,
+            "block_reasons": list(secpal_receipt.block_reasons),
+        }
 
     # Hermetic shadow must not satisfy vendor certification.
     hermetic_cannot_satisfy = True
@@ -2049,13 +2098,30 @@ def certify_external_authorization_vendor(
     block_reasons = list(souffle_engine.block_reasons)
     if not hermetic_cannot_satisfy:
         block_reasons.append("hermetic_shadow_used_for_vendor")
-    if secpal_exception.get("exception"):
-        # Exception path must never claim production success for SecPAL.
-        for key in ("installed", "complete", "authoritative", "production_certified"):
-            if secpal_exception.get(key) is True:
-                block_reasons.append(f"secpal_exception_claimed_{key}")
+    souffle_vendor_certified = bool(souffle_engine.certified) and not block_reasons
+    block_reasons.extend(
+        _secpal_vendor_certification_block_reasons(
+            secpal_exception,
+            secpal_receipt,
+        )
+    )
 
-    certified = bool(souffle_engine.certified) and not block_reasons
+    # ``certified`` retains the legacy FVT-G209 meaning: the Soufflé vendor
+    # lane may close through a narrow lock-authorized SecPAL platform
+    # exception.  The explicit combined label never treats that exception,
+    # mere installation, or readiness metadata as SecPAL certification.
+    certified = souffle_vendor_certified and not block_reasons
+    secpal_live_ready = bool(secpal_exception.get("live_ready"))
+    secpal_vendor_certified = bool(
+        not secpal_exception.get("exception")
+        and secpal_receipt is not None
+        and secpal_receipt.ok
+        and secpal_live_ready
+        and secpal_exception.get("production_certified") is True
+    )
+    combined_external_authorization_certified = bool(
+        souffle_vendor_certified and secpal_vendor_certified
+    )
 
     payload: dict[str, Any] = {
         "schema_version": VENDOR_SCHEMA_VERSION,
@@ -2072,6 +2138,12 @@ def certify_external_authorization_vendor(
         "forbids_theorem_authority": True,
         "forbids_authorization_authority_on_shadows": True,
         "certified": certified,
+        "souffle_vendor_certified": souffle_vendor_certified,
+        "secpal_vendor_certified": secpal_vendor_certified,
+        "secpal_live_ready": secpal_live_ready,
+        "combined_external_authorization_certified": (
+            combined_external_authorization_certified
+        ),
         # FVT-073 objective validation repair: re-prove FVT-G209 acceptance.
         "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
         "objective_validation_repair": bool(certified),
@@ -2156,7 +2228,13 @@ def certify_external_authorization_vendor(
         },
         "summary": {
             "souffle_certified": souffle_engine.certified,
+            "souffle_vendor_certified": souffle_vendor_certified,
             "secpal_exception": bool(secpal_exception.get("exception")),
+            "secpal_vendor_certified": secpal_vendor_certified,
+            "secpal_live_ready": secpal_live_ready,
+            "combined_external_authorization_certified": (
+                combined_external_authorization_certified
+            ),
             "checks_passed": sum(1 for check in souffle_engine.checks if check.passed),
             "checks_total": len(souffle_engine.checks),
             "categories_exercised": categories,
@@ -2227,6 +2305,16 @@ def build_vendor_install_receipt(
         "handler_id": VENDOR_HANDLER_ID,
         "host_platform": certificate.get("host_platform"),
         "certified": certified,
+        "souffle_vendor_certified": bool(
+            certificate.get("souffle_vendor_certified")
+        ),
+        "secpal_vendor_certified": bool(
+            certificate.get("secpal_vendor_certified")
+        ),
+        "secpal_live_ready": bool(certificate.get("secpal_live_ready")),
+        "combined_external_authorization_certified": bool(
+            certificate.get("combined_external_authorization_certified")
+        ),
         "authority_ceiling": SHADOW_AUTHORITY_CEILING,
         # FVT-073 objective validation repair discovery keys.
         "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
@@ -2385,6 +2473,15 @@ def external_authorization_vendor_lane_handler(
         "handler_id": VENDOR_HANDLER_ID,
         "status": "certified" if certified else "failed",
         "certified": certified,
+        "souffle_vendor_certified": bool(
+            result.get("souffle_vendor_certified")
+        ),
+        "secpal_vendor_certified": bool(
+            result.get("secpal_vendor_certified")
+        ),
+        "combined_external_authorization_certified": bool(
+            result.get("combined_external_authorization_certified")
+        ),
         "authority_ceiling": SHADOW_AUTHORITY_CEILING,
         "reason_codes": list(result["summary"].get("block_reasons") or []),
         "certificate_digest_sha256": result["certificate_digest_sha256"],
