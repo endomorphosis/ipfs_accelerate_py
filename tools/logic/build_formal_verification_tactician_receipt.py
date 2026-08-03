@@ -2883,6 +2883,7 @@ def build_role_aware_deployment_receipt(
         tools=tools,
         authority_roles=authority_roles,
         semantic_results=semantic_results,
+        semantic_audit=semantic_audit,
     )
     platform_exceptions = [
         dict(item)
@@ -5436,6 +5437,209 @@ def _compact_semantic_lane(
     }
 
 
+def _audit_checked_vendor_capability_readiness(
+    *,
+    certifier,
+    repo_root: Path,
+    managed: Mapping[str, Any],
+    tools: Mapping[str, Mapping[str, Any]],
+    semantic_results: Sequence[Mapping[str, Any]],
+    semantic_audit: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Independently rederive the non-authoritative vendor readiness join."""
+
+    expected = (
+        certifier.build_checked_vendor_capability_readiness_projection(
+            repo_root=repo_root,
+            semantic_results=semantic_results,
+        )
+    )
+    observed = _safe_dict(
+        managed.get("checked_vendor_capability_readiness")
+    )
+    failures: list[str] = []
+    if observed != expected:
+        failures.append(
+            "checked_vendor_capability_readiness_projection_mismatch"
+        )
+    if (
+        managed.get(
+            "checked_vendor_capability_readiness_binding_valid"
+        )
+        is not True
+    ):
+        failures.append(
+            "checked_vendor_capability_readiness_binding_invalid"
+        )
+
+    expected_digest = certifier.content_digest(
+        {
+            key: value
+            for key, value in expected.items()
+            if key != "digest_sha256"
+        }
+    )
+    if (
+        expected.get("schema_version")
+        != certifier.CHECKED_VENDOR_CAPABILITY_READINESS_SCHEMA
+        or expected.get("digest_sha256") != expected_digest
+    ):
+        failures.append(
+            "checked_vendor_capability_readiness_identity_invalid"
+        )
+
+    expected_tools = _safe_dict(expected.get("tools"))
+    expected_tool_ids = {
+        str(_safe_dict(spec).get("managed_readiness_tool_id") or "")
+        for spec in getattr(
+            certifier, "CHECKED_VENDOR_FANIN_SPECS", {}
+        ).values()
+        if str(_safe_dict(spec).get("managed_readiness_tool_id") or "")
+    }
+    if set(expected_tools) != expected_tool_ids:
+        failures.append(
+            "checked_vendor_capability_readiness_tool_population_mismatch"
+        )
+    if "secpal" in expected_tools:
+        failures.append(
+            "external_secpal_platform_exception_counted_as_ready"
+        )
+
+    audit_lanes = _safe_dict(semantic_audit.get("lanes"))
+    lane_audits: dict[str, Any] = {}
+    for lane_id, raw_vendor_spec in getattr(
+        certifier, "CHECKED_VENDOR_FANIN_SPECS", {}
+    ).items():
+        vendor_spec = _safe_dict(raw_vendor_spec)
+        external_tool_id = str(
+            vendor_spec.get("managed_readiness_tool_id") or ""
+        )
+        if not external_tool_id:
+            continue
+        lane = _safe_dict(audit_lanes.get(lane_id))
+        elevation_policy = _safe_dict(lane.get("elevation_policy"))
+        expected_reference_ids = {
+            str(tool_id)
+            for tool_id in _safe_dict(
+                vendor_spec.get("expected_reference_checks")
+            )
+        }
+        fresh_replay_valid = bool(
+            lane.get("valid") is True
+            and elevation_policy.get("valid") is True
+            and elevation_policy.get("vendor_claimed") is True
+            and elevation_policy.get("fanin_satisfied") is True
+            and set(
+                str(tool_id)
+                for tool_id in _safe_list(
+                    elevation_policy.get("eligible_tool_ids")
+                )
+            )
+            == expected_reference_ids
+            and elevation_policy.get("sealed_root_authenticated") is True
+        )
+        entry = _safe_dict(expected_tools.get(external_tool_id))
+        entry_digest_valid = bool(
+            entry.get("digest_sha256")
+            == certifier.content_digest(
+                {
+                    key: value
+                    for key, value in entry.items()
+                    if key != "digest_sha256"
+                }
+            )
+        )
+        try:
+            vendor_checks_passed = int(entry.get("vendor_checks_passed"))
+            vendor_checks_total = int(entry.get("vendor_checks_total"))
+            expected_vendor_checks = int(
+                vendor_spec.get("expected_vendor_checks")
+            )
+        except (TypeError, ValueError):
+            vendor_checks_passed = -1
+            vendor_checks_total = -1
+            expected_vendor_checks = 0
+        authority_flags_valid = bool(
+            entry.get("production_certified") is False
+            and entry.get("production_elevation_allowed") is False
+            and entry.get("authority_granted") is False
+            and entry.get("grants_theorem_authority") is False
+            and entry.get("grants_global_correctness") is False
+            and entry.get(
+                "grants_authorization_decision_authority"
+            )
+            is False
+            and _safe_dict(tools.get(external_tool_id)).get(
+                "production_certified"
+            )
+            is not True
+        )
+        readiness_claimed = entry.get("ready") is True
+        positive_claim_valid = bool(
+            fresh_replay_valid
+            and entry.get("installation_ready") is True
+            and entry.get("semantic_certification_ready") is True
+            and expected_vendor_checks > 0
+            and vendor_checks_passed == expected_vendor_checks
+            and vendor_checks_total == expected_vendor_checks
+            and not _safe_list(entry.get("failures"))
+        )
+        blocked_claim_valid = bool(
+            entry.get("ready") is False
+            and entry.get("installation_ready") is False
+            and entry.get("semantic_certification_ready") is False
+            and _safe_list(entry.get("failures"))
+        )
+        entry_valid = bool(
+            entry_digest_valid
+            and authority_flags_valid
+            and (
+                positive_claim_valid
+                if readiness_claimed
+                else blocked_claim_valid
+            )
+        )
+        if not entry_valid:
+            failures.append(
+                f"checked_vendor_capability_readiness:{external_tool_id}:"
+                "fresh_replay_or_policy_invalid"
+            )
+        lane_audits[lane_id] = {
+            "external_tool_id": external_tool_id,
+            "fresh_vendor_fanin_replayed": fresh_replay_valid,
+            "entry_digest_valid": entry_digest_valid,
+            "authority_flags_valid": authority_flags_valid,
+            "valid": entry_valid,
+        }
+
+    declared_ready_ids = sorted(
+        str(tool_id)
+        for tool_id in _safe_list(
+            managed.get(
+                "ready_via_checked_vendor_capability_tool_ids"
+            )
+        )
+    )
+    expected_ready_ids = sorted(
+        tool_id
+        for tool_id, raw_entry in expected_tools.items()
+        if _safe_dict(raw_entry).get("ready") is True
+    )
+    if declared_ready_ids != expected_ready_ids:
+        failures.append(
+            "checked_vendor_capability_ready_population_mismatch"
+        )
+    return {
+        "valid": not failures,
+        "failures": sorted(set(failures)),
+        "projection_matches": observed == expected,
+        "projection_digest_sha256": expected.get("digest_sha256"),
+        "ready_tool_ids": expected_ready_ids,
+        "lane_audits": lane_audits,
+        "external_secpal_counted_complete": "secpal" in expected_tools,
+    }
+
+
 def _audit_platform_support(
     *,
     certifier,
@@ -5445,6 +5649,7 @@ def _audit_platform_support(
     tools: Mapping[str, Mapping[str, Any]],
     authority_roles: Mapping[str, Any],
     semantic_results: Sequence[Mapping[str, Any]],
+    semantic_audit: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Recompute managed platform rows, exceptions, and semantic support."""
 
@@ -5629,6 +5834,31 @@ def _audit_platform_support(
         or len(semantic_lane_ids) != len(set(semantic_lane_ids))
     ):
         failures.append("semantic_lane_population_not_unique")
+    effective_semantic_audit = (
+        semantic_audit
+        if isinstance(semantic_audit, Mapping)
+        else _audit_semantic_lane_results(
+            certifier=certifier,
+            repo_root=repo_root,
+            semantic_results=semantic_results,
+        )
+    )
+    checked_vendor_readiness_audit = (
+        _audit_checked_vendor_capability_readiness(
+            certifier=certifier,
+            repo_root=repo_root,
+            managed=managed,
+            tools=tools,
+            semantic_results=semantic_results,
+            semantic_audit=effective_semantic_audit,
+        )
+    )
+    if checked_vendor_readiness_audit.get("valid") is not True:
+        failures.extend(
+            _safe_list(
+                checked_vendor_readiness_audit.get("failures")
+            )
+        )
     non_production_semantic_artifact_bindings: dict[
         str, list[dict[str, Any]]
     ] = {}
@@ -5914,6 +6144,13 @@ def _audit_platform_support(
         tool_certs=reconstructed_tool_certs,
         authority_roles=authority_roles,
         repo_root=repo_root,
+        semantic_results=semantic_results,
+        checked_vendor_capability_readiness=(
+            certifier.build_checked_vendor_capability_readiness_projection(
+                repo_root=repo_root,
+                semantic_results=semantic_results,
+            )
+        ),
     )
     # Deleted hermetic executables are intentionally omitted only after their
     # exact non-production semantic binding is independently verified above.
@@ -6076,6 +6313,9 @@ def _audit_platform_support(
         ),
         "platform_exception_tool_ids": sorted(exception_id_set),
         "non_ran_lane_support": non_ran_lane_support,
+        "checked_vendor_capability_readiness": (
+            checked_vendor_readiness_audit
+        ),
         "failures": sorted(set(failures)),
     }
 
@@ -7090,6 +7330,21 @@ def _compact_managed_readiness(managed: Mapping[str, Any]) -> dict[str, Any]:
         "supported_managed_dependency_tool_ids": list(
             _safe_list(managed.get("supported_managed_dependency_tool_ids"))
         ),
+        "checked_vendor_capability_readiness": _safe_dict(
+            managed.get("checked_vendor_capability_readiness")
+        ),
+        "checked_vendor_capability_readiness_binding_valid": bool(
+            managed.get(
+                "checked_vendor_capability_readiness_binding_valid"
+            )
+        ),
+        "ready_via_checked_vendor_capability_tool_ids": list(
+            _safe_list(
+                managed.get(
+                    "ready_via_checked_vendor_capability_tool_ids"
+                )
+            )
+        ),
         "platform_exceptions": [
             dict(item)
             for item in _safe_list(managed.get("platform_exceptions"))
@@ -7385,6 +7640,7 @@ def build_role_aware_release_candidate(
         tools=tools,
         authority_roles=authority_roles,
         semantic_results=semantic_results,
+        semantic_audit=semantic_audit,
     )
     platform_exceptions_valid = bool(platform_audit.get("valid"))
     exceptions_disjoint_from_supported = bool(

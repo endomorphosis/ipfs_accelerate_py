@@ -89,6 +89,9 @@ RUNTIME_MTL_PARITY_TIMEOUT_SECONDS: Final = 10.0
 CHECKED_VENDOR_FANIN_SCHEMA: Final = (
     "formal-verification-checked-vendor-semantic-fanin/v1"
 )
+CHECKED_VENDOR_CAPABILITY_READINESS_SCHEMA: Final = (
+    "formal-verification-checked-vendor-capability-readiness/v1"
+)
 
 # Pre-merge release candidate fan-in (FVT-G213 / FVT-066). The certificate
 # remains the bound matrix; the candidate artifact is assembled by the
@@ -3850,6 +3853,11 @@ CHECKED_VENDOR_FANIN_SPECS: Final[Mapping[str, Mapping[str, Any]]] = {
         "dependency_prefix_relative": None,
         "outer_digest_uses_public_projection": False,
         "evidence_class": "reference_plus_checked_runtime_mtl_vendor",
+        "managed_readiness_tool_id": "runtime-mtl-external",
+        "managed_readiness_role": "differential_witness",
+        "managed_readiness_evidence_class": (
+            "checked_runtime_mtl_vendor_differential_witness"
+        ),
     },
     "datalog_secpal": {
         "module_relative": Path(
@@ -3879,6 +3887,11 @@ CHECKED_VENDOR_FANIN_SPECS: Final[Mapping[str, Mapping[str, Any]]] = {
         ),
         "outer_digest_uses_public_projection": True,
         "evidence_class": "reference_plus_checked_souffle_vendor",
+        "managed_readiness_tool_id": "souffle",
+        "managed_readiness_role": "shadow_checker",
+        "managed_readiness_evidence_class": (
+            "checked_native_souffle_vendor_shadow"
+        ),
     },
 }
 
@@ -5784,6 +5797,209 @@ def _recorded_checked_vendor_fanin_eligibility(
     return derived
 
 
+def build_checked_vendor_capability_readiness_projection(
+    *,
+    repo_root: Path,
+    semantic_results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Project exact vendor fan-ins into non-authoritative capability readiness.
+
+    The projection intentionally answers only whether the managed external
+    witness/shadow is installed and has completed its closed semantic suite.
+    It never changes a tool certificate, never grants authority, and never
+    makes the external tool eligible for production elevation.  The in-process
+    reference tools retain every authority granted by the joined fan-in.
+    """
+
+    results_by_lane: dict[str, Mapping[str, Any]] = {}
+    duplicate_lanes: set[str] = set()
+    for raw_result in semantic_results:
+        if not isinstance(raw_result, Mapping):
+            continue
+        lane_id = str(raw_result.get("lane_id") or "")
+        if not lane_id:
+            continue
+        if lane_id in results_by_lane:
+            duplicate_lanes.add(lane_id)
+        else:
+            results_by_lane[lane_id] = raw_result
+
+    tools: dict[str, dict[str, Any]] = {}
+    for lane_id, raw_vendor_spec in CHECKED_VENDOR_FANIN_SPECS.items():
+        vendor_spec = dict(raw_vendor_spec)
+        external_tool_id = str(
+            vendor_spec.get("managed_readiness_tool_id") or ""
+        )
+        if not external_tool_id:
+            continue
+        spec = next(
+            (
+                item
+                for item in SEMANTIC_CERTIFIER_SPECS
+                if str(item.get("lane_id") or "") == lane_id
+            ),
+            None,
+        )
+        result = results_by_lane.get(lane_id)
+        failures: list[str] = []
+        if lane_id in duplicate_lanes:
+            failures.append("semantic_lane_population_not_unique")
+        if not isinstance(spec, Mapping):
+            failures.append("semantic_spec_missing")
+            spec = {}
+        if not isinstance(result, Mapping):
+            failures.append("semantic_lane_result_missing")
+            result = {}
+        if result.get("status") != "ran":
+            failures.append("semantic_lane_not_run")
+
+        fanin = result.get("checked_vendor_fanin")
+        fanin = fanin if isinstance(fanin, Mapping) else {}
+        receipt = result.get("receipt")
+        receipt = receipt if isinstance(receipt, Mapping) else {}
+        receipt_fanin = receipt.get("checked_vendor_fanin")
+        receipt_fanin = (
+            receipt_fanin if isinstance(receipt_fanin, Mapping) else {}
+        )
+        expected_reference_ids = {
+            str(tool_id)
+            for tool_id in vendor_spec["expected_reference_checks"]
+        }
+        eligible_reference_ids = _recorded_checked_vendor_fanin_eligibility(
+            repo_root=repo_root,
+            semantic_spec=spec,
+            result_fanin=fanin,
+            receipt_fanin=receipt_fanin,
+        )
+        if eligible_reference_ids != expected_reference_ids:
+            failures.append("checked_vendor_fanin_not_complete")
+
+        live = fanin.get("live_certificate")
+        live = live if isinstance(live, Mapping) else {}
+        expected_checks = int(vendor_spec["expected_vendor_checks"])
+        try:
+            observed_checks_passed = int(live.get("checks_passed"))
+            observed_checks_total = int(live.get("checks_total"))
+        except (TypeError, ValueError):
+            observed_checks_passed = -1
+            observed_checks_total = -1
+        check_ids = [
+            str(check_id) for check_id in live.get("check_ids") or ()
+        ]
+        if (
+            fanin.get("vendor_tool_id") != external_tool_id
+            or fanin.get("vendor_authority")
+            != "differential_witness_only"
+            or fanin.get("vendor_valid") is not True
+            or fanin.get("complete") is not True
+            or list(fanin.get("failures") or ())
+            or live.get("certified") is not True
+            or observed_checks_passed != expected_checks
+            or observed_checks_total != expected_checks
+            or len(check_ids) != expected_checks
+            or len(set(check_ids)) != expected_checks
+            or any(not check_id for check_id in check_ids)
+        ):
+            failures.append("checked_vendor_closed_check_set_invalid")
+
+        fanin_policy = fanin.get("policy")
+        fanin_policy = (
+            fanin_policy if isinstance(fanin_policy, Mapping) else {}
+        )
+        if any(
+            fanin_policy.get(key) is not True
+            for key in (
+                "reference_and_vendor_both_required_per_target",
+                "exact_nested_install_receipt_required",
+                "all_live_vendor_checks_required",
+                "vendor_never_inherits_reference_authority",
+                "external_tool_ids_never_elevated_by_fanin",
+            )
+        ):
+            failures.append("checked_vendor_authority_policy_invalid")
+
+        sealed_binding = fanin.get("sealed_root_binding")
+        sealed_binding = (
+            sealed_binding
+            if isinstance(sealed_binding, Mapping)
+            else {}
+        )
+        if (
+            sealed_binding.get("explicit") is not True
+            or sealed_binding.get("ambient_path_discovery") is not False
+            or sealed_binding.get("skip_install") is not True
+            or sealed_binding.get("force_install") is not False
+        ):
+            failures.append("checked_vendor_sealed_root_binding_invalid")
+
+        artifact = fanin.get("checked_install_receipt_artifact")
+        artifact = dict(artifact) if isinstance(artifact, Mapping) else {}
+        artifact_validation = _validate_artifact_identities(
+            [artifact] if artifact else [],
+            repo_root=repo_root,
+        )
+        if (
+            artifact_validation.get("valid") is not True
+            or artifact_validation.get("has_production_binding") is not True
+            or artifact.get("kind") != "checked_vendor_install_receipt"
+            or artifact.get("artifact_class") != "public_deployment_binding"
+        ):
+            failures.append("checked_vendor_install_artifact_invalid")
+
+        checked = fanin.get("checked_install_receipt")
+        checked = checked if isinstance(checked, Mapping) else {}
+        if checked.get("exact_live_nested_match") is not True:
+            failures.append("checked_vendor_live_nested_receipt_mismatch")
+
+        ready = not failures
+        entry: dict[str, Any] = {
+            "tool_id": external_tool_id,
+            "lane_id": lane_id,
+            "role": str(vendor_spec["managed_readiness_role"]),
+            "evidence_class": str(
+                vendor_spec["managed_readiness_evidence_class"]
+            ),
+            "ready": ready,
+            "installation_ready": ready,
+            "semantic_certification_ready": ready,
+            "vendor_checks_passed": observed_checks_passed,
+            "vendor_checks_total": observed_checks_total,
+            "expected_vendor_checks": expected_checks,
+            "checked_vendor_fanin_digest_sha256": fanin.get(
+                "digest_sha256"
+            ),
+            "checked_install_receipt_artifact": artifact,
+            "failures": sorted(set(failures)),
+            "production_certified": False,
+            "production_elevation_allowed": False,
+            "authority_granted": False,
+            "grants_theorem_authority": False,
+            "grants_global_correctness": False,
+            "grants_authorization_decision_authority": False,
+            "reference_authority_retained_by": sorted(
+                expected_reference_ids
+            ),
+        }
+        entry["digest_sha256"] = content_digest(entry)
+        tools[external_tool_id] = entry
+
+    projection: dict[str, Any] = {
+        "schema_version": CHECKED_VENDOR_CAPABILITY_READINESS_SCHEMA,
+        "policy": {
+            "installation_and_semantic_readiness_is_not_authority": True,
+            "external_witnesses_and_shadows_never_production_elevated": True,
+            "external_witnesses_and_shadows_never_grant_theorem_authority": True,
+            "external_witnesses_and_shadows_never_grant_global_correctness": True,
+            "external_shadows_never_grant_authorization_authority": True,
+            "exact_checked_vendor_fanin_required": True,
+            "external_secpal_platform_exception_not_counted_complete": True,
+        },
+        "tools": tools,
+    }
+    projection["digest_sha256"] = content_digest(projection)
+    return projection
+
+
 def _offline_observation(
     receipt: Mapping[str, Any],
     *,
@@ -7340,6 +7556,8 @@ def build_managed_deployment_readiness(
     tool_certs: Mapping[str, ToolCertification],
     authority_roles: Mapping[str, Any],
     repo_root: Path | None = None,
+    semantic_results: Sequence[Mapping[str, Any]] | None = None,
+    checked_vendor_capability_readiness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Derive deployment blockers for every host-supported managed tool."""
 
@@ -7357,6 +7575,28 @@ def build_managed_deployment_readiness(
     dependencies: list[str] = []
     exceptions: list[dict[str, Any]] = []
     blockers: list[dict[str, Any]] = []
+    expected_vendor_readiness: dict[str, Any] | None = None
+    vendor_readiness_binding_valid = False
+    vendor_readiness_tools: Mapping[str, Any] = {}
+    if semantic_results is not None:
+        expected_vendor_readiness = (
+            build_checked_vendor_capability_readiness_projection(
+                repo_root=root,
+                semantic_results=semantic_results,
+            )
+        )
+        supplied_vendor_readiness = (
+            dict(checked_vendor_capability_readiness)
+            if isinstance(checked_vendor_capability_readiness, Mapping)
+            else expected_vendor_readiness
+        )
+        vendor_readiness_binding_valid = bool(
+            supplied_vendor_readiness == expected_vendor_readiness
+        )
+        if vendor_readiness_binding_valid:
+            raw_vendor_tools = expected_vendor_readiness.get("tools")
+            if isinstance(raw_vendor_tools, Mapping):
+                vendor_readiness_tools = raw_vendor_tools
 
     for tool_id in sorted(tools_index):
         entry = tools_index[tool_id]
@@ -7458,18 +7698,57 @@ def build_managed_deployment_readiness(
                 or public_binding
             )
         )
+        vendor_readiness = vendor_readiness_tools.get(tool_id)
+        vendor_readiness = (
+            vendor_readiness
+            if isinstance(vendor_readiness, Mapping)
+            else {}
+        )
+        vendor_capability_ready = bool(
+            vendor_readiness_binding_valid
+            and vendor_readiness.get("ready") is True
+            and vendor_readiness.get("installation_ready") is True
+            and vendor_readiness.get("semantic_certification_ready") is True
+            and vendor_readiness.get("production_certified") is False
+            and vendor_readiness.get("production_elevation_allowed") is False
+            and vendor_readiness.get("authority_granted") is False
+            and vendor_readiness.get("grants_theorem_authority") is False
+            and vendor_readiness.get("grants_global_correctness") is False
+            and vendor_readiness.get(
+                "grants_authorization_decision_authority"
+            )
+            is False
+            and not list(vendor_readiness.get("failures") or ())
+        )
+        vendor_artifact = vendor_readiness.get(
+            "checked_install_receipt_artifact"
+        )
+        vendor_artifact = (
+            vendor_artifact if isinstance(vendor_artifact, Mapping) else {}
+        )
+        if vendor_capability_ready:
+            artifact_classes.add(
+                str(
+                    vendor_artifact.get("artifact_class")
+                    or "public_deployment_binding"
+                )
+            )
 
         reasons: list[str] = []
-        if not genuinely_installed:
+        if not (genuinely_installed or vendor_capability_ready):
             reasons.append("supported_managed_installation_missing_or_shim_only")
-        if not artifact_validation["valid"]:
+        if not artifact_validation["valid"] and not vendor_capability_ready:
             reasons.append("artifact_identity_invalid")
         if (
             "launcher_script" in artifact_classes
-            and not (public_binding or launcher_target_bound)
+            and not (
+                public_binding
+                or launcher_target_bound
+                or vendor_capability_ready
+            )
         ):
             reasons.append("launcher_target_artifact_unbound")
-        if cert.locked_version_mismatch:
+        if cert.locked_version_mismatch and not vendor_capability_ready:
             reasons.append("locked_version_mismatch")
 
         if category == "capability":
@@ -7478,21 +7757,32 @@ def build_managed_deployment_readiness(
             checks_complete = bool(cert.checks) and all(
                 check.status == "passed" for check in cert.checks
             ) and required_kinds <= present_kinds
+            checks_complete = bool(
+                checks_complete or vendor_capability_ready
+            )
             certifying_role = bool(
                 isinstance(role_meta, Mapping)
                 and role_meta.get("can_satisfy_certified_authority")
             )
-            if certifying_role and not cert.production_certified:
+            if (
+                certifying_role
+                and not cert.production_certified
+                and not vendor_capability_ready
+            ):
                 reasons.append("semantic_evidence_below_authority_ceiling")
             if not checks_complete:
                 reasons.append("full_semantic_check_set_missing_or_failed")
             if certifying_role and not cert.semantic_receipt_digests and not (
                 cert.evidence_class == "production_certified"
                 and cert.tool_id in {"z3", "cvc5"}
-            ):
+            ) and not vendor_capability_ready:
                 reasons.append("semantic_receipt_not_bound")
             if not certifying_role and cert.production_certified:
                 reasons.append("non_certifying_role_incorrectly_promoted")
+            if vendor_readiness and cert.production_certified:
+                reasons.append(
+                    "external_witness_or_shadow_incorrectly_promoted"
+                )
 
         if reasons:
             blockers.append(
@@ -7517,7 +7807,7 @@ def build_managed_deployment_readiness(
     dependency_blockers = [
         row for row in blockers if row.get("category") == "dependency"
     ]
-    return {
+    readiness = {
         "host_platform": host_platform,
         "global_supported_platforms": global_platforms,
         "host_globally_supported": host_platform in set(global_platforms),
@@ -7535,6 +7825,20 @@ def build_managed_deployment_readiness(
             else "supported_managed_capabilities_blocked"
         ),
     }
+    if expected_vendor_readiness is not None:
+        readiness["checked_vendor_capability_readiness"] = (
+            expected_vendor_readiness
+        )
+        readiness["checked_vendor_capability_readiness_binding_valid"] = (
+            vendor_readiness_binding_valid
+        )
+        readiness["ready_via_checked_vendor_capability_tool_ids"] = sorted(
+            tool_id
+            for tool_id, raw_entry in vendor_readiness_tools.items()
+            if isinstance(raw_entry, Mapping)
+            and raw_entry.get("ready") is True
+        )
+    return readiness
 
 
 def build_certificate(
@@ -7660,12 +7964,24 @@ def build_certificate(
         )
         demotions = apply_role_aware_demotions(tool_certs, authority_roles)
 
+    checked_vendor_capability_readiness = (
+        build_checked_vendor_capability_readiness_projection(
+            repo_root=root,
+            semantic_results=semantic_results,
+        )
+        if role_aware
+        else None
+    )
     deployment_readiness = build_managed_deployment_readiness(
         lock=lock,
         tools_index=tools_index,
         tool_certs=tool_certs,
         authority_roles=authority_roles,
         repo_root=root,
+        semantic_results=semantic_results if role_aware else None,
+        checked_vendor_capability_readiness=(
+            checked_vendor_capability_readiness
+        ),
     )
 
     lanes = certify_property_lanes(tool_certs, disagreements)
