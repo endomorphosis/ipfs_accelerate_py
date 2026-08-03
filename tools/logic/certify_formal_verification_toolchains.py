@@ -25,14 +25,14 @@ import platform
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
-from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Final, Iterator, Mapping, Sequence
+from typing import Any, Final, Mapping, Sequence
 
 try:  # pragma: no cover - script/package import paths vary by worktree
     from tools.logic.certification.public_evidence import (
@@ -72,6 +72,17 @@ ROLE_AWARE_OBJECTIVE_VALIDATION_COMMAND: Final = (
 RUNTIME_MTL_TS_PACKAGE_RELATIVE: Final = Path(
     "ipfs_datasets_py/typescript/logic-runtime-mtl"
 )
+RUNTIME_MTL_SEALED_ROOT_ENV: Final = "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT"
+RUNTIME_MTL_VENDOR_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json"
+)
+RUNTIME_MTL_VENDOR_TOOL_ID: Final = "runtime-mtl-external"
+RUNTIME_MTL_VENDOR_PACKAGE_IDENTITY: Final = (
+    "@ipfs-datasets/logic-runtime-mtl"
+)
+RUNTIME_MTL_VENDOR_VERSION: Final = "1.0.0-reviewed"
+RUNTIME_MTL_NODE_PROBE_TIMEOUT_SECONDS: Final = 5.0
+RUNTIME_MTL_PARITY_TIMEOUT_SECONDS: Final = 10.0
 
 # Pre-merge release candidate fan-in (FVT-G213 / FVT-066). The certificate
 # remains the bound matrix; the candidate artifact is assembled by the
@@ -969,164 +980,674 @@ def _managed_root_for_launcher(path: Path) -> Path:
     return resolved.parent.parent if resolved.parent.name == "bin" else resolved.parent
 
 
-def _managed_prover_roots_from_path(
-    env: Mapping[str, str] | None = None,
-) -> list[Path]:
-    """Collect managed prover roots reachable from PATH (no installs)."""
+def _bare_file_digest(path: Path) -> str:
+    return str(file_digest(path) or "").removeprefix("sha256:")
 
-    path_value = (env or os.environ).get("PATH", "")
-    roots: list[Path] = []
-    seen: set[str] = set()
-    for raw in path_value.split(os.pathsep):
-        if not raw:
+
+def _runtime_mtl_source_tree_digest(root: Path) -> str:
+    """Match the vendor installer's stable digest for a TypeScript source tree."""
+
+    digest = hashlib.sha256()
+    if not root.is_dir():
+        return digest.hexdigest()
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
             continue
-        entry = Path(raw)
-        candidates = []
-        if entry.name == "bin":
-            candidates.append(entry.parent)
-        candidates.append(entry)
-        for candidate in candidates:
-            try:
-                resolved = candidate.resolve()
-            except OSError:
-                continue
-            key = str(resolved)
-            if key in seen or not resolved.is_dir():
-                continue
-            seen.add(key)
-            roots.append(resolved)
-    launcher = shutil.which("runtime-mtl", path=path_value or None)
-    if launcher:
-        try:
-            managed = _managed_root_for_launcher(Path(launcher))
-        except OSError:
-            managed = None
-        if managed is not None:
-            key = str(managed.resolve()) if managed.exists() else str(managed)
-            if key not in seen:
-                roots.insert(0, managed.resolve() if managed.exists() else managed)
-                seen.add(key)
-    return roots
+        relative = path.relative_to(root)
+        if any(part in {"node_modules", "dist", ".git"} for part in relative.parts):
+            continue
+        digest.update(relative.as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(_bare_file_digest(path).encode("ascii"))
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
-def _discover_matching_managed_runtime_mtl_dist(
-    package: Path,
+def _runtime_mtl_node_env(node: Path) -> dict[str, str]:
+    """Return the entire environment for identity probes and parity execution."""
+
+    return {
+        "PATH": str(node.parent),
+        "HOME": "/nonexistent",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "NO_COLOR": "1",
+        "NODE_DISABLE_COLORS": "1",
+        "NODE_PATH": "",
+        "FORMAL_VERIFICATION_CERTIFY_OFFLINE": "1",
+        "FORMAL_VERIFICATION_FORBID_INSTALL": "1",
+        "FORMAL_VERIFICATION_FORBID_NETWORK": "1",
+        "NPM_CONFIG_OFFLINE": "true",
+        "npm_config_offline": "true",
+        "NO_PROXY": "*",
+        "no_proxy": "*",
+    }
+
+
+def _runtime_mtl_sealed_path_failures(
+    root: Path,
+    path: Path,
     *,
-    env: Mapping[str, str] | None = None,
-) -> Path | None:
-    """Locate a managed vendor TypeScript dist that matches package.json.
+    expected_directory: bool,
+    executable: bool = False,
+) -> list[str]:
+    """Validate containment, type, ownership, modes, and symlink absence."""
 
-    Offline role-aware certification must never build or npm-install the
-    in-tree TypeScript package. When the repository checkout lacks a prebuilt
-    ``dist/`` but the authoritative managed toolchain deployment already
-    retains a digest-matching vendor package, bind that prebuilt artifact for
-    parity only.
-    """
+    failures: list[str] = []
+    try:
+        resolved = path.resolve(strict=True)
+        relative = resolved.relative_to(root)
+    except (OSError, RuntimeError, ValueError):
+        return ["path_not_contained_in_sealed_root"]
+    if resolved != path:
+        failures.append("path_resolution_changed")
 
-    package_json = package / "package.json"
-    if not package_json.is_file():
-        return None
-    expected_package_digest = file_digest(package_json)
-    if not expected_package_digest:
-        return None
-    source_index = package / "src" / "index.ts"
-    expected_source_digest = file_digest(source_index) if source_index.is_file() else None
-
-    for root in _managed_prover_roots_from_path(env):
-        vendor_root = root / "runtime-mtl-vendor"
-        if not vendor_root.is_dir():
+    try:
+        root_owner = root.stat().st_uid
+    except OSError:
+        return ["sealed_root_unreadable"]
+    current = root
+    for part in relative.parts:
+        current = current / part
+        try:
+            item_stat = current.lstat()
+        except OSError:
+            failures.append("sealed_path_component_unreadable")
             continue
-        for candidate_json in sorted(vendor_root.glob("**/package/package.json")):
-            if file_digest(candidate_json) != expected_package_digest:
-                continue
-            candidate_package = candidate_json.parent
-            if expected_source_digest is not None:
-                candidate_source = candidate_package / "src" / "index.ts"
-                if (
-                    not candidate_source.is_file()
-                    or file_digest(candidate_source) != expected_source_digest
-                ):
-                    continue
-            index = candidate_package / "dist" / "src" / "index.js"
-            if not index.is_file():
-                continue
-            return (candidate_package / "dist").resolve()
-    return None
+        if stat.S_ISLNK(item_stat.st_mode):
+            failures.append("sealed_path_symlink")
+        if item_stat.st_uid != root_owner:
+            failures.append("sealed_path_owner_mismatch")
+        if stat.S_IMODE(item_stat.st_mode) & 0o222:
+            failures.append("sealed_path_writable")
+
+    try:
+        final_stat = resolved.stat()
+    except OSError:
+        failures.append("sealed_path_unreadable")
+        return sorted(set(failures))
+    if expected_directory:
+        if not stat.S_ISDIR(final_stat.st_mode):
+            failures.append("sealed_path_not_directory")
+    elif not stat.S_ISREG(final_stat.st_mode):
+        failures.append("sealed_path_not_regular_file")
+    if executable and not (stat.S_IMODE(final_stat.st_mode) & 0o111):
+        failures.append("sealed_path_not_executable")
+    return sorted(set(failures))
 
 
-@contextmanager
-def _runtime_mtl_managed_prebuilt_bind(
+def _parse_runtime_mtl_public_launcher(path: Path) -> dict[str, Any]:
+    """Parse only the deterministic vendor launcher grammar; never execute it."""
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {"valid": False, "failures": ["launcher_unreadable"]}
+    if len(text.encode("utf-8")) > 32 * 1024 or "\0" in text:
+        return {"valid": False, "failures": ["launcher_invalid_size_or_nul"]}
+    lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    failures: list[str] = []
+    if len(lines) != 14:
+        return {"valid": False, "failures": ["launcher_statement_count_invalid"]}
+    fixed = {
+        0: "set -euo pipefail",
+        5: 'if [[ ! -x "$NODE" && ! -f "$NODE" ]]; then',
+        6: 'echo "runtime-mtl-external: node runtime missing: $NODE" >&2',
+        7: "exit 127",
+        8: "fi",
+        9: 'if [[ ! -f "$CLI" ]]; then',
+        10: 'echo "runtime-mtl-external: vendor CLI missing: $CLI" >&2',
+        11: "exit 127",
+        12: "fi",
+        13: 'exec "$NODE" "$CLI" "$@"',
+    }
+    for index, expected in fixed.items():
+        if lines[index] != expected:
+            failures.append(f"launcher_statement_{index}_invalid")
+
+    version_match = re.fullmatch(
+        r"export RUNTIME_MTL_EXTERNAL_VERSION='([^'\r\n]+)'",
+        lines[1],
+    )
+    identity_match = re.fullmatch(
+        r"export RUNTIME_MTL_EXTERNAL_IDENTITY_FILE="
+        r"\$\{RUNTIME_MTL_EXTERNAL_IDENTITY_FILE:-'([^'\r\n]+)'\}",
+        lines[2],
+    )
+    node_match = re.fullmatch(r"NODE='([^'\r\n]+)'", lines[3])
+    cli_match = re.fullmatch(r"CLI='([^'\r\n]+)'", lines[4])
+    for name, match in (
+        ("version", version_match),
+        ("identity", identity_match),
+        ("node", node_match),
+        ("cli", cli_match),
+    ):
+        if match is None:
+            failures.append(f"launcher_{name}_assignment_invalid")
+    return {
+        "valid": not failures,
+        "failures": sorted(set(failures)),
+        "version": version_match.group(1) if version_match else None,
+        "identity_path": identity_match.group(1) if identity_match else None,
+        "node_path": node_match.group(1) if node_match else None,
+        "cli_path": cli_match.group(1) if cli_match else None,
+    }
+
+
+def _runtime_mtl_identity_relocation_failures(
+    identity: Mapping[str, Any],
+    *,
+    version: str,
+) -> list[str]:
+    """Require all installer-recorded absolute paths to share one old root."""
+
+    failures: list[str] = []
+    old_root_raw = str(identity.get("install_root") or "")
+    old_root = Path(old_root_raw)
+    if not old_root.is_absolute():
+        return ["identity_install_root_not_absolute"]
+    suffixes = {
+        "executable": (
+            "runtime-mtl-vendor",
+            RUNTIME_MTL_VENDOR_TOOL_ID,
+            version,
+            "bin",
+            "runtime-mtl-external",
+        ),
+        "package_dir": (
+            "runtime-mtl-vendor",
+            RUNTIME_MTL_VENDOR_TOOL_ID,
+            version,
+            "package",
+        ),
+        "cli_path": (
+            "runtime-mtl-vendor",
+            RUNTIME_MTL_VENDOR_TOOL_ID,
+            version,
+            "package",
+            "dist",
+            "src",
+            "cli.js",
+        ),
+    }
+    for field_name, suffix in suffixes.items():
+        expected = old_root.joinpath(*suffix)
+        if Path(str(identity.get(field_name) or "")) != expected:
+            failures.append(f"identity_{field_name}_relationship_invalid")
+    managed_launcher = str(identity.get("managed_launcher") or "")
+    if managed_launcher and Path(managed_launcher) != old_root / "bin" / "runtime-mtl":
+        failures.append("identity_managed_launcher_relationship_invalid")
+    return failures
+
+
+def _runtime_mtl_managed_prebuilt_binding(
     repo_root: Path,
     *,
-    env: Mapping[str, str] | None = None,
-) -> Iterator[dict[str, Any]]:
-    """Temporarily expose a managed prebuilt dist for offline TS parity.
+    env: Mapping[str, str],
+    receipt_path: Path | None = None,
+) -> dict[str, Any]:
+    """Authenticate a sealed vendor prebuilt without discovery or mutation.
 
-    Creates a directory symlink under the repository package only when:
-    - the in-tree package is present
-    - ``dist/`` is absent
-    - a managed vendor package with matching package.json (and source index)
-      digests is already installed under the sealed PATH
-
-    Never builds, installs, downloads, or mutates the managed root. The
-    symlink is always removed when the context exits.
+    The sole root authority is ``IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT`` in the
+    caller-supplied offline environment. PATH is deliberately ignored. Every
+    path is derived from the exact reviewed version and must be root-owned,
+    immutable, non-symlinked, and contained below that approved root.
     """
 
-    package = (repo_root / RUNTIME_MTL_TS_PACKAGE_RELATIVE).resolve()
-    dist = package / "dist"
-    observation: dict[str, Any] = {
+    checked_receipt = receipt_path or (
+        repo_root / RUNTIME_MTL_VENDOR_RECEIPT_RELATIVE
+    )
+    public: dict[str, Any] = {
         "package_path": RUNTIME_MTL_TS_PACKAGE_RELATIVE.as_posix(),
         "bound": False,
-        "reason": "not_attempted",
+        "authenticated": False,
+        "reason": "managed_prebuilt_unavailable",
+        "failures": [],
         "certification_builds_or_installs": False,
+        "checkout_mutated": False,
+        "ambient_path_used": False,
+        "sealed_root_environment": RUNTIME_MTL_SEALED_ROOT_ENV,
         "source": None,
-        "package_json_sha256": file_digest(package / "package.json"),
+        "receipt_path": (
+            RUNTIME_MTL_VENDOR_RECEIPT_RELATIVE.as_posix()
+            if receipt_path is None
+            else "<explicit-test-receipt>"
+        ),
+        "process_timeout_seconds": RUNTIME_MTL_PARITY_TIMEOUT_SECONDS,
     }
-    if not package.is_dir():
-        observation["reason"] = "package_missing"
-        yield observation
-        return
-    if dist.exists():
-        observation["reason"] = "in_tree_prebuilt_present"
-        observation["source"] = "repository"
-        yield observation
-        return
-    vendor_dist = _discover_matching_managed_runtime_mtl_dist(package, env=env)
-    if vendor_dist is None:
-        observation["reason"] = "managed_prebuilt_unavailable"
-        yield observation
-        return
-    created = False
-    try:
-        dist.symlink_to(vendor_dist, target_is_directory=True)
-        created = True
-        observation["bound"] = True
-        observation["reason"] = "managed_vendor_prebuilt_bound"
-        # Keep the public observation portable: bind only digest identities and
-        # a managed-relative path suffix, never a host-absolute executable root.
-        observation["source"] = "managed_vendor_prebuilt"
-        managed_relative = None
-        for marker in ("runtime-mtl-vendor", "formal-toolchains"):
-            parts = vendor_dist.parts
-            if marker in parts:
-                idx = parts.index(marker)
-                managed_relative = Path(*parts[idx:]).as_posix()
-                break
-        observation["source_relative"] = managed_relative
-        observation["source_index_sha256"] = file_digest(
-            vendor_dist / "src" / "index.js"
-        )
-        yield observation
-    except OSError as exc:
-        observation["bound"] = False
-        observation["reason"] = f"symlink_failed:{type(exc).__name__}"
-        yield observation
-    finally:
-        if created and dist.is_symlink():
+    failures: list[str] = []
+    for key in (
+        "FORMAL_VERIFICATION_CERTIFY_OFFLINE",
+        "FORMAL_VERIFICATION_FORBID_INSTALL",
+        "FORMAL_VERIFICATION_FORBID_NETWORK",
+    ):
+        if str(env.get(key) or "") != "1":
+            failures.append(f"offline_environment_missing:{key}")
+
+    raw_root = str(env.get(RUNTIME_MTL_SEALED_ROOT_ENV) or "").strip()
+    if not raw_root:
+        failures.append("sealed_root_environment_missing")
+        root = None
+    else:
+        candidate_root = Path(raw_root)
+        if not candidate_root.is_absolute():
+            failures.append("sealed_root_not_absolute")
+            root = None
+        else:
             try:
-                dist.unlink()
-            except OSError:
-                pass
+                root = candidate_root.resolve(strict=True)
+            except (OSError, RuntimeError):
+                failures.append("sealed_root_unreadable")
+                root = None
+
+    root_stat = None
+    if root is not None:
+        try:
+            root_stat = root.lstat()
+        except OSError:
+            failures.append("sealed_root_unreadable")
+        if root != Path(raw_root):
+            failures.append("sealed_root_resolution_changed")
+        if root.is_symlink() or root_stat is None or not stat.S_ISDIR(root_stat.st_mode):
+            failures.append("sealed_root_not_regular_directory")
+        if root_stat is not None and root_stat.st_uid != 0:
+            failures.append("sealed_root_not_root_owned")
+        if root_stat is not None and stat.S_IMODE(root_stat.st_mode) & 0o222:
+            failures.append("sealed_root_writable")
+        if not _path_under_approved_immutable_root(root):
+            failures.append("sealed_root_not_approved")
+
+    try:
+        receipt = json.loads(checked_receipt.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        receipt = None
+        failures.append("checked_vendor_receipt_unreadable")
+    if not isinstance(receipt, Mapping):
+        receipt = {}
+        failures.append("checked_vendor_receipt_not_mapping")
+
+    expected_receipt_fields = {
+        "schema_version": (
+            "formal-verification-runtime-mtl-external-install-receipt/v1"
+        ),
+        "interface": "ExternalRuntimeMTLVendorCertification@1",
+        "goal_id": "FVT-G210",
+        "task_id": "FVT-056",
+        "repair_task_id": "FVT-072",
+        "lane_id": "runtime_mtl_external_vendor",
+        "handler_id": "external_runtime_mtl_vendor_certification@1",
+        "authority_ceiling": "finite_trace",
+    }
+    for field_name, expected in expected_receipt_fields.items():
+        if receipt.get(field_name) != expected:
+            failures.append(f"checked_vendor_receipt_{field_name}_mismatch")
+    receipt_digest = content_digest(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    if not _digest_matches(receipt.get("receipt_digest_sha256"), receipt_digest):
+        failures.append("checked_vendor_receipt_self_digest_mismatch")
+    summary = receipt.get("summary")
+    if not isinstance(summary, Mapping):
+        failures.append("checked_vendor_receipt_summary_missing")
+        summary = {}
+    try:
+        checks_passed = int(summary.get("checks_passed"))
+        checks_total = int(summary.get("checks_total"))
+    except (TypeError, ValueError):
+        checks_passed = 0
+        checks_total = -1
+    if (
+        receipt.get("certified") is not True
+        or summary.get("vendor_certified") is not True
+        or checks_passed <= 0
+        or checks_passed != checks_total
+        or list(summary.get("block_reasons") or [])
+    ):
+        failures.append("checked_vendor_receipt_not_fully_certified")
+
+    engine = receipt.get("runtime_mtl_external")
+    if not isinstance(engine, Mapping):
+        failures.append("checked_vendor_engine_missing")
+        engine = {}
+    expected_engine_fields = {
+        "tool_id": RUNTIME_MTL_VENDOR_TOOL_ID,
+        "version": RUNTIME_MTL_VENDOR_VERSION,
+        "package_identity": RUNTIME_MTL_VENDOR_PACKAGE_IDENTITY,
+        "usable": True,
+        "certified": True,
+        "is_vendor_build": True,
+        "is_hermetic_parity_engine": False,
+        "role": "authority",
+        "authority_ceiling": "finite_trace",
+        "never_grants_theorem_authority": True,
+        "finite_trace_authority_only": True,
+        "no_python_reference_dispatch": True,
+    }
+    for field_name, expected in expected_engine_fields.items():
+        if engine.get(field_name) != expected:
+            failures.append(f"checked_vendor_engine_{field_name}_mismatch")
+    digest_fields = (
+        "artifact_sha256",
+        "executable_digest_sha256",
+        "launcher_digest_sha256",
+        "launcher_target_digest_sha256",
+        "lockfile_digest_sha256",
+        "package_digest_sha256",
+        "runtime_digest_sha256",
+        "source_digest_sha256",
+    )
+    for field_name in digest_fields:
+        if not SHA256_RE.fullmatch(str(engine.get(field_name) or "")):
+            failures.append(f"checked_vendor_engine_{field_name}_invalid")
+
+    version = str(engine.get("version") or RUNTIME_MTL_VENDOR_VERSION)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}", version):
+        failures.append("checked_vendor_version_invalid")
+    paths: dict[str, Path] = {}
+    if root is not None:
+        version_root = (
+            root
+            / "runtime-mtl-vendor"
+            / RUNTIME_MTL_VENDOR_TOOL_ID
+            / version
+        )
+        package = version_root / "package"
+        paths = {
+            "version_root": version_root,
+            "package": package,
+            "identity": version_root / "identity.json",
+            "vendor_launcher": version_root / "bin" / "runtime-mtl-external",
+            "public_launcher": root / "bin" / "runtime-mtl",
+            "package_json": package / "package.json",
+            "package_lock": package / "package-lock.json",
+            "source": package / "src",
+            "source_index": package / "src" / "index.ts",
+            "dist": package / "dist",
+            "dist_index": package / "dist" / "src" / "index.js",
+            "dist_cli": package / "dist" / "src" / "cli.js",
+        }
+        directory_names = {"version_root", "package", "source", "dist"}
+        executable_names = {"vendor_launcher", "public_launcher", "dist_cli"}
+        for name, path in paths.items():
+            for failure in _runtime_mtl_sealed_path_failures(
+                root,
+                path,
+                expected_directory=name in directory_names,
+                executable=name in executable_names,
+            ):
+                failures.append(f"{name}:{failure}")
+        for source_path in sorted(paths["source"].rglob("*")):
+            for failure in _runtime_mtl_sealed_path_failures(
+                root,
+                source_path,
+                expected_directory=source_path.is_dir(),
+            ):
+                failures.append(f"source_tree:{failure}")
+
+    identity: Mapping[str, Any] = {}
+    if paths:
+        try:
+            loaded_identity = json.loads(paths["identity"].read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            loaded_identity = None
+        if isinstance(loaded_identity, Mapping):
+            identity = loaded_identity
+        else:
+            failures.append("vendor_identity_unreadable")
+    identity_expected = {
+        "schema_version": "runtime-mtl-external-vendor-install-receipt/v1",
+        "interface": "ExternalRuntimeMTLVendorInstaller@1",
+        "goal_id": "FVT-G210",
+        "task_id": "FVT-056",
+        "tool_id": RUNTIME_MTL_VENDOR_TOOL_ID,
+        "version": version,
+        "package_identity": RUNTIME_MTL_VENDOR_PACKAGE_IDENTITY,
+        "is_vendor_build": True,
+        "is_hermetic_parity_engine": False,
+        "role": "authority",
+        "authority_ceiling": "finite_trace",
+        "never_grants_theorem_authority": True,
+        "finite_trace_authority_only": True,
+        "no_python_reference_dispatch": True,
+    }
+    for field_name, expected in identity_expected.items():
+        if identity.get(field_name) != expected:
+            failures.append(f"vendor_identity_{field_name}_mismatch")
+    failures.extend(
+        _runtime_mtl_identity_relocation_failures(identity, version=version)
+    )
+    for field_name in digest_fields:
+        identity_value = identity.get(field_name)
+        if field_name == "launcher_target_digest_sha256":
+            identity_value = identity_value or identity.get("cli_artifact_sha256")
+        elif field_name == "launcher_digest_sha256":
+            identity_value = identity_value or identity.get(
+                "executable_digest_sha256"
+            )
+        if identity_value != engine.get(field_name):
+            failures.append(f"vendor_identity_{field_name}_mismatch")
+
+    launcher_binding: Mapping[str, Any] = {}
+    if paths:
+        launcher_binding = _parse_runtime_mtl_public_launcher(
+            paths["public_launcher"]
+        )
+        if launcher_binding.get("valid") is not True:
+            failures.extend(
+                str(item) for item in launcher_binding.get("failures") or []
+            )
+        expected_launcher_paths = {
+            "version": version,
+            "identity_path": str(paths["identity"]),
+            "cli_path": str(paths["dist_cli"]),
+        }
+        for field_name, expected in expected_launcher_paths.items():
+            if launcher_binding.get(field_name) != expected:
+                failures.append(f"public_launcher_{field_name}_mismatch")
+
+    node = None
+    node_raw = str(launcher_binding.get("node_path") or "")
+    if node_raw:
+        candidate_node = Path(node_raw)
+        if not candidate_node.is_absolute():
+            failures.append("node_path_not_absolute")
+        else:
+            try:
+                node = candidate_node.resolve(strict=True)
+            except (OSError, RuntimeError):
+                failures.append("node_path_unreadable")
+            if node is not None:
+                try:
+                    node_stat = node.lstat()
+                except OSError:
+                    node_stat = None
+                    failures.append("node_path_unreadable")
+                if node != candidate_node or candidate_node.is_symlink():
+                    failures.append("node_path_resolution_changed")
+                if (
+                    node_stat is None
+                    or not stat.S_ISREG(node_stat.st_mode)
+                    or not (stat.S_IMODE(node_stat.st_mode) & 0o111)
+                ):
+                    failures.append("node_not_regular_executable")
+                if node_stat is not None and (
+                    node_stat.st_uid != 0
+                    or stat.S_IMODE(node_stat.st_mode) & 0o022
+                ):
+                    failures.append("node_ownership_or_mode_invalid")
+    if identity.get("node_executable") != node_raw:
+        failures.append("vendor_identity_node_path_mismatch")
+
+    node_banner = ""
+    if node is not None and not any(
+        failure.startswith("node_") for failure in failures
+    ):
+        try:
+            completed = subprocess.run(
+                [str(node), "--version"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=RUNTIME_MTL_NODE_PROBE_TIMEOUT_SECONDS,
+                env=_runtime_mtl_node_env(node),
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            completed = None
+            failures.append("node_version_probe_failed")
+        if completed is not None:
+            node_banner = (
+                (completed.stdout or completed.stderr or "").strip()
+            )
+            if completed.returncode != 0:
+                failures.append("node_version_probe_failed")
+    expected_node_version = str(engine.get("node_version") or "")
+    if node_banner != f"v{expected_node_version}":
+        failures.append("node_version_mismatch")
+    if node is not None:
+        runtime_digest = hashlib.sha256(
+            f"node:{node_banner}:{node}".encode()
+        ).hexdigest()
+        if runtime_digest != engine.get("runtime_digest_sha256"):
+            failures.append("node_runtime_digest_mismatch")
+
+    if paths:
+        current_digests = {
+            "package_digest_sha256": _bare_file_digest(paths["package_json"]),
+            "lockfile_digest_sha256": _bare_file_digest(paths["package_lock"]),
+            "source_digest_sha256": _runtime_mtl_source_tree_digest(paths["source"]),
+            "executable_digest_sha256": _bare_file_digest(
+                paths["vendor_launcher"]
+            ),
+            "launcher_digest_sha256": _bare_file_digest(
+                paths["vendor_launcher"]
+            ),
+            "launcher_target_digest_sha256": _bare_file_digest(
+                paths["dist_cli"]
+            ),
+        }
+        cli_digest = current_digests["launcher_target_digest_sha256"]
+        index_digest = _bare_file_digest(paths["dist_index"])
+        current_digests["artifact_sha256"] = hashlib.sha256(
+            f"{cli_digest}:{index_digest}".encode()
+        ).hexdigest()
+        for field_name, observed in current_digests.items():
+            if observed != engine.get(field_name):
+                failures.append(f"sealed_artifact_{field_name}_mismatch")
+
+        repo_package = repo_root / RUNTIME_MTL_TS_PACKAGE_RELATIVE
+        repository_digests = {
+            "package_digest_sha256": _bare_file_digest(
+                repo_package / "package.json"
+            ),
+            "lockfile_digest_sha256": _bare_file_digest(
+                repo_package / "package-lock.json"
+            ),
+            "source_digest_sha256": _runtime_mtl_source_tree_digest(
+                repo_package / "src"
+            ),
+        }
+        for field_name, observed in repository_digests.items():
+            if observed != engine.get(field_name):
+                failures.append(f"repository_{field_name}_mismatch")
+
+        try:
+            package_payload = json.loads(
+                paths["package_json"].read_text(encoding="utf-8")
+            )
+            lock_payload = json.loads(
+                paths["package_lock"].read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            package_payload = {}
+            lock_payload = {}
+            failures.append("sealed_package_metadata_unreadable")
+        for payload_name, payload in (
+            ("package", package_payload),
+            ("lock", lock_payload),
+        ):
+            if (
+                not isinstance(payload, Mapping)
+                or payload.get("name") != RUNTIME_MTL_VENDOR_PACKAGE_IDENTITY
+                or payload.get("version") != version
+            ):
+                failures.append(f"sealed_{payload_name}_identity_mismatch")
+
+    failures = sorted(set(failures))
+    public.update(
+        {
+            "bound": not failures,
+            "authenticated": not failures,
+            "reason": (
+                "sealed_vendor_prebuilt_authenticated"
+                if not failures
+                else "sealed_vendor_prebuilt_rejected"
+            ),
+            "failures": failures,
+            "source": "sealed_managed_vendor_prebuilt" if not failures else None,
+            "source_relative": (
+                "runtime-mtl-vendor/runtime-mtl-external/"
+                f"{version}/package/dist"
+            ),
+            "receipt_file_sha256": file_digest(checked_receipt),
+            "receipt_digest_sha256": receipt.get("receipt_digest_sha256"),
+            "identity_sha256": (
+                file_digest(paths.get("identity")) if paths else None
+            ),
+            "package_json_sha256": (
+                file_digest(paths.get("package_json")) if paths else None
+            ),
+            "package_lock_sha256": (
+                file_digest(paths.get("package_lock")) if paths else None
+            ),
+            "source_tree_sha256": (
+                str(engine.get("source_digest_sha256") or "") if paths else None
+            ),
+            "dist_index_sha256": (
+                file_digest(paths.get("dist_index")) if paths else None
+            ),
+            "dist_cli_sha256": (
+                file_digest(paths.get("dist_cli")) if paths else None
+            ),
+            "public_launcher_sha256": (
+                file_digest(paths.get("public_launcher")) if paths else None
+            ),
+            "vendor_launcher_sha256": (
+                file_digest(paths.get("vendor_launcher")) if paths else None
+            ),
+            "node_executable_sha256": (
+                file_digest(node) if node is not None else None
+            ),
+            "node_version": expected_node_version or None,
+            "root_owned": bool(root_stat is not None and root_stat.st_uid == 0),
+            "immutable": bool(
+                root_stat is not None
+                and not (stat.S_IMODE(root_stat.st_mode) & 0o222)
+            ),
+            "containment_verified": not any(
+                "contain" in failure or "resolution" in failure
+                for failure in failures
+            ),
+            "process_environment_keys": (
+                sorted(_runtime_mtl_node_env(node)) if node is not None else []
+            ),
+        }
+    )
+    invocation = None
+    if not failures and root is not None:
+        invocation = {
+            "sealed_root": str(root),
+            "timeout_seconds": RUNTIME_MTL_PARITY_TIMEOUT_SECONDS,
+        }
+    return {"public": public, "invocation": invocation}
 
 
 def _matching_managed_release_archives(
@@ -4220,6 +4741,7 @@ def _invoke_semantic_certifier(
     *,
     repo_root: Path,
     env: Mapping[str, str],
+    extra_kwargs: Mapping[str, Any] | None = None,
 ) -> Mapping[str, Any]:
     """Call one certifier with only supported, explicitly offline arguments."""
 
@@ -4233,6 +4755,9 @@ def _invoke_semantic_certifier(
         kwargs["skip_install"] = True
     if "force_install" in parameters:
         kwargs["force_install"] = False
+    for key, value in (extra_kwargs or {}).items():
+        if key in parameters:
+            kwargs[key] = value
     receipt = certifier(**kwargs)
     if not isinstance(receipt, Mapping):
         raise TypeError("semantic certifier returned non-mapping receipt")
@@ -4979,13 +5504,14 @@ def run_semantic_lane_certifiers(
 ) -> list[dict[str, Any]]:
     """Invoke focused semantic certifiers offline; never install or fetch."""
 
-    with _runtime_mtl_managed_prebuilt_bind(repo_root, env=env) as prebuilt_bind:
-        return _run_semantic_lane_certifiers_with_prebuilt(
-            repo_root=repo_root,
-            env=env,
-            tool_certs=tool_certs,
-            runtime_mtl_prebuilt_bind=prebuilt_bind,
-        )
+    prebuilt = _runtime_mtl_managed_prebuilt_binding(repo_root, env=env)
+    return _run_semantic_lane_certifiers_with_prebuilt(
+        repo_root=repo_root,
+        env=env,
+        tool_certs=tool_certs,
+        runtime_mtl_prebuilt_bind=prebuilt["public"],
+        runtime_mtl_prebuilt_invocation=prebuilt.get("invocation"),
+    )
 
 
 def _run_semantic_lane_certifiers_with_prebuilt(
@@ -4994,8 +5520,9 @@ def _run_semantic_lane_certifiers_with_prebuilt(
     env: Mapping[str, str],
     tool_certs: Mapping[str, ToolCertification],
     runtime_mtl_prebuilt_bind: Mapping[str, Any],
+    runtime_mtl_prebuilt_invocation: Mapping[str, Any] | None,
 ) -> list[dict[str, Any]]:
-    """Inner semantic certifier loop after optional managed prebuilt bind."""
+    """Inner semantic certifier loop after read-only prebuilt authentication."""
 
     results: list[dict[str, Any]] = []
     for spec in SEMANTIC_CERTIFIER_SPECS:
@@ -5047,10 +5574,21 @@ def _run_semantic_lane_certifiers_with_prebuilt(
             if not callable(certifier):
                 raise AttributeError(f"{callable_name} not callable on {module_path}")
 
+            semantic_extra_kwargs: dict[str, Any] = {}
+            if lane_id == "runtime_mtl" and runtime_mtl_prebuilt_invocation:
+                semantic_extra_kwargs = {
+                    "typescript_prebuilt_root": (
+                        runtime_mtl_prebuilt_invocation["sealed_root"]
+                    ),
+                    "typescript_prebuilt_timeout_seconds": (
+                        runtime_mtl_prebuilt_invocation["timeout_seconds"]
+                    ),
+                }
             receipt = _invoke_semantic_certifier(
                 certifier,
                 repo_root=repo_root,
                 env=env,
+                extra_kwargs=semantic_extra_kwargs,
             )
         except Exception as exc:  # noqa: BLE001 — fail closed per lane
             entry["status"] = "certifier_error"
