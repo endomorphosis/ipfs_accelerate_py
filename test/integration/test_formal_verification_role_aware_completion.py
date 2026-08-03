@@ -523,11 +523,23 @@ def test_supported_missing_tools_are_blockers_not_platform_exceptions(
     }
     exceptions = {row["tool_id"] for row in managed["platform_exceptions"]}
     blockers = {row["tool_id"] for row in managed["all_blockers"]}
+    hyper_targets = {"hyperltl", "autohyper", "mchyper"}
+    hyper_lane = next(
+        row
+        for row in certificate["semantic_lane_results"]
+        if row["lane_id"] == "hyperltl"
+    )
+    hyper_fanin = hyper_lane.get("checked_vendor_fanin") or {}
+    hyper_eligible = set(hyper_fanin.get("eligible_tool_ids") or ())
     assert supported.isdisjoint(exceptions)
     assert exceptions
-    assert {"hyperltl", "autohyper", "mchyper"} <= supported
-    assert {"hyperltl", "autohyper", "mchyper"} <= blockers
-    assert not {"hyperltl", "autohyper", "mchyper"} & exceptions
+    assert hyper_targets <= supported
+    if hyper_targets <= hyper_eligible:
+        assert hyper_targets.isdisjoint(blockers)
+        assert hyper_targets <= set(certificate["role_aware"]["elevated_tool_ids"])
+    else:
+        assert hyper_targets <= blockers
+    assert not hyper_targets & exceptions
     for exception in managed["platform_exceptions"]:
         assert exception["narrow_scope"] is True
         assert exception["complete"] is False
@@ -646,13 +658,13 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
     assert receipt["platform_exceptions"] == receipt["role_aware_certificate"][
         "managed_deployment_readiness"
     ]["platform_exceptions"]
-    # A supported non-ran semantic lane (the currently unavailable
-    # hyperproperty vendor suite) has no canonical receipt and must block.
-    assert receipt["acceptance"]["semantic_receipts_full_and_bound"] is False
-    assert "semantic_receipts_full_and_bound" in receipt[
+    # The checked Hyper vendor fan-in now supplies the formerly absent
+    # canonical receipt; every supported semantic lane must remain bound.
+    assert receipt["acceptance"]["semantic_receipts_full_and_bound"] is True
+    assert "semantic_receipts_full_and_bound" not in receipt[
         "deployment_blockers"
     ]
-    assert any(
+    assert not any(
         str(item).endswith(":semantic_lane_not_run")
         for item in receipt["deployment_blockers"]
     )
