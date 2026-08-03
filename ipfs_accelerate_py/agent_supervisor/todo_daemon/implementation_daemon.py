@@ -17547,6 +17547,7 @@ class PortalImplementationDaemon:
         task_execution_receipt_path: Path | None = None
         task_execution_receipt: dict[str, Any] = {}
         provider_dispatched = False
+        validated_clean_candidate = False
         seed_replayable_proposal_ids: tuple[str, ...] = ()
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
@@ -17940,35 +17941,74 @@ class PortalImplementationDaemon:
                                     for item in operator_prepared_outputs
                                 ]
                         else:
-                            proposal_validation = self._validate_implementation_patch(
-                                worktree_path,
-                                task,
-                                baseline_ref=baseline_ref,
-                                replayable_consumed_proposal_ids=(
-                                    seed_replayable_proposal_ids
-                                ),
-                            )
-                            validation_result = self._run_validation_commands(
-                                worktree_path,
-                                task,
-                                log_path,
-                                state=state,
-                                proposal_validation=proposal_validation,
-                            )
-                            validation_result = (
-                                self._apply_implementation_failure_review(
-                                    task=task,
-                                    attempt=attempt,
-                                    workspace_path=worktree_path,
-                                    validation_result=validation_result,
-                                    log_path=log_path,
-                                    proposal_validation=proposal_validation,
-                                    baseline_ref=baseline_ref,
+                            clean_validation = (
+                                self._run_clean_candidate_validation(
+                                    worktree_path,
+                                    task,
+                                    log_path,
                                     state=state,
+                                    baseline_ref=baseline_ref,
                                 )
                             )
+                            if clean_validation is not None:
+                                validation_result = clean_validation
+                                validated_clean_candidate = True
+                                if not validation_result.get(
+                                    "passed", False
+                                ):
+                                    validation_result = (
+                                        self._apply_implementation_failure_review(
+                                            task=task,
+                                            attempt=attempt,
+                                            workspace_path=worktree_path,
+                                            validation_result=(
+                                                validation_result
+                                            ),
+                                            log_path=log_path,
+                                            proposal_validation=None,
+                                            baseline_ref=baseline_ref,
+                                            state=state,
+                                        )
+                                    )
+                            else:
+                                proposal_validation = (
+                                    self._validate_implementation_patch(
+                                        worktree_path,
+                                        task,
+                                        baseline_ref=baseline_ref,
+                                        replayable_consumed_proposal_ids=(
+                                            seed_replayable_proposal_ids
+                                        ),
+                                    )
+                                )
+                                validation_result = (
+                                    self._run_validation_commands(
+                                        worktree_path,
+                                        task,
+                                        log_path,
+                                        state=state,
+                                        proposal_validation=(
+                                            proposal_validation
+                                        ),
+                                    )
+                                )
+                                validation_result = (
+                                    self._apply_implementation_failure_review(
+                                        task=task,
+                                        attempt=attempt,
+                                        workspace_path=worktree_path,
+                                        validation_result=validation_result,
+                                        log_path=log_path,
+                                        proposal_validation=(
+                                            proposal_validation
+                                        ),
+                                        baseline_ref=baseline_ref,
+                                        state=state,
+                                    )
+                                )
                         if (
                             not deterministic_only
+                            and not validated_clean_candidate
                             and validation_result.get("passed", False)
                         ):
                             validation_result = (
@@ -26812,6 +26852,18 @@ class PortalImplementationDaemon:
 
         if not task.validation:
             return None
+        declared_outputs = task_declared_output_paths(task)
+        if not declared_outputs:
+            return None
+        declared_output_invariant = (
+            self._declared_output_tracking_invariant(
+                [task],
+                workspace_path=workspace_path,
+                repository_ref=baseline_ref,
+            )
+        )
+        if declared_output_invariant.get("passed") is not True:
+            return None
         try:
             self._stage_declared_ignored_outputs(workspace_path, task)
             entries, submodule_expansions = (
@@ -26832,6 +26884,9 @@ class PortalImplementationDaemon:
             log_path,
             state=state,
             force_uncached=True,
+        )
+        result["declared_output_invariant"] = (
+            declared_output_invariant
         )
         proposal_gate = {
             "attempted": False,

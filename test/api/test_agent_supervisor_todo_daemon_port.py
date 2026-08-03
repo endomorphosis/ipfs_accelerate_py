@@ -30428,6 +30428,25 @@ def test_clean_already_satisfied_candidate_runs_declared_validation(
     assert calls[0]["force_uncached"] is True
     assert result["passed"] is True
     assert result["candidate_binding"]["verified"] is True
+    assert result["declared_output_invariant"]["passed"] is True
+    assert result["declared_output_invariant"]["mode"] == (
+        "repository_tree"
+    )
+    assert result["declared_output_invariant"]["repository_ref"] == (
+        baseline
+    )
+    assert result["declared_output_invariant"]["checks"] == [
+        {
+            "task_id": "AUTO-123",
+            "path": "README.md",
+            "repository": ".",
+            "tracked_path": "README.md",
+            "tracked": True,
+            "exists": True,
+            "reason": "declared_output_tracked",
+            "repository_ref": baseline,
+        }
+    ]
     assert result["proposal_gate"] == {
         "attempted": False,
         "accepted": True,
@@ -30435,6 +30454,212 @@ def test_clean_already_satisfied_candidate_runs_declared_validation(
         "changed_paths": [],
         "reason_codes": [],
     }
+
+
+@pytest.mark.parametrize(
+    "output_mode",
+    ("missing", "untracked", "undeclared"),
+)
+def test_clean_candidate_bypass_requires_outputs_tracked_in_exact_baseline(
+    tmp_path: Path,
+    monkeypatch,
+    output_mode: str,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    outputs = [] if output_mode == "undeclared" else ["result.txt"]
+    if output_mode == "untracked":
+        (repo / "result.txt").write_text(
+            "not baseline evidence\n",
+            encoding="utf-8",
+        )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Do not bypass the strict proposal gate",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=outputs,
+        validation=["true"],
+        acceptance="Only an exact baseline output can prove no change.",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *_args, **_kwargs: pytest.fail(
+            "ineligible clean candidates must not dispatch validation"
+        ),
+    )
+
+    result = daemon._run_clean_candidate_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=None,
+        baseline_ref=baseline,
+    )
+
+    assert result is None
+
+
+def test_normal_implementation_completes_already_satisfied_task(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Validate the existing implementation
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Depends on:
+- Outputs: result.txt
+- Validation: test -f result.txt
+- Acceptance: The tracked result and declared validation prove the task is complete.
+""",
+        encoding="utf-8",
+    )
+    (repo / "result.txt").write_text(
+        "already implemented\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "result.txt", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="true",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    validation = result["validation_result"]
+    assert result["returncode"] == 0
+    assert result["provider_dispatched"] is True
+    assert result["baseline_ref"] == baseline
+    assert validation["attempted"] is True
+    assert validation["passed"] is True
+    assert validation["proposal_gate"]["reason"] == (
+        "validated_no_change_candidate"
+    )
+    assert validation["candidate_binding"]["verified"] is True
+    assert validation["declared_output_invariant"]["passed"] is True
+    assert validation["declared_output_invariant"]["repository_ref"] == (
+        baseline
+    )
+    assert result["commit_result"]["reason"] == "no_changes"
+    assert result["commit_result"]["no_change_guard"]["allowed"] is True
+    assert result["board_completion"]["complete"] is True
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+
+
+def test_normal_already_satisfied_task_fails_when_authoritative_validation_fails(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Reject an invalid existing implementation
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Depends on:
+- Outputs: result.txt
+- Validation: false
+- Acceptance: Completion requires the authoritative command to pass.
+""",
+        encoding="utf-8",
+    )
+    (repo / "result.txt").write_text(
+        "tracked but invalid\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "result.txt", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="true",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    validation = result["validation_result"]
+    assert result["returncode"] != 0
+    assert result["provider_dispatched"] is True
+    assert result["baseline_ref"] == baseline
+    assert validation["attempted"] is True
+    assert validation["passed"] is False
+    assert validation["proposal_gate"]["reason"] == (
+        "validated_no_change_candidate"
+    )
+    assert validation["declared_output_invariant"]["passed"] is True
+    assert validation["failure_review"]["decision"] != "accept"
+    assert validation["rescue_guidance_markdown"]
+    assert validation["next_attempt_prompt_addendum"]
+    assert result["board_completion"]["complete"] is False
+    assert "no_change_guard" not in result["commit_result"]
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
 
 def test_clean_candidate_rebinds_validation_materialized_output(
     tmp_path: Path,
