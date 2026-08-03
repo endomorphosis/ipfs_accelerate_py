@@ -439,6 +439,12 @@ DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE = 16_384
 DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE = 8_192
 PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
 MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
+MAX_PERSISTED_VALIDATION_FAILED_TESTS = 12
+MAX_PERSISTED_VALIDATION_FAILED_TEST_PATHS = 12
+MAX_PERSISTED_VALIDATION_EXCEPTION_TYPES = 8
+MAX_PERSISTED_VALIDATION_IMPACT_PATHS = 16
+MAX_PERSISTED_VALIDATION_FAILURE_ITEM_CHARS = 512
+MAX_PERSISTED_VALIDATION_FAILURE_HEAD_CHARS = 2_000
 MAX_PENDING_SCOPE_ADJUDICATIONS = 256
 MAX_VALIDATION_GENERATED_ARTIFACT_RECEIPT_PATHS = 50
 SECRET_CHANGE_SCOPE_EXAMINATION_SCHEMA = (
@@ -28249,17 +28255,27 @@ class PortalImplementationDaemon:
                     result["failed_command"] = failed_commands[0]
                 result["failed_commands"] = failed_commands[:8]
             if failed_tests:
-                result["failed_tests"] = failed_tests[:12]
+                result["failed_tests"] = failed_tests[
+                    :MAX_PERSISTED_VALIDATION_FAILED_TESTS
+                ]
             if failed_test_paths:
-                result["failed_test_paths"] = failed_test_paths[:12]
+                result["failed_test_paths"] = failed_test_paths[
+                    :MAX_PERSISTED_VALIDATION_FAILED_TEST_PATHS
+                ]
             if failure_exception_types:
-                result["exception_types"] = failure_exception_types[:8]
+                result["exception_types"] = failure_exception_types[
+                    :MAX_PERSISTED_VALIDATION_EXCEPTION_TYPES
+                ]
             if validation_impact_paths:
                 result["validation_impact_paths"] = (
-                    validation_impact_paths[:16]
+                    validation_impact_paths[
+                        :MAX_PERSISTED_VALIDATION_IMPACT_PATHS
+                    ]
                 )
             if failure_heads:
-                result["failure_head"] = "\n".join(failure_heads)[:2000]
+                result["failure_head"] = "\n".join(failure_heads)[
+                    :MAX_PERSISTED_VALIDATION_FAILURE_HEAD_CHARS
+                ]
         return result
 
     @staticmethod
@@ -40619,6 +40635,39 @@ class PortalImplementationDaemon:
 
         if not isinstance(failure, Mapping):
             raise TypeError("implementation failure must be a mapping")
+
+        def bounded_items(
+            value: Any,
+            *,
+            limit: int,
+            paths: bool = False,
+        ) -> list[str]:
+            if not isinstance(
+                value,
+                (list, tuple, set, frozenset),
+            ):
+                return []
+            values = (
+                sorted(value, key=lambda item: str(item))
+                if isinstance(value, (set, frozenset))
+                else value
+            )
+            items: list[str] = []
+            for raw_item in values:
+                item = str(raw_item or "").strip()
+                if paths:
+                    item = normalize_retry_validation_path(item)
+                if not item:
+                    continue
+                item = item[
+                    :MAX_PERSISTED_VALIDATION_FAILURE_ITEM_CHARS
+                ]
+                if item not in items:
+                    items.append(item)
+                if len(items) >= limit:
+                    break
+            return items
+
         selected: dict[str, Any] = {}
         for key in (
             "kind",
@@ -40644,7 +40693,7 @@ class PortalImplementationDaemon:
                 selected[key] = value
         validation = failure.get("validation_result")
         if isinstance(validation, Mapping):
-            selected["validation"] = {
+            validation_projection = {
                 key: validation[key]
                 for key in (
                     "passed",
@@ -40656,6 +40705,43 @@ class PortalImplementationDaemon:
                 )
                 if validation.get(key) not in (None, "", (), [], {})
             }
+            for key, limit, paths in (
+                (
+                    "failed_tests",
+                    MAX_PERSISTED_VALIDATION_FAILED_TESTS,
+                    False,
+                ),
+                (
+                    "failed_test_paths",
+                    MAX_PERSISTED_VALIDATION_FAILED_TEST_PATHS,
+                    True,
+                ),
+                (
+                    "exception_types",
+                    MAX_PERSISTED_VALIDATION_EXCEPTION_TYPES,
+                    False,
+                ),
+                (
+                    "validation_impact_paths",
+                    MAX_PERSISTED_VALIDATION_IMPACT_PATHS,
+                    True,
+                ),
+            ):
+                items = bounded_items(
+                    validation.get(key),
+                    limit=limit,
+                    paths=paths,
+                )
+                if items:
+                    validation_projection[key] = items
+            failure_head = str(
+                validation.get("failure_head") or ""
+            ).strip()
+            if failure_head:
+                validation_projection["failure_head"] = failure_head[
+                    :MAX_PERSISTED_VALIDATION_FAILURE_HEAD_CHARS
+                ]
+            selected["validation"] = validation_projection
             proposal = validation.get("proposal_gate")
             if isinstance(proposal, Mapping):
                 selected["proposal_gate"] = {
@@ -40921,6 +41007,7 @@ class PortalImplementationDaemon:
                     "out_of_scope_paths",
                     "justified_paths",
                     "denied_paths",
+                    "contract_gap_paths",
                     "failed_commands",
                     "next_attempt_prompt_addendum",
                     "policy_version",
