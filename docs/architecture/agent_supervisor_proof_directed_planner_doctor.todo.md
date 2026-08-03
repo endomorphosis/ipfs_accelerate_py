@@ -456,7 +456,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-026 Compile replayable conflict/resource/lease/merge parallel execution plans
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
