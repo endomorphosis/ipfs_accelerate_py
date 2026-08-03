@@ -1379,3 +1379,717 @@ def test_truncated_ledger_cannot_authenticate_implementer(
     outcome = _perform(nested_case, reviewer=_reviewer("approve"))
     assert outcome.admitted is False
     assert outcome.reason_code == "event_ledger_manifest_invalid"
+
+
+@pytest.fixture()
+def composite_recovery_case(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> SimpleNamespace:
+    """Build the closed Grok -> one-line repair -> advanced target lineage."""
+
+    submodule_path = "external/ipfs_datasets"
+    child_paths = (
+        "docs/architecture/UI_UX_IR_MCP_IDL_IDENTITY.md",
+        "tests/fixtures/ui_ux_ir/v1/mcp_idl_identity_vectors.json",
+        "tests/unit/logic/ui_ux_ir/test_mcp_idl_identity_contract.py",
+    )
+    changed_paths = [f"{submodule_path}/{path}" for path in child_paths]
+    restored_symbol = (
+        "test_reject_datasets_resource_cost_hints_exclusion"
+    )
+    provider_symbol = (
+        "test_reject_resource_cost_hints_omission_from_verified_identity"
+    )
+    baseline_test = (
+        f"def {restored_symbol}():\n"
+        '    assert "baseline-contract"\n'
+    )
+    provider_test = (
+        f"def {provider_symbol}():\n"
+        '    assert "provider-contract"\n'
+    )
+    final_test = (
+        f"def {restored_symbol}():\n"
+        '    assert "provider-contract"\n'
+    )
+
+    child_source = tmp_path / "ipfs-datasets-source"
+    _init_repo(child_source)
+    for path in child_paths:
+        (child_source / path).parent.mkdir(parents=True, exist_ok=True)
+    (child_source / child_paths[0]).write_text(
+        "# Baseline identity contract\n",
+        encoding="utf-8",
+    )
+    (child_source / child_paths[1]).write_text(
+        '{"version":0,"identity":"baseline"}\n',
+        encoding="utf-8",
+    )
+    (child_source / child_paths[2]).write_text(
+        baseline_test,
+        encoding="utf-8",
+    )
+    baseline_child = _commit(child_source, "child baseline")
+    (child_source / child_paths[0]).write_text(
+        "# Provider-authored identity contract\n\nSubstantive content.\n",
+        encoding="utf-8",
+    )
+    (child_source / child_paths[1]).write_text(
+        '{"version":1,"identity":"provider"}\n',
+        encoding="utf-8",
+    )
+    (child_source / child_paths[2]).write_text(
+        provider_test,
+        encoding="utf-8",
+    )
+    provider_child = _commit(child_source, "Grok provider child")
+    (child_source / child_paths[2]).write_text(
+        final_test,
+        encoding="utf-8",
+    )
+    final_child = _commit(child_source, "restore exact baseline test symbol")
+
+    root = tmp_path / "accelerator"
+    _init_repo(root)
+    (root / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(
+        root,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child_source),
+        submodule_path,
+    )
+    child = root / submodule_path
+    _git(child, "checkout", "--detach", baseline_child)
+    baseline = _commit(root, "root baseline")
+
+    _git(root, "checkout", "-b", "provider-source")
+    _git(child, "checkout", "--detach", provider_child)
+    source_commit = _commit(root, "Grok provider root")
+    _git(root, "checkout", "-b", "recovery-seed", baseline)
+    _git(child, "checkout", "--detach", final_child)
+    seed_commit = _commit(root, "zero-edit recovery seed")
+    seed_tree_id = _tree(root, seed_commit)
+
+    _git(root, "checkout", "-b", "main", baseline)
+    _git(root, "merge", "--no-ff", "recovery-seed", "-m", "integrate seed")
+    integration_boundary = _git(root, "rev-parse", "HEAD")
+    integration_boundary_tree = _git(
+        root,
+        "rev-parse",
+        f"{integration_boundary}^{{tree}}",
+    )
+    (root / "later-unrelated.txt").write_text(
+        "target advanced after exact integration\n",
+        encoding="utf-8",
+    )
+    reviewed_target = _commit(root, "advance target after recovery integration")
+    reviewed_tree_id = _tree(root, reviewed_target)
+    assert reviewed_tree_id != seed_tree_id
+
+    log_path = Path("state/implementation_logs/source-attempt-2.log")
+    (root / log_path).parent.mkdir(parents=True, exist_ok=True)
+    (root / log_path).write_text(
+        "canonical Grok execution log\n",
+        encoding="utf-8",
+    )
+    events_path = root / "state/events.jsonl"
+    task_id = "UIIR-042"
+    canonical_task_key = "uiir:UIIR-042"
+    canonical_task_cid = "sha256:" + ("c" * 64)
+    board_namespace = "uiir"
+    task = PortalTask(
+        task_id=task_id,
+        title="Complete the UI/UX IR MCP/IDL identity contract",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="logic",
+        outputs=list(changed_paths),
+        validation=["/usr/bin/true"],
+        acceptance=(
+            "The exact UI/UX IR identity contract and rejection vectors are "
+            "implemented without weakening the baseline test vocabulary."
+        ),
+        metadata={
+            "status": "ready",
+            "completion": "manual",
+            "priority": "P0",
+            "track": "logic",
+            "outputs": ", ".join(changed_paths),
+            "validation": "/usr/bin/true",
+            "acceptance": (
+                "The exact UI/UX IR identity contract and rejection vectors "
+                "are implemented without weakening the baseline test "
+                "vocabulary."
+            ),
+            "provider role": "grok-implement, codex-review",
+            "canonical task key": canonical_task_key,
+            "canonical task cid": canonical_task_cid,
+            "board namespace": board_namespace,
+        },
+        canonical_task_key=canonical_task_key,
+        canonical_task_cid=canonical_task_cid,
+        board_namespace=board_namespace,
+    )
+    task_binding_id = review.post_merge_task_binding_id(task)
+    branch = "implementation/uiir-042-attempt-5"
+    request_id = "merge-request-uiir-042"
+    target_repository_id = "repository:sha256:" + ("d" * 64)
+    target_branch = "main"
+    denial_id = "denial-uiir-042"
+    grant_id = "grant-uiir-042"
+    grant_record_id = "grant-record-uiir-042"
+    consumption_record_id = "consumption-record-uiir-042"
+    repair_task_id = "UIIR-043"
+    repair_binding_id = "repair-binding-uiir-043"
+    authority_binding_id = "authority-binding-uiir-042"
+
+    source_started = append_jsonl_event(
+        events_path,
+        "implementation_started",
+        {
+            "task_id": task_id,
+            "attempt": 2,
+            "execution_mode": "model-assisted",
+            "branch": "implementation/uiir-042-attempt-2",
+            "baseline_ref": baseline,
+            "log_path": str(log_path),
+            "canonical_task_key": canonical_task_key,
+            "canonical_task_cid": canonical_task_cid,
+            "board_namespace": board_namespace,
+            "task_binding_id": task_binding_id,
+            "command": [
+                "/usr/bin/python3",
+                "/opt/ipfs_accelerate_py/grok_cli_runner.py",
+                "--workspace",
+                str(root),
+                "--grok-bin",
+                "/usr/bin/grok",
+                "--model",
+                "grok-4.5",
+                "--max-turns",
+                "100000",
+                "--mode",
+                "agent",
+            ],
+        },
+    )
+    append_jsonl_event(
+        events_path,
+        "implementation_finished",
+        {
+            "task_id": task_id,
+            "attempt": 2,
+            "branch": "implementation/uiir-042-attempt-2",
+            "baseline_ref": baseline,
+            "log_path": str(log_path),
+            "implementation_commit": source_commit,
+            "returncode": 78,
+            "attempt_consumed": True,
+            "canonical_task_key": canonical_task_key,
+            "canonical_task_cid": canonical_task_cid,
+            "board_namespace": board_namespace,
+            "task_binding_id": task_binding_id,
+            "commit_result": {
+                "committed": True,
+                "commit": source_commit,
+                "submodule_results": [
+                    {
+                        "path": submodule_path,
+                        "committed": True,
+                        "commit": provider_child,
+                    }
+                ],
+            },
+            "validation_result": {
+                "attempted": False,
+                "passed": False,
+                "returncode": 78,
+                "reason": "proposal_gate_failed",
+                "error": "proposal_validation_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": False,
+                    "reason_codes": ["test_weakening_forbidden"],
+                    "proof_authoritative": False,
+                    "completion_authoritative": False,
+                    "repository_tree_id": baseline,
+                    "changed_paths": changed_paths,
+                },
+            },
+        },
+    )
+    seed_fields = {
+        "recovery_seed_ref": seed_commit,
+        "recovery_seed_tree_id": seed_tree_id,
+        "recovery_seed_submodule_path": submodule_path,
+        "recovery_seed_submodule_commit": final_child,
+    }
+    grant_projection = {
+        "schema": "post-merge-correction-repair-grant-v1",
+        "grant_id": grant_id,
+        "denial_id": denial_id,
+        "source_task_id": task_id,
+        "source_task_binding_id": task_binding_id,
+        "source_canonical_task_key": canonical_task_key,
+        "source_canonical_task_cid": canonical_task_cid,
+        "repair_task_id": repair_task_id,
+        "repair_binding_id": repair_binding_id,
+        "origin_stream_id": source_started["stream_id"],
+        **seed_fields,
+    }
+    grant_event = append_jsonl_event(
+        events_path,
+        "task_retry_budget_reset",
+        {
+            "resets": [
+                {
+                    "post_merge_correction_repair_grant": grant_projection,
+                }
+            ]
+        },
+    )
+    authority = {
+        "task_id": task_id,
+        "task_binding_id": task_binding_id,
+        "canonical_task_key": canonical_task_key,
+        "canonical_task_cid": canonical_task_cid,
+        "board_namespace": board_namespace,
+        "authorized_attempt": 5,
+        "origin_stream_id": source_started["stream_id"],
+        "durable_denial_id": denial_id,
+        "authority_id": grant_id,
+        "authority_binding_id": authority_binding_id,
+        "authority_event_sequence": grant_event["sequence"],
+        "durable_authority_head_record_id": grant_record_id,
+        "target_repository_id": target_repository_id,
+        "target_branch": target_branch,
+        "repair_task_id": repair_task_id,
+        "repair_binding_id": repair_binding_id,
+        **seed_fields,
+    }
+    recovery_log_path = "state/implementation_logs/recovery-attempt-5.log"
+    recovery_started = append_jsonl_event(
+        events_path,
+        "implementation_started",
+        {
+            "task_id": task_id,
+            "attempt": 5,
+            "execution_mode": "recovery-seed-validation",
+            "command": ["/usr/bin/true"],
+            "branch": branch,
+            "baseline_ref": baseline,
+            "log_path": recovery_log_path,
+            "canonical_task_key": canonical_task_key,
+            "canonical_task_cid": canonical_task_cid,
+            "board_namespace": board_namespace,
+            "task_binding_id": task_binding_id,
+            "post_merge_correction_authority": authority,
+        },
+    )
+    recovery_finished = append_jsonl_event(
+        events_path,
+        "implementation_finished",
+        {
+            "task_id": task_id,
+            "attempt": 5,
+            "branch": branch,
+            "baseline_ref": baseline,
+            "log_path": recovery_log_path,
+            "implementation_commit": seed_commit,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "canonical_task_key": canonical_task_key,
+            "canonical_task_cid": canonical_task_cid,
+            "board_namespace": board_namespace,
+            "task_binding_id": task_binding_id,
+            "implementation_started_event_id": recovery_started["event_id"],
+            "implementation_started_event_sequence": recovery_started[
+                "sequence"
+            ],
+            "commit_result": {
+                "committed": True,
+                "reason": "existing_commit",
+                "commit": seed_commit,
+                "baseline_ref": baseline,
+                "recovery_seed_zero_edit_promotion_guard": {
+                    "allowed": True,
+                    "applicable": True,
+                    "durable_consumption_verified": True,
+                    "reasons": [],
+                    "implementation_started_event_id": recovery_started[
+                        "event_id"
+                    ],
+                    "implementation_started_event_sequence": recovery_started[
+                        "sequence"
+                    ],
+                    "validation_changed_paths": changed_paths,
+                    **seed_fields,
+                },
+            },
+            "merge_result": {
+                "attempted": False,
+                "merged": False,
+                "queued": True,
+                "request_id": request_id,
+                "implementation_commit": seed_commit,
+                "branch": branch,
+            },
+            "validation_result": {
+                "passed": True,
+                "returncode": 0,
+                "proposal_gate": {
+                    "accepted": True,
+                    "changed_paths": changed_paths,
+                },
+            },
+        },
+    )
+    recovery_material = {
+        "schema": review.RECOVERY_SEED_ZERO_EDIT_MERGE_PROVENANCE_SCHEMA,
+        "task_id": task_id,
+        "task_binding_id": task_binding_id,
+        "canonical_task_key": canonical_task_key,
+        "canonical_task_cid": canonical_task_cid,
+        "board_namespace": board_namespace,
+        "implementation_attempt": 5,
+        "implementation_commit": seed_commit,
+        "branch": branch,
+        "baseline_ref": baseline,
+        "request_id": request_id,
+        "implementation_provider": "",
+        "target_already_integrated": True,
+        "observed_target_commit": reviewed_target,
+        "observed_target_gitlink": final_child,
+        "candidate_tree_id": seed_tree_id,
+        "target_repository_id": target_repository_id,
+        "target_branch": target_branch,
+        "denial_id": denial_id,
+        "grant_id": grant_id,
+        "grant_record_id": grant_record_id,
+        "consumption_record_id": consumption_record_id,
+        "repair_task_id": repair_task_id,
+        "repair_binding_id": repair_binding_id,
+        "authority_binding_id": authority_binding_id,
+        "grant_event_id": grant_event["event_id"],
+        "grant_event_sequence": grant_event["sequence"],
+        "started_event_id": recovery_started["event_id"],
+        "started_event_sequence": recovery_started["sequence"],
+        "finished_event_id": recovery_finished["event_id"],
+        "finished_event_sequence": recovery_finished["sequence"],
+        "origin_stream_id": source_started["stream_id"],
+        "source": "verified_recovery_seed_zero_edit",
+        "queue_projection_verified": True,
+        "legacy_model_invocation_projection": False,
+        "validation_changed_paths": changed_paths,
+        "integration_boundary": {
+            "commit": integration_boundary,
+            "tree": integration_boundary_tree,
+            "mode": "exact_seed_no_ff_merge",
+        },
+        **seed_fields,
+    }
+    recovery = {
+        **recovery_material,
+        "evidence_id": content_identity(recovery_material),
+    }
+    witness_payload = {
+        **recovery,
+        "queue_attempt": 2,
+        "queue_failure_count": 1,
+        "request_claim_generation": 7,
+        "raw_model_invocation_observed": False,
+        "effective_model_invocation_observed": False,
+        "model_invocation_observed": False,
+        "normalization_reason": (
+            "verified_recovery_seed_no_model_execution"
+        ),
+        "authoritative": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+        "repository_write_authorized": False,
+    }
+    early_witness = append_jsonl_event(
+        events_path,
+        review.RECOVERY_SEED_ZERO_EDIT_EXECUTION_VERIFIED_EVENT,
+        {**witness_payload, "queue_status": "processing"},
+    )
+    witness = append_jsonl_event(
+        events_path,
+        review.RECOVERY_SEED_ZERO_EDIT_EXECUTION_VERIFIED_EVENT,
+        {
+            **witness_payload,
+            "queue_status": "completed",
+        },
+    )
+
+    correction_material = {
+        "kind": "baseline-test-symbol-restoration",
+        "path": child_paths[2],
+        "root_relative_path": changed_paths[2],
+        "line_number": 1,
+        "baseline_symbol_line_number": 1,
+        "baseline_child_commit": baseline_child,
+        "provider_child_commit": provider_child,
+        "final_child_commit": final_child,
+        "baseline_blob_id": _git(
+            child,
+            "rev-parse",
+            f"{baseline_child}:{child_paths[2]}",
+        ),
+        "provider_blob_id": _git(
+            child,
+            "rev-parse",
+            f"{provider_child}:{child_paths[2]}",
+        ),
+        "final_blob_id": _git(
+            child,
+            "rev-parse",
+            f"{final_child}:{child_paths[2]}",
+        ),
+        "provider_symbol": provider_symbol,
+        "restored_symbol": restored_symbol,
+        "provider_line_sha256": hashlib.sha256(
+            provider_test.splitlines(keepends=True)[0].encode("utf-8")
+        ).hexdigest(),
+        "final_line_sha256": hashlib.sha256(
+            final_test.splitlines(keepends=True)[0].encode("utf-8")
+        ).hexdigest(),
+        "preserves_all_other_bytes": True,
+    }
+    correction_id = content_identity(correction_material)
+    correction_identity = (
+        baseline_child,
+        provider_child,
+        final_child,
+        child_paths[2],
+        provider_symbol,
+        restored_symbol,
+        correction_id,
+    )
+    monkeypatch.setattr(
+        review,
+        "COMPOSITE_RECOVERY_DETERMINISTIC_CORRECTIONS",
+        frozenset({correction_identity}),
+    )
+    factory_kwargs = {
+        "repo_root": root,
+        "expected_task_id": task_id,
+        "expected_task_binding_id": task_binding_id,
+        "expected_canonical_task_key": canonical_task_key,
+        "expected_canonical_task_cid": canonical_task_cid,
+        "expected_board_namespace": board_namespace,
+        "expected_implementation_attempt": 5,
+        "expected_implementation_commit": seed_commit,
+        "expected_branch": branch,
+        "expected_baseline_ref": baseline,
+        "expected_integration_commit": reviewed_target,
+        "expected_repository_tree_id": reviewed_tree_id,
+        "expected_target_repository_id": target_repository_id,
+        "expected_target_branch": target_branch,
+        "expected_request_id": request_id,
+        "expected_queue_attempt": 2,
+        "expected_queue_failure_count": 1,
+        "expected_request_claim_generation": 7,
+        "recovery_seed_provenance": recovery,
+        "recovery_execution_witness": witness,
+    }
+    return SimpleNamespace(
+        root=root,
+        child=child,
+        events_path=events_path,
+        receipt_dir=root / "state/post_merge_receipts",
+        task=task,
+        changed_paths=changed_paths,
+        baseline=baseline,
+        recovery=recovery,
+        witness=witness,
+        early_witness=early_witness,
+        factory_kwargs=factory_kwargs,
+        seed_commit=seed_commit,
+        seed_tree_id=seed_tree_id,
+        reviewed_target=reviewed_target,
+        reviewed_tree_id=reviewed_tree_id,
+        integration_boundary=integration_boundary,
+        recovery_finished=recovery_finished,
+        correction_id=correction_id,
+    )
+
+
+def test_composite_recovery_provenance_accepts_advanced_review_target(
+    composite_recovery_case: SimpleNamespace,
+) -> None:
+    case = composite_recovery_case
+    provenance = (
+        review.verified_composite_recovery_implementer_provenance_from_ledger(
+            case.events_path,
+            **case.factory_kwargs,
+        )
+    )
+
+    assert isinstance(
+        provenance,
+        review.VerifiedCompositeRecoveryImplementerProvenance,
+    )
+    assert case.seed_tree_id != case.reviewed_tree_id
+    assert (
+        provenance.recovery_execution["integration_boundary_commit"]
+        == case.integration_boundary
+    )
+    assert (
+        provenance.recovery_execution["review_target_commit"]
+        == case.reviewed_target
+    )
+    assert (
+        provenance.recovery_execution["review_target_tree_id"]
+        == case.reviewed_tree_id
+    )
+    member = review.verified_implementation_finished_event_from_ledger(
+        case.events_path,
+        provenance,
+        repo_root=case.root,
+    )
+    assert member["event_id"] == case.recovery_finished["event_id"]
+
+
+@pytest.mark.parametrize(
+    ("tamper_target", "replacement"),
+    [
+        ("witness_event_id", "sha256:" + ("0" * 64)),
+        ("witness_queue_attempt", 3),
+        ("early_witness", None),
+        ("boundary_tree", "0" * 40),
+        ("grant_id", "different-grant"),
+    ],
+)
+def test_composite_recovery_provenance_rejects_tampered_bindings(
+    composite_recovery_case: SimpleNamespace,
+    tamper_target: str,
+    replacement: Any,
+) -> None:
+    case = composite_recovery_case
+    kwargs = deepcopy(case.factory_kwargs)
+    if tamper_target == "early_witness":
+        kwargs["recovery_execution_witness"] = case.early_witness
+    elif tamper_target.startswith("witness_"):
+        if tamper_target == "witness_event_id":
+            witness = deepcopy(case.witness)
+            witness["event_id"] = replacement
+            kwargs["recovery_execution_witness"] = witness
+        else:
+            kwargs["expected_queue_attempt"] = replacement
+    else:
+        recovery = deepcopy(case.recovery)
+        if tamper_target == "boundary_tree":
+            recovery["integration_boundary"]["tree"] = replacement
+        else:
+            recovery["grant_id"] = replacement
+        material = dict(recovery)
+        material.pop("evidence_id")
+        recovery["evidence_id"] = content_identity(material)
+        kwargs["recovery_seed_provenance"] = recovery
+
+    with pytest.raises(review.PostMergeReviewError):
+        review.verified_composite_recovery_implementer_provenance_from_ledger(
+            case.events_path,
+            **kwargs,
+        )
+
+
+def test_composite_recovery_provenance_rejects_correction_not_allowlisted(
+    composite_recovery_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        review,
+        "COMPOSITE_RECOVERY_DETERMINISTIC_CORRECTIONS",
+        frozenset(),
+    )
+
+    with pytest.raises(review.PostMergeReviewError) as raised:
+        review.verified_composite_recovery_implementer_provenance_from_ledger(
+            composite_recovery_case.events_path,
+            **composite_recovery_case.factory_kwargs,
+        )
+
+    assert (
+        raised.value.reason_code
+        == "composite_recovery_correction_not_authorized"
+    )
+
+
+def test_composite_recovery_denial_round_trip_rejects_nested_witness_tamper(
+    composite_recovery_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = composite_recovery_case
+    provenance = (
+        review.verified_composite_recovery_implementer_provenance_from_ledger(
+            case.events_path,
+            **case.factory_kwargs,
+        )
+    )
+    monkeypatch.setattr(
+        review,
+        "call_llm_router_with_receipt",
+        _fake_codex_child("changes_required"),
+    )
+    outcome = review.perform_post_merge_independent_review(
+        repo_root=case.root,
+        receipt_dir=case.receipt_dir,
+        implementation_events_path=case.events_path,
+        task=case.task,
+        attempt=2,
+        implementation_attempt=5,
+        baseline_commit=case.baseline,
+        implementation_commit=case.seed_commit,
+        merge_commit=case.reviewed_target,
+        repository_tree_id=case.reviewed_tree_id,
+        validation_result=_validation(
+            case.task,
+            case.reviewed_target,
+            case.reviewed_tree_id,
+        ),
+        expected_changed_paths=case.changed_paths,
+        implementer_provider="grok_cli",
+        implementer_provenance=provenance,
+    )
+
+    assert outcome.admitted is False
+    assert outcome.reason_code == "independent_review_changes_required"
+    appended = _append_review_event(case.events_path, outcome)
+    corrections = (
+        review.verified_post_merge_review_corrections_from_strict_ledger(
+            case.events_path,
+            require_local_provenance=True,
+        )
+    )
+    assert len(corrections) == 1
+    assert corrections[0]["task_id"] == case.task.task_id
+    assert corrections[0]["implementation_attempt"] == 5
+    assert corrections[0]["target_implementation_attempt"] == 6
+    assert corrections[0]["source_event_id"] == appended["event_id"]
+
+    tampered = deepcopy(provenance.to_dict())
+    tampered["recovery_execution"]["execution_witness"][
+        "grant_record_id"
+    ] = "tampered-grant-record"
+    assert review._composite_provenance_matches_local_ledger(
+        tampered,
+        tuple(review._strict_event_ledger(case.events_path)),
+        denial_event_sequence=appended["sequence"],
+        expected_task_id=case.task.task_id,
+        expected_task_binding_id=review.post_merge_task_binding_id(case.task),
+        expected_canonical_task_key=case.task.canonical_task_key,
+        expected_canonical_task_cid=case.task.canonical_task_cid,
+        expected_board_namespace=case.task.board_namespace,
+        expected_review_attempt=2,
+        expected_implementation_attempt=5,
+        expected_implementation_commit=case.seed_commit,
+        expected_merge_commit=case.reviewed_target,
+        expected_repository_tree_id=case.reviewed_tree_id,
+    ) is False

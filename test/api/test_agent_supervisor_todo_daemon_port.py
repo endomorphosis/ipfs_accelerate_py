@@ -11028,38 +11028,23 @@ def test_recovery_seed_merge_callback_normalizes_only_exact_strict_execution(
     admitted = case in {"legacy_revival", "fresh_envelope"}
     if admitted:
         assert result["reason"] == "validation_failed"
-        audits = [
+        capability_witnesses = [
             event
             for event in daemon._iter_events()
             if event.get("type")
             == "recovery_seed_zero_edit_execution_verified"
         ]
-        assert len(audits) == 1
-        audit = audits[0]
-        assert audit["raw_model_invocation_observed"] is (
-            raw_model_invocation
-        )
-        assert audit["effective_model_invocation_observed"] is False
+        # Processing retains an audit record, but the composite verifier only
+        # accepts a separate witness minted after durable completion.
+        assert len(capability_witnesses) == 1
+        audit = capability_witnesses[0]
+        assert audit["queue_status"] == "processing"
         assert audit["queue_attempt"] == 2
         assert audit["queue_failure_count"] == 1
         assert audit["request_claim_generation"] == 4
-        assert audit["candidate_tree_id"] == candidate_tree_id
-        assert audit["started_event_id"] == started["event_id"]
-        assert audit["finished_event_id"] == finished["event_id"]
-        assert audit["grant_id"] == "grant-1"
-        assert audit["target_already_integrated"] is False
-        assert audit["observed_target_commit"] == baseline
-        assert (
-            audit["observed_target_gitlink"]
-            == seed_fields["recovery_seed_submodule_commit"]
-        )
-        if raw_model_invocation:
-            assert audit["validated_revival"][
-                "previous_failure_reason"
-            ] == "implementation_provenance_missing"
-            assert audit["validated_revival"]["revival_evidence_id"]
-        else:
-            assert audit["validated_revival"] == {}
+        assert audit["canonical_task_key"] == identity.canonical_task_key
+        assert audit["canonical_task_cid"] == identity.canonical_task_cid
+        assert audit["board_namespace"] == identity.board_namespace
     else:
         expected_reasons = {
             "boolean_finish_returncode": "implementation_provenance_missing",
@@ -11799,6 +11784,188 @@ def test_cross_lane_consumer_defers_cleanup_bound_to_producer_state(
     assert result["merged"] is True
     assert result["cleanup_deferred"] is True
     assert result["completion_authoritative"] is False
+    producer_witnesses = [
+        event
+        for event in event_log_module.read_jsonl_events(
+            case["evidence_state_dir"] / "events.jsonl"
+        )
+        if event.get("type")
+        == "recovery_seed_zero_edit_execution_verified"
+    ]
+    consumer_witnesses = [
+        event
+        for event in case["daemon"]._iter_events()
+        if event.get("type")
+        == "recovery_seed_zero_edit_execution_verified"
+    ]
+    # Processing-path recovery remains audit-only. The capability witness is
+    # minted later, after the durable queue row is exactly completed.
+    assert len(producer_witnesses) == 1
+    assert producer_witnesses[0]["queue_status"] == "processing"
+    assert consumer_witnesses == []
+
+
+def test_completed_composite_recovery_mints_fresh_origin_witness(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Composite recovery\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "baseline")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    target_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+    repository_tree_id = f"git-tree:{target_tree}"
+
+    consumer_state = repo / "consumer-state"
+    producer_state = repo / "producer-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=consumer_state / "task_state.json",
+        strategy_path=consumer_state / "strategy.json",
+        events_path=consumer_state / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = replace(
+        _submodule_proposal_task("verified.txt"),
+        task_id="REF-049",
+        title="Verify completed composite recovery",
+        metadata={"provider role": "grok-implement"},
+    )
+    identity = daemon._identity_for_task(task)
+    branch = "implementation/ref-049-attempt-5"
+    request_id = "completed-composite-request"
+    request = SimpleNamespace(
+        request_id=request_id,
+        status="pending",
+        task_id=task.task_id,
+        canonical_task_id=identity.canonical_task_cid,
+        canonical_task_key=identity.canonical_task_key,
+        branch_name=branch,
+        commit_sha=baseline,
+        target_repository_id=daemon.merge_target_repository_id,
+        target_branch=daemon.resolved_merge_target_branch,
+        attempt=2,
+        failure_count=1,
+        claim_generation=7,
+        metadata={
+            "repo_root": str(repo),
+            "state_path": str(producer_state / "task_state.json"),
+            "events_path": str(producer_state / "events.jsonl"),
+            "baseline_ref": baseline,
+            "implementation_attempt": 5,
+            "model_invocation_observed": False,
+        },
+    )
+    recovery = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "recovery-seed-zero-edit-merge-provenance@1"
+        ),
+        "evidence_id": "recovery-evidence",
+        "task_id": task.task_id,
+        "implementation_attempt": 5,
+        "implementation_commit": baseline,
+        "request_id": request_id,
+        "target_already_integrated": True,
+        "observed_target_commit": baseline,
+        "candidate_tree_id": repository_tree_id,
+        "recovery_seed_tree_id": repository_tree_id,
+        "legacy_model_invocation_projection": False,
+    }
+    monkeypatch.setattr(daemon.merge_queue, "get", lambda _request_id: request)
+    monkeypatch.setattr(
+        daemon,
+        "_verified_recovery_seed_merge_provenance",
+        lambda **_kwargs: dict(recovery),
+    )
+    captured: list[dict[str, object]] = []
+    sentinel = object()
+
+    def verify_composite(events_path, **kwargs):
+        captured.append({"events_path": events_path, **kwargs})
+        return sentinel
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "verified_composite_recovery_implementer_provenance_from_ledger",
+        verify_composite,
+    )
+    call = {
+        "task": task,
+        "request_id": request_id,
+        "branch_name": branch,
+        "implementation_commit": baseline,
+        "implementation_attempt": 5,
+        "baseline_ref": baseline,
+        "integration_commit": baseline,
+        "repository_tree_id": repository_tree_id,
+        "implementation_events_path": producer_state / "events.jsonl",
+    }
+
+    assert (
+        daemon._recover_verified_composite_recovery_implementation_provenance(
+            **call
+        )
+        is None
+    )
+    assert not (producer_state / "events.jsonl").exists()
+
+    request.status = "completed"
+    assert (
+        daemon._recover_verified_composite_recovery_implementation_provenance(
+            **call
+        )
+        is sentinel
+    )
+    first_witness = captured[-1]["recovery_execution_witness"]
+    assert first_witness["canonical_task_key"] == identity.canonical_task_key
+    assert first_witness["canonical_task_cid"] == identity.canonical_task_cid
+    assert first_witness["board_namespace"] == identity.board_namespace
+    assert first_witness["task_binding_id"]
+    assert first_witness["request_claim_generation"] == 7
+    assert first_witness["queue_status"] == "completed"
+    assert captured[-1]["events_path"] == producer_state / "events.jsonl"
+
+    assert (
+        daemon._recover_verified_composite_recovery_implementation_provenance(
+            **call
+        )
+        is sentinel
+    )
+    second_witness = captured[-1]["recovery_execution_witness"]
+    assert second_witness["event_id"] != first_witness["event_id"]
+    assert second_witness["sequence"] > first_witness["sequence"]
+
+    monkeypatch.setattr(
+        daemon,
+        "_denial_source_write_authorized",
+        lambda *_args, **_kwargs: False,
+    )
+    assert (
+        daemon._recover_verified_composite_recovery_implementation_provenance(
+            **call
+        )
+        is None
+    )
+    witnesses = [
+        event
+        for event in event_log_module.read_jsonl_events(
+            producer_state / "events.jsonl"
+        )
+        if event.get("type")
+        == "recovery_seed_zero_edit_execution_verified"
+    ]
+    assert len(witnesses) == 2
 
 
 def test_reclaimed_dead_owner_recovery_uses_real_cleanup_and_retains_fence(

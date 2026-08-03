@@ -10,6 +10,7 @@ receipt carries write, proof, or completion authority.
 
 from __future__ import annotations
 
+import ast
 import fnmatch
 import hashlib
 import json
@@ -20,6 +21,7 @@ import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Any
 
 from ..proof.formal_verification_contracts import content_identity
@@ -81,6 +83,17 @@ VERIFIED_IMPLEMENTER_PROVENANCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "verified-implementation-provider-provenance@1"
 )
+VERIFIED_COMPOSITE_RECOVERY_IMPLEMENTER_PROVENANCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "verified-composite-recovery-implementer-provenance@1"
+)
+RECOVERY_SEED_ZERO_EDIT_MERGE_PROVENANCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "recovery-seed-zero-edit-merge-provenance@1"
+)
+RECOVERY_SEED_ZERO_EDIT_EXECUTION_VERIFIED_EVENT = (
+    "recovery_seed_zero_edit_execution_verified"
+)
 
 CODEX_REVIEWER_PROVIDER = "codex_cli"
 ALLOWED_IMPLEMENTER_PROVIDERS = frozenset(
@@ -101,6 +114,26 @@ MAX_CORRECTION_BYTES = 4 * 1024
 MAX_DENIAL_TOMBSTONE_BYTES = 16 * 1024
 MAX_IMPLEMENTER_LOG_BYTES = 16 * 1024 * 1024
 IMPLEMENTER_LOG_BINDING_SCOPE = "review_time_live_artifact"
+COMPOSITE_RECOVERY_DETERMINISTIC_CORRECTIONS = frozenset(
+    {
+        (
+            "82eda806eb958e7c547e67bfb0c42b4dc000d829",
+            "f4afa3dce4f52521a9ac3f96ebe956b50d1917a5",
+            "3b6e9cf4d6c055e443cbf652ce829e108bd86b27",
+            "tests/unit/logic/ui_ux_ir/test_mcp_idl_identity_contract.py",
+            "test_reject_resource_cost_hints_omission_from_verified_identity",
+            "test_reject_datasets_resource_cost_hints_exclusion",
+            "baguqeerayefdcmwxpiagheu7ydnjo7krsiormtvmbp3l4sl7qjlqswyapdlq",
+        ),
+    }
+)
+COMPOSITE_RECOVERY_EXPECTED_CHANGED_PATHS = (
+    "external/ipfs_datasets/docs/architecture/UI_UX_IR_MCP_IDL_IDENTITY.md",
+    "external/ipfs_datasets/tests/fixtures/ui_ux_ir/v1/"
+    "mcp_idl_identity_vectors.json",
+    "external/ipfs_datasets/tests/unit/logic/ui_ux_ir/"
+    "test_mcp_idl_identity_contract.py",
+)
 _FULL_OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _SAFE_TASK_ID = re.compile(r"[^a-z0-9._-]+")
 _LIVE_PRODUCTION_REVIEW_SEAL = object()
@@ -133,6 +166,34 @@ def _canonical_json_bytes(value: Any) -> bytes:
         ensure_ascii=False,
         allow_nan=False,
     ).encode("utf-8")
+
+
+def _freeze_canonical_json(value: Any) -> Any:
+    """Recursively freeze an already JSON-compatible evidence projection."""
+
+    canonical = json.loads(_canonical_json_bytes(value).decode("utf-8"))
+
+    def freeze(item: Any) -> Any:
+        if isinstance(item, dict):
+            return MappingProxyType(
+                {str(key): freeze(child) for key, child in item.items()}
+            )
+        if isinstance(item, list):
+            return tuple(freeze(child) for child in item)
+        return item
+
+    return freeze(canonical)
+
+
+def _thaw_canonical_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _thaw_canonical_json(child)
+            for key, child in value.items()
+        }
+    if isinstance(value, tuple):
+        return [_thaw_canonical_json(child) for child in value]
+    return value
 
 
 @dataclass(frozen=True)
@@ -206,6 +267,53 @@ class VerifiedImplementerProvenance:
             "source_stream_id": self.source_stream_id,
             "source_snapshot_id": self.source_snapshot_id,
             "provenance_id": self.provenance_id,
+        }
+
+
+@dataclass(frozen=True)
+class VerifiedCompositeRecoveryImplementerProvenance(
+    VerifiedImplementerProvenance
+):
+    """Grok authorship plus a strictly bounded recovery transformation.
+
+    The top-level identity remains the final implementation attempt and root
+    seed consumed by post-merge acceptance. ``provider_source`` identifies the
+    earlier Grok execution which authored the substantive child commit,
+    ``deterministic_correction`` proves the only intervening byte change, and
+    ``recovery_execution`` binds the repair grant and zero-edit promotion.
+
+    This is deliberately a separate schema.  Ordinary implementation
+    provenance must never acquire the relaxed return-code or cross-attempt
+    semantics needed by the recovery case.
+    """
+
+    provider_source: Mapping[str, Any] = field(default_factory=dict)
+    deterministic_correction: Mapping[str, Any] = field(default_factory=dict)
+    recovery_execution: Mapping[str, Any] = field(default_factory=dict)
+    schema: str = VERIFIED_COMPOSITE_RECOVERY_IMPLEMENTER_PROVENANCE_SCHEMA
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "provider_source",
+            "deterministic_correction",
+            "recovery_execution",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                _freeze_canonical_json(getattr(self, field_name)),
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "provider_source": _thaw_canonical_json(self.provider_source),
+            "deterministic_correction": _thaw_canonical_json(
+                self.deterministic_correction
+            ),
+            "recovery_execution": _thaw_canonical_json(
+                self.recovery_execution
+            ),
         }
 
 
@@ -803,6 +911,107 @@ def _verify_implementer_event_membership(
 ) -> Mapping[str, Any]:
     """Require provenance membership in the daemon-owned strict v2 ledger."""
 
+    if isinstance(
+        provenance,
+        VerifiedCompositeRecoveryImplementerProvenance,
+    ):
+        recovery = _thaw_canonical_json(provenance.recovery_execution)
+        if not isinstance(recovery, Mapping):
+            raise PostMergeReviewError(
+                "composite_recovery_provenance_invalid",
+                "composite recovery execution projection is malformed",
+            )
+        recovery_seed_provenance = recovery.get(
+            "recovery_seed_provenance"
+        )
+        execution_witness = recovery.get("execution_witness")
+        if not isinstance(recovery_seed_provenance, Mapping) or not isinstance(
+            execution_witness, Mapping
+        ):
+            raise PostMergeReviewError(
+                "composite_recovery_provenance_invalid",
+                "composite recovery lacks its verified zero-edit projection",
+            )
+        rebuilt = (
+            verified_composite_recovery_implementer_provenance_from_ledger(
+                events_path,
+                repo_root=repo_root,
+                expected_task_id=provenance.task_id,
+                expected_task_binding_id=str(
+                    recovery.get("task_binding_id") or ""
+                ),
+                expected_canonical_task_key=str(
+                    recovery.get("canonical_task_key") or ""
+                ),
+                expected_canonical_task_cid=str(
+                    recovery.get("canonical_task_cid") or ""
+                ),
+                expected_board_namespace=str(
+                    recovery.get("board_namespace") or ""
+                ),
+                expected_implementation_attempt=(
+                    provenance.implementation_attempt
+                ),
+                expected_implementation_commit=(
+                    provenance.implementation_commit
+                ),
+                expected_branch=provenance.branch,
+                expected_baseline_ref=str(
+                    recovery_seed_provenance.get("baseline_ref") or ""
+                ),
+                expected_integration_commit=str(
+                    recovery.get("integration_commit") or ""
+                ),
+                expected_repository_tree_id=str(
+                    recovery.get("repository_tree_id") or ""
+                ),
+                expected_target_repository_id=str(
+                    recovery.get("target_repository_id") or ""
+                ),
+                expected_target_branch=str(
+                    recovery.get("target_branch") or ""
+                ),
+                expected_request_id=str(
+                    execution_witness.get("request_id") or ""
+                ),
+                expected_queue_attempt=execution_witness.get(
+                    "queue_attempt"
+                ),
+                expected_queue_failure_count=execution_witness.get(
+                    "queue_failure_count"
+                ),
+                expected_request_claim_generation=execution_witness.get(
+                    "request_claim_generation"
+                ),
+                recovery_seed_provenance=(
+                    recovery_seed_provenance
+                ),
+                recovery_execution_witness=execution_witness,
+            )
+        )
+        if rebuilt != provenance:
+            raise PostMergeReviewError(
+                "composite_recovery_provenance_mismatch",
+                "strict ledger/Git recovery lineage changed after binding",
+            )
+        recovery_finished_id = str(
+            recovery.get("finished_event_id") or ""
+        )
+        recovery_finished_sequence = recovery.get(
+            "finished_event_sequence"
+        )
+        return _single_event_by_identity(
+            tuple(_strict_event_ledger(events_path)),
+            event_id=recovery_finished_id,
+            sequence=(
+                recovery_finished_sequence
+                if isinstance(recovery_finished_sequence, int)
+                and not isinstance(recovery_finished_sequence, bool)
+                else 0
+            ),
+            event_type="implementation_finished",
+        )
+
     events = _strict_event_ledger(events_path)
     started_match = next(
         (
@@ -1352,6 +1561,2040 @@ def _repository_patch(
     return bytes(patch.stdout or b"")
 
 
+def _event_content_identity_valid(event: Mapping[str, Any]) -> bool:
+    material = dict(event)
+    event_id = str(material.pop("event_id", "") or "")
+    try:
+        expected = "sha256:" + hashlib.sha256(
+            json.dumps(
+                material,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+    except (TypeError, ValueError):
+        return False
+    return event_id == expected
+
+
+def _exact_commit_parents(repo_root: Path, commit: str) -> tuple[str, ...]:
+    exact = _exact_commit(repo_root, commit, field_name="lineage_commit")
+    result = _git(
+        repo_root,
+        ["rev-list", "--parents", "-n", "1", exact, "--"],
+    )
+    fields = str(result.stdout or "").strip().split()
+    if (
+        result.returncode != 0
+        or not fields
+        or fields[0] != exact
+        or any(not _FULL_OBJECT_ID.fullmatch(item) for item in fields)
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_lineage_unavailable",
+            "could not resolve the exact recovery commit parentage",
+        )
+    return tuple(fields[1:])
+
+
+def _exact_blob_bytes(repo_root: Path, commit: str, path: str) -> bytes:
+    normalized = _normalize_path(path)
+    entry = _tree_entry(repo_root, commit, normalized)
+    if (
+        not isinstance(entry, Mapping)
+        or entry.get("mode") == "160000"
+        or entry.get("object_type") != "blob"
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_blob_unavailable",
+            f"recovery correction path {normalized!r} is not an exact blob",
+        )
+    result = _git(
+        repo_root,
+        ["cat-file", "blob", str(entry["git_object_id"])],
+        text=False,
+    )
+    if result.returncode != 0:
+        raise PostMergeReviewError(
+            "composite_recovery_blob_unavailable",
+            f"could not read recovery correction blob {normalized!r}",
+        )
+    return bytes(result.stdout or b"")
+
+
+def _implementation_log_binding(
+    *,
+    repo_root: Path,
+    log_path: str,
+) -> tuple[int, str]:
+    root = Path(repo_root).resolve()
+    candidate = Path(str(log_path or ""))
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    try:
+        log_file = candidate.resolve()
+        log_file.relative_to(root)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise PostMergeReviewError(
+            "implementer_log_path_invalid",
+            "implementation log escapes the repository",
+        ) from exc
+    if not log_file.is_file():
+        raise PostMergeReviewError(
+            "implementer_log_unavailable",
+            "implementation log required by provider provenance is unavailable",
+        )
+    try:
+        declared_size = log_file.stat().st_size
+        if declared_size < 0 or declared_size > MAX_IMPLEMENTER_LOG_BYTES:
+            raise PostMergeReviewError(
+                "implementer_log_size_invalid",
+                "implementation log exceeds the review-time artifact bound",
+            )
+        payload = log_file.read_bytes()
+    except OSError as exc:
+        raise PostMergeReviewError(
+            "implementer_log_unavailable",
+            "implementation log could not be read for review-time binding",
+        ) from exc
+    if len(payload) != declared_size:
+        raise PostMergeReviewError(
+            "implementer_log_changed_during_binding",
+            "implementation log changed while its live artifact was bound",
+        )
+    return len(payload), hashlib.sha256(payload).hexdigest()
+
+
+def _grok_command_binding(command: Any) -> tuple[str, str, str]:
+    if (
+        not isinstance(command, Sequence)
+        or isinstance(command, (str, bytes, bytearray))
+        or not all(isinstance(item, str) for item in command)
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_source_command_invalid",
+            "provider source command is not an exact string sequence",
+        )
+    command_items = list(command)
+    expected_flags = (
+        "--workspace",
+        "--grok-bin",
+        "--model",
+        "--max-turns",
+        "--mode",
+    )
+    if (
+        len(command_items) != 12
+        or command_items[0] != "/usr/bin/python3"
+        or tuple(command_items[2::2]) != expected_flags
+        or any(command_items.count(flag) != 1 for flag in expected_flags)
+        or not Path(command_items[1]).is_absolute()
+        or Path(command_items[1]).name != "grok_cli_runner.py"
+        or not Path(command_items[3]).is_absolute()
+        or not Path(command_items[5]).is_absolute()
+        or Path(command_items[5]).name != "grok"
+        or command_items[7] != "grok-4.5"
+        or command_items[9] != "100000"
+        or command_items[11] != "agent"
+        or any(
+            item in {"codex", "codex_cli", "claude", "openai"}
+            for item in command_items
+        )
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_source_command_invalid",
+            "provider source is not the closed canonical Grok execution",
+        )
+    runner = command_items[1]
+    grok_binary = command_items[5]
+    model = command_items[7]
+    if (
+        not Path(runner).is_absolute()
+        or Path(runner).name != "grok_cli_runner.py"
+        or not str(model).strip()
+        or not Path(grok_binary).is_absolute()
+        or Path(grok_binary).name != "grok"
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_source_command_invalid",
+            "provider source is not an explicit grok_cli execution",
+        )
+    return runner, grok_binary, model
+
+
+def _single_event_by_identity(
+    ledger: Sequence[Mapping[str, Any]],
+    *,
+    event_id: str,
+    sequence: int,
+    event_type: str,
+) -> Mapping[str, Any]:
+    matches = [
+        event
+        for event in ledger
+        if event.get("event_id") == event_id
+        and event.get("sequence") == sequence
+        and event.get("type") == event_type
+    ]
+    if len(matches) != 1 or not _event_content_identity_valid(matches[0]):
+        raise PostMergeReviewError(
+            "composite_recovery_event_missing",
+            f"strict ledger lacks one exact {event_type} event",
+        )
+    return matches[0]
+
+
+def _verified_recovery_seed_execution_witness(
+    ledger: Sequence[Mapping[str, Any]],
+    *,
+    witness_projection: Mapping[str, Any],
+    recovery_seed_provenance: Mapping[str, Any],
+    expected_request_id: str,
+    expected_queue_attempt: int,
+    expected_queue_failure_count: int,
+    expected_request_claim_generation: int,
+    expected_task_id: str,
+    expected_task_binding_id: str,
+    expected_canonical_task_key: str,
+    expected_canonical_task_cid: str,
+    expected_board_namespace: str,
+    expected_implementation_attempt: int,
+    expected_implementation_commit: str,
+    expected_target_repository_id: str,
+    expected_target_branch: str,
+    expected_integration_commit: str,
+    expected_final_child: str,
+    expected_stream_id: str,
+    expected_snapshot_id: str,
+    recovery_finished_sequence: int,
+) -> dict[str, Any]:
+    """Bind the DB-verified recovery wrapper to one strict-ledger event."""
+
+    try:
+        recovery = json.loads(
+            _canonical_json_bytes(recovery_seed_provenance).decode("utf-8")
+        )
+        witness_projection = json.loads(
+            _canonical_json_bytes(witness_projection).decode("utf-8")
+        )
+    except (TypeError, ValueError) as exc:
+        raise PostMergeReviewError(
+            "composite_recovery_execution_witness_invalid",
+            "recovery witness inputs are not stable canonical JSON evidence",
+        ) from exc
+    witness_id = str(witness_projection.get("event_id") or "")
+    witness_sequence = witness_projection.get(
+        "event_sequence",
+        witness_projection.get("sequence"),
+    )
+    if (
+        not witness_id
+        or isinstance(witness_sequence, bool)
+        or not isinstance(witness_sequence, int)
+        or witness_sequence <= recovery_finished_sequence
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_execution_witness_invalid",
+            "recovery execution witness lacks a fresh exact event identity",
+        )
+    witness = _single_event_by_identity(
+        ledger,
+        event_id=witness_id,
+        sequence=witness_sequence,
+        event_type=RECOVERY_SEED_ZERO_EDIT_EXECUTION_VERIFIED_EVENT,
+    )
+    evidence_id = str(recovery.get("evidence_id") or "")
+    expected_normalization = (
+        "legacy_recovery_seed_queue_metadata_normalized"
+        if recovery.get("legacy_model_invocation_projection") is True
+        else "verified_recovery_seed_no_model_execution"
+    )
+    integer_bindings = (
+        expected_queue_attempt,
+        expected_queue_failure_count,
+        expected_request_claim_generation,
+    )
+    if (
+        any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < (1 if index == 0 else 0)
+            for index, value in enumerate(integer_bindings)
+        )
+        or any(
+            key not in witness or witness.get(key) != value
+            for key, value in recovery.items()
+        )
+        or witness.get("schema")
+        != RECOVERY_SEED_ZERO_EDIT_MERGE_PROVENANCE_SCHEMA
+        or witness.get("evidence_id") != evidence_id
+        or witness.get("request_id") != expected_request_id
+        or witness.get("queue_attempt") != expected_queue_attempt
+        or witness.get("queue_failure_count")
+        != expected_queue_failure_count
+        or witness.get("request_claim_generation")
+        != expected_request_claim_generation
+        or witness.get("queue_status") != "completed"
+        or witness.get("task_id") != expected_task_id
+        or witness.get("task_binding_id") != expected_task_binding_id
+        or witness.get("canonical_task_key")
+        != expected_canonical_task_key
+        or witness.get("canonical_task_cid")
+        != expected_canonical_task_cid
+        or witness.get("board_namespace") != expected_board_namespace
+        or witness.get("implementation_attempt")
+        != expected_implementation_attempt
+        or witness.get("implementation_commit")
+        != expected_implementation_commit
+        or witness.get("target_repository_id")
+        != expected_target_repository_id
+        or witness.get("target_branch") != expected_target_branch
+        or witness.get("observed_target_commit")
+        != expected_integration_commit
+        or witness.get("observed_target_gitlink") != expected_final_child
+        or witness.get("stream_id") != expected_stream_id
+        or witness.get("snapshot_id") != expected_snapshot_id
+        or witness.get("origin_stream_id") != expected_stream_id
+        or witness.get("effective_model_invocation_observed") is not False
+        or witness.get("model_invocation_observed") is not False
+        or not isinstance(
+            witness.get("raw_model_invocation_observed"), bool
+        )
+        or witness.get("normalization_reason") != expected_normalization
+        or any(
+            field_name not in witness or witness.get(field_name) is not False
+            for field_name in (
+                "authoritative",
+                "proof_authoritative",
+                "completion_authoritative",
+                "repository_write_authorized",
+            )
+        )
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_execution_witness_invalid",
+            "strict recovery witness does not exactly bind its verified core",
+        )
+    material = {
+        "event_type": RECOVERY_SEED_ZERO_EDIT_EXECUTION_VERIFIED_EVENT,
+        "event_id": witness_id,
+        "event_sequence": witness_sequence,
+        "stream_id": expected_stream_id,
+        "snapshot_id": expected_snapshot_id,
+        "recovery_seed_provenance_id": evidence_id,
+        "request_id": expected_request_id,
+        "queue_attempt": expected_queue_attempt,
+        "queue_failure_count": expected_queue_failure_count,
+        "request_claim_generation": expected_request_claim_generation,
+        "queue_status": "completed",
+        "task_id": expected_task_id,
+        "task_binding_id": expected_task_binding_id,
+        "canonical_task_key": expected_canonical_task_key,
+        "canonical_task_cid": expected_canonical_task_cid,
+        "board_namespace": expected_board_namespace,
+        "implementation_attempt": expected_implementation_attempt,
+        "implementation_commit": expected_implementation_commit,
+        "target_repository_id": expected_target_repository_id,
+        "target_branch": expected_target_branch,
+        "observed_target_commit": expected_integration_commit,
+        "observed_target_gitlink": expected_final_child,
+        "started_event_id": str(witness.get("started_event_id") or ""),
+        "started_event_sequence": witness.get("started_event_sequence"),
+        "finished_event_id": str(witness.get("finished_event_id") or ""),
+        "finished_event_sequence": witness.get("finished_event_sequence"),
+        "grant_event_id": str(witness.get("grant_event_id") or ""),
+        "grant_event_sequence": witness.get("grant_event_sequence"),
+        "denial_id": str(witness.get("denial_id") or ""),
+        "grant_id": str(witness.get("grant_id") or ""),
+        "grant_record_id": str(witness.get("grant_record_id") or ""),
+        "consumption_record_id": str(
+            witness.get("consumption_record_id") or ""
+        ),
+        "repair_task_id": str(witness.get("repair_task_id") or ""),
+        "repair_binding_id": str(witness.get("repair_binding_id") or ""),
+        "source": str(witness.get("source") or ""),
+        "queue_projection_verified": witness.get(
+            "queue_projection_verified"
+        ),
+        "raw_model_invocation_observed": witness.get(
+            "raw_model_invocation_observed"
+        ),
+        "effective_model_invocation_observed": False,
+        "model_invocation_observed": False,
+        "normalization_reason": expected_normalization,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+        "repository_write_authorized": False,
+    }
+    return {
+        **material,
+        "witness_projection_id": content_identity(material),
+    }
+
+
+def _deterministic_test_symbol_correction(
+    *,
+    child_repo: Path,
+    baseline_child: str,
+    provider_child: str,
+    final_child: str,
+    expected_changed_paths: Sequence[str],
+    submodule_path: str,
+) -> dict[str, Any]:
+    correction_statuses = _diff_statuses(
+        child_repo,
+        provider_child,
+        final_child,
+    )
+    if len(correction_statuses) != 1 or correction_statuses[0][0] != "M":
+        raise PostMergeReviewError(
+            "composite_recovery_correction_not_deterministic",
+            "recovery child must change exactly one existing test file",
+        )
+    correction_path = correction_statuses[0][1]
+    prefixed_path = f"{submodule_path}/{correction_path}"
+    if (
+        not correction_path.startswith("tests/")
+        or not PurePosixPath(correction_path).name.startswith("test_")
+        or prefixed_path not in expected_changed_paths
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_correction_path_invalid",
+            "recovery correction is outside the exact changed test envelope",
+        )
+    baseline_entry = _tree_entry(child_repo, baseline_child, correction_path)
+    provider_entry = _tree_entry(child_repo, provider_child, correction_path)
+    final_entry = _tree_entry(child_repo, final_child, correction_path)
+    if any(
+        not isinstance(entry, Mapping)
+        or entry.get("object_type") != "blob"
+        for entry in (baseline_entry, provider_entry, final_entry)
+    ) or (
+        baseline_entry.get("mode")
+        != provider_entry.get("mode")
+        or provider_entry.get("mode") != final_entry.get("mode")
+        or final_entry.get("mode") not in {"100644", "100755"}
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_correction_blob_invalid",
+            "recovery correction does not bind three exact test blobs",
+        )
+    baseline_payload = _exact_blob_bytes(
+        child_repo,
+        baseline_child,
+        correction_path,
+    )
+    provider_payload = _exact_blob_bytes(
+        child_repo,
+        provider_child,
+        correction_path,
+    )
+    final_payload = _exact_blob_bytes(
+        child_repo,
+        final_child,
+        correction_path,
+    )
+    provider_lines = provider_payload.splitlines(keepends=True)
+    final_lines = final_payload.splitlines(keepends=True)
+    differing = [
+        index
+        for index, (before, after) in enumerate(
+            zip(provider_lines, final_lines, strict=False)
+        )
+        if before != after
+    ]
+    if len(provider_lines) != len(final_lines) or len(differing) != 1:
+        raise PostMergeReviewError(
+            "composite_recovery_correction_not_deterministic",
+            "recovery correction changes bytes outside one function symbol line",
+        )
+    line_index = differing[0]
+    provider_line = provider_lines[line_index]
+    final_line = final_lines[line_index]
+    function_pattern = re.compile(
+        rb"^(?P<prefix>def )"
+        rb"(?P<name>test_[A-Za-z0-9_]+)"
+        rb"(?P<suffix>\([^\r\n]*)(?P<newline>\r?\n)?$"
+    )
+    provider_match = function_pattern.fullmatch(provider_line)
+    final_match = function_pattern.fullmatch(final_line)
+    if (
+        provider_match is None
+        or final_match is None
+        or provider_match.group("name") == final_match.group("name")
+        or provider_match.group("prefix") != final_match.group("prefix")
+        or provider_match.group("suffix") != final_match.group("suffix")
+        or provider_match.group("newline") != final_match.group("newline")
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_correction_not_symbol_only",
+            "recovery correction is not an exact test function-name restoration",
+        )
+    final_symbol = final_match.group("name")
+    provider_symbol = provider_match.group("name")
+    baseline_symbol_matches = [
+        (index, match.group("name"))
+        for index, line in enumerate(
+            baseline_payload.splitlines(keepends=True),
+            start=1,
+        )
+        if (match := function_pattern.fullmatch(line)) is not None
+        and match.group("name") == final_symbol
+    ]
+    baseline_provider_symbol_matches = [
+        match.group("name")
+        for line in baseline_payload.splitlines(keepends=True)
+        if (match := function_pattern.fullmatch(line)) is not None
+        and match.group("name") == provider_symbol
+    ]
+    try:
+        provider_module = ast.parse(provider_payload.decode("utf-8"))
+        final_module = ast.parse(final_payload.decode("utf-8"))
+    except (SyntaxError, UnicodeDecodeError) as exc:
+        raise PostMergeReviewError(
+            "composite_recovery_correction_ast_invalid",
+            "recovery correction test file is not canonical UTF-8 Python",
+        ) from exc
+    provider_functions = [
+        node
+        for node in provider_module.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == provider_symbol.decode("ascii")
+    ]
+    final_functions = [
+        node
+        for node in final_module.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == final_symbol.decode("ascii")
+    ]
+    provider_restored_functions = [
+        node
+        for node in provider_module.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == final_symbol.decode("ascii")
+    ]
+    final_provider_functions = [
+        node
+        for node in final_module.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == provider_symbol.decode("ascii")
+    ]
+    if (
+        len(baseline_symbol_matches) != 1
+        or baseline_provider_symbol_matches
+        or len(provider_functions) != 1
+        or len(final_functions) != 1
+        or provider_restored_functions
+        or final_provider_functions
+        or provider_functions[0].lineno != line_index + 1
+        or final_functions[0].lineno != line_index + 1
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_baseline_symbol_missing",
+            "correction does not uniquely restore the baseline top-level test symbol",
+        )
+    provider_functions[0].name = final_functions[0].name
+    if ast.dump(provider_module, include_attributes=False) != ast.dump(
+        final_module,
+        include_attributes=False,
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_correction_ast_changed",
+            "recovery correction changes Python AST beyond the test name",
+        )
+    correction_material = {
+        "kind": "baseline-test-symbol-restoration",
+        "path": correction_path,
+        "root_relative_path": prefixed_path,
+        "line_number": line_index + 1,
+        "baseline_symbol_line_number": baseline_symbol_matches[0][0],
+        "baseline_child_commit": baseline_child,
+        "provider_child_commit": provider_child,
+        "final_child_commit": final_child,
+        "baseline_blob_id": str(baseline_entry["git_object_id"]),
+        "provider_blob_id": str(provider_entry["git_object_id"]),
+        "final_blob_id": str(final_entry["git_object_id"]),
+        "provider_symbol": provider_symbol.decode("ascii"),
+        "restored_symbol": final_symbol.decode("ascii"),
+        "provider_line_sha256": hashlib.sha256(provider_line).hexdigest(),
+        "final_line_sha256": hashlib.sha256(final_line).hexdigest(),
+        "preserves_all_other_bytes": True,
+    }
+    correction_id = content_identity(correction_material)
+    correction_identity = (
+        baseline_child,
+        provider_child,
+        final_child,
+        correction_path,
+        correction_material["provider_symbol"],
+        correction_material["restored_symbol"],
+        correction_id,
+    )
+    if correction_identity not in COMPOSITE_RECOVERY_DETERMINISTIC_CORRECTIONS:
+        raise PostMergeReviewError(
+            "composite_recovery_correction_not_authorized",
+            "deterministic correction is not in the closed reviewed allowlist",
+        )
+    return {
+        **correction_material,
+        "correction_id": correction_id,
+    }
+
+
+def verified_composite_recovery_implementer_provenance_from_ledger(
+    events_path: Path,
+    *,
+    repo_root: Path,
+    expected_task_id: str,
+    expected_task_binding_id: str,
+    expected_canonical_task_key: str,
+    expected_canonical_task_cid: str,
+    expected_board_namespace: str,
+    expected_implementation_attempt: int,
+    expected_implementation_commit: str,
+    expected_branch: str,
+    expected_baseline_ref: str,
+    expected_integration_commit: str,
+    expected_repository_tree_id: str,
+    expected_target_repository_id: str,
+    expected_target_branch: str,
+    expected_request_id: str,
+    expected_queue_attempt: int,
+    expected_queue_failure_count: int,
+    expected_request_claim_generation: int,
+    recovery_seed_provenance: Mapping[str, Any],
+    recovery_execution_witness: Mapping[str, Any],
+) -> VerifiedCompositeRecoveryImplementerProvenance:
+    """Verify Grok authorship through one exact deterministic recovery edge.
+
+    A rejected proposal can still prove who authored its immutable Git child;
+    it cannot prove acceptance.  This verifier keeps those facts separate. It
+    admits only a strict-ledger Grok source whose root commit contains the
+    direct parent of the final child, one symbol-only correction restoring a
+    unique baseline test name, and the already verified repair-grant/zero-edit
+    promotion of that final child.
+    """
+
+    if (
+        not all(
+            str(value or "").strip()
+            for value in (
+                expected_task_id,
+                expected_task_binding_id,
+                expected_canonical_task_key,
+                expected_canonical_task_cid,
+                expected_board_namespace,
+                expected_branch,
+                expected_target_repository_id,
+                expected_target_branch,
+                expected_request_id,
+            )
+        )
+        or isinstance(expected_implementation_attempt, bool)
+        or not isinstance(expected_implementation_attempt, int)
+        or expected_implementation_attempt < 2
+        or any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < (1 if index == 0 else 0)
+            for index, value in enumerate(
+                (
+                    expected_queue_attempt,
+                    expected_queue_failure_count,
+                    expected_request_claim_generation,
+                )
+            )
+        )
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_query_invalid",
+            "composite recovery requires exact task and attempt identity",
+        )
+    root = Path(repo_root).resolve()
+    implementation_commit = _exact_commit(
+        root,
+        expected_implementation_commit,
+        field_name="implementation_commit",
+    )
+    baseline_ref = _exact_commit(
+        root,
+        expected_baseline_ref,
+        field_name="baseline_commit",
+    )
+    integration_commit = _exact_commit(
+        root,
+        expected_integration_commit,
+        field_name="merge_commit",
+    )
+    try:
+        recovery = json.loads(
+            _canonical_json_bytes(recovery_seed_provenance).decode("utf-8")
+        )
+        execution_witness_input = json.loads(
+            _canonical_json_bytes(recovery_execution_witness).decode("utf-8")
+        )
+    except (TypeError, ValueError) as exc:
+        raise PostMergeReviewError(
+            "composite_recovery_seed_provenance_invalid",
+            "recovery inputs are not stable canonical JSON evidence",
+        ) from exc
+    recovery_material = dict(recovery)
+    evidence_id = str(recovery_material.pop("evidence_id", "") or "")
+    raw_changed_paths = recovery.get("validation_changed_paths")
+    changed_paths = (
+        [_normalize_path(path) for path in raw_changed_paths]
+        if isinstance(raw_changed_paths, list)
+        else []
+    )
+    if not changed_paths:
+        # Current zero-edit evidence binds the paths through the terminal
+        # proposal rather than repeating them at the top level. The finish
+        # event is checked below and supplies that immutable list.
+        changed_paths = []
+    raw_integration_boundary = recovery.get("integration_boundary")
+    integration_boundary = (
+        dict(raw_integration_boundary)
+        if isinstance(raw_integration_boundary, Mapping)
+        else {}
+    )
+    boundary_commit_value = str(
+        integration_boundary.get("commit") or ""
+    )
+    boundary_tree_value = str(integration_boundary.get("tree") or "")
+    boundary_mode = str(integration_boundary.get("mode") or "")
+    if (
+        recovery_material.get("schema")
+        != RECOVERY_SEED_ZERO_EDIT_MERGE_PROVENANCE_SCHEMA
+        or not evidence_id
+        or content_identity(recovery_material) != evidence_id
+        or recovery.get("task_id") != expected_task_id
+        or recovery.get("task_binding_id") != expected_task_binding_id
+        or recovery.get("implementation_attempt")
+        != expected_implementation_attempt
+        or recovery.get("implementation_commit") != implementation_commit
+        or recovery.get("recovery_seed_ref") != implementation_commit
+        or recovery.get("branch") != expected_branch
+        or recovery.get("request_id") != expected_request_id
+        or recovery.get("baseline_ref") != baseline_ref
+        or recovery.get("implementation_provider") != ""
+        or recovery.get("target_already_integrated") is not True
+        or recovery.get("observed_target_commit") != integration_commit
+        or recovery.get("candidate_tree_id")
+        != recovery.get("recovery_seed_tree_id")
+        or not re.fullmatch(
+            r"git-tree:[0-9a-f]{40}(?:[0-9a-f]{24})?",
+            str(recovery.get("recovery_seed_tree_id") or ""),
+        )
+        or not _FULL_OBJECT_ID.fullmatch(boundary_commit_value)
+        or not _FULL_OBJECT_ID.fullmatch(boundary_tree_value)
+        or boundary_mode
+        not in {"exact_seed_fast_forward", "exact_seed_no_ff_merge"}
+        or not str(recovery.get("denial_id") or "")
+        or not str(recovery.get("grant_id") or "")
+        or not str(recovery.get("grant_record_id") or "")
+        or not str(recovery.get("consumption_record_id") or "")
+        or not str(recovery.get("repair_task_id") or "")
+        or not str(recovery.get("repair_binding_id") or "")
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_seed_provenance_invalid",
+            "zero-edit recovery evidence is not exact/content bound",
+        )
+    submodule_path = _normalize_path(
+        recovery.get("recovery_seed_submodule_path")
+    )
+    final_child = str(
+        recovery.get("recovery_seed_submodule_commit") or ""
+    )
+    if not _FULL_OBJECT_ID.fullmatch(final_child):
+        raise PostMergeReviewError(
+            "composite_recovery_child_invalid",
+            "final recovery child is not a full Git commit identity",
+        )
+    child_repo = (root / submodule_path).resolve()
+    try:
+        child_repo.relative_to(root)
+    except ValueError as exc:
+        raise PostMergeReviewError(
+            "composite_recovery_child_checkout_invalid",
+            "recovery submodule checkout escapes the repository",
+        ) from exc
+    if not child_repo.is_dir():
+        raise PostMergeReviewError(
+            "composite_recovery_child_checkout_invalid",
+            "recovery submodule checkout is unavailable",
+        )
+    final_child = _exact_commit(
+        child_repo,
+        final_child,
+        field_name="recovery_child_commit",
+    )
+    final_parents = _exact_commit_parents(child_repo, final_child)
+    if len(final_parents) != 1:
+        raise PostMergeReviewError(
+            "composite_recovery_correction_lineage_invalid",
+            "deterministic correction must have one direct provider parent",
+        )
+    provider_child = final_parents[0]
+
+    ledger = tuple(_strict_event_ledger(Path(events_path)))
+    started_id = str(recovery.get("started_event_id") or "")
+    finished_id = str(recovery.get("finished_event_id") or "")
+    started_sequence = recovery.get("started_event_sequence")
+    finished_sequence = recovery.get("finished_event_sequence")
+    if (
+        isinstance(started_sequence, bool)
+        or not isinstance(started_sequence, int)
+        or isinstance(finished_sequence, bool)
+        or not isinstance(finished_sequence, int)
+        or started_sequence < 1
+        or finished_sequence <= started_sequence
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_event_binding_invalid",
+            "recovery evidence lacks exact start/finish sequence binding",
+        )
+    recovery_started = _single_event_by_identity(
+        ledger,
+        event_id=started_id,
+        sequence=started_sequence,
+        event_type="implementation_started",
+    )
+    recovery_finished = _single_event_by_identity(
+        ledger,
+        event_id=finished_id,
+        sequence=finished_sequence,
+        event_type="implementation_finished",
+    )
+    grant_event_id = str(recovery.get("grant_event_id") or "")
+    grant_event_sequence = recovery.get("grant_event_sequence")
+    if (
+        not grant_event_id
+        or isinstance(grant_event_sequence, bool)
+        or not isinstance(grant_event_sequence, int)
+        or grant_event_sequence < 1
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_grant_event_invalid",
+            "recovery provenance lacks exact repair-grant event identity",
+        )
+    grant_event_matches = [
+        event
+        for event in ledger
+        if event.get("event_id") == grant_event_id
+        and event.get("sequence") == grant_event_sequence
+    ]
+    if (
+        len(grant_event_matches) != 1
+        or not _event_content_identity_valid(grant_event_matches[0])
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_grant_event_missing",
+            "strict ledger lacks the exact recovery repair-grant event",
+        )
+    grant_event = grant_event_matches[0]
+    raw_resets = grant_event.get("resets")
+    resets = (
+        list(raw_resets)
+        if isinstance(raw_resets, Sequence)
+        and not isinstance(raw_resets, (str, bytes, bytearray))
+        else []
+    )
+    grant_projections = [
+        reset.get("post_merge_correction_repair_grant")
+        for reset in resets
+        if isinstance(reset, Mapping)
+        and isinstance(
+            reset.get("post_merge_correction_repair_grant"),
+            Mapping,
+        )
+    ]
+    matching_grant_projections = [
+        grant
+        for grant in grant_projections
+        if grant.get("schema") == "post-merge-correction-repair-grant-v1"
+        and grant.get("grant_id") == recovery.get("grant_id")
+        and grant.get("denial_id") == recovery.get("denial_id")
+        and grant.get("source_task_id") == expected_task_id
+        and grant.get("source_task_binding_id")
+        == expected_task_binding_id
+        and grant.get("source_canonical_task_key")
+        == expected_canonical_task_key
+        and grant.get("source_canonical_task_cid")
+        == expected_canonical_task_cid
+        and grant.get("repair_task_id") == recovery.get("repair_task_id")
+        and grant.get("repair_binding_id")
+        == recovery.get("repair_binding_id")
+        and grant.get("origin_stream_id")
+        == recovery_started.get("stream_id")
+        and grant.get("recovery_seed_ref") == implementation_commit
+        and grant.get("recovery_seed_tree_id")
+        == recovery.get("recovery_seed_tree_id")
+        and grant.get("recovery_seed_submodule_path")
+        == submodule_path
+        and grant.get("recovery_seed_submodule_commit") == final_child
+    ]
+    if (
+        grant_event.get("type") != "task_retry_budget_reset"
+        or grant_event.get("stream_id")
+        != recovery_started.get("stream_id")
+        or grant_event.get("snapshot_id")
+        != recovery_started.get("snapshot_id")
+        or len(matching_grant_projections) != 1
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_grant_event_invalid",
+            "repair-grant ledger event is not task/seed/stream bound",
+        )
+    authority = recovery_started.get("post_merge_correction_authority")
+    finish_commit_result = recovery_finished.get("commit_result")
+    finish_guard = (
+        finish_commit_result.get("recovery_seed_zero_edit_promotion_guard")
+        if isinstance(finish_commit_result, Mapping)
+        else None
+    )
+    finish_merge_result = recovery_finished.get("merge_result")
+    finish_validation = recovery_finished.get("validation_result")
+    finish_proposal = (
+        finish_validation.get("proposal_gate")
+        if isinstance(finish_validation, Mapping)
+        else None
+    )
+    finish_changed_paths = (
+        list(finish_proposal.get("changed_paths") or ())
+        if isinstance(finish_proposal, Mapping)
+        else []
+    )
+    try:
+        finish_changed_paths = [
+            _normalize_path(path) for path in finish_changed_paths
+        ]
+    except PostMergeReviewError:
+        raise
+    if not changed_paths:
+        changed_paths = list(finish_changed_paths)
+    stream_id = str(recovery_started.get("stream_id") or "")
+    snapshot_id = str(recovery_started.get("snapshot_id") or "")
+    expected_recovery_execution_mode = (
+        "model-assisted"
+        if recovery.get("legacy_model_invocation_projection") is True
+        else "recovery-seed-validation"
+    )
+    if (
+        tuple(changed_paths) != COMPOSITE_RECOVERY_EXPECTED_CHANGED_PATHS
+        or
+        recovery_started.get("task_id") != expected_task_id
+        or recovery_started.get("attempt")
+        != expected_implementation_attempt
+        or recovery_started.get("branch") != expected_branch
+        or recovery_started.get("baseline_ref") != baseline_ref
+        or recovery_started.get("canonical_task_key")
+        != expected_canonical_task_key
+        or (
+            recovery_started.get("canonical_task_cid")
+            or recovery_started.get("canonical_task_id")
+        )
+        != expected_canonical_task_cid
+        or recovery_started.get("board_namespace")
+        != expected_board_namespace
+        or recovery_started.get("task_binding_id")
+        != expected_task_binding_id
+        or recovery_started.get("execution_mode")
+        != expected_recovery_execution_mode
+        or list(recovery_started.get("command") or ()) != ["/usr/bin/true"]
+        or not isinstance(authority, Mapping)
+        or authority.get("task_id") != expected_task_id
+        or authority.get("task_binding_id") != expected_task_binding_id
+        or authority.get("canonical_task_key")
+        != expected_canonical_task_key
+        or authority.get("canonical_task_cid")
+        != expected_canonical_task_cid
+        or authority.get("board_namespace") != expected_board_namespace
+        or authority.get("authorized_attempt")
+        != expected_implementation_attempt
+        or authority.get("origin_stream_id") != stream_id
+        or authority.get("recovery_seed_ref") != implementation_commit
+        or authority.get("recovery_seed_submodule_path") != submodule_path
+        or authority.get("recovery_seed_submodule_commit") != final_child
+        or authority.get("recovery_seed_tree_id")
+        != recovery.get("recovery_seed_tree_id")
+        or authority.get("durable_denial_id")
+        != recovery.get("denial_id")
+        or authority.get("authority_id") != recovery.get("grant_id")
+        or authority.get("authority_binding_id")
+        != recovery.get("authority_binding_id")
+        or authority.get("authority_event_sequence")
+        != grant_event_sequence
+        or authority.get("durable_authority_head_record_id")
+        != recovery.get("grant_record_id")
+        or authority.get("target_repository_id")
+        != expected_target_repository_id
+        or authority.get("target_branch") != expected_target_branch
+        or authority.get("repair_task_id")
+        != recovery.get("repair_task_id")
+        or authority.get("repair_binding_id")
+        != recovery.get("repair_binding_id")
+        or recovery_finished.get("task_id") != expected_task_id
+        or recovery_finished.get("attempt")
+        != expected_implementation_attempt
+        or recovery_finished.get("branch") != expected_branch
+        or recovery_finished.get("baseline_ref") != baseline_ref
+        or recovery_finished.get("implementation_commit")
+        != implementation_commit
+        or recovery_finished.get("returncode") != 0
+        or recovery_finished.get("attempt_consumed") is not True
+        or recovery_finished.get("stream_id") != stream_id
+        or recovery_finished.get("snapshot_id") != snapshot_id
+        or recovery_finished.get("log_path")
+        != recovery_started.get("log_path")
+        or recovery_finished.get("canonical_task_key")
+        != expected_canonical_task_key
+        or (
+            recovery_finished.get("canonical_task_cid")
+            or recovery_finished.get("canonical_task_id")
+        )
+        != expected_canonical_task_cid
+        or recovery_finished.get("board_namespace")
+        != expected_board_namespace
+        or recovery_finished.get("task_binding_id")
+        != expected_task_binding_id
+        or (
+            recovery_finished.get("implementation_started_event_id")
+            or (
+                finish_guard.get("implementation_started_event_id")
+                if isinstance(finish_guard, Mapping)
+                else ""
+            )
+        )
+        != started_id
+        or (
+            recovery_finished.get("implementation_started_event_sequence")
+            or (
+                finish_guard.get("implementation_started_event_sequence")
+                if isinstance(finish_guard, Mapping)
+                else 0
+            )
+        )
+        != started_sequence
+        or not isinstance(finish_commit_result, Mapping)
+        or finish_commit_result.get("committed") is not True
+        or finish_commit_result.get("reason") != "existing_commit"
+        or finish_commit_result.get("commit") != implementation_commit
+        or finish_commit_result.get("baseline_ref") != baseline_ref
+        or not isinstance(finish_guard, Mapping)
+        or finish_guard.get("allowed") is not True
+        or finish_guard.get("applicable") is not True
+        or finish_guard.get("durable_consumption_verified") is not True
+        or finish_guard.get("reasons") != []
+        or finish_guard.get("recovery_seed_ref") != implementation_commit
+        or finish_guard.get("recovery_seed_submodule_path")
+        != submodule_path
+        or finish_guard.get("recovery_seed_submodule_commit") != final_child
+        or finish_guard.get("recovery_seed_tree_id")
+        != recovery.get("recovery_seed_tree_id")
+        or finish_guard.get("validation_changed_paths") != changed_paths
+        or not isinstance(finish_merge_result, Mapping)
+        or finish_merge_result.get("attempted") is not False
+        or finish_merge_result.get("queued") is not True
+        or finish_merge_result.get("request_id") != recovery.get("request_id")
+        or finish_merge_result.get("implementation_commit")
+        != implementation_commit
+        or finish_merge_result.get("branch") != expected_branch
+        or not isinstance(finish_validation, Mapping)
+        or finish_validation.get("passed") is not True
+        or finish_validation.get("returncode") != 0
+        or not isinstance(finish_proposal, Mapping)
+        or finish_proposal.get("accepted") is not True
+        or finish_changed_paths != changed_paths
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_execution_invalid",
+            "attempt recovery is not the exact granted zero-edit promotion",
+        )
+    execution_witness = _verified_recovery_seed_execution_witness(
+        ledger,
+        witness_projection=execution_witness_input,
+        recovery_seed_provenance=recovery,
+        expected_request_id=expected_request_id,
+        expected_queue_attempt=expected_queue_attempt,
+        expected_queue_failure_count=expected_queue_failure_count,
+        expected_request_claim_generation=(
+            expected_request_claim_generation
+        ),
+        expected_task_id=expected_task_id,
+        expected_task_binding_id=expected_task_binding_id,
+        expected_canonical_task_key=expected_canonical_task_key,
+        expected_canonical_task_cid=expected_canonical_task_cid,
+        expected_board_namespace=expected_board_namespace,
+        expected_implementation_attempt=expected_implementation_attempt,
+        expected_implementation_commit=implementation_commit,
+        expected_target_repository_id=expected_target_repository_id,
+        expected_target_branch=expected_target_branch,
+        expected_integration_commit=integration_commit,
+        expected_final_child=final_child,
+        expected_stream_id=stream_id,
+        expected_snapshot_id=snapshot_id,
+        recovery_finished_sequence=finished_sequence,
+    )
+
+    root_tree, root_tree_id = _tree_id(root, implementation_commit)
+    _integration_tree, integration_tree_id = _tree_id(root, integration_commit)
+    root_parents = _exact_commit_parents(root, implementation_commit)
+    boundary_commit = _exact_commit(
+        root,
+        boundary_commit_value,
+        field_name="recovery_integration_boundary_commit",
+    )
+    boundary_tree, _boundary_tree_id = _tree_id(root, boundary_commit)
+    boundary_parents = _exact_commit_parents(root, boundary_commit)
+    base_entry = _tree_entry(root, baseline_ref, submodule_path)
+    final_entry = _tree_entry(root, implementation_commit, submodule_path)
+    landed_entry = _tree_entry(root, integration_commit, submodule_path)
+    seed_is_ancestor = _git(
+        root,
+        ["merge-base", "--is-ancestor", implementation_commit, integration_commit],
+    )
+    boundary_is_ancestor = _git(
+        root,
+        ["merge-base", "--is-ancestor", boundary_commit, integration_commit],
+    )
+    expected_boundary_parents = (
+        (baseline_ref,)
+        if boundary_mode == "exact_seed_fast_forward"
+        else (baseline_ref, implementation_commit)
+    )
+    if (
+        root_tree_id != recovery.get("recovery_seed_tree_id")
+        or integration_tree_id != expected_repository_tree_id
+        or root_parents != (baseline_ref,)
+        or boundary_tree != root_tree
+        or boundary_tree != boundary_tree_value
+        or boundary_parents != expected_boundary_parents
+        or (
+            boundary_mode == "exact_seed_fast_forward"
+            and boundary_commit != implementation_commit
+        )
+        or seed_is_ancestor.returncode != 0
+        or boundary_is_ancestor.returncode != 0
+        or _diff_statuses(root, baseline_ref, implementation_commit)
+        != (("M", submodule_path),)
+        or not isinstance(base_entry, Mapping)
+        or base_entry.get("mode") != "160000"
+        or base_entry.get("object_type") != "commit"
+        or not isinstance(final_entry, Mapping)
+        or final_entry.get("mode") != "160000"
+        or final_entry.get("object_type") != "commit"
+        or final_entry.get("git_object_id") != final_child
+        or not isinstance(landed_entry, Mapping)
+        or landed_entry.get("mode") != "160000"
+        or landed_entry.get("object_type") != "commit"
+        or landed_entry.get("git_object_id") != final_child
+        or recovery.get("observed_target_gitlink") != final_child
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_integration_boundary_invalid",
+            "seed/boundary/current target do not preserve the exact recovery edge",
+        )
+    baseline_child = str(base_entry["git_object_id"])
+
+    source_finished_candidates: list[Mapping[str, Any]] = []
+    for event in ledger:
+        if (
+            event.get("type") != "implementation_finished"
+            or event.get("task_id") != expected_task_id
+            or event.get("attempt_consumed") is not True
+            or event.get("returncode") != 78
+            or not isinstance(event.get("commit_result"), Mapping)
+        ):
+            continue
+        results = event["commit_result"].get("submodule_results")
+        if not isinstance(results, Sequence) or isinstance(
+            results, (str, bytes, bytearray)
+        ):
+            continue
+        matching_results = [
+            item
+            for item in results
+            if isinstance(item, Mapping)
+            and item.get("path") == submodule_path
+            and item.get("committed") is True
+            and item.get("commit") == provider_child
+        ]
+        if len(matching_results) == 1:
+            source_finished_candidates.append(event)
+    if len(source_finished_candidates) != 1:
+        raise PostMergeReviewError(
+            "composite_recovery_provider_source_ambiguous",
+            "strict ledger does not identify one Grok-authored provider child",
+        )
+    source_finished = source_finished_candidates[0]
+    source_attempt = source_finished.get("attempt")
+    source_branch = str(source_finished.get("branch") or "")
+    source_log_path = str(source_finished.get("log_path") or "")
+    source_commit = str(source_finished.get("implementation_commit") or "")
+    source_baseline = str(source_finished.get("baseline_ref") or "")
+    matching_starts = [
+        event
+        for event in ledger
+        if event.get("type") == "implementation_started"
+        and event.get("task_id") == expected_task_id
+        and event.get("attempt") == source_attempt
+        and event.get("branch") == source_branch
+        and event.get("baseline_ref") == source_baseline
+        and event.get("log_path") == source_log_path
+        and event.get("stream_id") == source_finished.get("stream_id")
+        and event.get("snapshot_id") == source_finished.get("snapshot_id")
+        and isinstance(event.get("sequence"), int)
+        and event.get("sequence") < source_finished.get("sequence", 0)
+    ]
+    if len(matching_starts) != 1:
+        raise PostMergeReviewError(
+            "composite_recovery_provider_start_ambiguous",
+            "strict ledger does not identify one source provider start",
+        )
+    source_started = matching_starts[0]
+    if not _event_content_identity_valid(
+        source_started
+    ) or not _event_content_identity_valid(source_finished):
+        raise PostMergeReviewError(
+            "composite_recovery_provider_event_invalid",
+            "source provider event identity is invalid",
+        )
+    source_validation = source_finished.get("validation_result")
+    source_proposal = (
+        source_validation.get("proposal_gate")
+        if isinstance(source_validation, Mapping)
+        else None
+    )
+    source_commit_result = source_finished.get("commit_result")
+    if (
+        isinstance(source_attempt, bool)
+        or not isinstance(source_attempt, int)
+        or source_attempt < 1
+        or source_attempt >= expected_implementation_attempt
+        or source_started.get("execution_mode") != "model-assisted"
+        or source_started.get("canonical_task_key")
+        != expected_canonical_task_key
+        or (
+            source_started.get("canonical_task_cid")
+            or source_started.get("canonical_task_id")
+        )
+        != expected_canonical_task_cid
+        or source_started.get("board_namespace")
+        != expected_board_namespace
+        or source_started.get("stream_id") != stream_id
+        or source_started.get("snapshot_id") != snapshot_id
+        or source_finished.get("canonical_task_key")
+        != expected_canonical_task_key
+        or (
+            source_finished.get("canonical_task_cid")
+            or source_finished.get("canonical_task_id")
+        )
+        != expected_canonical_task_cid
+        or source_finished.get("board_namespace")
+        != expected_board_namespace
+        or source_finished.get("stream_id") != stream_id
+        or source_finished.get("snapshot_id") != snapshot_id
+        or isinstance(grant_event_sequence, bool)
+        or not isinstance(grant_event_sequence, int)
+        or not (
+            int(source_started.get("sequence") or 0)
+            < int(source_finished.get("sequence") or 0)
+            < grant_event_sequence
+            < started_sequence
+            < finished_sequence
+        )
+        or source_finished.get("returncode") != 78
+        or not isinstance(source_commit_result, Mapping)
+        or source_commit_result.get("committed") is not True
+        or source_commit_result.get("commit") != source_commit
+        or not isinstance(source_validation, Mapping)
+        or source_validation.get("attempted") is not False
+        or source_validation.get("passed") is not False
+        or source_validation.get("returncode") != 78
+        or source_validation.get("reason") != "proposal_gate_failed"
+        or source_validation.get("error")
+        != "proposal_validation_failed"
+        or not isinstance(source_proposal, Mapping)
+        or source_proposal.get("attempted") is not True
+        or source_proposal.get("accepted") is not False
+        or source_proposal.get("reason_codes")
+        != ["test_weakening_forbidden"]
+        or source_proposal.get("proof_authoritative") is not False
+        or source_proposal.get("completion_authoritative") is not False
+        or source_proposal.get("repository_tree_id") != source_baseline
+        or source_proposal.get("changed_paths") != changed_paths
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_provider_source_invalid",
+            "source finish proves authorship but not the exact rejected proposal",
+        )
+    runner, grok_binary, model = _grok_command_binding(
+        source_started.get("command")
+    )
+    log_bytes, log_sha256 = _implementation_log_binding(
+        repo_root=root,
+        log_path=source_log_path,
+    )
+    source_commit = _exact_commit(
+        root,
+        source_commit,
+        field_name="source_implementation_commit",
+    )
+    source_baseline = _exact_commit(
+        root,
+        source_baseline,
+        field_name="source_baseline_commit",
+    )
+    source_parents = _exact_commit_parents(root, source_commit)
+    source_base_entry = _tree_entry(root, source_baseline, submodule_path)
+    source_entry = _tree_entry(root, source_commit, submodule_path)
+    if (
+        source_parents != (source_baseline,)
+        or _diff_statuses(root, source_baseline, source_commit)
+        != (("M", submodule_path),)
+        or not isinstance(source_base_entry, Mapping)
+        or source_base_entry.get("mode") != "160000"
+        or source_base_entry.get("object_type") != "commit"
+        or source_base_entry.get("git_object_id") != baseline_child
+        or not isinstance(source_entry, Mapping)
+        or source_entry.get("mode") != "160000"
+        or source_entry.get("object_type") != "commit"
+        or source_entry.get("git_object_id") != provider_child
+        or _exact_commit_parents(child_repo, provider_child)
+        != (baseline_child,)
+    ):
+        raise PostMergeReviewError(
+            "composite_recovery_provider_git_lineage_invalid",
+            "source root/child does not bridge the shared baseline to recovery",
+        )
+    provider_changed = [
+        f"{submodule_path}/{path}"
+        for _status, path in _diff_statuses(
+            child_repo,
+            baseline_child,
+            provider_child,
+        )
+    ]
+    final_changed = [
+        f"{submodule_path}/{path}"
+        for _status, path in _diff_statuses(
+            child_repo,
+            baseline_child,
+            final_child,
+        )
+    ]
+    if provider_changed != changed_paths or final_changed != changed_paths:
+        raise PostMergeReviewError(
+            "composite_recovery_changed_paths_mismatch",
+            "source and final child diffs do not match recovery validation",
+        )
+    correction = _deterministic_test_symbol_correction(
+        child_repo=child_repo,
+        baseline_child=baseline_child,
+        provider_child=provider_child,
+        final_child=final_child,
+        expected_changed_paths=changed_paths,
+        submodule_path=submodule_path,
+    )
+    provider_source = {
+        "provider_id": "grok_cli",
+        "implementation_attempt": source_attempt,
+        "implementation_commit": source_commit,
+        "implementation_branch": source_branch,
+        "baseline_commit": source_baseline,
+        "submodule_path": submodule_path,
+        "baseline_child_commit": baseline_child,
+        "provider_child_commit": provider_child,
+        "started_event_id": str(source_started.get("event_id") or ""),
+        "started_event_sequence": int(source_started.get("sequence") or 0),
+        "finished_event_id": str(source_finished.get("event_id") or ""),
+        "finished_event_sequence": int(source_finished.get("sequence") or 0),
+        "finished_returncode": 78,
+        "acceptance": "rejected_test_weakening_forbidden",
+    }
+    recovery_execution = {
+        "recovery_seed_provenance": recovery,
+        "recovery_seed_provenance_id": evidence_id,
+        "execution_witness": execution_witness,
+        "execution_witness_id": execution_witness[
+            "witness_projection_id"
+        ],
+        "started_event_id": started_id,
+        "started_event_sequence": started_sequence,
+        "finished_event_id": finished_id,
+        "finished_event_sequence": finished_sequence,
+        "integration_commit": integration_commit,
+        "repository_tree_id": expected_repository_tree_id,
+        "integration_boundary_commit": boundary_commit,
+        "integration_boundary_tree": boundary_tree,
+        "integration_boundary_mode": boundary_mode,
+        "review_target_commit": integration_commit,
+        "review_target_tree_id": expected_repository_tree_id,
+        "validation_changed_paths": list(changed_paths),
+        "target_repository_id": expected_target_repository_id,
+        "target_branch": expected_target_branch,
+        "submodule_path": submodule_path,
+        "baseline_child_commit": baseline_child,
+        "final_child_commit": final_child,
+        "task_binding_id": expected_task_binding_id,
+        "canonical_task_key": expected_canonical_task_key,
+        "canonical_task_cid": expected_canonical_task_cid,
+        "board_namespace": expected_board_namespace,
+        "denial_id": str(recovery.get("denial_id") or ""),
+        "grant_id": str(recovery.get("grant_id") or ""),
+        "grant_record_id": str(recovery.get("grant_record_id") or ""),
+        "consumption_record_id": str(
+            recovery.get("consumption_record_id") or ""
+        ),
+        "repair_task_id": str(recovery.get("repair_task_id") or ""),
+        "repair_binding_id": str(
+            recovery.get("repair_binding_id") or ""
+        ),
+    }
+    material = {
+        "schema": VERIFIED_COMPOSITE_RECOVERY_IMPLEMENTER_PROVENANCE_SCHEMA,
+        "task_id": expected_task_id,
+        "implementation_attempt": expected_implementation_attempt,
+        "provider_id": "grok_cli",
+        "runner": runner,
+        "grok_binary": grok_binary,
+        "model": model,
+        "implementation_commit": implementation_commit,
+        "branch": expected_branch,
+        "log_path": source_log_path,
+        "log_bytes": log_bytes,
+        "log_sha256": log_sha256,
+        "log_binding_scope": IMPLEMENTER_LOG_BINDING_SCOPE,
+        "log_event_anchored": False,
+        "started_event_id": provider_source["started_event_id"],
+        "started_event_sequence": provider_source["started_event_sequence"],
+        "finished_event_id": provider_source["finished_event_id"],
+        "finished_event_sequence": provider_source[
+            "finished_event_sequence"
+        ],
+        "source_stream_id": str(source_started.get("stream_id") or ""),
+        "source_snapshot_id": str(source_started.get("snapshot_id") or ""),
+        "provider_source": provider_source,
+        "deterministic_correction": correction,
+        "recovery_execution": recovery_execution,
+    }
+    return VerifiedCompositeRecoveryImplementerProvenance(
+        **{
+            **material,
+            "provenance_id": content_identity(material),
+        }
+    )
+
+
+def _composite_provenance_matches_local_ledger(
+    provenance: Mapping[str, Any],
+    ledger: Sequence[Mapping[str, Any]],
+    *,
+    denial_event_sequence: int,
+    expected_task_id: str,
+    expected_task_binding_id: str,
+    expected_canonical_task_key: str,
+    expected_canonical_task_cid: str,
+    expected_board_namespace: str,
+    expected_review_attempt: int,
+    expected_implementation_attempt: int,
+    expected_implementation_commit: str,
+    expected_merge_commit: str,
+    expected_repository_tree_id: str,
+) -> bool:
+    """Verify the event half of composite provenance for denial recovery.
+
+    Durable correction readers intentionally do not receive a repository
+    checkout. The live review path already performed the full immutable Git
+    verification; this reader rechecks every strict-ledger identity and the
+    content-addressed nested projection so a copied denial cannot open work in
+    another event stream.
+    """
+
+    if (
+        provenance.get("schema")
+        != VERIFIED_COMPOSITE_RECOVERY_IMPLEMENTER_PROVENANCE_SCHEMA
+        or provenance.get("provider_id") != "grok_cli"
+        or provenance.get("task_id") != expected_task_id
+        or provenance.get("implementation_attempt")
+        != expected_implementation_attempt
+        or provenance.get("implementation_commit")
+        != expected_implementation_commit
+    ):
+        return False
+    provider_source = provenance.get("provider_source")
+    correction = provenance.get("deterministic_correction")
+    recovery_execution = provenance.get("recovery_execution")
+    if (
+        not isinstance(provider_source, Mapping)
+        or not isinstance(correction, Mapping)
+        or not isinstance(recovery_execution, Mapping)
+    ):
+        return False
+    correction_material = dict(correction)
+    correction_id = str(
+        correction_material.pop("correction_id", "") or ""
+    )
+    correction_identity = (
+        correction.get("baseline_child_commit"),
+        correction.get("provider_child_commit"),
+        correction.get("final_child_commit"),
+        correction.get("path"),
+        correction.get("provider_symbol"),
+        correction.get("restored_symbol"),
+        correction_id,
+    )
+    if (
+        not correction_id
+        or content_identity(correction_material) != correction_id
+        or correction_identity
+        not in COMPOSITE_RECOVERY_DETERMINISTIC_CORRECTIONS
+        or correction.get("kind")
+        != "baseline-test-symbol-restoration"
+        or correction.get("preserves_all_other_bytes") is not True
+    ):
+        return False
+    recovery = recovery_execution.get("recovery_seed_provenance")
+    execution_witness = recovery_execution.get("execution_witness")
+    if not isinstance(recovery, Mapping):
+        return False
+    if not isinstance(execution_witness, Mapping):
+        return False
+    if execution_witness.get("queue_attempt") != expected_review_attempt:
+        return False
+    integration_boundary = recovery.get("integration_boundary")
+    if not isinstance(integration_boundary, Mapping):
+        return False
+    recovery_material = dict(recovery)
+    recovery_changed_paths = recovery_execution.get(
+        "validation_changed_paths"
+    )
+    recovery_evidence_id = str(
+        recovery_material.pop("evidence_id", "") or ""
+    )
+    if (
+        recovery_material.get("schema")
+        != RECOVERY_SEED_ZERO_EDIT_MERGE_PROVENANCE_SCHEMA
+        or not recovery_evidence_id
+        or content_identity(recovery_material) != recovery_evidence_id
+        or recovery_execution.get("recovery_seed_provenance_id")
+        != recovery_evidence_id
+        or recovery_execution.get("execution_witness_id")
+        != execution_witness.get("witness_projection_id")
+        or recovery_execution.get("task_binding_id")
+        != expected_task_binding_id
+        or recovery_execution.get("canonical_task_key")
+        != expected_canonical_task_key
+        or recovery_execution.get("canonical_task_cid")
+        != expected_canonical_task_cid
+        or recovery_execution.get("board_namespace")
+        != expected_board_namespace
+        or recovery_execution.get("integration_commit")
+        != expected_merge_commit
+        or recovery_execution.get("repository_tree_id")
+        != expected_repository_tree_id
+        or recovery_execution.get("review_target_commit")
+        != expected_merge_commit
+        or recovery_execution.get("review_target_tree_id")
+        != expected_repository_tree_id
+        or recovery_execution.get("integration_boundary_commit")
+        != integration_boundary.get("commit")
+        or recovery_execution.get("integration_boundary_tree")
+        != integration_boundary.get("tree")
+        or recovery_execution.get("integration_boundary_mode")
+        != integration_boundary.get("mode")
+        or provider_source.get("provider_id") != "grok_cli"
+        or provider_source.get("submodule_path")
+        != recovery_execution.get("submodule_path")
+        or provider_source.get("baseline_child_commit")
+        != correction.get("baseline_child_commit")
+        or provider_source.get("provider_child_commit")
+        != correction.get("provider_child_commit")
+        or provider_source.get("finished_returncode") != 78
+        or provider_source.get("acceptance")
+        != "rejected_test_weakening_forbidden"
+        or any(
+            recovery_execution.get(field_name) != recovery.get(field_name)
+            or recovery_execution.get(field_name)
+            != execution_witness.get(field_name)
+            for field_name in (
+                "denial_id",
+                "grant_id",
+                "grant_record_id",
+                "consumption_record_id",
+                "repair_task_id",
+                "repair_binding_id",
+            )
+        )
+        or recovery.get("observed_target_commit")
+        != expected_merge_commit
+        or recovery.get("candidate_tree_id")
+        != recovery.get("recovery_seed_tree_id")
+        or recovery.get("implementation_commit")
+        != expected_implementation_commit
+        or recovery.get("implementation_attempt")
+        != expected_implementation_attempt
+        or not isinstance(recovery_changed_paths, list)
+        or tuple(recovery_changed_paths)
+        != COMPOSITE_RECOVERY_EXPECTED_CHANGED_PATHS
+        or correction.get("root_relative_path")
+        != (
+            f"{recovery_execution.get('submodule_path')}/"
+            f"{correction.get('path')}"
+        )
+        or correction.get("baseline_child_commit")
+        != recovery_execution.get("baseline_child_commit")
+        or correction.get("final_child_commit")
+        != recovery_execution.get("final_child_commit")
+        or correction.get("provider_child_commit")
+        != provider_source.get("provider_child_commit")
+    ):
+        return False
+
+    def exact_event(
+        projection: Mapping[str, Any],
+        event_type: str,
+    ) -> Mapping[str, Any] | None:
+        event_id = str(projection.get("event_id") or "")
+        sequence = projection.get("event_sequence")
+        if (
+            not event_id
+            or isinstance(sequence, bool)
+            or not isinstance(sequence, int)
+            or sequence < 1
+        ):
+            return None
+        matches = [
+            event
+            for event in ledger
+            if event.get("event_id") == event_id
+            and event.get("sequence") == sequence
+            and event.get("type") == event_type
+        ]
+        if len(matches) != 1 or not _event_content_identity_valid(matches[0]):
+            return None
+        return matches[0]
+
+    source_started = exact_event(
+        {
+            "event_id": provider_source.get("started_event_id"),
+            "event_sequence": provider_source.get("started_event_sequence"),
+        },
+        "implementation_started",
+    )
+    source_finished = exact_event(
+        {
+            "event_id": provider_source.get("finished_event_id"),
+            "event_sequence": provider_source.get("finished_event_sequence"),
+        },
+        "implementation_finished",
+    )
+    recovery_started = exact_event(
+        {
+            "event_id": recovery_execution.get("started_event_id"),
+            "event_sequence": recovery_execution.get(
+                "started_event_sequence"
+            ),
+        },
+        "implementation_started",
+    )
+    recovery_finished = exact_event(
+        {
+            "event_id": recovery_execution.get("finished_event_id"),
+            "event_sequence": recovery_execution.get(
+                "finished_event_sequence"
+            ),
+        },
+        "implementation_finished",
+    )
+    if any(
+        event is None
+        for event in (
+            source_started,
+            source_finished,
+            recovery_started,
+            recovery_finished,
+        )
+    ):
+        return False
+    assert source_started is not None
+    assert source_finished is not None
+    assert recovery_started is not None
+    assert recovery_finished is not None
+    try:
+        rebuilt_witness = _verified_recovery_seed_execution_witness(
+            ledger,
+            witness_projection=execution_witness,
+            recovery_seed_provenance=recovery,
+            expected_request_id=str(
+                execution_witness.get("request_id") or ""
+            ),
+            expected_queue_attempt=execution_witness.get("queue_attempt"),
+            expected_queue_failure_count=execution_witness.get(
+                "queue_failure_count"
+            ),
+            expected_request_claim_generation=execution_witness.get(
+                "request_claim_generation"
+            ),
+            expected_task_id=str(provenance.get("task_id") or ""),
+            expected_task_binding_id=str(
+                recovery_execution.get("task_binding_id") or ""
+            ),
+            expected_canonical_task_key=str(
+                recovery_execution.get("canonical_task_key") or ""
+            ),
+            expected_canonical_task_cid=str(
+                recovery_execution.get("canonical_task_cid") or ""
+            ),
+            expected_board_namespace=str(
+                recovery_execution.get("board_namespace") or ""
+            ),
+            expected_implementation_attempt=provenance.get(
+                "implementation_attempt"
+            ),
+            expected_implementation_commit=str(
+                provenance.get("implementation_commit") or ""
+            ),
+            expected_target_repository_id=str(
+                recovery_execution.get("target_repository_id") or ""
+            ),
+            expected_target_branch=str(
+                recovery_execution.get("target_branch") or ""
+            ),
+            expected_integration_commit=str(
+                recovery_execution.get("integration_commit") or ""
+            ),
+            expected_final_child=str(
+                recovery_execution.get("final_child_commit") or ""
+            ),
+            expected_stream_id=str(
+                recovery_started.get("stream_id") or ""
+            ),
+            expected_snapshot_id=str(
+                recovery_started.get("snapshot_id") or ""
+            ),
+            recovery_finished_sequence=int(
+                recovery_execution.get("finished_event_sequence") or 0
+            ),
+        )
+    except (PostMergeReviewError, TypeError, ValueError):
+        return False
+    if rebuilt_witness != dict(execution_witness):
+        return False
+    grant_sequence = recovery.get("grant_event_sequence")
+    grant_id = str(recovery.get("grant_event_id") or "")
+    grant_matches = [
+        event
+        for event in ledger
+        if event.get("event_id") == grant_id
+        and event.get("sequence") == grant_sequence
+        and _event_content_identity_valid(event)
+    ]
+    if len(grant_matches) != 1:
+        return False
+    grant_event = grant_matches[0]
+    raw_resets = grant_event.get("resets")
+    reset_grants = [
+        reset.get("post_merge_correction_repair_grant")
+        for reset in raw_resets
+        if isinstance(reset, Mapping)
+        and isinstance(
+            reset.get("post_merge_correction_repair_grant"), Mapping
+        )
+    ] if isinstance(raw_resets, list) else []
+    matching_reset_grants = [
+        grant
+        for grant in reset_grants
+        if grant.get("schema") == "post-merge-correction-repair-grant-v1"
+        and grant.get("grant_id") == recovery_execution.get("grant_id")
+        and grant.get("denial_id") == recovery_execution.get("denial_id")
+        and grant.get("source_task_id") == provenance.get("task_id")
+        and grant.get("source_task_binding_id")
+        == recovery_execution.get("task_binding_id")
+        and grant.get("source_canonical_task_key")
+        == recovery_execution.get("canonical_task_key")
+        and grant.get("source_canonical_task_cid")
+        == recovery_execution.get("canonical_task_cid")
+        and grant.get("repair_task_id")
+        == recovery_execution.get("repair_task_id")
+        and grant.get("repair_binding_id")
+        == recovery_execution.get("repair_binding_id")
+        and grant.get("origin_stream_id")
+        == recovery_started.get("stream_id")
+        and grant.get("recovery_seed_ref")
+        == provenance.get("implementation_commit")
+        and grant.get("recovery_seed_tree_id")
+        == recovery.get("recovery_seed_tree_id")
+        and grant.get("recovery_seed_submodule_path")
+        == recovery_execution.get("submodule_path")
+        and grant.get("recovery_seed_submodule_commit")
+        == recovery_execution.get("final_child_commit")
+    ]
+    if (
+        grant_event.get("type") != "task_retry_budget_reset"
+        or grant_event.get("stream_id")
+        != recovery_started.get("stream_id")
+        or grant_event.get("snapshot_id")
+        != recovery_started.get("snapshot_id")
+        or len(matching_reset_grants) != 1
+    ):
+        return False
+    command = source_started.get("command")
+    try:
+        runner, grok_binary, model = _grok_command_binding(command)
+    except PostMergeReviewError:
+        return False
+    source_validation = source_finished.get("validation_result")
+    source_proposal = (
+        source_validation.get("proposal_gate")
+        if isinstance(source_validation, Mapping)
+        else None
+    )
+    source_commit_result = source_finished.get("commit_result")
+    raw_source_submodule_results = (
+        source_commit_result.get("submodule_results")
+        if isinstance(source_commit_result, Mapping)
+        else None
+    )
+    committed_source_submodules = [
+        item
+        for item in raw_source_submodule_results
+        if isinstance(item, Mapping) and item.get("committed") is True
+    ] if isinstance(raw_source_submodule_results, list) else []
+    authority = recovery_started.get("post_merge_correction_authority")
+    finish_commit_result = recovery_finished.get("commit_result")
+    finish_guard = (
+        finish_commit_result.get("recovery_seed_zero_edit_promotion_guard")
+        if isinstance(finish_commit_result, Mapping)
+        else None
+    )
+    finish_merge_result = recovery_finished.get("merge_result")
+    finish_validation = recovery_finished.get("validation_result")
+    finish_proposal = (
+        finish_validation.get("proposal_gate")
+        if isinstance(finish_validation, Mapping)
+        else None
+    )
+    source_stream = str(source_started.get("stream_id") or "")
+    source_snapshot = str(source_started.get("snapshot_id") or "")
+    source_attempt = provider_source.get("implementation_attempt")
+    recovery_attempt = provenance.get("implementation_attempt")
+    sequences = (
+        provider_source.get("started_event_sequence"),
+        provider_source.get("finished_event_sequence"),
+        grant_sequence,
+        recovery_execution.get("started_event_sequence"),
+        recovery_execution.get("finished_event_sequence"),
+        execution_witness.get("event_sequence"),
+        denial_event_sequence,
+    )
+    return bool(
+        all(
+            isinstance(value, int)
+            and not isinstance(value, bool)
+            and value > 0
+            for value in sequences
+        )
+        and tuple(sequences) == tuple(sorted(sequences))
+        and len(set(sequences)) == len(sequences)
+        and isinstance(source_attempt, int)
+        and not isinstance(source_attempt, bool)
+        and isinstance(recovery_attempt, int)
+        and not isinstance(recovery_attempt, bool)
+        and 0 < source_attempt < recovery_attempt
+        and provenance.get("started_event_id")
+        == provider_source.get("started_event_id")
+        and provenance.get("finished_event_id")
+        == provider_source.get("finished_event_id")
+        and provenance.get("started_event_sequence")
+        == provider_source.get("started_event_sequence")
+        and provenance.get("finished_event_sequence")
+        == provider_source.get("finished_event_sequence")
+        and provenance.get("runner") == runner
+        and provenance.get("grok_binary") == grok_binary
+        and provenance.get("model") == model
+        and provenance.get("source_stream_id") == source_stream
+        and provenance.get("source_snapshot_id") == source_snapshot
+        and source_started.get("execution_mode") == "model-assisted"
+        and source_started.get("task_id") == provenance.get("task_id")
+        and source_started.get("attempt") == source_attempt
+        and source_started.get("canonical_task_key")
+        == expected_canonical_task_key
+        and (
+            source_started.get("canonical_task_cid")
+            or source_started.get("canonical_task_id")
+        )
+        == expected_canonical_task_cid
+        and source_started.get("board_namespace")
+        == expected_board_namespace
+        and source_started.get("branch")
+        == provider_source.get("implementation_branch")
+        and source_started.get("baseline_ref")
+        == provider_source.get("baseline_commit")
+        and source_started.get("log_path") == provenance.get("log_path")
+        and source_finished.get("task_id") == provenance.get("task_id")
+        and source_finished.get("attempt") == source_attempt
+        and source_finished.get("canonical_task_key")
+        == expected_canonical_task_key
+        and (
+            source_finished.get("canonical_task_cid")
+            or source_finished.get("canonical_task_id")
+        )
+        == expected_canonical_task_cid
+        and source_finished.get("board_namespace")
+        == expected_board_namespace
+        and source_finished.get("implementation_commit")
+        == provider_source.get("implementation_commit")
+        and source_finished.get("branch")
+        == provider_source.get("implementation_branch")
+        and source_finished.get("baseline_ref")
+        == provider_source.get("baseline_commit")
+        and source_finished.get("log_path") == provenance.get("log_path")
+        and source_finished.get("returncode") == 78
+        and source_finished.get("attempt_consumed") is True
+        and isinstance(source_commit_result, Mapping)
+        and source_commit_result.get("committed") is True
+        and source_commit_result.get("commit")
+        == provider_source.get("implementation_commit")
+        and len(committed_source_submodules) == 1
+        and committed_source_submodules[0].get("path")
+        == provider_source.get("submodule_path")
+        and committed_source_submodules[0].get("commit")
+        == provider_source.get("provider_child_commit")
+        and isinstance(source_validation, Mapping)
+        and source_validation.get("attempted") is False
+        and source_validation.get("passed") is False
+        and source_validation.get("returncode") == 78
+        and source_validation.get("reason") == "proposal_gate_failed"
+        and source_validation.get("error") == "proposal_validation_failed"
+        and isinstance(source_proposal, Mapping)
+        and source_proposal.get("attempted") is True
+        and source_proposal.get("accepted") is False
+        and source_proposal.get("reason_codes")
+        == ["test_weakening_forbidden"]
+        and source_proposal.get("changed_paths")
+        == recovery_changed_paths
+        and source_proposal.get("repository_tree_id")
+        == provider_source.get("baseline_commit")
+        and source_proposal.get("proof_authoritative") is False
+        and source_proposal.get("completion_authoritative") is False
+        and recovery_started.get("task_id") == provenance.get("task_id")
+        and recovery_started.get("attempt") == recovery_attempt
+        and recovery_started.get("branch") == provenance.get("branch")
+        and recovery_started.get("task_binding_id")
+        == expected_task_binding_id
+        and recovery_started.get("canonical_task_key")
+        == expected_canonical_task_key
+        and (
+            recovery_started.get("canonical_task_cid")
+            or recovery_started.get("canonical_task_id")
+        )
+        == expected_canonical_task_cid
+        and recovery_started.get("board_namespace")
+        == expected_board_namespace
+        and recovery_started.get("stream_id") == source_stream
+        and recovery_started.get("snapshot_id") == source_snapshot
+        and list(recovery_started.get("command") or ()) == ["/usr/bin/true"]
+        and isinstance(authority, Mapping)
+        and authority.get("task_id") == expected_task_id
+        and authority.get("task_binding_id")
+        == recovery_execution.get("task_binding_id")
+        and authority.get("canonical_task_key")
+        == recovery_execution.get("canonical_task_key")
+        and authority.get("canonical_task_cid")
+        == recovery_execution.get("canonical_task_cid")
+        and authority.get("board_namespace")
+        == recovery_execution.get("board_namespace")
+        and authority.get("durable_denial_id")
+        == recovery_execution.get("denial_id")
+        and authority.get("authorized_attempt")
+        == expected_implementation_attempt
+        and authority.get("origin_stream_id") == source_stream
+        and authority.get("authority_id")
+        == recovery_execution.get("grant_id")
+        and authority.get("authority_binding_id")
+        == recovery.get("authority_binding_id")
+        and authority.get("authority_event_sequence")
+        == recovery.get("grant_event_sequence")
+        and authority.get("durable_authority_head_record_id")
+        == recovery_execution.get("grant_record_id")
+        and authority.get("target_repository_id")
+        == recovery_execution.get("target_repository_id")
+        and authority.get("target_branch")
+        == recovery_execution.get("target_branch")
+        and authority.get("repair_task_id")
+        == recovery_execution.get("repair_task_id")
+        and authority.get("repair_binding_id")
+        == recovery_execution.get("repair_binding_id")
+        and authority.get("recovery_seed_ref")
+        == provenance.get("implementation_commit")
+        and authority.get("recovery_seed_tree_id")
+        == recovery.get("recovery_seed_tree_id")
+        and authority.get("recovery_seed_submodule_path")
+        == recovery_execution.get("submodule_path")
+        and authority.get("recovery_seed_submodule_commit")
+        == recovery_execution.get("final_child_commit")
+        and recovery_finished.get("task_id") == provenance.get("task_id")
+        and recovery_finished.get("attempt") == recovery_attempt
+        and recovery_finished.get("branch") == provenance.get("branch")
+        and recovery_finished.get("implementation_commit")
+        == provenance.get("implementation_commit")
+        and recovery_finished.get("returncode") == 0
+        and recovery_finished.get("attempt_consumed") is True
+        and recovery_finished.get("task_binding_id")
+        == expected_task_binding_id
+        and recovery_finished.get("canonical_task_key")
+        == expected_canonical_task_key
+        and (
+            recovery_finished.get("canonical_task_cid")
+            or recovery_finished.get("canonical_task_id")
+        )
+        == expected_canonical_task_cid
+        and recovery_finished.get("board_namespace")
+        == expected_board_namespace
+        and recovery_finished.get("stream_id") == source_stream
+        and recovery_finished.get("snapshot_id") == source_snapshot
+        and isinstance(finish_commit_result, Mapping)
+        and finish_commit_result.get("committed") is True
+        and finish_commit_result.get("reason") == "existing_commit"
+        and finish_commit_result.get("commit")
+        == expected_implementation_commit
+        and isinstance(finish_guard, Mapping)
+        and finish_guard.get("allowed") is True
+        and finish_guard.get("applicable") is True
+        and finish_guard.get("durable_consumption_verified") is True
+        and finish_guard.get("reasons") == []
+        and finish_guard.get("recovery_seed_ref")
+        == expected_implementation_commit
+        and finish_guard.get("recovery_seed_tree_id")
+        == recovery.get("recovery_seed_tree_id")
+        and finish_guard.get("recovery_seed_submodule_path")
+        == recovery_execution.get("submodule_path")
+        and finish_guard.get("recovery_seed_submodule_commit")
+        == recovery_execution.get("final_child_commit")
+        and finish_guard.get("validation_changed_paths")
+        == recovery_changed_paths
+        and isinstance(finish_merge_result, Mapping)
+        and finish_merge_result.get("attempted") is False
+        and finish_merge_result.get("queued") is True
+        and finish_merge_result.get("request_id")
+        == execution_witness.get("request_id")
+        and finish_merge_result.get("implementation_commit")
+        == expected_implementation_commit
+        and finish_merge_result.get("branch") == provenance.get("branch")
+        and isinstance(finish_validation, Mapping)
+        and finish_validation.get("passed") is True
+        and finish_validation.get("returncode") == 0
+        and isinstance(finish_proposal, Mapping)
+        and finish_proposal.get("accepted") is True
+        and finish_proposal.get("changed_paths")
+        == recovery_changed_paths
+    )
+
+
 def _expand_repository_diff(
     *,
     checkout_root: Path,
@@ -1836,8 +4079,22 @@ def _verify_implementer_provenance(
     payload = provenance.to_dict()
     material = dict(payload)
     provenance_id = str(material.pop("provenance_id", "") or "")
+    composite = isinstance(
+        provenance,
+        VerifiedCompositeRecoveryImplementerProvenance,
+    )
+    expected_schema = (
+        VERIFIED_COMPOSITE_RECOVERY_IMPLEMENTER_PROVENANCE_SCHEMA
+        if composite
+        else VERIFIED_IMPLEMENTER_PROVENANCE_SCHEMA
+    )
     if (
-        material.get("schema") != VERIFIED_IMPLEMENTER_PROVENANCE_SCHEMA
+        material.get("schema") != expected_schema
+        or (
+            material.get("schema")
+            == VERIFIED_COMPOSITE_RECOVERY_IMPLEMENTER_PROVENANCE_SCHEMA
+            and not composite
+        )
         or material.get("task_id") != task_id
         or int(material.get("implementation_attempt") or 0)
         != int(implementation_attempt)
@@ -2695,9 +4952,13 @@ def verified_post_merge_review_corrections_from_strict_ledger(
         provenance_id = str(
             provenance_material.pop("provenance_id", "") or ""
         )
+        provenance_schema = provenance_material.get("schema")
         if (
-            provenance_material.get("schema")
-            != VERIFIED_IMPLEMENTER_PROVENANCE_SCHEMA
+            provenance_schema
+            not in {
+                VERIFIED_IMPLEMENTER_PROVENANCE_SCHEMA,
+                VERIFIED_COMPOSITE_RECOVERY_IMPLEMENTER_PROVENANCE_SCHEMA,
+            }
             or not provenance_id
             or content_identity(provenance_material) != provenance_id
             or receipt.get("implementer_provenance_id") != provenance_id
@@ -2824,6 +5085,71 @@ def verified_post_merge_review_corrections_from_strict_ledger(
                     and finished_event.get("snapshot_id")
                     == source_snapshot_id
                 )
+
+        if (
+            provenance_schema
+            == VERIFIED_COMPOSITE_RECOVERY_IMPLEMENTER_PROVENANCE_SCHEMA
+        ):
+            local_provenance_matches = (
+                _composite_provenance_matches_local_ledger(
+                    implementer_provenance,
+                    ledger,
+                    denial_event_sequence=source_event_sequence,
+                    expected_task_id=task_id,
+                    expected_task_binding_id=task_binding_id,
+                    expected_canonical_task_key=canonical_task_key,
+                    expected_canonical_task_cid=canonical_task_cid,
+                    expected_board_namespace=board_namespace,
+                    expected_review_attempt=review_attempt,
+                    expected_implementation_attempt=implementation_attempt,
+                    expected_implementation_commit=implementation_commit,
+                    expected_merge_commit=merge_commit,
+                    expected_repository_tree_id=repository_tree_id,
+                )
+            )
+            if local_provenance_matches:
+                recovery_projection = implementer_provenance.get(
+                    "recovery_execution"
+                )
+                recovery_finished_id = (
+                    str(
+                        recovery_projection.get("finished_event_id")
+                        or ""
+                    )
+                    if isinstance(recovery_projection, Mapping)
+                    else ""
+                )
+                recovery_finished_sequence = (
+                    recovery_projection.get("finished_event_sequence")
+                    if isinstance(recovery_projection, Mapping)
+                    else None
+                )
+                recovery_finished_matches = [
+                    candidate
+                    for candidate in ledger
+                    if candidate.get("event_id")
+                    == recovery_finished_id
+                    and candidate.get("sequence")
+                    == recovery_finished_sequence
+                    and candidate.get("type")
+                    == "implementation_finished"
+                ]
+                finished_event = (
+                    recovery_finished_matches[0]
+                    if len(recovery_finished_matches) == 1
+                    else None
+                )
+                try:
+                    finished_event_sequence = positive_int(
+                        recovery_finished_sequence,
+                        field_name=(
+                            "implementer_provenance.recovery_execution."
+                            "finished_event_sequence"
+                        ),
+                    )
+                except PostMergeReviewError:
+                    local_provenance_matches = False
+                    finished_event = None
 
         execution = receipt.get("reviewer_execution_receipt")
         if not isinstance(execution, Mapping):
@@ -2967,7 +5293,11 @@ def verified_post_merge_review_corrections_from_strict_ledger(
                 "bounded denial projection exceeds its byte ceiling",
             )
 
-        all_verified_denials.append(correction)
+        if (
+            provenance_schema
+            != VERIFIED_COMPOSITE_RECOVERY_IMPLEMENTER_PROVENANCE_SCHEMA
+        ):
+            all_verified_denials.append(correction)
         if (
             not local_provenance_matches
             or finished_event is None
@@ -2991,6 +5321,14 @@ def verified_post_merge_review_corrections_from_strict_ledger(
             # itself proven in this exact ledger.
             continue
 
+        if (
+            provenance_schema
+            == VERIFIED_COMPOSITE_RECOVERY_IMPLEMENTER_PROVENANCE_SCHEMA
+        ):
+            # The bounded migration exception is not historical authority
+            # until its fresh DB-backed witness and closed Git correction have
+            # both been proven in this exact ledger.
+            all_verified_denials.append(correction)
         all_locally_verified_denials.append(correction)
         latest_finished = latest_finished_by_task.get(task_id)
         if (
@@ -4591,6 +6929,23 @@ def verify_post_merge_review_receipt(
             implementation_commit=implementation_commit,
             provider_id=implementer,
         )
+        if isinstance(
+            implementer_provenance,
+            VerifiedCompositeRecoveryImplementerProvenance,
+        ) and (
+            implementer_provenance.recovery_execution.get(
+                "integration_commit"
+            )
+            != merge_commit
+            or implementer_provenance.recovery_execution.get(
+                "repository_tree_id"
+            )
+            != repository_tree_id
+        ):
+            raise PostMergeReviewError(
+                "composite_recovery_integration_binding_mismatch",
+                "composite provenance belongs to another integration boundary",
+            )
         finished_event = _verify_implementer_event_membership(
             implementation_events_path,
             implementer_provenance,  # type: ignore[arg-type]
@@ -4849,6 +7204,23 @@ def perform_post_merge_independent_review(
         root = Path(repo_root).resolve()
         production_review_route = reviewer is None
         implementer = _normalize_implementer_provider(implementer_provider)
+        if isinstance(
+            implementer_provenance,
+            VerifiedCompositeRecoveryImplementerProvenance,
+        ) and (
+            implementer_provenance.recovery_execution.get(
+                "integration_commit"
+            )
+            != merge_commit
+            or implementer_provenance.recovery_execution.get(
+                "repository_tree_id"
+            )
+            != repository_tree_id
+        ):
+            raise PostMergeReviewError(
+                "composite_recovery_integration_binding_mismatch",
+                "composite provenance belongs to another integration boundary",
+            )
         finished_event = _verify_implementer_event_membership(
             implementation_events_path,
             implementer_provenance,
@@ -5290,16 +7662,19 @@ __all__ = [
     "POST_MERGE_CORRECTION_QUEUE_RECONCILED_EVENT",
     "POST_MERGE_CORRECTION_QUEUE_RECONCILIATION_SCHEMA",
     "POST_MERGE_CORRECTION_QUEUE_TERMINAL_SCHEMA",
+    "VERIFIED_COMPOSITE_RECOVERY_IMPLEMENTER_PROVENANCE_SCHEMA",
     "VERIFIED_IMPLEMENTER_PROVENANCE_SCHEMA",
     "PostMergeReviewError",
     "PostMergeReviewOutcome",
     "ReceiptVerification",
     "ReviewerCallable",
     "ReviewerInvocation",
+    "VerifiedCompositeRecoveryImplementerProvenance",
     "VerifiedImplementerProvenance",
     "perform_post_merge_independent_review",
     "mint_gate_from_live_outcome",
     "post_merge_task_binding_id",
+    "verified_composite_recovery_implementer_provenance_from_ledger",
     "verified_implementer_provenance_from_events",
     "verified_implementer_provenance_from_ledger",
     "verified_failed_post_merge_review_correction_attempts_from_strict_ledger",
