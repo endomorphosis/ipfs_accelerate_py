@@ -8561,7 +8561,11 @@ class PortalImplementationDaemon:
                 provider_retry_schedule
                 and provider_retry_schedule.get("active", False)
             )
-            runtime_retry_due = provider_retry_due or (
+            local_retry_probe_due = bool(
+                provider_retry_active
+                and self._selectable_retry_no_change_probe_due()
+            )
+            runtime_retry_due = local_retry_probe_due or provider_retry_due or (
                 not provider_retry_active and task_retry_due
             )
             if not runtime_retry_due:
@@ -9437,6 +9441,11 @@ class PortalImplementationDaemon:
                     "providers": list(event.get("providers") or []),
                 }
             if event_type == "implementation_started":
+                if event.get("provider_dispatched") is False:
+                    # A local contract proof is not evidence that capacity
+                    # returned.  Preserve the provider-specific latch until
+                    # an actual dispatch boundary or its declared deadline.
+                    continue
                 started_labels = set(
                     _provider_labels_from_implementation_command(
                         event.get("command") or ()
@@ -9642,6 +9651,8 @@ class PortalImplementationDaemon:
                 "implementation_started",
                 "implementation_finished",
             }:
+                if event.get("provider_dispatched") is False:
+                    continue
                 return {}
         return {}
 
@@ -9694,6 +9705,33 @@ class PortalImplementationDaemon:
             "task_ids": task_ids[:20],
             "task_count": len(task_ids),
         }
+
+    def _selectable_retry_no_change_probe_due(self) -> bool:
+        """Return whether provider backoff may yield to one local retry proof."""
+
+        if not self.implement or not self.use_ephemeral_worktree:
+            return False
+        state = PortalTaskState.load(self.state_path)
+        if state.active_task_id or state.implementation_in_progress:
+            return False
+        selectable_ids = set(state.selectable_ready_task_ids)
+        if not selectable_ids:
+            return False
+        now = time.time()
+        try:
+            tasks = self._load_tasks()
+        except (OSError, RuntimeError, ValueError):
+            return False
+        for task in tasks:
+            if task.task_id not in selectable_ids:
+                continue
+            canonical_ref = self.task_queue.resolve_key(task.task_id)
+            queue_entry = self.task_queue.entries.get(canonical_ref)
+            if queue_entry is not None and queue_entry.cooldown_until > now:
+                continue
+            if self._retry_no_change_pre_dispatch_scope(task, state) is not None:
+                return True
+        return False
 
     def _attach_runtime_retry_schedule(self, result: dict[str, Any]) -> None:
         """Attach the earliest provider or task-selection wake deadline."""
@@ -9813,6 +9851,11 @@ class PortalImplementationDaemon:
             self._record_event("implementation_skipped", result)
             return result
         deterministic_only = self._task_uses_typed_local_execution(task)
+        retry_probe_eligible = bool(
+            not deterministic_only
+            and self.use_ephemeral_worktree
+            and self._retry_no_change_pre_dispatch_scope(task, state) is not None
+        )
         completion_scope = completion_gap_edit_scope(
             task,
             repo_root=self.repo_root,
@@ -9828,7 +9871,7 @@ class PortalImplementationDaemon:
             return result
         provider_backoff = (
             {}
-            if deterministic_only
+            if deterministic_only or retry_probe_eligible
             else self._active_provider_capacity_backoff(task)
         )
         if provider_backoff:
@@ -10031,6 +10074,11 @@ class PortalImplementationDaemon:
                     )
                 self._compile_implementation_context(task, attempt)
                 prompt = ""
+            elif retry_probe_eligible:
+                # Provider-only context is intentionally lazy.  The retry
+                # probe runs in a disposable worktree and may prove the
+                # declared contract without consulting any model runtime.
+                prompt = ""
             else:
                 prompt = self._build_implementation_prompt(task, attempt)
         except ImplementationRetryDeferred as exc:
@@ -10178,11 +10226,14 @@ class PortalImplementationDaemon:
                     result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
                 self._record_event("implementation_skipped", result)
                 return result
-            context_receipt_path = self._persist_implementation_context_receipt(
-                task,
-                attempt,
-            )
             if self.use_ephemeral_worktree:
+                if not retry_probe_eligible:
+                    context_receipt_path = (
+                        self._persist_implementation_context_receipt(
+                            task,
+                            attempt,
+                        )
+                    )
                 ephemeral_result = self._run_implementation_in_ephemeral_worktree(
                     task=task,
                     state=state,
@@ -10190,7 +10241,97 @@ class PortalImplementationDaemon:
                     started_at=started_at,
                     log_path=log_path,
                     prompt=prompt,
+                    retry_no_change_probe_only=retry_probe_eligible,
                 )
+                if ephemeral_result.get(
+                    "retry_probe_requires_fresh_provider_workspace"
+                ):
+                    retry_probe_result = ephemeral_result
+                    cleanup_result = ephemeral_result.get("cleanup_result")
+                    if (
+                        not isinstance(cleanup_result, Mapping)
+                        or cleanup_result.get("cleaned") is not True
+                    ):
+                        return ephemeral_result
+                    provider_backoff = self._active_provider_capacity_backoff(
+                        task
+                    )
+                    if provider_backoff:
+                        backoff_result = {
+                            "skipped": True,
+                            "deferred": True,
+                            "reason": "provider_capacity_backoff",
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            "attempt_consumed": False,
+                            "provider_dispatched": False,
+                            "retry_probe_result": ephemeral_result,
+                            **provider_backoff,
+                        }
+                        retry_after_seconds = float(
+                            provider_backoff.get("retry_after_seconds") or 0.0
+                        )
+                        if retry_after_seconds > 0:
+                            self.task_queue.defer(
+                                self._canonical_ref(task),
+                                retry_after_seconds,
+                                reason="provider_capacity_backoff",
+                            )
+                            self.task_queue.save()
+                        self._record_event(
+                            "implementation_skipped",
+                            backoff_result,
+                        )
+                        return backoff_result
+                    try:
+                        prompt = self._build_implementation_prompt(
+                            task,
+                            attempt,
+                        )
+                    except ImplementationRetryDeferred as exc:
+                        if exc.backoff_seconds > 0:
+                            self.task_queue.defer(
+                                self._canonical_ref(task),
+                                exc.backoff_seconds,
+                                reason=exc.reason,
+                            )
+                            self.task_queue.save()
+                        deferred_result = {
+                            "skipped": True,
+                            "deferred": True,
+                            "reason": exc.reason.replace(" ", "_"),
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            "attempt_consumed": False,
+                            "provider_dispatched": False,
+                            "backoff_seconds": exc.backoff_seconds,
+                            "retry_probe_result": ephemeral_result,
+                        }
+                        self._record_event(
+                            "implementation_retry_deferred",
+                            deferred_result,
+                        )
+                        return deferred_result
+                    context_receipt_path = (
+                        self._persist_implementation_context_receipt(
+                            task,
+                            attempt,
+                        )
+                    )
+                    ephemeral_result = (
+                        self._run_implementation_in_ephemeral_worktree(
+                            task=task,
+                            state=state,
+                            attempt=attempt,
+                            started_at=started_at,
+                            log_path=log_path,
+                            prompt=prompt,
+                            retry_no_change_probe_only=False,
+                        )
+                    )
+                    ephemeral_result["retry_probe_result"] = (
+                        retry_probe_result
+                    )
                 pre_dispatch_setup_deferral = bool(
                     ephemeral_result.get("lifecycle_race")
                     or (
@@ -10247,10 +10388,15 @@ class PortalImplementationDaemon:
                             "attempt_consumed": False,
                         },
                     )
-                ephemeral_result["context_receipt_path"] = str(
-                    context_receipt_path
-                )
+                if context_receipt_path is not None:
+                    ephemeral_result["context_receipt_path"] = str(
+                        context_receipt_path
+                    )
                 return ephemeral_result
+            context_receipt_path = self._persist_implementation_context_receipt(
+                task,
+                attempt,
+            )
             try:
                 dependency_preflight = (
                     self._require_validation_project_dependency_preflight(
@@ -10373,7 +10519,7 @@ class PortalImplementationDaemon:
                         f"{' '.join(shlex.quote(item) for item in command)}\n\n"
                     )
                 log_fh.flush()
-                if not deterministic_only:
+                if retry_probe_eligible:
                     pre_dispatch_no_change_result = (
                         self._run_retry_no_change_pre_dispatch_validation(
                             workspace_path,
@@ -17598,6 +17744,7 @@ class PortalImplementationDaemon:
         started_at: str,
         log_path: Path,
         prompt: str,
+        retry_no_change_probe_only: bool = False,
     ) -> dict[str, Any]:
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
@@ -17605,6 +17752,8 @@ class PortalImplementationDaemon:
         safe_task_id = task.task_id.lower().replace("/", "-")
         identity_suffix = self._identity_for_task(task).short_id
         execution_id = f"{safe_task_id}-{identity_suffix}"
+        if retry_no_change_probe_only:
+            execution_id = f"{execution_id}-local-probe"
         attempt_stamp = int(time.time())
         worktree_path = self.worktree_root / f"{execution_id}-attempt-{attempt}-{attempt_stamp}"
         branch_name = f"implementation/{execution_id}-attempt-{attempt}-{attempt_stamp}"
@@ -17670,18 +17819,32 @@ class PortalImplementationDaemon:
                         "branch": branch_name,
                     },
                 )
-            seed_plan = self._prior_attempt_seed_plan(state=state, attempt=attempt)
+            seed_plan = (
+                {"reuse_prior_attempt": False}
+                if retry_no_change_probe_only
+                else self._prior_attempt_seed_plan(
+                    state=state,
+                    attempt=attempt,
+                )
+            )
             baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
             # A pooled checkout keeps a stable physical path so Git does not
             # have to relocate populated submodule worktrees.  Resolve the
             # task's provisional timestamp path before any command, state, or
             # merge metadata is built from it.
             worktree_path = self._effective_pooled_worktree_path(worktree_path)
-            seed_apply = self._apply_prior_attempt_seed(
-                worktree_path,
-                task=task,
-                seed_plan=seed_plan,
-                baseline_ref=baseline_ref,
+            seed_apply = (
+                {
+                    "applied": False,
+                    "reason": "retry_probe_uses_immutable_baseline",
+                }
+                if retry_no_change_probe_only
+                else self._apply_prior_attempt_seed(
+                    worktree_path,
+                    task=task,
+                    seed_plan=seed_plan,
+                    baseline_ref=baseline_ref,
+                )
             )
             if seed_apply.get("applied"):
                 seed_proposal_authority = seed_apply.get(
@@ -17748,7 +17911,7 @@ class PortalImplementationDaemon:
             )
             command = (
                 []
-                if deterministic_only
+                if deterministic_only or retry_no_change_probe_only
                 else self._build_implementation_command(
                     worktree_path,
                     task=task,
@@ -17793,9 +17956,7 @@ class PortalImplementationDaemon:
                 branch_name=branch_name,
             )
             implementation_started = True
-            self._record_event(
-                "implementation_started",
-                {
+            implementation_started_event = {
                     "task_id": task.task_id,
                     "attempt": attempt,
                     "outputs": list(task_declared_output_paths(task)),
@@ -17811,9 +17972,13 @@ class PortalImplementationDaemon:
                     "checkpoint_directory": str(checkpoint_dir),
                     "timeout_policy": timeout_policy.to_dict(),
                     "execution_mode": (
-                        ExecutionMode.DETERMINISTIC_ONLY.value
-                        if deterministic_only
-                        else "model-assisted"
+                        "local-retry-proof"
+                        if retry_no_change_probe_only
+                        else (
+                            ExecutionMode.DETERMINISTIC_ONLY.value
+                            if deterministic_only
+                            else "model-assisted"
+                        )
                     ),
                     "worktree_lifecycle": (
                         None
@@ -17825,7 +17990,12 @@ class PortalImplementationDaemon:
                             "requirement_id": FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
                         }
                     ),
-                },
+                }
+            if retry_no_change_probe_only:
+                implementation_started_event["provider_dispatched"] = False
+            self._record_event(
+                "implementation_started",
+                implementation_started_event,
             )
             with log_path.open("w", encoding="utf-8") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
@@ -17833,7 +18003,11 @@ class PortalImplementationDaemon:
                 log_fh.write(f"Workspace: {worktree_path}\n")
                 log_fh.write(f"Branch: {branch_name}\n")
                 log_fh.write(f"Baseline: {baseline_ref}\n")
-                if deterministic_only:
+                if retry_no_change_probe_only:
+                    log_fh.write(
+                        "Execution: isolated local retry contract proof\n\n"
+                    )
+                elif deterministic_only:
                     log_fh.write(
                         "Execution: typed local declared-validation-plan\n\n"
                     )
@@ -17843,7 +18017,7 @@ class PortalImplementationDaemon:
                         f"{' '.join(shlex.quote(item) for item in command)}\n\n"
                     )
                 log_fh.flush()
-                if not deterministic_only:
+                if retry_no_change_probe_only:
                     pre_dispatch_no_change_result = (
                         self._run_retry_no_change_pre_dispatch_validation(
                             worktree_path,
@@ -17856,7 +18030,11 @@ class PortalImplementationDaemon:
                             branch_name=branch_name,
                         )
                     )
-                if deterministic_only or pre_dispatch_no_change_result is not None:
+                if (
+                    deterministic_only
+                    or retry_no_change_probe_only
+                    or pre_dispatch_no_change_result is not None
+                ):
                     completed = subprocess.CompletedProcess(
                         args=(),
                         returncode=0,
@@ -17908,6 +18086,166 @@ class PortalImplementationDaemon:
                         },
                         invoke_provider,
                     )
+            if retry_no_change_probe_only:
+                probe_reason = str(
+                    (
+                        pre_dispatch_no_change_result.get(
+                            "pre_dispatch_no_change"
+                        )
+                        if isinstance(pre_dispatch_no_change_result, Mapping)
+                        else {}
+                    ).get("reason")
+                    or ""
+                )
+                probe_proved_contract = (
+                    probe_reason
+                    == "declared_validation_proved_existing_contract"
+                )
+                if not probe_proved_contract:
+                    try:
+                        probe_head = self._run_git(
+                            ["rev-parse", "HEAD"],
+                            cwd=worktree_path,
+                        ).stdout.strip()
+                    except (OSError, RuntimeError):
+                        probe_head = ""
+                    probe_branch = self._git_current_branch(worktree_path)
+                    control_state_valid = bool(
+                        probe_head == baseline_ref
+                        and probe_branch == branch_name
+                    )
+                    terminal_protected_violation = (
+                        self._finalize_implementation_protected_path_fence(
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=worktree_path,
+                            before=protected_path_snapshot,
+                            reason="retry_probe_terminal_check_unchanged",
+                        )
+                    )
+                    cleanup_result = self._cleanup_merged_worktree(
+                        worktree_path,
+                        branch_name,
+                        reusable=False,
+                    )
+                    clean_failed_probe = bool(
+                        pre_dispatch_no_change_result is None
+                        and control_state_valid
+                        and not terminal_protected_violation
+                    )
+                    cleanup_succeeded = cleanup_result.get("cleaned") is True
+                    attempt_consumed = bool(
+                        not clean_failed_probe and cleanup_succeeded
+                    )
+                    if attempt_consumed:
+                        self._record_task_attempt(state, task, attempt)
+                    else:
+                        self._restore_task_attempt(
+                            state,
+                            task,
+                            max(0, attempt - 1),
+                        )
+                    finished_at = utc_now()
+                    state.last_implementation_started_at = started_at
+                    state.last_implementation_finished_at = finished_at
+                    state.last_implementation_returncode = 1
+                    state.last_implementation_log_path = str(log_path)
+                    state.last_implementation_worktree_path = str(
+                        worktree_path
+                    )
+                    state.last_implementation_branch = branch_name
+                    self._mark_implementation_finished(
+                        state,
+                        finished_at=finished_at,
+                    )
+                    state.save(self.state_path)
+                    terminal_validation = (
+                        dict(pre_dispatch_no_change_result)
+                        if isinstance(
+                            pre_dispatch_no_change_result,
+                            Mapping,
+                        )
+                        else {
+                            "attempted": True,
+                            "passed": False,
+                            "returncode": 1,
+                            "reason": "declared_validation_failed",
+                        }
+                    )
+                    if not control_state_valid:
+                        terminal_validation.update(
+                            {
+                                "passed": False,
+                                "returncode": 1,
+                                "reason": (
+                                    "retry_probe_control_state_changed"
+                                ),
+                                "expected_head": baseline_ref,
+                                "actual_head": probe_head,
+                                "expected_branch": branch_name,
+                                "actual_branch": probe_branch,
+                            }
+                        )
+                    if terminal_protected_violation:
+                        terminal_validation.update(
+                            {
+                                "passed": False,
+                                "returncode": 1,
+                                "reason": (
+                                    "implementation_protected_path_mutated"
+                                ),
+                                "protected_path_violation": (
+                                    terminal_protected_violation
+                                ),
+                            }
+                        )
+                    probe_result = {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "returncode": 1,
+                        "log_path": str(log_path),
+                        "worktree_path": str(worktree_path),
+                        "branch": branch_name,
+                        "baseline_ref": baseline_ref,
+                        "validation_result": terminal_validation,
+                        "cleanup_result": cleanup_result,
+                        "attempt_consumed": attempt_consumed,
+                        "provider_dispatched": False,
+                        "provider_call_allowed": bool(
+                            clean_failed_probe and cleanup_succeeded
+                        ),
+                        "retry_probe_requires_fresh_provider_workspace": bool(
+                            clean_failed_probe and cleanup_succeeded
+                        ),
+                        "reason": (
+                            "retry_probe_requires_fresh_provider_workspace"
+                            if clean_failed_probe and cleanup_succeeded
+                            else (
+                                "retry_probe_cleanup_failed"
+                                if not cleanup_succeeded
+                                else str(
+                                    terminal_validation.get("reason")
+                                    or "retry_probe_blocked"
+                                )
+                            )
+                        ),
+                    }
+                    if not cleanup_succeeded:
+                        probe_result.update(
+                            {
+                                "deferred": True,
+                                "infrastructure_failure": True,
+                                "failure_kind": (
+                                    LifecycleFailureKind.LIFECYCLE_RACE.value
+                                ),
+                            }
+                        )
+                    probe_result["execution_mode"] = "local-retry-proof"
+                    self._record_event(
+                        "implementation_finished",
+                        probe_result,
+                    )
+                    return probe_result
             returncode = completed.returncode
             protected_path_violation = (
                 self._implementation_protected_path_violation(
@@ -18214,7 +18552,20 @@ class PortalImplementationDaemon:
                             cleanup_result = self._cleanup_merged_worktree(
                                 worktree_path,
                                 branch_name,
+                                reusable=not retry_no_change_probe_only,
                             )
+                            if (
+                                retry_no_change_probe_only
+                                and cleanup_result.get("cleaned") is not True
+                            ):
+                                returncode = 1
+                                validation_result = {
+                                    **validation_result,
+                                    "passed": False,
+                                    "returncode": 1,
+                                    "reason": "retry_probe_cleanup_failed",
+                                    "cleanup_result": cleanup_result,
+                                }
                         else:
                             returncode = 1
                             reason = "validated_candidate_missing_before_commit"

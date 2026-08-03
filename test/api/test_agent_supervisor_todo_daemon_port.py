@@ -13982,6 +13982,76 @@ def test_provider_capacity_schedule_probes_provider_for_exhaustion(
     assert probes == [True]
 
 
+def test_local_retry_proof_events_preserve_provider_capacity_latch(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_current_implementation_provider_labels",
+        lambda *_args, **_kwargs: {"codex", "provider"},
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["codex"],
+            "retry_at": "2026-08-03T09:10:00+00:00",
+        },
+    )
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": "ACCEL-002",
+            "command": [],
+            "provider_dispatched": False,
+        },
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "ACCEL-002",
+            "provider_dispatched": False,
+        },
+    )
+
+    assert daemon._provider_capacity_backoff_schedule()["active"] is True
+    assert daemon._provider_capacity_backoff_schedule_for_labels(
+        {"codex"}
+    )["active"] is True
+
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": "ACCEL-003",
+            "command": ["codex", "exec"],
+            "provider_dispatched": True,
+        },
+    )
+
+    assert daemon._provider_capacity_backoff_schedule() == {}
+    assert daemon._provider_capacity_backoff_schedule_for_labels(
+        {"codex"}
+    ) == {}
+
+
 def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     tmp_path,
     monkeypatch,
@@ -16889,7 +16959,7 @@ def test_non_ephemeral_provider_completes_already_satisfied_task_without_proposa
     assert result["attempt_consumed"] is True
 
 
-def test_non_ephemeral_retry_repair_bypasses_provider_when_already_satisfied(
+def test_non_ephemeral_retry_repair_does_not_probe_shared_checkout(
     tmp_path,
     monkeypatch,
 ):
@@ -16952,12 +17022,16 @@ def test_non_ephemeral_retry_repair_bypasses_provider_when_already_satisfied(
         "_require_validation_project_dependency_preflight",
         lambda **_kwargs: {"passed": True, "receipt_id": "dependency-ok"},
     )
+    provider_calls = []
+
+    def run_provider(*_args, **_kwargs):
+        provider_calls.append(True)
+        return subprocess.CompletedProcess(args=(), returncode=0)
+
     monkeypatch.setattr(
         implementation_daemon_module,
         "run_process_group_stream",
-        lambda *_args, **_kwargs: pytest.fail(
-            "an already-satisfied retry repair must not dispatch a provider"
-        ),
+        run_provider,
     )
     monkeypatch.setattr(
         daemon,
@@ -16998,12 +17072,11 @@ def test_non_ephemeral_retry_repair_bypasses_provider_when_already_satisfied(
     result = daemon._run_implementation(task, TodoTaskState())
 
     assert result["returncode"] == 0
-    assert result["provider_dispatched"] is False
+    assert result["provider_dispatched"] is True
+    assert provider_calls == [True]
     assert result["validation_result"]["candidate_binding"]["verified"] is True
     assert result["validation_result"]["no_change_guard"]["allowed"] is True
-    assert result["validation_result"]["pre_dispatch_no_change"]["reason"] == (
-        "declared_validation_proved_existing_contract"
-    )
+    assert "pre_dispatch_no_change" not in result["validation_result"]
     assert result["todo_update_result"] == durable_completion
 
 
@@ -17288,6 +17361,19 @@ def test_ephemeral_retry_repair_proves_satisfaction_before_provider_dispatch(
             "an already-satisfied retry repair must not dispatch a provider"
         ),
     )
+    for provider_only_method in (
+        "_active_provider_capacity_backoff",
+        "_build_implementation_prompt",
+        "_persist_implementation_context_receipt",
+        "_build_implementation_command",
+    ):
+        monkeypatch.setattr(
+            daemon,
+            provider_only_method,
+            lambda *_args, _method=provider_only_method, **_kwargs: pytest.fail(
+                f"local retry proof must precede {_method}"
+            ),
+        )
     monkeypatch.setattr(
         daemon,
         "_require_implementation_protected_snapshot",
@@ -17324,14 +17410,7 @@ def test_ephemeral_retry_repair_proves_satisfaction_before_provider_dispatch(
         lambda *_args, **_kwargs: None,
     )
 
-    result = daemon._run_implementation_in_ephemeral_worktree(
-        task=task,
-        state=TodoTaskState(),
-        attempt=1,
-        started_at=datetime.now(timezone.utc).isoformat(),
-        log_path=state_dir / "implementation.log",
-        prompt="provider prompt must remain unused",
-    )
+    result = daemon._run_implementation(task, TodoTaskState())
 
     assert result["returncode"] == 0
     assert result["provider_dispatched"] is False
@@ -17344,6 +17423,235 @@ def test_ephemeral_retry_repair_proves_satisfaction_before_provider_dispatch(
     )
     assert result["board_completion"]["complete"] is True
     assert result["todo_update_result"] == durable_completion
+    assert "context_receipt_path" not in result
+
+
+def test_failed_retry_probe_discards_ignored_side_effect_before_provider(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(".ignored-probe-sentinel\n", encoding="utf-8")
+    _git(repo, "add", "README.md", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-022",
+        title="Resolve implementation retry-budget failure for ACCEL-021",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-021 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-021",
+            "Retry failure kind": "implementation",
+        },
+    )
+    probe_paths = []
+
+    def failed_probe(workspace_path, *_args, **_kwargs):
+        probe_paths.append(Path(workspace_path))
+        (Path(workspace_path) / ".ignored-probe-sentinel").write_text(
+            "must not reach provider\n",
+            encoding="utf-8",
+        )
+        return {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "results": [],
+            "no_change_policy_gate": {"accepted": True},
+        }
+
+    provider_paths = []
+
+    def run_provider(_command, *, cwd, **_kwargs):
+        provider_path = Path(cwd)
+        provider_paths.append(provider_path)
+        assert "local-probe" not in provider_path.name
+        assert not (provider_path / ".ignored-probe-sentinel").exists()
+        return subprocess.CompletedProcess(args=(), returncode=1)
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_clean_candidate_validation",
+        failed_probe,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "repair from the clean baseline",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_command",
+        lambda *_args, **_kwargs: ["fake-agent"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        run_provider,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["provider_dispatched"] is True
+    assert len(probe_paths) == 1
+    assert len(provider_paths) == 1
+    assert probe_paths[0] != provider_paths[0]
+    assert not probe_paths[0].exists()
+    assert result["retry_probe_result"]["cleanup_result"]["cleaned"] is True
+    assert result["retry_probe_result"]["attempt_consumed"] is False
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert any(
+        event.get("type") == "implementation_finished"
+        and event.get("execution_mode") == "local-retry-proof"
+        and event.get("provider_dispatched") is False
+        for event in events
+    )
+
+
+def test_failed_retry_probe_honors_capacity_before_fresh_provider_workspace(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-032",
+        title="Resolve implementation retry-budget failure for ACCEL-031",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-031 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-031",
+            "Retry failure kind": "implementation",
+        },
+    )
+    probe_calls = []
+
+    def run_probe(**kwargs):
+        probe_calls.append(kwargs["retry_no_change_probe_only"])
+        return {
+            "task_id": task.task_id,
+            "attempt": 1,
+            "returncode": 1,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "retry_probe_requires_fresh_provider_workspace": True,
+            "cleanup_result": {"cleaned": True},
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation_in_ephemeral_worktree",
+        run_probe,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff",
+        lambda *_args, **_kwargs: {
+            "active": True,
+            "retry_at": "2026-08-03T10:00:00+00:00",
+            "retry_after_seconds": 120.0,
+            "providers": ["grok"],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "capacity must gate provider prompt after a failed probe"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "capacity must gate provider context after a failed probe"
+        ),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert probe_calls == [True]
+    assert result["reason"] == "provider_capacity_backoff"
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["retry_at"] == "2026-08-03T10:00:00+00:00"
 
 
 def test_provider_superproject_commit_is_queued_before_todo_completion(
