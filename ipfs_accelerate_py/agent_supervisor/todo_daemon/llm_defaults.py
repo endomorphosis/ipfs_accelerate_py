@@ -8,4 +8,6 @@ runtime model drift with ambient package resolution.
 from __future__ import annotations
 
 DEFAULT_CODEX_MODEL = "gpt-5.6-sol"
+DEFAULT_CODEX_FALLBACK_MODEL = "gpt-5.6-terra"
+DEFAULT_CODEX_FALLBACK_REASONING_EFFORT = "medium"
 DEFAULT_CODEX_PROVIDER = "codex_cli"

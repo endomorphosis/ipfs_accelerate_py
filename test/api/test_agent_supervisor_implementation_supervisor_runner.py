@@ -267,6 +267,10 @@ def test_task_specific_max_timeout_extends_only_the_parent_watchdog(
         supervisor.build_supervisor_loop_config().watchdog_stale_after_seconds
         == 7320
     )
+    assert (
+        supervisor.build_supervisor_loop_config().watchdog_hook_authoritative
+        is True
+    )
 
 
 def test_run_portal_implementation_supervisor_runs_before_and_after_once_hooks(caplog):

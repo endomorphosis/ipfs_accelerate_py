@@ -63,6 +63,7 @@ class SupervisorLoopConfig:
     watchdog_startup_grace_seconds: float = 30.0
     stop_grace_seconds: float = 10.0
     max_restarts: int = 0
+    watchdog_hook_authoritative: bool = False
     latest_log_path: Optional[Path] = None
     child_env: Mapping[str, str] = field(default_factory=dict)
     status_static_fields: Mapping[str, Any] = field(default_factory=dict)
@@ -132,6 +133,7 @@ class SupervisorLoop:
                 "supervisor_poll_seconds": config.poll_seconds,
                 "watchdog_stale_after_seconds": config.watchdog_stale_after_seconds,
                 "watchdog_startup_grace_seconds": config.watchdog_startup_grace_seconds,
+                "watchdog_hook_authoritative": config.watchdog_hook_authoritative,
                 "stop_grace_seconds": config.stop_grace_seconds,
                 **dict(config.status_static_fields),
             },
@@ -311,6 +313,8 @@ class SupervisorLoop:
 
     def watchdog_decision(self, child: SupervisedChild) -> SupervisorLoopDecision:
         current_status = read_json(self.config.spec.resolve(self.config.spec.status_path))
+        if self.watchdog_hook is not None and self.config.watchdog_hook_authoritative:
+            return self.watchdog_hook(self, child, current_status)
         decision = self.default_watchdog(child, current_status)
         if decision.action != "continue":
             return decision

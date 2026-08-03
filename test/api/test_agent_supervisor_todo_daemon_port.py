@@ -8072,6 +8072,52 @@ def test_supervisor_loop_starts_stall_clock_when_worker_disappears(tmp_path):
     assert expired["stalled_without_active_worker"] is True
 
 
+def test_authoritative_watchdog_hook_can_keep_idle_daemon_with_stale_projection(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    status_path = state_dir / "daemon_status.json"
+    status_path.parent.mkdir(parents=True)
+    status_path.write_text(
+        json.dumps({"heartbeat_at": "2000-01-01T00:00:00+00:00"}),
+        encoding="utf-8",
+    )
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=status_path,
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    calls = []
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+            watchdog_stale_after_seconds=1,
+            watchdog_hook_authoritative=True,
+        ),
+        watchdog_hook=lambda _loop, _child, status: (
+            calls.append(dict(status)) or SupervisorLoopDecision.keep_running()
+        ),
+    )
+
+    decision = loop.watchdog_decision(SimpleNamespace(pid=os.getpid()))
+
+    assert decision.action == "continue"
+    assert calls == [{"heartbeat_at": "2000-01-01T00:00:00+00:00"}]
+
+
 def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

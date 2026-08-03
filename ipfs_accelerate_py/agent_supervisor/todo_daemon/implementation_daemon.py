@@ -132,7 +132,11 @@ from ..validation.validation_scheduler import (
     build_declared_validation_plan_graph,
 )
 from .diagnostics import summarize_test_failure
-from .llm_defaults import DEFAULT_CODEX_MODEL
+from .llm_defaults import (
+    DEFAULT_CODEX_FALLBACK_MODEL,
+    DEFAULT_CODEX_FALLBACK_REASONING_EFFORT,
+    DEFAULT_CODEX_MODEL,
+)
 from .post_merge_validation import build_post_merge_validation_evidence
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
@@ -1466,13 +1470,10 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
             "Grok CLI is not authenticated. Run 'grok login' or set XAI_API_KEY"
         )
 
-    model = (
-        os.environ.get(_GROK_MODEL_ENV, "").strip()
-        or os.environ.get("GROK_CLI_MODEL", "").strip()
-        or os.environ.get("GROK_MODEL", "").strip()
-        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-        or "grok-4.5"
-    )
+    # This default implementation route is an operator-owned contract.  Do
+    # not let ambient model variables silently move the primary away from the
+    # reviewed Grok release.
+    model = "grok-4.5"
     # Prefer an effectively uncapped turn budget; the implementation daemon
     # still enforces implementation_timeout as the hard wall-clock limit.
     max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip() or "100000"
@@ -1526,21 +1527,29 @@ def _codex_implementation_command(
     codex: str,
     workspace_path: Path,
     codex_context_window: int | None = None,
+    quota_fallback: bool = False,
 ) -> list[str]:
     """Build the non-interactive Codex implementation argv."""
 
-    codex_model = (
-        os.environ.get(_CODEX_MODEL_ENV, "").strip()
-        or DEFAULT_CODEX_MODEL
-    )
+    if quota_fallback:
+        # The Grok quota fallback is deliberately exact.  Ambient Codex
+        # settings must not turn an exhausted-primary retry into a different
+        # model route.
+        codex_model = DEFAULT_CODEX_FALLBACK_MODEL
+        codex_reasoning = DEFAULT_CODEX_FALLBACK_REASONING_EFFORT
+    else:
+        codex_model = (
+            os.environ.get(_CODEX_MODEL_ENV, "").strip()
+            or DEFAULT_CODEX_MODEL
+        )
+        codex_reasoning = os.environ.get(
+            _CODEX_REASONING_EFFORT_ENV, "high"
+        ).strip()
     codex_context = (
         str(codex_context_window)
         if codex_context_window is not None
         else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
     )
-    codex_reasoning = os.environ.get(
-        _CODEX_REASONING_EFFORT_ENV, "high"
-    ).strip()
     codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
     codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
 
@@ -11304,7 +11313,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "branch": branch_name,
                     },
                 )
-            seed_plan = self._prior_attempt_seed_plan(state=state, attempt=attempt)
+            seed_plan = self._prior_attempt_seed_plan(
+                task=task,
+                state=state,
+                attempt=attempt,
+            )
             if approved_root_target_commit:
                 baseline_ref = self._create_seeded_worktree(
                     worktree_path,
@@ -13141,6 +13154,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _prior_attempt_seed_plan(
         self,
         *,
+        task: PortalTask,
         state: PortalTaskState,
         attempt: int,
     ) -> dict[str, Any]:
@@ -13160,11 +13174,47 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "reason": "merge_target_baseline",
             "prior_commit": "",
             "prior_branch": "",
+            "prior_changed_paths": [],
+            "prior_out_of_scope_paths": [],
         }
         if int(attempt or 0) <= 1:
             return plan
+        identity = self._identity_for_task(task)
+        expected_identity = {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+        }
+        observed_identity = {
+            "task_id": str(state.last_implementation_task_id or "").strip(),
+            "canonical_task_key": str(
+                state.last_implementation_task_key or ""
+            ).strip(),
+            "canonical_task_cid": str(
+                state.last_implementation_task_cid or ""
+            ).strip(),
+        }
+        plan["expected_task_identity"] = expected_identity
+        plan["prior_task_identity"] = observed_identity
+        identity_mismatch = (
+            observed_identity["task_id"] != expected_identity["task_id"]
+            or (
+                bool(observed_identity["canonical_task_key"])
+                and observed_identity["canonical_task_key"]
+                != expected_identity["canonical_task_key"]
+            )
+            or (
+                bool(observed_identity["canonical_task_cid"])
+                and observed_identity["canonical_task_cid"]
+                != expected_identity["canonical_task_cid"]
+            )
+        )
+        if identity_mismatch:
+            plan["reason"] = "prior_attempt_task_identity_mismatch"
+            return plan
         prior_commit = str(state.last_implementation_commit or "").strip()
         prior_branch = str(state.last_implementation_branch or "").strip()
+        plan["prior_branch"] = prior_branch
         candidate = ""
         if prior_commit and self._git_commit_exists_in_repo(
             self.repo_root, prior_commit
@@ -13184,6 +13234,31 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return plan
         if self._git_ref_is_ancestor(candidate, target):
             plan["reason"] = "prior_already_on_merge_target"
+            return plan
+        changed_paths = self._branch_changed_paths_in_repo(
+            self.repo_root,
+            candidate,
+            base_ref=target,
+        )
+        if changed_paths is None:
+            plan["reason"] = "prior_attempt_diff_unavailable"
+            return plan
+        plan["prior_changed_paths"] = sorted(changed_paths)
+        scope_paths = self._proposal_scope_paths(task)
+        out_of_scope_paths = sorted(
+            path
+            for path in changed_paths
+            if not any(
+                self._path_matches_prefix(path, scope)
+                for scope in scope_paths
+            )
+        )
+        plan["prior_out_of_scope_paths"] = out_of_scope_paths
+        if not changed_paths:
+            plan["reason"] = "prior_attempt_has_no_task_changes"
+            return plan
+        if not scope_paths or out_of_scope_paths:
+            plan["reason"] = "prior_attempt_paths_outside_task_scope"
             return plan
         plan["seed_ref"] = candidate
         plan["reuse_prior_attempt"] = True
@@ -27575,6 +27650,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "login/auth (or XAI_API_KEY)"
                 )
             return _grok_cli_command(workspace_path=workspace_path)
+        if prefer_grok and (not grok_ready or not _grok_binary()):
+            raise RuntimeError(
+                "The automatic implementation route requires the Grok Build "
+                "CLI (`grok`) with login/auth (or XAI_API_KEY). Codex is "
+                "reserved for a verified Grok quota-exhaustion response and "
+                "cannot replace a missing or unavailable Grok CLI."
+            )
         if (
             prefer_grok
             and grok_ready
@@ -27598,6 +27680,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 codex=codex,
                                 workspace_path=workspace_path,
                                 codex_context_window=codex_context_window,
+                                quota_fallback=True,
                             ),
                             separators=(",", ":"),
                         ),

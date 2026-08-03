@@ -2172,6 +2172,11 @@ class PortalImplementationSupervisor:
             watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
+            # The generic watchdog understands only the task-state timestamp.
+            # Event-driven idle passes intentionally avoid rewriting that
+            # projection, so let the implementation-aware hook make the
+            # authoritative process/worker/log decision for this daemon.
+            watchdog_hook_authoritative=True,
             status_static_fields={
                 "todo_path": str(self.config.todo_path),
                 "state_path": str(self.config.state_path),

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
+    PortalTask,
     PortalTaskState,
 )
 
@@ -18,6 +19,20 @@ def _daemon(tmp_path: Path) -> PortalImplementationDaemon:
         strategy_path=tmp_path / "strategy.json",
         events_path=tmp_path / "events.jsonl",
         repo_root=tmp_path,
+    )
+
+
+def _task(task_id: str = "LIG-016") -> PortalTask:
+    return PortalTask(
+        task_id=task_id,
+        title="t",
+        status="ready",
+        completion="artifact",
+        priority="P0",
+        track="gate",
+        outputs=["src/output.py"],
+        canonical_task_key=f"task/v1/{task_id.lower()}",
+        canonical_task_cid=f"cid-{task_id.lower()}",
     )
 
 
@@ -70,11 +85,23 @@ def test_prior_attempt_seed_plan_reuses_unmerged_commit(
         lambda ancestor, descendant: False,
     )
     state = PortalTaskState(
+        last_implementation_task_id="LIG-016",
+        last_implementation_task_key="task/v1/lig-016",
+        last_implementation_task_cid="cid-lig-016",
         last_implementation_commit="abc123prior",
         last_implementation_branch="implementation/lig-016-attempt-1",
         last_implementation_returncode=78,
     )
-    plan = daemon._prior_attempt_seed_plan(state=state, attempt=2)
+    monkeypatch.setattr(
+        daemon,
+        "_branch_changed_paths_in_repo",
+        lambda _repo, _ref, base_ref: {"src/output.py"},
+    )
+    plan = daemon._prior_attempt_seed_plan(
+        task=_task(),
+        state=state,
+        attempt=2,
+    )
     assert plan["reuse_prior_attempt"] is True
     assert plan["seed_ref"] == "abc123prior"
     assert plan["reason"] == "prior_failed_attempt_commit"
@@ -97,8 +124,17 @@ def test_prior_attempt_seed_plan_skips_when_already_on_target(
         "_git_ref_is_ancestor",
         lambda ancestor, descendant: ancestor == "abc123prior",
     )
-    state = PortalTaskState(last_implementation_commit="abc123prior")
-    plan = daemon._prior_attempt_seed_plan(state=state, attempt=3)
+    state = PortalTaskState(
+        last_implementation_task_id="LIG-016",
+        last_implementation_task_key="task/v1/lig-016",
+        last_implementation_task_cid="cid-lig-016",
+        last_implementation_commit="abc123prior",
+    )
+    plan = daemon._prior_attempt_seed_plan(
+        task=_task(),
+        state=state,
+        attempt=3,
+    )
     assert plan["reuse_prior_attempt"] is False
     assert plan["reason"] == "prior_already_on_merge_target"
 
@@ -109,10 +145,109 @@ def test_prior_attempt_seed_plan_first_attempt_uses_baseline(
     daemon = _daemon(tmp_path)
     monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/x")
     state = PortalTaskState(last_implementation_commit="abc123prior")
-    plan = daemon._prior_attempt_seed_plan(state=state, attempt=1)
+    plan = daemon._prior_attempt_seed_plan(
+        task=_task(),
+        state=state,
+        attempt=1,
+    )
     assert plan["reuse_prior_attempt"] is False
     assert plan["seed_ref"] == "feature/x"
     assert plan["reason"] == "merge_target_baseline"
+
+
+def test_prior_attempt_seed_plan_rejects_cross_task_last_commit(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    daemon = _daemon(tmp_path)
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/x")
+    state = PortalTaskState(
+        last_implementation_task_id="OTHER-001",
+        last_implementation_task_key="task/v1/other-001",
+        last_implementation_task_cid="cid-other-001",
+        last_implementation_commit="other-commit",
+    )
+
+    plan = daemon._prior_attempt_seed_plan(
+        task=_task(),
+        state=state,
+        attempt=2,
+    )
+
+    assert plan["reuse_prior_attempt"] is False
+    assert plan["reason"] == "prior_attempt_task_identity_mismatch"
+    assert plan["seed_ref"] == "feature/x"
+    assert plan["prior_task_identity"]["task_id"] == "OTHER-001"
+
+
+def test_prior_attempt_seed_plan_rejects_revised_canonical_task(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    daemon = _daemon(tmp_path)
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/x")
+    state = PortalTaskState(
+        last_implementation_task_id="LIG-016",
+        last_implementation_task_key="task/v1/obsolete-lig-016",
+        last_implementation_task_cid="cid-obsolete-lig-016",
+        last_implementation_commit="obsolete-commit",
+    )
+
+    plan = daemon._prior_attempt_seed_plan(
+        task=_task(),
+        state=state,
+        attempt=2,
+    )
+
+    assert plan["reuse_prior_attempt"] is False
+    assert plan["reason"] == "prior_attempt_task_identity_mismatch"
+    assert plan["prior_task_identity"]["canonical_task_cid"] == (
+        "cid-obsolete-lig-016"
+    )
+
+
+def test_prior_attempt_seed_plan_rejects_out_of_scope_prior_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    daemon = _daemon(tmp_path)
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/x")
+    monkeypatch.setattr(
+        daemon,
+        "_git_commit_exists_in_repo",
+        lambda _repo, ref: ref == "prior-commit",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_git_ref_is_ancestor",
+        lambda _ancestor, _descendant: False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_branch_changed_paths_in_repo",
+        lambda _repo, _ref, base_ref: {
+            "src/output.py",
+            "faiss_index/generated.index",
+        },
+    )
+    state = PortalTaskState(
+        last_implementation_task_id="LIG-016",
+        last_implementation_task_key="task/v1/lig-016",
+        last_implementation_task_cid="cid-lig-016",
+        last_implementation_commit="prior-commit",
+    )
+
+    plan = daemon._prior_attempt_seed_plan(
+        task=_task(),
+        state=state,
+        attempt=2,
+    )
+
+    assert plan["reuse_prior_attempt"] is False
+    assert plan["reason"] == "prior_attempt_paths_outside_task_scope"
+    assert plan["prior_out_of_scope_paths"] == [
+        "faiss_index/generated.index"
+    ]
 
 
 def test_apply_prior_attempt_seed_fast_forward(

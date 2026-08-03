@@ -2783,7 +2783,7 @@ _SECRET_PLACEHOLDER_RE = re.compile(
     r""")"""
 )
 _NEVER_EXPOSE_SENTINEL_RE = re.compile(
-    r"""(?ix)^(?:should|must)[_-]?never[_-]?"""
+    r"""(?ix)^(?:should|must)[_-]?(?:never|not)[_-]?"""
     r"""(?:appear|persist|log|store|commit)$"""
 )
 
