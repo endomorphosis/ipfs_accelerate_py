@@ -5973,7 +5973,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ),
             "child_process": (),
             "lease": tuple(lease_paths),
-            "validation": (Path(self.validation_cache_dir),),
+            # Only successful namespace entries can change validation
+            # authority.  The cache root also contains the shared
+            # single-flight SQLite database and advisory lock files; their
+            # lease/heartbeat writes are coordination noise and must not wake
+            # every idle supervisor lane for a full task-board reconciliation.
+            "validation": (
+                Path(self.validation_cache_dir) / "entries" / "validation",
+            ),
             "provider_capacity": (),
             "policy": tuple(policy_paths),
             "observation_window": (),
