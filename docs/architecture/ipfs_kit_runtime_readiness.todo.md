@@ -1533,7 +1533,7 @@ or write authority.
 
 ## KITA-049 Resolve implementation retry-budget failure for KITA-033
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
