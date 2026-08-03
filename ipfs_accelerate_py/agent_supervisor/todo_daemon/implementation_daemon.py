@@ -11,6 +11,8 @@ import math
 import os
 import posixpath
 import re
+import secrets
+import select
 import signal
 import shlex
 import shutil
@@ -122,6 +124,15 @@ from ..provider_command_environment import (
     PROVIDER_COMMAND_ENV_WRAPPER_ENV,
     project_provider_command_environment,
     provider_command_environment_sha256,
+)
+from ..grok_cli_runner import (
+    GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+    GROK_TERMINAL_RECEIPT_FD_ENV,
+    GROK_TERMINAL_RECEIPT_MAX_BYTES,
+    bind_grok_runner_command,
+    encode_grok_terminal_quota_receipt,
+    parse_grok_terminal_quota_receipt,
+    validate_grok_runner_command_binding,
 )
 from ..control.control_contracts import CursorReplayError
 from ..evidence_output_scope import (
@@ -430,6 +441,41 @@ _GROK_CONTEXT_WINDOW_ENV = "IPFS_ACCELERATE_AGENT_GROK_CONTEXT_WINDOW"
 DEFAULT_GROK_IMPLEMENTATION_MODEL = "grok-4.5"
 GROK_QUOTA_FALLBACK_CODEX_MODEL = "gpt-5.6-terra"
 GROK_QUOTA_FALLBACK_CODEX_REASONING_EFFORT = "medium"
+GROK_QUOTA_VERIFIER_COMMAND_ENV = (
+    "IPFS_ACCELERATE_AGENT_GROK_QUOTA_VERIFIER_COMMAND"
+)
+GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV = (
+    "IPFS_ACCELERATE_AGENT_GROK_QUOTA_VERIFIER_ED25519_PUBLIC_KEY"
+)
+GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV = (
+    "IPFS_ACCELERATE_AGENT_GROK_BUILD_ACCOUNT_ID"
+)
+GROK_QUOTA_VERIFIER_POOL_ID_ENV = (
+    "IPFS_ACCELERATE_AGENT_GROK_BUILD_QUOTA_POOL_ID"
+)
+GROK_QUOTA_VERIFIER_TIMEOUT_ENV = (
+    "IPFS_ACCELERATE_AGENT_GROK_QUOTA_VERIFIER_TIMEOUT_SECONDS"
+)
+GROK_QUOTA_VERIFIER_REQUEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "grok-quota-verifier-request@1"
+)
+GROK_QUOTA_VERIFIER_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "grok-quota-verifier-receipt@1"
+)
+GROK_QUOTA_VERIFIER_RECEIPT_PREFIX = (
+    "IPFS_ACCELERATE_GROK_QUOTA_VERIFIER_RECEIPT "
+)
+GROK_QUOTA_VERIFIER_MAX_REQUEST_BYTES = 256 * 1024
+GROK_QUOTA_VERIFIER_MAX_OUTPUT_BYTES = 16 * 1024
+GROK_QUOTA_VERIFIER_MAX_COMMAND_BYTES = 4096
+GROK_QUOTA_VERIFIER_MAX_COMMAND_ARGUMENTS = 32
+GROK_QUOTA_VERIFIER_MAX_COMMAND_ARGUMENT_BYTES = 1024
+GROK_QUOTA_VERIFIER_MAX_IDENTIFIER_BYTES = 256
+GROK_QUOTA_VERIFIER_MAX_LIFETIME_SECONDS = 300
+DEFAULT_GROK_QUOTA_VERIFIER_TIMEOUT_SECONDS = 15.0
+GROK_QUOTA_VERIFIER_RETRY_SECONDS = 60
 GROK_QUOTA_CODEX_PROVIDER_ALIASES = frozenset(
     {
         "grok_quota_codex",
@@ -438,6 +484,45 @@ GROK_QUOTA_CODEX_PROVIDER_ALIASES = frozenset(
         "grok-quota-codex-fallback",
     }
 )
+
+
+def _strict_urlsafe_base64_decode(value: str) -> bytes:
+    """Decode one canonical unpadded URL-safe base64 value."""
+
+    if not isinstance(value, str) or not re.fullmatch(
+        r"[A-Za-z0-9_-]+",
+        value,
+    ):
+        raise ValueError("noncanonical URL-safe base64")
+    encoded = value.encode("ascii")
+    decoded = base64.b64decode(
+        encoded + b"=" * (-len(encoded) % 4),
+        altchars=b"-_",
+        validate=True,
+    )
+    canonical = base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=")
+    if canonical != value:
+        raise ValueError("noncanonical URL-safe base64")
+    return decoded
+
+
+def _bounded_grok_quota_verifier_identifier(value: str) -> bool:
+    """Accept one bounded, printable, exact verifier identifier."""
+
+    if not isinstance(value, str) or not value or value != value.strip():
+        return False
+    if len(value) > GROK_QUOTA_VERIFIER_MAX_IDENTIFIER_BYTES:
+        return False
+    if any(
+        ord(character) < 0x20 or ord(character) == 0x7F
+        for character in value
+    ):
+        return False
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return len(encoded) <= GROK_QUOTA_VERIFIER_MAX_IDENTIFIER_BYTES
 IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE"
 )
@@ -1552,7 +1637,7 @@ def _grok_cli_command(
     runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
     if not runner_path.is_file():
         raise RuntimeError(f"grok_cli_runner missing at {runner_path}")
-    return [
+    command = [
         sys.executable,
         str(runner_path),
         "--workspace",
@@ -1566,6 +1651,7 @@ def _grok_cli_command(
         "--mode",
         "agent",
     ]
+    return bind_grok_runner_command(command)
 
 
 def _copilot_has_auth() -> bool:
@@ -2279,6 +2365,98 @@ def _provider_labels_from_implementation_command(
             if provider not in labels:
                 labels.append(provider)
     return labels
+
+
+def _is_exact_internal_grok_runner_command(
+    command: Sequence[str],
+) -> bool:
+    """Require the exact supervisor-owned Grok 4.5 agent command shape."""
+
+    values = [str(item) for item in command]
+    if len(values) != 16:
+        return False
+    expected_runner = (
+        Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
+    ).resolve()
+    try:
+        python_matches = Path(values[0]).resolve() == Path(
+            sys.executable
+        ).resolve()
+        runner_matches = Path(values[1]).resolve() == expected_runner
+        max_turns = int(values[9])
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return bool(
+        python_matches
+        and runner_matches
+        and values[2] == "--workspace"
+        and Path(values[3]).is_absolute()
+        and values[4] == "--grok-bin"
+        and bool(values[5].strip())
+        and values[6:8]
+        == ["--model", DEFAULT_GROK_IMPLEMENTATION_MODEL]
+        and values[8] == "--max-turns"
+        and 1 <= max_turns <= 4_294_967_295
+        and values[10:12] == ["--mode", "agent"]
+        and values[12] == "--invocation-id"
+        and values[14] == "--invocation-binding-sha256"
+        and bool(validate_grok_runner_command_binding(values))
+    )
+
+
+def _open_grok_terminal_receipt_pipe(
+    command: Sequence[str],
+) -> tuple[int, int]:
+    """Open a runner-only control channel for an exact Grok invocation."""
+
+    if not _is_exact_internal_grok_runner_command(command):
+        return -1, -1
+    try:
+        read_fd, write_fd = os.pipe()
+        os.set_blocking(read_fd, False)
+        return read_fd, write_fd
+    except OSError:
+        # Provider execution may proceed, but quota fallback fails closed when
+        # its private authority channel cannot be constructed.
+        return -1, -1
+
+
+def _close_descriptor(descriptor: int) -> None:
+    if descriptor < 0:
+        return
+    try:
+        os.close(descriptor)
+    except OSError:
+        pass
+
+
+def _read_grok_terminal_receipt(descriptor: int) -> bytes:
+    """Read one bounded receipt after the runner process has terminated."""
+
+    if descriptor < 0:
+        return b""
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        while total <= GROK_TERMINAL_RECEIPT_MAX_BYTES:
+            chunk = os.read(
+                descriptor,
+                GROK_TERMINAL_RECEIPT_MAX_BYTES + 1 - total,
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+    except BlockingIOError:
+        pass
+    except OSError:
+        return b""
+    value = b"".join(chunks)
+    return (
+        value
+        if 0 < len(value) <= GROK_TERMINAL_RECEIPT_MAX_BYTES
+        else b""
+    )
 
 
 def classify_provider_capacity_failure(
@@ -3418,6 +3596,14 @@ class PortalImplementationDaemon:
         self._implementation_retry_not_before: dict[str, float] = {}
         self._implementation_seed_failure_guidance: dict[str, str] = {}
         self._implementation_scope_adjudications: dict[str, Any] = {}
+        # Durable lifecycle events are diagnostic evidence, not sufficient
+        # authority for Grok -> Codex fallback: a bypass-permissions child runs
+        # as the same OS user and can rewrite those files.  The opaque
+        # classification sentinel and exact appended event IDs never cross the
+        # child boundary and deliberately start empty after every daemon
+        # restart, which makes restart behavior fail closed to Grok.
+        self._grok_quota_classification_sentinel = object()
+        self._live_grok_quota_exhaustion_event_ids: set[str] = set()
         self.use_ephemeral_worktree = use_ephemeral_worktree
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
         # The implementation runner executes with the ephemeral worktree as
@@ -9757,12 +9943,652 @@ class PortalImplementationDaemon:
         except ValueError:
             return DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS
 
+    @staticmethod
+    def _stop_grok_quota_verifier_process(
+        process: subprocess.Popen[bytes],
+    ) -> None:
+        """Stop a verifier process group without trusting child cleanup."""
+
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            try:
+                process.kill()
+            except (OSError, ProcessLookupError):
+                pass
+        try:
+            process.wait(timeout=1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    def _run_grok_quota_verifier(self, request_bytes: bytes) -> bytes:
+        """Exchange one bounded request under a single nonblocking deadline."""
+
+        if (
+            not isinstance(request_bytes, bytes)
+            or not request_bytes
+            or len(request_bytes) > GROK_QUOTA_VERIFIER_MAX_REQUEST_BYTES
+        ):
+            return b""
+
+        configured_raw = os.environ.get(
+            GROK_QUOTA_VERIFIER_COMMAND_ENV,
+            "",
+        )
+        if len(configured_raw) > GROK_QUOTA_VERIFIER_MAX_COMMAND_BYTES:
+            return b""
+        configured = configured_raw.strip()
+        if not configured:
+            return b""
+        try:
+            configured_bytes = configured.encode("utf-8")
+        except UnicodeEncodeError:
+            return b""
+        if len(configured_bytes) > GROK_QUOTA_VERIFIER_MAX_COMMAND_BYTES:
+            return b""
+        try:
+            command = shlex.split(configured)
+        except ValueError:
+            return b""
+        if (
+            not command
+            or len(command) > GROK_QUOTA_VERIFIER_MAX_COMMAND_ARGUMENTS
+        ):
+            return b""
+        try:
+            if any(
+                not item
+                or len(item.encode("utf-8"))
+                > GROK_QUOTA_VERIFIER_MAX_COMMAND_ARGUMENT_BYTES
+                for item in command
+            ):
+                return b""
+        except UnicodeEncodeError:
+            return b""
+        raw_timeout = os.environ.get(
+            GROK_QUOTA_VERIFIER_TIMEOUT_ENV,
+            "",
+        ).strip()
+        try:
+            timeout_seconds = (
+                float(raw_timeout)
+                if raw_timeout
+                else DEFAULT_GROK_QUOTA_VERIFIER_TIMEOUT_SECONDS
+            )
+        except ValueError:
+            return b""
+        if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 60:
+            return b""
+        # This deadline covers process launch, every request write, every
+        # response read, and waiting for the verifier leader. No pipe I/O is
+        # permitted before it exists.
+        deadline = time.monotonic() + timeout_seconds
+        verifier_environment = dict(os.environ)
+        verifier_environment.pop(GROK_TERMINAL_RECEIPT_FD_ENV, None)
+        try:
+            process: subprocess.Popen[bytes] = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                env=verifier_environment,
+                close_fds=True,
+                start_new_session=True,
+            )
+        except (OSError, ValueError):
+            return b""
+        if process.stdin is None or process.stdout is None:
+            self._stop_grok_quota_verifier_process(process)
+            return b""
+        input_fd = process.stdin.fileno()
+        output_fd = process.stdout.fileno()
+        output = bytearray()
+        input_offset = 0
+        input_open = True
+        output_open = True
+        try:
+            os.set_blocking(input_fd, False)
+            os.set_blocking(output_fd, False)
+            while input_open or output_open:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return b""
+                readers = (output_fd,) if output_open else ()
+                writers = (input_fd,) if input_open else ()
+                try:
+                    readable, writable, _ = select.select(
+                        readers,
+                        writers,
+                        (),
+                        min(0.1, remaining),
+                    )
+                except InterruptedError:
+                    continue
+                if input_open and input_fd in writable:
+                    try:
+                        written = os.write(
+                            input_fd,
+                            request_bytes[
+                                input_offset : input_offset + 64 * 1024
+                            ],
+                        )
+                    except BlockingIOError:
+                        written = 0
+                    except InterruptedError:
+                        continue
+                    except (BrokenPipeError, OSError):
+                        return b""
+                    if written < 0:
+                        return b""
+                    input_offset += written
+                    if input_offset == len(request_bytes):
+                        try:
+                            process.stdin.close()
+                        except (BrokenPipeError, OSError):
+                            return b""
+                        input_open = False
+                if not output_open or output_fd not in readable:
+                    continue
+                read_limit = min(
+                    4096,
+                    GROK_QUOTA_VERIFIER_MAX_OUTPUT_BYTES
+                    + 1
+                    - len(output),
+                )
+                if read_limit <= 0:
+                    return b""
+                try:
+                    chunk = os.read(output_fd, read_limit)
+                except BlockingIOError:
+                    continue
+                except InterruptedError:
+                    continue
+                if not chunk:
+                    try:
+                        process.stdout.close()
+                    except OSError:
+                        return b""
+                    output_open = False
+                    continue
+                output.extend(chunk)
+                if len(output) > GROK_QUOTA_VERIFIER_MAX_OUTPUT_BYTES:
+                    return b""
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return b""
+            try:
+                returncode = process.wait(timeout=remaining)
+            except subprocess.TimeoutExpired:
+                return b""
+            return bytes(output) if returncode == 0 else b""
+        except (OSError, ValueError):
+            return b""
+        finally:
+            # Kill the entire verifier process group even after its leader
+            # exits successfully so a verifier cannot orphan helpers.
+            self._stop_grok_quota_verifier_process(process)
+            if input_open:
+                try:
+                    process.stdin.close()
+                except (BrokenPipeError, OSError):
+                    pass
+            if output_open:
+                try:
+                    process.stdout.close()
+                except OSError:
+                    pass
+
+    def _trusted_grok_quota_verifier_receipt(
+        self,
+        candidate: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Verify an independently signed, invocation-bound quota verdict.
+
+        The signer is an operator trust boundary: it must independently query
+        the exact configured Grok Build account and entitlement pool.  Merely
+        echoing the candidate, or checking a generic xAI API account, is not a
+        valid implementation of this verifier contract.  Its private key must
+        be unavailable to the daemon's same-UID model descendants.
+        """
+
+        public_key_text = os.environ.get(
+            GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV,
+            "",
+        )
+        expected_account_id = os.environ.get(
+            GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV,
+            "",
+        )
+        expected_quota_pool_id = os.environ.get(
+            GROK_QUOTA_VERIFIER_POOL_ID_ENV,
+            "",
+        )
+        if (
+            not _bounded_grok_quota_verifier_identifier(
+                expected_account_id
+            )
+            or not _bounded_grok_quota_verifier_identifier(
+                expected_quota_pool_id
+            )
+            or candidate.get("provider") != "grok"
+            or candidate.get("model") != DEFAULT_GROK_IMPLEMENTATION_MODEL
+            or candidate.get("error_kind") != "quota_exhausted"
+            or candidate.get("quota_code") not in {
+                "usage_limit_reached",
+                "usage_pool_exhausted",
+            }
+            or not re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(candidate.get("invocation_binding_sha256") or ""),
+            )
+            or not re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(candidate.get("terminal_event_sha256") or ""),
+            )
+            or not isinstance(candidate.get("inner_returncode"), int)
+            or isinstance(candidate.get("inner_returncode"), bool)
+            or candidate.get("inner_returncode") == 0
+            or candidate.get("runner_returncode")
+            != GROK_QUOTA_EXHAUSTED_EXIT_CODE
+            or len(public_key_text) != 43
+        ):
+            return {}
+        try:
+            if len(_strict_urlsafe_base64_decode(public_key_text)) != 32:
+                return {}
+        except (UnicodeEncodeError, ValueError):
+            return {}
+        challenge_nonce = secrets.token_hex(32)
+        request = {
+            "schema": GROK_QUOTA_VERIFIER_REQUEST_SCHEMA,
+            "challenge_nonce": challenge_nonce,
+            "provider": "grok",
+            "entitlement": "grok_build",
+            "expected_account_id": expected_account_id,
+            "expected_quota_pool_id": expected_quota_pool_id,
+            "model": str(candidate.get("model") or ""),
+            "candidate_error_kind": str(
+                candidate.get("error_kind") or ""
+            ),
+            "quota_code": str(candidate.get("quota_code") or ""),
+            "invocation_binding_sha256": str(
+                candidate.get("invocation_binding_sha256") or ""
+            ),
+            "terminal_event_sha256": str(
+                candidate.get("terminal_event_sha256") or ""
+            ),
+            "inner_returncode": candidate.get("inner_returncode"),
+            "runner_returncode": candidate.get("runner_returncode"),
+        }
+        try:
+            request_bytes = canonical_json(request).encode("utf-8")
+        except (TypeError, ValueError, UnicodeEncodeError, RecursionError):
+            return {}
+        if len(request_bytes) > GROK_QUOTA_VERIFIER_MAX_REQUEST_BYTES:
+            return {}
+        request_sha256 = hashlib.sha256(request_bytes).hexdigest()
+        response_bytes = self._run_grok_quota_verifier(request_bytes)
+        if (
+            not response_bytes
+            or len(response_bytes) > GROK_QUOTA_VERIFIER_MAX_OUTPUT_BYTES
+        ):
+            return {}
+        try:
+            response = json.loads(response_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError, RecursionError):
+            return {}
+        if (
+            not isinstance(response, dict)
+            or set(response) != {"schema", "payload", "signature"}
+            or response.get("schema")
+            != GROK_QUOTA_VERIFIER_RECEIPT_SCHEMA
+            or not isinstance(response.get("payload"), dict)
+            or not isinstance(response.get("signature"), str)
+        ):
+            return {}
+        payload = response["payload"]
+        expected_payload_fields = {
+            "provider",
+            "entitlement",
+            "account_id",
+            "quota_pool_id",
+            "provider_request_id",
+            "model",
+            "verdict",
+            "quota_code",
+            "challenge_nonce",
+            "request_sha256",
+            "invocation_binding_sha256",
+            "terminal_event_sha256",
+            "verified_at",
+            "expires_at",
+        }
+        if set(payload) != expected_payload_fields:
+            return {}
+        expected_values = {
+            "provider": "grok",
+            "entitlement": "grok_build",
+            "account_id": expected_account_id,
+            "quota_pool_id": expected_quota_pool_id,
+            "model": request["model"],
+            "verdict": "quota_exhausted",
+            "quota_code": request["quota_code"],
+            "challenge_nonce": challenge_nonce,
+            "request_sha256": request_sha256,
+            "invocation_binding_sha256": request[
+                "invocation_binding_sha256"
+            ],
+            "terminal_event_sha256": request["terminal_event_sha256"],
+        }
+        if any(
+            payload.get(key) != value
+            for key, value in expected_values.items()
+        ):
+            return {}
+        if payload.get("quota_code") not in {
+            "usage_limit_reached",
+            "usage_pool_exhausted",
+        }:
+            return {}
+        provider_request_id = payload.get("provider_request_id")
+        if (
+            not isinstance(provider_request_id, str)
+            or not re.fullmatch(
+                r"[A-Za-z0-9._:-]{8,256}",
+                provider_request_id,
+            )
+        ):
+            return {}
+        persisted_request = {
+            "schema": GROK_QUOTA_VERIFIER_REQUEST_SCHEMA,
+            "challenge_nonce": payload["challenge_nonce"],
+            "provider": "grok",
+            "entitlement": "grok_build",
+            "expected_account_id": expected_account_id,
+            "expected_quota_pool_id": expected_quota_pool_id,
+            "model": str(candidate.get("model") or ""),
+            "candidate_error_kind": str(
+                candidate.get("error_kind") or ""
+            ),
+            "quota_code": str(candidate.get("quota_code") or ""),
+            "invocation_binding_sha256": str(
+                candidate.get("invocation_binding_sha256") or ""
+            ),
+            "terminal_event_sha256": str(
+                candidate.get("terminal_event_sha256") or ""
+            ),
+            "inner_returncode": candidate.get("inner_returncode"),
+            "runner_returncode": candidate.get("runner_returncode"),
+        }
+        if payload.get("request_sha256") != hashlib.sha256(
+            canonical_json(persisted_request).encode("utf-8")
+        ).hexdigest():
+            return {}
+        verified_at = parse_timestamp(str(payload.get("verified_at") or ""))
+        expires_at = parse_timestamp(str(payload.get("expires_at") or ""))
+        now = _provider_capacity_now()
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        else:
+            now = now.astimezone(timezone.utc)
+        if (
+            verified_at is None
+            or expires_at is None
+            or verified_at < now - timedelta(seconds=60)
+            or verified_at > now + timedelta(seconds=30)
+            or expires_at <= now
+            or expires_at
+            > verified_at
+            + timedelta(seconds=GROK_QUOTA_VERIFIER_MAX_LIFETIME_SECONDS)
+        ):
+            return {}
+        try:
+            public_key_bytes = _strict_urlsafe_base64_decode(public_key_text)
+            signature_text = str(response["signature"])
+            if not signature_text.startswith("ed25519:"):
+                return {}
+            encoded_signature = signature_text[len("ed25519:") :]
+            signature_bytes = _strict_urlsafe_base64_decode(
+                encoded_signature
+            )
+            if len(public_key_bytes) != 32 or len(signature_bytes) != 64:
+                return {}
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+                Ed25519PublicKey,
+            )
+
+            Ed25519PublicKey.from_public_bytes(public_key_bytes).verify(
+                signature_bytes,
+                canonical_json(payload).encode("utf-8"),
+            )
+        except Exception:
+            return {}
+        return dict(response)
+
+    def _persisted_grok_quota_verifier_payload(
+        self,
+        value: str,
+        candidate: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Reverify one signed diagnostic envelope for live route replay."""
+
+        if not value.startswith(GROK_QUOTA_VERIFIER_RECEIPT_PREFIX):
+            return {}
+        encoded = value[len(GROK_QUOTA_VERIFIER_RECEIPT_PREFIX) :]
+        if not encoded or len(encoded.encode("utf-8")) > (
+            GROK_QUOTA_VERIFIER_MAX_OUTPUT_BYTES
+        ):
+            return {}
+        try:
+            receipt = json.loads(encoded)
+        except (TypeError, ValueError, RecursionError):
+            return {}
+        if (
+            not isinstance(receipt, dict)
+            or set(receipt) != {"schema", "payload", "signature"}
+            or receipt.get("schema")
+            != GROK_QUOTA_VERIFIER_RECEIPT_SCHEMA
+            or not isinstance(receipt.get("payload"), dict)
+            or not isinstance(receipt.get("signature"), str)
+        ):
+            return {}
+        payload = receipt["payload"]
+        expected_fields = {
+            "provider",
+            "entitlement",
+            "account_id",
+            "quota_pool_id",
+            "provider_request_id",
+            "model",
+            "verdict",
+            "quota_code",
+            "challenge_nonce",
+            "request_sha256",
+            "invocation_binding_sha256",
+            "terminal_event_sha256",
+            "verified_at",
+            "expires_at",
+        }
+        if set(payload) != expected_fields:
+            return {}
+        expected_account_id = os.environ.get(
+            GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV,
+            "",
+        )
+        expected_quota_pool_id = os.environ.get(
+            GROK_QUOTA_VERIFIER_POOL_ID_ENV,
+            "",
+        )
+        public_key_text = os.environ.get(
+            GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV,
+            "",
+        )
+        if (
+            not _bounded_grok_quota_verifier_identifier(
+                expected_account_id
+            )
+            or not _bounded_grok_quota_verifier_identifier(
+                expected_quota_pool_id
+            )
+            or payload.get("provider") != "grok"
+            or payload.get("entitlement") != "grok_build"
+            or payload.get("account_id") != expected_account_id
+            or payload.get("quota_pool_id") != expected_quota_pool_id
+            or payload.get("verdict") != "quota_exhausted"
+            or payload.get("model") != candidate.get("model")
+            or payload.get("quota_code") != candidate.get("quota_code")
+            or payload.get("invocation_binding_sha256")
+            != candidate.get("invocation_binding_sha256")
+            or payload.get("terminal_event_sha256")
+            != candidate.get("terminal_event_sha256")
+            or not re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(payload.get("challenge_nonce") or ""),
+            )
+            or not re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(payload.get("request_sha256") or ""),
+            )
+            or not re.fullmatch(
+                r"[A-Za-z0-9._:-]{8,256}",
+                str(payload.get("provider_request_id") or ""),
+            )
+            or len(public_key_text) != 43
+        ):
+            return {}
+        try:
+            if len(_strict_urlsafe_base64_decode(public_key_text)) != 32:
+                return {}
+        except (UnicodeEncodeError, ValueError):
+            return {}
+        verified_at = parse_timestamp(str(payload.get("verified_at") or ""))
+        expires_at = parse_timestamp(str(payload.get("expires_at") or ""))
+        now = _provider_capacity_now()
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        else:
+            now = now.astimezone(timezone.utc)
+        if (
+            verified_at is None
+            or expires_at is None
+            or verified_at < now - timedelta(
+                seconds=GROK_QUOTA_VERIFIER_MAX_LIFETIME_SECONDS
+            )
+            or verified_at > now + timedelta(seconds=30)
+            or expires_at <= now
+            or expires_at
+            > verified_at
+            + timedelta(seconds=GROK_QUOTA_VERIFIER_MAX_LIFETIME_SECONDS)
+        ):
+            return {}
+        try:
+            public_key_bytes = _strict_urlsafe_base64_decode(public_key_text)
+            signature_text = str(receipt["signature"])
+            if not signature_text.startswith("ed25519:"):
+                return {}
+            encoded_signature = signature_text[len("ed25519:") :]
+            signature_bytes = _strict_urlsafe_base64_decode(
+                encoded_signature
+            )
+            if len(public_key_bytes) != 32 or len(signature_bytes) != 64:
+                return {}
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+                Ed25519PublicKey,
+            )
+
+            Ed25519PublicKey.from_public_bytes(public_key_bytes).verify(
+                signature_bytes,
+                canonical_json(payload).encode("utf-8"),
+            )
+        except Exception:
+            return {}
+        return dict(payload)
+
     def _provider_capacity_failure_from_log(
         self,
         log_path: Path,
         *,
         command: Sequence[str] = (),
+        returncode: int | None = None,
+        terminal_receipt: str | bytes = b"",
     ) -> dict[str, Any]:
+        command_providers = _provider_labels_from_implementation_command(
+            command
+        )
+        if "grok" in command_providers:
+            # The merged log contains model text, tool output, and provider
+            # diagnostics. None of it is quota authority. Require both the
+            # wrapper-reserved status and the typed receipt delivered over the
+            # runner-only file descriptor.
+            receipt_bytes = (
+                terminal_receipt
+                if isinstance(terminal_receipt, bytes)
+                else str(terminal_receipt or "").encode("utf-8")
+            )
+            if (
+                not _is_exact_internal_grok_runner_command(command)
+                or returncode != GROK_QUOTA_EXHAUSTED_EXIT_CODE
+                or not receipt_bytes.endswith(b"\n")
+                or len(receipt_bytes.splitlines()) != 1
+            ):
+                return {
+                    "exhausted": False,
+                    "providers": [],
+                    "reason": "",
+                }
+            record = parse_grok_terminal_quota_receipt(
+                receipt_bytes,
+                expected_runner_command=command,
+            )
+            if (
+                not record
+                or record.get("model")
+                != DEFAULT_GROK_IMPLEMENTATION_MODEL
+                or record.get("runner_returncode") != returncode
+            ):
+                return {
+                    "exhausted": False,
+                    "providers": [],
+                    "reason": "",
+                }
+            verifier_receipt = self._trusted_grok_quota_verifier_receipt(
+                record
+            )
+            if not verifier_receipt:
+                # A streaming frame and private-pipe receipt are only a
+                # candidate diagnostic. Model-launched same-UID descendants
+                # can inject into the Grok process's stdout via procfs. Terra
+                # fallback therefore remains disabled unless an independent
+                # signer attests this exact invocation and fresh challenge.
+                return {
+                    "exhausted": False,
+                    "providers": ["grok"],
+                    "reason": "grok_quota_verifier_unavailable",
+                    "evidence": [
+                        encode_grok_terminal_quota_receipt(record)
+                    ],
+                    "structured_evidence": {
+                        "terminal_candidate": dict(record),
+                    },
+                }
+            evidence = encode_grok_terminal_quota_receipt(record)
+            verifier_evidence = (
+                GROK_QUOTA_VERIFIER_RECEIPT_PREFIX
+                + canonical_json(verifier_receipt)
+            )
+            return {
+                "exhausted": True,
+                "providers": ["grok"],
+                "reason": "provider_capacity_exhausted",
+                "evidence": [evidence, verifier_evidence],
+                "structured_evidence": {
+                    "terminal_candidate": dict(record),
+                    "quota_verifier_receipt": verifier_receipt,
+                },
+                "_process_authority": (
+                    self._grok_quota_classification_sentinel
+                ),
+            }
         try:
             with log_path.open("rb") as handle:
                 handle.seek(0, os.SEEK_END)
@@ -9773,9 +10599,7 @@ class PortalImplementationDaemon:
             return {"exhausted": False, "providers": [], "reason": ""}
         classified = classify_provider_capacity_failure(
             text,
-            provider_labels=_provider_labels_from_implementation_command(
-                command
-            ),
+            provider_labels=command_providers,
         )
         if not classified["exhausted"]:
             return classified
@@ -9811,48 +10635,241 @@ class PortalImplementationDaemon:
         if not normalized_provider:
             return {}
         now = _provider_capacity_now()
-        for event in reversed(list(self._iter_events())):
+        try:
+            events = list(
+                self._iter_merge_lifecycle_events(
+                    include_physical_canonicality=True,
+                )
+            )
+        except (CursorReplayError, OSError, ValueError):
+            return {}
+        for event_index in range(len(events) - 1, -1, -1):
+            event = events[event_index]
             if str(event.get("type") or "") != "implementation_provider_exhausted":
                 continue
-            providers = {
-                str(item).strip().lower()
-                for item in list(event.get("providers") or [])
-                if str(item).strip()
-            }
+            if event.get("_physical_canonical_event") is not True:
+                continue
+            raw_providers = event.get("providers")
+            if (
+                not isinstance(raw_providers, list)
+                or not raw_providers
+                or any(
+                    not isinstance(item, str) or not item.strip()
+                    for item in raw_providers
+                )
+            ):
+                continue
+            canonical_providers = [
+                item.strip().lower() for item in raw_providers
+            ]
+            if len(set(canonical_providers)) != len(canonical_providers):
+                continue
+            providers = set(canonical_providers)
             if normalized_provider not in providers:
+                continue
+            if (
+                normalized_provider == "grok"
+                and raw_providers != ["grok"]
+            ):
                 continue
             if str(event.get("reason") or "") != "provider_capacity_exhausted":
                 continue
             retry_at_source = str(event.get("retry_at_source") or "")
-            if retry_at_source not in {"configured_backoff", "provider_declared"}:
+            if retry_at_source not in {
+                "configured_backoff",
+                "provider_declared",
+                "verifier_expiry",
+            }:
                 continue
-            evidence = [
-                str(item)[:1000]
-                for item in list(event.get("evidence") or [])[-4:]
-                if str(item).strip()
-            ]
-            classified = classify_provider_capacity_failure(
-                "\n".join(evidence),
-                provider_labels=(normalized_provider,),
-            )
+            raw_evidence = event.get("evidence")
             if (
-                not evidence
-                or classified.get("exhausted") is not True
-                or normalized_provider
-                not in set(classified.get("providers") or [])
+                not isinstance(raw_evidence, list)
+                or not raw_evidence
+                or any(
+                    not isinstance(item, str) or not item.strip()
+                    for item in raw_evidence
+                )
             ):
                 continue
+            evidence: list[str]
+            structured_grok_record: dict[str, object] = {}
+            structured_grok_line = ""
+            grok_verifier_payload: dict[str, Any] = {}
+            if normalized_provider == "grok":
+                # Never truncate signed evidence. A Grok latch consists of
+                # exactly one untrusted runner candidate and one independently
+                # signed verifier envelope; extra text grants no authority.
+                if len(raw_evidence) != 2:
+                    continue
+                evidence = list(raw_evidence)
+                structured_records = [
+                    (item, record)
+                    for item in evidence
+                    if (
+                        record := parse_grok_terminal_quota_receipt(item)
+                    )
+                ]
+                verifier_lines = [
+                    item
+                    for item in evidence
+                    if item.startswith(GROK_QUOTA_VERIFIER_RECEIPT_PREFIX)
+                ]
+                if len(structured_records) != 1 or len(verifier_lines) != 1:
+                    continue
+                structured_grok_line, structured_grok_record = structured_records[0]
+                if (
+                    structured_grok_record.get("error_kind")
+                    != "quota_exhausted"
+                    or structured_grok_record.get("model")
+                    != DEFAULT_GROK_IMPLEMENTATION_MODEL
+                ):
+                    continue
+                grok_verifier_payload = (
+                    self._persisted_grok_quota_verifier_payload(
+                        verifier_lines[0],
+                        structured_grok_record,
+                    )
+                )
+                if not grok_verifier_payload:
+                    continue
+            else:
+                evidence = [item[:1000] for item in raw_evidence[-4:]]
+                classified = classify_provider_capacity_failure(
+                    "\n".join(evidence),
+                    provider_labels=(normalized_provider,),
+                )
+                if (
+                    classified.get("exhausted") is not True
+                    or normalized_provider
+                    not in set(classified.get("providers") or [])
+                ):
+                    continue
             retry_at = parse_timestamp(str(event.get("retry_at") or ""))
             if retry_at is None:
                 continue
+            if normalized_provider == "grok":
+                verifier_expires_at = parse_timestamp(
+                    str(grok_verifier_payload.get("expires_at") or "")
+                )
+                if (
+                    verifier_expires_at is None
+                    or retry_at > verifier_expires_at
+                ):
+                    continue
             is_active = retry_at > now
             if require_active and not is_active:
                 return {}
+            source_task_id = str(event.get("task_id") or "").strip()
+            source_task_cid = str(
+                event.get("canonical_task_cid") or ""
+            ).strip()
+            source_started_event_id = str(
+                event.get("implementation_started_event_id") or ""
+            ).strip()
+            source_event_id = str(event.get("event_id") or "").strip()
+            source_event_at = str(event.get("timestamp") or "").strip()
+            source_timestamp = parse_timestamp(source_event_at)
+            if (
+                not source_task_id
+                or not source_task_cid
+                or not re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    source_started_event_id,
+                )
+                or source_timestamp is None
+                or retry_at <= source_timestamp
+                or not re.fullmatch(r"sha256:[0-9a-f]{64}", source_event_id)
+                or not str(event.get("stream_id") or "").strip()
+                or not str(event.get("snapshot_id") or "").strip()
+            ):
+                continue
+            if (
+                normalized_provider == "grok"
+                and source_event_id
+                not in self._live_grok_quota_exhaustion_event_ids
+            ):
+                continue
             try:
                 source_attempt = int(event.get("attempt") or 0)
                 source_sequence = int(event.get("sequence") or 0)
+                source_returncode = int(event.get("returncode") or 0)
             except (TypeError, ValueError):
                 continue
+            if (
+                isinstance(event.get("attempt"), bool)
+                or isinstance(event.get("sequence"), bool)
+                or isinstance(event.get("returncode"), bool)
+                or source_attempt <= 0
+                or source_sequence <= 0
+                or source_returncode == 0
+            ):
+                continue
+            if normalized_provider == "grok":
+                if (
+                    source_returncode != GROK_QUOTA_EXHAUSTED_EXIT_CODE
+                    or int(
+                        structured_grok_record.get("runner_returncode") or 0
+                    )
+                    != source_returncode
+                ):
+                    continue
+                matching_start: Mapping[str, Any] | None = None
+                for candidate in reversed(events[:event_index]):
+                    try:
+                        candidate_attempt = int(candidate.get("attempt") or 0)
+                        candidate_sequence = int(
+                            candidate.get("sequence") or 0
+                        )
+                    except (TypeError, ValueError):
+                        continue
+                    if (
+                        str(candidate.get("type") or "")
+                        == "implementation_started"
+                        and candidate.get("_physical_canonical_event") is True
+                        and str(candidate.get("event_id") or "")
+                        == source_started_event_id
+                        and str(candidate.get("task_id") or "")
+                        == source_task_id
+                        and str(candidate.get("canonical_task_cid") or "")
+                        == source_task_cid
+                        and candidate_attempt == source_attempt
+                        and 0 < candidate_sequence < source_sequence
+                    ):
+                        matching_start = candidate
+                        break
+                if matching_start is None:
+                    continue
+                command = matching_start.get("command")
+                if (
+                    not isinstance(command, (list, tuple))
+                    or not command
+                    or not _is_exact_internal_grok_runner_command(command)
+                    or str(matching_start.get("stream_id") or "")
+                    != str(event.get("stream_id") or "")
+                    or str(matching_start.get("snapshot_id") or "")
+                    != str(event.get("snapshot_id") or "")
+                    or not parse_grok_terminal_quota_receipt(
+                        structured_grok_line,
+                        expected_runner_command=tuple(
+                            str(item) for item in command
+                        ),
+                    )
+                ):
+                    continue
+                route_receipt = matching_start.get("provider_route_receipt")
+                if not isinstance(route_receipt, Mapping) or (
+                    str(route_receipt.get("configured_policy") or "")
+                    not in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+                    or str(route_receipt.get("route") or "")
+                    != "grok_primary"
+                    or str(route_receipt.get("selected_provider") or "")
+                    != "grok"
+                    or str(route_receipt.get("model") or "")
+                    != DEFAULT_GROK_IMPLEMENTATION_MODEL
+                    or route_receipt.get("secondary_fallback_allowed")
+                    is not False
+                ):
+                    continue
             return {
                 "active": is_active,
                 "provider": normalized_provider,
@@ -9861,12 +10878,15 @@ class PortalImplementationDaemon:
                     0.0,
                     (retry_at - now).total_seconds(),
                 ),
-                "source_task_id": str(event.get("task_id") or ""),
+                "source_task_id": source_task_id,
+                "source_task_cid": source_task_cid,
                 "source_attempt": source_attempt,
-                "source_event_at": str(event.get("timestamp") or ""),
-                "source_event_id": str(event.get("event_id") or ""),
+                "source_event_at": source_event_at,
+                "source_event_id": source_event_id,
                 "source_sequence": source_sequence,
                 "source_evidence": evidence,
+                "structured_evidence": structured_grok_record,
+                "quota_verifier": grok_verifier_payload,
                 "retry_at_source": retry_at_source,
             }
         return {}
@@ -9879,10 +10899,40 @@ class PortalImplementationDaemon:
             require_active=True,
         )
 
-    def _quota_routed_implementation_provider_route(self) -> str:
-        """Select Grok first and Codex only under a live Grok quota latch."""
+    def _grok_quota_authority_matches_task(
+        self,
+        authority: Mapping[str, Any],
+        task: PortalTask | None,
+    ) -> bool:
+        """Return whether a signed latch belongs to this exact task retry."""
 
-        if self._active_provider_exhaustion("grok"):
+        if task is None:
+            return False
+        try:
+            next_attempt = self._task_attempt(
+                PortalTaskState.load(self.state_path),
+                task,
+            )
+        except (OSError, TypeError, ValueError):
+            return False
+        return (
+            str(authority.get("source_task_id") or "") == task.task_id
+            and str(authority.get("source_task_cid") or "")
+            == self._canonical_ref(task)
+            and authority.get("source_attempt") == next_attempt
+        )
+
+    def _quota_routed_implementation_provider_route(
+        self,
+        task: PortalTask | None = None,
+    ) -> str:
+        """Select Terra only for the signed source task's exact retry."""
+
+        authority = self._active_provider_exhaustion("grok")
+        if authority and self._grok_quota_authority_matches_task(
+            authority,
+            task,
+        ):
             return "codex_quota_fallback"
         return "grok_primary"
 
@@ -9938,7 +10988,13 @@ class PortalImplementationDaemon:
                 "grok",
                 require_active=False,
             )
-            if not quota_authority:
+            if (
+                not quota_authority
+                or not self._grok_quota_authority_matches_task(
+                    quota_authority,
+                    task,
+                )
+            ):
                 receipt.update(
                     {
                         "route": "invalid",
@@ -10038,7 +11094,7 @@ class PortalImplementationDaemon:
             return {"codex", "copilot", "provider"}
         if provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES:
             if (
-                self._quota_routed_implementation_provider_route()
+                self._quota_routed_implementation_provider_route(task)
                 == "codex_quota_fallback"
             ):
                 if shutil.which("codex"):
@@ -10072,17 +11128,64 @@ class PortalImplementationDaemon:
 
         now = _provider_capacity_now()
         current_labels = self._current_implementation_provider_labels(task)
+        configured_provider = (
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+            or "auto"
+        )
+        declared_provider = self._task_declared_implementation_provider(task)
+        grok_quota_policy_applies = (
+            configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+            and declared_provider in {"", "grok"}
+        )
         for event in reversed(self._iter_events()):
             event_type = str(event.get("type") or "")
             if event_type == "implementation_provider_exhausted":
+                raw_providers = event.get("providers")
+                if (
+                    not isinstance(raw_providers, list)
+                    or not raw_providers
+                    or any(
+                        not isinstance(item, str) or not item.strip()
+                        for item in raw_providers
+                    )
+                ):
+                    continue
+                canonical_providers = [
+                    item.strip().lower() for item in raw_providers
+                ]
+                if len(set(canonical_providers)) != len(
+                    canonical_providers
+                ):
+                    continue
+                exhausted = set(canonical_providers)
+                if grok_quota_policy_applies:
+                    # Under the pinned Grok quota policy, xAI aliases and an
+                    # empty/compound provider set are never scheduling
+                    # authority.  Only the exact private-receipt-derived Grok
+                    # event may back off the lane.
+                    if raw_providers != ["grok"]:
+                        continue
+                if "grok" in exhausted or grok_quota_policy_applies:
+                    grok_authority = self._provider_exhaustion_event(
+                        "grok",
+                        require_active=False,
+                    )
+                    if (
+                        not grok_authority
+                        or str(grok_authority.get("source_event_id") or "")
+                        != str(event.get("event_id") or "")
+                        or (
+                            grok_quota_policy_applies
+                            and not self._grok_quota_authority_matches_task(
+                                grok_authority,
+                                task,
+                            )
+                        )
+                    ):
+                        continue
                 retry_at = parse_timestamp(str(event.get("retry_at") or ""))
                 if retry_at is None:
-                    return {}
-                exhausted = {
-                    str(item).strip().lower()
-                    for item in list(event.get("providers") or [])
-                    if str(item).strip()
-                }
+                    continue
                 # A codex quota latch must not block goose/grok (and vice versa).
                 if exhausted and not (exhausted & current_labels):
                     continue
@@ -10092,7 +11195,7 @@ class PortalImplementationDaemon:
                     "retry_after_seconds": max(
                         0.0, (retry_at - now).total_seconds()
                     ),
-                    "providers": list(event.get("providers") or []),
+                    "providers": list(raw_providers),
                 }
             if event_type in {"implementation_started", "implementation_finished"}:
                 return {}
@@ -10188,10 +11291,103 @@ class PortalImplementationDaemon:
         returncode: int,
         log_path: Path,
         failure: dict[str, Any],
+        implementation_started_event: Mapping[str, Any],
         worktree_path: Path | None = None,
         branch_name: str = "",
         cleanup_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        failure_providers = failure.get("providers")
+        failure_evidence = failure.get("evidence")
+        if (
+            failure.get("exhausted") is not True
+            or failure.get("reason") != "provider_capacity_exhausted"
+            or not isinstance(failure_providers, list)
+            or not failure_providers
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in failure_providers
+            )
+            or not isinstance(failure_evidence, list)
+            or not failure_evidence
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in failure_evidence
+            )
+        ):
+            raise RuntimeError(
+                "provider-capacity deferral has no typed failure authority"
+            )
+        expected_task_cid = self._canonical_ref(task)
+        started_event_id = str(
+            implementation_started_event.get("event_id") or ""
+        )
+        if (
+            not re.fullmatch(r"sha256:[0-9a-f]{64}", started_event_id)
+            or str(implementation_started_event.get("task_id") or "")
+            != task.task_id
+            or str(
+                implementation_started_event.get("canonical_task_cid") or ""
+            )
+            != expected_task_cid
+            or implementation_started_event.get("attempt") != attempt
+        ):
+            raise RuntimeError(
+                "provider-capacity deferral has no exact implementation "
+                "start authority"
+            )
+        grok_verifier_payload: dict[str, Any] = {}
+        if failure_providers == ["grok"]:
+            started_command = implementation_started_event.get("command")
+            candidate_records = [
+                (item, record)
+                for item in failure_evidence
+                if (record := parse_grok_terminal_quota_receipt(item))
+            ]
+            verifier_lines = [
+                item
+                for item in failure_evidence
+                if item.startswith(GROK_QUOTA_VERIFIER_RECEIPT_PREFIX)
+            ]
+            if (
+                returncode != GROK_QUOTA_EXHAUSTED_EXIT_CODE
+                or failure.get("_process_authority")
+                is not self._grok_quota_classification_sentinel
+                or len(failure_evidence) != 2
+                or len(candidate_records) != 1
+                or len(verifier_lines) != 1
+                or not isinstance(started_command, (list, tuple))
+                or not _is_exact_internal_grok_runner_command(started_command)
+            ):
+                raise RuntimeError(
+                    "Grok provider-capacity deferral has no signed quota "
+                    "verifier authority"
+                )
+            candidate_line, candidate_record = candidate_records[0]
+            if (
+                not parse_grok_terminal_quota_receipt(
+                    candidate_line,
+                    expected_runner_command=tuple(
+                        str(item) for item in started_command
+                    ),
+                )
+                or candidate_record.get("model")
+                != DEFAULT_GROK_IMPLEMENTATION_MODEL
+            ):
+                raise RuntimeError(
+                    "Grok provider-capacity deferral does not bind its "
+                    "implementation start"
+                )
+            grok_verifier_payload = (
+                self._persisted_grok_quota_verifier_payload(
+                    verifier_lines[0],
+                    candidate_record,
+                )
+            )
+            if not grok_verifier_payload:
+                raise RuntimeError(
+                    "Grok provider-capacity deferral has an invalid quota "
+                    "verifier receipt"
+                )
         finished_at = utc_now()
         now = _provider_capacity_now()
         if now.tzinfo is None:
@@ -10204,16 +11400,28 @@ class PortalImplementationDaemon:
         if declared_retry_at is not None:
             declared_retry_at = declared_retry_at.astimezone(timezone.utc)
         if declared_retry_at is not None and declared_retry_at > now:
-            retry_at = declared_retry_at.isoformat()
+            retry_deadline = declared_retry_at
             retry_at_source = "provider_declared"
         else:
-            retry_at = (
+            retry_deadline = (
                 now
                 + timedelta(
                     seconds=self._provider_capacity_backoff_seconds()
                 )
-            ).isoformat()
+            )
             retry_at_source = "configured_backoff"
+        if grok_verifier_payload:
+            verifier_expires_at = parse_timestamp(
+                str(grok_verifier_payload.get("expires_at") or "")
+            )
+            if verifier_expires_at is None or verifier_expires_at <= now:
+                raise RuntimeError(
+                    "Grok quota verifier receipt expired before deferral"
+                )
+            if retry_deadline > verifier_expires_at:
+                retry_deadline = verifier_expires_at
+                retry_at_source = "verifier_expiry"
+        retry_at = retry_deadline.isoformat()
         state.last_implementation_started_at = started_at
         state.last_implementation_finished_at = finished_at
         state.last_implementation_returncode = returncode
@@ -10227,13 +11435,15 @@ class PortalImplementationDaemon:
         state.save(self.state_path)
         result = {
             "task_id": task.task_id,
+            "canonical_task_cid": expected_task_cid,
+            "implementation_started_event_id": started_event_id,
             "attempt": attempt,
             "returncode": returncode,
             "log_path": str(log_path),
             "deferred": True,
             "reason": "provider_capacity_exhausted",
-            "providers": list(failure.get("providers") or []),
-            "evidence": list(failure.get("evidence") or []),
+            "providers": list(failure_providers),
+            "evidence": list(failure_evidence),
             "retry_at": retry_at,
             "retry_at_source": retry_at_source,
             "attempt_consumed": False,
@@ -10249,7 +11459,26 @@ class PortalImplementationDaemon:
                 worktree_path,
                 reason="provider_capacity_deferred",
             )
-        self._record_event("implementation_provider_exhausted", result)
+        exhaustion_event = self._record_event(
+            "implementation_provider_exhausted",
+            result,
+        )
+        if (
+            failure_providers == ["grok"]
+            and returncode == GROK_QUOTA_EXHAUSTED_EXIT_CODE
+            and failure.get("_process_authority")
+            is self._grok_quota_classification_sentinel
+        ):
+            source_event_id = str(
+                exhaustion_event.get("event_id") or ""
+            )
+            if re.fullmatch(r"sha256:[0-9a-f]{64}", source_event_id):
+                # Add authority only after the canonical diagnostic append has
+                # completed successfully.  The durable event alone is never
+                # sufficient on this or a future daemon instance.
+                self._live_grok_quota_exhaustion_event_ids.add(
+                    source_event_id
+                )
         return result
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
@@ -10608,6 +11837,8 @@ class PortalImplementationDaemon:
         todo_update_result: dict[str, Any] = {}
         completion_durability_deferred = False
         completion_published_in_transaction = False
+        grok_quota_verifier_deferred = False
+        provider_failure: dict[str, Any] = {}
         context_receipt_path: Path | None = None
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
@@ -10747,10 +11978,11 @@ class PortalImplementationDaemon:
                 started_at=started_at,
                 log_path=log_path,
             )
-            self._record_event(
+            implementation_started_event = self._record_event(
                 "implementation_started",
                 {
                     "task_id": task.task_id,
+                    "canonical_task_cid": self._canonical_ref(task),
                     "attempt": attempt,
                     "outputs": list(task_declared_output_paths(task)),
                     "command": command,
@@ -10763,6 +11995,7 @@ class PortalImplementationDaemon:
                     ),
                 },
             )
+            terminal_receipt = b""
             with log_path.open("w", encoding="utf-8") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
@@ -10782,41 +12015,69 @@ class PortalImplementationDaemon:
                         returncode=0,
                     )
                 else:
-                    completed = self._decision_runtime_mutation(
-                        "command_invocation",
-                        {
-                            "operation": "implementation_provider",
-                            "task_id": task.task_id,
-                            "attempt": int(attempt),
-                            "command": tuple(command),
-                            "workspace_path": str(workspace_path),
-                            "context_receipt_path": str(context_receipt_path),
-                        },
-                        lambda: run_process_group_stream(
-                            command,
-                            cwd=workspace_path,
-                            stdout=log_fh,
-                            input_text=prompt,
-                            env=self._implementation_process_environment(
+                    receipt_read_fd, receipt_write_fd = (
+                        _open_grok_terminal_receipt_pipe(command)
+                    )
+                    try:
+                        provider_environment = (
+                            self._implementation_process_environment(
                                 task,
                                 attempt=attempt,
                                 checkpoint_dir=checkpoint_dir,
+                                command=command,
+                                terminal_receipt_fd=receipt_write_fd,
+                            )
+                        )
+                        completed = self._decision_runtime_mutation(
+                            "command_invocation",
+                            {
+                                "operation": "implementation_provider",
+                                "task_id": task.task_id,
+                                "attempt": int(attempt),
+                                "command": tuple(command),
+                                "workspace_path": str(workspace_path),
+                                "context_receipt_path": str(
+                                    context_receipt_path
+                                ),
+                            },
+                            lambda: run_process_group_stream(
+                                command,
+                                cwd=workspace_path,
+                                stdout=log_fh,
+                                input_text=prompt,
+                                env=provider_environment,
+                                timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_timeout_seconds=(
+                                    timeout_policy.progress_timeout_seconds
+                                    if timeout_policy.progress_aware
+                                    else None
+                                ),
+                                max_timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_paths=(checkpoint_dir,),
+                                on_progress=(
+                                    self._implementation_progress_observer(
+                                        state,
+                                        task,
+                                        attempt=attempt,
+                                    )
+                                ),
+                                pass_fds=(
+                                    (receipt_write_fd,)
+                                    if receipt_write_fd >= 3
+                                    else ()
+                                ),
                             ),
-                            timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_timeout_seconds=(
-                                timeout_policy.progress_timeout_seconds
-                                if timeout_policy.progress_aware
-                                else None
-                            ),
-                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_paths=(checkpoint_dir,),
-                            on_progress=self._implementation_progress_observer(
-                                state,
-                                task,
-                                attempt=attempt,
-                            ),
-                        ),
-                    )
+                        )
+                    finally:
+                        _close_descriptor(receipt_write_fd)
+                        terminal_receipt = _read_grok_terminal_receipt(
+                            receipt_read_fd
+                        )
+                        _close_descriptor(receipt_read_fd)
             effective_returncode = completed.returncode
             protected_path_violation = (
                 self._implementation_protected_path_violation(
@@ -10840,6 +12101,8 @@ class PortalImplementationDaemon:
                 provider_failure = self._provider_capacity_failure_from_log(
                     log_path,
                     command=command,
+                    returncode=completed.returncode,
+                    terminal_receipt=terminal_receipt,
                 )
                 if provider_failure.get("exhausted", False):
                     protected_path_violation = (
@@ -10860,6 +12123,9 @@ class PortalImplementationDaemon:
                             returncode=completed.returncode,
                             log_path=log_path,
                             failure=provider_failure,
+                            implementation_started_event=(
+                                implementation_started_event
+                            ),
                         )
                         deferral["context_receipt_path"] = str(
                             context_receipt_path
@@ -10874,6 +12140,37 @@ class PortalImplementationDaemon:
                         "reason": "implementation_protected_path_mutated",
                         "protected_path_violation": protected_path_violation,
                     }
+                elif provider_failure.get("reason") == (
+                    "grok_quota_verifier_unavailable"
+                ):
+                    protected_path_violation = (
+                        self._finalize_implementation_protected_path_fence(
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=workspace_path,
+                            before=protected_path_snapshot,
+                            reason="grok_quota_verifier_deferral_unchanged",
+                        )
+                    )
+                    if not protected_path_violation:
+                        grok_quota_verifier_deferred = True
+                        validation_result = {
+                            "attempted": False,
+                            "passed": False,
+                            "returncode": completed.returncode,
+                            "results": [],
+                            "reason": "grok_quota_verifier_unavailable",
+                        }
+                    else:
+                        effective_returncode = 1
+                        validation_result = {
+                            "attempted": False,
+                            "passed": False,
+                            "returncode": 1,
+                            "results": [],
+                            "reason": "implementation_protected_path_mutated",
+                            "protected_path_violation": protected_path_violation,
+                        }
             if completed.returncode == 0 and not protected_path_violation:
                 self._mark_active_phase(
                     state,
@@ -11052,7 +12349,7 @@ class PortalImplementationDaemon:
             finished_at = utc_now()
             verification_deferred = bool(
                 protected_path_violation.get("verification_deferred")
-            ) or completion_durability_deferred
+            ) or completion_durability_deferred or grok_quota_verifier_deferred
             if verification_deferred:
                 self._restore_task_attempt(state, task, max(0, attempt - 1))
             else:
@@ -11061,6 +12358,16 @@ class PortalImplementationDaemon:
             state.last_implementation_finished_at = finished_at
             state.last_implementation_returncode = effective_returncode
             state.last_implementation_log_path = str(log_path)
+            if grok_quota_verifier_deferred:
+                self.task_queue.defer(
+                    self._canonical_ref(task),
+                    GROK_QUOTA_VERIFIER_RETRY_SECONDS,
+                    reason="grok_quota_verifier_unavailable",
+                )
+                self.task_queue.save()
+                state.selection_idle_reason = (
+                    "grok_quota_verifier_unavailable"
+                )
             self._mark_implementation_finished(state, finished_at=finished_at)
             state.save(self.state_path)
             if (
@@ -11101,10 +12408,29 @@ class PortalImplementationDaemon:
             elif completion_durability_deferred:
                 result["reason"] = "protected_board_completion_not_durable"
                 result["completion_pending_durability"] = True
+            elif grok_quota_verifier_deferred:
+                result.update(
+                    {
+                        "reason": "grok_quota_verifier_unavailable",
+                        "providers": ["grok"],
+                        "evidence": list(
+                            provider_failure.get("evidence") or []
+                        ),
+                        "backoff_seconds": (
+                            GROK_QUOTA_VERIFIER_RETRY_SECONDS
+                        ),
+                    }
+                )
             result["attempt_consumed"] = not verification_deferred
             if verification_deferred:
                 result["deferred"] = True
-            termination_result = self._implementation_returncode_detail(effective_returncode)
+            termination_result = (
+                {}
+                if grok_quota_verifier_deferred
+                else self._implementation_returncode_detail(
+                    effective_returncode
+                )
+            )
             if termination_result:
                 result["termination_result"] = termination_result
                 self._record_implementation_termination(task, attempt, termination_result)
@@ -18025,10 +19351,11 @@ class PortalImplementationDaemon:
                 branch_name=branch_name,
             )
             implementation_started = True
-            self._record_event(
+            implementation_started_event = self._record_event(
                 "implementation_started",
                 {
                     "task_id": task.task_id,
+                    "canonical_task_cid": self._canonical_ref(task),
                     "attempt": attempt,
                     "outputs": list(task_declared_output_paths(task)),
                     "command": command,
@@ -18060,6 +19387,7 @@ class PortalImplementationDaemon:
                     ),
                 },
             )
+            terminal_receipt = b""
             with log_path.open("w", encoding="utf-8") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
@@ -18083,38 +19411,61 @@ class PortalImplementationDaemon:
                     )
                 else:
                     def invoke_provider() -> subprocess.CompletedProcess[str]:
-                        nonlocal provider_dispatched
-                        provider_environment = (
-                            self._implementation_process_environment(
-                                task,
-                                attempt=attempt,
-                                checkpoint_dir=checkpoint_dir,
+                        nonlocal provider_dispatched, terminal_receipt
+                        receipt_read_fd, receipt_write_fd = (
+                            _open_grok_terminal_receipt_pipe(command)
+                        )
+                        try:
+                            provider_environment = (
+                                self._implementation_process_environment(
+                                    task,
+                                    attempt=attempt,
+                                    checkpoint_dir=checkpoint_dir,
+                                    command=command,
+                                    terminal_receipt_fd=receipt_write_fd,
+                                )
                             )
-                        )
-                        progress_observer = (
-                            self._implementation_progress_observer(
-                                state,
-                                task,
-                                attempt=attempt,
+                            progress_observer = (
+                                self._implementation_progress_observer(
+                                    state,
+                                    task,
+                                    attempt=attempt,
+                                )
                             )
-                        )
-                        provider_dispatched = True
-                        return run_process_group_stream(
-                            command,
-                            cwd=worktree_path,
-                            stdout=log_fh,
-                            input_text=prompt,
-                            env=provider_environment,
-                            timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_timeout_seconds=(
-                                timeout_policy.progress_timeout_seconds
-                                if timeout_policy.progress_aware
-                                else None
-                            ),
-                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_paths=(checkpoint_dir,),
-                            on_progress=progress_observer,
-                        )
+                            provider_dispatched = True
+                            return run_process_group_stream(
+                                command,
+                                cwd=worktree_path,
+                                stdout=log_fh,
+                                input_text=prompt,
+                                env=provider_environment,
+                                timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_timeout_seconds=(
+                                    timeout_policy.progress_timeout_seconds
+                                    if timeout_policy.progress_aware
+                                    else None
+                                ),
+                                max_timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_paths=(checkpoint_dir,),
+                                on_progress=progress_observer,
+                                pass_fds=(
+                                    (receipt_write_fd,)
+                                    if receipt_write_fd >= 3
+                                    else ()
+                                ),
+                            )
+                        finally:
+                            _close_descriptor(receipt_write_fd)
+                            terminal_receipt = (
+                                _read_grok_terminal_receipt(
+                                    receipt_read_fd
+                                )
+                            )
+                            _close_descriptor(receipt_read_fd)
 
                     completed = self._decision_runtime_mutation(
                         "command_invocation",
@@ -18168,6 +19519,8 @@ class PortalImplementationDaemon:
                 provider_failure = self._provider_capacity_failure_from_log(
                     log_path,
                     command=command,
+                    returncode=returncode,
+                    terminal_receipt=terminal_receipt,
                 )
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -18206,6 +19559,16 @@ class PortalImplementationDaemon:
                     cleanup_result = dict(
                         failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
+                elif provider_failure.get("reason") == (
+                    "grok_quota_verifier_unavailable"
+                ):
+                    validation_result = {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": returncode,
+                        "results": [],
+                        "reason": "grok_quota_verifier_unavailable",
+                    }
             if returncode == 0 and not protected_path_violation:
                 self._mark_worktree_lifecycle_settling(worktree_path)
                 self._mark_active_phase(
@@ -19015,10 +20378,17 @@ class PortalImplementationDaemon:
                 returncode=returncode,
                 log_path=log_path,
                 failure=provider_failure,
+                implementation_started_event=implementation_started_event,
                 worktree_path=worktree_path,
                 branch_name=branch_name,
                 cleanup_result=cleanup_result,
             )
+
+        grok_quota_verifier_deferred = (
+            not protected_path_violation
+            and provider_failure.get("reason")
+            == "grok_quota_verifier_unavailable"
+        )
 
         finished_at = utc_now()
         protected_mutation_scopes = {
@@ -19067,6 +20437,7 @@ class PortalImplementationDaemon:
             protected_path_external_deferral
             or lifecycle_setup_deferral
             or lifecycle_race_exception
+            or grok_quota_verifier_deferred
         )
         if attempt_consumed:
             self._record_task_attempt(state, task, attempt)
@@ -19095,6 +20466,14 @@ class PortalImplementationDaemon:
             if merge_result.get("queued")
             else str(merge_result.get("stderr") or merge_result.get("reason") or "")
         )
+        if grok_quota_verifier_deferred:
+            self.task_queue.defer(
+                self._canonical_ref(task),
+                GROK_QUOTA_VERIFIER_RETRY_SECONDS,
+                reason="grok_quota_verifier_unavailable",
+            )
+            self.task_queue.save()
+            state.selection_idle_reason = "grok_quota_verifier_unavailable"
         no_change_guard = commit_result.get("no_change_guard") or {}
         no_change_completion = bool(
             not implementation_commit
@@ -19415,6 +20794,18 @@ class PortalImplementationDaemon:
             )
             result["protected_path_violation"] = protected_path_violation
             result["deferred"] = protected_path_external_deferral
+        elif grok_quota_verifier_deferred:
+            result.update(
+                {
+                    "reason": "grok_quota_verifier_unavailable",
+                    "deferred": True,
+                    "providers": ["grok"],
+                    "evidence": list(
+                        provider_failure.get("evidence") or []
+                    ),
+                    "backoff_seconds": GROK_QUOTA_VERIFIER_RETRY_SECONDS,
+                }
+            )
         if lifecycle_race_exception:
             result.update(
                 lifecycle_race_result(
@@ -19433,7 +20824,11 @@ class PortalImplementationDaemon:
         result["cache_hit"] = result["workspace_setup"]["cache_hit"]
         result["setup_duration_seconds"] = result["workspace_setup"]["setup_duration_seconds"]
         result["saved_duration_seconds"] = result["workspace_setup"]["saved_duration_seconds"]
-        termination_result = self._implementation_returncode_detail(returncode)
+        termination_result = (
+            {}
+            if grok_quota_verifier_deferred
+            else self._implementation_returncode_detail(returncode)
+        )
         if termination_result:
             result["termination_result"] = termination_result
             self._record_implementation_termination(task, attempt, termination_result)
@@ -39386,7 +40781,11 @@ class PortalImplementationDaemon:
         self._events_cache_data = data
         return data
 
-    def _iter_merge_lifecycle_events(self) -> list[dict[str, Any]]:
+    def _iter_merge_lifecycle_events(
+        self,
+        *,
+        include_physical_canonicality: bool = False,
+    ) -> list[dict[str, Any]]:
         """Strictly replay the retained active and rotated lifecycle history.
 
         General supervisor events predate the float-free control-contract
@@ -39448,6 +40847,7 @@ class PortalImplementationDaemon:
             ) from exc
 
         cache_key = (
+            bool(include_physical_canonicality),
             str(manifest.get("manifest_digest") or ""),
             tuple(source_cache_key),
         )
@@ -39566,6 +40966,29 @@ class PortalImplementationDaemon:
                         event["event_id"] = (
                             event_id or expected_event_id
                         )
+                        if include_physical_canonicality:
+                            # This replay-only marker is assigned after event
+                            # identity verification, so a payload cannot forge
+                            # physical canonicality for authority checks.
+                            event["_physical_canonical_event"] = bool(
+                                canonical
+                                and all(
+                                    field in raw_event
+                                    for field in (
+                                        "sequence",
+                                        "stream_id",
+                                        "snapshot_id",
+                                        "event_id",
+                                        "previous_event_id",
+                                    )
+                                )
+                                and bool(event_id)
+                                and event_id == expected_event_id
+                                and str(
+                                    raw_event.get("previous_event_id") or ""
+                                )
+                                == source_previous_event_id
+                            )
                         source_previous_event_id = event["event_id"]
                         if not source_first_sequence:
                             source_first_sequence = sequence
@@ -39916,7 +41339,7 @@ class PortalImplementationDaemon:
         force_codex = provider in {"codex", "copilot", "openai"}
 
         if provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES:
-            quota_route = self._quota_routed_implementation_provider_route()
+            quota_route = self._quota_routed_implementation_provider_route(task)
             if quota_route == "codex_quota_fallback":
                 codex = shutil.which("codex")
                 if not codex:
@@ -40134,7 +41557,7 @@ class PortalImplementationDaemon:
         if provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES:
             provider = (
                 "codex"
-                if self._quota_routed_implementation_provider_route()
+                if self._quota_routed_implementation_provider_route(task)
                 == "codex_quota_fallback"
                 else "grok"
             )
@@ -40996,6 +42419,8 @@ class PortalImplementationDaemon:
         *,
         attempt: int,
         checkpoint_dir: Path,
+        command: Sequence[str] = (),
+        terminal_receipt_fd: int = -1,
     ) -> dict[str, str]:
         formal_toolchain = formal_toolchain_deployment_manifest()
         command_environment = project_provider_command_environment()
@@ -41013,6 +42438,14 @@ class PortalImplementationDaemon:
                 IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
             }
         )
+        if (
+            terminal_receipt_fd >= 3
+            and _provider_labels_from_implementation_command(command)
+            == ["grok"]
+        ):
+            command_environment[GROK_TERMINAL_RECEIPT_FD_ENV] = str(
+                terminal_receipt_fd
+            )
         return command_environment
 
     def _validation_python_dependency_preflight(
@@ -43662,7 +45095,11 @@ class PortalImplementationDaemon:
         self.task_queue.record_selection(self._canonical_ref(selected))
         return selected
 
-    def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
+    def _record_event(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
         enriched = dict(payload)
         task_source_identity = self._task_source_identity_record()
         if task_source_identity is not None:
@@ -43673,8 +45110,9 @@ class PortalImplementationDaemon:
             enriched.setdefault("canonical_task_key", identity.canonical_task_key)
             enriched.setdefault("canonical_task_cid", identity.canonical_task_cid)
             enriched.setdefault("board_namespace", identity.board_namespace)
-        append_jsonl_event(self.events_path, event_type, enriched)
+        event = append_jsonl_event(self.events_path, event_type, enriched)
         self._invalidate_event_cache()
+        return event
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

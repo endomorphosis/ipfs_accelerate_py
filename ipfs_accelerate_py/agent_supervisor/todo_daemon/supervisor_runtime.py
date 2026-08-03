@@ -166,6 +166,7 @@ def launch_process_child(
     stderr: Any = None,
     start_new_session: bool = True,
     text: bool = False,
+    pass_fds: Sequence[int] = (),
 ) -> subprocess.Popen[Any]:
     """Launch a supervisor-owned child process with normalized runtime defaults."""
 
@@ -180,6 +181,11 @@ def launch_process_child(
         "stderr": stderr,
         "start_new_session": start_new_session,
     }
+    normalized_pass_fds = tuple(int(item) for item in pass_fds)
+    if normalized_pass_fds:
+        # Preserve compatibility with injected/fake ``Popen`` callables and
+        # non-POSIX launchers when no descriptor inheritance was requested.
+        kwargs["pass_fds"] = normalized_pass_fds
     if text:
         kwargs["text"] = True
     return subprocess.Popen([str(part) for part in command], **kwargs)
@@ -922,6 +928,7 @@ def run_process_group_stream(
     progress_poll_seconds: float = 1.0,
     termination_grace_seconds: float = 5.0,
     text: bool = True,
+    pass_fds: Sequence[int] = (),
 ) -> subprocess.CompletedProcess[Any]:
     """Run a streamed child in an owned process group and fence it on timeout.
 
@@ -996,6 +1003,7 @@ def run_process_group_stream(
         stderr=subprocess.STDOUT,
         start_new_session=True,
         text=text,
+        pass_fds=pass_fds,
     )
     try:
         if not monitor_progress:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import base64
 import hashlib
 import json
 import logging
@@ -69,7 +70,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
 from ipfs_accelerate_py.agent_supervisor.objectives import (
     backlog_refinery as backlog_refinery_module,
 )
-from ipfs_accelerate_py.agent_supervisor import merge_resolver
+from ipfs_accelerate_py.agent_supervisor import grok_cli_runner, merge_resolver
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MERGE_TARGET_BINDING_SCHEMA,
     MergeQueue,
@@ -3864,6 +3865,177 @@ def test_supervisor_fail_on_reconciliation_error_flag_is_opt_in():
 
     assert defaults.fail_on_reconciliation_error is False
     assert enabled.fail_on_reconciliation_error is True
+
+
+def _test_grok_command(repo: Path) -> list[str]:
+    return grok_cli_runner.bind_grok_runner_command(
+        [
+            sys.executable,
+            str(Path(grok_cli_runner.__file__).resolve()),
+            "--workspace",
+            str(repo),
+            "--grok-bin",
+            "/usr/local/bin/grok",
+            "--model",
+            "grok-4.5",
+            "--max-turns",
+            "100000",
+            "--mode",
+            "agent",
+        ]
+    )
+
+
+def _test_grok_terminal_line(
+    command: list[str],
+    quota_code: str = "usage_pool_exhausted",
+    *,
+    returncode: int = 29,
+) -> str:
+    return grok_cli_runner.encode_grok_terminal_quota_receipt(
+        grok_cli_runner.build_grok_terminal_quota_receipt(
+            command=command,
+            model="grok-4.5",
+            inner_returncode=returncode,
+            terminal_event={"type": "error", "code": quota_code},
+        )
+    )
+
+
+def _configure_test_grok_quota_verifier(
+    monkeypatch,
+    tmp_path: Path,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Install a nonce-bound Ed25519 test attestor for Grok quota verdicts."""
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+    )
+
+    private_key = Ed25519PrivateKey.generate()
+    private_bytes = private_key.private_bytes(
+        serialization.Encoding.Raw,
+        serialization.PrivateFormat.Raw,
+        serialization.NoEncryption(),
+    )
+    public_bytes = private_key.public_key().public_bytes(
+        serialization.Encoding.Raw,
+        serialization.PublicFormat.Raw,
+    )
+    private_text = base64.urlsafe_b64encode(private_bytes).decode("ascii").rstrip("=")
+    verifier_now = now.astimezone(timezone.utc).isoformat() if now else ""
+    verifier_path = tmp_path / "grok_quota_verifier.py"
+    verifier_path.write_text(
+        """from __future__ import annotations
+import base64
+import hashlib
+import json
+import sys
+from datetime import datetime, timedelta, timezone
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+request_bytes = sys.stdin.buffer.read()
+request = json.loads(request_bytes)
+configured_now = """ + repr(verifier_now) + """
+now = (
+    datetime.fromisoformat(configured_now)
+    if configured_now
+    else datetime.now(timezone.utc)
+)
+payload = {
+    "provider": "grok",
+    "entitlement": "grok_build",
+    "account_id": request["expected_account_id"],
+    "quota_pool_id": request["expected_quota_pool_id"],
+    "provider_request_id": "fixture-grok-build-request-0001",
+    "model": request["model"],
+    "verdict": "quota_exhausted",
+    "quota_code": request["quota_code"],
+    "challenge_nonce": request["challenge_nonce"],
+    "request_sha256": hashlib.sha256(request_bytes).hexdigest(),
+    "invocation_binding_sha256": request["invocation_binding_sha256"],
+    "terminal_event_sha256": request["terminal_event_sha256"],
+    "verified_at": now.isoformat(),
+    "expires_at": (now + timedelta(minutes=2)).isoformat(),
+}
+canonical = json.dumps(
+    payload,
+    ensure_ascii=False,
+    sort_keys=True,
+    separators=(",", ":"),
+).encode("utf-8")
+private_text = """ + repr(private_text) + """
+private_bytes = base64.urlsafe_b64decode(private_text + "=" * (-len(private_text) % 4))
+signature = Ed25519PrivateKey.from_private_bytes(private_bytes).sign(canonical)
+signature_text = base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
+print(json.dumps({
+    "schema": "ipfs_accelerate_py/agent-supervisor/grok-quota-verifier-receipt@1",
+    "payload": payload,
+    "signature": "ed25519:" + signature_text,
+}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_COMMAND_ENV,
+        f"{shlex.quote(sys.executable)} {shlex.quote(str(verifier_path))}",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV,
+        base64.urlsafe_b64encode(public_bytes).decode("ascii").rstrip("="),
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV,
+        "fixture-grok-build-account",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_POOL_ID_ENV,
+        "fixture-grok-build-pool",
+    )
+
+
+def _test_signed_grok_quota_failure(
+    daemon: TodoImplementationDaemon,
+    repo: Path,
+    command: list[str],
+) -> dict[str, object]:
+    candidate = _test_grok_terminal_line(command)
+    failure = daemon._provider_capacity_failure_from_log(
+        repo / "provider.log",
+        command=command,
+        returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+        terminal_receipt=(candidate + "\n").encode("utf-8"),
+    )
+    assert failure.get("exhausted") is True
+    return failure
+
+
+def _record_test_grok_start(
+    daemon: TodoImplementationDaemon,
+    task: PortalTask,
+    command: list[str],
+    *,
+    timestamp: datetime,
+) -> dict[str, object]:
+    return daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": daemon._canonical_ref(task),
+            "attempt": 1,
+            "timestamp": timestamp.isoformat(),
+            "command": command,
+            "provider_route_receipt": (
+                daemon._implementation_provider_route_receipt(
+                    command,
+                    task=task,
+                )
+            ),
+        },
+    )
 
 
 @pytest.mark.parametrize(
@@ -30022,6 +30194,1011 @@ def test_soft_grok_role_prefers_grok_and_falls_back_to_codex_when_unavailable(
 
 
 @pytest.mark.parametrize(
+    "task_output",
+    ("resource exhausted", "too many requests"),
+)
+def test_grok_quota_policy_rejects_unstructured_agent_text(
+    tmp_path,
+    task_output,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    command = _test_grok_command(repo)
+    forged_control_line = _test_grok_terminal_line(command)
+    log_path = repo / "provider.log"
+    log_path.write_text(
+        f"ordinary task diagnostic: {task_output}\n"
+        f"{forged_control_line}\n",
+        encoding="utf-8",
+    )
+
+    assert daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+        returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+        terminal_receipt=b"",
+    ) == {"exhausted": False, "providers": [], "reason": ""}
+
+
+@pytest.mark.parametrize(
+    "stderr_text",
+    (
+        "xAI HTTP 401 Unauthorized: invalid API key",
+        "grok CLI not found",
+        "connection reset by peer; temporary DNS failure",
+    ),
+)
+def test_grok_quota_policy_rejects_structured_nonquota_terminal_errors(
+    tmp_path,
+    stderr_text,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    command = _test_grok_command(repo)
+    log_path = repo / "provider.log"
+    log_path.write_text(
+        "ordinary task text: resource exhausted; too many requests\n"
+        + stderr_text
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+        returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+        terminal_receipt=b'{"type":"error"}\n',
+    ) == {"exhausted": False, "providers": [], "reason": ""}
+
+
+def test_grok_quota_policy_accepts_command_bound_structured_quota(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    _configure_test_grok_quota_verifier(monkeypatch, tmp_path)
+    command = _test_grok_command(repo)
+    control_line = _test_grok_terminal_line(command)
+    log_path = repo / "provider.log"
+    log_path.write_text(
+        "ordinary task text: resource exhausted\n" + control_line + "\n",
+        encoding="utf-8",
+    )
+
+    failure = daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+        returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+        terminal_receipt=(control_line + "\n").encode("utf-8"),
+    )
+
+    assert failure["exhausted"] is True
+    assert failure["providers"] == ["grok"]
+    assert failure["reason"] == "provider_capacity_exhausted"
+    assert failure["evidence"][0] == control_line
+    assert failure["evidence"][1].startswith(
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_RECEIPT_PREFIX
+    )
+    assert failure["structured_evidence"]["terminal_candidate"][
+        "error_kind"
+    ] == "quota_exhausted"
+    assert failure["structured_evidence"]["quota_verifier_receipt"][
+        "payload"
+    ]["verdict"] == "quota_exhausted"
+
+
+def test_grok_quota_verifier_nonreading_pipe_honors_one_deadline(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    pid_path = tmp_path / "nonreading-verifier.pid"
+    verifier_path = tmp_path / "nonreading_verifier.py"
+    verifier_path.write_text(
+        "import os\n"
+        "import pathlib\n"
+        "import time\n"
+        f"pathlib.Path({str(pid_path)!r}).write_text(str(os.getpid()))\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_COMMAND_ENV,
+        f"{shlex.quote(sys.executable)} {shlex.quote(str(verifier_path))}",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_TIMEOUT_ENV,
+        "0.15",
+    )
+
+    started = time.monotonic()
+    response = daemon._run_grok_quota_verifier(
+        b"x"
+        * implementation_daemon_module.GROK_QUOTA_VERIFIER_MAX_REQUEST_BYTES
+    )
+    elapsed = time.monotonic() - started
+
+    assert response == b""
+    assert elapsed < 1.5
+    assert pid_path.exists()
+    assert not pid_alive(int(pid_path.read_text(encoding="utf-8")))
+
+    launch_marker = tmp_path / "oversized-request-launched"
+    monkeypatch.setenv(
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_COMMAND_ENV,
+        (
+            f"{shlex.quote(sys.executable)} -c "
+            + shlex.quote(
+                "from pathlib import Path; "
+                f"Path({str(launch_marker)!r}).write_text('launched')"
+            )
+        ),
+    )
+    started = time.monotonic()
+    response = daemon._run_grok_quota_verifier(
+        b"x"
+        * (
+            implementation_daemon_module.GROK_QUOTA_VERIFIER_MAX_REQUEST_BYTES
+            + 1
+        )
+    )
+    assert response == b""
+    assert time.monotonic() - started < 0.5
+    assert not launch_marker.exists()
+
+
+@pytest.mark.parametrize(
+    "identifier_environment",
+    (
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV,
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_POOL_ID_ENV,
+    ),
+)
+def test_grok_quota_verifier_rejects_unbounded_identifiers_before_launch(
+    tmp_path,
+    monkeypatch,
+    identifier_environment,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    _configure_test_grok_quota_verifier(monkeypatch, tmp_path)
+    command = _test_grok_command(repo)
+    candidate = grok_cli_runner.parse_grok_terminal_quota_receipt(
+        _test_grok_terminal_line(command),
+        expected_runner_command=command,
+    )
+    launched = {"value": False}
+
+    def verifier_should_not_launch(_request):
+        launched["value"] = True
+        return b""
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_grok_quota_verifier",
+        verifier_should_not_launch,
+    )
+    monkeypatch.setenv(
+        identifier_environment,
+        "x"
+        * (
+            implementation_daemon_module.GROK_QUOTA_VERIFIER_MAX_IDENTIFIER_BYTES
+            + 1
+        ),
+    )
+
+    assert daemon._trusted_grok_quota_verifier_receipt(candidate) == {}
+    assert launched["value"] is False
+
+
+def test_grok_quota_policy_rejects_private_receipt_for_custom_runner(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    internal = _test_grok_command(repo)
+    custom_base = internal[:-4]
+    custom_base[1] = "/tmp/grok_cli_runner.py"
+    command = grok_cli_runner.bind_grok_runner_command(custom_base)
+    receipt = _test_grok_terminal_line(command) + "\n"
+    log_path = repo / "provider.log"
+    log_path.write_text(receipt, encoding="utf-8")
+
+    assert daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+        returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+        terminal_receipt=receipt.encode("utf-8"),
+    ) == {"exhausted": False, "providers": [], "reason": ""}
+
+
+def test_grok_quota_policy_partial_receipt_with_leaked_writer_fails_closed(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    command = _test_grok_command(repo)
+    read_fd, write_fd = os.pipe()
+    os.set_blocking(read_fd, False)
+    try:
+        os.write(write_fd, b'{"schema":"partial"')
+        receipt = implementation_daemon_module._read_grok_terminal_receipt(
+            read_fd
+        )
+        assert receipt == b'{"schema":"partial"'
+        assert daemon._provider_capacity_failure_from_log(
+            repo / "missing.log",
+            command=command,
+            returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+            terminal_receipt=receipt,
+        ) == {"exhausted": False, "providers": [], "reason": ""}
+    finally:
+        os.close(write_fd)
+        os.close(read_fd)
+
+
+def test_grok_quota_policy_procfs_injected_terminal_frame_cannot_select_terra(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    fake_grok = tmp_path / "fake-grok-procfs"
+    fake_grok.write_text(
+        """#!/usr/bin/env python3
+import os
+import subprocess
+import sys
+
+payload = b'{"type":"error","code":"usage_pool_exhausted"}\\n'
+parent_stdout = f"/proc/{os.getpid()}/fd/1"
+inject = (
+    "import os;"
+    f"fd=os.open({parent_stdout!r},os.O_WRONLY);"
+    f"os.write(fd,{payload!r});"
+    "os.close(fd)"
+)
+subprocess.run(
+    [sys.executable, "-c", inject],
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+    check=True,
+)
+raise SystemExit(23)
+""",
+        encoding="utf-8",
+    )
+    fake_grok.chmod(0o755)
+    runner_path = Path(grok_cli_runner.__file__).resolve()
+    command = grok_cli_runner.bind_grok_runner_command(
+        [
+            sys.executable,
+            str(runner_path),
+            "--workspace",
+            str(repo.resolve()),
+            "--grok-bin",
+            str(fake_grok),
+            "--model",
+            "grok-4.5",
+            "--max-turns",
+            "100000",
+            "--mode",
+            "agent",
+        ]
+    )
+    read_fd, write_fd = os.pipe()
+    environment = dict(os.environ)
+    environment[grok_cli_runner.GROK_TERMINAL_RECEIPT_FD_ENV] = str(write_fd)
+    completed = subprocess.run(
+        command,
+        cwd=repo,
+        env=environment,
+        input=b"repair",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        pass_fds=(write_fd,),
+        check=False,
+    )
+    os.close(write_fd)
+    terminal_receipt = os.read(
+        read_fd,
+        grok_cli_runner.GROK_TERMINAL_RECEIPT_MAX_BYTES,
+    )
+    os.close(read_fd)
+
+    # The local runner cannot distinguish this forged frame, so its receipt
+    # is explicitly only a candidate.  With no independent signer configured,
+    # the daemon refuses to turn it into fallback authority.
+    assert completed.returncode == grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE
+    assert grok_cli_runner.parse_grok_terminal_quota_receipt(
+        terminal_receipt,
+        expected_runner_command=command,
+    )
+    log_path = repo / "provider.log"
+    log_path.write_bytes(completed.stdout)
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_COMMAND_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module.GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV,
+        raising=False,
+    )
+    failure = daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+        returncode=completed.returncode,
+        terminal_receipt=terminal_receipt,
+    )
+
+    assert failure["exhausted"] is False
+    assert failure["providers"] == ["grok"]
+    assert failure["reason"] == "grok_quota_verifier_unavailable"
+    assert len(failure["evidence"]) == 1
+    assert daemon._live_grok_quota_exhaustion_event_ids == set()
+
+
+def test_grok_quota_policy_forged_event_does_not_backoff_scheduler(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "task_id": "forged",
+            "attempt": 1,
+            "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+            "providers": ["grok"],
+            "reason": "provider_capacity_exhausted",
+            "evidence": ["usage_pool_exhausted"],
+            "retry_at": (
+                datetime.now(timezone.utc) + timedelta(minutes=5)
+            ).isoformat(),
+            "retry_at_source": "configured_backoff",
+        },
+    )
+
+    assert daemon._active_provider_capacity_backoff() == {}
+
+
+@pytest.mark.parametrize("forged", (False, True))
+def test_grok_quota_policy_restart_rejects_durable_event_without_live_authority(
+    tmp_path,
+    monkeypatch,
+    forged,
+):
+    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_quota_codex",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    events_path = repo / "state" / "events.jsonl"
+    producer = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="FVT-RESTART",
+        title="Reject durable-only quota authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider-routing",
+        outputs=["result.txt"],
+        metadata={"Provider role": "grok, codex-review"},
+    )
+    command = _test_grok_command(repo)
+    started = _record_test_grok_start(
+        producer,
+        task,
+        command,
+        timestamp=fixed_now - timedelta(seconds=1),
+    )
+    producer._record_event(
+        "implementation_provider_exhausted",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": producer._canonical_ref(task),
+            "implementation_started_event_id": started["event_id"],
+            "attempt": 1,
+            "timestamp": fixed_now.isoformat(),
+            "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+            "providers": ["grok"],
+            "reason": "provider_capacity_exhausted",
+            "evidence": [
+                "usage_pool_exhausted"
+                if forged
+                else _test_grok_terminal_line(command)
+            ],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            "retry_at_source": "configured_backoff",
+        },
+    )
+
+    restarted = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+
+    assert restarted._live_grok_quota_exhaustion_event_ids == set()
+    assert restarted._active_provider_exhaustion("grok") == {}
+    assert restarted._active_provider_capacity_backoff(task) == {}
+    retry_command = restarted._build_implementation_command(repo, task=task)
+    assert retry_command[1].endswith("grok_cli_runner.py")
+    assert retry_command[retry_command.index("--model") + 1] == "grok-4.5"
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: None,
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="Codex is authorized only after a classified Grok quota",
+    ):
+        restarted._build_implementation_command(repo, task=task)
+
+
+def test_grok_quota_policy_process_local_event_id_must_match_durable_event(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_quota_codex",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="FVT-MISMATCH",
+        title="Reject mismatched live authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider-routing",
+        outputs=["result.txt"],
+        metadata={"Provider role": "grok, codex-review"},
+    )
+    command = _test_grok_command(repo)
+    started = _record_test_grok_start(
+        daemon,
+        task,
+        command,
+        timestamp=fixed_now - timedelta(seconds=1),
+    )
+    event = daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": daemon._canonical_ref(task),
+            "implementation_started_event_id": started["event_id"],
+            "attempt": 1,
+            "timestamp": fixed_now.isoformat(),
+            "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+            "providers": ["grok"],
+            "reason": "provider_capacity_exhausted",
+            "evidence": [_test_grok_terminal_line(command)],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            "retry_at_source": "configured_backoff",
+        },
+    )
+    wrong_event_id = "sha256:" + "f" * 64
+    assert wrong_event_id != event["event_id"]
+    daemon._live_grok_quota_exhaustion_event_ids.add(wrong_event_id)
+
+    assert daemon._active_provider_exhaustion("grok") == {}
+    assert daemon._active_provider_capacity_backoff(task) == {}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("providers", "grok"),
+        ("providers", 7),
+        ("providers", {"provider": "grok"}),
+        ("evidence", "usage_pool_exhausted"),
+        ("evidence", 7),
+        ("evidence", {"code": "usage_pool_exhausted"}),
+    ),
+)
+def test_grok_quota_policy_malformed_durable_sequences_fail_closed(
+    tmp_path,
+    monkeypatch,
+    field,
+    value,
+):
+    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_quota_codex",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="FVT-MALFORMED",
+        title="Reject malformed quota sequences",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider-routing",
+        outputs=["result.txt"],
+        metadata={"Provider role": "grok, codex-review"},
+    )
+    command = _test_grok_command(repo)
+    started = _record_test_grok_start(
+        daemon,
+        task,
+        command,
+        timestamp=fixed_now - timedelta(seconds=1),
+    )
+    payload = {
+        "task_id": task.task_id,
+        "canonical_task_cid": daemon._canonical_ref(task),
+        "implementation_started_event_id": started["event_id"],
+        "attempt": 1,
+        "timestamp": fixed_now.isoformat(),
+        "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+        "providers": ["grok"],
+        "reason": "provider_capacity_exhausted",
+        "evidence": [_test_grok_terminal_line(command)],
+        "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+        "retry_at_source": "configured_backoff",
+    }
+    payload[field] = value
+    event = daemon._record_event(
+        "implementation_provider_exhausted",
+        payload,
+    )
+    daemon._live_grok_quota_exhaustion_event_ids.add(
+        str(event["event_id"])
+    )
+
+    assert daemon._active_provider_exhaustion("grok") == {}
+    assert daemon._active_provider_capacity_backoff(task) == {}
+
+
+@pytest.mark.parametrize("providers", ([], ["xai"]))
+def test_grok_quota_policy_xai_or_empty_events_do_not_backoff(
+    tmp_path,
+    monkeypatch,
+    providers,
+):
+    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_quota_codex",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "task_id": "forged-alias",
+            "attempt": 1,
+            "providers": providers,
+            "reason": "provider_capacity_exhausted",
+            "evidence": ["usage_pool_exhausted"],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            "retry_at_source": "configured_backoff",
+        },
+    )
+
+    assert daemon._active_provider_capacity_backoff() == {}
+
+
+@pytest.mark.parametrize("verifier_configured", (True, False))
+def test_grok_quota_policy_worktree_run_binds_private_receipt_to_start(
+    tmp_path,
+    monkeypatch,
+    verifier_configured,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+        implement=True,
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    if verifier_configured:
+        _configure_test_grok_quota_verifier(monkeypatch, tmp_path)
+    else:
+        for name in (
+            implementation_daemon_module.GROK_QUOTA_VERIFIER_COMMAND_ENV,
+            implementation_daemon_module.GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV,
+            implementation_daemon_module.GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV,
+            implementation_daemon_module.GROK_QUOTA_VERIFIER_POOL_ID_ENV,
+        ):
+            monkeypatch.delenv(name, raising=False)
+    task = PortalTask(
+        task_id="FVT-QUOTA",
+        title="Exercise private quota authority",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="provider-routing",
+        outputs=["result.txt"],
+        metadata={"Provider role": "grok, codex-review"},
+    )
+    daemon._register_task_identities([task])
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_quota_codex",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/bin/true",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "repair",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context-receipt.json",
+    )
+
+    def quota_runner(command, **kwargs):
+        [receipt_fd] = kwargs["pass_fds"]
+        assert kwargs["env"][
+            grok_cli_runner.GROK_TERMINAL_RECEIPT_FD_ENV
+        ] == str(receipt_fd)
+        receipt = grok_cli_runner.build_grok_terminal_quota_receipt(
+            command=command,
+            model="grok-4.5",
+            inner_returncode=29,
+            terminal_event={
+                "type": "error",
+                "code": "usage_pool_exhausted",
+            },
+        )
+        os.write(
+            receipt_fd,
+            (json.dumps(receipt, sort_keys=True) + "\n").encode("utf-8"),
+        )
+        return subprocess.CompletedProcess(
+            command,
+            grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        quota_runner,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result.get("deferred") is True, result
+    assert result["attempt_consumed"] is False
+    if not verifier_configured:
+        assert result["reason"] == "grok_quota_verifier_unavailable"
+        assert result["backoff_seconds"] == 60
+        assert daemon._live_grok_quota_exhaustion_event_ids == set()
+        assert not any(
+            event["type"] == "implementation_provider_exhausted"
+            for event in daemon._iter_merge_lifecycle_events(
+                include_physical_canonicality=True,
+            )
+        )
+        retry_command = daemon._build_implementation_command(repo, task=task)
+        assert retry_command[1].endswith("grok_cli_runner.py")
+        return
+    events = daemon._iter_merge_lifecycle_events(
+        include_physical_canonicality=True,
+    )
+    started = next(
+        event for event in events if event["type"] == "implementation_started"
+    )
+    exhausted = next(
+        event
+        for event in events
+        if event["type"] == "implementation_provider_exhausted"
+    )
+    assert exhausted["implementation_started_event_id"] == started["event_id"]
+    assert exhausted["canonical_task_cid"] == started["canonical_task_cid"]
+    assert started["_physical_canonical_event"] is True
+    assert exhausted["_physical_canonical_event"] is True
+    assert daemon._live_grok_quota_exhaustion_event_ids == {
+        exhausted["event_id"]
+    }
+
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    fallback = daemon._build_implementation_command(repo, task=task)
+    assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in fallback
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("attempt", 0),
+        ("sequence", 0),
+        ("task_id", ""),
+        ("event_id", ""),
+        ("timestamp", ""),
+    ),
+)
+def test_grok_quota_policy_rejects_missing_or_zero_event_provenance(
+    tmp_path,
+    monkeypatch,
+    field,
+    value,
+):
+    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    command = _test_grok_command(repo)
+    task_id = "SCA-169P"
+    task_cid = "bafy-test-task-revision"
+    started_event_id = "sha256:" + "b" * 64
+    started = {
+        "type": "implementation_started",
+        "timestamp": (fixed_now - timedelta(seconds=1)).isoformat(),
+        "task_id": task_id,
+        "canonical_task_cid": task_cid,
+        "attempt": 1,
+        "sequence": 1,
+        "event_id": started_event_id,
+        "stream_id": "event-log:sha256:test",
+        "snapshot_id": "event-log-snapshot:sha256:test",
+        "_physical_canonical_event": True,
+        "command": command,
+        "provider_route_receipt": {
+            "configured_policy": "grok_quota_codex",
+            "route": "grok_primary",
+            "selected_provider": "grok",
+            "model": "grok-4.5",
+            "secondary_fallback_allowed": False,
+        },
+    }
+    exhausted = {
+        "type": "implementation_provider_exhausted",
+        "timestamp": fixed_now.isoformat(),
+        "task_id": task_id,
+        "canonical_task_cid": task_cid,
+        "implementation_started_event_id": started_event_id,
+        "attempt": 1,
+        "sequence": 2,
+        "event_id": "sha256:" + "a" * 64,
+        "stream_id": "event-log:sha256:test",
+        "snapshot_id": "event-log-snapshot:sha256:test",
+        "_physical_canonical_event": True,
+        "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+        "providers": ["grok"],
+        "reason": "provider_capacity_exhausted",
+        "evidence": [_test_grok_terminal_line(command)],
+        "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+        "retry_at_source": "configured_backoff",
+    }
+    exhausted[field] = value
+    monkeypatch.setattr(
+        daemon,
+        "_iter_merge_lifecycle_events",
+        lambda **_kwargs: [started, exhausted],
+    )
+
+    assert daemon._active_provider_exhaustion("grok") == {}
+
+
+@pytest.mark.parametrize("mutation", ("missing_event_id", "wrong_previous"))
+def test_grok_quota_policy_physical_canonical_marker_rejects_omissions(
+    tmp_path,
+    mutation,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    events_path = repo / "state" / "events.jsonl"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+    )
+    event = daemon._record_event("implementation_started", {"task_id": "x"})
+    if mutation == "missing_event_id":
+        event.pop("event_id")
+    else:
+        event["previous_event_id"] = "sha256:" + "c" * 64
+        identity = dict(event)
+        identity.pop("event_id", None)
+        event["event_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                identity,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+    events_path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+    events_path.with_name(f"{events_path.name}.manifest.json").unlink()
+    daemon._invalidate_event_cache()
+
+    [replayed] = daemon._iter_merge_lifecycle_events(
+        include_physical_canonicality=True,
+    )
+
+    assert replayed["_physical_canonical_event"] is False
+
+
+@pytest.mark.parametrize(
     "provider_role",
     ("grok, codex-review", "grok-implement, codex-review"),
 )
@@ -30110,20 +31287,62 @@ def test_grok_quota_codex_policy_uses_exact_models_and_quota_only_fallback(
     assert primary_command[0] == sys.executable
     assert primary_command[1].endswith("grok_cli_runner.py")
     assert primary_command[primary_command.index("--model") + 1] == "grok-4.5"
+    _configure_test_grok_quota_verifier(
+        monkeypatch,
+        tmp_path,
+        now=fixed_now,
+    )
+    quota_failure = _test_signed_grok_quota_failure(
+        daemon,
+        repo,
+        primary_command,
+    )
 
-    daemon._record_event(
+    started_event = _record_test_grok_start(
+        daemon,
+        task,
+        primary_command,
+        timestamp=fixed_now - timedelta(seconds=1),
+    )
+    exhaustion_event = daemon._record_event(
         "implementation_provider_exhausted",
         {
             "task_id": task.task_id,
+            "canonical_task_cid": daemon._canonical_ref(task),
+            "implementation_started_event_id": started_event["event_id"],
             "attempt": 1,
+            "timestamp": fixed_now.isoformat(),
+            "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
             "providers": ["grok"],
             "reason": "provider_capacity_exhausted",
-            "evidence": ["Grok quota exceeded"],
-            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            "evidence": quota_failure["evidence"],
+            "retry_at": (fixed_now + timedelta(minutes=1)).isoformat(),
             "retry_at_source": "configured_backoff",
         },
     )
-    # Fallback authority is durable; Grok need not remain available after its
+    # This unit isolates model selection. The end-to-end worktree test below
+    # proves that production adds this process-local ID only after the signed
+    # verifier receipt is classified and the event is durably appended.
+    daemon._live_grok_quota_exhaustion_event_ids.add(
+        str(exhaustion_event["event_id"])
+    )
+    unrelated_task = PortalTask(
+        task_id="SCA-169Q-OTHER",
+        title="Do not share another task's quota latch",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider-routing",
+        outputs=["src/other_provider_routing.py"],
+        metadata={"Provider role": provider_role},
+    )
+    unrelated_command = daemon._build_implementation_command(
+        repo,
+        task=unrelated_task,
+    )
+    assert unrelated_command[1].endswith("grok_cli_runner.py")
+    assert daemon._active_provider_capacity_backoff(unrelated_task) == {}
+    # Grok need not remain available within the same live daemon after its
     # positively classified quota event.
     grok_readiness["ready"] = False
 
@@ -30140,11 +31359,9 @@ def test_grok_quota_codex_policy_uses_exact_models_and_quota_only_fallback(
     assert 'model_reasoning_effort="medium"' in fallback_command
     assert not any("copilot" in item for item in fallback_command)
     assert daemon._active_provider_capacity_backoff() == {}
-    # The receipt describes the command actually selected, even if the latch
-    # expires between command construction and event publication.
-    clock["now"] = fixed_now + timedelta(minutes=10)
     route_receipt = daemon._implementation_provider_route_receipt(
-        fallback_command
+        fallback_command,
+        task=task,
     )
     assert route_receipt["route"] == "codex_quota_fallback"
     assert route_receipt["selected_provider"] == "codex"
@@ -30154,7 +31371,18 @@ def test_grok_quota_codex_policy_uses_exact_models_and_quota_only_fallback(
     assert route_receipt["secondary_fallback_allowed"] is False
     assert route_receipt["grok_quota_authority"]["source_task_id"] == task.task_id
     assert route_receipt["grok_quota_authority"]["source_attempt"] == 1
-    assert route_receipt["grok_quota_authority"]["active"] is False
+    assert route_receipt["grok_quota_authority"]["active"] is True
+    # Once the signed verifier verdict expires, the already-built command no
+    # longer has route authority and no new Terra command may be selected.
+    clock["now"] = fixed_now + timedelta(minutes=10)
+    expired_receipt = daemon._implementation_provider_route_receipt(
+        fallback_command,
+        task=task,
+    )
+    assert expired_receipt["route"] == "invalid"
+    assert expired_receipt["selection_reason"] == (
+        "missing_grok_quota_authority"
+    )
     grok_readiness["ready"] = True
     renewed_primary_command = daemon._build_implementation_command(
         repo,
@@ -30281,12 +31509,23 @@ def test_grok_quota_codex_policy_rejects_untrusted_quota_events(
         "which",
         lambda name: "/usr/local/bin/codex" if name == "codex" else None,
     )
+    primary_command = _test_grok_command(repo)
+    started_event = _record_test_grok_start(
+        daemon,
+        task,
+        primary_command,
+        timestamp=fixed_now - timedelta(seconds=1),
+    )
     event = {
         "task_id": task.task_id,
+        "canonical_task_cid": daemon._canonical_ref(task),
+        "implementation_started_event_id": started_event["event_id"],
         "attempt": 1,
+        "timestamp": fixed_now.isoformat(),
+        "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
         "providers": ["grok"],
         "reason": "provider_capacity_exhausted",
-        "evidence": ["Grok quota exceeded"],
+        "evidence": [_test_grok_terminal_line(primary_command)],
         "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
         "retry_at_source": "configured_backoff",
     }
@@ -30351,20 +31590,46 @@ def test_grok_quota_codex_policy_waits_when_exact_codex_is_unavailable(
         "which",
         lambda _name: None,
     )
-    daemon._record_event(
+    primary_command = _test_grok_command(repo)
+    _configure_test_grok_quota_verifier(
+        monkeypatch,
+        tmp_path,
+        now=fixed_now,
+    )
+    quota_failure = _test_signed_grok_quota_failure(
+        daemon,
+        repo,
+        primary_command,
+    )
+    started_event = _record_test_grok_start(
+        daemon,
+        task,
+        primary_command,
+        timestamp=fixed_now - timedelta(seconds=1),
+    )
+    exhaustion_event = daemon._record_event(
         "implementation_provider_exhausted",
         {
             "task_id": task.task_id,
+            "canonical_task_cid": daemon._canonical_ref(task),
+            "implementation_started_event_id": started_event["event_id"],
             "attempt": 1,
+            "timestamp": fixed_now.isoformat(),
+            "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
             "providers": ["grok"],
             "reason": "provider_capacity_exhausted",
-            "evidence": ["Grok quota exceeded"],
-            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            "evidence": quota_failure["evidence"],
+            "retry_at": (fixed_now + timedelta(minutes=1)).isoformat(),
             "retry_at_source": "configured_backoff",
         },
     )
+    daemon._live_grok_quota_exhaustion_event_ids.add(
+        str(exhaustion_event["event_id"])
+    )
 
-    assert daemon._active_provider_capacity_backoff()["providers"] == ["grok"]
+    assert daemon._active_provider_capacity_backoff(task)["providers"] == [
+        "grok"
+    ]
     with pytest.raises(RuntimeError, match="exact Codex fallback executable"):
         daemon._build_implementation_command(repo, task=task)
 
