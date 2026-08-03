@@ -1028,7 +1028,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-081 Compile benchmark/Doctor residuals into bounded derived goals and tasks
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
