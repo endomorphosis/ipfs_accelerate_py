@@ -359,6 +359,7 @@ def _valid_semantic_result(
     monkeypatch: pytest.MonkeyPatch,
     lane_id: str,
 ) -> dict[str, Any]:
+    original_module_loader = certifier._load_module_from_path
     live = _live_vendor_certificate(lane_id)
     _install_fake_vendor(monkeypatch, lane_id, live)
     reference = (
@@ -378,6 +379,11 @@ def _valid_semantic_result(
         reference,
         semantic_spec=spec,
         fanin=fanin,
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_load_module_from_path",
+        original_module_loader,
     )
     return _compact_semantic_result(
         lane_id=lane_id,
@@ -756,9 +762,22 @@ def test_checked_vendor_projection_satisfies_readiness_without_authority(
     assert entry["production_certified"] is False
     assert entry["production_elevation_allowed"] is False
     assert entry["authority_granted"] is False
+    assert entry["authority_requirement_satisfied"] is False
     assert entry["grants_theorem_authority"] is False
     assert entry["grants_global_correctness"] is False
     assert entry["grants_authorization_decision_authority"] is False
+    assert entry["readiness_scope"] == (
+        "differential_witness_only"
+        if lane_id == "runtime_mtl"
+        else "shadow_checker_only"
+    )
+    assert entry["declared_authority_role"] == role
+    assert entry["declared_authority_ceiling"] == (
+        "finite_trace" if certifying_role else "none"
+    )
+    assert entry[
+        "declared_role_can_satisfy_certified_authority"
+    ] is certifying_role
 
     lock = certifier.load_lock(
         REPO_ROOT / certifier.DEFAULT_LOCK_RELATIVE
@@ -818,8 +837,19 @@ def test_checked_vendor_projection_satisfies_readiness_without_authority(
         assert readiness["platform_exceptions"][0]["complete"] is False
 
 
+@pytest.mark.parametrize(
+    ("field_name", "forged_value"),
+    [
+        ("authority_granted", True),
+        ("authority_requirement_satisfied", True),
+        ("readiness_scope", "finite_trace_authority"),
+        ("declared_authority_ceiling", "none"),
+    ],
+)
 def test_rehashed_forged_vendor_readiness_projection_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
+    field_name: str,
+    forged_value: Any,
 ) -> None:
     semantic_result = _valid_semantic_result(monkeypatch, "runtime_mtl")
     projection = (
@@ -830,7 +860,7 @@ def test_rehashed_forged_vendor_readiness_projection_fails_closed(
     )
     forged = json.loads(json.dumps(projection))
     entry = forged["tools"]["runtime-mtl-external"]
-    entry["authority_granted"] = True
+    entry[field_name] = forged_value
     entry["digest_sha256"] = certifier.content_digest(
         {
             key: value
@@ -973,3 +1003,49 @@ def test_builder_rederives_and_rejects_forged_vendor_readiness(
         "checked_vendor_capability_readiness_projection_mismatch"
         in rejected["failures"]
     )
+
+    independently_forged = json.loads(json.dumps(projection))
+    forged_runtime = independently_forged["tools"][
+        "runtime-mtl-external"
+    ]
+    forged_runtime["authority_requirement_satisfied"] = True
+    forged_runtime["declared_authority_ceiling"] = "none"
+    forged_runtime["digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in forged_runtime.items()
+            if key != "digest_sha256"
+        }
+    )
+    independently_forged["digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in independently_forged.items()
+            if key != "digest_sha256"
+        }
+    )
+    independently_claimed = json.loads(json.dumps(managed))
+    independently_claimed[
+        "checked_vendor_capability_readiness"
+    ] = independently_forged
+    monkeypatch.setattr(
+        certifier,
+        "build_checked_vendor_capability_readiness_projection",
+        lambda **_kwargs: independently_forged,
+    )
+    independently_rejected = (
+        builder._audit_checked_vendor_capability_readiness(
+            certifier=certifier,
+            repo_root=REPO_ROOT,
+            managed=independently_claimed,
+            tools=tools,
+            semantic_results=semantic_results,
+            semantic_audit=semantic_audit,
+        )
+    )
+    assert independently_rejected["valid"] is False
+    assert independently_rejected["projection_matches"] is True
+    runtime_audit = independently_rejected["lane_audits"][
+        "runtime_mtl"
+    ]
+    assert runtime_audit["authority_flags_valid"] is False

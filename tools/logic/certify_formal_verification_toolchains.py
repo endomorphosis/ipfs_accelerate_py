@@ -3855,6 +3855,10 @@ CHECKED_VENDOR_FANIN_SPECS: Final[Mapping[str, Mapping[str, Any]]] = {
         "evidence_class": "reference_plus_checked_runtime_mtl_vendor",
         "managed_readiness_tool_id": "runtime-mtl-external",
         "managed_readiness_role": "differential_witness",
+        "managed_readiness_scope": "differential_witness_only",
+        "declared_authority_role": "authority",
+        "declared_authority_ceiling": "finite_trace",
+        "declared_role_can_satisfy_certified_authority": True,
         "managed_readiness_evidence_class": (
             "checked_runtime_mtl_vendor_differential_witness"
         ),
@@ -3889,6 +3893,10 @@ CHECKED_VENDOR_FANIN_SPECS: Final[Mapping[str, Mapping[str, Any]]] = {
         "evidence_class": "reference_plus_checked_souffle_vendor",
         "managed_readiness_tool_id": "souffle",
         "managed_readiness_role": "shadow_checker",
+        "managed_readiness_scope": "shadow_checker_only",
+        "declared_authority_role": "shadow",
+        "declared_authority_ceiling": "none",
+        "declared_role_can_satisfy_certified_authority": False,
         "managed_readiness_evidence_class": (
             "checked_native_souffle_vendor_shadow"
         ),
@@ -5824,6 +5832,12 @@ def build_checked_vendor_capability_readiness_projection(
         else:
             results_by_lane[lane_id] = raw_result
 
+    authority_role_rows = load_authority_roles(repo_root).get("tools")
+    authority_role_rows = (
+        authority_role_rows
+        if isinstance(authority_role_rows, Mapping)
+        else {}
+    )
     tools: dict[str, dict[str, Any]] = {}
     for lane_id, raw_vendor_spec in CHECKED_VENDOR_FANIN_SPECS.items():
         vendor_spec = dict(raw_vendor_spec)
@@ -5832,6 +5846,10 @@ def build_checked_vendor_capability_readiness_projection(
         )
         if not external_tool_id:
             continue
+        declared_role = authority_role_rows.get(external_tool_id)
+        declared_role = (
+            declared_role if isinstance(declared_role, Mapping) else {}
+        )
         spec = next(
             (
                 item
@@ -5852,6 +5870,20 @@ def build_checked_vendor_capability_readiness_projection(
             result = {}
         if result.get("status") != "ran":
             failures.append("semantic_lane_not_run")
+        expected_role_binding = {
+            "role": vendor_spec["declared_authority_role"],
+            "authority_ceiling": vendor_spec[
+                "declared_authority_ceiling"
+            ],
+            "can_satisfy_certified_authority": vendor_spec[
+                "declared_role_can_satisfy_certified_authority"
+            ],
+        }
+        if any(
+            declared_role.get(field_name) != expected
+            for field_name, expected in expected_role_binding.items()
+        ):
+            failures.append("declared_authority_role_binding_invalid")
 
         fanin = result.get("checked_vendor_fanin")
         fanin = fanin if isinstance(fanin, Mapping) else {}
@@ -5956,9 +5988,22 @@ def build_checked_vendor_capability_readiness_projection(
             "tool_id": external_tool_id,
             "lane_id": lane_id,
             "role": str(vendor_spec["managed_readiness_role"]),
+            "readiness_scope": str(
+                vendor_spec["managed_readiness_scope"]
+            ),
             "evidence_class": str(
                 vendor_spec["managed_readiness_evidence_class"]
             ),
+            "declared_authority_role": declared_role.get("role"),
+            "declared_authority_ceiling": declared_role.get(
+                "authority_ceiling"
+            ),
+            "declared_role_can_satisfy_certified_authority": (
+                declared_role.get(
+                    "can_satisfy_certified_authority"
+                )
+            ),
+            "authority_requirement_satisfied": False,
             "ready": ready,
             "installation_ready": ready,
             "semantic_certification_ready": ready,
@@ -7704,6 +7749,17 @@ def build_managed_deployment_readiness(
             if isinstance(vendor_readiness, Mapping)
             else {}
         )
+        vendor_readiness_spec = next(
+            (
+                raw_spec
+                for raw_spec in CHECKED_VENDOR_FANIN_SPECS.values()
+                if str(
+                    raw_spec.get("managed_readiness_tool_id") or ""
+                )
+                == tool_id
+            ),
+            {},
+        )
         vendor_capability_ready = bool(
             vendor_readiness_binding_valid
             and vendor_readiness.get("ready") is True
@@ -7718,6 +7774,29 @@ def build_managed_deployment_readiness(
                 "grants_authorization_decision_authority"
             )
             is False
+            and vendor_readiness.get(
+                "authority_requirement_satisfied"
+            )
+            is False
+            and vendor_readiness.get("readiness_scope")
+            == vendor_readiness_spec.get("managed_readiness_scope")
+            and vendor_readiness.get("role")
+            == vendor_readiness_spec.get("managed_readiness_role")
+            and vendor_readiness.get("declared_authority_role") == role
+            and vendor_readiness.get("declared_authority_ceiling")
+            == (
+                role_meta.get("authority_ceiling")
+                if isinstance(role_meta, Mapping)
+                else None
+            )
+            and vendor_readiness.get(
+                "declared_role_can_satisfy_certified_authority"
+            )
+            == (
+                role_meta.get("can_satisfy_certified_authority")
+                if isinstance(role_meta, Mapping)
+                else None
+            )
             and not list(vendor_readiness.get("failures") or ())
         )
         vendor_artifact = vendor_readiness.get(

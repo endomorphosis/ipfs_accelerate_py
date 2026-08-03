@@ -5505,6 +5505,9 @@ def _audit_checked_vendor_capability_readiness(
             "external_secpal_platform_exception_counted_as_ready"
         )
 
+    canonical_role_rows = _safe_dict(
+        certifier.load_authority_roles(repo_root).get("tools")
+    )
     audit_lanes = _safe_dict(semantic_audit.get("lanes"))
     lane_audits: dict[str, Any] = {}
     for lane_id, raw_vendor_spec in getattr(
@@ -5559,16 +5562,39 @@ def _audit_checked_vendor_capability_readiness(
             vendor_checks_passed = -1
             vendor_checks_total = -1
             expected_vendor_checks = 0
+        canonical_role = _safe_dict(
+            canonical_role_rows.get(external_tool_id)
+        )
         authority_flags_valid = bool(
             entry.get("production_certified") is False
             and entry.get("production_elevation_allowed") is False
             and entry.get("authority_granted") is False
+            and entry.get("authority_requirement_satisfied") is False
             and entry.get("grants_theorem_authority") is False
             and entry.get("grants_global_correctness") is False
             and entry.get(
                 "grants_authorization_decision_authority"
             )
             is False
+            and entry.get("readiness_scope")
+            == vendor_spec.get("managed_readiness_scope")
+            and entry.get("role")
+            == vendor_spec.get("managed_readiness_role")
+            and entry.get("declared_authority_role")
+            == canonical_role.get("role")
+            == vendor_spec.get("declared_authority_role")
+            and entry.get("declared_authority_ceiling")
+            == canonical_role.get("authority_ceiling")
+            == vendor_spec.get("declared_authority_ceiling")
+            and entry.get(
+                "declared_role_can_satisfy_certified_authority"
+            )
+            == canonical_role.get(
+                "can_satisfy_certified_authority"
+            )
+            == vendor_spec.get(
+                "declared_role_can_satisfy_certified_authority"
+            )
             and _safe_dict(tools.get(external_tool_id)).get(
                 "production_certified"
             )
