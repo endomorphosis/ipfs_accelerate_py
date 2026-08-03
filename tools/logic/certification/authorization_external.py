@@ -1664,6 +1664,177 @@ def derive_secpal_platform_exception(
     }
 
 
+def build_secpal_live_toolchain_contract(
+    *,
+    platform_id: str | None = None,
+    repo_root: Path | str | None = None,
+    lock_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Build the offline ``SecPALLiveToolchainContract@1`` capability ceiling.
+
+    FVT-G217 / FVT-086 binds the recovered Microsoft research MSI as exact
+    official provenance plus transactional local intake.  The live execution
+    matrix is intentionally empty: no host may install, certify, or complete
+    external SecPAL.  Operator compatibility remains separately classified and
+    cannot promote to an engine identity, arbitrary-policy interface, platform
+    authority, production permission, or FVT-G219 authoritative live evidence.
+    In-process ``secpal-authorization`` and hermetic shadows stay separately
+    named and never impersonate the vendor tool.
+    """
+
+    root = Path(repo_root).expanduser().resolve() if repo_root else Path.cwd()
+    resolved_lock = (
+        Path(lock_path).expanduser().resolve()
+        if lock_path is not None
+        else (root / "config" / "formal_verification_toolchains.lock.json")
+    )
+    host = platform_id or authz_installer._detect_platform()
+    live_readiness = authz_installer.secpal_vendor_prerequisite_report(
+        repo_root=root,
+        lock_path=resolved_lock,
+    )
+    platform_exception = derive_secpal_platform_exception(
+        platform_id=host,
+        repo_root=root,
+        lock_path=resolved_lock,
+    )
+    lock_payload = json.loads(resolved_lock.read_text(encoding="utf-8"))
+    tools = {
+        item["tool_id"]: item
+        for item in lock_payload.get("tools") or []
+        if isinstance(item, Mapping) and isinstance(item.get("tool_id"), str)
+    }
+    external = tools.get(TOOL_SECPAL) or {}
+    in_process = tools.get("secpal-authorization") or {}
+    deployment = external.get("deployment_contract") or {}
+    vendor = deployment.get("vendor_install") or {}
+    operator = vendor.get("operator_artifact") or {}
+    authenticode = operator.get("authenticode_evidence") or {}
+    license_evidence = operator.get("license_evidence") or {}
+    executable = operator.get("executable_contract") or {}
+    runtime = operator.get("runtime_contract") or {}
+    platform_matrix = operator.get("platform_matrix_evidence") or {}
+    compatibility = live_readiness.get("operator_compatibility_probe") or {}
+
+    identity_separation = {
+        "external_vendor_tool_id": TOOL_SECPAL,
+        "external_display_name": str(external.get("display_name") or ""),
+        "external_identity_kind": str(external.get("identity_kind") or ""),
+        "in_process_tool_id": "secpal-authorization",
+        "in_process_display_name": str(in_process.get("display_name") or ""),
+        "in_process_identity_kind": str(in_process.get("identity_kind") or ""),
+        "hermetic_shadow_banner_suffix": "hermetic-authorization-shadow",
+        "external_cannot_be_impersonated_by_in_process": bool(
+            external.get("tool_id") == TOOL_SECPAL
+            and in_process.get("tool_id") == "secpal-authorization"
+            and external.get("identity_kind") == "operator_bound_artifact"
+            and in_process.get("identity_kind") == "in_process"
+            and external.get("display_name") != in_process.get("display_name")
+        ),
+        "hermetic_shadow_is_differential_only": True,
+        "never_promote_hermetic_shadow_as_vendor": True,
+    }
+
+    contract_complete = False
+    return {
+        "schema_version": SECPAL_LIVE_SCHEMA_VERSION,
+        "interface": SECPAL_LIVE_INTERFACE,
+        "goal_id": SECPAL_LIVE_GOAL_ID,
+        "task_id": SECPAL_LIVE_TASK_ID,
+        "host_platform": host,
+        "contract_complete": contract_complete,
+        "can_promote": False,
+        "can_complete_fvt_g219": False,
+        "artifact_intake_only": True,
+        "artifact_intake_implemented": bool(
+            live_readiness.get("artifact_intake_implemented")
+        ),
+        "artifact_intake_ready": bool(live_readiness.get("artifact_intake_ready")),
+        "reviewed_official_artifact": bool(
+            live_readiness.get("reviewed_official_artifact")
+        ),
+        "installer_implemented": bool(
+            live_readiness.get("vendor_installer_implemented")
+        ),
+        "live_semantic_runner_available": False,
+        "arbitrary_policy_interface_verified": False,
+        "production_use_permitted": False,
+        "redistribution_permitted": False,
+        "downloads_permitted": False,
+        "operator_compatibility_only": True,
+        "operator_compatibility_can_promote": False,
+        "live_ready": bool(live_readiness.get("ready")),
+        "installable": bool(live_readiness.get("installable")),
+        "authoritative_live_evidence_available": bool(
+            live_readiness.get("authoritative_live_evidence_available")
+        ),
+        "supported_platforms": list(deployment.get("supported_platforms") or []),
+        "live_execution_supported_platforms": list(
+            platform_matrix.get("live_execution_supported_platforms") or []
+        ),
+        "platform_exception": platform_exception,
+        "live_readiness": live_readiness,
+        "identity_separation": identity_separation,
+        "official_artifact": {
+            "publisher": operator.get("publisher"),
+            "product_name": operator.get("product_name"),
+            "release_version": operator.get("release_version"),
+            "product_code": operator.get("product_code"),
+            "upgrade_code": operator.get("upgrade_code"),
+            "package_revision": operator.get("package_revision"),
+            "artifact_filename": operator.get("artifact_filename"),
+            "artifact_sha256": operator.get("artifact_sha256"),
+            "artifact_size_bytes": operator.get("artifact_size_bytes"),
+            "original_download_url": operator.get("original_download_url"),
+            "archived_project_metadata_url": operator.get(
+                "archived_project_metadata_url"
+            ),
+            "archived_binary_evidence_url": operator.get(
+                "archived_binary_evidence_url"
+            ),
+            "archive_is_acquisition_authority": operator.get(
+                "archive_is_acquisition_authority"
+            ),
+            "artifact_provisioning": operator.get("artifact_provisioning"),
+            "authenticode_verified": authenticode.get("verified"),
+            "authenticode_signer": authenticode.get("signer"),
+            "authenticode_sha1": authenticode.get("sha1"),
+            "license_identifier": license_evidence.get("identifier"),
+            "license_sha256": license_evidence.get("sha256"),
+            "license_acceptance_required": license_evidence.get(
+                "acceptance_required"
+            ),
+            "redistribution_terms": license_evidence.get("redistribution_terms"),
+            "execution_terms": license_evidence.get("execution_terms"),
+            "runtime_kind": runtime.get("kind"),
+            "runtime_validated": runtime.get("runtime_validated"),
+            "cli_available": executable.get("cli_available"),
+            "reviewed_payloads": list(executable.get("reviewed_payloads") or []),
+            "transactional_install": operator.get("transactional_install"),
+            "rollback_required": operator.get("rollback_required"),
+            "fixtures_can_promote": operator.get("fixtures_can_promote"),
+        },
+        "operator_compatibility_probe": dict(compatibility),
+        "block_reasons": list(live_readiness.get("block_reasons") or []),
+        "policy": {
+            "explicit_local_path_only": True,
+            "explicit_license_acceptance_required": True,
+            "no_download": True,
+            "no_extraction": True,
+            "no_execution_during_intake": True,
+            "no_redistribution": True,
+            "non_executable_staged_bytes": True,
+            "atomic_transactional_intake": True,
+            "rollback_preserves_previous_tree": True,
+            "empty_live_platform_matrix_fails_closed": True,
+            "operator_compatibility_is_nonpromotable": True,
+            "fixtures_cannot_promote": True,
+            "in_process_and_hermetic_remain_separately_named": True,
+            "cannot_complete_fvt_g219": True,
+        },
+    }
+
+
 def _certify_vendor_souffle(
     identity: authz_installer.ShadowEngineIdentity,
     *,
@@ -2236,25 +2407,11 @@ def certify_external_authorization_vendor(
         "combined_external_authorization_certified": (
             combined_external_authorization_certified
         ),
-        "secpal_live_toolchain_contract": {
-            "schema_version": SECPAL_LIVE_SCHEMA_VERSION,
-            "interface": SECPAL_LIVE_INTERFACE,
-            "goal_id": SECPAL_LIVE_GOAL_ID,
-            "task_id": SECPAL_LIVE_TASK_ID,
-            "contract_complete": False,
-            "artifact_intake_only": True,
-            "operator_compatibility_only": True,
-            "live_semantic_runner_available": False,
-            "arbitrary_policy_interface_verified": False,
-            "production_use_permitted": False,
-            "can_promote": False,
-            "block_reasons": list(
-                (secpal_exception.get("live_readiness") or {}).get(
-                    "block_reasons"
-                )
-                or []
-            ),
-        },
+        "secpal_live_toolchain_contract": build_secpal_live_toolchain_contract(
+            platform_id=host,
+            repo_root=repo_root,
+            lock_path=lock_path,
+        ),
         # FVT-073 objective validation repair: re-prove FVT-G209 acceptance.
         "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
         "objective_validation_repair": bool(certified),
@@ -2800,6 +2957,7 @@ __all__ = [
     "EngineCertification",
     "ExternalAuthorizationCertificationError",
     "ShadowRunRecord",
+    "build_secpal_live_toolchain_contract",
     "build_vendor_install_receipt",
     "certify_engine",
     "certify_external_authorization_shadows",
