@@ -27,9 +27,129 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, time, timedelta
 from enum import Enum
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Final
 
-from ipfs_datasets_py.utils import cid_utils as _cid_utils
+
+def _build_local_cid_utils() -> Any:
+    """Pure multiformats-backed CID helpers used when ipfs_datasets_py is absent.
+
+    Hermetic validation runs with a scrubbed PYTHONPATH and PYTHONNOUSERSITE,
+    which can hide editable installs of ``ipfs_datasets_py``.  The helpers below
+    match :mod:`ipfs_datasets_py.utils.cid_utils` so identity digests stay
+    stable whether or not that package is importable.
+    """
+
+    def canonical_dag_json_bytes(obj: Any) -> bytes:
+        def _validate(value: Any, *, path: str = "$") -> None:
+            if value is None or type(value) in {str, bool, int}:
+                return
+            if type(value) is float:
+                if not math.isfinite(value):
+                    raise ValueError(
+                        f"{path} is not JSON compliant: non-finite number"
+                    )
+                return
+            if type(value) is list:
+                for index, item in enumerate(value):
+                    _validate(item, path=f"{path}[{index}]")
+                return
+            if type(value) is dict:
+                for key, item in value.items():
+                    if type(key) is not str:
+                        raise TypeError(
+                            f"{path} contains a non-string DAG-JSON map key"
+                        )
+                    _validate(item, path=f"{path}.{key}")
+                return
+            raise TypeError(
+                f"{path} is not JSON serializable as DAG-JSON: "
+                f"{type(value).__name__}"
+            )
+
+        _validate(obj)
+        return json.dumps(
+            obj,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+
+    def cid_for_bytes(
+        data: bytes,
+        *,
+        base: str = "base32",
+        codec: str = "raw",
+        mh_type: str = "sha2-256",
+        version: int = 1,
+    ) -> str:
+        from multiformats import CID, multihash
+
+        mh = multihash.digest(data, mh_type)
+        return str(CID(base, version, codec, mh))
+
+    def cid_for_dag_json(
+        obj: Any,
+        *,
+        base: str = "base32",
+        mh_type: str = "sha2-256",
+        version: int = 1,
+    ) -> str:
+        return cid_for_bytes(
+            canonical_dag_json_bytes(obj),
+            base=base,
+            codec="dag-json",
+            mh_type=mh_type,
+            version=version,
+        )
+
+    def validate_cid(
+        value: Any,
+        *,
+        codecs: Iterable[str] = ("raw", "dag-json"),
+        mh_type: str = "sha2-256",
+        version: int = 1,
+        base: str = "base32",
+    ) -> str:
+        if not isinstance(value, str) or not value or value != value.lower():
+            raise ValueError("CID must be a nonempty lowercase string")
+        from multiformats import CID, multihash
+
+        try:
+            parsed = CID.decode(value)
+        except Exception as exc:
+            raise ValueError("CID is not decodable") from exc
+        allowed_codecs = frozenset(codecs)
+        expected_digest_size = multihash.get(mh_type).max_digest_size
+        if (
+            parsed.version != version
+            or parsed.codec.name not in allowed_codecs
+            or parsed.hashfun.name != mh_type
+            or (
+                expected_digest_size is not None
+                and len(parsed.raw_digest) != expected_digest_size
+            )
+            or parsed.base.name != base
+            or str(parsed) != value
+        ):
+            raise ValueError(
+                "CID must use the requested canonical version/base/codec/multihash"
+            )
+        return value
+
+    return SimpleNamespace(
+        canonical_dag_json_bytes=canonical_dag_json_bytes,
+        cid_for_bytes=cid_for_bytes,
+        cid_for_dag_json=cid_for_dag_json,
+        validate_cid=validate_cid,
+    )
+
+
+try:
+    from ipfs_datasets_py.utils import cid_utils as _cid_utils
+except ModuleNotFoundError:  # pragma: no cover - hermetic/editable-install gap
+    _cid_utils = _build_local_cid_utils()
 
 
 MULTIFORMATS_IDENTITY_SCHEMA: Final = (
