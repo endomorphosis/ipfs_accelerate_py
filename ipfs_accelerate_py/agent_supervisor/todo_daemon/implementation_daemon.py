@@ -1388,22 +1388,25 @@ def _grok_binary() -> str | None:
 
 
 def _grok_cli_available() -> bool:
-    """True when llm_router's grok_cli provider can be constructed."""
+    """Return whether Grok is ready for non-interactive implementation work.
 
+    Binary discovery alone is insufficient for the daemon: selecting an
+    unauthenticated CLI would fail after dispatch instead of allowing the
+    default route to fall back to Codex.  Keep the probe side-effect free and
+    fail closed when the shared router cannot prove both authentication and
+    provider construction.
+    """
+
+    if not _grok_binary():
+        return False
     try:
-        from ...llm_router import get_llm_provider
+        from ...llm_router import _grok_cli_auth_available, get_llm_provider
 
+        if not _grok_cli_auth_available():
+            return False
         return get_llm_provider("grok_cli") is not None
     except Exception:
-        if not _grok_binary():
-            return False
-        try:
-            from ...llm_router import _grok_cli_auth_available
-
-            return bool(_grok_cli_auth_available())
-        except Exception:
-            auth = Path.home() / ".grok" / "auth.json"
-            return auth.is_file() or bool(os.environ.get("XAI_API_KEY", "").strip())
+        return False
 
 
 def _grok_cli_command(*, workspace_path: Path) -> list[str]:
@@ -1473,6 +1476,49 @@ _COPILOT_MODEL_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MODEL"
 _COPILOT_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_EFFORT"
 _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
 _COPILOT_MAX_CONTINUES_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MAX_CONTINUES"
+
+
+def _codex_implementation_command(
+    *,
+    codex: str,
+    workspace_path: Path,
+    codex_context_window: int | None = None,
+) -> list[str]:
+    """Build the non-interactive Codex implementation argv."""
+
+    codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+    codex_context = (
+        str(codex_context_window)
+        if codex_context_window is not None
+        else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+    )
+    codex_reasoning = os.environ.get(
+        _CODEX_REASONING_EFFORT_ENV, "high"
+    ).strip()
+    codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
+    codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
+
+    command = [
+        codex,
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        str(workspace_path),
+    ]
+    if codex_model:
+        command.extend(["-m", codex_model])
+    if codex_context:
+        command.extend(["-c", f"model_context_window={codex_context}"])
+    if codex_reasoning:
+        command.extend(
+            ["-c", f'model_reasoning_effort="{codex_reasoning}"']
+        )
+    if codex_max_threads:
+        command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
+    if codex_max_depth:
+        command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
+    command.append("-")
+    return command
 
 
 def _copilot_fallback_command(
@@ -2861,7 +2907,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self.use_ephemeral_worktree = use_ephemeral_worktree
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
         # The implementation runner executes with the ephemeral worktree as
-        # its cwd.  Keep the path supplied to Codex/Copilot absolute so a
+        # its cwd.  Keep the path supplied to the provider runner absolute so a
         # relative --worktree-root cannot be resolved a second time below it.
         if not configured_worktree_root.is_absolute():
             configured_worktree_root = self.repo_root / configured_worktree_root
@@ -24143,7 +24189,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         process_lines = self._list_process_commands()
         if worktree_path:
             # Task validation can leave MCP bridge servers in its worktree. Only
-            # the configured Codex/Copilot runner proves implementation is live.
+            # a recognized implementation-provider runner proves work is live.
             return any(
                 worktree_path in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
                 for line in process_lines
@@ -24388,7 +24434,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and not force_codex
             and not force_goose_meta
         ):
-            return _grok_cli_command(workspace_path=workspace_path)
+            command = _grok_cli_command(workspace_path=workspace_path)
+            codex = shutil.which("codex")
+            if codex:
+                codex_context_window = (
+                    self._implementation_provider_context_window_for_task(task)[0]
+                    if task is not None
+                    else None
+                )
+                command.extend(
+                    [
+                        "--codex-fallback-command-json",
+                        json.dumps(
+                            _codex_implementation_command(
+                                codex=codex,
+                                workspace_path=workspace_path,
+                                codex_context_window=codex_context_window,
+                            ),
+                            separators=(",", ":"),
+                        ),
+                    ]
+                )
+            return command
 
         if force_goose_meta:
             if not goose_meta_ready:
@@ -24416,39 +24483,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 codex_context_window=codex_context_window,
             )
         if codex:
-            # Build codex command with full capability flags
-            codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
-            codex_context = (
-                str(codex_context_window)
-                if codex_context_window is not None
-                else os.environ.get(
-                    _CODEX_CONTEXT_WINDOW_ENV,
-                    "200000",
-                ).strip()
+            return _codex_implementation_command(
+                codex=codex,
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
             )
-            codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
-            codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
-            codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
-
-            cmd = [
-                codex,
-                "exec",
-                "--dangerously-bypass-approvals-and-sandbox",
-                "-C",
-                str(workspace_path),
-            ]
-            if codex_model:
-                cmd.extend(["-m", codex_model])
-            if codex_context:
-                cmd.extend(["-c", f"model_context_window={codex_context}"])
-            if codex_reasoning:
-                cmd.extend(["-c", f'model_reasoning_effort="{codex_reasoning}"'])
-            if codex_max_threads:
-                cmd.extend(["-c", f"agents.max_threads={codex_max_threads}"])
-            if codex_max_depth:
-                cmd.extend(["-c", f"agents.max_depth={codex_max_depth}"])
-            cmd.append("-")
-            return cmd
         if grok_ready:
             return _grok_cli_command(workspace_path=workspace_path)
         if goose_meta_ready:
@@ -27082,7 +27121,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--implementation-command",
         default="",
-        help="Command used for implementation. Defaults to codex exec with local Copilot CLI fallback when available.",
+        help=(
+            "Command used for implementation. The default route prefers an "
+            "authenticated Grok CLI and immediately falls back to Codex when "
+            "Grok exits nonzero. When Grok is not preflight-ready, Codex (then "
+            "authenticated Copilot) is used. Explicit Grok selection does not "
+            "fall back."
+        ),
     )
     parser.add_argument(
         "--implementation-protected-path",

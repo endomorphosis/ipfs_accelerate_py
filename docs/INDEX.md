@@ -32,6 +32,10 @@ context of earlier implementations and are not normative API references.
 - [Codebase-aware plan creation and steering plan](architecture/AGENT_SUPERVISOR_PLAN_CREATE_AND_STEER_PLAN.md):
   planned create/steer tools, registry-backed code and logic queries,
   revision-safe taskboard deltas, and parallel schedulability contracts.
+- [Prompt-only agent-supervisor entrypoints plan](architecture/AGENT_SUPERVISOR_PROMPT_ONLY_ENTRYPOINTS_PLAN.md):
+  automatic target/profile inference, standard runtime construction, easy
+  Python/CLI/MCP/MCP++ run and steering surfaces, and an executable parallel
+  rollout board.
 
 ## User guides
 
@@ -73,6 +77,9 @@ codebase-proof, domain layout) remain under architecture as execution records.
 - [Architecture, contracts, and assurance model](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
 - [Endpoint usage-aware routing and supervisor capacity plan](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md)
 - [Codebase-aware plan creation and steering](architecture/AGENT_SUPERVISOR_PLAN_CREATE_AND_STEER_PLAN.md)
+- [Prompt-only entrypoints and automatic target inference](architecture/AGENT_SUPERVISOR_PROMPT_ONLY_ENTRYPOINTS_PLAN.md)
+- [Prompt-only entrypoint objective heap](architecture/agent_supervisor_prompt_only_entrypoints.objectives.md)
+- [Prompt-only entrypoint parallel task board](architecture/agent_supervisor_prompt_only_entrypoints.todo.md)
 - [Self-improvement rollout plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md)
 - [Formal planning and prover matrix](architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md)
 - [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md)
@@ -120,6 +127,7 @@ planned work. Use the current guides and source code for present behavior.
 | Extend supervisor packages as a contributor | [Contributor guide](architecture/agent_supervisor/FOR_CONTRIBUTORS.md) |
 | Understand supervisor services, contracts, and trust boundaries | [Agent Supervisor Architecture](architecture/AGENT_SUPERVISOR_ARCHITECTURE.md) |
 | Create or steer a codebase-aware supervisor plan | [Plan creation and steering](architecture/AGENT_SUPERVISOR_PLAN_CREATE_AND_STEER_PLAN.md) |
+| Run or implement the prompt-only supervisor experience | [Prompt-only entrypoints plan](architecture/AGENT_SUPERVISOR_PROMPT_ONLY_ENTRYPOINTS_PLAN.md) |
 | Follow the supervisor rollout and self-improvement roadmap | [Self-Improvement Plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md) |
 | Understand assurance and provers | [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md) |
 | Run tests | [Testing](development/testing.md) |

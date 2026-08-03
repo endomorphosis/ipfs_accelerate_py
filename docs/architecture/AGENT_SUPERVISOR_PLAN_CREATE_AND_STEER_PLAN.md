@@ -1,5 +1,15 @@
 # Codebase-Aware Plan Creation and Steering Plan
 
+> **Execution status:** This document remains the design basis for
+> codebase-aware create/steer semantics, but its proposed `ASI-172` through
+> `ASI-185` delivery aliases are retired because the live ASI board later
+> reused some of those identifiers. Execute the collision-free `ASE-G…` /
+> `ASE-…` objective and task population in
+> [`AGENT_SUPERVISOR_PROMPT_ONLY_ENTRYPOINTS_PLAN.md`](AGENT_SUPERVISOR_PROMPT_ONLY_ENTRYPOINTS_PLAN.md),
+> [`agent_supervisor_prompt_only_entrypoints.objectives.md`](agent_supervisor_prompt_only_entrypoints.objectives.md),
+> and
+> [`agent_supervisor_prompt_only_entrypoints.todo.md`](agent_supervisor_prompt_only_entrypoints.todo.md).
+
 ## Outcome
 
 Extend the existing prompt-driven supervisor workflow into two explicit,

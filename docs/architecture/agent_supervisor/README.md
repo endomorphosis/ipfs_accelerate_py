@@ -83,6 +83,12 @@ Under `docs/architecture/` — module refactor, self-improvement, codebase-proof
 formal planning, prompt/usage rollouts, etc. Open these when you **own** that
 program’s work; they are often protected during implementation lanes.
 
+The current prompt-first entrypoint program is defined by the
+[architecture plan](../AGENT_SUPERVISOR_PROMPT_ONLY_ENTRYPOINTS_PLAN.md),
+[objective heap](../agent_supervisor_prompt_only_entrypoints.objectives.md),
+and
+[parallel task board](../agent_supervisor_prompt_only_entrypoints.todo.md).
+
 ## Domain packages
 
 On current `main`, code lives under domain packages:

@@ -2434,9 +2434,9 @@ class PortalImplementationSupervisor:
         process_lines = self._list_process_commands()
         active_worktree = state.active_worktree_path.strip()
         # Validation can leave an MCP compatibility adapter in a task worktree
-        # after the implementation runner exits.  Only Codex/Copilot proves
-        # that an implementation attempt is still live; a local service must
-        # not prevent stale-state recovery indefinitely.
+        # after the implementation runner exits.  Only a recognized
+        # implementation-provider runner proves that an attempt is still live;
+        # a local service must not prevent stale-state recovery indefinitely.
         if active_worktree and any(
             active_worktree in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
             for line in process_lines
@@ -7710,7 +7710,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--implementation-command",
         default="",
-        help="Command used by the daemon for implementation. Defaults to codex exec --full-auto.",
+        help=(
+            "Command used by the daemon for implementation. The default route "
+            "prefers an authenticated Grok CLI and immediately falls back to "
+            "Codex when Grok exits nonzero. When Grok is not preflight-ready, "
+            "Codex (then authenticated Copilot) is used. Explicit Grok "
+            "selection does not fall back."
+        ),
     )
     parser.add_argument(
         "--implementation-protected-path",
