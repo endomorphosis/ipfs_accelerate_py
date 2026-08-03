@@ -186,7 +186,8 @@
     "secpal": "1.0.0-reviewed",
     "runtime-mtl-external": "1.0.0-reviewed",
     "symbolicai": ">=1.14.0,<2.0.0",
-    "stack": "3.11.1"
+    "stack": "3.11.1",
+    "temurin-jdk": "17.0.20+8"
   },
   "checksummed_release_inventory": {
     "apalache": {
@@ -492,7 +493,9 @@
           "dirname",
           "touch"
         ],
-        "missing_optional_capabilities_do_not_block_core_ergoai": true
+        "missing_optional_capabilities_do_not_block_core_ergoai": true,
+        "managed_jdk_tool_id": "temurin-jdk",
+        "never_trust_ambient_java_home": true
       },
       "config_hardening": {
         "schema_version": "ergoai-config-hardening/v1",
@@ -618,6 +621,61 @@
         "aiger-tools": "1.9.4"
       },
       "supported_fragment": "HyperLTL model checking over AIGER hardware circuits via ABC (PDR/BMC); live witness/counterexample paths"
+    },
+    "temurin-jdk": {
+      "version": "17.0.20+8",
+      "publisher": "Eclipse Adoptium",
+      "release_name": "jdk-17.0.20+8",
+      "license": "GPL-2.0-with-classpath-exception",
+      "source": "https://adoptium.net/",
+      "identity_kind": "immutable_release_archive",
+      "required_tool_identities": [
+        "java",
+        "javac",
+        "jar"
+      ],
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "be7668bc030d578b83d6d5ef9221d6d6729bbbca8cf94a7d52e16ac68b5a5a35",
+          "artifact_size_bytes": 193273593,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "x86_64"
+        },
+        "linux-aarch64": {
+          "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "d143936f473a4cb24e3b0e247d6d0775769d55ec9775c339540e753059a8d77a",
+          "artifact_size_bytes": 191960283,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "aarch64"
+        }
+      },
+      "acquisition_conditions": {
+        "requires_explicit_opt_in": true,
+        "checksum_required_before_extract": true,
+        "download_during_certification_forbidden": true,
+        "user_local_only": true,
+        "offline_after_acquisition": true,
+        "atomic_staged_install": true,
+        "relocatable_install_root": true,
+        "bounded_acquisition": true,
+        "symlink_safe_extraction": true,
+        "never_trust_ambient_java_home": true,
+        "never_download_moving_latest": true
+      },
+      "optional_for": [
+        "ergoai"
+      ],
+      "capability": "ergoai-java-api",
+      "java_api_toolchain_contract_interface": "ErgoAIJavaAPIToolchainContract@1",
+      "goal_id": "FVT-G222",
+      "task_id": "FVT-090"
     }
   },
   "tools": [
@@ -2144,7 +2202,9 @@
             "dirname",
             "touch"
           ],
-          "missing_optional_capabilities_do_not_block_core_ergoai": true
+          "missing_optional_capabilities_do_not_block_core_ergoai": true,
+          "managed_jdk_tool_id": "temurin-jdk",
+          "never_trust_ambient_java_home": true
         },
         "config_hardening": {
           "schema_version": "ergoai-config-hardening/v1",
@@ -2243,7 +2303,146 @@
         ],
         "live_toolchain_contract_interface": "ErgoAILiveToolchainContract@1",
         "goal_id": "FVT-G218",
-        "task_id": "FVT-085"
+        "task_id": "FVT-085",
+        "optional_java_api_managed_jdk_tool_id": "temurin-jdk",
+        "optional_java_api_never_trusts_ambient_java_home": true,
+        "optional_java_api_missing_does_not_block_core": true
+      },
+      "optional_java_api_dependencies": {
+        "runtime": [
+          "java>=1.8",
+          "which",
+          "dirname"
+        ],
+        "build": [
+          "java>=1.8",
+          "javac",
+          "jar",
+          "which",
+          "dirname",
+          "touch"
+        ],
+        "missing_optional_capabilities_do_not_block_core_ergoai": true,
+        "managed_jdk_tool_id": "temurin-jdk",
+        "never_trust_ambient_java_home": true
+      }
+    },
+    {
+      "tool_id": "temurin-jdk",
+      "display_name": "Eclipse Temurin JDK 17 (managed ErgoAI Java API)",
+      "availability": "managed_pin",
+      "runtime": "jvm",
+      "resource_class": "jvm",
+      "executable_candidates": [
+        "java",
+        "javac",
+        "jar"
+      ],
+      "families": [
+        "advisors",
+        "flogic"
+      ],
+      "installer_entry": "ensure_temurin_jdk",
+      "installer_plugin": "advisors",
+      "license": "GPL-2.0-with-classpath-exception",
+      "source": "https://adoptium.net/",
+      "identity_kind": "immutable_release_archive",
+      "publisher": "Eclipse Adoptium",
+      "support_only": true,
+      "authority_tool": false,
+      "optional_capability": "ergoai-java-api",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "temurin-jdk",
+          "version": "17.0.20+8",
+          "artifact_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "be7668bc030d578b83d6d5ef9221d6d6729bbbca8cf94a7d52e16ac68b5a5a35",
+          "platform": "linux-x86_64",
+          "notes": "Reviewed Eclipse Temurin 17.0.20+8 OpenJDK JDK for linux-x86_64; publisher signature and sha256.txt evidence bound; never use ambient JAVA_HOME",
+          "is_checksummed": true,
+          "license": "GPL-2.0-with-classpath-exception",
+          "source": "https://adoptium.net/",
+          "publisher": "Eclipse Adoptium",
+          "release_name": "jdk-17.0.20+8",
+          "artifact_size_bytes": 193273593,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "x86_64",
+          "required_tool_identities": [
+            "java",
+            "javac",
+            "jar"
+          ],
+          "identity_kind": "immutable_release_archive"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "temurin-jdk",
+          "version": "17.0.20+8",
+          "artifact_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "d143936f473a4cb24e3b0e247d6d0775769d55ec9775c339540e753059a8d77a",
+          "platform": "linux-aarch64",
+          "notes": "Reviewed Eclipse Temurin 17.0.20+8 OpenJDK JDK for linux-aarch64; publisher signature and sha256.txt evidence bound; never use ambient JAVA_HOME",
+          "is_checksummed": true,
+          "license": "GPL-2.0-with-classpath-exception",
+          "source": "https://adoptium.net/",
+          "publisher": "Eclipse Adoptium",
+          "release_name": "jdk-17.0.20+8",
+          "artifact_size_bytes": 191960283,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "aarch64",
+          "required_tool_identities": [
+            "java",
+            "javac",
+            "jar"
+          ],
+          "identity_kind": "immutable_release_archive"
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "-version"
+        ],
+        "timeout_seconds": 5,
+        "network": false,
+        "expected_identity_substring": "17.0.20"
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "requires_checksum_at_install": true,
+        "release_tag": "jdk-17.0.20+8",
+        "publisher": "Eclipse Adoptium",
+        "symlink_safe_extraction": true,
+        "never_trust_ambient_java_home": true,
+        "never_download_moving_latest": true,
+        "optional_java_api_for_ergoai": true,
+        "missing_capability_does_not_block_core_ergoai": true,
+        "live_toolchain_contract_interface": "ErgoAIJavaAPIToolchainContract@1",
+        "goal_id": "FVT-G222",
+        "task_id": "FVT-090",
+        "lazy_install": {
+          "staged": true,
+          "checksum_verified": true,
+          "atomic": true,
+          "relocatable": true,
+          "offline_after_acquisition": true,
+          "never_on_import": true,
+          "never_during_certification": true,
+          "never_on_probe": true,
+          "never_on_dry_run": true
+        }
       }
     },
     {
@@ -2392,7 +2591,9 @@
       "install_during_verification": false,
       "download_during_verification": false,
       "install_scope": "user_local",
-      "requires_explicit_opt_in": true
+      "requires_explicit_opt_in": true,
+      "notes": "Host JVM detection for TLA/state-model tooling only. The managed ErgoAI Java API capability is temurin-jdk and never trusts ambient JAVA_HOME.",
+      "does_not_satisfy_ergoai_java_api": true
     },
     {
       "tool_id": "stack",
