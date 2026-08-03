@@ -1171,7 +1171,7 @@ or write authority.
 
 ## KITA-037 Generate or validate MCP and MCP++ tools and prove all-interface parity
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
