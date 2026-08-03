@@ -395,6 +395,26 @@ def test_usable_pending_capabilities_keep_every_check_without_premature_promotio
         "datalog-authorization": 24,
         "secpal-authorization": 24,
     }
+    expected_evidence_classes = {
+        "runtime-mtl": "usable_pending_external_runtime_mtl",
+        "datalog-authorization": "usable_pending_authorization_vendor_fanin",
+        "secpal-authorization": "usable_pending_authorization_vendor_fanin",
+    }
+    # Role-aware reissue binds managed TypeScript prebuilt for offline parity
+    # when the in-tree dist is absent; the runtime_mtl lane must record that
+    # bind without ever building or installing.
+    runtime_lane = next(
+        row
+        for row in certificate["semantic_lane_results"]
+        if row["lane_id"] == "runtime_mtl"
+    )
+    prebuilt_bind = runtime_lane.get("managed_typescript_prebuilt_bind") or {}
+    assert prebuilt_bind.get("certification_builds_or_installs") is False
+    assert prebuilt_bind.get("reason") in {
+        "in_tree_prebuilt_present",
+        "managed_vendor_prebuilt_bound",
+    }
+
     for tool_id, minimum in expected_minimums.items():
         tool = tools[tool_id]
         assert tool["usable"] is True, tool_id
@@ -402,16 +422,29 @@ def test_usable_pending_capabilities_keep_every_check_without_premature_promotio
         assert tool["promotion_blocked"] is True, tool_id
         assert "evidence_class_cannot_satisfy_production_authority" in tool[
             "block_reasons"
-        ]
+        ], (tool_id, tool.get("block_reasons"), tool.get("evidence_class"))
+        assert tool["evidence_class"] == expected_evidence_classes[tool_id], tool_id
         assert len(tool["checks"]) >= minimum
         assert REQUIRED_CHECK_KINDS <= {
             check["kind"] for check in tool["checks"]
         }
-        assert all(check["status"] == "passed" for check in tool["checks"])
+        assert all(check["status"] == "passed" for check in tool["checks"]), (
+            tool_id,
+            [(c["check_id"], c["status"]) for c in tool["checks"]],
+        )
         assert tool["semantic_receipt_digests"]
         assert any(
             artifact.get("sha256") for artifact in tool["artifact_identities"]
         )
+
+    # FVT-083 objective validation repair is bound on the role-aware matrix.
+    role_aware = certificate["role_aware"]
+    assert role_aware["repair_task_id"] == "FVT-083"
+    assert role_aware["objective_validation_evidence"] == (
+        "objective validation repair"
+    )
+    assert role_aware["objective_validation_repair"] is True
+    assert role_aware["acceptance"]["objective_validation_repair"] is True
 
     for tool_id in ("lean", "coq", "isabelle"):
         tool = tools[tool_id]
@@ -508,6 +541,17 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
     assert receipt["interface"] == "RoleAwareFormalVerificationRelease@1"
     assert receipt["goal_id"] == "FVT-G200"
     assert receipt["task_id"] == "FVT-053"
+    # FVT-083 objective validation repair re-proves FVT-G200 and binds the
+    # synthetic discovery term ``objective validation repair``.
+    assert receipt["repair_task_id"] == "FVT-083"
+    assert receipt["objective_validation_evidence"] == "objective validation repair"
+    assert receipt["objective_validation_repair"] is True
+    assert "test_formal_verification_role_aware_completion.py" in (
+        receipt["objective_validation_command"]
+    )
+    assert receipt["acceptance"]["objective_validation_repair"] is True
+    assert receipt["acceptance"]["repair_task_id"] == "FVT-083"
+    assert receipt["acceptance"]["role_aware_matrix_executed"] is True
     assert receipt["binding_mode"] == (
         "two_phase_source_then_attestation_publication"
     )

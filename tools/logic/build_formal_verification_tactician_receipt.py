@@ -32,10 +32,20 @@ TASK_ID: Final = "FVT-036"
 PROGRAM: Final = "formal-verification-tactician/readiness"
 
 # Role-aware deployment reissue (FVT-G200 / FVT-053).
+# FVT-083 is the objective validation repair that re-proves FVT-G200 and binds
+# the synthetic discovery term ``objective validation repair``.
 ROLE_AWARE_INTERFACE: Final = "RoleAwareFormalVerificationRelease@1"
 ROLE_AWARE_SCHEMA_VERSION: Final = "formal-verification-role-aware-deployment-receipt/v1"
 ROLE_AWARE_GOAL_ID: Final = "FVT-G200"
 ROLE_AWARE_TASK_ID: Final = "FVT-053"
+ROLE_AWARE_REPAIR_TASK_ID: Final = "FVT-083"
+ROLE_AWARE_OBJECTIVE_VALIDATION_EVIDENCE: Final = "objective validation repair"
+ROLE_AWARE_OBJECTIVE_VALIDATION_COMMAND: Final = (
+    "python -m pytest "
+    "test/integration/test_formal_verification_real_tool_matrix.py "
+    "test/integration/test_formal_verification_role_aware_completion.py "
+    "test/api/test_formal_verification_tactician_readiness_completion.py -q"
+)
 
 # Role-aware release candidate (FVT-G213 / FVT-066). Pre-merge fan-in only;
 # never claims its own future merge or deployment attestation.
@@ -2655,6 +2665,24 @@ def build_role_aware_deployment_receipt(
         "artifacts_present": artifacts_present,
     }
 
+    # FVT-083 objective validation repair: re-prove FVT-G200 acceptance and
+    # bind the synthetic discovery term. True only when the role-aware matrix
+    # ran with a digest-bound certificate for this goal/interface.
+    role_aware_matrix_bound = bool(
+        role_aware.get("enabled")
+        and role_aware.get("interface") == ROLE_AWARE_INTERFACE
+        and role_aware.get("goal_id") == ROLE_AWARE_GOAL_ID
+        and certificate.get("certificate_digest_sha256")
+        and semantic_results
+    )
+    objective_validation_repair = bool(role_aware_matrix_bound)
+    acceptance["objective_validation_repair"] = objective_validation_repair
+    acceptance["objective_validation_evidence"] = (
+        ROLE_AWARE_OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    acceptance["repair_task_id"] = ROLE_AWARE_REPAIR_TASK_ID
+    acceptance["role_aware_matrix_executed"] = role_aware_matrix_bound
+
     readiness_requirements = {
         key: bool(acceptance[key])
         for key in (
@@ -2712,6 +2740,7 @@ def build_role_aware_deployment_receipt(
         "program_goal_id": PROGRAM_GOAL_ID,
         "goal_id": ROLE_AWARE_GOAL_ID,
         "task_id": ROLE_AWARE_TASK_ID,
+        "repair_task_id": ROLE_AWARE_REPAIR_TASK_ID,
         "program": "formal-verification-tactician/toolchain-release",
         "observed_at": timestamp,
         "binding_mode": "two_phase_source_then_attestation_publication",
@@ -2723,6 +2752,10 @@ def build_role_aware_deployment_receipt(
             "platforms from missing supported capabilities, and cannot claim "
             "readiness without authoritative supervisor validation/merge evidence."
         ),
+        # FVT-083 objective validation repair discovery binding.
+        "objective_validation_evidence": ROLE_AWARE_OBJECTIVE_VALIDATION_EVIDENCE,
+        "objective_validation_repair": objective_validation_repair,
+        "objective_validation_command": ROLE_AWARE_OBJECTIVE_VALIDATION_COMMAND,
         "source": source_attestation,
         "acceptance": acceptance,
         "semantic_audit": semantic_audit,
@@ -2745,7 +2778,22 @@ def build_role_aware_deployment_receipt(
                 "enabled": bool(role_aware.get("enabled")),
                 "goal_id": role_aware.get("goal_id"),
                 "task_id": role_aware.get("task_id"),
+                "repair_task_id": role_aware.get("repair_task_id")
+                or ROLE_AWARE_REPAIR_TASK_ID,
                 "interface": role_aware.get("interface"),
+                "objective_validation_evidence": role_aware.get(
+                    "objective_validation_evidence"
+                )
+                or ROLE_AWARE_OBJECTIVE_VALIDATION_EVIDENCE,
+                "objective_validation_repair": bool(
+                    role_aware.get("objective_validation_repair")
+                    if "objective_validation_repair" in role_aware
+                    else objective_validation_repair
+                ),
+                "objective_validation_command": role_aware.get(
+                    "objective_validation_command"
+                )
+                or ROLE_AWARE_OBJECTIVE_VALIDATION_COMMAND,
                 "elevated_tool_ids": elevated,
                 "required_baseline_elevations": list(
                     role_aware.get("required_baseline_elevations")
