@@ -120,11 +120,34 @@ def _stat_snapshot(stat_result: os.stat_result) -> tuple[int, ...]:
     )
 
 
+def _require_directory_snapshot(
+    path: Path,
+    expected_snapshot: tuple[int, ...],
+) -> os.stat_result:
+    """Require one already-resolved directory path to retain its identity."""
+
+    try:
+        current = os.stat(path, follow_symlinks=False)
+    except OSError as exc:
+        raise _BoundedFileSnapshotRace(
+            "metadata containment root disappeared"
+        ) from exc
+    if (
+        not stat_module.S_ISDIR(current.st_mode)
+        or _stat_snapshot(current) != expected_snapshot
+    ):
+        raise _BoundedFileSnapshotRace(
+            "metadata containment root identity changed"
+        )
+    return current
+
+
 def _read_bounded_contained_regular_file(
     containment_root: Path,
     candidate: Path,
     *,
     maximum_bytes: int,
+    expected_containment_root_snapshot: tuple[int, ...],
 ) -> tuple[Path, bytes]:
     """Read one stable regular-file snapshot without following an escape.
 
@@ -135,7 +158,10 @@ def _read_bounded_contained_regular_file(
 
     if maximum_bytes < 0:
         raise ValueError("metadata file byte bound is invalid")
-    root = containment_root.resolve(strict=True)
+    root = containment_root
+    if not root.is_absolute() or not candidate.is_absolute():
+        raise ValueError("metadata containment paths must be absolute")
+    _require_directory_snapshot(root, expected_containment_root_snapshot)
     initial_path_stat = candidate.lstat()
     try:
         resolved = candidate.resolve(strict=True)
@@ -195,6 +221,7 @@ def _read_bounded_contained_regular_file(
         raise _BoundedFileSnapshotRace("metadata file changed during bounded read")
 
     try:
+        _require_directory_snapshot(root, expected_containment_root_snapshot)
         final_path_stat = candidate.lstat()
         final_resolved = candidate.resolve(strict=True)
         final_resolved.relative_to(root)
@@ -293,6 +320,7 @@ def _setuptools_file_backed_requirement_source(
     project_root: Path,
     *,
     maximum_total_bytes: int,
+    expected_project_root_snapshot: tuple[int, ...],
     maximum_files: int = MAX_DEPENDENCY_MANIFEST_FILES,
 ) -> tuple[list[str], list[dict[str, Any]]]:
     """Resolve one reviewed setuptools file source without guessing."""
@@ -316,6 +344,9 @@ def _setuptools_file_backed_requirement_source(
             project_root,
             candidate,
             maximum_bytes=maximum_total_bytes - total_bytes,
+            expected_containment_root_snapshot=(
+                expected_project_root_snapshot
+            ),
         )
         total_bytes += len(payload)
         try:
@@ -362,6 +393,7 @@ def _setuptools_dynamic_configuration(
 def _setuptools_file_backed_dependencies(
     parsed: Mapping[str, Any],
     project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
 ) -> tuple[list[str], list[dict[str, Any]]]:
     """Resolve the reviewed dynamic project dependency source."""
 
@@ -370,6 +402,7 @@ def _setuptools_file_backed_dependencies(
         dynamic.get("dependencies"),
         project_root,
         maximum_total_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
+        expected_project_root_snapshot=expected_project_root_snapshot,
     )
 
 
@@ -377,6 +410,7 @@ def _pytest_validation_dependencies(
     parsed: Mapping[str, Any],
     project: Mapping[str, Any],
     project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
     dynamic_fields: Sequence[str],
     *,
     pytest_invoked: bool,
@@ -426,6 +460,7 @@ def _pytest_validation_dependencies(
             optional.get(selected),
             project_root,
             maximum_total_bytes=maximum_manifest_bytes,
+            expected_project_root_snapshot=expected_project_root_snapshot,
             maximum_files=maximum_manifest_files,
         )
         requirements.extend(declared)
@@ -559,18 +594,40 @@ def _bounded_static_project(
             "passed": False,
             "reason": "project_root_escapes_workspace",
         }
-    if not project_root.is_dir():
+    try:
+        project_root_stat = os.stat(project_root, follow_symlinks=False)
+    except OSError as exc:
+        return {
+            "root": relative_root,
+            "applicable": True,
+            "passed": False,
+            "reason": "project_root_is_not_directory",
+            "error_type": type(exc).__name__,
+        }
+    if not stat_module.S_ISDIR(project_root_stat.st_mode):
         return {
             "root": relative_root,
             "applicable": True,
             "passed": False,
             "reason": "project_root_is_not_directory",
         }
+    project_root_snapshot = _stat_snapshot(project_root_stat)
 
     pyproject_path = project_root / "pyproject.toml"
     try:
+        _require_directory_snapshot(project_root, project_root_snapshot)
         pyproject_path.lstat()
     except FileNotFoundError:
+        try:
+            _require_directory_snapshot(project_root, project_root_snapshot)
+        except ValueError as exc:
+            return {
+                "root": relative_root,
+                "applicable": True,
+                "passed": False,
+                "reason": "pyproject_path_or_snapshot_invalid",
+                "error_type": type(exc).__name__,
+            }
         if pytest_invoked:
             return {
                 "root": relative_root,
@@ -593,6 +650,14 @@ def _bounded_static_project(
             "passed": True,
             "reason": "pep621_metadata_not_present",
         }
+    except ValueError as exc:
+        return {
+            "root": relative_root,
+            "applicable": True,
+            "passed": False,
+            "reason": "pyproject_path_or_snapshot_invalid",
+            "error_type": type(exc).__name__,
+        }
     except OSError as exc:
         return {
             "root": relative_root,
@@ -606,6 +671,7 @@ def _bounded_static_project(
             project_root,
             pyproject_path,
             maximum_bytes=MAX_PYPROJECT_BYTES,
+            expected_containment_root_snapshot=project_root_snapshot,
         )
     except _BoundedFileTooLarge as exc:
         return {
@@ -706,6 +772,7 @@ def _bounded_static_project(
             dependencies, dependency_manifests = _setuptools_file_backed_dependencies(
                 parsed,
                 project_root,
+                project_root_snapshot,
             )
         except (OSError, UnicodeError, ValueError) as exc:
             return {
@@ -743,6 +810,7 @@ def _bounded_static_project(
             parsed,
             project,
             project_root,
+            project_root_snapshot,
             dynamic,
             pytest_invoked=pytest_invoked,
             maximum_manifest_bytes=(

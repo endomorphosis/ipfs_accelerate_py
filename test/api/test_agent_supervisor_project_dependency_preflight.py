@@ -554,6 +554,56 @@ dependencies = []
     assert receipt["projects"][0]["reason"] == ("pyproject_path_or_snapshot_invalid")
 
 
+def test_project_root_replacement_cannot_rebase_pyproject_containment(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    project = workspace / "project"
+    project.mkdir(parents=True)
+    original_project = workspace / "project-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (project / "pyproject.toml").write_text(
+        '[project]\nname = "inside"\nversion = "1.0"\ndependencies = []\n',
+        encoding="utf-8",
+    )
+    outside_secret = "outside-root-race-secret"
+    (outside / "pyproject.toml").write_text(
+        (
+            '[project]\nname = "outside"\nversion = "1.0"\n'
+            f'dependencies = ["{outside_secret}>=1"]\n'
+        ),
+        encoding="utf-8",
+    )
+    original_lstat = Path.lstat
+    replaced = False
+
+    def racing_lstat(path):
+        nonlocal replaced
+        if path == project / "pyproject.toml" and not replaced:
+            replaced = True
+            project.rename(original_project)
+            project.symlink_to(outside, target_is_directory=True)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", racing_lstat)
+    receipt = preflight_validation_project_dependencies(
+        workspace,
+        ["cd project && python -c 'pass'"],
+        probe_runner=lambda *_args, **_kwargs: pytest.fail(
+            "a replaced project root must fail before probing"
+        ),
+    )
+
+    assert replaced is True
+    assert receipt["passed"] is False
+    assert receipt["projects"][0]["reason"] == (
+        "pyproject_path_or_snapshot_invalid"
+    )
+    assert outside_secret not in json.dumps(receipt)
+
+
 def test_bounded_metadata_reader_uses_python_38_compatible_stat_api() -> None:
     source = inspect.getsource(preflight_module._read_bounded_contained_regular_file)
 
@@ -818,11 +868,20 @@ test = {{file = ["requirements-test.txt"]}}
     [
         "(cd child && python -m pytest -q)",
         "bash -c 'cd child && python -m pytest -q'",
+        "bash -O extdebug -c 'cd child && python -m pytest -q'",
+        "timeout 30 bash -c 'cd child && python -m pytest -q'",
+        "env -S 'bash -c cd child && python -m pytest -q'",
+        "exec -a nested env -S 'bash -c cd child && python -m pytest -q'",
         "pushd child && python -m pytest -q",
         "popd && python -m pytest -q",
         ". ./activate && python -m pytest -q",
         "source ./activate && python -m pytest -q",
         "eval 'cd child && python -m pytest -q'",
+        "trap 'cd child' DEBUG && python -m pytest -q",
+        "alias enter='cd child' && enter && python -m pytest -q",
+        "unalias enter && python -m pytest -q",
+        "shopt -s expand_aliases && python -m pytest -q",
+        "echo setup\npython -m pytest -q",
         "if true; then cd child; fi; python -m pytest -q",
         "function enter { cd child; }; enter; python -m pytest -q",
         "{ cd child; python -m pytest -q; }",

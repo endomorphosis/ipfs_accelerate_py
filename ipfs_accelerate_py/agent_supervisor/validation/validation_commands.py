@@ -468,6 +468,7 @@ _DYNAMIC_PATH_CHARACTERS = frozenset("*?[]{}$`;&|<>")
 _CWD_INDETERMINATE_SHELL_BUILTINS = frozenset(
     {
         ".",
+        "alias",
         "case",
         "coproc",
         "do",
@@ -484,11 +485,20 @@ _CWD_INDETERMINATE_SHELL_BUILTINS = frozenset(
         "pushd",
         "select",
         "source",
+        "shopt",
         "then",
+        "trap",
+        "unalias",
         "until",
         "while",
         "{",
         "}",
+    }
+)
+_SHELL_LITERAL_ARGUMENT_COMMANDS = frozenset(
+    {
+        "echo",
+        "printf",
     }
 )
 _NESTED_SHELL_EXECUTABLES = frozenset(
@@ -521,6 +531,30 @@ def _has_unquoted_shell_grouping(command: str) -> bool:
             in_double_quote = not in_double_quote
             continue
         if character in {"(", ")"} and not in_single_quote and not in_double_quote:
+            return True
+    return False
+
+
+def _has_unquoted_shell_newline(command: str) -> bool:
+    """Return whether command text contains a shell command separator line."""
+
+    escaped = False
+    in_single_quote = False
+    in_double_quote = False
+    for character in command:
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and not in_single_quote:
+            escaped = True
+            continue
+        if character == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+            continue
+        if character == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+            continue
+        if character in {"\n", "\r"} and not in_single_quote and not in_double_quote:
             return True
     return False
 
@@ -591,19 +625,46 @@ def _shell_segment_command(segment: Sequence[str]) -> tuple[str, int] | None:
     return command, index
 
 
+def _uses_unsafe_env_options(
+    segments: Sequence[Sequence[str]],
+) -> bool:
+    """Mirror the authoritative runner's rejection of env option parsing."""
+
+    for segment in segments:
+        command = _shell_segment_command(segment)
+        if command is not None and command[0] in _SHELL_LITERAL_ARGUMENT_COMMANDS:
+            continue
+        for index, token in enumerate(segment):
+            executable = PurePosixPath(str(token).replace("\\", "/")).name
+            if executable != "env":
+                continue
+            for argument in segment[index + 1 :]:
+                argument_text = str(argument)
+                if argument_text == "--":
+                    break
+                if argument_text == "-" or argument_text.startswith("-"):
+                    return True
+                if _ENV_ASSIGNMENT_RE.match(argument_text):
+                    continue
+                break
+    return False
+
+
 def _uses_nested_shell_command(
     segments: Sequence[Sequence[str]],
 ) -> bool:
     for segment in segments:
         command = _shell_segment_command(segment)
-        if command is None or command[0] not in _NESTED_SHELL_EXECUTABLES:
+        if command is None:
             continue
-        for option in segment[command[1] + 1 :]:
-            if option == "--":
-                break
-            if not option.startswith("-"):
-                break
-            if "c" in option.lstrip("-"):
+        command_name, command_index = command
+        if command_name in _NESTED_SHELL_EXECUTABLES:
+            return True
+        if command_name in _SHELL_LITERAL_ARGUMENT_COMMANDS:
+            continue
+        for argument in segment[command_index + 1 :]:
+            executable = PurePosixPath(str(argument).replace("\\", "/")).name
+            if executable in _NESTED_SHELL_EXECUTABLES:
                 return True
     return False
 
@@ -666,8 +727,11 @@ def validation_command_repository_root(command: str) -> str | None:
         for segment in segments
         if (command := _shell_segment_command(segment)) is not None
     )
-    if _has_unquoted_shell_grouping(text) or _uses_nested_shell_command(
-        segments
+    if (
+        _has_unquoted_shell_grouping(text)
+        or _has_unquoted_shell_newline(text)
+        or _uses_unsafe_env_options(segments)
+        or _uses_nested_shell_command(segments)
     ):
         return None
     if any(
