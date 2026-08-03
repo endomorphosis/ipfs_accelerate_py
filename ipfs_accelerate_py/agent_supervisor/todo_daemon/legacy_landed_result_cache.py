@@ -675,7 +675,7 @@ class LegacyLandedLeafResultCache:
         self.policy = policy
         self.path, self._legacy_path = resolve_duckdb_path(
             path,
-            default_filename="legacy_landed_review_cache.duckdb",
+            default_filename="legacy_landed_review_results.duckdb",
             temporary_prefix="legacy-landed-review-cache-",
         )
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -1286,9 +1286,15 @@ class LegacyLandedLeafResultCache:
             rows = connection.execute(
                 """
                 SELECT * FROM legacy_landed_leaf_records
+                WHERE policy_id=? AND current_head=? AND current_tree_id=?
                 ORDER BY key_id LIMIT ?
                 """,
-                (int(limit),),
+                (
+                    self.policy.policy_id,
+                    self.policy.current_head,
+                    self.policy.current_tree_id,
+                    int(limit),
+                ),
             ).fetchall()
         finally:
             connection.close()
@@ -1317,7 +1323,16 @@ class LegacyLandedLeafResultCache:
         connection = self._connect()
         try:
             count_row = connection.execute(
-                "SELECT count(*) AS row_count FROM legacy_landed_leaf_records"
+                """
+                SELECT count(*) AS row_count
+                FROM legacy_landed_leaf_records
+                WHERE policy_id=? AND current_head=? AND current_tree_id=?
+                """,
+                (
+                    self.policy.policy_id,
+                    self.policy.current_head,
+                    self.policy.current_tree_id,
+                ),
             ).fetchone()
             row_count = int(count_row["row_count"]) if count_row is not None else 0
             if row_count > MAX_SNAPSHOT_RECORDS:
@@ -1325,7 +1340,16 @@ class LegacyLandedLeafResultCache:
                     "legacy leaf cache snapshot record bound exceeded"
                 )
             rows = connection.execute(
-                "SELECT * FROM legacy_landed_leaf_records ORDER BY key_id"
+                """
+                SELECT * FROM legacy_landed_leaf_records
+                WHERE policy_id=? AND current_head=? AND current_tree_id=?
+                ORDER BY key_id
+                """,
+                (
+                    self.policy.policy_id,
+                    self.policy.current_head,
+                    self.policy.current_tree_id,
+                ),
             ).fetchall()
             records: list[LegacyLandedLeafCacheRecord] = []
             for row in rows:
@@ -1339,9 +1363,22 @@ class LegacyLandedLeafResultCache:
                 )
             connection.execute(
                 """
+                CREATE TEMPORARY TABLE legacy_landed_leaf_snapshot_export AS
+                SELECT key_id, key_json, record_id, record_json, stored_at_ms
+                FROM legacy_landed_leaf_records
+                WHERE policy_id=? AND current_head=? AND current_tree_id=?
+                """,
+                (
+                    self.policy.policy_id,
+                    self.policy.current_head,
+                    self.policy.current_tree_id,
+                ),
+            )
+            connection.execute(
+                """
                 COPY (
-                    SELECT key_id, key_json, record_id, record_json, stored_at_ms
-                    FROM legacy_landed_leaf_records ORDER BY key_id
+                    SELECT * FROM legacy_landed_leaf_snapshot_export
+                    ORDER BY key_id
                 ) TO ? (FORMAT PARQUET, COMPRESSION ZSTD)
                 """,
                 (str(temporary),),

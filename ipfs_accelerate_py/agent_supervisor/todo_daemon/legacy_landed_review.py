@@ -34,6 +34,7 @@ from ..proof.formal_verification_contracts import (
     canonical_json_bytes,
     content_identity,
 )
+from .git_environment import sanitized_git_environment
 from .legacy_landed_attestation import (
     HISTORICAL_PROVIDER_UNVERIFIED,
     LegacyLandedReviewAttestation,
@@ -614,21 +615,13 @@ def _git(
     *,
     check: bool = True,
 ) -> subprocess.CompletedProcess[bytes]:
-    environment = dict(os.environ)
-    environment.update(
-        {
-            "LC_ALL": "C",
-            "LANG": "C",
-            "GIT_OPTIONAL_LOCKS": "0",
-        }
-    )
     result = subprocess.run(
         ["git", *args],
         cwd=repo_root,
         stdin=subprocess.DEVNULL,
         capture_output=True,
         check=False,
-        env=environment,
+        env=sanitized_git_environment(),
     )
     if check and result.returncode != 0:
         raise LegacyLandedReviewError("legacy_repository_git_command_failed")
@@ -1403,6 +1396,26 @@ class LegacyProviderInvoker(Protocol):
     ) -> LegacyProviderObservation: ...
 
 
+class LegacyLeafCacheReview(Protocol):
+    receipt: Mapping[str, Any]
+    cache_hit: bool
+
+
+class LegacyLeafResultCache(Protocol):
+    policy: LegacyLandedReviewPolicy
+
+    def review_leaf(
+        self,
+        *,
+        task: LegacyTaskPolicy,
+        manifest: Mapping[str, Any],
+        leaf: Mapping[str, Any],
+        provider: LegacyProviderPolicy,
+        invoker: LegacyProviderInvoker,
+        review_run_id: str,
+    ) -> LegacyLeafCacheReview: ...
+
+
 LegacyValidationInvoker = Callable[
     [tuple[str, ...], Path, int], subprocess.CompletedProcess[Any]
 ]
@@ -1524,6 +1537,9 @@ def _review_one_leaf(
         "approved": True,
         "completion_authoritative": False,
         "proof_authoritative": False,
+        "provider_evidence_source": "fresh_provider",
+        "provider_invoked_in_current_run": True,
+        "provider_evidence_cache_record": None,
     }
     return {**body, "receipt_id": content_identity(body)}
 
@@ -1564,6 +1580,7 @@ def verify_legacy_landed_review_aggregate(
     policy: LegacyLandedReviewPolicy,
     task: LegacyTaskPolicy,
     manifest: Mapping[str, Any],
+    trusted_public_keys: Mapping[str, bytes | str] | None = None,
 ) -> tuple[str, ...]:
     """Reconstruct dual exact-provider approval for every ordered leaf."""
 
@@ -1616,11 +1633,49 @@ def verify_legacy_landed_review_aggregate(
         if pair.get("leaf_index") != index or pair.get("leaf_id") != leaf.get("leaf_id"):
             failures.append("legacy_review_leaf_reordered")
         for key, provider in (("grok", policy.grok), ("codex", policy.codex)):
-            receipt = pair.get(key)
-            if not isinstance(receipt, Mapping):
+            raw_receipt = pair.get(key)
+            if not isinstance(raw_receipt, Mapping):
                 failures.append("legacy_review_receipt_missing")
                 continue
-            receipt = dict(receipt)
+            receipt = dict(raw_receipt)
+            base_receipt_fields = {
+                "schema",
+                "receipt_id",
+                "review_run_id",
+                "role",
+                "request_id",
+                "request_token_upper_bound",
+                "manifest_id",
+                "leaf_index",
+                "leaf_id",
+                "requested_provider",
+                "requested_model",
+                "effective_provider",
+                "effective_model",
+                "provider_chain",
+                "fallback_used",
+                "self_review",
+                "supervisor_observed",
+                "observation_id",
+                "response",
+                "response_id",
+                "approved",
+                "completion_authoritative",
+                "proof_authoritative",
+            }
+            provenance_fields = {
+                "provider_evidence_source",
+                "provider_invoked_in_current_run",
+                "provider_evidence_cache_record",
+            }
+            has_provenance = bool(set(receipt).intersection(provenance_fields))
+            expected_fields = (
+                base_receipt_fields | provenance_fields
+                if has_provenance
+                else base_receipt_fields
+            )
+            if set(receipt) != expected_fields:
+                failures.append("legacy_review_receipt_shape_invalid")
             receipt_id = str(receipt.pop("receipt_id", "") or "")
             if receipt_id != content_identity(receipt):
                 failures.append("legacy_review_receipt_content_id_mismatch")
@@ -1660,6 +1715,71 @@ def verify_legacy_landed_review_aggregate(
             for field, expected in expected_receipt.items():
                 if receipt.get(field) != expected:
                     failures.append(f"legacy_review_receipt_{field}_mismatch")
+            source = receipt.get("provider_evidence_source")
+            if not has_provenance:
+                if source is not None:
+                    failures.append("legacy_review_provider_provenance_invalid")
+            elif source == "fresh_provider":
+                if (
+                    receipt.get("provider_invoked_in_current_run") is not True
+                    or receipt.get("provider_evidence_cache_record") is not None
+                ):
+                    failures.append("legacy_review_fresh_provenance_invalid")
+            elif source == "signed_cache":
+                cache_record = receipt.get("provider_evidence_cache_record")
+                if (
+                    receipt.get("provider_invoked_in_current_run") is not False
+                    or not isinstance(cache_record, Mapping)
+                    or trusted_public_keys is None
+                ):
+                    failures.append("legacy_review_cache_provenance_invalid")
+                else:
+                    from .legacy_landed_result_cache import (
+                        LegacyLandedLeafCacheKey,
+                        verify_legacy_landed_leaf_cache_record,
+                    )
+
+                    try:
+                        cache_key = LegacyLandedLeafCacheKey.from_request(
+                            policy=policy,
+                            task=task,
+                            manifest=manifest,
+                            leaf=leaf,
+                            provider=provider,
+                            request=request,
+                        )
+                        cache_verification = (
+                            verify_legacy_landed_leaf_cache_record(
+                                cache_record,
+                                expected_key=cache_key,
+                                trusted_public_keys=trusted_public_keys,
+                            )
+                        )
+                        if (
+                            not cache_verification.verified
+                            or cache_verification.record is None
+                        ):
+                            raise ValueError("signed cache record did not verify")
+                        rebound = dict(cache_verification.record.receipt)
+                        rebound.pop("receipt_id", None)
+                        rebound["review_run_id"] = run_id
+                        rebound["provider_evidence_source"] = "signed_cache"
+                        rebound["provider_invoked_in_current_run"] = False
+                        rebound["provider_evidence_cache_record"] = dict(
+                            cache_record
+                        )
+                        expected_rebound = {
+                            **rebound,
+                            "receipt_id": content_identity(rebound),
+                        }
+                        if canonical_json_bytes(expected_rebound) != (
+                            canonical_json_bytes(raw_receipt)
+                        ):
+                            raise ValueError("cache receipt rebind is invalid")
+                    except (TypeError, ValueError):
+                        failures.append("legacy_review_cache_signature_invalid")
+            else:
+                failures.append("legacy_review_provider_provenance_invalid")
             response = receipt.get("response")
             if not isinstance(response, Mapping) or set(response) != {
                 "schema", "decision", "manifest_id", "leaf_id", "findings"
@@ -1878,6 +1998,7 @@ class LegacyLandedReviewService:
         codex_invoker: LegacyProviderInvoker | None,
         validation_invoker: LegacyValidationInvoker | None = None,
         clock_ms: Callable[[], int] | None = None,
+        leaf_result_cache: LegacyLeafResultCache | None = None,
     ) -> None:
         self._repo_root = Path(repo_root).resolve(strict=True)
         # Preserve the operator's exact path so the strict loaders can reject
@@ -1894,6 +2015,11 @@ class LegacyLandedReviewService:
         self._codex_invoker = codex_invoker
         self._validation_invoker = validation_invoker or _default_validation_invoker
         self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
+        if leaf_result_cache is not None and (
+            leaf_result_cache.policy != self._policy
+        ):
+            raise ValueError("legacy leaf cache policy binding is invalid")
+        self._leaf_result_cache = leaf_result_cache
 
     @property
     def policy(self) -> LegacyLandedReviewPolicy:
@@ -2008,19 +2134,35 @@ class LegacyLandedReviewService:
                     ("grok", self._policy.grok, self._grok_invoker),
                     ("codex", self._policy.codex, self._codex_invoker),
                 ):
-                    request = _leaf_review_request(
-                        policy=self._policy,
-                        task=task,
-                        manifest=manifest,
-                        leaf=leaf,
-                        provider=provider,
-                    )
-                    receipt = _review_one_leaf(
-                        request=request,
-                        provider=provider,
-                        invoker=invoker,
-                        review_run_id=review_run_id,
-                    )
+                    if self._leaf_result_cache is None:
+                        request = _leaf_review_request(
+                            policy=self._policy,
+                            task=task,
+                            manifest=manifest,
+                            leaf=leaf,
+                            provider=provider,
+                        )
+                        receipt = _review_one_leaf(
+                            request=request,
+                            provider=provider,
+                            invoker=invoker,
+                            review_run_id=review_run_id,
+                        )
+                    else:
+                        try:
+                            cached_review = self._leaf_result_cache.review_leaf(
+                                task=task,
+                                manifest=manifest,
+                                leaf=leaf,
+                                provider=provider,
+                                invoker=invoker,
+                                review_run_id=review_run_id,
+                            )
+                            receipt = dict(cached_review.receipt)
+                        except Exception as exc:
+                            raise LegacyLandedReviewError(
+                                "legacy_landed_leaf_cache_failed"
+                            ) from exc
                     observation_id = str(receipt["observation_id"])
                     if observation_id in observation_ids:
                         raise LegacyLandedReviewError("legacy_provider_self_review_detected")
@@ -2040,6 +2182,9 @@ class LegacyLandedReviewService:
                 policy=self._policy,
                 task=task,
                 manifest=manifest,
+                trusted_public_keys={
+                    self._policy.issuer_key_id: self.trusted_public_key
+                },
             )
             if aggregate_failures:
                 raise LegacyLandedReviewError("legacy_review_aggregate_verification_failed")
@@ -2154,7 +2299,11 @@ def verify_legacy_landed_review_result(
         aggregate = result.review_aggregate
         failures.extend(
             verify_legacy_landed_review_aggregate(
-                aggregate, policy=policy, task=task, manifest=manifest
+                aggregate,
+                policy=policy,
+                task=task,
+                manifest=manifest,
+                trusted_public_keys=trusted_public_keys,
             )
         )
     run_id = str(aggregate.get("review_run_id") or "")

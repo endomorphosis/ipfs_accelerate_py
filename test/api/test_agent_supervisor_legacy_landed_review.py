@@ -61,15 +61,21 @@ def _private_key_file(path: Path) -> tuple[Ed25519PrivateKey, str]:
     return private, legacy_landed_review_key_id(public)
 
 
-def _policy_payload(*, issuer_key_id: str, enabled: bool = True) -> dict[str, Any]:
+def _policy_payload(
+    *,
+    issuer_key_id: str,
+    enabled: bool = True,
+    current_head: str = HEAD,
+    current_tree_id: str = TREE,
+) -> dict[str, Any]:
     template = copy.deepcopy(legacy.EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE)
     body = {
         "schema": legacy.LEGACY_LANDED_REVIEW_POLICY_SCHEMA,
         "interface": legacy.LEGACY_LANDED_REVIEW_POLICY_INTERFACE,
         "enabled": enabled,
         "issuer_key_id": issuer_key_id,
-        "current_head": HEAD,
-        "current_tree_id": TREE,
+        "current_head": current_head,
+        "current_tree_id": current_tree_id,
         "max_leaf_tokens": template["max_leaf_tokens"],
         "providers": template["providers"],
         "tasks": template["tasks"],
@@ -86,6 +92,16 @@ def _write_policy(path: Path, payload: dict[str, Any]) -> None:
         encoding="utf-8",
     )
     path.chmod(0o600)
+
+
+def _git(repo: Path, *arguments: str) -> str:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
 
 
 def _binding(task: legacy.LegacyTaskPolicy) -> legacy.LegacyRepositoryBinding:
@@ -466,6 +482,147 @@ def test_full_review_requires_both_exact_providers_fresh_validation_and_signatur
     assert "legacy_landed_review_signature_invalid" in verification.reason_codes
 
 
+def test_policy_runtime_reverify_and_admission_ignore_poisoned_git_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Legacy Review Test")
+    _git(repo, "config", "user.email", "legacy@example.invalid")
+    (repo / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _git(repo, "add", "tracked.py")
+    _git(repo, "commit", "-m", "baseline")
+    head = _git(repo, "rev-parse", "HEAD")
+    tree = _git(repo, "rev-parse", "HEAD^{tree}")
+
+    redirected = tmp_path / "redirected"
+    redirected.mkdir()
+    _git(redirected, "init")
+    _git(redirected, "config", "user.name", "Redirected")
+    _git(redirected, "config", "user.email", "redirected@example.invalid")
+    (redirected / "wrong.py").write_text("wrong = True\n", encoding="utf-8")
+    _git(redirected, "add", "wrong.py")
+    _git(redirected, "commit", "-m", "wrong")
+    malicious_config = tmp_path / "malicious.gitconfig"
+    malicious_config.write_text(
+        "[diff]\n    external = false\n[core]\n    worktree = /nonexistent\n",
+        encoding="utf-8",
+    )
+    poison = {
+        "GIT_DIR": str(redirected / ".git"),
+        "GIT_WORK_TREE": str(redirected),
+        "GIT_INDEX_FILE": str(redirected / ".git" / "index"),
+        "GIT_OBJECT_DIRECTORY": str(redirected / ".git" / "objects"),
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(repo / ".git" / "objects"),
+        "GIT_REPLACE_REF_BASE": "refs/replace/poisoned/",
+        "GIT_CONFIG": str(malicious_config),
+        "GIT_CONFIG_GLOBAL": str(malicious_config),
+        "GIT_CONFIG_SYSTEM": str(malicious_config),
+        "GIT_CONFIG_COUNT": "2",
+        "GIT_CONFIG_KEY_0": "core.worktree",
+        "GIT_CONFIG_VALUE_0": str(redirected),
+        "GIT_CONFIG_KEY_1": "diff.external",
+        "GIT_CONFIG_VALUE_1": "false",
+        "GIT_CONFIG_PARAMETERS": "'core.worktree=/nonexistent'",
+        "GIT_EXTERNAL_DIFF": "false",
+        "GIT_DIFF_OPTS": "--stat",
+    }
+    key_path = tmp_path / "legacy.key"
+    _private, issuer = _private_key_file(key_path)
+
+    def binding(task: legacy.LegacyTaskPolicy) -> legacy.LegacyRepositoryBinding:
+        return replace(
+            _binding(task), current_head=head, current_tree_id=tree
+        )
+
+    monkeypatch.setattr(
+        legacy,
+        "inspect_legacy_repository_binding",
+        lambda _repo, _policy, task, **_kwargs: binding(task),
+    )
+    with monkeypatch.context() as poisoned:
+        for name, value in poison.items():
+            poisoned.setenv(name, value)
+        policy_payload = legacy.build_exact_eight_legacy_landed_policy(
+            repo,
+            current_head=head,
+            issuer_key_id=issuer,
+            enabled=True,
+        )
+    assert policy_payload["current_tree_id"] == tree
+    policy_path = tmp_path / "policy.json"
+    _write_policy(policy_path, policy_payload)
+    policy = legacy.load_legacy_landed_review_policy(policy_path)
+    todo_path = tmp_path / "runtime.todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        production_provider_policy="grok-implement-codex-independent-review",
+        production_provider_review_authority_key_path=(
+            tmp_path / "production-review.key"
+        ),
+        legacy_landed_review_policy_path=policy_path,
+        legacy_landed_review_key_path=key_path,
+    )
+
+    def validate(
+        argv: tuple[str, ...], _repo: Path, _timeout: int
+    ) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(list(argv), 0, b"passed", b"")
+
+    service = legacy.LegacyLandedReviewService(
+        repo_root=repo,
+        operator_policy_path=policy_path,
+        operator_key_path=key_path,
+        grok_invoker=_ApprovingProvider(),
+        codex_invoker=_ApprovingProvider(),
+        validation_invoker=validate,
+        clock_ms=iter(range(1_000, 10_000)).__next__,
+        leaf_result_cache=daemon.legacy_landed_review_result_cache,
+    )
+    task_policy = policy.task("ASE-005")
+    task = PortalTask(
+        task_id=task_policy.task_id,
+        title="Audited legacy task",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="migration",
+        outputs=list(task_policy.paths),
+        validation=["python -m pytest -q"],
+        acceptance="exact landed bytes receive independent review",
+        canonical_task_key=task_policy.canonical_task_key,
+        canonical_task_cid=task_policy.canonical_task_cid,
+    )
+    with monkeypatch.context() as poisoned:
+        for name, value in poison.items():
+            poisoned.setenv(name, value)
+        result = service.review(task.task_id)
+        assert result.reviewed is True
+        assert legacy.verify_legacy_landed_review_result(
+            result,
+            repo_root=repo,
+            policy=policy,
+            trusted_public_keys={issuer: service.trusted_public_key},
+        ) == ()
+        gate = daemon._verified_legacy_landed_review_gate_evidence(  # noqa: SLF001
+            task=task,
+            implementation_commit=task_policy.implementation_commit,
+            merge_commit=head,
+            repository_tree_id=f"git-tree:{tree}",
+            evidence={"legacy_landed_review_result": result.to_dict()},
+        )
+    assert gate is not None
+    assert gate["provider_result_admitted"] is True
+
+
 @pytest.mark.parametrize(
     ("mutation", "expected_reason"),
     [
@@ -665,6 +822,12 @@ def test_daemon_loads_only_a_strict_paired_legacy_policy_and_key(
     )
     assert daemon._legacy_landed_review_service is not None  # noqa: SLF001
     assert set(daemon.legacy_landed_review_trusted_public_keys) == {issuer}
+    assert daemon.legacy_landed_review_result_cache is not None
+    assert daemon.legacy_landed_review_result_cache_path == (
+        key_path.parent / "legacy_landed_review_results.duckdb"
+    )
+    assert daemon.legacy_landed_review_result_cache_path.is_file()
+    assert not hasattr(args, "legacy_landed_review_result_cache_path")
 
 
 def test_guarded_legacy_review_is_reverified_at_authoritative_provider_gate(

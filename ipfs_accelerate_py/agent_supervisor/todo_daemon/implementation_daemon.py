@@ -164,6 +164,7 @@ from .production_provider_attestation import (
     ProductionProviderReviewAuthority,
     production_provider_review_key_path,
 )
+from .git_environment import sanitized_git_environment
 from .legacy_landed_attestation import LegacyLandedReviewAuthority
 from .legacy_landed_provider_cli import build_legacy_landed_cli_provider_pair
 from .legacy_landed_review import (
@@ -173,6 +174,7 @@ from .legacy_landed_review import (
     load_legacy_landed_review_policy,
     verify_legacy_landed_review_result,
 )
+from .legacy_landed_result_cache import LegacyLandedLeafResultCache
 from .production_provider_cli import (
     DEFAULT_CONTEXT_BUDGET_TOKENS as DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS,
     DEFAULT_PROVIDER_TIMEOUT_SECONDS as DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS,
@@ -2969,6 +2971,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self.legacy_landed_review_policy_path: Path | None = None
         self.legacy_landed_review_key_path: Path | None = None
         self.legacy_landed_review_policy: LegacyLandedReviewPolicy | None = None
+        self.legacy_landed_review_result_cache_path: Path | None = None
+        self.legacy_landed_review_result_cache: (
+            LegacyLandedLeafResultCache | None
+        ) = None
         self.legacy_landed_review_trusted_public_keys: dict[str, bytes] = {}
         self._legacy_landed_review_service: LegacyLandedReviewService | None = None
         self._legacy_landed_review_results_by_task: dict[
@@ -2989,16 +2995,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             legacy_grok, legacy_codex = build_legacy_landed_cli_provider_pair(
                 legacy_policy
             )
+            legacy_cache_path = Path(os.path.abspath(legacy_key_path)).parent / (
+                "legacy_landed_review_results.duckdb"
+            )
+            legacy_cache = LegacyLandedLeafResultCache(
+                legacy_cache_path,
+                policy=legacy_policy,
+                operator_key_path=legacy_key_path,
+            )
             legacy_service = LegacyLandedReviewService(
                 repo_root=self.repo_root,
                 operator_policy_path=legacy_policy_path,
                 operator_key_path=legacy_key_path,
                 grok_invoker=legacy_grok,
                 codex_invoker=legacy_codex,
+                leaf_result_cache=legacy_cache,
             )
             self.legacy_landed_review_policy_path = legacy_policy_path
             self.legacy_landed_review_key_path = legacy_key_path
             self.legacy_landed_review_policy = legacy_service.policy
+            self.legacy_landed_review_result_cache_path = legacy_cache.path
+            self.legacy_landed_review_result_cache = legacy_cache
             self.legacy_landed_review_trusted_public_keys = {
                 legacy_service.policy.issuer_key_id: legacy_service.trusted_public_key
             }
@@ -23978,6 +23995,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             text=True,
             capture_output=True,
             check=False,
+            env=sanitized_git_environment(),
         )
         return result.returncode == 0
 
@@ -26332,6 +26350,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             text=True,
             capture_output=True,
             check=False,
+            env=sanitized_git_environment(),
         )
         return result.returncode == 0
 

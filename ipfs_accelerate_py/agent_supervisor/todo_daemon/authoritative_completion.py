@@ -18,6 +18,7 @@ from ..task_sources.taskboard_store import (
     locked_taskboard,
     replace_locked_taskboard,
 )
+from .git_environment import sanitized_git_environment
 from .legacy_landed_review import (
     LegacyLandedReviewPolicy,
     LegacyLandedReviewResult,
@@ -937,6 +938,7 @@ class AuthoritativeCompletionMixin:
             text=True,
             capture_output=True,
             check=False,
+            env=sanitized_git_environment(),
         )
         commit_result = subprocess.run(
             [
@@ -950,6 +952,7 @@ class AuthoritativeCompletionMixin:
             text=True,
             capture_output=True,
             check=False,
+            env=sanitized_git_environment(),
         )
         tree_result = subprocess.run(
             [
@@ -963,6 +966,7 @@ class AuthoritativeCompletionMixin:
             text=True,
             capture_output=True,
             check=False,
+            env=sanitized_git_environment(),
         )
         resolved_implementation = str(
             implementation_result.stdout or ""
@@ -1011,6 +1015,7 @@ class AuthoritativeCompletionMixin:
             text=True,
             capture_output=True,
             check=False,
+            env=sanitized_git_environment(),
         )
         tree = str(result.stdout or "").strip()
         return f"git-tree:{tree}" if result.returncode == 0 and tree else ""

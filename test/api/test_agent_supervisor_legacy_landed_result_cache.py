@@ -130,6 +130,22 @@ def _cache_fixture(
     return cache, policy, task, manifest, key_path
 
 
+def _write_policy(path: Path, payload: dict[str, Any]) -> None:
+    path.write_bytes(canonical_json_bytes(payload))
+    path.chmod(0o600)
+
+
+def _fake_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(legacy, "_repo_is_clean", lambda _repo: True)
+    monkeypatch.setattr(legacy, "_repo_head", lambda _repo: HEAD)
+    monkeypatch.setattr(legacy, "_tree_id", lambda _repo, _head: TREE)
+    monkeypatch.setattr(
+        legacy,
+        "inspect_legacy_repository_binding",
+        lambda _repo, _policy, task, **_kwargs: _binding(task),
+    )
+
+
 class _ApprovingProvider:
     def __init__(self) -> None:
         self.calls = 0
@@ -294,6 +310,187 @@ def test_cold_then_restart_warm_rebinds_signed_evidence_without_provider(
     assert record["validation_cached"] is False
     assert record["completion_authoritative"] is False
     assert record["proof_authoritative"] is False
+
+
+def test_service_restart_uses_cache_but_revalidates_and_reattests(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache, policy, task, manifest, key_path = _cache_fixture(tmp_path)
+    policy_path = tmp_path / "policy.json"
+    _write_policy(policy_path, _policy_payload(policy.issuer_key_id))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _fake_repo(monkeypatch)
+    grok = _ApprovingProvider()
+    codex = _ApprovingProvider()
+    validation_calls: list[tuple[str, ...]] = []
+
+    def validate(
+        argv: tuple[str, ...], _repo: Path, _timeout: int
+    ) -> subprocess.CompletedProcess[bytes]:
+        validation_calls.append(argv)
+        return subprocess.CompletedProcess(list(argv), 0, b"passed", b"")
+
+    clock = iter(range(1_000, 10_000)).__next__
+    cold_service = legacy.LegacyLandedReviewService(
+        repo_root=repo,
+        operator_policy_path=policy_path,
+        operator_key_path=key_path,
+        grok_invoker=grok,
+        codex_invoker=codex,
+        validation_invoker=validate,
+        clock_ms=clock,
+        leaf_result_cache=cache,
+    )
+    cold = cold_service.review(task.task_id)
+    cold_grok_calls = grok.calls
+    cold_codex_calls = codex.calls
+    restarted_cache = LegacyLandedLeafResultCache(
+        cache.path,
+        policy=policy,
+        operator_key_path=key_path,
+    )
+    warm_service = legacy.LegacyLandedReviewService(
+        repo_root=repo,
+        operator_policy_path=policy_path,
+        operator_key_path=key_path,
+        grok_invoker=grok,
+        codex_invoker=codex,
+        validation_invoker=validate,
+        clock_ms=clock,
+        leaf_result_cache=restarted_cache,
+    )
+    warm = warm_service.review(task.task_id)
+
+    assert cold.reviewed is True
+    assert warm.reviewed is True
+    assert cold_grok_calls == manifest["leaf_count"]
+    assert cold_codex_calls == manifest["leaf_count"]
+    assert grok.calls == cold_grok_calls
+    assert codex.calls == cold_codex_calls
+    assert validation_calls == list(task.validations) * 2
+    assert cold.attestation is not None and warm.attestation is not None
+    assert cold.attestation.nonce != warm.attestation.nonce
+    assert cold.validation_receipts != warm.validation_receipts
+    assert all(
+        pair[role]["provider_evidence_source"] == "fresh_provider"
+        for pair in cold.review_aggregate["ordered_leaf_reviews"]  # type: ignore[index]
+        for role in ("grok", "codex")
+    )
+    assert all(
+        pair[role]["provider_evidence_source"] == "signed_cache"
+        for pair in warm.review_aggregate["ordered_leaf_reviews"]  # type: ignore[index]
+        for role in ("grok", "codex")
+    )
+    trusted = {policy.issuer_key_id: warm_service.trusted_public_key}
+    assert legacy.verify_legacy_landed_review_result(
+        cold,
+        repo_root=repo,
+        policy=policy,
+        trusted_public_keys=trusted,
+    ) == ()
+    assert legacy.verify_legacy_landed_review_result(
+        warm,
+        repo_root=repo,
+        policy=policy,
+        trusted_public_keys=trusted,
+    ) == ()
+
+    tampered = copy.deepcopy(warm.review_aggregate)
+    assert tampered is not None
+    receipt = tampered["ordered_leaf_reviews"][0]["grok"]
+    receipt["provider_evidence_cache_record"]["signature"] = "AAAA"
+    receipt_body = dict(receipt)
+    receipt_body.pop("receipt_id")
+    receipt["receipt_id"] = content_identity(receipt_body)
+    aggregate_body = dict(tampered)
+    aggregate_body.pop("aggregate_id")
+    tampered["aggregate_id"] = content_identity(aggregate_body)
+    failures = legacy.verify_legacy_landed_review_aggregate(
+        tampered,
+        policy=policy,
+        task=task,
+        manifest=manifest,
+        trusted_public_keys=trusted,
+    )
+    assert "legacy_review_cache_signature_invalid" in failures
+
+    ambiguous = copy.deepcopy(cold.review_aggregate)
+    assert ambiguous is not None
+    ambiguous_receipt = ambiguous["ordered_leaf_reviews"][0]["grok"]
+    ambiguous_receipt["provider_evidence_source"] = None
+    ambiguous_receipt["provider_invoked_in_current_run"] = False
+    ambiguous_receipt["provider_evidence_cache_record"] = {}
+    ambiguous_body = dict(ambiguous_receipt)
+    ambiguous_body.pop("receipt_id")
+    ambiguous_receipt["receipt_id"] = content_identity(ambiguous_body)
+    ambiguous_aggregate_body = dict(ambiguous)
+    ambiguous_aggregate_body.pop("aggregate_id")
+    ambiguous["aggregate_id"] = content_identity(ambiguous_aggregate_body)
+    ambiguous_failures = legacy.verify_legacy_landed_review_aggregate(
+        ambiguous,
+        policy=policy,
+        task=task,
+        manifest=manifest,
+        trusted_public_keys=trusted,
+    )
+    assert "legacy_review_provider_provenance_invalid" in ambiguous_failures
+
+
+def test_cache_poison_rejects_service_without_cold_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache, policy, task, manifest, key_path = _cache_fixture(tmp_path)
+    policy_path = tmp_path / "policy.json"
+    _write_policy(policy_path, _policy_payload(policy.issuer_key_id))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _fake_repo(monkeypatch)
+    provider = _ApprovingProvider()
+    cache.review_leaf(
+        task=task,
+        manifest=manifest,
+        leaf=manifest["leaves"][0],
+        provider=policy.grok,
+        invoker=provider,
+        review_run_id="legacy-review:" + "b" * 48,
+    )
+    key = _key_for_first_leaf(cache, policy, task, manifest)
+    connection = open_duckdb_connection(cache.path)
+    try:
+        row = connection.execute(
+            "SELECT record_json FROM legacy_landed_leaf_records WHERE key_id=?",
+            (key.key_id,),
+        ).fetchone()
+        assert row is not None
+        payload = json.loads(str(row["record_json"]))
+        payload["signature"] = "AAAA"
+        connection.execute(
+            "UPDATE legacy_landed_leaf_records SET record_json=? WHERE key_id=?",
+            (canonical_json_bytes(payload).decode("ascii"), key.key_id),
+        )
+    finally:
+        connection.close()
+    service_provider = _ApprovingProvider()
+    validations: list[str] = []
+    service = legacy.LegacyLandedReviewService(
+        repo_root=repo,
+        operator_policy_path=policy_path,
+        operator_key_path=key_path,
+        grok_invoker=service_provider,
+        codex_invoker=service_provider,
+        validation_invoker=lambda *_args: validations.append("called"),  # type: ignore[arg-type]
+        leaf_result_cache=cache,
+    )
+
+    result = service.review(task.task_id)
+
+    assert result.status == "rejected"
+    assert result.reason_code == "legacy_landed_leaf_cache_failed"
+    assert service_provider.calls == 0
+    assert validations == []
 
 
 def test_cache_key_binds_every_review_dimension_and_is_closed(
@@ -499,7 +696,14 @@ def test_snapshot_inventory_is_exact_during_concurrent_insert_and_tamper_fails(
 
     storage = _InsertDuringRawPutBackend(concurrent_insert)
     backend = VerifiedIPLDBackend(backend=storage)
+    repository_artifacts_before = {
+        path.name for path in Path.cwd().glob("baguqeera*") if path.is_file()
+    }
     snapshot = cache.export_snapshot(tmp_path / "snapshots", backend=backend)
+    repository_artifacts_after = {
+        path.name for path in Path.cwd().glob("baguqeera*") if path.is_file()
+    }
+    assert repository_artifacts_after == repository_artifacts_before
     assert snapshot.row_count == 1
     assert len(cache.records()) == 2
     assert snapshot.parquet_cid in storage._pins  # noqa: SLF001
@@ -615,6 +819,62 @@ def test_import_rejects_foreign_policy_rows_and_bounded_duplicate_inventory(
     oversized_cid = backend.put_dag_json(oversized).cid
     with pytest.raises(LegacyLandedLeafCacheError, match="inventory bounds"):
         cache.import_snapshot(oversized_cid, backend=backend)
+
+
+def test_shared_database_filters_inventory_by_exact_policy(tmp_path: Path) -> None:
+    cache, old_policy, old_task, old_manifest, key_path = _cache_fixture(tmp_path)
+    cache.review_leaf(
+        task=old_task,
+        manifest=old_manifest,
+        leaf=old_manifest["leaves"][0],
+        provider=old_policy.grok,
+        invoker=_ApprovingProvider(),
+        review_run_id="legacy-review:" + "c" * 48,
+    )
+    new_policy = legacy.parse_legacy_landed_review_policy(
+        _policy_payload(
+            old_policy.issuer_key_id,
+            current_head="c" * 40,
+            current_tree_id="d" * 40,
+        )
+    )
+    new_task = new_policy.task(old_task.task_id)
+    new_binding = replace(
+        _binding(new_task),
+        current_head=new_policy.current_head,
+        current_tree_id=new_policy.current_tree_id,
+    )
+    new_manifest = legacy.build_legacy_landed_byte_manifest(
+        new_policy, new_binding
+    )
+    rotated = LegacyLandedLeafResultCache(
+        cache.path,
+        policy=new_policy,
+        operator_key_path=key_path,
+    )
+    rotated.review_leaf(
+        task=new_task,
+        manifest=new_manifest,
+        leaf=new_manifest["leaves"][0],
+        provider=new_policy.grok,
+        invoker=_ApprovingProvider(),
+        review_run_id="legacy-review:" + "d" * 48,
+    )
+
+    assert len(cache.records()) == 1
+    assert len(rotated.records()) == 1
+    backend = VerifiedIPLDBackend(backend=InMemoryConformantBackend())
+    old_snapshot = cache.export_snapshot(
+        tmp_path / "old-policy-snapshot", backend=backend
+    )
+    new_snapshot = rotated.export_snapshot(
+        tmp_path / "new-policy-snapshot", backend=backend
+    )
+    assert old_snapshot.row_count == 1
+    assert new_snapshot.row_count == 1
+    assert old_snapshot.manifest["ordered_key_ids"] != (
+        new_snapshot.manifest["ordered_key_ids"]
+    )
 
 
 def test_snapshot_bound_fails_explicitly_and_existing_cid_is_never_overwritten(
