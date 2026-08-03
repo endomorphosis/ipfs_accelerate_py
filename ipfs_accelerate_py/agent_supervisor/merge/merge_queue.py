@@ -67,6 +67,10 @@ POST_MERGE_REVIEW_DENIAL_CONSUMPTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-review-denial-consumption@1"
 )
+POST_MERGE_REVIEW_DENIAL_FEEDBACK_MANIFEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-review-denial-feedback-manifest@1"
+)
 POST_MERGE_CORRECTION_CHAIN_RECORD_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-correction-chain-record@1"
@@ -79,6 +83,14 @@ POST_MERGE_CORRECTION_AUTHORITY_STATE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-correction-authority-state@1"
 )
+POST_MERGE_CORRECTION_DISPATCH_AUTHORITY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-dispatch-authority@1"
+)
+COMPLETE_POST_MERGE_DENIAL_FEEDBACK_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "complete-post-merge-denial-feedback@1"
+)
 POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-correction-authority-consumption@1"
@@ -86,6 +98,10 @@ POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA = (
 POST_MERGE_CORRECTION_FAILURE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-correction-failure@1"
+)
+POST_MERGE_CORRECTION_PENDING_REVIEW_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-pending-review@1"
 )
 POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -110,6 +126,7 @@ _FULL_GIT_OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _GIT_TREE_ID = re.compile(r"^git-tree:[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _SHA256_EVENT_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 _MAX_DENIAL_RECORD_BYTES = 16 * 1024
+_MAX_DENIAL_FEEDBACK_MANIFEST_BYTES = 64 * 1024
 _MAX_CORRECTION_CHAIN_RECORD_BYTES = 16 * 1024
 _POST_MERGE_CORRECTION_COMMON_FIELDS = frozenset(
     {
@@ -142,6 +159,36 @@ _POST_MERGE_CORRECTION_TRANSITION_FIELDS = {
             "terminal_event_id",
             "terminal_event_sequence",
             "failure_kind",
+        }
+    ),
+    "correction_pending": frozenset(
+        {
+            "authority_kind",
+            "authority_id",
+            "authority_binding_id",
+            "started_event_id",
+            "started_event_sequence",
+            "pre_consumption_head_record_id",
+            "consumption_record_id",
+            "pending_event_id",
+            "pending_event_sequence",
+            "pending_binding_id",
+            "complete_feedback_id",
+            "complete_finding_count",
+            "complete_feedback_truncated",
+            "packet_id",
+            "packet_cid",
+            "provider_receipt_id",
+            "artifact_path",
+            "artifact_id",
+            "required_review_role",
+            "proposal_role",
+            "write_performed",
+            "provider_result_admitted",
+            "attempt_consumed",
+            "repository_write_authorized",
+            "proof_authoritative",
+            "completion_authoritative",
         }
     ),
     "repair_granted": frozenset(
@@ -212,6 +259,7 @@ _POST_MERGE_CORRECTION_TRANSITION_FIELDS = {
 _POST_MERGE_CORRECTION_SCHEMA_KIND = {
     POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA: "consumption",
     POST_MERGE_CORRECTION_FAILURE_SCHEMA: "correction_failed",
+    POST_MERGE_CORRECTION_PENDING_REVIEW_SCHEMA: "correction_pending",
     POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA: "repair_granted",
     POST_MERGE_CORRECTION_LEGACY_FAILURE_ANCHOR_SCHEMA: (
         "legacy_failure_anchored"
@@ -234,6 +282,47 @@ class MergeQueueIntegrityError(RuntimeError):
     """Raised when permanent queue authority is malformed or conflicting."""
 
 
+def post_merge_correction_dispatch_authority_descriptor(
+    *,
+    authority_kind: str,
+    authority_id: str,
+    authority_event_sequence: int,
+    task_id: str,
+    canonical_task_key: str,
+    canonical_task_cid: str,
+    board_namespace: str,
+    task_binding_id: str,
+    authorized_attempt: int,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Content-address one canonical correction dispatch authority.
+
+    This pure constructor is shared by dispatch and durable verification so
+    the security boundary never relies on two independently maintained hash
+    formulas.  It does not mint authority by itself: the queue accepts the
+    resulting identity only when every input is re-derived from its verified
+    denial, feedback manifest, and pre-consumption chain head.
+    """
+
+    material = {
+        "schema": POST_MERGE_CORRECTION_DISPATCH_AUTHORITY_SCHEMA,
+        "authority_kind": str(authority_kind),
+        "authority_id": str(authority_id),
+        "authority_event_sequence": int(authority_event_sequence),
+        "task_id": str(task_id),
+        "canonical_task_key": str(canonical_task_key),
+        "canonical_task_cid": str(canonical_task_cid),
+        "board_namespace": str(board_namespace),
+        "task_binding_id": str(task_binding_id),
+        "authorized_attempt": int(authorized_attempt),
+        **dict(extra or {}),
+    }
+    return {
+        **material,
+        "authority_binding_id": content_identity(material),
+    }
+
+
 def _canonical_json(value: Mapping[str, Any]) -> str:
     try:
         encoded = json.dumps(
@@ -250,6 +339,26 @@ def _canonical_json(value: Mapping[str, Any]) -> str:
     if len(encoded.encode("utf-8")) > _MAX_DENIAL_RECORD_BYTES:
         raise MergeQueueIntegrityError(
             "post-merge denial record exceeds its persistence bound"
+        )
+    return encoded
+
+
+def _canonical_feedback_manifest_json(value: Mapping[str, Any]) -> str:
+    try:
+        encoded = json.dumps(
+            dict(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise MergeQueueIntegrityError(
+            "post-merge denial feedback manifest is not canonical JSON"
+        ) from exc
+    if len(encoded.encode("utf-8")) > _MAX_DENIAL_FEEDBACK_MANIFEST_BYTES:
+        raise MergeQueueIntegrityError(
+            "post-merge denial feedback manifest exceeds its bound"
         )
     return encoded
 
@@ -477,6 +586,183 @@ def _validated_post_merge_review_denial(
             "post-merge denial content identity is invalid"
         )
     return record, _canonical_json(record)
+
+
+def _validated_post_merge_review_denial_feedback_manifest(
+    value: Mapping[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Return one complete finding page bound to a permanent denial root."""
+
+    if not isinstance(value, Mapping):
+        raise MergeQueueIntegrityError(
+            "post-merge denial feedback manifest must be an object"
+        )
+    record = dict(value)
+    if set(record) != {
+        "schema",
+        "manifest_id",
+        "denial_id",
+        "terminal_key_id",
+        "source_event_id",
+        "source_event_sequence",
+        "review_response_id",
+        "review_response",
+        "target_implementation_attempt",
+        "source_finding_count",
+        "included_finding_count",
+        "truncated",
+        "findings",
+        "evidence_only",
+        "repository_write_authorized",
+        "proof_authoritative",
+        "completion_authoritative",
+    }:
+        raise MergeQueueIntegrityError(
+            "post-merge denial feedback manifest fields changed"
+        )
+    integer_fields = (
+        "source_event_sequence",
+        "target_implementation_attempt",
+        "source_finding_count",
+        "included_finding_count",
+    )
+    if (
+        record.get("schema")
+        != POST_MERGE_REVIEW_DENIAL_FEEDBACK_MANIFEST_SCHEMA
+        or not isinstance(record.get("denial_id"), str)
+        or not record["denial_id"]
+        or not isinstance(record.get("terminal_key_id"), str)
+        or not record["terminal_key_id"]
+        or not isinstance(record.get("source_event_id"), str)
+        or _SHA256_EVENT_ID.fullmatch(record["source_event_id"]) is None
+        or not isinstance(record.get("review_response_id"), str)
+        or not record["review_response_id"]
+        or not isinstance(record.get("review_response"), Mapping)
+        or content_identity(dict(record["review_response"]))
+        != record["review_response_id"]
+        or any(
+            isinstance(record.get(name), bool)
+            or not isinstance(record.get(name), int)
+            or int(record[name]) < 1
+            for name in integer_fields
+        )
+        or record["included_finding_count"]
+        != record["source_finding_count"]
+        or record.get("truncated") is not False
+        or record.get("evidence_only") is not True
+        or record.get("repository_write_authorized") is not False
+        or record.get("proof_authoritative") is not False
+        or record.get("completion_authoritative") is not False
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge denial feedback manifest binding is invalid"
+        )
+    findings = record.get("findings")
+    response_findings = record["review_response"].get("findings")
+    if (
+        not isinstance(findings, list)
+        or not findings
+        or len(findings) != record["source_finding_count"]
+        or len(findings) > 8
+        or record["review_response"].get("decision")
+        != "changes_required"
+        or not isinstance(response_findings, list)
+        or len(response_findings) != len(findings)
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge denial feedback manifest findings are invalid"
+        )
+    for expected_ordinal, finding in enumerate(findings, start=1):
+        if not isinstance(finding, Mapping) or set(finding) != {
+            "finding_id",
+            "source_ordinal",
+            "code",
+            "severity",
+            "summary",
+        }:
+            raise MergeQueueIntegrityError(
+                "post-merge denial feedback finding schema is invalid"
+            )
+        material = dict(finding)
+        finding_id = str(material.pop("finding_id", "") or "")
+        response_finding = response_findings[expected_ordinal - 1]
+        if (
+            finding_id != content_identity(material)
+            or finding.get("source_ordinal") != expected_ordinal
+            or finding.get("severity")
+            not in {"blocker", "high", "medium", "low", "info"}
+            or not isinstance(finding.get("code"), str)
+            or not finding["code"]
+            or not isinstance(finding.get("summary"), str)
+            or not finding["summary"]
+            or not isinstance(response_finding, Mapping)
+            or {
+                "code": finding["code"],
+                "severity": finding["severity"],
+                "summary": finding["summary"],
+            }
+            != dict(response_finding)
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge denial feedback finding identity is invalid"
+            )
+    material = dict(record)
+    manifest_id = str(material.pop("manifest_id", "") or "")
+    if manifest_id != content_identity(material):
+        raise MergeQueueIntegrityError(
+            "post-merge denial feedback manifest identity is invalid"
+        )
+    return record, _canonical_feedback_manifest_json(record)
+
+
+def _complete_post_merge_denial_feedback(
+    denial: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the exact provider-bound feedback page from its durable roots."""
+
+    findings = [dict(finding) for finding in manifest["findings"]]
+    material = {
+        "schema": COMPLETE_POST_MERGE_DENIAL_FEEDBACK_SCHEMA,
+        "durable_denial_id": str(denial["denial_id"]),
+        "task_id": str(denial["task_id"]),
+        "canonical_task_key": str(denial["canonical_task_key"]),
+        "canonical_task_cid": str(denial["canonical_task_cid"]),
+        "board_namespace": str(denial["board_namespace"]),
+        "task_binding_id": str(denial["task_binding_id"]),
+        "review_attempt": int(denial["review_attempt"]),
+        "source_implementation_attempt": int(
+            denial["implementation_attempt"]
+        ),
+        "implementation_commit": str(denial["implementation_commit"]),
+        "merge_commit": str(denial["merge_commit"]),
+        "repository_tree_id": str(denial["repository_tree_id"]),
+        "review_receipt_id": str(denial["review_receipt_id"]),
+        "review_request_id": str(denial["review_request_id"]),
+        "review_response_id": str(denial["review_response_id"]),
+        "diff_binding_id": str(denial["diff_binding_id"]),
+        "correction_origin_stream_id": str(
+            denial["correction_origin_stream_id"]
+        ),
+        "source_event_id": str(denial["source_event_id"]),
+        "source_event_sequence": int(denial["source_event_sequence"]),
+        "source_finding_count": int(manifest["source_finding_count"]),
+        "included_finding_count": int(
+            manifest["included_finding_count"]
+        ),
+        "truncated": False,
+        "findings": findings,
+        "source_reverified_from_strict_ledger": True,
+        "evidence_only": True,
+        "edit_scope_expansion_authorized": False,
+        "repository_write_authorized": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    return {
+        **material,
+        "feedback_binding_id": content_identity(material),
+    }
 
 
 def _validated_post_merge_review_denial_consumption(
@@ -835,6 +1121,111 @@ def _validated_post_merge_correction_transition(
         if authority_kind != expected_authority_kind:
             raise MergeQueueIntegrityError(
                 "post-merge correction consumption authority changed"
+            )
+    elif record_kind == "correction_pending":
+        sequence = material.get("pending_event_sequence")
+        text_fields = (
+            "authority_kind",
+            "authority_id",
+            "authority_binding_id",
+            "started_event_id",
+            "pre_consumption_head_record_id",
+            "consumption_record_id",
+            "pending_event_id",
+            "pending_binding_id",
+            "complete_feedback_id",
+            "packet_id",
+            "packet_cid",
+            "provider_receipt_id",
+            "artifact_path",
+            "artifact_id",
+            "required_review_role",
+            "proposal_role",
+        )
+        started_sequence = material.get("started_event_sequence")
+        finding_count = material.get("complete_finding_count")
+        if (
+            authority_kind not in {"review_denial", "repair_grant"}
+            or isinstance(started_sequence, bool)
+            or not isinstance(started_sequence, int)
+            or started_sequence < 1
+            or isinstance(sequence, bool)
+            or not isinstance(sequence, int)
+            or sequence <= started_sequence
+            or isinstance(finding_count, bool)
+            or not isinstance(finding_count, int)
+            or finding_count < 1
+            or _SHA256_EVENT_ID.fullmatch(
+                str(material.get("started_event_id") or "")
+            )
+            is None
+            or _SHA256_EVENT_ID.fullmatch(
+                str(material.get("pending_event_id") or "")
+            )
+            is None
+            or material.get("required_review_role")
+            != "non-codex-independent-review"
+            or material.get("proposal_role")
+            != "codex-quota-fallback-implement"
+            or material.get("complete_feedback_truncated") is not False
+            or material.get("write_performed") is not False
+            or material.get("provider_result_admitted") is not False
+            or material.get("attempt_consumed") is not True
+            or material.get("repository_write_authorized") is not False
+            or material.get("proof_authoritative") is not False
+            or material.get("completion_authoritative") is not False
+            or "\x00" in str(material.get("artifact_path") or "")
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge correction pending-review binding is invalid"
+            )
+        pending_material = {
+            "schema": POST_MERGE_CORRECTION_PENDING_REVIEW_SCHEMA,
+            "task_id": material["task_id"],
+            "canonical_task_key": material["canonical_task_key"],
+            "canonical_task_cid": material["canonical_task_cid"],
+            "board_namespace": material["board_namespace"],
+            "task_binding_id": material["task_binding_id"],
+            "attempt": material["attempt"],
+            "origin_stream_id": material["origin_stream_id"],
+            "implementation_started_event_id": material[
+                "started_event_id"
+            ],
+            "implementation_started_event_sequence": started_sequence,
+            "authority_kind": authority_kind,
+            "authority_id": material["authority_id"],
+            "authority_binding_id": material["authority_binding_id"],
+            "durable_denial_id": material["denial_id"],
+            "pre_consumption_head_record_id": material[
+                "pre_consumption_head_record_id"
+            ],
+            "durable_consumption_record_id": material[
+                "consumption_record_id"
+            ],
+            "complete_denial_feedback_id": material[
+                "complete_feedback_id"
+            ],
+            "complete_denial_finding_count": finding_count,
+            "complete_denial_feedback_truncated": False,
+            "packet_id": material["packet_id"],
+            "packet_cid": material["packet_cid"],
+            "provider_receipt_id": material["provider_receipt_id"],
+            "artifact_path": material["artifact_path"],
+            "artifact_id": material["artifact_id"],
+            "required_review_role": material["required_review_role"],
+            "proposal_role": material["proposal_role"],
+            "write_performed": False,
+            "provider_result_admitted": False,
+            "attempt_consumed": True,
+            "repository_write_authorized": False,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+        if content_identity(pending_material) != material[
+            "pending_binding_id"
+        ]:
+            raise MergeQueueIntegrityError(
+                "post-merge correction pending-review identity changed"
             )
     elif record_kind == "correction_failed":
         sequence = material.get("terminal_event_sequence")
@@ -1372,6 +1763,216 @@ def _post_merge_correction_identity_from_denial(
     }
 
 
+def _post_merge_correction_pre_consumption_authority_state(
+    denial: Mapping[str, Any],
+    chain: Sequence[Mapping[str, Any]],
+    consumption: Mapping[str, Any],
+) -> tuple[dict[str, Any], Mapping[str, Any] | None]:
+    """Reconstruct the exact available authority consumed by one start."""
+
+    consumption_kind = str(consumption.get("record_kind") or "")
+    consumption_detail = consumption.get("detail")
+    if (
+        consumption_kind not in {"denial_consumed", "grant_consumed"}
+        or not isinstance(consumption_detail, Mapping)
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge pending parent is not an exact consumption"
+        )
+    parent_id = str(consumption.get("parent_record_id") or "")
+    denial_id = str(denial["denial_id"])
+    grant: Mapping[str, Any] | None = None
+    grant_binding: dict[str, Any] = {
+        "failure_record_id": "",
+        "failure_event_id": "",
+        "failure_event_sequence": 0,
+        "failure_kind": "",
+        "repair_task_id": "",
+        "repair_task_binding_id": "",
+        "repair_binding_id": "",
+    }
+    recovery_seed: dict[str, str] = {
+        "recovery_seed_ref": "",
+        "recovery_seed_tree_id": "",
+        "recovery_seed_submodule_path": "",
+        "recovery_seed_submodule_commit": "",
+    }
+    if parent_id == denial_id:
+        if (
+            consumption_kind != "denial_consumed"
+            or consumption_detail.get("authority_kind") != "review_denial"
+            or str(consumption_detail.get("authority_id") or "")
+            != denial_id
+            or int(consumption.get("ordinal") or 0) != 1
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge denial consumption pre-authority changed"
+            )
+        head_record_id = denial_id
+        head_ordinal = 0
+        authority_kind = "review_denial"
+        authority_id = denial_id
+        authority_event_sequence = int(denial["review_attempt"])
+        authorized_attempt = int(denial["target_implementation_attempt"])
+    else:
+        matches = [
+            record
+            for record in chain
+            if str(record.get("record_id") or "") == parent_id
+        ]
+        if len(matches) != 1:
+            raise MergeQueueIntegrityError(
+                "post-merge grant consumption pre-authority is unavailable"
+            )
+        grant = matches[0]
+        grant_detail = grant.get("detail")
+        if (
+            consumption_kind != "grant_consumed"
+            or grant.get("record_kind") != "repair_granted"
+            or not isinstance(grant_detail, Mapping)
+            or consumption_detail.get("authority_kind") != "repair_grant"
+            or str(consumption_detail.get("authority_id") or "")
+            != str(grant_detail.get("grant_id") or "")
+            or int(consumption.get("ordinal") or 0)
+            != int(grant.get("ordinal") or 0) + 1
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge grant consumption pre-authority changed"
+            )
+        head_record_id = str(grant["record_id"])
+        head_ordinal = int(grant["ordinal"])
+        authority_kind = "repair_grant"
+        authority_id = str(grant_detail["grant_id"])
+        authority_event_sequence = int(
+            grant_detail["grant_event_sequence"]
+        )
+        authorized_attempt = int(grant["attempt"])
+        grant_binding = {
+            name: grant_detail[name]
+            for name in grant_binding
+        }
+        recovery_seed = _validated_post_merge_recovery_seed(
+            grant_detail,
+            required=False,
+        )
+
+    if (
+        int(consumption.get("attempt") or 0) != authorized_attempt
+        or str(consumption_detail.get("authority_kind") or "")
+        != authority_kind
+        or str(consumption_detail.get("authority_id") or "")
+        != authority_id
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge consumption differs from its pre-authority"
+        )
+    material: dict[str, Any] = {
+        "schema": POST_MERGE_CORRECTION_AUTHORITY_STATE_SCHEMA,
+        "terminal_key_id": str(denial["terminal_key_id"]),
+        "denial_id": denial_id,
+        "implementation_commit": str(denial["implementation_commit"]),
+        **_post_merge_correction_identity_from_denial(denial),
+        "head_record_id": head_record_id,
+        "head_ordinal": head_ordinal,
+        "state": "available",
+        "authority_available": True,
+        "complete_feedback_available": True,
+        "authority_kind": authority_kind,
+        "authority_id": authority_id,
+        "authority_event_sequence": authority_event_sequence,
+        "authorized_attempt": authorized_attempt,
+        **grant_binding,
+        **recovery_seed,
+    }
+    return (
+        {
+            **material,
+            "authority_state_id": content_identity(material),
+        },
+        grant,
+    )
+
+
+def _expected_post_merge_correction_dispatch_authority(
+    denial: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    chain: Sequence[Mapping[str, Any]],
+    consumption: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Derive the sole dispatch binding and complete feedback for pending CAS."""
+
+    complete_feedback = _complete_post_merge_denial_feedback(
+        denial,
+        manifest,
+    )
+    authority_state, grant = (
+        _post_merge_correction_pre_consumption_authority_state(
+            denial,
+            chain,
+            consumption,
+        )
+    )
+    extra: dict[str, Any] = {
+        # Durable authority always uses the durable denial ID.  Dispatch uses
+        # this same normalized alias while a strict source event is retained
+        # and after that event rotates away.
+        "denial_id": str(denial["denial_id"]),
+        "implementation_commit": str(denial["implementation_commit"]),
+        "merge_commit": str(denial["merge_commit"]),
+        "repository_tree_id": str(denial["repository_tree_id"]),
+        "review_receipt_id": str(denial["review_receipt_id"]),
+        "diff_binding_id": str(denial["diff_binding_id"]),
+        "source_event_id": str(denial["source_event_id"]),
+        "source_event_sequence": int(denial["source_event_sequence"]),
+        "review_attempt": int(denial["review_attempt"]),
+        "source_implementation_attempt": int(
+            denial["implementation_attempt"]
+        ),
+        "complete_denial_feedback": complete_feedback,
+        "origin_stream_id": str(denial["correction_origin_stream_id"]),
+        "target_repository_id": str(denial["target_repository_id"]),
+        "target_branch": str(denial["target_branch"]),
+        "durable_denial_id": str(denial["denial_id"]),
+        "durable_terminal_key_id": str(denial["terminal_key_id"]),
+        "durable_authority_head_record_id": str(
+            authority_state["head_record_id"]
+        ),
+        "durable_authority_head_ordinal": int(
+            authority_state["head_ordinal"]
+        ),
+        "durable_authority_state_id": str(
+            authority_state["authority_state_id"]
+        ),
+    }
+    if grant is not None:
+        grant_detail = grant["detail"]
+        extra.update(
+            {
+                "repair_task_id": str(grant_detail["repair_task_id"]),
+                "repair_binding_id": str(grant_detail["repair_binding_id"]),
+                **_validated_post_merge_recovery_seed(
+                    grant_detail,
+                    required=False,
+                ),
+            }
+        )
+    descriptor = post_merge_correction_dispatch_authority_descriptor(
+        authority_kind=str(authority_state["authority_kind"]),
+        authority_id=str(authority_state["authority_id"]),
+        authority_event_sequence=int(
+            authority_state["authority_event_sequence"]
+        ),
+        task_id=str(denial["task_id"]),
+        canonical_task_key=str(denial["canonical_task_key"]),
+        canonical_task_cid=str(denial["canonical_task_cid"]),
+        board_namespace=str(denial["board_namespace"]),
+        task_binding_id=str(denial["task_binding_id"]),
+        authorized_attempt=int(authority_state["authorized_attempt"]),
+        extra=extra,
+    )
+    return descriptor, complete_feedback
+
+
 def _post_merge_correction_transition_from_chain_record(
     record: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1409,6 +2010,13 @@ def _post_merge_correction_primary_events(
             (
                 str(detail["terminal_event_id"]),
                 int(detail["terminal_event_sequence"]),
+            ),
+        )
+    if kind == "correction_pending":
+        return (
+            (
+                str(detail["pending_event_id"]),
+                int(detail["pending_event_sequence"]),
             ),
         )
     if kind == "repair_granted":
@@ -1662,18 +2270,32 @@ def _validate_post_merge_correction_chain(
             previous_detail = previous["detail"]
             previous_attempt = int(previous["attempt"])
             allowed = {
-                "denial_consumed": "correction_failed",
-                "grant_consumed": "correction_failed",
-                "correction_failed": "repair_granted",
-                "legacy_failure_anchored": "repair_granted",
-                "legacy_high_water_anchored": "repair_granted",
-                "repair_granted": "grant_consumed",
+                "denial_consumed": {
+                    "correction_failed",
+                    "correction_pending",
+                },
+                "grant_consumed": {
+                    "correction_failed",
+                    "correction_pending",
+                },
+                "correction_pending": {"correction_failed"},
+                "correction_failed": {"repair_granted"},
+                "legacy_failure_anchored": {"repair_granted"},
+                "legacy_high_water_anchored": {"repair_granted"},
+                "repair_granted": {"grant_consumed"},
             }
-            if allowed.get(previous_kind) != kind:
+            if kind not in allowed.get(previous_kind, set()):
                 raise MergeQueueIntegrityError(
                     "post-merge correction state transition is invalid"
                 )
             if kind == "correction_failed":
+                preceding_sequence = int(
+                    previous_detail[
+                        "pending_event_sequence"
+                        if previous_kind == "correction_pending"
+                        else "started_event_sequence"
+                    ]
+                )
                 if (
                     attempt != previous_attempt
                     or detail["authority_kind"]
@@ -1681,10 +2303,31 @@ def _validate_post_merge_correction_chain(
                     or detail["authority_id"]
                     != previous_detail["authority_id"]
                     or int(detail["terminal_event_sequence"])
+                    <= preceding_sequence
+                ):
+                    raise MergeQueueIntegrityError(
+                        "post-merge correction failure crosses its live state"
+                    )
+            elif kind == "correction_pending":
+                if (
+                    attempt != previous_attempt
+                    or detail["authority_kind"]
+                    != previous_detail["authority_kind"]
+                    or detail["authority_id"]
+                    != previous_detail["authority_id"]
+                    or detail["consumption_record_id"]
+                    != previous["record_id"]
+                    or detail["pre_consumption_head_record_id"]
+                    != previous["parent_record_id"]
+                    or detail["started_event_id"]
+                    != previous_detail["started_event_id"]
+                    or int(detail["started_event_sequence"])
+                    != int(previous_detail["started_event_sequence"])
+                    or int(detail["pending_event_sequence"])
                     <= int(previous_detail["started_event_sequence"])
                 ):
                     raise MergeQueueIntegrityError(
-                        "post-merge correction failure crosses consumption"
+                        "post-merge correction pending review crosses consumption"
                     )
             elif kind == "repair_granted":
                 expected_failure_event_id = str(
@@ -2104,6 +2747,7 @@ class MergeQueue:
             table_names=(
                 "merge_requests",
                 "post_merge_review_denials",
+                "post_merge_review_denial_feedback_manifests",
                 "post_merge_review_denial_consumptions",
                 "post_merge_correction_chain_records",
                 "post_merge_correction_chain_heads",
@@ -2169,6 +2813,20 @@ class MergeQueue:
                     target_repository_id,
                     target_branch,
                     task_id
+                  );
+                CREATE TABLE IF NOT EXISTS
+                  post_merge_review_denial_feedback_manifests (
+                    manifest_id TEXT PRIMARY KEY,
+                    denial_id TEXT NOT NULL UNIQUE,
+                    terminal_key_id TEXT NOT NULL UNIQUE,
+                    record_json TEXT NOT NULL,
+                    created_at DOUBLE NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS
+                  post_merge_review_denial_feedback_target
+                  ON post_merge_review_denial_feedback_manifests(
+                    terminal_key_id,
+                    denial_id
                   );
                 CREATE TABLE IF NOT EXISTS
                   post_merge_review_denial_consumptions (
@@ -2694,6 +3352,64 @@ class MergeQueue:
             )
         return next_head
 
+    def _selected_denial_feedback_manifest(
+        self,
+        connection: DuckDBConnection,
+        denial: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Return the verified complete-feedback second factor for one root."""
+
+        rows = connection.execute(
+            """SELECT manifest_id, denial_id, terminal_key_id, record_json
+               FROM post_merge_review_denial_feedback_manifests
+               WHERE terminal_key_id=?""",
+            (str(denial.get("terminal_key_id") or ""),),
+        ).fetchall()
+        if not rows:
+            return None
+        if len(rows) != 1:
+            raise MergeQueueIntegrityError(
+                "denial has conflicting complete feedback manifests"
+            )
+        try:
+            manifest, canonical = (
+                _validated_post_merge_review_denial_feedback_manifest(
+                    json.loads(str(rows[0]["record_json"]))
+                )
+            )
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise MergeQueueIntegrityError(
+                "denial complete feedback manifest is malformed"
+            ) from exc
+        if (
+            canonical != str(rows[0]["record_json"])
+            or str(rows[0]["manifest_id"])
+            != str(manifest["manifest_id"])
+            or str(rows[0]["denial_id"]) != str(denial.get("denial_id") or "")
+            or str(rows[0]["terminal_key_id"])
+            != str(denial.get("terminal_key_id") or "")
+            or not self._feedback_manifest_matches_denial(
+                manifest,
+                denial,
+            )
+        ):
+            raise MergeQueueIntegrityError(
+                "denial complete feedback manifest changed"
+            )
+        return manifest
+
+    def _complete_denial_feedback_available(
+        self,
+        connection: DuckDBConnection,
+        denial: Mapping[str, Any],
+    ) -> bool:
+        """Verify the complete-feedback second factor for one selected root."""
+
+        return (
+            self._selected_denial_feedback_manifest(connection, denial)
+            is not None
+        )
+
     def record_post_merge_correction_transition(
         self,
         value: Mapping[str, Any],
@@ -2727,6 +3443,18 @@ class MergeQueue:
                     raise MergeQueueFenceError(
                         "post-merge correction denial is unavailable"
                     )
+                feedback_manifest = None
+                if _record_kind != "correction_failed":
+                    feedback_manifest = (
+                        self._selected_denial_feedback_manifest(
+                            connection,
+                            denial,
+                        )
+                    )
+                    if feedback_manifest is None:
+                        raise MergeQueueFenceError(
+                            "post-merge correction complete feedback is unavailable"
+                        )
                 if any(
                     transition[name] != expected
                     for name, expected in (
@@ -2740,6 +3468,7 @@ class MergeQueue:
                     )
                 chain = list(chains.get(denial_id, ()))
                 current_head = heads[denial_id]
+                parent_record = None
                 parent_ordinal = (
                     0 if expected_parent == denial_id else None
                 )
@@ -2784,6 +3513,35 @@ class MergeQueue:
                         )
                     connection.commit()
                     return existing_child
+                if _record_kind == "correction_pending":
+                    if (
+                        parent_record is None
+                        or feedback_manifest is None
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "post-merge pending durable bindings are unavailable"
+                        )
+                    expected_authority, complete_feedback = (
+                        _expected_post_merge_correction_dispatch_authority(
+                            denial,
+                            feedback_manifest,
+                            chain,
+                            parent_record,
+                        )
+                    )
+                    if (
+                        str(transition["complete_feedback_id"])
+                        != str(complete_feedback["feedback_binding_id"])
+                        or int(transition["complete_finding_count"])
+                        != int(
+                            complete_feedback["included_finding_count"]
+                        )
+                        or str(transition["authority_binding_id"])
+                        != str(expected_authority["authority_binding_id"])
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "post-merge pending authority or feedback binding changed"
+                        )
                 if current_head["head_record_id"] != expected_parent:
                     raise MergeQueueFenceError(
                         "post-merge correction CAS parent is stale"
@@ -2856,6 +3614,26 @@ class MergeQueue:
         if kind != "correction_failed":
             raise MergeQueueIntegrityError(
                 "post-merge correction failure schema is required"
+            )
+        return self.record_post_merge_correction_transition(
+            value,
+            expected_parent_record_id=expected_parent_record_id,
+        )
+
+    def record_post_merge_correction_pending_review(
+        self,
+        value: Mapping[str, Any],
+        *,
+        expected_parent_record_id: str,
+    ) -> dict[str, Any]:
+        """Durably bind one charged Terra proposal awaiting independent review."""
+
+        kind, _transition = _validated_post_merge_correction_transition(
+            value
+        )
+        if kind != "correction_pending":
+            raise MergeQueueIntegrityError(
+                "post-merge correction pending-review schema is required"
             )
         return self.record_post_merge_correction_transition(
             value,
@@ -3095,6 +3873,13 @@ class MergeQueue:
             denials, chains, heads = (
                 self._verified_post_merge_correction_registry(connection)
             )
+            manifest_rows = connection.execute(
+                """SELECT manifest_id, denial_id, terminal_key_id,
+                          record_json
+                   FROM post_merge_review_denial_feedback_manifests
+                   WHERE denial_id=?""",
+                (selected_denial_id,),
+            ).fetchall()
         denial = denials.get(selected_denial_id)
         if denial is None:
             return {}
@@ -3109,6 +3894,40 @@ class MergeQueue:
             return {}
         chain = chains.get(selected_denial_id, ())
         head = heads[selected_denial_id]
+        complete_feedback_available = False
+        if manifest_rows:
+            if len(manifest_rows) != 1:
+                raise MergeQueueIntegrityError(
+                    "denial has conflicting complete feedback manifests"
+                )
+            try:
+                feedback_manifest, feedback_canonical = (
+                    _validated_post_merge_review_denial_feedback_manifest(
+                        json.loads(str(manifest_rows[0]["record_json"]))
+                    )
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise MergeQueueIntegrityError(
+                    "denial complete feedback manifest is malformed"
+                ) from exc
+            if (
+                feedback_canonical
+                != str(manifest_rows[0]["record_json"])
+                or str(manifest_rows[0]["manifest_id"])
+                != str(feedback_manifest["manifest_id"])
+                or str(manifest_rows[0]["denial_id"])
+                != selected_denial_id
+                or str(manifest_rows[0]["terminal_key_id"])
+                != str(denial["terminal_key_id"])
+                or not self._feedback_manifest_matches_denial(
+                    feedback_manifest,
+                    denial,
+                )
+            ):
+                raise MergeQueueIntegrityError(
+                    "denial complete feedback manifest changed"
+                )
+            complete_feedback_available = True
         authority_available = False
         authority_kind = ""
         authority_id = ""
@@ -3130,8 +3949,12 @@ class MergeQueue:
             "recovery_seed_submodule_path": "",
             "recovery_seed_submodule_commit": "",
         }
+        pending_review: dict[str, Any] = {}
         if not chain:
-            if denial["correction_authorized"] is True:
+            if (
+                denial["correction_authorized"] is True
+                and complete_feedback_available
+            ):
                 authority_available = True
                 authority_kind = "review_denial"
                 authority_id = selected_denial_id
@@ -3143,12 +3966,16 @@ class MergeQueue:
                 )
                 state = "available"
             else:
-                state = "not_authorized"
+                state = (
+                    "not_authorized"
+                    if denial["correction_authorized"] is not True
+                    else "correction_feedback_unavailable"
+                )
         else:
             terminal = chain[-1]
             detail = terminal["detail"]
             kind = str(terminal["record_kind"])
-            if kind == "repair_granted":
+            if kind == "repair_granted" and complete_feedback_available:
                 authority_available = True
                 authority_kind = "repair_grant"
                 authority_id = str(detail["grant_id"])
@@ -3167,11 +3994,27 @@ class MergeQueue:
                         required=False,
                     )
                 )
+            elif kind == "repair_granted":
+                authority_kind = "repair_grant"
+                authority_id = str(detail["grant_id"])
+                authorized_attempt = int(terminal["attempt"])
+                state = "correction_feedback_unavailable"
             elif kind in {"denial_consumed", "grant_consumed"}:
                 authority_kind = str(detail["authority_kind"])
                 authority_id = str(detail["authority_id"])
                 authorized_attempt = int(terminal["attempt"])
                 state = "consumed"
+            elif kind == "correction_pending":
+                authority_kind = str(detail["authority_kind"])
+                authority_id = str(detail["authority_id"])
+                authorized_attempt = int(terminal["attempt"])
+                state = "pending_review"
+                pending_review = {
+                    name: detail[name]
+                    for name in _POST_MERGE_CORRECTION_TRANSITION_FIELDS[
+                        "correction_pending"
+                    ]
+                }
             elif kind == "correction_failed":
                 authority_kind = str(detail["authority_kind"])
                 authority_id = str(detail["authority_id"])
@@ -3199,6 +4042,7 @@ class MergeQueue:
             "head_ordinal": int(head["head_ordinal"]),
             "state": state,
             "authority_available": authority_available,
+            "complete_feedback_available": complete_feedback_available,
             "authority_kind": authority_kind,
             "authority_id": authority_id,
             "authority_event_sequence": authority_event_sequence,
@@ -3206,18 +4050,93 @@ class MergeQueue:
             **grant_binding,
             **recovery_seed,
         }
+        if pending_review:
+            material["pending_review"] = pending_review
         return {
             **material,
             "authority_state_id": content_identity(material),
         }
 
+    def _persist_denial_feedback_manifest_in_transaction(
+        self,
+        connection: DuckDBConnection,
+        *,
+        manifest: Mapping[str, Any],
+        denial: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        record, canonical = (
+            _validated_post_merge_review_denial_feedback_manifest(manifest)
+        )
+        if not self._feedback_manifest_matches_denial(record, denial):
+            raise MergeQueueIntegrityError(
+                "selected denial feedback manifest crosses its denial root"
+            )
+        rows = connection.execute(
+            """SELECT manifest_id, denial_id, terminal_key_id, record_json
+               FROM post_merge_review_denial_feedback_manifests
+               WHERE denial_id=? OR manifest_id=?""",
+            (record["denial_id"], record["manifest_id"]),
+        ).fetchall()
+        if rows:
+            if len(rows) != 1:
+                raise MergeQueueIntegrityError(
+                    "conflicting denial feedback manifests exist"
+                )
+            try:
+                existing, existing_canonical = (
+                    _validated_post_merge_review_denial_feedback_manifest(
+                        json.loads(str(rows[0]["record_json"]))
+                    )
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise MergeQueueIntegrityError(
+                    "existing denial feedback manifest is malformed"
+                ) from exc
+            if (
+                existing != record
+                or existing_canonical != str(rows[0]["record_json"])
+                or str(rows[0]["manifest_id"])
+                != str(existing["manifest_id"])
+                or str(rows[0]["denial_id"])
+                != str(existing["denial_id"])
+                or str(rows[0]["terminal_key_id"])
+                != str(existing["terminal_key_id"])
+            ):
+                raise MergeQueueIntegrityError(
+                    "existing denial feedback manifest changed"
+                )
+            return existing
+        connection.execute(
+            """INSERT INTO post_merge_review_denial_feedback_manifests (
+                 manifest_id, denial_id, terminal_key_id, record_json,
+                 created_at
+               ) VALUES (?, ?, ?, ?, ?)""",
+            (
+                record["manifest_id"],
+                record["denial_id"],
+                record["terminal_key_id"],
+                canonical,
+                self._clock(),
+            ),
+        )
+        return record
+
     def record_post_merge_review_denial(
         self,
         value: Mapping[str, Any],
+        *,
+        feedback_manifest: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Commit one permanent, exact-candidate review-denial tombstone."""
 
         record, canonical = _validated_post_merge_review_denial(value)
+        validated_feedback_manifest = (
+            _validated_post_merge_review_denial_feedback_manifest(
+                feedback_manifest
+            )[0]
+            if feedback_manifest is not None
+            else None
+        )
         if (
             self.target_repository_id
             and (
@@ -3289,6 +4208,12 @@ class MergeQueue:
                         str(existing[0]["denial_id"]) == denial_id
                         and existing_canonical == canonical
                     ):
+                        if validated_feedback_manifest is not None:
+                            self._persist_denial_feedback_manifest_in_transaction(
+                                connection,
+                                manifest=validated_feedback_manifest,
+                                denial=existing_record,
+                            )
                         self._ensure_post_merge_correction_chain_head(
                             connection,
                             existing_record,
@@ -3390,6 +4315,26 @@ class MergeQueue:
                         # marker. Once consumed, pin that verified origin
                         # representative so later same-terminal migrations
                         # cannot rewrite the authority the marker records.
+                        selected_feedback_manifest = (
+                            validated_feedback_manifest
+                            if (
+                                validated_feedback_manifest is not None
+                                and str(
+                                    validated_feedback_manifest.get(
+                                        "denial_id"
+                                    )
+                                    or ""
+                                )
+                                == str(existing_record["denial_id"])
+                            )
+                            else None
+                        )
+                        if selected_feedback_manifest is not None:
+                            self._persist_denial_feedback_manifest_in_transaction(
+                                connection,
+                                manifest=selected_feedback_manifest,
+                                denial=existing_record,
+                            )
                         connection.commit()
                         return existing_record
                     if (
@@ -3459,6 +4404,26 @@ class MergeQueue:
                         _validated_post_merge_review_denial(selected)
                     )
                     if selected_canonical == existing_canonical:
+                        selected_feedback_manifest = (
+                            validated_feedback_manifest
+                            if (
+                                validated_feedback_manifest is not None
+                                and str(
+                                    validated_feedback_manifest.get(
+                                        "denial_id"
+                                    )
+                                    or ""
+                                )
+                                == str(existing_record["denial_id"])
+                            )
+                            else None
+                        )
+                        if selected_feedback_manifest is not None:
+                            self._persist_denial_feedback_manifest_in_transaction(
+                                connection,
+                                manifest=selected_feedback_manifest,
+                                denial=existing_record,
+                            )
                         self._ensure_post_merge_correction_chain_head(
                             connection,
                             existing_record,
@@ -3482,6 +4447,30 @@ class MergeQueue:
                             terminal_key_id,
                         ),
                     )
+                    connection.execute(
+                        """DELETE FROM
+                             post_merge_review_denial_feedback_manifests
+                           WHERE terminal_key_id=?""",
+                        (terminal_key_id,),
+                    )
+                    selected_feedback_manifest = (
+                        validated_feedback_manifest
+                        if (
+                            validated_feedback_manifest is not None
+                            and str(
+                                validated_feedback_manifest.get("denial_id")
+                                or ""
+                            )
+                            == str(selected_record["denial_id"])
+                        )
+                        else None
+                    )
+                    if selected_feedback_manifest is not None:
+                        self._persist_denial_feedback_manifest_in_transaction(
+                            connection,
+                            manifest=selected_feedback_manifest,
+                            denial=selected_record,
+                        )
                     self._verified_post_merge_correction_registry(
                         connection
                     )
@@ -3513,6 +4502,12 @@ class MergeQueue:
                     connection,
                     record,
                 )
+                if validated_feedback_manifest is not None:
+                    self._persist_denial_feedback_manifest_in_transaction(
+                        connection,
+                        manifest=validated_feedback_manifest,
+                        denial=record,
+                    )
                 self._verified_post_merge_correction_registry(connection)
                 connection.commit()
             except Exception:
@@ -3541,6 +4536,225 @@ class MergeQueue:
             ):
                 continue
             verified.append(record)
+        return tuple(verified)
+
+    @staticmethod
+    def _feedback_manifest_matches_denial(
+        manifest: Mapping[str, Any],
+        denial: Mapping[str, Any],
+    ) -> bool:
+        """Whether a complete page is the exact extension of one tombstone."""
+
+        denial_findings = denial.get("findings")
+        manifest_findings = manifest.get("findings")
+        if not isinstance(denial_findings, list) or not isinstance(
+            manifest_findings, list
+        ):
+            return False
+        response = manifest.get("review_response")
+        if not isinstance(response, Mapping) or set(response) != {
+            "schema",
+            "decision",
+            "task_id",
+            "implementation_commit",
+            "merge_commit",
+            "repository_tree_id",
+            "diff_binding_id",
+            "review_request_id",
+            "reviewer_provider",
+            "implementer_provider",
+            "findings",
+            "repository_write_authorized",
+            "proof_authoritative",
+            "completion_authoritative",
+        }:
+            return False
+        if (
+            response.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "post-merge-independent-review-response@1"
+            )
+            or response.get("decision") != "changes_required"
+            or response.get("task_id") != denial.get("task_id")
+            or response.get("implementation_commit")
+            != denial.get("implementation_commit")
+            or response.get("merge_commit") != denial.get("merge_commit")
+            or response.get("repository_tree_id")
+            != denial.get("repository_tree_id")
+            or response.get("diff_binding_id")
+            != denial.get("diff_binding_id")
+            or response.get("review_request_id")
+            != denial.get("review_request_id")
+            or response.get("reviewer_provider") != "codex_cli"
+            or not isinstance(response.get("implementer_provider"), str)
+            or not response["implementer_provider"]
+            or response.get("implementer_provider") == "codex_cli"
+            or response.get("repository_write_authorized") is not False
+            or response.get("proof_authoritative") is not False
+            or response.get("completion_authoritative") is not False
+        ):
+            return False
+        shared_fields = (
+            "denial_id",
+            "terminal_key_id",
+            "source_event_id",
+            "source_event_sequence",
+            "review_response_id",
+            "target_implementation_attempt",
+            "source_finding_count",
+        )
+        return bool(
+            all(manifest.get(name) == denial.get(name) for name in shared_fields)
+            and int(denial.get("included_finding_count") or 0)
+            == len(denial_findings)
+            and int(manifest.get("included_finding_count") or 0)
+            == len(manifest_findings)
+            and denial_findings
+            == manifest_findings[: len(denial_findings)]
+            and denial.get("truncated")
+            is (
+                int(denial.get("source_finding_count") or 0)
+                > len(denial_findings)
+            )
+        )
+
+    def record_post_merge_review_denial_feedback_manifest(
+        self,
+        value: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Persist one immutable complete finding page for a denial root."""
+
+        manifest, canonical = (
+            _validated_post_merge_review_denial_feedback_manifest(value)
+        )
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                denials, _chains, _heads = (
+                    self._verified_post_merge_correction_registry(connection)
+                )
+                denial = denials.get(str(manifest["denial_id"]))
+                if denial is None or not self._feedback_manifest_matches_denial(
+                    manifest,
+                    denial,
+                ):
+                    raise MergeQueueIntegrityError(
+                        "post-merge denial feedback manifest crosses its "
+                        "denial root"
+                    )
+                rows = connection.execute(
+                    """SELECT manifest_id, denial_id, terminal_key_id,
+                              record_json
+                       FROM post_merge_review_denial_feedback_manifests
+                       WHERE denial_id=? OR manifest_id=?""",
+                    (manifest["denial_id"], manifest["manifest_id"]),
+                ).fetchall()
+                if rows:
+                    if len(rows) != 1:
+                        raise MergeQueueIntegrityError(
+                            "conflicting denial feedback manifests exist"
+                        )
+                    try:
+                        existing, existing_canonical = (
+                            _validated_post_merge_review_denial_feedback_manifest(
+                                json.loads(str(rows[0]["record_json"]))
+                            )
+                        )
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        raise MergeQueueIntegrityError(
+                            "existing denial feedback manifest is malformed"
+                        ) from exc
+                    if (
+                        existing_canonical != str(rows[0]["record_json"])
+                        or existing != manifest
+                        or str(rows[0]["manifest_id"])
+                        != str(existing["manifest_id"])
+                        or str(rows[0]["denial_id"])
+                        != str(existing["denial_id"])
+                        or str(rows[0]["terminal_key_id"])
+                        != str(existing["terminal_key_id"])
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "existing denial feedback manifest changed"
+                        )
+                    connection.commit()
+                    return existing
+                connection.execute(
+                    """INSERT INTO
+                         post_merge_review_denial_feedback_manifests (
+                           manifest_id, denial_id, terminal_key_id,
+                           record_json, created_at
+                         ) VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        manifest["manifest_id"],
+                        manifest["denial_id"],
+                        manifest["terminal_key_id"],
+                        canonical,
+                        self._clock(),
+                    ),
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        return manifest
+
+    def verified_post_merge_review_denial_feedback_manifests(
+        self,
+    ) -> tuple[dict[str, Any], ...]:
+        """Read all complete denial pages, failing on any substitution."""
+
+        with self._connect() as connection:
+            denials, _chains, _heads = (
+                self._verified_post_merge_correction_registry(connection)
+            )
+            rows = connection.execute(
+                """SELECT manifest_id, denial_id, terminal_key_id,
+                          record_json
+                   FROM post_merge_review_denial_feedback_manifests
+                   ORDER BY created_at, manifest_id"""
+            ).fetchall()
+        verified: list[dict[str, Any]] = []
+        seen_denials: set[str] = set()
+        for row in rows:
+            try:
+                manifest, canonical = (
+                    _validated_post_merge_review_denial_feedback_manifest(
+                        json.loads(str(row["record_json"]))
+                    )
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise MergeQueueIntegrityError(
+                    "stored denial feedback manifest is malformed"
+                ) from exc
+            denial_id = str(manifest["denial_id"])
+            denial = denials.get(denial_id)
+            if (
+                denial_id in seen_denials
+                or canonical != str(row["record_json"])
+                or str(row["manifest_id"])
+                != str(manifest["manifest_id"])
+                or str(row["denial_id"]) != denial_id
+                or str(row["terminal_key_id"])
+                != str(manifest["terminal_key_id"])
+                or denial is None
+                or not self._feedback_manifest_matches_denial(
+                    manifest,
+                    denial,
+                )
+            ):
+                raise MergeQueueIntegrityError(
+                    "stored denial feedback manifest is inconsistent"
+                )
+            seen_denials.add(denial_id)
+            if self.target_repository_id and (
+                denial["target_repository_id"]
+                != self.target_repository_id
+                or denial["target_branch"] != self.target_branch
+            ):
+                continue
+            verified.append(manifest)
         return tuple(verified)
 
     def record_post_merge_review_denial_consumption(
@@ -3633,6 +4847,13 @@ class MergeQueue:
                     raise MergeQueueIntegrityError(
                         "consumption does not match its permanent denial"
                     )
+                if not self._complete_denial_feedback_available(
+                    connection,
+                    denial,
+                ):
+                    raise MergeQueueIntegrityError(
+                        "consumption lacks complete denial feedback"
+                    )
                 existing = connection.execute(
                     """SELECT terminal_key_id, consumption_id, record_json
                        FROM post_merge_review_denial_consumptions
@@ -3723,6 +4944,11 @@ class MergeQueue:
                 """SELECT terminal_key_id, denial_id, record_json
                    FROM post_merge_review_denials"""
             ).fetchall()
+            manifest_rows = connection.execute(
+                """SELECT manifest_id, denial_id, terminal_key_id,
+                          record_json
+                   FROM post_merge_review_denial_feedback_manifests"""
+            ).fetchall()
         denials: dict[str, dict[str, Any]] = {}
         for row in denial_rows:
             try:
@@ -3754,6 +4980,38 @@ class MergeQueue:
                     "consumption registry denial binding changed"
                 )
             denials[terminal_key_id] = denial
+        manifests_by_terminal_key: dict[str, dict[str, Any]] = {}
+        for row in manifest_rows:
+            try:
+                manifest, manifest_canonical = (
+                    _validated_post_merge_review_denial_feedback_manifest(
+                        json.loads(str(row["record_json"]))
+                    )
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise MergeQueueIntegrityError(
+                    "consumption feedback manifest is malformed"
+                ) from exc
+            terminal_key_id = str(row["terminal_key_id"])
+            denial = denials.get(terminal_key_id)
+            if (
+                terminal_key_id in manifests_by_terminal_key
+                or denial is None
+                or manifest_canonical != str(row["record_json"])
+                or str(row["manifest_id"])
+                != str(manifest["manifest_id"])
+                or str(row["denial_id"]) != str(denial["denial_id"])
+                or str(manifest["denial_id"])
+                != str(denial["denial_id"])
+                or not self._feedback_manifest_matches_denial(
+                    manifest,
+                    denial,
+                )
+            ):
+                raise MergeQueueIntegrityError(
+                    "consumption feedback manifest binding changed"
+                )
+            manifests_by_terminal_key[terminal_key_id] = manifest
         verified: list[dict[str, Any]] = []
         for row in rows:
             try:
@@ -3813,6 +5071,8 @@ class MergeQueue:
                     for name, item in row_bindings.items()
                 )
                 or denial is None
+                or str(record["terminal_key_id"])
+                not in manifests_by_terminal_key
                 or denial.get("correction_authorized") is not True
                 or any(
                     record[name] != denial[name]
@@ -5280,6 +6540,7 @@ class MergeQueue:
 
 
 __all__ = [
+    "COMPLETE_POST_MERGE_DENIAL_FEEDBACK_SCHEMA",
     "MergeQueue",
     "MergeQueueFullError",
     "MergeQueueFenceError",
@@ -5289,10 +6550,13 @@ __all__ = [
     "POST_MERGE_CORRECTION_CHAIN_HEAD_SCHEMA",
     "POST_MERGE_CORRECTION_CHAIN_RECORD_SCHEMA",
     "POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA",
+    "POST_MERGE_CORRECTION_DISPATCH_AUTHORITY_SCHEMA",
     "POST_MERGE_CORRECTION_FAILURE_SCHEMA",
+    "POST_MERGE_CORRECTION_PENDING_REVIEW_SCHEMA",
     "POST_MERGE_CORRECTION_LEGACY_FAILURE_ANCHOR_SCHEMA",
     "POST_MERGE_CORRECTION_LEGACY_HIGH_WATER_ANCHOR_SCHEMA",
     "POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA",
     "POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA",
+    "post_merge_correction_dispatch_authority_descriptor",
     "_PRIORITY_ORDER",
 ]

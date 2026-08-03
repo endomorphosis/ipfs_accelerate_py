@@ -248,6 +248,11 @@ class ProviderQuotaLatch:
     exhausted: bool = False
     reason_code: str = ""
     attempts: int = 0
+    _supervisor_observed_grok_build_quota_exhausted: bool = field(
+        default=False,
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         if self.remaining_calls is not None and (
@@ -274,14 +279,29 @@ class ProviderQuotaLatch:
             if self.remaining_calls == 0:
                 # The acquired invocation may run; future invocations may not.
                 self.exhausted = True
+                self._supervisor_observed_grok_build_quota_exhausted = False
                 if not self.reason_code:
                     self.reason_code = ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value
         return True
 
     def latch(self, reason_code: str = "") -> None:
         self.exhausted = True
+        self._supervisor_observed_grok_build_quota_exhausted = False
         self.reason_code = str(
             reason_code or ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value
+        )
+
+    def _latch_supervisor_observed_grok_build_quota_exhaustion(
+        self,
+        error: VerifiedGrokQuotaExhaustion,
+    ) -> None:
+        """Retain typed transport provenance across reuse of this latch."""
+
+        self.exhausted = True
+        self.reason_code = str(error.reason_code)
+        self._supervisor_observed_grok_build_quota_exhausted = (
+            self.reason_code
+            == ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value
         )
 
     def reset(self, *, remaining_calls: int | None = None) -> None:
@@ -299,6 +319,7 @@ class ProviderQuotaLatch:
             else ""
         )
         self.attempts = 0
+        self._supervisor_observed_grok_build_quota_exhausted = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -861,6 +882,7 @@ def _bounded_evidence_slice(
             break
     goal = provider_input.get("goal")
     context_slice = provider_input.get("context_slice")
+    correction_feedback = provider_input.get("correction_feedback")
     goal_ids: dict[str, Any] = {}
     if isinstance(goal, Mapping):
         for key in (
@@ -896,6 +918,12 @@ def _bounded_evidence_slice(
     # provider bound in ``_request``.
     if isinstance(context_slice, Mapping):
         evidence["context_slice"] = dict(context_slice)
+    if isinstance(correction_feedback, Mapping):
+        # Correction feedback is already a bounded, content-addressed
+        # projection of a verified strict denial event.  The independent
+        # reviewer must receive the same complete finding set as the
+        # implementer so approval cannot silently ignore an omitted finding.
+        evidence["correction_feedback"] = dict(correction_feedback)
     return evidence
 
 
@@ -1744,9 +1772,28 @@ class ImplementationProviderRouter:
         request: ProviderRequest,
     ) -> tuple[ProviderProposal, ProviderAttempt]:
         if not latch.acquire():
-            raise ProviderQuotaError(latch.reason_code or "provider quota exhausted")
+            reason_code = (
+                latch.reason_code
+                or ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value
+            )
+            if (
+                request.role is ProviderRole.GROK_IMPLEMENT
+                and latch._supervisor_observed_grok_build_quota_exhausted
+                and reason_code
+                == ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value
+            ):
+                raise VerifiedGrokQuotaExhaustion()
+            raise ProviderQuotaError(reason_code, reason_code=reason_code)
         try:
             raw = _invoke_with_timeout(provider, request)
+        except VerifiedGrokQuotaExhaustion as exc:
+            if request.role is ProviderRole.GROK_IMPLEMENT:
+                latch._latch_supervisor_observed_grok_build_quota_exhaustion(
+                    exc
+                )
+            else:
+                latch.latch(exc.reason_code)
+            raise
         except ProviderQuotaError as exc:
             latch.latch(exc.reason_code)
             raise
@@ -2186,6 +2233,58 @@ class ImplementationProviderRouter:
             task_id=task_id,
             payload=payload,
         )
+
+        if isinstance(payload.get("correction_feedback"), Mapping):
+            # Correction feedback is mandatory evidence for every permitted
+            # provider role.  Prove the complete implementer/Terra envelope
+            # and a minimally useful independent-review envelope fit before
+            # spending either provider's quota.  The actual admitted proposal
+            # is measured again before Codex can be invoked.
+            probe_body = {"declared_paths": [], "files": []}
+            probe_payload = MappingProxyType(probe_body)
+            probe_bytes = _canonical_bytes(probe_body)
+            probe = ProviderProposal(
+                role=ProviderRole.GROK_IMPLEMENT,
+                packet_id=packet_id,
+                snapshot_id=snapshot_id,
+                task_id=task_id,
+                payload=probe_payload,
+                response_bytes=len(probe_bytes),
+                response_digest=_sha256(probe_bytes),
+                admitted=True,
+            )
+            try:
+                self._request(
+                    role=ProviderRole.GROK_IMPLEMENT,
+                    packet_id=packet_id,
+                    snapshot_id=snapshot_id,
+                    task_id=task_id,
+                    provider_input=payload,
+                )
+                if self.codex_implementation_fallback_provider is not None:
+                    self._request(
+                        role=ProviderRole.CODEX_QUOTA_IMPLEMENT,
+                        packet_id=packet_id,
+                        snapshot_id=snapshot_id,
+                        task_id=task_id,
+                        provider_input=payload,
+                    )
+                if self.codex_provider is not None:
+                    self._request(
+                        role=ProviderRole.CODEX_REVIEW,
+                        packet_id=packet_id,
+                        snapshot_id=snapshot_id,
+                        task_id=task_id,
+                        provider_input=payload,
+                        admitted_proposal=probe,
+                    )
+            except ProviderRoutingError as exc:
+                return self._result(
+                    status=RouteStatus.REJECTED,
+                    reason_code=exc.reason_code,
+                    packet_id=packet_id,
+                    packet=packet_identity,
+                )
 
         if local_only:
             return self._local_fallback(

@@ -113,6 +113,12 @@ MAX_REVIEW_RESPONSE_BYTES = 64 * 1024
 MAX_REVIEW_FINDINGS = 64
 MAX_REVIEW_FINDING_TEXT_BYTES = 2 * 1024
 MAX_CORRECTION_FINDINGS = 4
+# Permanent tombstones deliberately retain the historical four-finding bound
+# so an already-transitioned denial keeps the same durable identity.  Dispatch
+# feedback may carry a slightly larger, independently reverified projection
+# from the original strict review event; this closes silent finding loss for
+# denials whose source response exceeded the tombstone preview.
+MAX_CORRECTION_FEEDBACK_FINDINGS = 8
 MAX_CORRECTION_FINDING_TEXT_BYTES = 768
 MAX_CORRECTION_BYTES = 4 * 1024
 MAX_DENIAL_TOMBSTONE_BYTES = 16 * 1024
@@ -4513,15 +4519,26 @@ def _parse_response(
     request: Mapping[str, Any],
     actual_provider: str,
 ) -> dict[str, Any]:
-    encoded = str(text or "").encode("utf-8")
+    try:
+        encoded = str(text or "").encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise PostMergeReviewError(
+            "review_response_encoding_invalid",
+            "review response must be valid UTF-8 text",
+        ) from exc
     if not encoded or len(encoded) > MAX_REVIEW_RESPONSE_BYTES:
         raise PostMergeReviewError(
             "review_response_size_invalid",
             "review response is empty or exceeds its byte bound",
         )
     try:
-        payload = json.loads(text)
-    except json.JSONDecodeError as exc:
+        payload = json.loads(
+            text,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON value: {value}")
+            ),
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
         raise PostMergeReviewError(
             "review_response_malformed",
             "review response must be one strict JSON object",
@@ -4598,7 +4615,9 @@ def _parse_response(
         severity = str(finding.get("severity") or "")
         summary = str(finding.get("summary") or "")
         if (
-            not code
+            not isinstance(finding.get("code"), str)
+            or not isinstance(finding.get("summary"), str)
+            or not code
             or severity not in {"blocker", "high", "medium", "low", "info"}
             or not summary
             or len(code.encode("utf-8")) > 128
@@ -4860,6 +4879,7 @@ def verified_post_merge_review_corrections_from_strict_ledger(
     *,
     include_superseded: bool = False,
     require_local_provenance: bool = False,
+    _max_projected_findings: int = MAX_CORRECTION_FINDINGS,
 ) -> tuple[dict[str, Any], ...]:
     """Project active, exact-commit review denials into bounded retry evidence.
 
@@ -4875,6 +4895,16 @@ def verified_post_merge_review_corrections_from_strict_ledger(
     candidate then follows its own merge/acceptance path.
     """
 
+    if _max_projected_findings not in {
+        MAX_CORRECTION_FINDINGS,
+        MAX_CORRECTION_FEEDBACK_FINDINGS,
+    }:
+        raise ValueError("unsupported correction finding projection bound")
+    projection_byte_limit = (
+        MAX_CORRECTION_BYTES
+        if _max_projected_findings == MAX_CORRECTION_FINDINGS
+        else MAX_DENIAL_TOMBSTONE_BYTES
+    )
     ledger = _strict_event_ledger(Path(events_path))
     lossy_repair = next(
         (
@@ -5403,12 +5433,12 @@ def verified_post_merge_review_corrections_from_strict_ledger(
             normalized_response.get("findings") or ()
         )
         projected_findings: list[dict[str, Any]] = []
-        truncated = len(source_findings) > MAX_CORRECTION_FINDINGS
+        truncated = len(source_findings) > _max_projected_findings
         for source_ordinal, finding in enumerate(
             source_findings,
             start=1,
         ):
-            if len(projected_findings) >= MAX_CORRECTION_FINDINGS:
+            if len(projected_findings) >= _max_projected_findings:
                 break
             code, code_truncated = _bounded_correction_text(
                 finding.get("code"),
@@ -5488,7 +5518,7 @@ def verified_post_merge_review_corrections_from_strict_ledger(
                     correction_material
                 ),
             }
-            if len(_canonical_json_bytes(correction)) <= MAX_CORRECTION_BYTES:
+            if len(_canonical_json_bytes(correction)) <= projection_byte_limit:
                 break
             projected_findings.pop()
             correction_material["included_finding_count"] = len(
@@ -6197,11 +6227,13 @@ def _strict_terminal_implementation_events(
 ) -> tuple[
     dict[tuple[str, int], dict[str, Any]],
     dict[str, dict[str, Any]],
-    dict[tuple[str, int], dict[str, Any]],
+    dict[tuple[str, int, str, int], dict[str, Any]],
 ]:
     by_attempt: dict[tuple[str, int], dict[str, Any]] = {}
     latest_by_task: dict[str, dict[str, Any]] = {}
-    outstanding_starts: dict[tuple[str, int], dict[str, Any]] = {}
+    outstanding_starts: dict[
+        tuple[str, int, str, int], dict[str, Any]
+    ] = {}
     for event in ledger:
         event_type = str(event.get("type") or "")
         if str(event.get("stream_id") or "") != local_stream_id:
@@ -6222,7 +6254,11 @@ def _strict_terminal_implementation_events(
         attempt_key = (task_id, raw_attempt)
 
         if event_type == "implementation_started":
-            outstanding_starts[attempt_key] = dict(event)
+            event_id = str(event.get("event_id") or "")
+            if event_id:
+                outstanding_starts[
+                    (task_id, raw_attempt, event_id, raw_sequence)
+                ] = dict(event)
             continue
         if event_type == "implementation_provider_exhausted":
             # A capacity classification is derived from provider-controlled
@@ -6242,8 +6278,42 @@ def _strict_terminal_implementation_events(
             or not isinstance(raw_returncode, int)
         ):
             continue
+        started_event_id = str(
+            event.get("implementation_started_event_id") or ""
+        )
+        started_event_sequence = event.get(
+            "implementation_started_event_sequence"
+        )
+        candidates = [
+            key
+            for key in outstanding_starts
+            if key[:2] == attempt_key
+        ]
+        if started_event_id:
+            if (
+                isinstance(started_event_sequence, bool)
+                or not isinstance(started_event_sequence, int)
+                or started_event_sequence < 1
+            ):
+                continue
+            exact_key = (
+                task_id,
+                raw_attempt,
+                started_event_id,
+                started_event_sequence,
+            )
+            if exact_key not in outstanding_starts:
+                # A terminal bound to another/stale start cannot consume the
+                # current correction reservation with the same task/attempt.
+                continue
+            outstanding_starts.pop(exact_key)
+        elif len(candidates) == 1:
+            # Preserve unambiguous legacy terminals which predate explicit
+            # start pointers. Duplicate same-tuple starts fail closed.
+            outstanding_starts.pop(candidates[0])
+        else:
+            continue
         projected = dict(event)
-        outstanding_starts.pop(attempt_key, None)
         prior_attempt = by_attempt.get(attempt_key)
         if (
             prior_attempt is None
@@ -6343,7 +6413,7 @@ def _verified_post_merge_correction_repair_chain(
         )
     )
     latest_consumption_by_task = dict(latest_terminal_by_task)
-    for (task_id, attempt), started in (
+    for (task_id, attempt, _event_id, _sequence), started in (
         outstanding_starts_by_attempt.items()
     ):
         prior = latest_consumption_by_task.get(task_id)

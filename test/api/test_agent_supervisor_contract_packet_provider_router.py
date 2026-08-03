@@ -441,6 +441,246 @@ def test_verified_grok_balance_exhaustion_routes_to_terra_pending_review() -> No
     ]
 
 
+def test_verified_grok_exhaustion_reuses_terra_after_latch_closes() -> None:
+    calls: list[str] = []
+    latch = ProviderQuotaLatch()
+
+    def grok(_request):
+        calls.append("grok")
+        raise VerifiedGrokQuotaExhaustion()
+
+    def terra(_request):
+        calls.append("terra")
+        return {"proposal": {"patch": "terra proposal"}}
+
+    router = ImplementationProviderRouter(
+        grok_provider=grok,
+        grok_quota=latch,
+        codex_implementation_fallback_provider=terra,
+        admission_gate=_accept,
+    )
+    results = [
+        router.route(
+            _Packet(packet_id=f"packet:repeated:{ordinal}"),
+            current_snapshot_id=SNAPSHOT,
+        )
+        for ordinal in (1, 2)
+    ]
+
+    assert calls == ["grok", "terra", "terra"]
+    assert latch.attempts == 1
+    assert latch.exhausted is True
+    assert (
+        latch.reason_code
+        == ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value
+    )
+    assert [result.status for result in results] == [
+        RouteStatus.DEFERRED,
+        RouteStatus.DEFERRED,
+    ]
+    assert [result.reason_code for result in results] == [
+        ProviderReason.NON_CODEX_REVIEW_REQUIRED.value,
+        ProviderReason.NON_CODEX_REVIEW_REQUIRED.value,
+    ]
+    assert [attempt.reason_code for attempt in results[1].attempts] == [
+        ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+        ProviderReason.ROUTED.value,
+    ]
+
+
+def test_verified_grok_exhaustion_survives_router_recreation_with_shared_latch(
+) -> None:
+    calls: list[str] = []
+    latch = ProviderQuotaLatch()
+
+    def grok(_request):
+        calls.append("grok")
+        raise VerifiedGrokQuotaExhaustion()
+
+    def terra(_request):
+        calls.append("terra")
+        return {"proposal": {"patch": "terra proposal"}}
+
+    first = ImplementationProviderRouter(
+        grok_provider=grok,
+        grok_quota=latch,
+        codex_implementation_fallback_provider=terra,
+        admission_gate=_accept,
+    ).route(_Packet(packet_id="packet:before-restart"), current_snapshot_id=SNAPSHOT)
+    restarted = ImplementationProviderRouter(
+        grok_provider=grok,
+        grok_quota=latch,
+        codex_implementation_fallback_provider=terra,
+        admission_gate=_accept,
+    )
+    second = restarted.route(
+        _Packet(packet_id="packet:after-restart"),
+        current_snapshot_id=SNAPSHOT,
+    )
+
+    assert calls == ["grok", "terra", "terra"]
+    assert latch.attempts == 1
+    assert first.reason_code == ProviderReason.NON_CODEX_REVIEW_REQUIRED.value
+    assert second.reason_code == ProviderReason.NON_CODEX_REVIEW_REQUIRED.value
+
+
+def test_model_authored_exact_grok_quota_text_stays_generic_after_replay(
+) -> None:
+    calls: list[str] = []
+    router = ImplementationProviderRouter(
+        grok_provider=lambda _request: (
+            calls.append("grok")
+            or {
+                "status": "quota_exhausted",
+                "reason_code": (
+                    ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value
+                ),
+            }
+        ),
+        codex_implementation_fallback_provider=lambda _request: calls.append(
+            "terra"
+        ),
+        admission_gate=_accept,
+    )
+
+    results = [
+        router.route(
+            _Packet(packet_id=f"packet:model-claim:{ordinal}"),
+            current_snapshot_id=SNAPSHOT,
+        )
+        for ordinal in (1, 2)
+    ]
+
+    assert calls == ["grok"]
+    assert [result.status for result in results] == [
+        RouteStatus.DEFERRED,
+        RouteStatus.DEFERRED,
+    ]
+    assert [result.reason_code for result in results] == [
+        ProviderReason.GROK_QUOTA_EXHAUSTED.value,
+        ProviderReason.GROK_QUOTA_EXHAUSTED.value,
+    ]
+
+
+@pytest.mark.parametrize(
+    "reason_code",
+    [
+        ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+        "http_429_rate_limited",
+        "authentication_failed",
+        "stderr_mentions_quota_exhausted",
+    ],
+)
+def test_generic_grok_quota_errors_never_authorize_terra_after_replay(
+    reason_code: str,
+) -> None:
+    calls: list[str] = []
+
+    def grok(_request):
+        calls.append("grok")
+        raise ProviderQuotaError("generic failure", reason_code=reason_code)
+
+    router = ImplementationProviderRouter(
+        grok_provider=grok,
+        codex_implementation_fallback_provider=lambda _request: calls.append(
+            "terra"
+        ),
+        admission_gate=_accept,
+    )
+    results = [
+        router.route(
+            _Packet(packet_id=f"packet:generic:{ordinal}"),
+            current_snapshot_id=SNAPSHOT,
+        )
+        for ordinal in (1, 2)
+    ]
+
+    assert calls == ["grok"]
+    assert all(
+        result.reason_code == ProviderReason.GROK_QUOTA_EXHAUSTED.value
+        for result in results
+    )
+
+
+@pytest.mark.parametrize(
+    "latch_kind",
+    [
+        "zero",
+        "zero_with_exact_text",
+        "public_exact_latch",
+        "mutated_generic_reason",
+    ],
+)
+def test_user_configured_or_tampered_latch_never_authorizes_terra(
+    latch_kind: str,
+) -> None:
+    exact_reason = ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value
+    if latch_kind == "zero":
+        latch = ProviderQuotaLatch(remaining_calls=0)
+    elif latch_kind == "zero_with_exact_text":
+        latch = ProviderQuotaLatch(
+            remaining_calls=0,
+            reason_code=exact_reason,
+        )
+    else:
+        latch = ProviderQuotaLatch()
+        latch.latch(
+            exact_reason
+            if latch_kind == "public_exact_latch"
+            else "generic_quota"
+        )
+        if latch_kind == "mutated_generic_reason":
+            latch.reason_code = exact_reason
+    calls: list[str] = []
+    router = ImplementationProviderRouter(
+        grok_provider=lambda _request: calls.append("grok"),
+        grok_quota=latch,
+        codex_implementation_fallback_provider=lambda _request: calls.append(
+            "terra"
+        ),
+        admission_gate=_accept,
+    )
+
+    first = router.route(_Packet(), current_snapshot_id=SNAPSHOT)
+    second = router.route(
+        _Packet(packet_id="packet:user-latch:2"),
+        current_snapshot_id=SNAPSHOT,
+    )
+
+    assert calls == []
+    assert first.reason_code == ProviderReason.GROK_QUOTA_EXHAUSTED.value
+    assert second.reason_code == ProviderReason.GROK_QUOTA_EXHAUSTED.value
+
+
+def test_public_relatch_revokes_verified_grok_exhaustion_provenance() -> None:
+    calls: list[str] = []
+    latch = ProviderQuotaLatch()
+
+    def grok(_request):
+        calls.append("grok")
+        raise VerifiedGrokQuotaExhaustion()
+
+    router = ImplementationProviderRouter(
+        grok_provider=grok,
+        grok_quota=latch,
+        codex_implementation_fallback_provider=lambda _request: (
+            calls.append("terra")
+            or {"proposal": {"patch": "terra proposal"}}
+        ),
+        admission_gate=_accept,
+    )
+    first = router.route(_Packet(), current_snapshot_id=SNAPSHOT)
+    latch.latch(ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value)
+    second = router.route(
+        _Packet(packet_id="packet:relatched"),
+        current_snapshot_id=SNAPSHOT,
+    )
+
+    assert calls == ["grok", "terra"]
+    assert first.reason_code == ProviderReason.NON_CODEX_REVIEW_REQUIRED.value
+    assert second.reason_code == ProviderReason.GROK_QUOTA_EXHAUSTED.value
+
+
 @pytest.mark.parametrize(
     "grok_result",
     [

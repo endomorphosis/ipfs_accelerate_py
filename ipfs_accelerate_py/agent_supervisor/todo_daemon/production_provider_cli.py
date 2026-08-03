@@ -16,10 +16,12 @@ The policy is an operator/runtime overlay.  It is intentionally separate from
 task metadata so enabling it does not rewrite a reviewed board, change a
 canonical task CID, or invalidate an immutable task-source binding.
 
-This completion-capable route intentionally has no Codex *implementation*
-fallback: Codex cannot implement and independently review the same proposal.
-A legacy/best-effort Grok-to-Codex implementation fallback must remain
-provider-review-pending unless a third independent reviewer is introduced.
+This completion-capable route has no Codex fallback that may write or approve
+its own implementation.  Only an exact, supervisor-observed native Grok HTTP
+402 balance-exhaustion result may route to ``gpt-5.6-terra`` at medium
+reasoning, and that result is proposal-only: it remains durably pending until
+a separate non-Codex independent review admits or rejects it.  Every other
+Grok failure fails closed without invoking Terra.
 """
 
 from __future__ import annotations

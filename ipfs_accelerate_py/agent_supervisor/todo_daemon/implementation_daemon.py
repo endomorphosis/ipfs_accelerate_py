@@ -134,13 +134,16 @@ from ..merge.merge_queue import (
     MERGE_TARGET_BINDING_SCHEMA,
     POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA as DURABLE_CORRECTION_CONSUMPTION_SCHEMA,
     POST_MERGE_CORRECTION_FAILURE_SCHEMA as DURABLE_CORRECTION_FAILURE_SCHEMA,
+    POST_MERGE_CORRECTION_PENDING_REVIEW_SCHEMA as DURABLE_CORRECTION_PENDING_REVIEW_SCHEMA,
     POST_MERGE_CORRECTION_LEGACY_HIGH_WATER_ANCHOR_SCHEMA as DURABLE_CORRECTION_LEGACY_HIGH_WATER_ANCHOR_SCHEMA,
     POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA as DURABLE_CORRECTION_REPAIR_GRANT_SCHEMA,
     POST_MERGE_REVIEW_DENIAL_CONSUMPTION_SCHEMA,
+    POST_MERGE_REVIEW_DENIAL_FEEDBACK_MANIFEST_SCHEMA,
     SUBMODULE_INTEGRATION_RECOVERY_SCHEMA,
     MergeQueue,
     MergeQueueFenceError,
     MergeQueueIntegrityError,
+    post_merge_correction_dispatch_authority_descriptor,
 )
 from ..validation.validation_commands import (
     build_validation_commands,
@@ -208,6 +211,7 @@ from .production_provider_cli import (
     production_landed_task_guard,
 )
 from .production_context_slice import (
+    DEFAULT_RESERVED_PROMPT_TOKENS,
     ProductionContextSliceError,
     assert_proposal_covered_by_context,
     build_production_context_slice,
@@ -274,6 +278,128 @@ logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.impl
 POST_MERGE_CORRECTION_RESERVATION_CONFLICT_REASON = (
     "post_merge_correction_reservation_conflict"
 )
+POST_MERGE_CORRECTION_LANDED_ROUTE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-landed-route@1"
+)
+_LIVE_POST_MERGE_CORRECTION_ROUTE_SEAL = object()
+
+
+def _freeze_correction_capability_json(value: Any) -> Any:
+    """Return one canonical, recursively immutable JSON projection."""
+
+    canonical = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    decoded = json.loads(canonical.decode("utf-8"))
+
+    def freeze(item: Any) -> Any:
+        if isinstance(item, dict):
+            return MappingProxyType(
+                {str(key): freeze(child) for key, child in item.items()}
+            )
+        if isinstance(item, list):
+            return tuple(freeze(child) for child in item)
+        return item
+
+    return freeze(decoded), canonical
+
+
+def _thaw_correction_capability_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _thaw_correction_capability_json(child)
+            for key, child in value.items()
+        }
+    if isinstance(value, tuple):
+        return [_thaw_correction_capability_json(child) for child in value]
+    return value
+
+
+class _LivePostMergeCorrectionRouteCapability(Mapping[str, Any]):
+    """Private, immutable, process-local, one-shot provider authority."""
+
+    __slots__ = (
+        "_canonical",
+        "_consumed",
+        "_lock",
+        "_material",
+        "_producer_seal",
+    )
+
+    def __init__(self, material: Mapping[str, Any]) -> None:
+        frozen, canonical = _freeze_correction_capability_json(dict(material))
+        if not isinstance(frozen, Mapping):  # pragma: no cover - defensive
+            raise TypeError("correction route capability must be a mapping")
+        self._material = frozen
+        self._canonical = canonical
+        self._producer_seal = _LIVE_POST_MERGE_CORRECTION_ROUTE_SEAL
+        self._consumed = False
+        self._lock = threading.Lock()
+
+    def __getitem__(self, key: str) -> Any:
+        return self._material[key]
+
+    def __iter__(self):
+        return iter(self._material)
+
+    def __len__(self) -> int:
+        return len(self._material)
+
+    def __copy__(self) -> dict[str, Any]:
+        return _thaw_correction_capability_json(self._material)
+
+    def __deepcopy__(self, _memo: dict[int, Any]) -> dict[str, Any]:
+        return _thaw_correction_capability_json(self._material)
+
+    def __reduce__(self):
+        raise TypeError("live correction route capabilities cannot be serialized")
+
+    def __reduce_ex__(self, _protocol: int):
+        raise TypeError("live correction route capabilities cannot be serialized")
+
+
+def _correction_route_capability_snapshot(
+    candidate: Any,
+    *,
+    consume: bool,
+) -> dict[str, Any] | None:
+    """Inspect or atomically burn one genuine module-sealed capability."""
+
+    if (
+        type(candidate) is not _LivePostMergeCorrectionRouteCapability
+        or candidate._producer_seal
+        is not _LIVE_POST_MERGE_CORRECTION_ROUTE_SEAL
+    ):
+        return None
+    if consume:
+        with candidate._lock:
+            if candidate._consumed:
+                return None
+            # Burn before interpreting any caller-controlled task/packet data.
+            candidate._consumed = True
+    try:
+        material = _thaw_correction_capability_json(candidate._material)
+        canonical = json.dumps(
+            material,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, UnicodeEncodeError, ValueError):
+        return None
+    if not isinstance(material, dict) or canonical != candidate._canonical:
+        return None
+    identity_material = dict(material)
+    capability_id = str(identity_material.pop("capability_id", "") or "")
+    if not capability_id or content_identity(identity_material) != capability_id:
+        return None
+    return material
 
 
 class PostMergeReviewDenialPersistenceError(RuntimeError):
@@ -355,6 +481,20 @@ MODEL_ASSISTED_PENDING_PROPOSAL_SCHEMA = (
 )
 MODEL_ASSISTED_PROVIDER_REVIEW_PENDING_EVENT = (
     "implementation_provider_review_pending"
+)
+MODEL_ASSISTED_CORRECTION_PENDING_REVIEW_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-pending-review@1"
+)
+POST_MERGE_CORRECTION_PENDING_REVIEW_REJECTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-correction-pending-review-rejection@1"
+)
+POST_MERGE_CORRECTION_PENDING_REVIEW_REJECTION_EVENTS = frozenset(
+    {
+        "implementation_provider_review_rejected",
+        "post_merge_correction_pending_review_rejected",
+    }
 )
 PRODUCTION_PROVIDER_ROUTE_EVENT = "production_model_assisted_provider_route"
 PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT = (
@@ -2785,6 +2925,9 @@ class PortalTaskState:
         default_factory=dict
     )
     retry_budget_repair_receipts: dict[str, str] = field(default_factory=dict)
+    retry_budget_reset_deferral_latches: dict[str, str] = field(
+        default_factory=dict
+    )
     pending_provider_reviews: dict[str, dict[str, str]] = field(
         default_factory=dict
     )
@@ -2928,6 +3071,16 @@ class PortalTaskState:
                 retry_budget_repair_receipts={
                     str(key): str(value)
                     for key, value in (payload.get("retry_budget_repair_receipts") or {}).items()
+                    if str(key).strip() and str(value).strip()
+                },
+                retry_budget_reset_deferral_latches={
+                    str(key): str(value)
+                    for key, value in (
+                        payload.get(
+                            "retry_budget_reset_deferral_latches"
+                        )
+                        or {}
+                    ).items()
                     if str(key).strip() and str(value).strip()
                 },
                 pending_provider_reviews={
@@ -3083,6 +3236,9 @@ def state_file_repair_reason(path: Path) -> str:
         "implementation_attempts",
         "implementation_attempts_by_cid",
         "retry_budget_attempt_baselines_by_cid",
+        "retry_budget_repair_receipts",
+        "retry_budget_reset_deferral_latches",
+        "pending_provider_reviews",
         "last_proof_workflow",
     ):
         value = payload.get(field_name)
@@ -3319,6 +3475,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self.events_path = events_path
         self.repo_root = (repo_root or REPO_ROOT).resolve()
         self._merge_lock_ownership = threading.local()
+        self._post_merge_correction_route_registry_lock = threading.Lock()
+        self._sealed_post_merge_correction_routes: dict[
+            tuple[str, int, str],
+            _LivePostMergeCorrectionRouteCapability,
+        ] = {}
         self.task_source: CanonicalTaskSource | None = None
         if configured_task_source is not None:
             source_options: dict[str, Any] = {}
@@ -7164,6 +7325,217 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 conflicting_consumption=conflicting_consumption,
             ) from exc
 
+    @classmethod
+    def _post_merge_correction_rejection_matches_pending(
+        cls,
+        event: Mapping[str, Any],
+        pending: Mapping[str, Any],
+        detail: Mapping[str, Any],
+    ) -> bool:
+        """Return whether one typed rejection closes this exact proposal."""
+
+        event_sequence = event.get("sequence")
+        attempt = event.get("attempt")
+        started_sequence = event.get(
+            "implementation_started_event_sequence"
+        )
+        pending_sequence = event.get("pending_event_sequence")
+        if (
+            str(event.get("type") or "")
+            not in POST_MERGE_CORRECTION_PENDING_REVIEW_REJECTION_EVENTS
+            or event.get("schema")
+            != POST_MERGE_CORRECTION_PENDING_REVIEW_REJECTION_SCHEMA
+            or isinstance(event_sequence, bool)
+            or not isinstance(event_sequence, int)
+            or isinstance(attempt, bool)
+            or not isinstance(attempt, int)
+            or isinstance(started_sequence, bool)
+            or not isinstance(started_sequence, int)
+            or isinstance(pending_sequence, bool)
+            or not isinstance(pending_sequence, int)
+            or event_sequence <= pending_sequence
+            or attempt < 1
+            or started_sequence < 1
+            or pending_sequence <= started_sequence
+            or not str(event.get("event_id") or "")
+            or not str(event.get("reason_code") or "")
+            or event.get("attempt_consumed") is not True
+            or event.get("provider_result_admitted") is not False
+            or event.get("repository_write_authorized") is not False
+            or event.get("proof_authoritative") is not False
+            or event.get("completion_authoritative") is not False
+            or event.get("required_review_role")
+            != ProviderRole.NON_CODEX_REVIEW.value
+            or pending.get("record_kind") != "correction_pending"
+            or int(pending.get("attempt") or 0) != attempt
+            or not cls._durable_correction_event_identity_matches(
+                pending,
+                event,
+            )
+        ):
+            return False
+        return all(
+            str(event.get(event_name) or "")
+            == str(expected or "")
+            for event_name, expected in (
+                ("durable_denial_id", pending.get("denial_id")),
+                ("durable_pending_record_id", pending.get("record_id")),
+                (
+                    "implementation_started_event_id",
+                    detail.get("started_event_id"),
+                ),
+                (
+                    "implementation_started_event_sequence",
+                    detail.get("started_event_sequence"),
+                ),
+                ("authority_kind", detail.get("authority_kind")),
+                ("authority_id", detail.get("authority_id")),
+                (
+                    "authority_binding_id",
+                    detail.get("authority_binding_id"),
+                ),
+                ("pending_event_id", detail.get("pending_event_id")),
+                (
+                    "pending_event_sequence",
+                    detail.get("pending_event_sequence"),
+                ),
+                ("pending_binding_id", detail.get("pending_binding_id")),
+                ("artifact_path", detail.get("artifact_path")),
+                ("artifact_id", detail.get("artifact_id")),
+            )
+        )
+
+    def _persist_post_merge_correction_pending_rejection(
+        self,
+        event: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Atomically terminalize one exact rejected pending proposal."""
+
+        event_type = str(event.get("type") or "")
+        if (
+            event_type
+            not in POST_MERGE_CORRECTION_PENDING_REVIEW_REJECTION_EVENTS
+            or event.get("schema")
+            != POST_MERGE_CORRECTION_PENDING_REVIEW_REJECTION_SCHEMA
+        ):
+            return None
+        chain_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_chain",
+            None,
+        )
+        authority_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_authority",
+            None,
+        )
+        writer = getattr(
+            self.merge_queue,
+            "record_post_merge_correction_failure",
+            None,
+        )
+        if not all(
+            callable(item)
+            for item in (chain_reader, authority_reader, writer)
+        ):
+            return None
+        denial_id = str(event.get("durable_denial_id") or "")
+        pending_record_id = str(
+            event.get("durable_pending_record_id") or ""
+        )
+        if not denial_id or not pending_record_id:
+            raise MergeQueueIntegrityError(
+                "post-merge correction rejection lacks durable authority"
+            )
+        chain = tuple(chain_reader(denial_id))
+        pending_matches = [
+            record
+            for record in chain
+            if (
+                record.get("record_kind") == "correction_pending"
+                and str(record.get("record_id") or "")
+                == pending_record_id
+            )
+        ]
+        if len(pending_matches) != 1:
+            raise MergeQueueFenceError(
+                "post-merge correction rejected proposal is unavailable"
+            )
+        pending = pending_matches[0]
+        detail = pending.get("detail")
+        if (
+            not isinstance(detail, Mapping)
+            or not self._post_merge_correction_rejection_matches_pending(
+                event,
+                pending,
+                detail,
+            )
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge correction rejection binding is invalid"
+            )
+
+        # Any existing child has already made this proposal terminal.  A
+        # duplicate or competing reviewer rejection is therefore a no-op,
+        # including after a later administrative repair grant.
+        terminal_children = [
+            record
+            for record in chain
+            if (
+                record.get("record_kind") == "correction_failed"
+                and str(record.get("parent_record_id") or "")
+                == pending_record_id
+            )
+        ]
+        if terminal_children:
+            if len(terminal_children) != 1:
+                raise MergeQueueIntegrityError(
+                    "post-merge correction pending terminal is ambiguous"
+                )
+            return dict(terminal_children[0])
+
+        durable_state = authority_reader(denial_id)
+        if (
+            not isinstance(durable_state, Mapping)
+            or durable_state.get("state") != "pending_review"
+            or str(durable_state.get("head_record_id") or "")
+            != pending_record_id
+        ):
+            raise MergeQueueFenceError(
+                "post-merge correction rejected proposal is stale"
+            )
+        transition = {
+            "schema": DURABLE_CORRECTION_FAILURE_SCHEMA,
+            **self._durable_post_merge_correction_identity(
+                pending,
+                attempt=int(event["attempt"]),
+            ),
+            "authority_kind": str(detail.get("authority_kind") or ""),
+            "authority_id": str(detail.get("authority_id") or ""),
+            "terminal_event_id": str(event.get("event_id") or ""),
+            "terminal_event_sequence": int(event["sequence"]),
+            "failure_kind": "validation",
+        }
+        try:
+            return writer(
+                transition,
+                expected_parent_record_id=pending_record_id,
+            )
+        except MergeQueueFenceError:
+            refreshed = tuple(chain_reader(denial_id))
+            terminal_children = [
+                record
+                for record in refreshed
+                if (
+                    record.get("record_kind") == "correction_failed"
+                    and str(record.get("parent_record_id") or "")
+                    == pending_record_id
+                )
+            ]
+            if len(terminal_children) == 1:
+                return dict(terminal_children[0])
+            raise
+
     def _persist_post_merge_correction_failure(
         self,
         event: Mapping[str, Any],
@@ -7239,9 +7611,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         candidates: list[Mapping[str, Any]] = []
         for record in records:
             detail = record.get("detail")
+            record_kind = str(record.get("record_kind") or "")
             if (
-                record.get("record_kind")
-                not in {"denial_consumed", "grant_consumed"}
+                record_kind
+                not in {
+                    "denial_consumed",
+                    "grant_consumed",
+                    "correction_pending",
+                }
                 or int(record.get("attempt") or 0) != attempt
                 or not self._durable_correction_event_identity_matches(
                     record,
@@ -7257,12 +7634,35 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             authority = authority_reader(
                 str(record.get("denial_id") or "")
             )
+            expected_state = (
+                "pending_review"
+                if record_kind == "correction_pending"
+                else "consumed"
+            )
             if (
                 isinstance(authority, Mapping)
-                and authority.get("state") == "consumed"
+                and authority.get("state") == expected_state
                 and str(authority.get("head_record_id") or "")
                 == str(record.get("record_id") or "")
             ):
+                if record_kind == "correction_pending" and (
+                    event.get("invalidated_pending_review") is not True
+                    or str(event.get("pending_binding_id") or "")
+                    != str(detail.get("pending_binding_id") or "")
+                    or str(event.get("pending_review_event_id") or "")
+                    != str(detail.get("pending_event_id") or "")
+                    or int(
+                        event.get("pending_review_event_sequence") or 0
+                    )
+                    != int(detail.get("pending_event_sequence") or 0)
+                    or str(
+                        event.get("pending_proposal_artifact_id") or ""
+                    )
+                    != str(detail.get("artifact_id") or "")
+                    or str(event.get("pending_proposal_path") or "")
+                    != str(detail.get("artifact_path") or "")
+                ):
+                    continue
                 candidates.append(record)
         if not candidates:
             return None
@@ -7270,8 +7670,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             raise MergeQueueIntegrityError(
                 "post-merge correction failure identity is ambiguous"
             )
-        consumed = candidates[0]
-        detail = consumed.get("detail")
+        live_parent = candidates[0]
+        detail = live_parent.get("detail")
         if not isinstance(detail, Mapping):
             raise MergeQueueIntegrityError(
                 "post-merge correction consumption detail is unavailable"
@@ -7279,7 +7679,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         transition = {
             "schema": DURABLE_CORRECTION_FAILURE_SCHEMA,
             **self._durable_post_merge_correction_identity(
-                consumed,
+                live_parent,
                 attempt=attempt,
             ),
             "authority_kind": str(detail.get("authority_kind") or ""),
@@ -7295,8 +7695,163 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         return writer(
             transition,
             expected_parent_record_id=str(
-                consumed.get("record_id") or ""
+                live_parent.get("record_id") or ""
             ),
+        )
+
+    def _persist_post_merge_correction_pending_review(
+        self,
+        event: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Durably seal one charged Terra proposal after strict append."""
+
+        if (
+            event.get("type")
+            != MODEL_ASSISTED_PROVIDER_REVIEW_PENDING_EVENT
+            or event.get("schema")
+            != MODEL_ASSISTED_CORRECTION_PENDING_REVIEW_SCHEMA
+        ):
+            return None
+        chain_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_chain",
+            None,
+        )
+        writer = getattr(
+            self.merge_queue,
+            "record_post_merge_correction_pending_review",
+            None,
+        )
+        if not all(
+            callable(item)
+            for item in (chain_reader, writer)
+        ):
+            return None
+        denial_id = str(event.get("durable_denial_id") or "")
+        consumption_record_id = str(
+            event.get("durable_consumption_record_id") or ""
+        )
+        if not denial_id or not consumption_record_id:
+            raise MergeQueueIntegrityError(
+                "post-merge correction pending review lacks durable authority"
+            )
+        chain = tuple(chain_reader(denial_id))
+        matches = [
+            record
+            for record in chain
+            if str(record.get("record_id") or "")
+            == consumption_record_id
+        ]
+        if len(matches) != 1:
+            raise MergeQueueFenceError(
+                "post-merge correction pending consumption is unavailable"
+            )
+        consumed = matches[0]
+        detail = consumed.get("detail")
+        raw_attempt = event.get("attempt")
+        raw_started_sequence = event.get(
+            "implementation_started_event_sequence"
+        )
+        raw_pending_sequence = event.get("sequence")
+        if (
+            consumed.get("record_kind")
+            not in {"denial_consumed", "grant_consumed"}
+            or not isinstance(detail, Mapping)
+            or isinstance(raw_attempt, bool)
+            or not isinstance(raw_attempt, int)
+            or raw_attempt < 1
+            or isinstance(raw_started_sequence, bool)
+            or not isinstance(raw_started_sequence, int)
+            or raw_started_sequence < 1
+            or isinstance(raw_pending_sequence, bool)
+            or not isinstance(raw_pending_sequence, int)
+            or raw_pending_sequence <= raw_started_sequence
+            or str(consumed.get("denial_id") or "") != denial_id
+            or int(consumed.get("attempt") or 0) != raw_attempt
+            or not self._durable_correction_event_identity_matches(
+                consumed,
+                event,
+            )
+            or str(event.get("origin_stream_id") or "")
+            != str(consumed.get("origin_stream_id") or "")
+            or str(detail.get("authority_kind") or "")
+            != str(event.get("authority_kind") or "")
+            or str(detail.get("authority_id") or "")
+            != str(event.get("authority_id") or "")
+            or str(detail.get("started_event_id") or "")
+            != str(event.get("implementation_started_event_id") or "")
+            or int(detail.get("started_event_sequence") or 0)
+            != raw_started_sequence
+            or str(consumed.get("parent_record_id") or "")
+            != str(event.get("pre_consumption_head_record_id") or "")
+        ):
+            raise MergeQueueFenceError(
+                "post-merge correction pending review crosses consumption"
+            )
+        transition = {
+            "schema": DURABLE_CORRECTION_PENDING_REVIEW_SCHEMA,
+            **self._durable_post_merge_correction_identity(
+                consumed,
+                attempt=raw_attempt,
+            ),
+            "authority_kind": str(event.get("authority_kind") or ""),
+            "authority_id": str(event.get("authority_id") or ""),
+            "authority_binding_id": str(
+                event.get("authority_binding_id") or ""
+            ),
+            "started_event_id": str(
+                event.get("implementation_started_event_id") or ""
+            ),
+            "started_event_sequence": raw_started_sequence,
+            "pre_consumption_head_record_id": str(
+                event.get("pre_consumption_head_record_id") or ""
+            ),
+            "consumption_record_id": consumption_record_id,
+            "pending_event_id": str(event.get("event_id") or ""),
+            "pending_event_sequence": raw_pending_sequence,
+            "pending_binding_id": str(
+                event.get("pending_binding_id") or ""
+            ),
+            "complete_feedback_id": str(
+                event.get("complete_denial_feedback_id") or ""
+            ),
+            "complete_finding_count": event.get(
+                "complete_denial_finding_count"
+            ),
+            "complete_feedback_truncated": event.get(
+                "complete_denial_feedback_truncated"
+            ),
+            "packet_id": str(event.get("packet_id") or ""),
+            "packet_cid": str(event.get("packet_cid") or ""),
+            "provider_receipt_id": str(
+                event.get("provider_receipt_id") or ""
+            ),
+            "artifact_path": str(event.get("artifact_path") or ""),
+            "artifact_id": str(event.get("artifact_id") or ""),
+            "required_review_role": event.get("required_review_role"),
+            "proposal_role": event.get("proposal_role"),
+            "write_performed": event.get("write_performed"),
+            "provider_result_admitted": event.get(
+                "provider_result_admitted"
+            ),
+            "attempt_consumed": event.get("attempt_consumed"),
+            "repository_write_authorized": event.get(
+                "repository_write_authorized"
+            ),
+            "proof_authoritative": event.get("proof_authoritative"),
+            "completion_authoritative": event.get(
+                "completion_authoritative"
+            ),
+        }
+        # The queue CAS is also the idempotency fence.  It returns the exact
+        # existing child when this event was already persisted, even if a
+        # later failure/grant has advanced the current head.  If the parent
+        # has a different child or is merely stale, it fails closed.  A
+        # current-state projection here would incorrectly reject legitimate
+        # restart replay after the pending child became terminal.
+        return writer(
+            transition,
+            expected_parent_record_id=consumption_record_id,
         )
 
     def _persist_post_merge_correction_grants(
@@ -7389,7 +7944,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 raise MergeQueueIntegrityError(
                     "post-merge correction repair grant content identity changed"
                 )
-            chain = tuple(chain_reader(denial_id))
+            failure_record_id = str(
+                grant.get("durable_failure_record_id") or ""
+            )
+            chain = tuple(
+                chain_reader()
+                if failure_record_id
+                else chain_reader(denial_id)
+            )
             event_id = str(event.get("event_id") or "")
             event_sequence = int(event.get("sequence") or 0)
             existing_grants = tuple(
@@ -7407,9 +7969,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "post-merge correction repair grant identity is ambiguous"
                 )
             existing = existing_grants[0] if existing_grants else None
-            failure_record_id = str(
-                grant.get("durable_failure_record_id") or ""
-            )
             failure = next(
                 (
                     record
@@ -7462,6 +8021,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
             failure_detail = failure.get("detail")
             target_attempt = int(grant.get("target_attempt") or 0)
+            denial_aliases = {str(failure.get("denial_id") or "")}
+            denial_reader = getattr(
+                self.merge_queue,
+                "verified_post_merge_review_denials",
+                None,
+            )
+            if callable(denial_reader):
+                matching_denials = [
+                    item
+                    for item in denial_reader()
+                    if str(item.get("denial_id") or "")
+                    == str(failure.get("denial_id") or "")
+                ]
+                if len(matching_denials) != 1:
+                    raise MergeQueueIntegrityError(
+                        "post-merge correction repair denial is ambiguous"
+                    )
+                denial_aliases.add(
+                    str(
+                        matching_denials[0].get("source_event_id") or ""
+                    )
+                )
             if (
                 not isinstance(failure_detail, Mapping)
                 or target_attempt != int(failure.get("attempt") or 0)
@@ -7488,7 +8069,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 or str(grant.get("source_task_binding_id") or "")
                 != str(failure.get("task_binding_id") or "")
                 or str(grant.get("denial_id") or "")
-                != str(failure.get("denial_id") or "")
+                not in denial_aliases
                 or str(reset.get("source_task_id") or "")
                 != str(failure.get("task_id") or "")
                 or str(reset.get("repair_task_id") or "")
@@ -7607,6 +8188,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         event_type = str(event.get("type") or "")
         if event_type == "implementation_started":
             return self._persist_post_merge_correction_start(event)
+        if event_type == MODEL_ASSISTED_PROVIDER_REVIEW_PENDING_EVENT:
+            return self._persist_post_merge_correction_pending_review(event)
+        if (
+            event_type
+            in POST_MERGE_CORRECTION_PENDING_REVIEW_REJECTION_EVENTS
+        ):
+            return self._persist_post_merge_correction_pending_rejection(
+                event
+            )
         if event_type in {
             "implementation_finished",
             "implementation_state_recovered",
@@ -7626,6 +8216,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "verified_post_merge_correction_chain",
             "verified_post_merge_correction_authority",
             "record_post_merge_correction_consumption",
+            "record_post_merge_correction_pending_review",
             "record_post_merge_correction_failure",
             "record_post_merge_correction_repair_grant",
         )
@@ -7792,6 +8383,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             event_type = str(event.get("type") or "")
             if event_type not in {
                 "implementation_started",
+                MODEL_ASSISTED_PROVIDER_REVIEW_PENDING_EVENT,
+                *POST_MERGE_CORRECTION_PENDING_REVIEW_REJECTION_EVENTS,
                 "implementation_finished",
                 "implementation_state_recovered",
                 POST_MERGE_CORRECTION_QUEUE_RECONCILED_EVENT,
@@ -7903,6 +8496,90 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             or attempt < 1
         ):
             return None
+        durable_pending_record_id = str(
+            reservation.get("durable_pending_record_id") or ""
+        )
+        if durable_pending_record_id:
+            chain_reader = getattr(
+                self.merge_queue,
+                "verified_post_merge_correction_chain",
+                None,
+            )
+            authority_reader = getattr(
+                self.merge_queue,
+                "verified_post_merge_correction_authority",
+                None,
+            )
+            denial_id = str(
+                reservation.get("durable_denial_id") or ""
+            )
+            if (
+                not denial_id
+                or not callable(chain_reader)
+                or not callable(authority_reader)
+            ):
+                return None
+            try:
+                matching = [
+                    record
+                    for record in chain_reader(denial_id)
+                    if str(record.get("record_id") or "")
+                    == durable_pending_record_id
+                ]
+                durable_state = authority_reader(denial_id)
+            except (
+                MergeQueueIntegrityError,
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ):
+                return None
+            if len(matching) != 1:
+                return None
+            pending = matching[0]
+            pending_detail = pending.get("detail")
+            if (
+                pending.get("record_kind") != "correction_pending"
+                or not isinstance(pending_detail, Mapping)
+                or not isinstance(durable_state, Mapping)
+                or durable_state.get("state") != "pending_review"
+                or str(durable_state.get("head_record_id") or "")
+                != durable_pending_record_id
+                or str(pending.get("task_id") or "") != task.task_id
+                or int(pending.get("attempt") or 0) != attempt
+                or str(pending.get("canonical_task_key") or "")
+                != identity.canonical_task_key
+                or str(pending.get("canonical_task_cid") or "")
+                != identity.canonical_task_cid
+                or str(pending.get("board_namespace") or "")
+                != identity.board_namespace
+                or str(pending.get("task_binding_id") or "")
+                != task_binding_id
+                or str(pending_detail.get("started_event_id") or "")
+                != started_event_id
+                or int(
+                    pending_detail.get("started_event_sequence") or 0
+                )
+                != started_event_sequence
+                or str(pending_detail.get("authority_kind") or "")
+                != authority_kind
+                or str(pending_detail.get("authority_id") or "")
+                != str(reservation.get("authority_id") or "")
+            ):
+                return None
+            return {
+                "type": "implementation_started",
+                "event_id": started_event_id,
+                "sequence": started_event_sequence,
+                "stream_id": str(pending.get("origin_stream_id") or ""),
+                "task_id": task.task_id,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "board_namespace": identity.board_namespace,
+                "task_binding_id": task_binding_id,
+                "attempt": attempt,
+            }
         try:
             outstanding = (
                 verified_outstanding_implementation_starts_from_strict_ledger(
@@ -8089,6 +8766,312 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return None
         return dict(started) if authority is not None else None
 
+    def _verified_correction_pending_reviews(
+        self,
+        tasks: Sequence[PortalTask],
+    ) -> dict[str, dict[str, str]] | None:
+        """Project live correction proposals from the durable queue head.
+
+        Retained strict events are checked when present, but are not required:
+        the content-addressed pending transition is the archive-rotation-safe
+        witness that a strict start, provider receipt, and immutable artifact
+        were bound before mutable state was released.
+        """
+
+        chain_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_chain",
+            None,
+        )
+        authority_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_authority",
+            None,
+        )
+        if not callable(chain_reader) or not callable(authority_reader):
+            return {}
+        try:
+            strict_events = tuple(
+                _post_merge_review_runtime._strict_event_ledger(
+                    self.events_path
+                )
+            )
+            chain = tuple(chain_reader())
+        except (
+            MergeQueueIntegrityError,
+            OSError,
+            PostMergeReviewError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return None
+
+        tasks_by_id = {task.task_id: task for task in tasks}
+        local_stream_id = str(_event_stream_binding(self.events_path)[0])
+        log_root = self.implementation_log_dir.resolve()
+        strict_pending_events = [
+            event
+            for event in strict_events
+            if (
+                event.get("type")
+                == MODEL_ASSISTED_PROVIDER_REVIEW_PENDING_EVENT
+                and event.get("schema")
+                == MODEL_ASSISTED_CORRECTION_PENDING_REVIEW_SCHEMA
+            )
+        ]
+        validated: dict[str, dict[str, str]] = {}
+        ambiguous_cids: set[str] = set()
+        for record in chain:
+            if record.get("record_kind") != "correction_pending":
+                continue
+            detail = record.get("detail")
+            if not isinstance(detail, Mapping):
+                return None
+            denial_id = str(record.get("denial_id") or "")
+            try:
+                durable_state = authority_reader(denial_id)
+            except (
+                MergeQueueIntegrityError,
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ):
+                return None
+            if (
+                not isinstance(durable_state, Mapping)
+                or durable_state.get("state") != "pending_review"
+                or durable_state.get("authority_available") is not False
+                or durable_state.get("complete_feedback_available") is not True
+                or str(durable_state.get("head_record_id") or "")
+                != str(record.get("record_id") or "")
+                or durable_state.get("pending_review")
+                != {
+                    name: value
+                    for name, value in detail.items()
+                    if name != "schema"
+                }
+            ):
+                # Historical pending records which already reached a terminal
+                # state are not live and therefore authorize no latch.
+                continue
+            task = tasks_by_id.get(str(record.get("task_id") or ""))
+            if task is None:
+                continue
+            identity = self._identity_for_task(task)
+            attempt = record.get("attempt")
+            start_sequence = detail.get("started_event_sequence")
+            pending_sequence = detail.get("pending_event_sequence")
+            finding_count = detail.get("complete_finding_count")
+            material = {
+                "schema": MODEL_ASSISTED_CORRECTION_PENDING_REVIEW_SCHEMA,
+                "task_id": record.get("task_id"),
+                "canonical_task_key": record.get("canonical_task_key"),
+                "canonical_task_cid": record.get("canonical_task_cid"),
+                "board_namespace": record.get("board_namespace"),
+                "task_binding_id": record.get("task_binding_id"),
+                "attempt": attempt,
+                "origin_stream_id": record.get("origin_stream_id"),
+                "implementation_started_event_id": detail.get(
+                    "started_event_id"
+                ),
+                "implementation_started_event_sequence": start_sequence,
+                "authority_kind": detail.get("authority_kind"),
+                "authority_id": detail.get("authority_id"),
+                "authority_binding_id": detail.get(
+                    "authority_binding_id"
+                ),
+                "durable_denial_id": denial_id,
+                "pre_consumption_head_record_id": detail.get(
+                    "pre_consumption_head_record_id"
+                ),
+                "durable_consumption_record_id": detail.get(
+                    "consumption_record_id"
+                ),
+                "complete_denial_feedback_id": detail.get(
+                    "complete_feedback_id"
+                ),
+                "complete_denial_finding_count": finding_count,
+                "complete_denial_feedback_truncated": detail.get(
+                    "complete_feedback_truncated"
+                ),
+                "packet_id": detail.get("packet_id"),
+                "packet_cid": detail.get("packet_cid"),
+                "provider_receipt_id": detail.get(
+                    "provider_receipt_id"
+                ),
+                "artifact_path": detail.get("artifact_path"),
+                "artifact_id": detail.get("artifact_id"),
+                "required_review_role": detail.get(
+                    "required_review_role"
+                ),
+                "proposal_role": detail.get("proposal_role"),
+                "write_performed": detail.get("write_performed"),
+                "provider_result_admitted": detail.get(
+                    "provider_result_admitted"
+                ),
+                "attempt_consumed": detail.get("attempt_consumed"),
+                "repository_write_authorized": detail.get(
+                    "repository_write_authorized"
+                ),
+                "proof_authoritative": detail.get(
+                    "proof_authoritative"
+                ),
+                "completion_authoritative": detail.get(
+                    "completion_authoritative"
+                ),
+            }
+            if (
+                isinstance(attempt, bool)
+                or not isinstance(attempt, int)
+                or attempt < 1
+                or isinstance(start_sequence, bool)
+                or not isinstance(start_sequence, int)
+                or start_sequence < 1
+                or isinstance(pending_sequence, bool)
+                or not isinstance(pending_sequence, int)
+                or pending_sequence <= start_sequence
+                or isinstance(finding_count, bool)
+                or not isinstance(finding_count, int)
+                or finding_count < 1
+                or str(record.get("origin_stream_id") or "")
+                != local_stream_id
+                or str(record.get("canonical_task_key") or "")
+                != identity.canonical_task_key
+                or str(record.get("canonical_task_cid") or "")
+                != identity.canonical_task_cid
+                or str(record.get("board_namespace") or "")
+                != identity.board_namespace
+                or str(record.get("task_binding_id") or "")
+                != post_merge_task_binding_id(task)
+                or content_identity(material)
+                != str(detail.get("pending_binding_id") or "")
+            ):
+                continue
+
+            feedback = self._verified_complete_post_merge_denial_feedback(
+                task,
+                denial_id,
+            )
+            if (
+                not feedback
+                or str(feedback.get("feedback_binding_id") or "")
+                != str(detail.get("complete_feedback_id") or "")
+                or int(feedback.get("included_finding_count") or 0)
+                != finding_count
+                or feedback.get("truncated") is not False
+            ):
+                continue
+
+            raw_path = str(detail.get("artifact_path") or "")
+            expected_artifact_id = str(detail.get("artifact_id") or "")
+            try:
+                path = Path(raw_path)
+                if path.is_symlink():
+                    continue
+                resolved = path.resolve(strict=True)
+                resolved.relative_to(log_root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            artifact = load_json_dict(resolved)
+            proposal = (
+                artifact.get("proposal")
+                if isinstance(artifact, Mapping)
+                else None
+            )
+            if (
+                not isinstance(artifact, Mapping)
+                or artifact.get("schema")
+                != MODEL_ASSISTED_PENDING_PROPOSAL_SCHEMA
+                or not isinstance(proposal, Mapping)
+                or str(proposal.get("role") or "")
+                != ProviderRole.CODEX_QUOTA_IMPLEMENT.value
+                or str(artifact.get("artifact_id") or "")
+                != expected_artifact_id
+                or str(artifact.get("task_id") or "") != task.task_id
+                or str(artifact.get("canonical_task_cid") or "")
+                != identity.canonical_task_cid
+                or int(artifact.get("attempt") or 0) != attempt
+                or str(artifact.get("packet_id") or "")
+                != str(detail.get("packet_id") or "")
+                or str(artifact.get("provider_receipt_id") or "")
+                != str(detail.get("provider_receipt_id") or "")
+                or artifact.get("write_performed") is not False
+                or artifact.get("provider_result_admitted") is not False
+                or artifact.get("required_review_role")
+                != ProviderRole.NON_CODEX_REVIEW.value
+            ):
+                continue
+            artifact_material = dict(artifact)
+            artifact_material.pop("artifact_id", None)
+            if content_identity(artifact_material) != expected_artifact_id:
+                continue
+
+            exact_pending = [
+                event
+                for event in strict_pending_events
+                if str(event.get("event_id") or "")
+                == str(detail.get("pending_event_id") or "")
+            ]
+            conflicting_pending = [
+                event
+                for event in strict_pending_events
+                if (
+                    str(event.get("implementation_started_event_id") or "")
+                    == str(detail.get("started_event_id") or "")
+                    and str(event.get("event_id") or "")
+                    != str(detail.get("pending_event_id") or "")
+                )
+            ]
+            if conflicting_pending or len(exact_pending) > 1:
+                continue
+            if exact_pending:
+                retained = exact_pending[0]
+                if (
+                    retained.get("stream_id") != local_stream_id
+                    or int(retained.get("sequence") or 0)
+                    != pending_sequence
+                    or any(
+                        retained.get(name) != expected
+                        for name, expected in material.items()
+                    )
+                    or str(retained.get("pending_binding_id") or "")
+                    != str(detail.get("pending_binding_id") or "")
+                ):
+                    continue
+            rejected = any(
+                self._post_merge_correction_rejection_matches_pending(
+                    prior,
+                    record,
+                    detail,
+                )
+                for prior in strict_events
+            )
+            if rejected:
+                continue
+            canonical_cid = identity.canonical_task_cid
+            if canonical_cid in validated or canonical_cid in ambiguous_cids:
+                validated.pop(canonical_cid, None)
+                ambiguous_cids.add(canonical_cid)
+                continue
+            validated[canonical_cid] = {
+                **{key: str(value) for key, value in material.items()},
+                "artifact_path": str(resolved),
+                "pending_binding_id": str(
+                    detail.get("pending_binding_id") or ""
+                ),
+                "pending_event_id": str(
+                    detail.get("pending_event_id") or ""
+                ),
+                "pending_event_sequence": str(pending_sequence),
+                "durable_pending_record_id": str(
+                    record.get("record_id") or ""
+                ),
+                "correction_attempt_consumed": "true",
+            }
+        return validated
+
     def _recover_orphaned_post_merge_repair_attempts(
         self,
         *,
@@ -8104,9 +9087,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """
 
         grants = self._verified_post_merge_correction_repair_grants()
+        valid_pending_reviews = self._verified_correction_pending_reviews(
+            tasks
+        )
+        if valid_pending_reviews is None:
+            return []
+        valid_pending_started_event_ids = {
+            str(record.get("implementation_started_event_id") or "")
+            for record in valid_pending_reviews.values()
+        }
         try:
             outstanding_starts = (
                 verified_outstanding_implementation_starts_from_strict_ledger(
+                    self.events_path
+                )
+            )
+            strict_events = tuple(
+                _post_merge_review_runtime._strict_event_ledger(
                     self.events_path
                 )
             )
@@ -8120,6 +9117,79 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return []
         if grants is None:
             return []
+        pending_evidence_by_start: dict[str, Mapping[str, Any]] = {}
+        durable_pending_records: list[Mapping[str, Any]] = []
+        chain_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_chain",
+            None,
+        )
+        authority_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_authority",
+            None,
+        )
+        if callable(chain_reader) and callable(authority_reader):
+            try:
+                for record in chain_reader():
+                    if record.get("record_kind") != "correction_pending":
+                        continue
+                    detail = record.get("detail")
+                    if not isinstance(detail, Mapping):
+                        return []
+                    denial_id = str(record.get("denial_id") or "")
+                    durable_state = authority_reader(denial_id)
+                    if (
+                        not isinstance(durable_state, Mapping)
+                        or durable_state.get("state") != "pending_review"
+                        or str(durable_state.get("head_record_id") or "")
+                        != str(record.get("record_id") or "")
+                    ):
+                        continue
+                    durable_pending_records.append(record)
+                    pending_evidence_by_start[
+                        str(detail.get("started_event_id") or "")
+                    ] = {
+                        "pending_binding_id": str(
+                            detail.get("pending_binding_id") or ""
+                        ),
+                        "event_id": str(
+                            detail.get("pending_event_id") or ""
+                        ),
+                        "sequence": int(
+                            detail.get("pending_event_sequence") or 0
+                        ),
+                        "artifact_id": str(
+                            detail.get("artifact_id") or ""
+                        ),
+                        # Preserve the exact raw path committed by the queue;
+                        # the failure CAS deliberately rejects normalization.
+                        "artifact_path": str(
+                            detail.get("artifact_path") or ""
+                        ),
+                    }
+            except (
+                MergeQueueIntegrityError,
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ):
+                return []
+        for event in strict_events:
+            if (
+                event.get("type")
+                == MODEL_ASSISTED_PROVIDER_REVIEW_PENDING_EVENT
+                and event.get("schema")
+                == MODEL_ASSISTED_CORRECTION_PENDING_REVIEW_SCHEMA
+                and str(
+                    event.get("implementation_started_event_id") or ""
+                )
+            ):
+                pending_evidence_by_start.setdefault(
+                    str(event["implementation_started_event_id"]),
+                    event,
+                )
         reservations: list[dict[str, Any]] = [
             {
                 **grant,
@@ -8135,6 +9205,42 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 == int(grant.get("authorized_attempt") or 0)
             )
         ]
+        reservations.extend(
+            {
+                "authority_kind": str(
+                    record["detail"].get("authority_kind") or ""
+                ),
+                "authority_id": str(
+                    record["detail"].get("authority_id") or ""
+                ),
+                "source_task_id": str(record.get("task_id") or ""),
+                "source_canonical_task_key": str(
+                    record.get("canonical_task_key") or ""
+                ),
+                "source_canonical_task_cid": str(
+                    record.get("canonical_task_cid") or ""
+                ),
+                "source_task_binding_id": str(
+                    record.get("task_binding_id") or ""
+                ),
+                "authorized_attempt": int(record.get("attempt") or 0),
+                "consuming_attempt": int(record.get("attempt") or 0),
+                "consuming_event_id": str(
+                    record["detail"].get("started_event_id") or ""
+                ),
+                "consuming_event_sequence": int(
+                    record["detail"].get("started_event_sequence") or 0
+                ),
+                "consuming_event_type": "implementation_started",
+                "durable_denial_id": str(
+                    record.get("denial_id") or ""
+                ),
+                "durable_pending_record_id": str(
+                    record.get("record_id") or ""
+                ),
+            }
+            for record in durable_pending_records
+        )
         starts_by_task_attempt = {
             (
                 str(start.get("task_id") or ""),
@@ -8216,6 +9322,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if (
                 not started_event_id
                 or started_event_id in recovered_started_event_ids
+                or started_event_id in valid_pending_started_event_ids
             ):
                 continue
             task_id = str(
@@ -8369,6 +9476,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     current_task,
                     attempt,
                 )
+                if (
+                    state.implementation_in_progress
+                    and str(
+                        state.active_task_id
+                        or state.last_implementation_task_id
+                        or ""
+                    )
+                    == current_task.task_id
+                    and int(state.active_attempt or 0) == attempt
+                ):
+                    state.last_implementation_finished_at = utc_now()
+                    state.last_implementation_returncode = 1
+                    self._mark_implementation_finished(
+                        state,
+                        finished_at=state.last_implementation_finished_at,
+                    )
                 self.task_queue.save()
                 state.save(self.state_path)
                 terminal = self._record_event(
@@ -8407,7 +9530,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         },
                         "exception_result": {
                             "reason": (
-                                "implementation_owner_process_missing"
+                                "post_merge_correction_pending_review_invalid"
+                                if started_event_id
+                                in pending_evidence_by_start
+                                else "implementation_owner_process_missing"
                             ),
                             "recovered_from_started_event_id": (
                                 started_event_id
@@ -8420,9 +9546,49 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             ),
                         },
                         "reason": (
-                            "implementation_owner_process_missing"
+                            "post_merge_correction_pending_review_invalid"
+                            if started_event_id in pending_evidence_by_start
+                            else "implementation_owner_process_missing"
                         ),
                         "recovered_orphaned_correction_attempt": True,
+                        "invalidated_pending_review": (
+                            started_event_id in pending_evidence_by_start
+                        ),
+                        "pending_binding_id": str(
+                            pending_evidence_by_start.get(
+                                started_event_id,
+                                {},
+                            ).get("pending_binding_id")
+                            or ""
+                        ),
+                        "pending_review_event_id": str(
+                            pending_evidence_by_start.get(
+                                started_event_id,
+                                {},
+                            ).get("event_id")
+                            or ""
+                        ),
+                        "pending_review_event_sequence": int(
+                            pending_evidence_by_start.get(
+                                started_event_id,
+                                {},
+                            ).get("sequence")
+                            or 0
+                        ),
+                        "pending_proposal_artifact_id": str(
+                            pending_evidence_by_start.get(
+                                started_event_id,
+                                {},
+                            ).get("artifact_id")
+                            or ""
+                        ),
+                        "pending_proposal_path": str(
+                            pending_evidence_by_start.get(
+                                started_event_id,
+                                {},
+                            ).get("artifact_path")
+                            or ""
+                        ),
                         "correction_authority_kind": str(
                             reservation.get("authority_kind") or ""
                         ),
@@ -8515,13 +9681,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     or ""
                 )
                 == current_task_binding_id
-                and str(
-                    failure.get(
-                        "post_merge_correction_denial_id"
-                    )
-                    or ""
-                )
-                == binding["denial_id"]
+                and binding["denial_id"]
+                in {
+                    str(
+                        failure.get(
+                            "post_merge_correction_denial_id"
+                        )
+                        or ""
+                    ),
+                    str(
+                        failure.get(
+                            "post_merge_correction_source_event_id"
+                        )
+                        or ""
+                    ),
+                }
                 and int(
                     failure.get(
                         "post_merge_correction_target_attempt"
@@ -8578,6 +9752,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 identity.canonical_task_cid
             ),
             "source_task_binding_id": current_task_binding_id,
+            # Preserve the strict source-event alias carried by the generated
+            # repair task. Queue persistence independently resolves it through
+            # the exact durable failure record before minting authority.
             "denial_id": binding["denial_id"],
             "target_attempt": target_attempt,
             "failure_event_id": binding["failure_event_id"],
@@ -8688,6 +9865,38 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         verified_repair_grants = (
             self._verified_post_merge_correction_repair_grants()
         )
+        local_stream_id = str(_event_stream_binding(self.events_path)[0])
+        current_latch_subjects: set[str] = set()
+        for source_task_id, (repair_task, _failure_kind) in (
+            latest_repairs.items()
+        ):
+            repair_binding = (
+                post_merge_correction_repair_binding(repair_task)
+                if claims_post_merge_correction_repair(repair_task)
+                else {}
+            )
+            if (
+                repair_binding
+                and str(repair_binding.get("origin_stream_id") or "")
+                != local_stream_id
+            ):
+                continue
+            current_latch_subjects.add(
+                f"{source_task_id}|{repair_task.task_id}|"
+                f"{str(repair_binding.get('binding_id') or '')}"
+            )
+        reconciled_latches = {
+            subject: binding_id
+            for subject, binding_id in (
+                state.retry_budget_reset_deferral_latches.items()
+            )
+            if subject in current_latch_subjects
+        }
+        latch_projection_changed = (
+            reconciled_latches
+            != state.retry_budget_reset_deferral_latches
+        )
+        state.retry_budget_reset_deferral_latches = reconciled_latches
         queue_changed = False
         for source_task_id in sorted(latest_repairs):
             repair_task, failure_kind = latest_repairs[source_task_id]
@@ -8746,6 +9955,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if repair_claims_correction
                 else {}
             )
+            if (
+                repair_binding
+                and str(repair_binding.get("origin_stream_id") or "")
+                != local_stream_id
+            ):
+                # Correction grants are lane-local capabilities even though
+                # their generated repair tasks live on the shared board.  A
+                # peer lane has no authority to reset, defer, or wake on the
+                # origin lane's immutable repair fact.
+                continue
             existing_grant = next(
                 (
                     grant
@@ -8910,6 +10129,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     or queue_changed
                 )
             state.retry_budget_repair_receipts[source_task_id] = repair_task_id
+            latch_prefix = f"{source_task_id}|"
+            state.retry_budget_reset_deferral_latches = {
+                key: value
+                for key, value in (
+                    state.retry_budget_reset_deferral_latches.items()
+                )
+                if not key.startswith(latch_prefix)
+            }
             resets.append(
                 {
                     "source_task_id": source_task_id,
@@ -8925,8 +10152,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 }
             )
 
-        if resets:
+        if resets or latch_projection_changed:
             state.save(self.state_path)
+        if resets:
             if queue_changed:
                 self.task_queue.save()
             # Each durable repair grant must occupy a unique strict-ledger
@@ -8942,14 +10170,223 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     },
                 )
         if deferred:
-            self._record_event(
-                "task_retry_budget_reset_deferred",
-                {
-                    "deferred_count": len(deferred),
-                    "deferred": deferred,
-                },
+            self._record_retry_budget_reset_deferred_transition(
+                deferred,
+                tasks=tasks,
+                state=state,
+                failed_corrections=failed_corrections,
             )
         return resets, deferred
+
+    def _record_retry_budget_reset_deferred_transition(
+        self,
+        deferred: Sequence[Mapping[str, Any]],
+        *,
+        tasks: Sequence[PortalTask],
+        state: PortalTaskState,
+        failed_corrections: Sequence[Mapping[str, Any]] | None,
+    ) -> dict[str, Any] | None:
+        """Publish one semantic deferral transition, never a polling pulse."""
+
+        normalized = [dict(item) for item in deferred]
+        tasks_by_id = {task.task_id: task for task in tasks}
+        local_stream_id = str(_event_stream_binding(self.events_path)[0])
+        semantic_bindings: list[dict[str, Any]] = []
+        authority_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_authority",
+            None,
+        )
+        for item in normalized:
+            source_task_id = str(item.get("source_task_id") or "")
+            repair_task_id = str(item.get("repair_task_id") or "")
+            source_task = tasks_by_id.get(source_task_id)
+            repair_task = tasks_by_id.get(repair_task_id)
+            repair_binding = (
+                post_merge_correction_repair_binding(repair_task)
+                if repair_task is not None
+                else {}
+            )
+            source_identity = (
+                self._identity_for_task(source_task)
+                if source_task is not None
+                else None
+            )
+            denial_id = str(repair_binding.get("denial_id") or "")
+            durable_authority: Mapping[str, Any] = {}
+            if denial_id and callable(authority_reader):
+                try:
+                    candidate = authority_reader(denial_id)
+                except (
+                    MergeQueueIntegrityError,
+                    OSError,
+                    RuntimeError,
+                    TypeError,
+                    ValueError,
+                ):
+                    candidate = {}
+                if isinstance(candidate, Mapping):
+                    durable_authority = candidate
+            failure_event_id = str(
+                repair_binding.get("failure_event_id") or ""
+            )
+            failure_event_sequence = int(
+                repair_binding.get("failure_event_sequence") or 0
+            )
+            matching_failure = next(
+                (
+                    failure
+                    for failure in (failed_corrections or ())
+                    if (
+                        str(failure.get("task_id") or "")
+                        == source_task_id
+                        and str(
+                            failure.get("terminal_event_id")
+                            or failure.get("event_id")
+                            or ""
+                        )
+                        == failure_event_id
+                        and int(
+                            failure.get("terminal_event_sequence")
+                            or failure.get("sequence")
+                            or 0
+                        )
+                        == failure_event_sequence
+                    )
+                ),
+                {},
+            )
+            binding_material = {
+                "local_stream_id": local_stream_id,
+                "reason": str(item.get("reason") or ""),
+                "failure_kind": str(item.get("failure_kind") or ""),
+                "source_task_id": source_task_id,
+                "source_canonical_task_key": (
+                    source_identity.canonical_task_key
+                    if source_identity is not None
+                    else str(
+                        repair_binding.get(
+                            "source_canonical_task_key"
+                        )
+                        or ""
+                    )
+                ),
+                "source_canonical_task_cid": (
+                    source_identity.canonical_task_cid
+                    if source_identity is not None
+                    else str(
+                        repair_binding.get(
+                            "source_canonical_task_cid"
+                        )
+                        or ""
+                    )
+                ),
+                "source_task_binding_id": (
+                    post_merge_task_binding_id(source_task)
+                    if source_task is not None
+                    else str(
+                        repair_binding.get("source_task_binding_id")
+                        or ""
+                    )
+                ),
+                "source_attempt": (
+                    self._task_attempt_count(state, source_task)
+                    if source_task is not None
+                    else 0
+                ),
+                "repair_task_id": repair_task_id,
+                "repair_task_binding_id": str(
+                    repair_binding.get("repair_task_binding_id") or ""
+                ),
+                "repair_binding_id": str(
+                    repair_binding.get("binding_id") or ""
+                ),
+                "denial_id": denial_id,
+                "target_attempt": int(
+                    repair_binding.get("target_attempt") or 0
+                ),
+                "failure_event_id": failure_event_id,
+                "failure_event_sequence": failure_event_sequence,
+                "origin_stream_id": str(
+                    repair_binding.get("origin_stream_id") or ""
+                ),
+                "durable_failure_record_id": str(
+                    matching_failure.get("durable_correction_record_id")
+                    or matching_failure.get("record_id")
+                    or ""
+                ),
+                "durable_authority_head_record_id": str(
+                    durable_authority.get("head_record_id") or ""
+                ),
+                "durable_authority_head_ordinal": int(
+                    durable_authority.get("head_ordinal") or 0
+                ),
+                "durable_authority_state": str(
+                    durable_authority.get("state") or ""
+                ),
+                "durable_authority_state_id": str(
+                    durable_authority.get("authority_state_id") or ""
+                ),
+            }
+            semantic_subject = (
+                f"{source_task_id}|{repair_task_id}|"
+                f"{binding_material['repair_binding_id']}"
+            )
+            semantic_bindings.append(
+                {
+                    **binding_material,
+                    "semantic_subject": semantic_subject,
+                    "binding_id": content_identity(binding_material),
+                }
+            )
+        material = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "retry-budget-reset-deferral@1"
+            ),
+            "semantic_bindings": semantic_bindings,
+        }
+        deferral_id = content_identity(material)
+        transitions = {
+            str(binding["semantic_subject"]): str(binding["binding_id"])
+            for binding in semantic_bindings
+        }
+        if all(
+            state.retry_budget_reset_deferral_latches.get(subject)
+            == binding_id
+            for subject, binding_id in transitions.items()
+        ):
+            return None
+        # Seed the durable latch from any retained legacy exact payload. This
+        # makes an upgraded spinning lane passive immediately and remains
+        # safe across interleaved subjects because the new state is keyed by
+        # semantic repair identity rather than global event position.
+        try:
+            retained_events = read_jsonl_event_sources(
+                (self.events_path,),
+                include_rotated=True,
+            )
+        except (OSError, RuntimeError, TypeError, ValueError):
+            retained_events = []
+        legacy_exact = any(
+            event.get("type") == "task_retry_budget_reset_deferred"
+            and not str(event.get("deferral_id") or "")
+            and event.get("deferred") == normalized
+            for event in retained_events
+        )
+        state.retry_budget_reset_deferral_latches.update(transitions)
+        state.save(self.state_path)
+        if legacy_exact:
+            return None
+        return self._record_event(
+            "task_retry_budget_reset_deferred",
+            {
+                "deferral_id": deferral_id,
+                "deferred_count": len(normalized),
+                "deferred": normalized,
+                "semantic_bindings": semantic_bindings,
+            },
+        )
 
     def _release_completed_retry_budget_strategy_blocks(
         self,
@@ -10014,7 +11451,127 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         strategy_deprioritized_task_ids = self._strict_off_mission_deprioritized_task_ids(strategy)
         merge_skip_task_ids = status_completed_task_ids | strategy_blocked_task_ids
         live_inflight_implementation = self._find_live_inflight_implementation()
-        if previous.implementation_in_progress and live_inflight_implementation is None:
+        pre_recovery_pending_reviews = (
+            self._verified_correction_pending_reviews(tasks)
+        )
+        active_task_id = str(
+            previous.active_task_id
+            or previous.last_implementation_task_id
+            or ""
+        )
+        active_task = next(
+            (task for task in tasks if task.task_id == active_task_id),
+            None,
+        )
+        active_correction_start_binding = (
+            self._active_post_merge_correction_terminal_binding(
+                task=active_task,
+                attempt=int(previous.active_attempt or 0),
+            )
+            if (
+                active_task is not None
+                and previous.implementation_in_progress
+                and int(previous.active_attempt or 0) > 0
+            )
+            else {}
+        )
+        matching_pending_recovery: dict[str, str] = {}
+        if (
+            pre_recovery_pending_reviews is not None
+            and active_task is not None
+        ):
+            candidate_pending = pre_recovery_pending_reviews.get(
+                self._canonical_ref(active_task),
+                {},
+            )
+            if (
+                str(candidate_pending.get("task_id") or "")
+                == active_task.task_id
+                and int(candidate_pending.get("attempt") or 0)
+                == int(previous.active_attempt or 0)
+                and str(
+                    candidate_pending.get(
+                        "implementation_started_event_id"
+                    )
+                    or ""
+                )
+                == str(
+                    active_correction_start_binding.get(
+                        "implementation_started_event_id"
+                    )
+                    or ""
+                )
+                and int(
+                    candidate_pending.get(
+                        "implementation_started_event_sequence"
+                    )
+                    or 0
+                )
+                == int(
+                    active_correction_start_binding.get(
+                        "implementation_started_event_sequence"
+                    )
+                    or 0
+                )
+            ):
+                matching_pending_recovery = dict(candidate_pending)
+        if (
+            previous.implementation_in_progress
+            and live_inflight_implementation is None
+            and matching_pending_recovery
+        ):
+            recovered_state = PortalTaskState.load(self.state_path)
+            self._record_task_attempt(
+                recovered_state,
+                active_task,
+                int(previous.active_attempt),
+            )
+            recovered_state.pending_provider_reviews = {
+                **recovered_state.pending_provider_reviews,
+                self._canonical_ref(active_task): matching_pending_recovery,
+            }
+            recovered_state.last_implementation_finished_at = utc_now()
+            recovered_state.last_implementation_returncode = 1
+            recovered_state.selection_idle_reason = (
+                "post_merge_correction_non_codex_review_pending"
+            )
+            self._mark_implementation_finished(
+                recovered_state,
+                finished_at=recovered_state.last_implementation_finished_at,
+            )
+            recovered_state.save(self.state_path)
+            self._record_event(
+                "implementation_pending_state_recovered",
+                {
+                    "task_id": active_task.task_id,
+                    "attempt": int(previous.active_attempt),
+                    "attempt_consumed": True,
+                    "pending_binding_id": str(
+                        matching_pending_recovery.get("pending_binding_id")
+                        or ""
+                    ),
+                    "pending_event_id": str(
+                        matching_pending_recovery.get("pending_event_id")
+                        or ""
+                    ),
+                    "pending_event_sequence": int(
+                        matching_pending_recovery.get(
+                            "pending_event_sequence"
+                        )
+                        or 0
+                    ),
+                    **active_correction_start_binding,
+                    "reason": "pending_event_committed_before_state_save",
+                    "completion_authoritative": False,
+                    "proof_authoritative": False,
+                },
+            )
+            previous = recovered_state
+        if (
+            previous.implementation_in_progress
+            and live_inflight_implementation is None
+            and not active_correction_start_binding
+        ):
             recovered_state = PortalTaskState.load(self.state_path)
             recovered_attempt = consume_stale_active_attempt(recovered_state)
             self._clear_active_execution_state(recovered_state)
@@ -10100,13 +11657,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 tasks,
             )
         )
-        deferred_post_merge_repair_source_ids = {
-            str(item.get("source_task_id") or "")
-            for item in retry_budget_reset_deferred
-            if str(item.get("reason") or "").startswith(
-                "post_merge_correction_"
+        if retry_budget_resets:
+            # Grant persistence advances the durable correction head during
+            # this pass. Refresh the denial projection before classifying the
+            # newly reopened task; the pre-reset snapshot still reports the
+            # failed correction as non-retryable and would manufacture a
+            # one-pass waiting state.
+            refreshed_completion_denials = (
+                self._locally_authorized_post_merge_review_denials(tasks)
             )
-        }
+            local_completion_projection_available = (
+                refreshed_completion_denials is not None
+            )
+            if refreshed_completion_denials is not None:
+                local_completion_denials = refreshed_completion_denials
+                denied_completion_candidate_keys = (
+                    self._post_merge_review_completion_denial_keys(
+                        local_completion_denials
+                    )
+                )
         retry_budget_reopened_post_merge_task_ids = (
             self._retry_budget_reopened_post_merge_task_ids(
                 tasks,
@@ -10114,30 +11683,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         )
         tasks_by_id = {task.task_id: task for task in tasks}
-        bound_post_merge_repair_receipt_source_ids: set[str] = set()
-        for source_task_id, repair_task_id in (
-            previous.retry_budget_repair_receipts.items()
-        ):
-            source_task = tasks_by_id.get(str(source_task_id))
-            repair_task = tasks_by_id.get(str(repair_task_id))
-            if source_task is None or repair_task is None:
-                continue
-            binding = post_merge_correction_repair_binding(repair_task)
-            source_identity = self._identity_for_task(source_task)
-            if (
-                binding
-                and binding.get("repair_task_id") == repair_task.task_id
-                and binding.get("source_task_id") == source_task.task_id
-                and binding.get("source_canonical_task_key")
-                == source_identity.canonical_task_key
-                and binding.get("source_canonical_task_cid")
-                == source_identity.canonical_task_cid
-                and binding.get("source_task_binding_id")
-                == post_merge_task_binding_id(source_task)
-            ):
-                bound_post_merge_repair_receipt_source_ids.add(
-                    source_task.task_id
-                )
         merge_reconciliation = self._reconcile_failed_merges(
             skip_task_ids=merge_skip_task_ids,
             deprioritized_task_ids=strategy_deprioritized_task_ids,
@@ -10181,13 +11726,69 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 task,
                 corrections_by_task=active_corrections_by_task,
             )
+            durable_authority: Mapping[str, Any] = {}
+            durable_denial_id = str(
+                (correction or {}).get("durable_denial_id")
+                or (correction or {}).get("denial_id")
+                or ""
+            )
+            authority_reader = getattr(
+                self.merge_queue,
+                "verified_post_merge_correction_authority",
+                None,
+            )
+            if correction is not None and callable(authority_reader):
+                try:
+                    candidate = authority_reader(durable_denial_id)
+                except (
+                    MergeQueueIntegrityError,
+                    OSError,
+                    RuntimeError,
+                    TypeError,
+                    ValueError,
+                ):
+                    candidate = {}
+                if isinstance(candidate, Mapping):
+                    durable_authority = candidate
+            identity = self._identity_for_task(task)
             if (
                 task.task_id not in board_completed_task_ids
                 and correction is not None
+                and callable(authority_reader)
+                and durable_authority.get("authority_available") is True
+                and durable_authority.get("complete_feedback_available")
+                is True
+                and durable_authority.get("authority_kind")
+                == "review_denial"
+                and str(durable_authority.get("authority_id") or "")
+                == durable_denial_id
+                and str(durable_authority.get("task_id") or "")
+                == task.task_id
+                and str(
+                    durable_authority.get("canonical_task_key") or ""
+                )
+                == identity.canonical_task_key
+                and str(
+                    durable_authority.get("canonical_task_cid") or ""
+                )
+                == identity.canonical_task_cid
+                and str(durable_authority.get("board_namespace") or "")
+                == identity.board_namespace
+                and str(durable_authority.get("task_binding_id") or "")
+                == post_merge_task_binding_id(task)
+                and str(
+                    durable_authority.get("origin_stream_id")
+                    or ""
+                )
+                == str(_event_stream_binding(self.events_path)[0])
                 and self._task_attempt(previous, task)
                 == int(
                     correction["target_implementation_attempt"]
                 )
+                and int(
+                    durable_authority.get("authorized_attempt") or 0
+                )
+                == int(correction["target_implementation_attempt"])
             ):
                 correction_ready_task_ids.add(task.task_id)
         # A correction opens only when every integrated candidate for the
@@ -10223,16 +11824,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         denial["target_implementation_attempt"]
                     )
                 ):
-                    if (
-                        task_id
-                        in retry_budget_reopened_post_merge_task_ids
-                        or (
-                            task_id
-                            not in bound_post_merge_repair_receipt_source_ids
-                            and task_id
-                            not in deferred_post_merge_repair_source_ids
-                        )
-                    ):
+                    if task_id in retry_budget_reopened_post_merge_task_ids:
                         continue
                 # The completion row is permanently denied, but the durable
                 # attempt state is not at either its exact correction attempt
@@ -10598,6 +12190,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         state.retry_budget_repair_receipts = dict(
             previous.retry_budget_repair_receipts
+        )
+        state.retry_budget_reset_deferral_latches = dict(
+            previous.retry_budget_reset_deferral_latches
         )
         state.pending_provider_reviews = dict(pending_provider_reviews)
         revision_reset_task_ids: list[str] = []
@@ -10988,7 +12583,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """
 
         if not isinstance(records, Mapping):
-            return {}
+            records = {}
         task_ids_by_cid = {
             self._canonical_ref(task): task.task_id for task in tasks
         }
@@ -10997,6 +12592,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         for canonical_cid, raw_record in records.items():
             cid = str(canonical_cid or "").strip()
             if cid not in task_ids_by_cid or not isinstance(raw_record, Mapping):
+                continue
+            if (
+                str(raw_record.get("schema") or "")
+                == MODEL_ASSISTED_CORRECTION_PENDING_REVIEW_SCHEMA
+                or str(raw_record.get("correction_attempt_consumed") or "")
+                == "true"
+            ):
+                # Correction pending state is reconstructed exclusively from
+                # the strict event, durable authority, and immutable artifact
+                # below. Mutable state is never its source of truth.
                 continue
             raw_path = str(raw_record.get("artifact_path") or "").strip()
             expected_artifact_id = str(
@@ -11041,6 +12646,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ),
                 "packet_id": str(payload.get("packet_id") or ""),
             }
+        correction_pending = self._verified_correction_pending_reviews(tasks)
+        if correction_pending is not None:
+            validated.update(correction_pending)
         return validated
 
     def _provider_capacity_failure_from_log(self, log_path: Path) -> dict[str, Any]:
@@ -13685,6 +15293,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         result = subprocess.run(
             [
                 "git",
+                "--no-replace-objects",
                 "rev-parse",
                 "--verify",
                 f"{implementation_commit}^{{tree}}",
@@ -13693,6 +15302,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             text=True,
             capture_output=True,
             check=False,
+            env=sanitized_git_environment(),
         )
         return result.stdout.strip() if result.returncode == 0 else ""
 
@@ -20527,6 +22137,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         lifecycle_record: WorkspaceLifecycleRecord | None = None
         implementation_started = False
         implementation_started_event: dict[str, Any] = {}
+        correction_landed_route_candidate: dict[str, Any] = {}
+        production_correction_feedback: dict[str, Any] = {}
         lifecycle_race_exception = False
 
         seed_plan = self._prior_attempt_seed_plan(
@@ -20871,6 +22483,55 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                     return result
                 state.__dict__.update(asdict(refreshed_state))
+                if use_production_route:
+                    production_correction_feedback = (
+                        self._verified_complete_post_merge_denial_feedback(
+                            task,
+                            str(
+                                post_merge_correction_authority.get(
+                                    "durable_denial_id"
+                                )
+                                or ""
+                            ),
+                        )
+                    )
+                    if not production_correction_feedback:
+                        self.task_queue.defer(
+                            self._canonical_ref(task),
+                            300,
+                            reason=(
+                                "post_merge_correction_feedback_unavailable"
+                            ),
+                        )
+                        self.task_queue.save()
+                        raise WorktreeLifecycleError(
+                            "post_merge_correction_feedback_unavailable"
+                        )
+                if (
+                    use_production_route
+                    and production_landed_guard.get("guarded") is True
+                ):
+                    correction_landed_route_candidate = (
+                        self._post_merge_correction_landed_route_candidate(
+                            task,
+                            attempt=attempt,
+                            authority=post_merge_correction_authority,
+                            landed_guard=production_landed_guard,
+                            workspace_path=worktree_path,
+                        )
+                    )
+                    if not correction_landed_route_candidate:
+                        self.task_queue.defer(
+                            self._canonical_ref(task),
+                            300,
+                            reason=(
+                                "post_merge_correction_landed_route_unverified"
+                            ),
+                        )
+                        self.task_queue.save()
+                        raise WorktreeLifecycleError(
+                            "post_merge_correction_landed_route_unverified"
+                        )
             task_identity = self._identity_for_task(task)
             started_payload = {
                 "task_id": task.task_id,
@@ -20933,6 +22594,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 started_payload[
                     "post_merge_correction_authority"
                 ] = dict(post_merge_correction_authority)
+            if correction_landed_route_candidate:
+                started_payload[
+                    "post_merge_correction_landed_route_candidate_id"
+                ] = str(
+                    correction_landed_route_candidate[
+                        "route_candidate_id"
+                    ]
+                )
             # This strict-ledger reservation precedes the mutable state charge
             # and provider launch; explicit non-consuming outcomes release it.
             try:
@@ -21025,6 +22694,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 branch_name=branch_name,
             )
             implementation_started = True
+            if correction_landed_route_candidate:
+                activated_landed_route = (
+                    self._activate_post_merge_correction_landed_route(
+                        task,
+                        attempt=attempt,
+                        authority=post_merge_correction_authority or {},
+                        candidate=correction_landed_route_candidate,
+                        started_event=implementation_started_event,
+                        landed_guard=production_landed_guard,
+                    )
+                )
+                if not activated_landed_route:
+                    raise MergeQueueFenceError(
+                        "post-merge correction landed route reservation "
+                        "was not durably activated"
+                    )
+                production_landed_guard = activated_landed_route
             with log_path.open("w", encoding="utf-8") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
@@ -21144,6 +22830,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     # Injected production providers (tests/operators) may be
                     # attached on the daemon instance; otherwise the router
                     # fails closed / defers without a raw model command.
+                    production_route_callable = (
+                        self._run_production_post_merge_correction_route
+                        if production_correction_feedback
+                        else self.run_production_model_assisted_route
+                    )
                     production_route_payload = (
                         self._decision_runtime_mutation(
                             "production_provider_route",
@@ -21155,7 +22846,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 "branch": branch_name,
                                 "baseline_ref": baseline_ref,
                             },
-                            lambda: self.run_production_model_assisted_route(
+                            lambda: production_route_callable(
                                 task,
                                 attempt=attempt,
                                 workspace_path=worktree_path,
@@ -21211,6 +22902,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         and route_event.get("write_performed") is False
                         and route_event.get("provider_result_admitted") is False
                     ):
+                        pending_packet = (
+                            route_event.get("packet")
+                            if isinstance(route_event.get("packet"), Mapping)
+                            else {}
+                        )
                         pending_provider_review = {
                             "task_id": task.task_id,
                             "artifact_path": str(
@@ -21226,9 +22922,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 route_event.get("receipt_id") or ""
                             ),
                             "packet_id": str(
-                                route_event.get("packet", {}).get("packet_id")
-                                if isinstance(route_event.get("packet"), Mapping)
-                                else ""
+                                pending_packet.get("packet_id") or ""
+                            ),
+                            "packet_cid": str(
+                                pending_packet.get("packet_cid") or ""
                             ),
                         }
                     log_summary = {
@@ -22234,6 +23931,237 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
             finished_at = utc_now()
             canonical_task_cid = self._canonical_ref(task)
+            if post_merge_correction_authority:
+                # Terra authored a candidate after verified Grok quota
+                # exhaustion, but Codex cannot independently review another
+                # Codex-family author. The strict start and consumed durable
+                # authority remain a charged reservation while this exact
+                # immutable artifact awaits a genuinely non-Codex reviewer.
+                self._record_task_attempt(state, task, attempt)
+                state.last_implementation_started_at = started_at
+                state.last_implementation_finished_at = finished_at
+                state.last_implementation_returncode = 1
+                state.last_implementation_log_path = str(log_path)
+                state.last_implementation_worktree_path = str(worktree_path)
+                state.last_implementation_branch = branch_name
+                self._mark_implementation_finished(
+                    state,
+                    finished_at=finished_at,
+                )
+                identity = self._identity_for_task(task)
+                start_binding = (
+                    self._implementation_started_terminal_binding(
+                        implementation_started_event
+                    )
+                )
+                denial_id = str(
+                    post_merge_correction_authority.get(
+                        "durable_denial_id"
+                    )
+                    or ""
+                )
+                reservation = (
+                    self._verified_post_merge_correction_route_reservation(
+                        task,
+                        attempt=attempt,
+                        authority=post_merge_correction_authority,
+                    )
+                )
+                complete_feedback = (
+                    self._verified_complete_post_merge_denial_feedback(
+                        task,
+                        denial_id,
+                    )
+                )
+                artifact_path = Path(
+                    pending_provider_review["artifact_path"]
+                )
+                artifact_payload = load_json_dict(artifact_path)
+                proposal = (
+                    artifact_payload.get("proposal")
+                    if isinstance(artifact_payload, Mapping)
+                    else None
+                )
+                if (
+                    not reservation
+                    or not complete_feedback
+                    or not isinstance(artifact_payload, Mapping)
+                    or artifact_payload.get("schema")
+                    != MODEL_ASSISTED_PENDING_PROPOSAL_SCHEMA
+                    or not isinstance(proposal, Mapping)
+                    or str(proposal.get("role") or "")
+                    != ProviderRole.CODEX_QUOTA_IMPLEMENT.value
+                    or str(artifact_payload.get("artifact_id") or "")
+                    != str(pending_provider_review["artifact_id"])
+                    or str(artifact_payload.get("packet_id") or "")
+                    != str(pending_provider_review.get("packet_id") or "")
+                    or str(
+                        artifact_payload.get("provider_receipt_id") or ""
+                    )
+                    != str(
+                        pending_provider_review.get("provider_receipt_id")
+                        or ""
+                    )
+                    or artifact_payload.get("write_performed") is not False
+                    or artifact_payload.get("provider_result_admitted")
+                    is not False
+                    or str(
+                        artifact_payload.get("required_review_role") or ""
+                    )
+                    != ProviderRole.NON_CODEX_REVIEW.value
+                ):
+                    raise WorktreeLifecycleError(
+                        "post_merge_correction_pending_binding_invalid"
+                    )
+                artifact_identity_material = dict(artifact_payload)
+                artifact_identity_material.pop("artifact_id", None)
+                if content_identity(artifact_identity_material) != str(
+                    pending_provider_review["artifact_id"]
+                ):
+                    raise WorktreeLifecycleError(
+                        "post_merge_correction_pending_artifact_changed"
+                    )
+                pending_material = {
+                    "schema": MODEL_ASSISTED_CORRECTION_PENDING_REVIEW_SCHEMA,
+                    "task_id": task.task_id,
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": canonical_task_cid,
+                    "board_namespace": identity.board_namespace,
+                    "task_binding_id": post_merge_task_binding_id(task),
+                    "attempt": attempt,
+                    "origin_stream_id": str(
+                        _event_stream_binding(self.events_path)[0]
+                    ),
+                    "implementation_started_event_id": str(
+                        start_binding.get(
+                            "implementation_started_event_id"
+                        )
+                        or ""
+                    ),
+                    "implementation_started_event_sequence": int(
+                        start_binding.get(
+                            "implementation_started_event_sequence"
+                        )
+                        or 0
+                    ),
+                    "authority_kind": str(
+                        post_merge_correction_authority.get(
+                            "authority_kind"
+                        )
+                        or ""
+                    ),
+                    "authority_id": str(
+                        post_merge_correction_authority.get("authority_id")
+                        or ""
+                    ),
+                    "authority_binding_id": str(
+                        post_merge_correction_authority.get(
+                            "authority_binding_id"
+                        )
+                        or ""
+                    ),
+                    "durable_denial_id": denial_id,
+                    "pre_consumption_head_record_id": str(
+                        post_merge_correction_authority.get(
+                            "durable_authority_head_record_id"
+                        )
+                        or ""
+                    ),
+                    "durable_consumption_record_id": str(
+                        reservation.get("durable_consumption_record_id") or ""
+                    ),
+                    "complete_denial_feedback_id": str(
+                        complete_feedback.get("feedback_binding_id") or ""
+                    ),
+                    "complete_denial_finding_count": int(
+                        complete_feedback.get("included_finding_count") or 0
+                    ),
+                    "complete_denial_feedback_truncated": False,
+                    "packet_id": str(
+                        pending_provider_review.get("packet_id") or ""
+                    ),
+                    "packet_cid": str(
+                        pending_provider_review.get("packet_cid") or ""
+                    ),
+                    "provider_receipt_id": str(
+                        pending_provider_review.get("provider_receipt_id")
+                        or ""
+                    ),
+                    "artifact_path": str(
+                        pending_provider_review["artifact_path"]
+                    ),
+                    "artifact_id": str(
+                        pending_provider_review["artifact_id"]
+                    ),
+                    "required_review_role": (
+                        ProviderRole.NON_CODEX_REVIEW.value
+                    ),
+                    "proposal_role": (
+                        ProviderRole.CODEX_QUOTA_IMPLEMENT.value
+                    ),
+                    "write_performed": False,
+                    "provider_result_admitted": False,
+                    "attempt_consumed": True,
+                    "repository_write_authorized": False,
+                    "proof_authoritative": False,
+                    "completion_authoritative": False,
+                }
+                pending_binding = {
+                    **pending_material,
+                    "pending_binding_id": content_identity(pending_material),
+                }
+                pending_event = self._record_event(
+                    MODEL_ASSISTED_PROVIDER_REVIEW_PENDING_EVENT,
+                    pending_binding,
+                )
+                result = {
+                    **pending_binding,
+                    "returncode": 1,
+                    "log_path": str(log_path),
+                    "deferred": True,
+                    "pending": True,
+                    "reason": (
+                        "post_merge_correction_non_codex_review_pending"
+                    ),
+                    "provider_call_allowed": False,
+                    "pending_proposal_path": str(artifact_path.resolve()),
+                    "pending_proposal_artifact_id": str(
+                        pending_provider_review["artifact_id"]
+                    ),
+                    "pending_review_event_id": str(
+                        pending_event.get("event_id") or ""
+                    ),
+                    "pending_review_event_sequence": int(
+                        pending_event.get("sequence") or 0
+                    ),
+                    "merge_result": {
+                        "attempted": False,
+                        "merged": False,
+                        "reason": "independent_non_codex_review_unavailable",
+                    },
+                    "cleanup_result": cleanup_result,
+                }
+                state.pending_provider_reviews = {
+                    **state.pending_provider_reviews,
+                    canonical_task_cid: {
+                        **{
+                            key: str(value)
+                            for key, value in pending_binding.items()
+                        },
+                        "correction_attempt_consumed": "true",
+                        "pending_event_id": str(
+                            pending_event.get("event_id") or ""
+                        ),
+                        "pending_event_sequence": str(
+                            pending_event.get("sequence") or ""
+                        ),
+                    },
+                }
+                state.selection_idle_reason = (
+                    "post_merge_correction_non_codex_review_pending"
+                )
+                state.save(self.state_path)
+                return result
             state.pending_provider_reviews = {
                 **state.pending_provider_reviews,
                 canonical_task_cid: dict(pending_provider_review),
@@ -31298,6 +33226,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         codex_quota: Any = None,
         codex_implementation_fallback_quota: Any = None,
         enforce_provider_identity: bool = False,
+        _correction_route_capability: Any = None,
     ) -> tuple[ImplementationRoutingResult, dict[str, Any], Path]:
         """Route a bounded packet through Grok then independent Codex review.
 
@@ -31306,6 +33235,42 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         cannot self-review; absent or degraded review remains explicit and
         never sets completion authority.
         """
+
+        raw_provider_input = getattr(packet, "provider_input_payload", None)
+        if callable(raw_provider_input):
+            raw_provider_input = raw_provider_input()
+        packet_feedback = (
+            raw_provider_input.get("correction_feedback")
+            if isinstance(raw_provider_input, Mapping)
+            else None
+        )
+        if packet_feedback is not None:
+            fresh_bindings = (
+                self._fresh_post_merge_correction_capability_bindings(
+                    task,
+                    attempt=attempt,
+                    capability=_correction_route_capability,
+                    consume=True,
+                )
+            )
+            if (
+                fresh_bindings is None
+                or dict(packet_feedback) != fresh_bindings[2]
+            ):
+                raise RuntimeError(
+                    "sealed correction provider-boundary capability is stale"
+                )
+        elif _correction_route_capability is not None:
+            # Burn a genuine capability even when paired with the wrong
+            # packet. A plain/copy mapping has no authority either way.
+            _correction_route_capability_snapshot(
+                _correction_route_capability,
+                consume=True,
+            )
+            raise RuntimeError(
+                "sealed correction capability cannot authorize an ordinary "
+                "packet"
+            )
 
         router_kwargs: dict[str, Any] = {
             "grok_provider": grok_provider,
@@ -31564,11 +33529,1098 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "task_id": task.task_id,
             "baseline_ref": baseline,
             "repository_tree_id": repository_tree_id,
+            "landed_implementation_commit": str(
+                recovery.get("implementation_commit") or ""
+            ),
+            "landed_merge_commit": str(
+                recovery.get("prior_merge_commit") or ""
+            ),
+            "landed_repository_tree_id": str(
+                recovery.get("prior_repository_tree_id") or ""
+            ),
             "workspace_clean": workspace_clean,
             "recovery_reason": str(recovery.get("reason") or ""),
             "recovery_source": str(recovery.get("source") or ""),
             "recovered_gate_evidence_keys": sorted(evidence),
         }
+
+    def _verified_durable_post_merge_denial(
+        self,
+        task: PortalTask,
+        denial_id: str,
+    ) -> dict[str, Any]:
+        """Return one exact permanent denial bound to the current task."""
+
+        reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_review_denials",
+            None,
+        )
+        if not callable(reader) or not str(denial_id or ""):
+            return {}
+        try:
+            denials = tuple(reader())
+        except (
+            MergeQueueIntegrityError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return {}
+        identity = self._identity_for_task(task)
+        task_binding_id = post_merge_task_binding_id(task)
+        matching = [
+            dict(denial)
+            for denial in denials
+            if (
+                str(denial.get("denial_id") or "") == denial_id
+                and str(denial.get("target_repository_id") or "")
+                == self.merge_target_repository_id
+                and str(denial.get("target_branch") or "")
+                == self.resolved_merge_target_branch
+                and str(denial.get("task_id") or "") == task.task_id
+                and str(denial.get("canonical_task_key") or "")
+                == identity.canonical_task_key
+                and str(denial.get("canonical_task_cid") or "")
+                == identity.canonical_task_cid
+                and str(denial.get("board_namespace") or "")
+                == identity.board_namespace
+                and str(denial.get("task_binding_id") or "")
+                == task_binding_id
+                and denial.get("correction_authorized") is True
+                and denial.get("decision") == "changes_required"
+                and denial.get("repository_write_authorized") is False
+                and denial.get("proof_authoritative") is False
+                and denial.get("completion_authoritative") is False
+                and str(denial.get("source_event_id") or "")
+                and int(denial.get("source_event_sequence") or 0) > 0
+            )
+        ]
+        return matching[0] if len(matching) == 1 else {}
+
+    def _verified_complete_post_merge_denial_feedback(
+        self,
+        task: PortalTask,
+        denial_id: str,
+    ) -> dict[str, Any]:
+        """Return the durable full page after proving its strict tombstone."""
+
+        denial = self._verified_durable_post_merge_denial(task, denial_id)
+        if not denial:
+            return {}
+        manifest_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_review_denial_feedback_manifests",
+            None,
+        )
+        if not callable(manifest_reader):
+            return {}
+        try:
+            manifests = tuple(manifest_reader())
+            default_corrections = (
+                verified_post_merge_review_corrections_from_strict_ledger(
+                    self.events_path,
+                    include_superseded=True,
+                )
+            )
+            complete_corrections = (
+                verified_post_merge_review_corrections_from_strict_ledger(
+                    self.events_path,
+                    include_superseded=True,
+                    _max_projected_findings=(
+                        _post_merge_review_runtime
+                        .MAX_CORRECTION_FEEDBACK_FINDINGS
+                    ),
+                )
+            )
+        except (
+            OSError,
+            PostMergeReviewError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return {}
+        exact_fields = (
+            "task_id",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+            "task_binding_id",
+            "review_attempt",
+            "implementation_attempt",
+            "implementation_commit",
+            "merge_commit",
+            "repository_tree_id",
+            "review_receipt_id",
+            "review_request_id",
+            "review_response_id",
+            "diff_binding_id",
+            "implementer_provenance_id",
+            "correction_origin_stream_id",
+            "source_event_id",
+            "source_event_sequence",
+        )
+        default_matching = [
+            correction
+            for correction in default_corrections
+            if all(
+                correction.get(name) == denial.get(name)
+                for name in exact_fields
+            )
+        ]
+        complete_matching = [
+            correction
+            for correction in complete_corrections
+            if all(
+                correction.get(name) == denial.get(name)
+                for name in exact_fields
+            )
+        ]
+        manifest_matching = [
+            dict(manifest)
+            for manifest in manifests
+            if str(manifest.get("denial_id") or "") == denial_id
+        ]
+        if len(manifest_matching) != 1:
+            return {}
+        manifest = manifest_matching[0]
+        # While the source event is retained, independently re-derive both
+        # projections.  The default projection must be the exact durable
+        # 4-of-N tombstone; the private projection must equal the immutable
+        # N-of-N page.  Once retention removes the event, the queue verifier
+        # above preserves those same prefix/root checks durably.
+        if bool(default_matching) != bool(complete_matching):
+            return {}
+        if default_matching:
+            if len(default_matching) != 1 or len(complete_matching) != 1:
+                return {}
+            projected_tombstone = default_matching[0]
+            tombstone_fields = (
+                "target_implementation_attempt",
+                "source_finding_count",
+                "included_finding_count",
+                "truncated",
+                "findings",
+            )
+            if any(
+                projected_tombstone.get(name) != denial.get(name)
+                for name in tombstone_fields
+            ):
+                return {}
+            correction = complete_matching[0]
+            manifest_fields = (
+                "source_event_id",
+                "source_event_sequence",
+                "target_implementation_attempt",
+                "source_finding_count",
+                "included_finding_count",
+                "truncated",
+                "findings",
+            )
+            if any(
+                correction.get(name) != manifest.get(name)
+                for name in manifest_fields
+            ):
+                return {}
+        findings = [
+            dict(finding)
+            for finding in list(manifest.get("findings") or ())
+            if isinstance(finding, Mapping)
+        ]
+        source_count = int(manifest.get("source_finding_count") or 0)
+        included_count = int(
+            manifest.get("included_finding_count") or 0
+        )
+        if (
+            source_count < 1
+            or included_count != source_count
+            or len(findings) != source_count
+            or manifest.get("truncated") is not False
+            or any(
+                not str(finding.get("finding_id") or "")
+                or not str(finding.get("code") or "")
+                or not str(finding.get("summary") or "")
+                for finding in findings
+            )
+        ):
+            return {}
+        material = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "complete-post-merge-denial-feedback@1"
+            ),
+            "durable_denial_id": denial_id,
+            "task_id": task.task_id,
+            "canonical_task_key": str(denial["canonical_task_key"]),
+            "canonical_task_cid": str(denial["canonical_task_cid"]),
+            "board_namespace": str(denial["board_namespace"]),
+            "task_binding_id": str(denial["task_binding_id"]),
+            "review_attempt": int(denial["review_attempt"]),
+            "source_implementation_attempt": int(
+                denial["implementation_attempt"]
+            ),
+            "implementation_commit": str(denial["implementation_commit"]),
+            "merge_commit": str(denial["merge_commit"]),
+            "repository_tree_id": str(denial["repository_tree_id"]),
+            "review_receipt_id": str(denial["review_receipt_id"]),
+            "review_request_id": str(denial["review_request_id"]),
+            "review_response_id": str(denial["review_response_id"]),
+            "diff_binding_id": str(denial["diff_binding_id"]),
+            "correction_origin_stream_id": str(
+                denial["correction_origin_stream_id"]
+            ),
+            "source_event_id": str(denial["source_event_id"]),
+            "source_event_sequence": int(denial["source_event_sequence"]),
+            "source_finding_count": source_count,
+            "included_finding_count": included_count,
+            "truncated": False,
+            "findings": findings,
+            "source_reverified_from_strict_ledger": True,
+            "evidence_only": True,
+            "edit_scope_expansion_authorized": False,
+            "repository_write_authorized": False,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+        return {
+            **material,
+            "feedback_binding_id": content_identity(material),
+        }
+
+    def _validated_complete_denial_feedback_from_authority(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        authority: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Validate the complete strict-ledger feedback carried by a dispatch."""
+
+        raw_feedback = authority.get("complete_denial_feedback")
+        if not isinstance(raw_feedback, Mapping):
+            return {}
+        authority_material = dict(authority)
+        authority_binding_id = str(
+            authority_material.pop("authority_binding_id", "") or ""
+        )
+        feedback = dict(raw_feedback)
+        material = dict(feedback)
+        feedback_binding_id = str(
+            material.pop("feedback_binding_id", "") or ""
+        )
+        findings = feedback.get("findings")
+        identity = self._identity_for_task(task)
+        if (
+            not authority_binding_id
+            or content_identity(authority_material) != authority_binding_id
+            or authority_material.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "post-merge-correction-dispatch-authority@1"
+            )
+            or authority_material.get("authority_kind")
+            not in {"review_denial", "repair_grant"}
+            or not str(authority_material.get("authority_id") or "")
+            or str(authority_material.get("task_id") or "")
+            != task.task_id
+            or str(authority_material.get("canonical_task_key") or "")
+            != identity.canonical_task_key
+            or str(authority_material.get("canonical_task_cid") or "")
+            != identity.canonical_task_cid
+            or str(authority_material.get("board_namespace") or "")
+            != identity.board_namespace
+            or str(authority_material.get("task_binding_id") or "")
+            != post_merge_task_binding_id(task)
+            or int(authority_material.get("authorized_attempt") or 0)
+            != int(attempt)
+            or str(authority_material.get("origin_stream_id") or "")
+            != str(_event_stream_binding(self.events_path)[0])
+            or str(authority_material.get("target_repository_id") or "")
+            != self.merge_target_repository_id
+            or str(authority_material.get("target_branch") or "")
+            != self.resolved_merge_target_branch
+            or not str(
+                authority_material.get("durable_denial_id") or ""
+            )
+            or not str(
+                authority_material.get(
+                    "durable_authority_head_record_id"
+                )
+                or ""
+            )
+            or not feedback_binding_id
+            or content_identity(material) != feedback_binding_id
+            or material.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "complete-post-merge-denial-feedback@1"
+            )
+            or str(material.get("durable_denial_id") or "")
+            != str(authority.get("durable_denial_id") or "")
+            or str(material.get("task_id") or "") != task.task_id
+            or str(material.get("canonical_task_key") or "")
+            != identity.canonical_task_key
+            or str(material.get("canonical_task_cid") or "")
+            != identity.canonical_task_cid
+            or str(material.get("board_namespace") or "")
+            != identity.board_namespace
+            or str(material.get("task_binding_id") or "")
+            != post_merge_task_binding_id(task)
+            or str(material.get("implementation_commit") or "")
+            != str(authority.get("implementation_commit") or "")
+            or str(material.get("merge_commit") or "")
+            != str(authority.get("merge_commit") or "")
+            or str(material.get("repository_tree_id") or "")
+            != str(authority.get("repository_tree_id") or "")
+            or str(material.get("review_receipt_id") or "")
+            != str(authority.get("review_receipt_id") or "")
+            or str(material.get("diff_binding_id") or "")
+            != str(authority.get("diff_binding_id") or "")
+            or str(material.get("source_event_id") or "")
+            != str(authority.get("source_event_id") or "")
+            or str(material.get("correction_origin_stream_id") or "")
+            != str(authority.get("origin_stream_id") or "")
+            or int(material.get("source_event_sequence") or 0)
+            != int(authority.get("source_event_sequence") or 0)
+            or int(material.get("review_attempt") or 0)
+            != int(authority.get("review_attempt") or 0)
+            or int(material.get("source_implementation_attempt") or 0)
+            != int(
+                authority.get("source_implementation_attempt") or 0
+            )
+            or isinstance(attempt, bool)
+            or int(authority.get("authorized_attempt") or 0)
+            != int(attempt)
+            or not isinstance(findings, list)
+            or not findings
+            or int(material.get("source_finding_count") or 0)
+            != len(findings)
+            or int(material.get("included_finding_count") or 0)
+            != len(findings)
+            or material.get("truncated") is not False
+            or material.get("source_reverified_from_strict_ledger") is not True
+            or material.get("evidence_only") is not True
+            or material.get("edit_scope_expansion_authorized") is not False
+            or material.get("repository_write_authorized") is not False
+            or material.get("proof_authoritative") is not False
+            or material.get("completion_authoritative") is not False
+        ):
+            return {}
+        return feedback
+
+    def _post_merge_correction_landed_route_candidate(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        authority: Mapping[str, Any],
+        landed_guard: Mapping[str, Any],
+        workspace_path: Path,
+    ) -> dict[str, Any]:
+        """Preflight an exact landed correction; this is not yet authority."""
+
+        if landed_guard.get("guarded") is not True:
+            return {}
+        authority_material = dict(authority)
+        authority_binding_id = str(
+            authority_material.pop("authority_binding_id", "") or ""
+        )
+        try:
+            authority_binding_valid = (
+                bool(authority_binding_id)
+                and content_identity(authority_material)
+                == authority_binding_id
+            )
+        except (TypeError, ValueError):
+            authority_binding_valid = False
+        identity = self._identity_for_task(task)
+        task_binding_id = post_merge_task_binding_id(task)
+        authority_kind = str(
+            authority_material.get("authority_kind") or ""
+        )
+        denial_id = str(
+            authority_material.get("durable_denial_id") or ""
+        )
+        if (
+            not authority_binding_valid
+            or authority_material.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "post-merge-correction-dispatch-authority@1"
+            )
+            or authority_kind not in {"review_denial", "repair_grant"}
+            or not denial_id
+            or int(authority_material.get("authorized_attempt") or 0)
+            != int(attempt)
+            or str(authority_material.get("task_id") or "")
+            != task.task_id
+            or str(authority_material.get("canonical_task_key") or "")
+            != identity.canonical_task_key
+            or str(authority_material.get("canonical_task_cid") or "")
+            != identity.canonical_task_cid
+            or str(authority_material.get("board_namespace") or "")
+            != identity.board_namespace
+            or str(authority_material.get("task_binding_id") or "")
+            != task_binding_id
+            or str(authority_material.get("target_repository_id") or "")
+            != self.merge_target_repository_id
+            or str(authority_material.get("target_branch") or "")
+            != self.resolved_merge_target_branch
+            or not str(
+                authority_material.get(
+                    "durable_authority_head_record_id"
+                )
+                or ""
+            )
+            or not str(
+                authority_material.get("durable_authority_state_id")
+                or ""
+            )
+        ):
+            return {}
+        denial = self._verified_durable_post_merge_denial(
+            task,
+            denial_id,
+        )
+        complete_feedback = (
+            self._verified_complete_post_merge_denial_feedback(
+                task,
+                denial_id,
+            )
+        )
+        authority_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_authority",
+            None,
+        )
+        if (
+            not denial
+            or not complete_feedback
+            or not callable(authority_reader)
+        ):
+            return {}
+        try:
+            durable_authority = authority_reader(denial_id)
+        except (
+            MergeQueueIntegrityError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return {}
+        exact_denial_fields = (
+            "implementation_commit",
+            "merge_commit",
+            "repository_tree_id",
+            "review_receipt_id",
+            "diff_binding_id",
+            "source_event_id",
+        )
+        if (
+            not isinstance(durable_authority, Mapping)
+            or durable_authority.get("authority_available") is not True
+            or str(durable_authority.get("denial_id") or "")
+            != denial_id
+            or str(durable_authority.get("authority_kind") or "")
+            != authority_kind
+            or str(durable_authority.get("authority_id") or "")
+            != str(authority_material.get("authority_id") or "")
+            or int(durable_authority.get("authorized_attempt") or 0)
+            != int(attempt)
+            or str(durable_authority.get("head_record_id") or "")
+            != str(
+                authority_material.get(
+                    "durable_authority_head_record_id"
+                )
+                or ""
+            )
+            or int(durable_authority.get("head_ordinal") or 0)
+            != int(
+                authority_material.get(
+                    "durable_authority_head_ordinal"
+                )
+                or 0
+            )
+            or str(durable_authority.get("authority_state_id") or "")
+            != str(
+                authority_material.get("durable_authority_state_id")
+                or ""
+            )
+            or str(durable_authority.get("origin_stream_id") or "")
+            != str(denial.get("correction_origin_stream_id") or "")
+            or str(authority_material.get("origin_stream_id") or "")
+            != str(denial.get("correction_origin_stream_id") or "")
+            or str(authority_material.get("origin_stream_id") or "")
+            != str(_event_stream_binding(self.events_path)[0])
+            or any(
+                str(authority_material.get(name) or "")
+                != str(denial.get(name) or "")
+                for name in exact_denial_fields
+            )
+            or int(
+                authority_material.get("source_event_sequence") or 0
+            )
+            != int(denial.get("source_event_sequence") or 0)
+            or int(authority_material.get("review_attempt") or 0)
+            != int(denial.get("review_attempt") or 0)
+            or int(
+                authority_material.get("source_implementation_attempt")
+                or 0
+            )
+            != int(denial.get("implementation_attempt") or 0)
+        ):
+            return {}
+        baseline_ref = str(landed_guard.get("baseline_ref") or "")
+        baseline_tree = self._candidate_repository_tree(baseline_ref)
+        baseline_tree_id = f"git-tree:{baseline_tree}" if baseline_tree else ""
+        workspace_head = self._resolve_git_commit_in_repo(
+            workspace_path,
+            "HEAD",
+        )
+        expected_workspace_head = str(
+            authority_material.get("recovery_seed_ref") or baseline_ref
+        )
+        safe_output_paths: list[str] = []
+        for raw_path in task.outputs:
+            value = str(raw_path or "").strip()
+            path = PurePosixPath(value)
+            if (
+                not value
+                or "\\" in value
+                or "\x00" in value
+                or path.is_absolute()
+                or value != path.as_posix()
+                or value in {".", ".."}
+                or ".." in path.parts
+            ):
+                return {}
+            safe_output_paths.append(value)
+        if not safe_output_paths:
+            return {}
+        task_leaf_compatibility = subprocess.run(
+            [
+                "git",
+                "--literal-pathspecs",
+                "-c",
+                "diff.external=",
+                "-c",
+                "diff.trustExitCode=false",
+                "diff",
+                "--quiet",
+                "--no-ext-diff",
+                "--no-textconv",
+                str(denial["merge_commit"]),
+                baseline_ref,
+                "--",
+                *safe_output_paths,
+            ],
+            cwd=self.repo_root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=sanitized_git_environment(),
+            check=False,
+        )
+        if (
+            landed_guard.get("workspace_clean") is not True
+            or str(landed_guard.get("recovery_reason") or "")
+            != "recovered_implementation_binding"
+            or not str(landed_guard.get("recovery_source") or "")
+            or str(
+                landed_guard.get("landed_implementation_commit") or ""
+            )
+            != str(denial["implementation_commit"])
+            or str(landed_guard.get("landed_merge_commit") or "")
+            != str(denial["merge_commit"])
+            or str(
+                landed_guard.get("landed_repository_tree_id") or ""
+            )
+            != str(denial["repository_tree_id"])
+            or not baseline_ref
+            or baseline_tree_id
+            != str(landed_guard.get("repository_tree_id") or "")
+            or workspace_head != expected_workspace_head
+            or task_leaf_compatibility.returncode != 0
+            or not self._git_ref_is_ancestor(
+                str(denial["implementation_commit"]),
+                str(denial["merge_commit"]),
+            )
+            or not self._git_ref_is_ancestor(
+                str(denial["merge_commit"]),
+                baseline_ref,
+            )
+            or (
+                "git-tree:"
+                + self._candidate_repository_tree(
+                    str(denial["merge_commit"])
+                )
+            )
+            != str(denial["repository_tree_id"])
+        ):
+            return {}
+        material = {
+            "schema": POST_MERGE_CORRECTION_LANDED_ROUTE_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "task_binding_id": task_binding_id,
+            "authorized_attempt": int(attempt),
+            "authority_kind": authority_kind,
+            "authority_id": str(authority_material["authority_id"]),
+            "authority_binding_id": authority_binding_id,
+            "durable_denial_id": denial_id,
+            "durable_authority_head_record_id": str(
+                durable_authority["head_record_id"]
+            ),
+            "durable_authority_state_id": str(
+                durable_authority["authority_state_id"]
+            ),
+            "implementation_commit": str(denial["implementation_commit"]),
+            "merge_commit": str(denial["merge_commit"]),
+            "repository_tree_id": str(denial["repository_tree_id"]),
+            "review_receipt_id": str(denial["review_receipt_id"]),
+            "diff_binding_id": str(denial["diff_binding_id"]),
+            "source_event_id": str(denial["source_event_id"]),
+            "source_event_sequence": int(denial["source_event_sequence"]),
+            "review_attempt": int(denial["review_attempt"]),
+            "source_implementation_attempt": int(
+                denial["implementation_attempt"]
+            ),
+            "baseline_ref": baseline_ref,
+            "baseline_repository_tree_id": baseline_tree_id,
+            "workspace_head": workspace_head,
+            "source_finding_count": int(
+                denial["source_finding_count"]
+            ),
+            "included_finding_count": int(
+                denial["included_finding_count"]
+            ),
+            "source_findings_truncated": bool(denial["truncated"]),
+            "complete_denial_feedback_id": str(
+                complete_feedback["feedback_binding_id"]
+            ),
+            "fresh_independent_review_required": True,
+            "denial_completion_authoritative": False,
+            "denial_proof_authoritative": False,
+        }
+        return {
+            **material,
+            "route_candidate_id": content_identity(material),
+        }
+
+    def _activate_post_merge_correction_landed_route(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        authority: Mapping[str, Any],
+        candidate: Mapping[str, Any],
+        started_event: Mapping[str, Any],
+        landed_guard: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Activate a bypass only after the strict start CAS is durable."""
+
+        candidate_material = dict(candidate)
+        route_candidate_id = str(
+            candidate_material.pop("route_candidate_id", "") or ""
+        )
+        authority_binding_id = str(
+            authority.get("authority_binding_id") or ""
+        )
+        if (
+            not route_candidate_id
+            or content_identity(candidate_material) != route_candidate_id
+            or candidate_material.get("schema")
+            != POST_MERGE_CORRECTION_LANDED_ROUTE_SCHEMA
+            or candidate_material.get("authority_binding_id")
+            != authority_binding_id
+            or started_event.get("type") != "implementation_started"
+            or str(started_event.get("task_id") or "") != task.task_id
+            or int(started_event.get("attempt") or 0) != int(attempt)
+            or str(
+                started_event.get(
+                    "post_merge_correction_landed_route_candidate_id"
+                )
+                or ""
+            )
+            != route_candidate_id
+            or str(
+                (
+                    started_event.get("post_merge_correction_authority")
+                    or {}
+                ).get("authority_binding_id")
+                if isinstance(
+                    started_event.get("post_merge_correction_authority"),
+                    Mapping,
+                )
+                else ""
+            )
+            != authority_binding_id
+        ):
+            return {}
+        denial_id = str(candidate.get("durable_denial_id") or "")
+        chain_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_chain",
+            None,
+        )
+        authority_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_authority",
+            None,
+        )
+        if not callable(chain_reader) or not callable(authority_reader):
+            return {}
+        try:
+            chain = tuple(chain_reader(denial_id))
+            durable_state = authority_reader(denial_id)
+        except (
+            MergeQueueIntegrityError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return {}
+        identity = self._identity_for_task(task)
+        task_binding_id = post_merge_task_binding_id(task)
+        started_event_id = str(started_event.get("event_id") or "")
+        started_sequence = int(started_event.get("sequence") or 0)
+        matching = []
+        for record in chain:
+            detail = record.get("detail")
+            if (
+                record.get("record_kind")
+                not in {"denial_consumed", "grant_consumed"}
+                or str(record.get("denial_id") or "") != denial_id
+                or str(record.get("task_id") or "") != task.task_id
+                or str(record.get("canonical_task_key") or "")
+                != identity.canonical_task_key
+                or str(record.get("canonical_task_cid") or "")
+                != identity.canonical_task_cid
+                or str(record.get("board_namespace") or "")
+                != identity.board_namespace
+                or str(record.get("task_binding_id") or "")
+                != task_binding_id
+                or int(record.get("attempt") or 0) != int(attempt)
+                or str(record.get("parent_record_id") or "")
+                != str(
+                    authority.get("durable_authority_head_record_id") or ""
+                )
+                or not isinstance(detail, Mapping)
+                or str(detail.get("authority_kind") or "")
+                != str(authority.get("authority_kind") or "")
+                or str(detail.get("authority_id") or "")
+                != str(authority.get("authority_id") or "")
+                or str(detail.get("started_event_id") or "")
+                != started_event_id
+                or int(detail.get("started_event_sequence") or 0)
+                != started_sequence
+            ):
+                continue
+            matching.append(record)
+        if (
+            len(matching) != 1
+            or not isinstance(durable_state, Mapping)
+            or durable_state.get("authority_available") is not False
+            or durable_state.get("complete_feedback_available") is not True
+            or durable_state.get("state") != "consumed"
+            or str(durable_state.get("head_record_id") or "")
+            != str(matching[0].get("record_id") or "")
+        ):
+            return {}
+        reservation = {
+            "record_id": str(matching[0]["record_id"]),
+            "started_event_id": started_event_id,
+            "started_event_sequence": started_sequence,
+        }
+        complete_feedback = (
+            self._verified_complete_post_merge_denial_feedback(
+                task,
+                denial_id,
+            )
+        )
+        if (
+            not complete_feedback
+            or str(complete_feedback.get("feedback_binding_id") or "")
+            != str(candidate.get("complete_denial_feedback_id") or "")
+        ):
+            return {}
+        capability_material = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "sealed-post-merge-correction-route@1"
+            ),
+            "task_id": task.task_id,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "task_binding_id": task_binding_id,
+            "attempt": int(attempt),
+            "authority_binding_id": authority_binding_id,
+            "durable_denial_id": denial_id,
+            "complete_denial_feedback_id": str(
+                complete_feedback["feedback_binding_id"]
+            ),
+            "pre_consumption_head_record_id": str(
+                authority.get("durable_authority_head_record_id") or ""
+            ),
+            "consumption_record_id": reservation["record_id"],
+            "implementation_started_event_id": started_event_id,
+            "implementation_started_event_sequence": started_sequence,
+            "authority": dict(authority),
+        }
+        capability_id = content_identity(capability_material)
+        capability_key = (
+            identity.canonical_task_cid,
+            int(attempt),
+            started_event_id,
+        )
+        capability = _LivePostMergeCorrectionRouteCapability(
+            {
+                **capability_material,
+                "capability_id": capability_id,
+            }
+        )
+        with self._post_merge_correction_route_registry_lock:
+            if capability_key in self._sealed_post_merge_correction_routes:
+                return {}
+            self._sealed_post_merge_correction_routes[capability_key] = (
+                capability
+            )
+        return {
+            **dict(landed_guard),
+            "guarded": False,
+            "action": "post_merge_correction_implementation_route_allowed",
+            "invoke_grok_implementation": True,
+            "invoke_codex_review": True,
+            "provider_review_pending": False,
+            "legacy_fallback_counts_as_review": False,
+            "reason": "exact_post_merge_correction_reservation",
+            "post_merge_correction_route": dict(candidate),
+            "post_merge_correction_reservation": reservation,
+            "fresh_independent_review_required": True,
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+        }
+
+    def _verified_post_merge_correction_route_reservation(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        authority: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Reverify the exact consumed start before any provider invocation."""
+
+        denial_id = str(authority.get("durable_denial_id") or "")
+        chain_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_chain",
+            None,
+        )
+        authority_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_authority",
+            None,
+        )
+        if not denial_id or not callable(chain_reader) or not callable(
+            authority_reader
+        ):
+            return {}
+        try:
+            chain = tuple(chain_reader(denial_id))
+            durable_state = authority_reader(denial_id)
+            outstanding = tuple(
+                verified_outstanding_implementation_starts_from_strict_ledger(
+                    self.events_path
+                )
+            )
+        except (
+            MergeQueueIntegrityError,
+            OSError,
+            PostMergeReviewError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return {}
+        identity = self._identity_for_task(task)
+        task_binding_id = post_merge_task_binding_id(task)
+        matching_records: list[Mapping[str, Any]] = []
+        for record in chain:
+            detail = record.get("detail")
+            if (
+                record.get("record_kind")
+                not in {"denial_consumed", "grant_consumed"}
+                or str(record.get("denial_id") or "") != denial_id
+                or str(record.get("task_id") or "") != task.task_id
+                or str(record.get("canonical_task_key") or "")
+                != identity.canonical_task_key
+                or str(record.get("canonical_task_cid") or "")
+                != identity.canonical_task_cid
+                or str(record.get("board_namespace") or "")
+                != identity.board_namespace
+                or str(record.get("task_binding_id") or "")
+                != task_binding_id
+                or int(record.get("attempt") or 0) != int(attempt)
+                or str(record.get("parent_record_id") or "")
+                != str(
+                    authority.get("durable_authority_head_record_id") or ""
+                )
+                or not isinstance(detail, Mapping)
+                or str(detail.get("authority_kind") or "")
+                != str(authority.get("authority_kind") or "")
+                or str(detail.get("authority_id") or "")
+                != str(authority.get("authority_id") or "")
+                or not str(detail.get("started_event_id") or "")
+                or int(detail.get("started_event_sequence") or 0) < 1
+            ):
+                continue
+            matching_records.append(record)
+        if (
+            len(matching_records) != 1
+            or not isinstance(durable_state, Mapping)
+            or durable_state.get("authority_available") is not False
+            or durable_state.get("complete_feedback_available") is not True
+            or durable_state.get("state") != "consumed"
+            or str(durable_state.get("head_record_id") or "")
+            != str(matching_records[0].get("record_id") or "")
+            or str(durable_state.get("origin_stream_id") or "")
+            != str(_event_stream_binding(self.events_path)[0])
+            or str(durable_state.get("authority_kind") or "")
+            != str(authority.get("authority_kind") or "")
+            or str(durable_state.get("authority_id") or "")
+            != str(authority.get("authority_id") or "")
+            or int(durable_state.get("authorized_attempt") or 0)
+            != int(attempt)
+        ):
+            return {}
+        detail = matching_records[0]["detail"]
+        matching_starts = [
+            start
+            for start in outstanding
+            if (
+                str(start.get("event_id") or "")
+                == str(detail.get("started_event_id") or "")
+                and int(start.get("sequence") or 0)
+                == int(detail.get("started_event_sequence") or 0)
+                and str(start.get("task_id") or "") == task.task_id
+                and int(start.get("attempt") or 0) == int(attempt)
+                and str(start.get("canonical_task_key") or "")
+                == identity.canonical_task_key
+                and str(
+                    start.get("canonical_task_cid")
+                    or start.get("canonical_task_id")
+                    or ""
+                )
+                == identity.canonical_task_cid
+                and str(start.get("board_namespace") or "")
+                == identity.board_namespace
+                and str(start.get("task_binding_id") or "")
+                == task_binding_id
+                and start.get("post_merge_correction_authority")
+                == dict(authority)
+            )
+        ]
+        if len(matching_starts) != 1:
+            return {}
+        return {
+            "durable_consumption_record_id": str(
+                matching_records[0]["record_id"]
+            ),
+            "implementation_started_event_id": str(
+                matching_starts[0]["event_id"]
+            ),
+            "implementation_started_event_sequence": int(
+                matching_starts[0]["sequence"]
+            ),
+        }
+
+    def _fresh_post_merge_correction_capability_bindings(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        capability: Any,
+        consume: bool,
+    ) -> tuple[
+        dict[str, Any],
+        dict[str, Any],
+        dict[str, Any],
+        dict[str, Any],
+    ] | None:
+        """Validate a live seal and freshly re-read its durable bindings."""
+
+        snapshot = _correction_route_capability_snapshot(
+            capability,
+            consume=consume,
+        )
+        if snapshot is None:
+            return None
+        authority = snapshot.get("authority")
+        if not isinstance(authority, Mapping):
+            return None
+        authority = dict(authority)
+        authority_material = dict(authority)
+        authority_binding_id = str(
+            authority_material.pop("authority_binding_id", "") or ""
+        )
+        identity = self._identity_for_task(task)
+        denial_id = str(snapshot.get("durable_denial_id") or "")
+        if (
+            snapshot.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "sealed-post-merge-correction-route@1"
+            )
+            or snapshot.get("task_id") != task.task_id
+            or snapshot.get("canonical_task_cid")
+            != identity.canonical_task_cid
+            or snapshot.get("task_binding_id")
+            != post_merge_task_binding_id(task)
+            or int(snapshot.get("attempt") or 0) != int(attempt)
+            or not denial_id
+            or not authority_binding_id
+            or content_identity(authority_material) != authority_binding_id
+            or snapshot.get("authority_binding_id")
+            != authority_binding_id
+            or str(authority.get("durable_denial_id") or "") != denial_id
+            or str(authority.get("task_id") or "") != task.task_id
+            or int(authority.get("authorized_attempt") or 0)
+            != int(attempt)
+        ):
+            return None
+        # These are independent durable re-reads.  The feedback copy carried
+        # by the historical start/authority is never used as provider input.
+        feedback = self._verified_complete_post_merge_denial_feedback(
+            task,
+            denial_id,
+        )
+        reservation = self._verified_post_merge_correction_route_reservation(
+            task,
+            attempt=attempt,
+            authority=authority,
+        )
+        if (
+            not feedback
+            or not reservation
+            or str(feedback.get("feedback_binding_id") or "")
+            != str(snapshot.get("complete_denial_feedback_id") or "")
+            or str(reservation.get("durable_consumption_record_id") or "")
+            != str(snapshot.get("consumption_record_id") or "")
+            or str(reservation.get("implementation_started_event_id") or "")
+            != str(snapshot.get("implementation_started_event_id") or "")
+            or int(
+                reservation.get("implementation_started_event_sequence") or 0
+            )
+            != int(
+                snapshot.get("implementation_started_event_sequence") or 0
+            )
+        ):
+            return None
+        return snapshot, authority, feedback, reservation
 
     def _current_production_snapshot_id(
         self,
@@ -31649,6 +34701,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         attempt: int = 0,
         workspace_path: Path | None = None,
         baseline_ref: str = "",
+        correction_feedback: Mapping[str, Any] | None = None,
+        max_provider_prompt_tokens: int | None = None,
     ) -> ProductionContractPacket:
         """Compile one task-bound packet with exact bounded source context."""
 
@@ -31677,6 +34731,30 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             task,
             write_paths=write_paths,
         )
+        configured_prompt_tokens = min(
+            4096,
+            int(
+                max_provider_prompt_tokens
+                or getattr(
+                    self,
+                    "production_provider_context_budget_tokens",
+                    0,
+                )
+                or 4096
+            ),
+        )
+        reserved_prompt_tokens = DEFAULT_RESERVED_PROMPT_TOKENS
+        if correction_feedback is not None:
+            # The same complete feedback page appears once in the implementer
+            # packet and once in the reviewer's bounded evidence slice.  The
+            # base reserve already covers either outer envelope and a bounded
+            # proposal; add the exact canonical field cost plus punctuation
+            # slack before allocating any source context.
+            feedback_frame = canonical_json(
+                {"correction_feedback": dict(correction_feedback)}
+            ).encode("utf-8")
+            feedback_tokens = max(1, (len(feedback_frame) + 3) // 4)
+            reserved_prompt_tokens += feedback_tokens + 32
         try:
             context_read_paths = derive_production_context_read_paths(
                 repo_root=workspace,
@@ -31691,17 +34769,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 effect_paths=write_paths,
                 baseline_ref=context_baseline,
                 symbol_hints=raw_symbol_hints,
-                max_provider_prompt_tokens=min(
-                    4096,
-                    int(
-                        getattr(
-                            self,
-                            "production_provider_context_budget_tokens",
-                            0,
-                        )
-                        or 4096
-                    ),
-                ),
+                max_provider_prompt_tokens=configured_prompt_tokens,
+                reserved_prompt_tokens=reserved_prompt_tokens,
             )
         except ProductionContextSliceError as exc:
             raise ProviderRoutingError(
@@ -31729,6 +34798,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         payload = dict(packet.payload)
         payload["context_slice"] = context_manifest.to_dict()
+        if correction_feedback is not None:
+            payload["correction_feedback"] = dict(correction_feedback)
         return ProductionContractPacket(
             packet_id=packet.packet_id,
             snapshot_id=packet.snapshot_id,
@@ -31744,6 +34815,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         workspace_path: Path,
         baseline_ref: str = "",
+        expected_correction_feedback: Mapping[str, Any] | None = None,
     ) -> tuple[Any, dict[str, Any], tuple[str, ...], tuple[str, ...], Any, str]:
         """Reconstruct operator scope and reject stale/caller-widened packets."""
 
@@ -31786,6 +34858,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             raise ProviderRoutingError(
                 "production packet payload is malformed",
                 reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        packet_correction_feedback = payload.get("correction_feedback")
+        if expected_correction_feedback is None:
+            if packet_correction_feedback is not None:
+                raise ProviderRoutingError(
+                    "production packet has unbound correction feedback",
+                    reason_code=ProviderReason.PACKET_MALFORMED,
+                )
+        elif (
+            not isinstance(packet_correction_feedback, Mapping)
+            or dict(packet_correction_feedback)
+            != dict(expected_correction_feedback)
+        ):
+            raise ProviderRoutingError(
+                "production correction feedback binding changed",
+                reason_code=ProviderReason.PACKET_STALE,
             )
         packet_scope = payload.get("scope")
         if not isinstance(packet_scope, Mapping) or (
@@ -32397,6 +35485,65 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self,
         task: PortalTask,
         *,
+        correction_feedback: Mapping[str, Any] | None = None,
+        post_merge_correction_authority: Mapping[str, Any] | None = None,
+        **route_kwargs: Any,
+    ) -> dict[str, Any]:
+        """Run an ordinary production route; correction bytes are internal."""
+
+        if (
+            correction_feedback is not None
+            or post_merge_correction_authority is not None
+            or "_correction_route_capability" in route_kwargs
+        ):
+            raise RuntimeError(
+                "public production route rejects caller-authored correction "
+                "authority and feedback"
+            )
+        return self._run_production_model_assisted_route_core(
+            task,
+            **route_kwargs,
+        )
+
+    def _run_production_post_merge_correction_route(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        **route_kwargs: Any,
+    ) -> dict[str, Any]:
+        """Remove one minted seal and carry it to the provider boundary."""
+
+        identity = self._identity_for_task(task)
+        with self._post_merge_correction_route_registry_lock:
+            matching = [
+                (key, value)
+                for key, value in (
+                    self._sealed_post_merge_correction_routes.items()
+                )
+                if key[0] == identity.canonical_task_cid
+                and int(key[1]) == int(attempt)
+            ]
+            # Registry removal is atomic, but is not capability consumption.
+            # The lowest provider boundary alone burns the private object.
+            for key, _value in matching:
+                self._sealed_post_merge_correction_routes.pop(key, None)
+        if len(matching) != 1:
+            raise RuntimeError(
+                "post-merge correction route lacks one sealed capability"
+            )
+        _capability_key, capability = matching[0]
+        return self._run_production_model_assisted_route_core(
+            task,
+            attempt=attempt,
+            _correction_route_capability=capability,
+            **route_kwargs,
+        )
+
+    def _run_production_model_assisted_route_core(
+        self,
+        task: PortalTask,
+        *,
         attempt: int = 0,
         workspace_path: Path | None = None,
         baseline_ref: str = "",
@@ -32415,6 +35562,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         grok_quota: Any = None,
         codex_quota: Any = None,
         codex_implementation_fallback_quota: Any = None,
+        correction_feedback: Mapping[str, Any] | None = None,
+        post_merge_correction_authority: Mapping[str, Any] | None = None,
+        _correction_route_capability: Any = None,
     ) -> dict[str, Any]:
         """Production-wire bounded Grok proposal and independent Codex review.
 
@@ -32429,6 +35579,35 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             raise RuntimeError(
                 "deterministic-only task must not invoke the production "
                 "model-assisted provider route"
+            )
+        if (
+            correction_feedback is not None
+            or post_merge_correction_authority is not None
+        ):
+            raise RuntimeError(
+                "production correction bytes must come from a live sealed "
+                "route capability"
+            )
+        if _correction_route_capability is not None:
+            fresh_bindings = (
+                self._fresh_post_merge_correction_capability_bindings(
+                    task,
+                    attempt=int(attempt),
+                    capability=_correction_route_capability,
+                    consume=False,
+                )
+            )
+            if fresh_bindings is None:
+                raise RuntimeError(
+                    "production correction capability is no longer current"
+                )
+            _snapshot, authority, feedback, _reservation = fresh_bindings
+            correction_feedback = feedback
+            post_merge_correction_authority = authority
+        elif post_merge_correction_authority is not None:
+            raise RuntimeError(
+                "post-merge correction production route requires complete "
+                "strict-ledger feedback"
             )
         if not self._production_provider_route_enabled(task):
             raise RuntimeError(
@@ -32507,12 +35686,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         route_packet = packet
         if route_packet is None:
+            route_prompt_tokens: int | None = None
+            if isinstance(bounds, ProviderBounds):
+                route_prompt_tokens = bounds.max_prompt_tokens
+            elif isinstance(bounds, Mapping):
+                raw_prompt_tokens = bounds.get("max_prompt_tokens")
+                if (
+                    isinstance(raw_prompt_tokens, int)
+                    and not isinstance(raw_prompt_tokens, bool)
+                ):
+                    route_prompt_tokens = raw_prompt_tokens
             route_packet = self.build_production_contract_packet_for_task(
                 task,
                 snapshot_id=current_snapshot,
                 attempt=attempt,
                 workspace_path=workspace_path,
                 baseline_ref=baseline_ref,
+                correction_feedback=correction_feedback,
+                max_provider_prompt_tokens=route_prompt_tokens,
             )
         context_workspace = Path(workspace_path or self.repo_root)
         self._verify_production_packet_context(
@@ -32520,6 +35711,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             route_packet,
             workspace_path=context_workspace,
             baseline_ref=baseline_ref,
+            expected_correction_feedback=correction_feedback,
         )
 
         lease = str(writer_lease_id or "").strip()
@@ -32547,6 +35739,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     route_packet,
                     workspace_path=context_workspace,
                     baseline_ref=baseline_ref,
+                    expected_correction_feedback=correction_feedback,
                 )
                 (
                     context_manifest,
@@ -32612,6 +35805,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     operator_policy,
                     ProductionCLIProviderPolicy,
                 ),
+                _correction_route_capability=(
+                    _correction_route_capability
+                ),
             )
         else:
             route_result, event, receipt_path = self.route_model_assisted_contract_packet(
@@ -32639,6 +35835,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 enforce_provider_identity=isinstance(
                     operator_policy,
                     ProductionCLIProviderPolicy,
+                ),
+                _correction_route_capability=(
+                    _correction_route_capability
                 ),
             )
 
@@ -37121,11 +40320,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
     def _resolve_git_commit_in_repo(self, repo: Path, ref: str) -> str:
         result = subprocess.run(
-            ["git", "rev-parse", "--verify", f"{ref}^{{commit}}"],
+            [
+                "git",
+                "--no-replace-objects",
+                "rev-parse",
+                "--verify",
+                f"{ref}^{{commit}}",
+            ],
             cwd=repo,
             text=True,
             capture_output=True,
             check=False,
+            env=sanitized_git_environment(),
         )
         return result.stdout.strip() if result.returncode == 0 else ""
 
@@ -38488,7 +41694,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
     def _git_ref_is_ancestor_in_repo(self, cwd: Path, ancestor: str, descendant: str) -> bool:
         result = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            [
+                "git",
+                "--no-replace-objects",
+                "merge-base",
+                "--is-ancestor",
+                ancestor,
+                descendant,
+            ],
             cwd=cwd,
             text=True,
             capture_output=True,
@@ -43034,7 +46247,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
     def _git_ref_is_ancestor(self, ancestor: str, descendant: str) -> bool:
         result = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            [
+                "git",
+                "--no-replace-objects",
+                "merge-base",
+                "--is-ancestor",
+                ancestor,
+                descendant,
+            ],
             cwd=self.repo_root,
             text=True,
             capture_output=True,
@@ -44010,6 +47230,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "task_binding_id": str(
                 correction.get("task_binding_id") or ""
             ),
+            "review_attempt": int(
+                correction.get("review_attempt") or 0
+            ),
             "implementation_attempt": int(
                 correction.get("implementation_attempt") or 0
             ),
@@ -44156,6 +47379,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         ),
                     )
                 )
+                complete_corrections = (
+                    verified_post_merge_review_corrections_from_strict_ledger(
+                        events_path,
+                        include_superseded=True,
+                        _max_projected_findings=(
+                            _post_merge_review_runtime
+                            .MAX_CORRECTION_FEEDBACK_FINDINGS
+                        ),
+                    )
+                )
+                strict_events = tuple(
+                    _post_merge_review_runtime._strict_event_ledger(
+                        events_path
+                    )
+                )
             except PostMergeReviewError as exc:
                 if exc.reason_code == "review_denial_ledger_tainted":
                     continue
@@ -44165,7 +47403,117 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "permanent post-merge denial migration is unavailable"
                 )
             for tombstone in tombstones:
-                record_denial(tombstone)
+                complete = next(
+                    (
+                        correction
+                        for correction in complete_corrections
+                        if str(correction.get("source_event_id") or "")
+                        == str(tombstone.get("source_event_id") or "")
+                        and int(
+                            correction.get("source_event_sequence") or 0
+                        )
+                        == int(
+                            tombstone.get("source_event_sequence") or 0
+                        )
+                    ),
+                    None,
+                )
+                feedback_manifest: dict[str, Any] | None = None
+                if complete is not None:
+                    complete_findings = [
+                        dict(finding)
+                        for finding in list(complete.get("findings") or ())
+                        if isinstance(finding, Mapping)
+                    ]
+                    durable_findings = list(tombstone.get("findings") or ())
+                    source_event = next(
+                        (
+                            event
+                            for event in strict_events
+                            if str(event.get("event_id") or "")
+                            == str(tombstone.get("source_event_id") or "")
+                            and int(event.get("sequence") or 0)
+                            == int(
+                                tombstone.get("source_event_sequence") or 0
+                            )
+                        ),
+                        None,
+                    )
+                    receipt = (
+                        source_event.get("review_receipt")
+                        if isinstance(source_event, Mapping)
+                        else None
+                    )
+                    response = (
+                        receipt.get("review_response")
+                        if isinstance(receipt, Mapping)
+                        else None
+                    )
+                    non_lossy = (
+                        int(complete.get("source_finding_count") or 0)
+                        == len(complete_findings)
+                        and int(
+                            complete.get("included_finding_count") or 0
+                        )
+                        == len(complete_findings)
+                        and complete.get("truncated") is False
+                        and durable_findings
+                        == complete_findings[: len(durable_findings)]
+                        and int(
+                            tombstone.get("source_finding_count") or 0
+                        )
+                        == len(complete_findings)
+                        and isinstance(response, Mapping)
+                        and content_identity(dict(response))
+                        == str(tombstone.get("review_response_id") or "")
+                    )
+                    if non_lossy:
+                        manifest_material = {
+                            "schema": (
+                                POST_MERGE_REVIEW_DENIAL_FEEDBACK_MANIFEST_SCHEMA
+                            ),
+                            "denial_id": str(tombstone["denial_id"]),
+                            "terminal_key_id": str(
+                                tombstone["terminal_key_id"]
+                            ),
+                            "source_event_id": str(
+                                tombstone["source_event_id"]
+                            ),
+                            "source_event_sequence": int(
+                                tombstone["source_event_sequence"]
+                            ),
+                            "review_response_id": str(
+                                tombstone["review_response_id"]
+                            ),
+                            "review_response": dict(response),
+                            "target_implementation_attempt": int(
+                                tombstone[
+                                    "target_implementation_attempt"
+                                ]
+                            ),
+                            "source_finding_count": len(
+                                complete_findings
+                            ),
+                            "included_finding_count": len(
+                                complete_findings
+                            ),
+                            "truncated": False,
+                            "findings": complete_findings,
+                            "evidence_only": True,
+                            "repository_write_authorized": False,
+                            "proof_authoritative": False,
+                            "completion_authoritative": False,
+                        }
+                        feedback_manifest = {
+                            **manifest_material,
+                            "manifest_id": content_identity(
+                                manifest_material
+                            ),
+                        }
+                record_denial(
+                    tombstone,
+                    feedback_manifest=feedback_manifest,
+                )
             if tail_recovery is not None:
                 append_jsonl_event(
                     events_path,
@@ -44199,6 +47547,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if not callable(recorder):
             raise MergeQueueIntegrityError(
                 "permanent post-merge consumption registry is unavailable"
+            )
+        authority_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_authority",
+            None,
+        )
+        if not callable(authority_reader):
+            raise MergeQueueIntegrityError(
+                "permanent post-merge correction authority is unavailable"
             )
         local_stream_id = str(
             _event_stream_binding(Path(events_path))[0]
@@ -44265,6 +47622,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "consumption evidence lacks a permanent denial"
                 )
             if denial.get("correction_authorized") is not True:
+                continue
+            # A lossy or over-limit historical response is still permanent
+            # terminal suppression evidence, but cannot mint a correction
+            # transition.  Skip its old start instead of turning every daemon
+            # restart into an integrity exception.
+            durable_authority = authority_reader(
+                str(denial.get("denial_id") or "")
+            )
+            if (
+                not isinstance(durable_authority, Mapping)
+                or durable_authority.get("complete_feedback_available")
+                is not True
+                or durable_authority.get("authority_available") is not True
+                or durable_authority.get("authority_kind")
+                != "review_denial"
+                or str(durable_authority.get("authority_id") or "")
+                != str(denial.get("denial_id") or "")
+            ):
                 continue
             shared_fields = (
                 "task_id",
@@ -45093,12 +48468,63 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             source_bound = bool(
                 denial.get("source_event_id")
             ) and source_event_sequence > 0
+            durable_authority: Mapping[str, Any] = {}
+            authority_reader = getattr(
+                self.merge_queue,
+                "verified_post_merge_correction_authority",
+                None,
+            )
+            if source_bound and callable(authority_reader):
+                try:
+                    candidate = authority_reader(
+                        str(denial.get("denial_id") or "")
+                    )
+                except (
+                    MergeQueueIntegrityError,
+                    OSError,
+                    RuntimeError,
+                    TypeError,
+                    ValueError,
+                ):
+                    candidate = {}
+                if isinstance(candidate, Mapping):
+                    durable_authority = candidate
+            identity = self._identity_for_task(current_bindings[binding])
+            exact_available_authority = bool(
+                durable_authority.get("authority_available") is True
+                and durable_authority.get("complete_feedback_available")
+                is True
+                and durable_authority.get("authority_kind")
+                in {"review_denial", "repair_grant"}
+                and str(durable_authority.get("denial_id") or "")
+                == str(denial.get("denial_id") or "")
+                and str(durable_authority.get("task_id") or "")
+                == binding[0]
+                and str(
+                    durable_authority.get("canonical_task_key") or ""
+                )
+                == identity.canonical_task_key
+                and str(
+                    durable_authority.get("canonical_task_cid") or ""
+                )
+                == identity.canonical_task_cid
+                and str(durable_authority.get("board_namespace") or "")
+                == identity.board_namespace
+                and str(durable_authority.get("task_binding_id") or "")
+                == binding[3]
+                and str(
+                    durable_authority.get("origin_stream_id")
+                    or ""
+                )
+                == local_stream_id
+            )
             # Every exact tombstone from this stream remains terminal
             # suppression evidence. Only a source-bound v3 origin tombstone
             # may open its exact correction or accept a consumption marker;
             # legacy and pre-append tombstones remain suppression-only.
             selected_denial["retry_authorized"] = (
                 source_bound
+                and exact_available_authority
                 and (
                     denial.get("correction_authorized") is True
                     or terminal_key
@@ -45570,6 +48996,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
 
         reopened: set[str] = set()
+        authority_reader = getattr(
+            self.merge_queue,
+            "verified_post_merge_correction_authority",
+            None,
+        )
+        if not callable(authority_reader):
+            return set()
+        local_stream_id = str(_event_stream_binding(self.events_path)[0])
         for task in tasks:
             repair_task_id = str(
                 state.retry_budget_repair_receipts.get(task.task_id) or ""
@@ -45594,6 +49028,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             lifetime_attempts = self._task_attempt_count(state, task)
             target_attempt = int(grant["target_attempt"])
+            durable_denial_id = str(
+                grant.get("durable_denial_id")
+                or grant.get("denial_id")
+                or ""
+            )
+            try:
+                durable_authority = authority_reader(durable_denial_id)
+            except (
+                MergeQueueIntegrityError,
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ):
+                return set()
+            if not isinstance(durable_authority, Mapping):
+                return set()
             if (
                 repair_binding["source_task_id"] == task.task_id
                 and grant["source_task_id"] == task.task_id
@@ -45607,8 +49058,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 == repair_binding["binding_id"]
                 and grant["repair_task_binding_id"]
                 == repair_binding["repair_task_binding_id"]
-                and grant["denial_id"]
-                == repair_binding["denial_id"]
                 and grant["failure_event_id"]
                 == repair_binding["failure_event_id"]
                 and int(grant["failure_event_sequence"])
@@ -45619,8 +49068,41 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 == repair_binding["failure_kind"]
                 and grant["origin_stream_id"]
                 == repair_binding["origin_stream_id"]
+                and grant["origin_stream_id"] == local_stream_id
                 and target_attempt
                 == int(repair_binding["target_attempt"])
+                and durable_authority.get("authority_available") is True
+                and durable_authority.get("complete_feedback_available")
+                is True
+                and durable_authority.get("authority_kind")
+                == "repair_grant"
+                and str(durable_authority.get("authority_id") or "")
+                == str(grant.get("grant_id") or "")
+                and int(
+                    durable_authority.get("authorized_attempt") or 0
+                )
+                == int(grant.get("authorized_attempt") or 0)
+                and int(grant.get("authorized_attempt") or 0)
+                == target_attempt + 1
+                and str(durable_authority.get("task_id") or "")
+                == task.task_id
+                and str(
+                    durable_authority.get("canonical_task_key") or ""
+                )
+                == identity.canonical_task_key
+                and str(
+                    durable_authority.get("canonical_task_cid") or ""
+                )
+                == identity.canonical_task_cid
+                and str(durable_authority.get("board_namespace") or "")
+                == identity.board_namespace
+                and str(durable_authority.get("task_binding_id") or "")
+                == task_binding_id
+                and str(
+                    durable_authority.get("origin_stream_id")
+                    or ""
+                )
+                == local_stream_id
                 and baseline == target_attempt
                 # One completed repair releases one fresh attempt. A
                 # post-launch provider or lifecycle outcome retains the
@@ -45832,16 +49314,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 grant.get("grant_event_sequence") or 0
             )
             durable_extra: dict[str, Any] = {}
+            durable_denial: dict[str, Any] = {}
+            durable_denial_id = str(
+                grant.get("durable_denial_id")
+                or grant.get("denial_id")
+                or ""
+            )
             durable_authority_reader = getattr(
                 self.merge_queue,
                 "verified_post_merge_correction_authority",
                 None,
             )
             if callable(durable_authority_reader):
-                denial_id = str(grant.get("denial_id") or "")
-                durable_denial_id = str(
-                    grant.get("durable_denial_id") or denial_id
-                )
                 durable_authority = durable_authority_reader(
                     durable_denial_id
                 )
@@ -45866,16 +49350,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                     == task_binding_id
                 )
-                legacy_pristine = bool(
-                    not grant.get("durable_correction_record_id")
-                    and isinstance(durable_authority, Mapping)
-                    and int(durable_authority.get("head_ordinal") or 0)
-                    == 0
-                    and str(
-                        durable_authority.get("head_record_id") or ""
-                    )
-                    == durable_denial_id
-                )
                 if durable_matches:
                     authority_event_sequence = int(
                         durable_authority.get(
@@ -45898,10 +49372,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             durable_authority.get("authority_state_id") or ""
                         ),
                     }
-                elif not legacy_pristine:
-                    # A retained legacy grant can bridge only an untouched
-                    # durable denial.  Any durable transition is exclusive.
+                else:
+                    # Durable authority is the exclusive spending boundary.
+                    # A retained legacy projection cannot bypass a missing
+                    # complete-feedback manifest or a non-available head.
                     return {}
+            if durable_extra:
+                durable_denial = self._verified_durable_post_merge_denial(
+                    task,
+                    durable_denial_id,
+                )
+                if not durable_denial:
+                    return {}
+            complete_feedback = (
+                self._verified_complete_post_merge_denial_feedback(
+                    task,
+                    durable_denial_id,
+                )
+                if durable_extra
+                else {}
+            )
+            if durable_extra and not complete_feedback:
+                return {}
             return self._post_merge_correction_authority_descriptor(
                 authority_kind=authority_kind,
                 authority_id=authority_id,
@@ -45913,17 +49405,53 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "repair_binding_id": str(
                         grant.get("repair_binding_id") or ""
                     ),
-                    "denial_id": str(
-                        grant.get("denial_id") or ""
+                    # The historical grant projection may retain the source
+                    # event alias.  Dispatch and durable queue verification
+                    # share the permanent denial ID so the descriptor remains
+                    # identical after strict-ledger rotation.
+                    "denial_id": durable_denial_id,
+                    "implementation_commit": str(
+                        durable_denial.get("implementation_commit") or ""
                     ),
+                    "merge_commit": str(
+                        durable_denial.get("merge_commit") or ""
+                    ),
+                    "repository_tree_id": str(
+                        durable_denial.get("repository_tree_id") or ""
+                    ),
+                    "review_receipt_id": str(
+                        durable_denial.get("review_receipt_id") or ""
+                    ),
+                    "diff_binding_id": str(
+                        durable_denial.get("diff_binding_id") or ""
+                    ),
+                    "source_event_id": str(
+                        durable_denial.get("source_event_id") or ""
+                    ),
+                    "source_event_sequence": int(
+                        durable_denial.get("source_event_sequence") or 0
+                    ),
+                    "review_attempt": int(
+                        durable_denial.get("review_attempt") or 0
+                    ),
+                    "source_implementation_attempt": int(
+                        durable_denial.get("implementation_attempt") or 0
+                    ),
+                    "complete_denial_feedback": complete_feedback,
                     "origin_stream_id": str(
-                        grant.get("origin_stream_id") or ""
+                        durable_denial.get(
+                            "correction_origin_stream_id"
+                        )
+                        or grant.get("origin_stream_id")
+                        or ""
                     ),
-                    "target_repository_id": (
-                        self.merge_target_repository_id
+                    "target_repository_id": str(
+                        durable_denial.get("target_repository_id")
+                        or self.merge_target_repository_id
                     ),
-                    "target_branch": (
-                        self.resolved_merge_target_branch
+                    "target_branch": str(
+                        durable_denial.get("target_branch")
+                        or self.resolved_merge_target_branch
                     ),
                     "recovery_seed_ref": str(
                         grant.get("recovery_seed_ref") or ""
@@ -46089,28 +49617,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """Build one bounded, content-addressed dispatch authority."""
 
         identity = self._identity_for_task(task)
-        material = {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "post-merge-correction-dispatch-authority@1"
-            ),
-            "authority_kind": str(authority_kind),
-            "authority_id": str(authority_id),
-            "authority_event_sequence": int(
-                authority_event_sequence
-            ),
-            "task_id": task.task_id,
-            "canonical_task_key": identity.canonical_task_key,
-            "canonical_task_cid": identity.canonical_task_cid,
-            "board_namespace": identity.board_namespace,
-            "task_binding_id": post_merge_task_binding_id(task),
-            "authorized_attempt": int(attempt),
-            **dict(extra or {}),
-        }
-        return {
-            **material,
-            "authority_binding_id": content_identity(material),
-        }
+        return post_merge_correction_dispatch_authority_descriptor(
+            authority_kind=authority_kind,
+            authority_id=authority_id,
+            authority_event_sequence=authority_event_sequence,
+            task_id=task.task_id,
+            canonical_task_key=identity.canonical_task_key,
+            canonical_task_cid=identity.canonical_task_cid,
+            board_namespace=identity.board_namespace,
+            task_binding_id=post_merge_task_binding_id(task),
+            authorized_attempt=attempt,
+            extra=extra,
+        )
 
     def _projected_post_merge_review_denial_binding(
         self,
@@ -46161,6 +49679,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 correction.get("source_event_sequence") or 0
             )
             durable_extra: dict[str, Any] = {}
+            durable_denial: dict[str, Any] = {}
+            complete_feedback: dict[str, Any] = {}
             durable_authority_reader = getattr(
                 self.merge_queue,
                 "verified_post_merge_correction_authority",
@@ -46200,17 +49720,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                     == task_binding_id
                 )
-                legacy_pristine = bool(
-                    correction.get("authority_source") == "strict_ledger"
-                    and isinstance(durable_authority, Mapping)
-                    and int(durable_authority.get("head_ordinal") or 0)
-                    == 0
-                    and str(
-                        durable_authority.get("head_record_id") or ""
-                    )
-                    == durable_denial_id
-                )
                 if durable_matches:
+                    # Normalize the public descriptor to the queue's durable
+                    # denial identity.  The retained strict-ledger projection
+                    # may still expose its source event as ``denial_id``;
+                    # keeping that alias here would make the same unconsumed
+                    # authority hash differently after log rotation.
+                    denial_id = durable_denial_id
                     authority_kind = str(
                         durable_authority["authority_kind"]
                     )
@@ -46238,8 +49754,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             durable_authority.get("authority_state_id") or ""
                         ),
                     }
-                elif not legacy_pristine:
+                    durable_denial = (
+                        self._verified_durable_post_merge_denial(
+                            task,
+                            durable_denial_id,
+                        )
+                    )
+                    complete_feedback = (
+                        self._verified_complete_post_merge_denial_feedback(
+                            task,
+                            durable_denial_id,
+                        )
+                    )
+                    if not durable_denial or not complete_feedback:
+                        return {}
+                else:
                     return {}
+            descriptor_evidence = durable_denial or correction
             return self._post_merge_correction_authority_descriptor(
                 authority_kind=authority_kind,
                 authority_id=authority_id,
@@ -46249,20 +49780,47 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 extra={
                     "denial_id": denial_id,
                     "implementation_commit": str(
-                        correction.get("implementation_commit")
+                        descriptor_evidence.get("implementation_commit")
                         or ""
                     ),
+                    "merge_commit": str(
+                        descriptor_evidence.get("merge_commit") or ""
+                    ),
+                    "repository_tree_id": str(
+                        descriptor_evidence.get("repository_tree_id") or ""
+                    ),
+                    "review_receipt_id": str(
+                        descriptor_evidence.get("review_receipt_id") or ""
+                    ),
+                    "diff_binding_id": str(
+                        descriptor_evidence.get("diff_binding_id") or ""
+                    ),
+                    "source_event_id": str(
+                        descriptor_evidence.get("source_event_id") or ""
+                    ),
+                    "source_event_sequence": int(
+                        descriptor_evidence.get("source_event_sequence") or 0
+                    ),
+                    "review_attempt": int(
+                        descriptor_evidence.get("review_attempt") or 0
+                    ),
+                    "source_implementation_attempt": int(
+                        descriptor_evidence.get("implementation_attempt") or 0
+                    ),
+                    "complete_denial_feedback": complete_feedback,
                     "origin_stream_id": str(
-                        correction.get(
+                        descriptor_evidence.get(
                             "correction_origin_stream_id"
                         )
                         or ""
                     ),
-                    "target_repository_id": (
-                        self.merge_target_repository_id
+                    "target_repository_id": str(
+                        descriptor_evidence.get("target_repository_id")
+                        or self.merge_target_repository_id
                     ),
-                    "target_branch": (
-                        self.resolved_merge_target_branch
+                    "target_branch": str(
+                        descriptor_evidence.get("target_branch")
+                        or self.resolved_merge_target_branch
                     ),
                     **durable_extra,
                 },

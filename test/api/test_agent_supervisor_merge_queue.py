@@ -8,22 +8,64 @@ from pathlib import Path
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
+    COMPLETE_POST_MERGE_DENIAL_FEEDBACK_SCHEMA,
     LEGACY_POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA,
     POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA,
     POST_MERGE_CORRECTION_FAILURE_SCHEMA,
     POST_MERGE_CORRECTION_LEGACY_FAILURE_ANCHOR_SCHEMA,
     POST_MERGE_CORRECTION_LEGACY_HIGH_WATER_ANCHOR_SCHEMA,
+    POST_MERGE_CORRECTION_PENDING_REVIEW_SCHEMA,
     POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA,
     POST_MERGE_REVIEW_DENIAL_CONSUMPTION_SCHEMA,
+    POST_MERGE_REVIEW_DENIAL_FEEDBACK_MANIFEST_SCHEMA,
     POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA,
     MergeQueue,
     MergeQueueFenceError,
     MergeQueueFullError,
     MergeQueueIntegrityError,
+    post_merge_correction_dispatch_authority_descriptor,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
 )
+
+
+_POST_MERGE_REVIEW_RESPONSE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-independent-review-response@1"
+)
+
+
+def _post_merge_review_response(
+    denial: dict[str, object],
+    *,
+    findings: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    response_findings = findings or [
+        {
+            "code": str(finding["code"]),
+            "severity": str(finding["severity"]),
+            "summary": str(finding["summary"]),
+        }
+        for finding in denial["findings"]
+        if isinstance(finding, dict)
+    ]
+    return {
+        "schema": _POST_MERGE_REVIEW_RESPONSE_SCHEMA,
+        "decision": "changes_required",
+        "task_id": denial["task_id"],
+        "implementation_commit": denial["implementation_commit"],
+        "merge_commit": denial["merge_commit"],
+        "repository_tree_id": denial["repository_tree_id"],
+        "diff_binding_id": denial["diff_binding_id"],
+        "review_request_id": denial["review_request_id"],
+        "reviewer_provider": "codex_cli",
+        "implementer_provider": "grok_cli",
+        "findings": response_findings,
+        "repository_write_authorized": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
 
 
 def _enqueue(
@@ -48,13 +90,29 @@ def _post_merge_denial_record(
     *,
     repository_id: str,
     target_branch: str,
+    findings: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
-    finding_material = {
-        "source_ordinal": 1,
-        "code": "missing-fence",
-        "severity": "high",
-        "summary": "Bind the correction to the exact reviewed candidate.",
-    }
+    source_findings = findings or [
+        {
+            "code": "missing-fence",
+            "severity": "high",
+            "summary": "Bind the correction to the exact reviewed candidate.",
+        }
+    ]
+    projected_findings: list[dict[str, object]] = []
+    for source_ordinal, finding in enumerate(source_findings, start=1):
+        finding_material = {
+            "source_ordinal": source_ordinal,
+            "code": finding["code"],
+            "severity": finding["severity"],
+            "summary": finding["summary"],
+        }
+        projected_findings.append(
+            {
+                **finding_material,
+                "finding_id": content_identity(finding_material),
+            }
+        )
     material: dict[str, object] = {
         "schema": POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA,
         "target_repository_id": repository_id,
@@ -72,7 +130,7 @@ def _post_merge_denial_record(
         "repository_tree_id": f"git-tree:{'3' * 40}",
         "review_receipt_id": "baguqeerareceipt",
         "review_request_id": "baguqeerarequest",
-        "review_response_id": "baguqeeraresponse",
+        "review_response_id": "pending",
         "diff_binding_id": "baguqeeradiff",
         "implementer_provenance_id": "baguqeeraprovenance",
         "correction_origin_stream_id": "event-log:sha256:origin",
@@ -80,19 +138,17 @@ def _post_merge_denial_record(
         "source_event_sequence": 41,
         "correction_authorized": True,
         "decision": "changes_required",
-        "source_finding_count": 1,
-        "included_finding_count": 1,
+        "source_finding_count": len(projected_findings),
+        "included_finding_count": len(projected_findings),
         "truncated": False,
-        "findings": [
-            {
-                **finding_material,
-                "finding_id": content_identity(finding_material),
-            }
-        ],
+        "findings": projected_findings,
         "repository_write_authorized": False,
         "proof_authoritative": False,
         "completion_authoritative": False,
     }
+    material["review_response_id"] = content_identity(
+        _post_merge_review_response(material)
+    )
     terminal_material = {
         "target_repository_id": repository_id,
         "target_branch": target_branch,
@@ -107,6 +163,97 @@ def _post_merge_denial_record(
         **material,
         "denial_id": content_identity(material),
     }
+
+
+def _post_merge_denial_feedback_manifest(
+    denial: dict[str, object],
+    *,
+    response_findings: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    findings = [
+        dict(finding)
+        for finding in denial["findings"]
+        if isinstance(finding, dict)
+    ]
+    assert denial["truncated"] is False
+    assert int(denial["source_finding_count"]) == len(findings)
+    response = _post_merge_review_response(
+        denial,
+        findings=response_findings,
+    )
+    response_id = content_identity(response)
+    assert response_id == denial["review_response_id"]
+    material: dict[str, object] = {
+        "schema": POST_MERGE_REVIEW_DENIAL_FEEDBACK_MANIFEST_SCHEMA,
+        "denial_id": denial["denial_id"],
+        "terminal_key_id": denial["terminal_key_id"],
+        "source_event_id": denial["source_event_id"],
+        "source_event_sequence": denial["source_event_sequence"],
+        "review_response_id": response_id,
+        "review_response": response,
+        "target_implementation_attempt": denial[
+            "target_implementation_attempt"
+        ],
+        "source_finding_count": denial["source_finding_count"],
+        "included_finding_count": denial["source_finding_count"],
+        "truncated": False,
+        "findings": findings,
+        "evidence_only": True,
+        "repository_write_authorized": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    return {
+        **material,
+        "manifest_id": content_identity(material),
+    }
+
+
+def _record_manifest_backed_post_merge_denial(
+    queue: MergeQueue,
+    denial: dict[str, object],
+) -> dict[str, object]:
+    return queue.record_post_merge_review_denial(
+        denial,
+        feedback_manifest=_post_merge_denial_feedback_manifest(denial),
+    )
+
+
+def _reidentify_feedback_manifest(
+    manifest: dict[str, object],
+) -> dict[str, object]:
+    changed = json.loads(json.dumps(manifest))
+    response = changed["review_response"]
+    assert isinstance(response, dict)
+    changed["review_response_id"] = content_identity(response)
+    changed.pop("manifest_id", None)
+    changed["manifest_id"] = content_identity(changed)
+    return changed
+
+
+def _lossy_post_merge_denial_record(
+    *,
+    repository_id: str,
+    target_branch: str,
+    source_findings: list[dict[str, str]],
+    projected_findings: list[dict[str, str]],
+) -> dict[str, object]:
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch=target_branch,
+        findings=projected_findings,
+    )
+    denial["source_finding_count"] = len(source_findings)
+    denial["truncated"] = True
+    denial["review_response_id"] = content_identity(
+        _post_merge_review_response(
+            denial,
+            findings=[dict(finding) for finding in source_findings],
+        )
+    )
+    denial.pop("denial_id")
+    denial["denial_id"] = content_identity(denial)
+    return denial
 
 
 def _evolved_post_merge_denial_record(
@@ -124,7 +271,6 @@ def _evolved_post_merge_denial_record(
             "repository_tree_id": f"git-tree:{digit * 40}",
             "review_receipt_id": f"baguqeerareceipt{marker}",
             "review_request_id": f"baguqeerarequest{marker}",
-            "review_response_id": f"baguqeeraresponse{marker}",
             "diff_binding_id": f"baguqeeradiff{marker}",
             "implementer_provenance_id": (
                 f"baguqeeraprovenance{marker}"
@@ -134,6 +280,9 @@ def _evolved_post_merge_denial_record(
             ),
             "correction_authorized": correction_authorized,
         }
+    )
+    evolved["review_response_id"] = content_identity(
+        _post_merge_review_response(evolved)
     )
     evolved.pop("denial_id")
     evolved["denial_id"] = content_identity(evolved)
@@ -166,14 +315,256 @@ def _correction_consumption(
     authority_kind: str,
     authority_id: str,
     sequence: int,
+    event_id: str | None = None,
 ) -> dict[str, object]:
     return {
         "schema": POST_MERGE_CORRECTION_CONSUMPTION_SCHEMA,
         **_correction_common(denial, attempt=attempt),
         "authority_kind": authority_kind,
         "authority_id": authority_id,
-        "started_event_id": f"event-started-{sequence}",
+        "started_event_id": event_id or f"event-started-{sequence}",
         "started_event_sequence": sequence,
+    }
+
+
+def _pending_review_binding_material(
+    value: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "schema": POST_MERGE_CORRECTION_PENDING_REVIEW_SCHEMA,
+        "task_id": value["task_id"],
+        "canonical_task_key": value["canonical_task_key"],
+        "canonical_task_cid": value["canonical_task_cid"],
+        "board_namespace": value["board_namespace"],
+        "task_binding_id": value["task_binding_id"],
+        "attempt": value["attempt"],
+        "origin_stream_id": value["origin_stream_id"],
+        "implementation_started_event_id": value["started_event_id"],
+        "implementation_started_event_sequence": value[
+            "started_event_sequence"
+        ],
+        "authority_kind": value["authority_kind"],
+        "authority_id": value["authority_id"],
+        "authority_binding_id": value["authority_binding_id"],
+        "durable_denial_id": value["denial_id"],
+        "pre_consumption_head_record_id": value[
+            "pre_consumption_head_record_id"
+        ],
+        "durable_consumption_record_id": value[
+            "consumption_record_id"
+        ],
+        "complete_denial_feedback_id": value["complete_feedback_id"],
+        "complete_denial_finding_count": value[
+            "complete_finding_count"
+        ],
+        "complete_denial_feedback_truncated": False,
+        "packet_id": value["packet_id"],
+        "packet_cid": value["packet_cid"],
+        "provider_receipt_id": value["provider_receipt_id"],
+        "artifact_path": value["artifact_path"],
+        "artifact_id": value["artifact_id"],
+        "required_review_role": value["required_review_role"],
+        "proposal_role": value["proposal_role"],
+        "write_performed": False,
+        "provider_result_admitted": False,
+        "attempt_consumed": True,
+        "repository_write_authorized": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+
+
+def _reidentify_correction_pending(
+    value: dict[str, object],
+) -> dict[str, object]:
+    changed = json.loads(json.dumps(value))
+    changed["pending_binding_id"] = content_identity(
+        _pending_review_binding_material(changed)
+    )
+    return changed
+
+
+def _complete_post_merge_denial_feedback(
+    denial: dict[str, object],
+) -> dict[str, object]:
+    manifest = _post_merge_denial_feedback_manifest(denial)
+    findings = [
+        dict(finding)
+        for finding in manifest["findings"]
+        if isinstance(finding, dict)
+    ]
+    material: dict[str, object] = {
+        "schema": COMPLETE_POST_MERGE_DENIAL_FEEDBACK_SCHEMA,
+        "durable_denial_id": denial["denial_id"],
+        "task_id": denial["task_id"],
+        "canonical_task_key": denial["canonical_task_key"],
+        "canonical_task_cid": denial["canonical_task_cid"],
+        "board_namespace": denial["board_namespace"],
+        "task_binding_id": denial["task_binding_id"],
+        "review_attempt": denial["review_attempt"],
+        "source_implementation_attempt": denial[
+            "implementation_attempt"
+        ],
+        "implementation_commit": denial["implementation_commit"],
+        "merge_commit": denial["merge_commit"],
+        "repository_tree_id": denial["repository_tree_id"],
+        "review_receipt_id": denial["review_receipt_id"],
+        "review_request_id": denial["review_request_id"],
+        "review_response_id": denial["review_response_id"],
+        "diff_binding_id": denial["diff_binding_id"],
+        "correction_origin_stream_id": denial[
+            "correction_origin_stream_id"
+        ],
+        "source_event_id": denial["source_event_id"],
+        "source_event_sequence": denial["source_event_sequence"],
+        "source_finding_count": manifest["source_finding_count"],
+        "included_finding_count": manifest["included_finding_count"],
+        "truncated": False,
+        "findings": findings,
+        "source_reverified_from_strict_ledger": True,
+        "evidence_only": True,
+        "edit_scope_expansion_authorized": False,
+        "repository_write_authorized": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    return {
+        **material,
+        "feedback_binding_id": content_identity(material),
+    }
+
+
+def _correction_dispatch_authority(
+    denial: dict[str, object],
+    authority: dict[str, object],
+) -> dict[str, object]:
+    complete_feedback = _complete_post_merge_denial_feedback(denial)
+    extra: dict[str, object] = {
+        "denial_id": denial["denial_id"],
+        "implementation_commit": denial["implementation_commit"],
+        "merge_commit": denial["merge_commit"],
+        "repository_tree_id": denial["repository_tree_id"],
+        "review_receipt_id": denial["review_receipt_id"],
+        "diff_binding_id": denial["diff_binding_id"],
+        "source_event_id": denial["source_event_id"],
+        "source_event_sequence": denial["source_event_sequence"],
+        "review_attempt": denial["review_attempt"],
+        "source_implementation_attempt": denial[
+            "implementation_attempt"
+        ],
+        "complete_denial_feedback": complete_feedback,
+        "origin_stream_id": denial["correction_origin_stream_id"],
+        "target_repository_id": denial["target_repository_id"],
+        "target_branch": denial["target_branch"],
+        "durable_denial_id": denial["denial_id"],
+        "durable_terminal_key_id": denial["terminal_key_id"],
+        "durable_authority_head_record_id": authority[
+            "head_record_id"
+        ],
+        "durable_authority_head_ordinal": authority["head_ordinal"],
+        "durable_authority_state_id": authority["authority_state_id"],
+    }
+    if authority["authority_kind"] == "repair_grant":
+        extra.update(
+            {
+                "repair_task_id": authority["repair_task_id"],
+                "repair_binding_id": authority["repair_binding_id"],
+                "recovery_seed_ref": authority["recovery_seed_ref"],
+                "recovery_seed_tree_id": authority[
+                    "recovery_seed_tree_id"
+                ],
+                "recovery_seed_submodule_path": authority[
+                    "recovery_seed_submodule_path"
+                ],
+                "recovery_seed_submodule_commit": authority[
+                    "recovery_seed_submodule_commit"
+                ],
+            }
+        )
+    return post_merge_correction_dispatch_authority_descriptor(
+        authority_kind=str(authority["authority_kind"]),
+        authority_id=str(authority["authority_id"]),
+        authority_event_sequence=int(
+            authority["authority_event_sequence"]
+        ),
+        task_id=str(denial["task_id"]),
+        canonical_task_key=str(denial["canonical_task_key"]),
+        canonical_task_cid=str(denial["canonical_task_cid"]),
+        board_namespace=str(denial["board_namespace"]),
+        task_binding_id=str(denial["task_binding_id"]),
+        authorized_attempt=int(authority["authorized_attempt"]),
+        extra=extra,
+    )
+
+
+def _correction_pending(
+    denial: dict[str, object],
+    consumption_record: dict[str, object],
+    *,
+    authority: dict[str, object],
+    sequence: int,
+    marker: str = "a",
+) -> dict[str, object]:
+    detail = consumption_record["detail"]
+    assert isinstance(detail, dict)
+    authority_descriptor = _correction_dispatch_authority(
+        denial,
+        authority,
+    )
+    complete_feedback = _complete_post_merge_denial_feedback(denial)
+    value: dict[str, object] = {
+        "schema": POST_MERGE_CORRECTION_PENDING_REVIEW_SCHEMA,
+        **_correction_common(
+            denial,
+            attempt=int(consumption_record["attempt"]),
+        ),
+        "authority_kind": detail["authority_kind"],
+        "authority_id": detail["authority_id"],
+        "authority_binding_id": authority_descriptor[
+            "authority_binding_id"
+        ],
+        "started_event_id": detail["started_event_id"],
+        "started_event_sequence": detail["started_event_sequence"],
+        "pre_consumption_head_record_id": consumption_record[
+            "parent_record_id"
+        ],
+        "consumption_record_id": consumption_record["record_id"],
+        "pending_event_id": f"sha256:{marker * 64}",
+        "pending_event_sequence": sequence,
+        "pending_binding_id": "pending",
+        "complete_feedback_id": complete_feedback[
+            "feedback_binding_id"
+        ],
+        "complete_finding_count": complete_feedback[
+            "included_finding_count"
+        ],
+        "complete_feedback_truncated": False,
+        "packet_id": f"packet-{marker}",
+        "packet_cid": f"baguqeerapacket{marker}",
+        "provider_receipt_id": f"provider-receipt-{marker}",
+        "artifact_path": f".agent/uiir/proposal-{marker}.patch",
+        "artifact_id": f"baguqeeraartifact{marker}",
+        "required_review_role": "non-codex-independent-review",
+        "proposal_role": "codex-quota-fallback-implement",
+        "write_performed": False,
+        "provider_result_admitted": False,
+        "attempt_consumed": True,
+        "repository_write_authorized": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    return _reidentify_correction_pending(value)
+
+
+def _projected_pending_detail(
+    record: dict[str, object],
+) -> dict[str, object]:
+    detail = record["detail"]
+    assert isinstance(detail, dict)
+    return {
+        name: value
+        for name, value in detail.items()
+        if name != "schema"
     }
 
 
@@ -204,6 +595,7 @@ def _correction_grant(
     failure_record: dict[str, object],
     sequence: int,
     grant_id: str,
+    repair_task_id: str | None = None,
     recovery_seed: dict[str, str] | None = None,
 ) -> dict[str, object]:
     failure_detail = failure_record["detail"]
@@ -220,7 +612,7 @@ def _correction_grant(
             "terminal_event_sequence"
         ],
         "failure_kind": failure_detail["failure_kind"],
-        "repair_task_id": f"REPAIR-{attempt}",
+        "repair_task_id": repair_task_id or f"REPAIR-{attempt}",
         "repair_task_binding_id": f"repair-task-binding-{attempt}",
         "repair_binding_id": f"repair-binding-{attempt}",
         **(
@@ -437,9 +829,971 @@ def test_post_merge_denial_correction_authority_promotes_monotonically(
     terminal_only["denial_id"] = content_identity(terminal_only)
 
     assert queue.record_post_merge_review_denial(terminal_only) == terminal_only
-    assert queue.record_post_merge_review_denial(authorized) == authorized
+    assert (
+        _record_manifest_backed_post_merge_denial(queue, authorized)
+        == authorized
+    )
     assert queue.record_post_merge_review_denial(terminal_only) == authorized
     assert queue.verified_post_merge_review_denials() == (authorized,)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "schema",
+        "decision",
+        "task_id",
+        "implementation_commit",
+        "merge_commit",
+        "repository_tree_id",
+        "diff_binding_id",
+        "review_request_id",
+        "reviewer_provider",
+        "implementer_provider",
+        "repository_write_authorized",
+        "proof_authoritative",
+        "completion_authoritative",
+        "missing_trusted_field",
+        "extra_trusted_field",
+        "findings_order",
+        "finding_content",
+    ),
+)
+def test_post_merge_feedback_manifest_rejects_each_full_response_mutation(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repository_id = f"repository:sha256:{'8' * 64}"
+    queue = MergeQueue(
+        tmp_path / mutation,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+        findings=[
+            {
+                "code": "first-finding",
+                "severity": "high",
+                "summary": "Apply the first exact correction.",
+            },
+            {
+                "code": "second-finding",
+                "severity": "medium",
+                "summary": "Then apply the second exact correction.",
+            },
+        ],
+    )
+    manifest = _post_merge_denial_feedback_manifest(denial)
+    changed = json.loads(json.dumps(manifest))
+    response = changed["review_response"]
+    assert isinstance(response, dict)
+    text_mutations = {
+        "schema": "foreign-response-schema",
+        "decision": "approved",
+        "task_id": "UIR-FOREIGN",
+        "implementation_commit": "9" * 40,
+        "merge_commit": "a" * 40,
+        "repository_tree_id": f"git-tree:{'b' * 40}",
+        "diff_binding_id": "baguqeeraforeigndiff",
+        "review_request_id": "baguqeeraforeignrequest",
+        "reviewer_provider": "grok_cli",
+        # A different non-Codex provider still must not pass merely because
+        # it satisfies the independent-provider shape constraint.
+        "implementer_provider": "other_cli",
+    }
+    if mutation in text_mutations:
+        response[mutation] = text_mutations[mutation]
+    elif mutation in {
+        "repository_write_authorized",
+        "proof_authoritative",
+        "completion_authoritative",
+    }:
+        response[mutation] = True
+    elif mutation == "missing_trusted_field":
+        response.pop("task_id")
+    elif mutation == "extra_trusted_field":
+        response["untrusted_extension"] = "must not be accepted"
+    else:
+        response_findings = response["findings"]
+        assert isinstance(response_findings, list)
+        if mutation == "findings_order":
+            response_findings.reverse()
+        else:
+            response_findings[0]["summary"] = "Substituted correction."
+        projected: list[dict[str, object]] = []
+        for source_ordinal, finding in enumerate(
+            response_findings,
+            start=1,
+        ):
+            finding_material = {
+                "source_ordinal": source_ordinal,
+                "code": finding["code"],
+                "severity": finding["severity"],
+                "summary": finding["summary"],
+            }
+            projected.append(
+                {
+                    **finding_material,
+                    "finding_id": content_identity(finding_material),
+                }
+            )
+        changed["findings"] = projected
+    changed = _reidentify_feedback_manifest(changed)
+
+    with pytest.raises(MergeQueueIntegrityError, match="manifest"):
+        queue.record_post_merge_review_denial(
+            denial,
+            feedback_manifest=changed,
+        )
+
+    # The denial insert, base head, and manifest insert share one transaction.
+    assert queue.verified_post_merge_review_denials() == ()
+    assert queue.verified_post_merge_review_denial_feedback_manifests() == ()
+    assert queue.verified_post_merge_correction_chain() == ()
+
+
+def test_post_merge_denial_manifest_bundle_rolls_back_after_insert_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository_id = f"repository:sha256:{'9' * 64}"
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    manifest = _post_merge_denial_feedback_manifest(denial)
+    persist = queue._persist_denial_feedback_manifest_in_transaction
+
+    def crash_after_manifest_insert(
+        connection,
+        *,
+        manifest,
+        denial,
+    ):
+        persist(connection, manifest=manifest, denial=denial)
+        raise RuntimeError("simulated crash before bundle commit")
+
+    monkeypatch.setattr(
+        queue,
+        "_persist_denial_feedback_manifest_in_transaction",
+        crash_after_manifest_insert,
+    )
+    with pytest.raises(RuntimeError, match="before bundle commit"):
+        queue.record_post_merge_review_denial(
+            denial,
+            feedback_manifest=manifest,
+        )
+
+    restarted = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    assert restarted.verified_post_merge_review_denials() == ()
+    assert (
+        restarted.verified_post_merge_review_denial_feedback_manifests()
+        == ()
+    )
+    assert restarted.verified_post_merge_correction_chain() == ()
+
+    monkeypatch.setattr(
+        queue,
+        "_persist_denial_feedback_manifest_in_transaction",
+        persist,
+    )
+    queue.record_post_merge_review_denial(
+        denial,
+        feedback_manifest=manifest,
+    )
+    authority = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    ).verified_post_merge_correction_authority(str(denial["denial_id"]))
+    assert authority["authority_available"] is True
+    assert authority["complete_feedback_available"] is True
+    assert authority["authorized_attempt"] == 2
+
+
+def test_post_merge_feedback_manifest_follows_selected_cross_lane_representative(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'a' * 64}"
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    origin = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    terminal_only = dict(origin)
+    terminal_only["correction_authorized"] = False
+    terminal_only.pop("denial_id")
+    terminal_only["denial_id"] = content_identity(terminal_only)
+    authorized = _evolved_post_merge_denial_record(
+        origin,
+        marker="a",
+        correction_authorized=True,
+    )
+
+    _record_manifest_backed_post_merge_denial(queue, terminal_only)
+    _record_manifest_backed_post_merge_denial(queue, authorized)
+    assert queue.verified_post_merge_review_denials() == (authorized,)
+    assert queue.verified_post_merge_review_denial_feedback_manifests() == (
+        _post_merge_denial_feedback_manifest(authorized),
+    )
+
+    losing_lane = _evolved_post_merge_denial_record(
+        authorized,
+        marker="b",
+        correction_authorized=False,
+    )
+    _record_manifest_backed_post_merge_denial(queue, losing_lane)
+    restarted = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    assert restarted.verified_post_merge_review_denials() == (authorized,)
+    assert (
+        restarted.verified_post_merge_review_denial_feedback_manifests()
+        == (_post_merge_denial_feedback_manifest(authorized),)
+    )
+    authority = restarted.verified_post_merge_correction_authority(
+        str(authorized["denial_id"])
+    )
+    assert authority["authority_available"] is True
+    assert authority["complete_feedback_available"] is True
+
+    # If the winning representative arrives without a full page, the losing
+    # representative's old page must be removed rather than rebound to it.
+    missing_page = MergeQueue(
+        tmp_path / "missing-page",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    _record_manifest_backed_post_merge_denial(missing_page, terminal_only)
+    missing_page.record_post_merge_review_denial(authorized)
+    assert missing_page.verified_post_merge_review_denials() == (authorized,)
+    assert (
+        missing_page.verified_post_merge_review_denial_feedback_manifests()
+        == ()
+    )
+    unavailable = missing_page.verified_post_merge_correction_authority(
+        str(authorized["denial_id"])
+    )
+    assert unavailable["authority_available"] is False
+    assert unavailable["complete_feedback_available"] is False
+
+
+@pytest.mark.parametrize("loss_kind", ("over_eight", "bounded_text"))
+def test_lossy_post_merge_denial_is_suppression_only_across_restart(
+    tmp_path: Path,
+    loss_kind: str,
+) -> None:
+    repository_id = f"repository:sha256:{'b' * 64}"
+    if loss_kind == "over_eight":
+        source_findings = [
+            {
+                "code": f"finding-{ordinal}",
+                "severity": "high",
+                "summary": f"Required correction {ordinal}.",
+            }
+            for ordinal in range(1, 10)
+        ]
+        projected_findings = source_findings[:4]
+    else:
+        source_findings = [
+            {
+                "code": "long-summary",
+                "severity": "high",
+                "summary": "x" * 900,
+            }
+        ]
+        projected_findings = [
+            {
+                **source_findings[0],
+                "summary": "x" * 768,
+            }
+        ]
+    denial = _lossy_post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+        source_findings=source_findings,
+        projected_findings=projected_findings,
+    )
+    queue_path = tmp_path / loss_kind
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    queue.record_post_merge_review_denial(denial)
+
+    state = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert state["state"] == "correction_feedback_unavailable"
+    assert state["authority_available"] is False
+    assert state["complete_feedback_available"] is False
+    assert queue.verified_post_merge_review_denial_feedback_manifests() == ()
+    with pytest.raises(MergeQueueFenceError, match="complete feedback"):
+        queue.record_post_merge_correction_consumption(
+            _correction_consumption(
+                denial,
+                attempt=2,
+                authority_kind="review_denial",
+                authority_id=str(denial["denial_id"]),
+                sequence=50,
+            ),
+            expected_parent_record_id=str(denial["denial_id"]),
+        )
+
+    restarted = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    restarted_state = restarted.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert restarted_state["authority_available"] is False
+    assert restarted_state["complete_feedback_available"] is False
+    assert restarted.verified_post_merge_correction_chain() == ()
+
+
+def test_uir_085_failed_attempt_two_authorizes_exact_attempt_three(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'c' * 64}"
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    _record_manifest_backed_post_merge_denial(queue, denial)
+    attempt_two = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert attempt_two["authorized_attempt"] == 2
+
+    consumed = queue.record_post_merge_correction_consumption(
+        _correction_consumption(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=10,
+        ),
+        expected_parent_record_id=str(denial["denial_id"]),
+    )
+    failure = queue.record_post_merge_correction_failure(
+        _correction_failure(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=20,
+        ),
+        expected_parent_record_id=str(consumed["record_id"]),
+    )
+    with pytest.raises((MergeQueueFenceError, MergeQueueIntegrityError)):
+        queue.record_post_merge_correction_repair_grant(
+            _correction_grant(
+                denial,
+                attempt=2,
+                failure_record=failure,
+                sequence=30,
+                grant_id="uir-085-stale-attempt-2",
+                repair_task_id="UIR-085",
+            ),
+            expected_parent_record_id=str(failure["record_id"]),
+        )
+    grant = queue.record_post_merge_correction_repair_grant(
+        _correction_grant(
+            denial,
+            attempt=3,
+            failure_record=failure,
+            sequence=31,
+            grant_id="uir-085-attempt-3",
+            repair_task_id="UIR-085",
+        ),
+        expected_parent_record_id=str(failure["record_id"]),
+    )
+    assert grant["attempt"] == 3
+    assert grant["detail"]["repair_task_id"] == "UIR-085"
+
+    restarted = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    exact = restarted.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert exact["authority_available"] is True
+    assert exact["complete_feedback_available"] is True
+    assert exact["authority_kind"] == "repair_grant"
+    assert exact["authority_id"] == "uir-085-attempt-3"
+    assert exact["authorized_attempt"] == 3
+
+
+def test_post_merge_correction_pending_review_is_restart_safe_and_advances_once(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'1' * 64}"
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    _record_manifest_backed_post_merge_denial(queue, denial)
+    initial_authority = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert initial_authority["state"] == "available"
+    assert initial_authority["authorized_attempt"] == 2
+
+    consumed = queue.record_post_merge_correction_consumption(
+        _correction_consumption(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=10,
+            event_id=f"sha256:{'8' * 64}",
+        ),
+        expected_parent_record_id=str(denial["denial_id"]),
+    )
+    consumed_authority = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert consumed_authority["state"] == "consumed"
+    assert consumed_authority["authority_available"] is False
+    assert consumed_authority["authorized_attempt"] == 2
+
+    pending_value = _correction_pending(
+        denial,
+        consumed,
+        authority=initial_authority,
+        sequence=20,
+        marker="a",
+    )
+    pending = queue.record_post_merge_correction_pending_review(
+        pending_value,
+        expected_parent_record_id=str(consumed["record_id"]),
+    )
+    assert queue.record_post_merge_correction_pending_review(
+        pending_value,
+        expected_parent_record_id=str(consumed["record_id"]),
+    ) == pending
+    assert pending["record_kind"] == "correction_pending"
+    assert pending["parent_record_id"] == consumed["record_id"]
+    pending_authority = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert pending_authority["state"] == "pending_review"
+    assert pending_authority["authority_available"] is False
+    assert pending_authority["authorized_attempt"] == 2
+    assert pending_authority["pending_review"] == _projected_pending_detail(
+        pending
+    )
+
+    restarted = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    assert restarted.verified_post_merge_correction_chain(
+        str(denial["denial_id"])
+    ) == (consumed, pending)
+    assert restarted.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    ) == pending_authority
+
+    failure_value = _correction_failure(
+        denial,
+        attempt=2,
+        authority_kind="review_denial",
+        authority_id=str(denial["denial_id"]),
+        sequence=30,
+    )
+    with pytest.raises(MergeQueueFenceError, match="consumed"):
+        restarted.record_post_merge_correction_failure(
+            failure_value,
+            expected_parent_record_id=str(consumed["record_id"]),
+        )
+    failure = restarted.record_post_merge_correction_failure(
+        failure_value,
+        expected_parent_record_id=str(pending["record_id"]),
+    )
+    assert failure["record_kind"] == "correction_failed"
+    assert failure["parent_record_id"] == pending["record_id"]
+    failed_authority = restarted.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert failed_authority["state"] == "failed"
+    assert failed_authority["authorized_attempt"] == 2
+
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="repair grant crosses failure identity",
+    ):
+        restarted.record_post_merge_correction_repair_grant(
+            _correction_grant(
+                denial,
+                attempt=2,
+                failure_record=failure,
+                sequence=40,
+                grant_id="grant-wrong-attempt-2",
+            ),
+            expected_parent_record_id=str(failure["record_id"]),
+        )
+    grant = restarted.record_post_merge_correction_repair_grant(
+        _correction_grant(
+            denial,
+            attempt=3,
+            failure_record=failure,
+            sequence=40,
+            grant_id="grant-attempt-3",
+        ),
+        expected_parent_record_id=str(failure["record_id"]),
+    )
+    chain = restarted.verified_post_merge_correction_chain(
+        str(denial["denial_id"])
+    )
+    assert chain == (consumed, pending, failure, grant)
+    assert [record["record_kind"] for record in chain[:3]] == [
+        "denial_consumed",
+        "correction_pending",
+        "correction_failed",
+    ]
+    repaired_authority = restarted.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert repaired_authority["state"] == "available"
+    assert repaired_authority["authority_kind"] == "repair_grant"
+    assert repaired_authority["authority_id"] == "grant-attempt-3"
+    assert repaired_authority["authorized_attempt"] == 3
+    assert restarted.record_post_merge_correction_pending_review(
+        pending_value,
+        expected_parent_record_id=str(consumed["record_id"]),
+    ) == pending
+
+
+@pytest.mark.parametrize("forged_authority", (False, True))
+def test_post_merge_correction_pending_review_rederives_repair_authority(
+    tmp_path: Path,
+    forged_authority: bool,
+) -> None:
+    repository_id = f"repository:sha256:{'4' * 64}"
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    _record_manifest_backed_post_merge_denial(queue, denial)
+    denial_consumed = queue.record_post_merge_correction_consumption(
+        _correction_consumption(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=10,
+        ),
+        expected_parent_record_id=str(denial["denial_id"]),
+    )
+    failure = queue.record_post_merge_correction_failure(
+        _correction_failure(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=20,
+        ),
+        expected_parent_record_id=str(denial_consumed["record_id"]),
+    )
+    grant = queue.record_post_merge_correction_repair_grant(
+        _correction_grant(
+            denial,
+            attempt=3,
+            failure_record=failure,
+            sequence=30,
+            grant_id="grant-attempt-3",
+        ),
+        expected_parent_record_id=str(failure["record_id"]),
+    )
+    repair_authority = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    grant_consumed = queue.record_post_merge_correction_consumption(
+        _correction_consumption(
+            denial,
+            attempt=3,
+            authority_kind="repair_grant",
+            authority_id="grant-attempt-3",
+            sequence=40,
+            event_id=f"sha256:{'9' * 64}",
+        ),
+        expected_parent_record_id=str(grant["record_id"]),
+    )
+    pending_value = _correction_pending(
+        denial,
+        grant_consumed,
+        authority=repair_authority,
+        sequence=50,
+        marker="b",
+    )
+    if forged_authority:
+        pending_value["authority_binding_id"] = "foreign-authority-binding"
+        pending_value = _reidentify_correction_pending(pending_value)
+        with pytest.raises(
+            MergeQueueIntegrityError,
+            match="pending authority or feedback binding changed",
+        ):
+            queue.record_post_merge_correction_pending_review(
+                pending_value,
+                expected_parent_record_id=str(grant_consumed["record_id"]),
+            )
+        assert queue.verified_post_merge_correction_chain(
+            str(denial["denial_id"])
+        ) == (denial_consumed, failure, grant, grant_consumed)
+        return
+
+    pending = queue.record_post_merge_correction_pending_review(
+        pending_value,
+        expected_parent_record_id=str(grant_consumed["record_id"]),
+    )
+    assert pending["detail"]["authority_binding_id"] == (
+        _correction_dispatch_authority(
+            denial,
+            repair_authority,
+        )["authority_binding_id"]
+    )
+    restarted = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    assert restarted.verified_post_merge_correction_chain(
+        str(denial["denial_id"])
+    ) == (denial_consumed, failure, grant, grant_consumed, pending)
+
+
+def test_post_merge_correction_pending_review_cas_fences_concurrent_candidate(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'2' * 64}"
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    _record_manifest_backed_post_merge_denial(queue, denial)
+    authority = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    consumed = queue.record_post_merge_correction_consumption(
+        _correction_consumption(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=10,
+            event_id=f"sha256:{'8' * 64}",
+        ),
+        expected_parent_record_id=str(denial["denial_id"]),
+    )
+    candidates = [
+        _correction_pending(
+            denial,
+            consumed,
+            authority=authority,
+            sequence=sequence,
+            marker=marker,
+        )
+        for sequence, marker in ((20, "a"), (21, "b"))
+    ]
+
+    def append(value: dict[str, object]) -> tuple[str, object]:
+        try:
+            record = queue.record_post_merge_correction_pending_review(
+                value,
+                expected_parent_record_id=str(consumed["record_id"]),
+            )
+            return "recorded", record
+        except MergeQueueFenceError as exc:
+            return "fenced", str(exc)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(append, candidates))
+
+    assert [status for status, _result in outcomes].count("recorded") == 1
+    assert [status for status, _result in outcomes].count("fenced") == 1
+    winner = next(
+        result for status, result in outcomes if status == "recorded"
+    )
+    assert isinstance(winner, dict)
+    chain = queue.verified_post_merge_correction_chain(
+        str(denial["denial_id"])
+    )
+    assert chain == (consumed, winner)
+    losing_candidate = next(
+        candidate
+        for candidate in candidates
+        if candidate["pending_event_id"]
+        != winner["detail"]["pending_event_id"]
+    )
+    with pytest.raises(MergeQueueFenceError, match="consumed"):
+        queue.record_post_merge_correction_pending_review(
+            losing_candidate,
+            expected_parent_record_id=str(consumed["record_id"]),
+        )
+
+    restarted = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    assert restarted.verified_post_merge_correction_chain(
+        str(denial["denial_id"])
+    ) == chain
+    projected = restarted.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert projected["state"] == "pending_review"
+    assert projected["pending_review"] == _projected_pending_detail(winner)
+
+
+def _fresh_pending_review_candidate(
+    tmp_path: Path,
+) -> tuple[
+    MergeQueue,
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    repository_id = f"repository:sha256:{'3' * 64}"
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="agent/uiir",
+        require_target_binding=True,
+    )
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch="agent/uiir",
+    )
+    _record_manifest_backed_post_merge_denial(queue, denial)
+    authority = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    consumed = queue.record_post_merge_correction_consumption(
+        _correction_consumption(
+            denial,
+            attempt=2,
+            authority_kind="review_denial",
+            authority_id=str(denial["denial_id"]),
+            sequence=10,
+            event_id=f"sha256:{'8' * 64}",
+        ),
+        expected_parent_record_id=str(denial["denial_id"]),
+    )
+    pending_value = _correction_pending(
+        denial,
+        consumed,
+        authority=authority,
+        sequence=20,
+        marker="a",
+    )
+    return queue, denial, consumed, pending_value
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("authority_kind", "repair_grant"),
+        ("authority_id", "foreign-authority"),
+        ("authority_binding_id", "foreign-authority-binding"),
+        ("started_event_id", f"sha256:{'d' * 64}"),
+        ("started_event_sequence", 11),
+        ("pre_consumption_head_record_id", "foreign-parent"),
+        ("consumption_record_id", "foreign-consumption"),
+        ("pending_binding_id", "baguqeeraforeignpending"),
+        ("complete_feedback_id", "baguqeeraforeignfeedback"),
+        ("complete_finding_count", 2),
+        ("complete_feedback_truncated", True),
+        ("required_review_role", "foreign-review-role"),
+        ("proposal_role", "foreign-proposal-role"),
+        ("write_performed", True),
+        ("provider_result_admitted", True),
+        ("attempt_consumed", False),
+        ("repository_write_authorized", True),
+        ("proof_authoritative", True),
+        ("completion_authoritative", True),
+    ],
+)
+def test_post_merge_correction_pending_review_rejects_every_mutated_binding(
+    tmp_path: Path,
+    field: str,
+    replacement: object,
+) -> None:
+    queue, denial, consumed, pending_value = (
+        _fresh_pending_review_candidate(tmp_path)
+    )
+
+    mutated = json.loads(json.dumps(pending_value))
+    mutated[field] = replacement
+    if field != "pending_binding_id":
+        mutated = _reidentify_correction_pending(mutated)
+    with pytest.raises((MergeQueueIntegrityError, MergeQueueFenceError)):
+        queue.record_post_merge_correction_pending_review(
+            mutated,
+            expected_parent_record_id=str(consumed["record_id"]),
+        )
+
+    assert queue.verified_post_merge_correction_chain(
+        str(denial["denial_id"])
+    ) == (consumed,)
+    projected = queue.verified_post_merge_correction_authority(
+        str(denial["denial_id"])
+    )
+    assert projected["state"] == "consumed"
+    assert projected["head_record_id"] == consumed["record_id"]
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("packet_id", "foreign-packet"),
+        ("packet_cid", "baguqeeraforeignpacket"),
+        ("provider_receipt_id", "foreign-provider-receipt"),
+        ("artifact_path", ".agent/uiir/foreign-proposal.patch"),
+        ("artifact_id", "baguqeeraforeignartifact"),
+    ],
+)
+def test_post_merge_correction_pending_review_binds_fresh_provider_fields(
+    tmp_path: Path,
+    field: str,
+    replacement: object,
+) -> None:
+    queue, denial, consumed, pending_value = (
+        _fresh_pending_review_candidate(tmp_path)
+    )
+    mutated = json.loads(json.dumps(pending_value))
+    mutated[field] = replacement
+
+    # Provider-result fields have no pre-dispatch durable oracle. A fresh
+    # value is admissible only as part of a newly content-addressed result.
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="pending-review identity changed",
+    ):
+        queue.record_post_merge_correction_pending_review(
+            mutated,
+            expected_parent_record_id=str(consumed["record_id"]),
+        )
+
+    rebound = _reidentify_correction_pending(mutated)
+    pending = queue.record_post_merge_correction_pending_review(
+        rebound,
+        expected_parent_record_id=str(consumed["record_id"]),
+    )
+    assert pending["detail"][field] == replacement
+    assert queue.record_post_merge_correction_pending_review(
+        rebound,
+        expected_parent_record_id=str(consumed["record_id"]),
+    ) == pending
+    assert queue.verified_post_merge_correction_chain(
+        str(denial["denial_id"])
+    ) == (consumed, pending)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("pending_event_id", f"sha256:{'e' * 64}"),
+        ("pending_event_sequence", 21),
+    ],
+)
+def test_post_merge_correction_pending_review_chain_binds_event_envelope(
+    tmp_path: Path,
+    field: str,
+    replacement: object,
+) -> None:
+    queue, denial, consumed, pending_value = (
+        _fresh_pending_review_candidate(tmp_path)
+    )
+    changed_event = json.loads(json.dumps(pending_value))
+    changed_event[field] = replacement
+
+    # Event identity cannot be part of the event payload's content identity;
+    # the append-only chain record and one-child CAS bind this envelope.
+    pending = queue.record_post_merge_correction_pending_review(
+        changed_event,
+        expected_parent_record_id=str(consumed["record_id"]),
+    )
+    assert pending["detail"][field] == replacement
+    with pytest.raises(MergeQueueFenceError, match="consumed"):
+        queue.record_post_merge_correction_pending_review(
+            pending_value,
+            expected_parent_record_id=str(consumed["record_id"]),
+        )
+    assert queue.record_post_merge_correction_pending_review(
+        changed_event,
+        expected_parent_record_id=str(consumed["record_id"]),
+    ) == pending
+    assert queue.verified_post_merge_correction_chain(
+        str(denial["denial_id"])
+    ) == (consumed, pending)
 
 
 def test_post_merge_correction_registry_is_one_shot_and_restart_safe(
@@ -457,7 +1811,7 @@ def test_post_merge_correction_registry_is_one_shot_and_restart_safe(
         repository_id=repository_id,
         target_branch="agent/uiir",
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     authority = queue.verified_post_merge_correction_authority(
         str(denial["denial_id"])
     )
@@ -541,7 +1895,7 @@ def test_post_merge_correction_failed_grant_can_receive_next_repair(
         repository_id=repository_id,
         target_branch="agent/uiir",
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     denial_consumed = queue.record_post_merge_correction_consumption(
         _correction_consumption(
             denial,
@@ -628,7 +1982,7 @@ def test_post_merge_correction_registry_rejects_gaps_and_identity_drift(
         repository_id=repository_id,
         target_branch="agent/uiir",
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     root_failure = _correction_failure(
         denial,
         attempt=2,
@@ -698,7 +2052,7 @@ def test_post_merge_correction_cas_allows_only_one_concurrent_child(
         repository_id=repository_id,
         target_branch="agent/uiir",
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     candidates = [
         _correction_consumption(
             denial,
@@ -742,7 +2096,7 @@ def test_post_merge_correction_registry_migrates_legacy_denial_head_once(
         repository_id=repository_id,
         target_branch="agent/uiir",
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     with queue._connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
         # Model a genuine pre-registry database. A one-time migration may
@@ -784,7 +2138,7 @@ def test_post_merge_correction_registry_rejects_full_consumed_rollback(
         repository_id=repository_id,
         target_branch="agent/uiir",
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
 
     queue.record_post_merge_correction_consumption(
         _correction_consumption(
@@ -835,7 +2189,7 @@ def test_post_merge_correction_legacy_anchor_binds_only_seeded_next_attempt(
         repository_id=repository_id,
         target_branch="agent/uiir",
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     anchor_value = _legacy_correction_failure_anchor(denial)
     anchor = queue.record_post_merge_correction_legacy_failure_anchor(
         anchor_value,
@@ -951,7 +2305,7 @@ def test_post_merge_correction_legacy_high_water_is_restart_safe_and_exact_next(
         denial,
         consuming_event_sequence=100,
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     queue.record_post_merge_review_denial_consumption(consumption)
     anchor_value = _legacy_correction_high_water_anchor(
         denial,
@@ -1073,7 +2427,7 @@ def test_post_merge_correction_legacy_high_water_requires_exact_consumption(
         denial,
         consuming_event_sequence=100,
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     queue.record_post_merge_review_denial_consumption(consumption)
     value = _legacy_correction_high_water_anchor(denial, consumption)
     if mutation == "missing_consumption_id":
@@ -1128,7 +2482,7 @@ def test_post_merge_correction_legacy_high_water_rejects_malformed_history(
         denial,
         consuming_event_sequence=100,
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     queue.record_post_merge_review_denial_consumption(consumption)
     value = _legacy_correction_high_water_anchor(denial, consumption)
     if mutation == "gap":
@@ -1188,7 +2542,7 @@ def test_post_merge_correction_legacy_high_water_terminal_kind_coherence(
         denial,
         consuming_event_sequence=100,
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     queue.record_post_merge_review_denial_consumption(consumption)
     value = _legacy_correction_high_water_anchor(denial, consumption)
     value["attempt_events"][-1]["terminal_event_type"] = terminal_type
@@ -1231,7 +2585,7 @@ def test_post_merge_correction_legacy_high_water_revalidates_consumption_on_rest
         denial,
         consuming_event_sequence=100,
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     queue.record_post_merge_review_denial_consumption(consumption)
     queue.record_post_merge_correction_legacy_high_water_anchor(
         _legacy_correction_high_water_anchor(denial, consumption),
@@ -1281,7 +2635,7 @@ def test_post_merge_correction_history_mirror_is_atomic_and_prefix_safe(
         repository_id=repository_id,
         target_branch="agent/uiir",
     )
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
     consumption = _correction_consumption(
         denial,
         attempt=2,
@@ -1316,7 +2670,7 @@ def test_post_merge_correction_history_mirror_is_atomic_and_prefix_safe(
         target_branch="agent/uiir",
         require_target_binding=True,
     )
-    second_queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(second_queue, denial)
     invalid_grant = {
         "schema": POST_MERGE_CORRECTION_REPAIR_GRANT_SCHEMA,
         **_correction_common(denial, attempt=3),
@@ -1897,6 +3251,16 @@ def test_merge_queue_migrates_legacy_sqlite_denial_consumption_witness(
     )
 
     assert queue.verified_post_merge_review_denials() == (denial,)
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="denial consumption registry row binding changed",
+    ):
+        queue.verified_post_merge_review_denial_consumptions()
+
+    assert (
+        _record_manifest_backed_post_merge_denial(queue, denial)
+        == denial
+    )
     assert queue.verified_post_merge_review_denial_consumptions() == (
         consumption,
     )
@@ -2068,7 +3432,7 @@ def test_post_merge_denial_consumption_is_permanent_and_tamper_evident(
         target_branch="agent/uiir",
     )
     consumption = _post_merge_denial_consumption_record(denial)
-    queue.record_post_merge_review_denial(denial)
+    _record_manifest_backed_post_merge_denial(queue, denial)
 
     assert (
         queue.record_post_merge_review_denial_consumption(
@@ -2140,7 +3504,10 @@ def test_post_merge_consumption_rejects_unauthorized_denial_before_promotion(
         == ()
     )
 
-    assert queue.record_post_merge_review_denial(authorized) == authorized
+    assert (
+        _record_manifest_backed_post_merge_denial(queue, authorized)
+        == authorized
+    )
     consumption = _post_merge_denial_consumption_record(authorized)
     assert (
         queue.record_post_merge_review_denial_consumption(
@@ -2173,7 +3540,7 @@ def test_post_merge_consumption_survives_authorized_representative_evolution(
         marker="a",
         correction_authorized=True,
     )
-    queue.record_post_merge_review_denial(evolved)
+    _record_manifest_backed_post_merge_denial(queue, evolved)
     consumption = _post_merge_denial_consumption_record(evolved)
     queue.record_post_merge_review_denial_consumption(consumption)
 
