@@ -19093,6 +19093,41 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 raise MergeQueueFenceError(
                     "legacy correction high-water migration already differs"
                 )
+            expected_target_commit = self._resolve_git_commit_in_repo(
+                self.repo_root,
+                self._main_branch_name(),
+            )
+            if not expected_target_commit:
+                raise MergeQueueIntegrityError(
+                    "legacy correction high-water recovery seed is invalid: "
+                    "recovery_seed_target_changed"
+                )
+            validated_seed, seed_failure_reason = (
+                self._validated_post_merge_recovery_seed_commit(
+                    task=task,
+                    recovery_seed_ref=str(
+                        detail.get("recovery_seed_ref") or ""
+                    ),
+                    recovery_seed_tree_id=str(
+                        detail.get("recovery_seed_tree_id") or ""
+                    ),
+                    recovery_seed_submodule_path=str(
+                        detail.get("recovery_seed_submodule_path") or ""
+                    ),
+                    recovery_seed_submodule_commit=str(
+                        detail.get("recovery_seed_submodule_commit") or ""
+                    ),
+                    expected_target_commit=expected_target_commit,
+                )
+            )
+            if not validated_seed:
+                raise MergeQueueIntegrityError(
+                    "legacy correction high-water recovery seed is invalid: "
+                    + (
+                        seed_failure_reason
+                        or "recovery_seed_validation_failed"
+                    )
+                )
             return {
                 "existing_anchor": dict(existing),
                 "denial": dict(denial),
@@ -19146,6 +19181,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ledger = _post_merge_review_runtime._strict_event_ledger(
             self.events_path
         )
+        legacy_task_bindings = (
+            self._verified_legacy_terminal_task_bindings(
+                self.events_path
+            )
+        )
+        verified_queue_reconciliations = {
+            (
+                str(event.get("event_id") or ""),
+                int(event.get("sequence") or 0),
+            )
+            for event in (
+                verified_post_merge_correction_queue_reconciliations_from_strict_ledger(
+                    self.events_path
+                )
+            )
+        }
         events_by_position: dict[tuple[str, int], Mapping[str, Any]] = {}
         for event in ledger:
             event_id = str(event.get("event_id") or "")
@@ -19170,6 +19221,33 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 == origin_stream_id
             )
 
+        def has_verified_task_binding(
+            event: Mapping[str, Any],
+        ) -> bool:
+            event_id = str(event.get("event_id") or "")
+            event_task_binding_id = str(
+                event.get("task_binding_id") or ""
+            )
+            return bool(
+                event_task_binding_id == task_binding_id
+                or (
+                    not event_task_binding_id
+                    and legacy_task_bindings.get(event_id)
+                    == task_binding_id
+                )
+            )
+
+        def has_exact_attempt(
+            event: Mapping[str, Any],
+            expected_attempt: int,
+        ) -> bool:
+            raw_attempt = event.get("attempt")
+            return bool(
+                isinstance(raw_attempt, int)
+                and not isinstance(raw_attempt, bool)
+                and raw_attempt == expected_attempt
+            )
+
         expected_starts: dict[int, tuple[str, int]] = {}
         expected_terminals: dict[int, tuple[str, int, str]] = {}
         final_terminal: Mapping[str, Any] | None = None
@@ -19188,19 +19266,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if (
                 not isinstance(started, Mapping)
                 or started.get("type") != "implementation_started"
-                or int(started.get("attempt") or 0) != attempt
+                or not has_exact_attempt(started, attempt)
                 or not has_base_identity(started)
-                or str(started.get("task_binding_id") or "")
-                not in {"", task_binding_id}
+                or not has_verified_task_binding(started)
                 or not isinstance(terminal, Mapping)
                 or terminal.get("type") != entry["terminal_event_type"]
-                or int(terminal.get("attempt") or 0) != attempt
+                or not has_exact_attempt(terminal, attempt)
                 or not has_base_identity(terminal)
-                or str(terminal.get("task_binding_id") or "")
-                not in {"", task_binding_id}
+                or not has_verified_task_binding(terminal)
             ):
                 raise MergeQueueIntegrityError(
                     "legacy correction high-water ledger binding changed"
+                )
+            started_branch = str(started.get("branch") or "")
+            terminal_branch = str(terminal.get("branch") or "")
+            started_baseline = str(started.get("baseline_ref") or "")
+            if (
+                not started_branch
+                or terminal_branch != started_branch
+                or not _FULL_GIT_COMMIT_ID.fullmatch(started_baseline)
+            ):
+                raise MergeQueueIntegrityError(
+                    "legacy correction lifecycle binding is incoherent"
                 )
             terminal_type = str(terminal["type"])
             if terminal_type == "implementation_finished":
@@ -19210,22 +19297,80 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     or isinstance(returncode, bool)
                     or not isinstance(returncode, int)
                     or returncode == 0
+                    or str(terminal.get("baseline_ref") or "")
+                    != started_baseline
                 ):
                     raise MergeQueueIntegrityError(
                         "legacy correction terminal did not consume a failure"
                     )
             elif terminal_type == "implementation_state_recovered":
+                recovery = terminal.get("attempt_recovery")
+                recovery_fields = {
+                    "consumed",
+                    "attempt",
+                    "task_id",
+                    "canonical_task_key",
+                    "canonical_task_cid",
+                    "previous_display_count",
+                    "previous_cid_count",
+                }
+                previous_display_count = (
+                    recovery.get("previous_display_count")
+                    if isinstance(recovery, Mapping)
+                    else None
+                )
+                previous_cid_count = (
+                    recovery.get("previous_cid_count")
+                    if isinstance(recovery, Mapping)
+                    else None
+                )
+                recovery_attempt = (
+                    recovery.get("attempt")
+                    if isinstance(recovery, Mapping)
+                    else None
+                )
                 if (
-                    terminal.get("attempt_consumed") not in {None, True}
-                    or not str(terminal.get("reason") or "")
+                    "attempt_consumed" in terminal
+                    or terminal.get("reason") != "inflight_process_missing"
+                    or not isinstance(recovery, Mapping)
+                    or set(recovery) != recovery_fields
+                    or not isinstance(recovery.get("consumed"), bool)
+                    or isinstance(recovery_attempt, bool)
+                    or not isinstance(recovery_attempt, int)
+                    or isinstance(previous_display_count, bool)
+                    or not isinstance(previous_display_count, int)
+                    or not 0 <= previous_display_count <= attempt
+                    or isinstance(previous_cid_count, bool)
+                    or not isinstance(previous_cid_count, int)
+                    or not 0 <= previous_cid_count <= attempt
+                    or str(recovery.get("task_id") or "")
+                    != task.task_id
+                    or str(recovery.get("canonical_task_key") or "")
+                    != identity.canonical_task_key
+                    or str(recovery.get("canonical_task_cid") or "")
+                    != identity.canonical_task_cid
+                    or recovery_attempt != attempt
+                    or recovery.get("consumed")
+                    is not (
+                        previous_display_count < attempt
+                        or previous_cid_count < attempt
+                    )
                 ):
                     raise MergeQueueIntegrityError(
                         "legacy correction recovery terminal is invalid"
                     )
-            elif terminal.get("attempt_consumed") is not True:
-                raise MergeQueueIntegrityError(
-                    "legacy correction queue terminal was not consumed"
+            else:
+                terminal_key = (
+                    str(terminal.get("event_id") or ""),
+                    int(terminal.get("sequence") or 0),
                 )
+                if (
+                    terminal.get("attempt_consumed") is not True
+                    or terminal_key not in verified_queue_reconciliations
+                ):
+                    raise MergeQueueIntegrityError(
+                        "legacy correction queue terminal is not verified"
+                    )
             expected_starts[attempt] = start_position
             expected_terminals[attempt] = (
                 terminal_position[0],
@@ -19249,13 +19394,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 POST_MERGE_CORRECTION_QUEUE_RECONCILED_EVENT,
             }:
                 continue
-            attempt = int(event.get("attempt") or 0)
+            raw_attempt = event.get("attempt")
+            if (
+                isinstance(raw_attempt, bool)
+                or not isinstance(raw_attempt, int)
+            ):
+                raise MergeQueueIntegrityError(
+                    "legacy correction event attempt is invalid"
+                )
+            attempt = raw_attempt
             if attempt < first_attempt:
                 continue
-            if str(event.get("task_binding_id") or "") not in {
-                "",
-                task_binding_id,
-            }:
+            if not has_verified_task_binding(event):
                 raise MergeQueueIntegrityError(
                     "legacy correction event task binding changed"
                 )
@@ -19269,6 +19419,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         str(event.get("event_id") or ""),
                         int(event.get("sequence") or 0),
                     )
+                )
+            elif attempt > high_water_attempt:
+                raise MergeQueueFenceError(
+                    "legacy correction has a terminal above the high-water"
                 )
             elif first_attempt <= attempt <= high_water_attempt:
                 actual_terminals.setdefault(attempt, []).append(
@@ -19370,6 +19524,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         implementation_lock_path = self._implementation_lock_path()
         implementation_lock_metadata: dict[str, Any] = {}
         acquired_implementation_lock = False
+        merge_lock_path = self._repo_merge_lock_path()
+        acquired_merge_lock = False
+        merge_lock_metadata: dict[str, Any] = {}
+        owned_merge_lock_token: object | None = None
+        migration_target_commit = ""
         try:
             for claim_path in claim_paths:
                 acquired, reason, _existing = (
@@ -19403,6 +19562,57 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 raise MergeQueueFenceError(
                     "legacy correction migration implementation lock is "
                     f"unavailable: {lock_reason}"
+                )
+            merge_lock_lease_seed = (
+                "legacy-high-water-migration:"
+                f"{os.getpid()}:{threading.get_ident()}:{time.time_ns()}:"
+                f"{identity.canonical_task_cid}:{high_water_attempt}"
+            )
+            merge_lock_metadata = checkout_lock_metadata(
+                kind="merge",
+                repo_root=self.repo_root,
+                task_id=task.task_id,
+                branch="legacy-correction-high-water-migration",
+                attempt=high_water_attempt + 1,
+                extra={
+                    "operation": (
+                        "migrate_legacy_post_merge_correction_high_water"
+                    ),
+                    "state_dir": str(self.state_path.parent.resolve()),
+                    "state_path": str(self.state_path.resolve()),
+                    "state_lifecycle_independent": True,
+                    "lease_id": hashlib.sha1(
+                        merge_lock_lease_seed.encode("utf-8")
+                    ).hexdigest(),
+                },
+            )
+            (
+                acquired_merge_lock,
+                merge_lock_reason,
+                merge_lock_owner,
+            ) = self._try_acquire_published_merge_lock(
+                merge_lock_path,
+                merge_lock_metadata,
+            )
+            if not acquired_merge_lock:
+                owner_pid = int(
+                    (merge_lock_owner or {}).get("pid") or 0
+                )
+                owner_detail = (
+                    f" (owner pid {owner_pid})" if owner_pid else ""
+                )
+                raise MergeQueueFenceError(
+                    "legacy correction migration checkout mutation lock is "
+                    f"unavailable: {merge_lock_reason}{owner_detail}"
+                )
+            owned_merge_lock_token = self._activate_owned_merge_lock()
+            migration_target_commit = self._resolve_git_commit_in_repo(
+                self.repo_root,
+                self._main_branch_name(),
+            )
+            if not migration_target_commit:
+                raise MergeQueueIntegrityError(
+                    "legacy correction migration target is unavailable"
                 )
 
             current_matches = [
@@ -19460,6 +19670,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 raise MergeQueueIntegrityError(
                     "legacy correction recovery seed could not be materialized"
                 )
+            verified_seed, seed_reason = (
+                self._validated_post_merge_recovery_seed_commit(
+                    task=current_task,
+                    expected_target_commit=migration_target_commit,
+                    **recovery_seed,
+                )
+            )
+            if not verified_seed:
+                raise MergeQueueFenceError(
+                    "legacy correction recovery seed lost its target fence: "
+                    f"{seed_reason}"
+                )
 
             # Seed materialization may take long enough for external durable
             # inputs to change. Re-read all of them while both task claims are
@@ -19481,6 +19703,30 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             existing_anchor = evidence.get("existing_anchor")
             if isinstance(existing_anchor, Mapping):
                 return dict(existing_anchor)
+            verified_seed, seed_reason = (
+                self._validated_post_merge_recovery_seed_commit(
+                    task=current_task,
+                    expected_target_commit=migration_target_commit,
+                    **recovery_seed,
+                )
+            )
+            if (
+                not verified_seed
+                or any(
+                    str(verified_seed.get(name) or "")
+                    != str(recovery_seed.get(name) or "")
+                    for name in (
+                        "recovery_seed_ref",
+                        "recovery_seed_tree_id",
+                        "recovery_seed_submodule_path",
+                        "recovery_seed_submodule_commit",
+                    )
+                )
+            ):
+                raise MergeQueueFenceError(
+                    "legacy correction recovery seed changed before commit: "
+                    f"{seed_reason or 'seed_binding_changed'}"
+                )
             denial = evidence["denial"]
             transition = {
                 "schema": (
@@ -19523,11 +19769,35 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "migration_reason": "legacy_untyped_retry_high_water",
                 **recovery_seed,
             }
+            if not self._published_merge_lock_is_owned(
+                merge_lock_path,
+                merge_lock_metadata,
+            ):
+                raise MergeQueueFenceError(
+                    "legacy correction migration checkout mutation lease "
+                    "was lost before commit"
+                )
             return self.merge_queue.record_post_merge_correction_legacy_high_water_anchor(
                 transition,
                 expected_parent_record_id=denial_id,
             )
         finally:
+            if owned_merge_lock_token is not None:
+                self._deactivate_owned_merge_lock(
+                    owned_merge_lock_token
+                )
+            if (
+                acquired_merge_lock
+                and not self._release_published_merge_lock(
+                    merge_lock_path,
+                    merge_lock_metadata,
+                )
+            ):
+                logger.warning(
+                    "Legacy correction migration checkout mutation lease "
+                    "was not released: %s",
+                    merge_lock_path,
+                )
             if (
                 acquired_implementation_lock
                 and not self._release_implementation_lock(
@@ -34565,6 +34835,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return False
         if not self._lock_owner_is_active(metadata, expected_kind="merge"):
             return False
+        if metadata.get("state_lifecycle_independent") is True:
+            # Operator migrations deliberately run while implementation state
+            # is idle.  Their repository-wide fence remains live for as long
+            # as the owning process does, rather than being coupled to an
+            # active task projection that the migration must not create.
+            return True
         if self._lock_targets_current_daemon_state(metadata):
             return self._lock_task_is_active(metadata)
         return True
@@ -34693,6 +34969,100 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     # is held, so this cleanup can only remove our O_EXCL file.
                     lock_path.unlink(missing_ok=True)
             return True, reason, existing
+
+    def _try_acquire_published_merge_lock(
+        self,
+        lock_path: Path,
+        metadata: dict[str, Any],
+    ) -> tuple[bool, str, dict[str, Any] | None]:
+        """Atomically publish a complete repository checkout-mutation lease."""
+
+        lease_id = str(metadata.get("lease_id") or "")
+        if not lease_id:
+            raise ValueError("published merge lock requires a lease_id")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = lock_path.with_name(
+            f".{lock_path.name}.{lease_id}.tmp"
+        )
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        temporary_fd = os.open(temporary_path, flags, 0o600)
+        try:
+            self._write_lock_metadata(temporary_fd, metadata)
+            with serialized_lock_update(lock_path):
+                for _ in range(2):
+                    try:
+                        os.link(temporary_path, lock_path)
+                        return True, "acquired", None
+                    except FileExistsError:
+                        existing = load_json_dict(lock_path)
+                        if existing is None:
+                            if not lock_path.exists():
+                                continue
+                            # Older checkout writers can still have an O_EXCL
+                            # file open while publishing its JSON.  Never reap
+                            # that unknown owner during this narrow window.
+                            return False, "lock_malformed", None
+                        if self._merge_lock_owner_is_active(existing):
+                            return False, "lock_exists", existing
+                        if not self._clear_stale_lock(
+                            lock_path,
+                            lock_kind="merge",
+                            metadata=existing,
+                        ):
+                            return False, "lock_cleanup_failed", existing
+                existing = load_json_dict(lock_path)
+                if (
+                    existing is not None
+                    and self._merge_lock_owner_is_active(existing)
+                ):
+                    return False, "lock_exists", existing
+                return False, "lock_unavailable", existing
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+    def _published_merge_lock_is_owned(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        """Return whether the exact lease remains durably published."""
+
+        lease_id = str(metadata.get("lease_id") or "")
+        if not lease_id:
+            return False
+        with serialized_lock_update(lock_path):
+            existing = load_json_dict(lock_path)
+            return bool(
+                existing is not None
+                and str(existing.get("kind") or "") == "merge"
+                and str(existing.get("lease_id") or "") == lease_id
+            )
+
+    def _release_published_merge_lock(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        """Release only the exact repository mutation lease we published."""
+
+        lease_id = str(metadata.get("lease_id") or "")
+        if not lease_id:
+            return False
+        with serialized_lock_update(lock_path):
+            existing = load_json_dict(lock_path)
+            if (
+                existing is None
+                or str(existing.get("kind") or "") != "merge"
+                or str(existing.get("lease_id") or "") != lease_id
+            ):
+                return False
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                return False
+            return True
 
     def _try_acquire_implementation_task_claim(
         self,
@@ -35471,14 +35841,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self,
         events_path: Path,
     ) -> dict[str, str]:
-        """Bind pre-upgrade terminal events to an immutable task-board blob.
+        """Bind pre-upgrade lifecycle events to an immutable task-board blob.
 
-        Older ledgers did not place ``task_binding_id`` on every deterministic
-        terminal path. They are eligible for one-time migration only when the
-        terminal event records a full Git baseline and the complete current
-        task-board file is byte-identical to the blob at that baseline. The
-        strict ledger reader still verifies the event id and every other
-        causal binding before accepting this map.
+        Older ledgers did not place ``task_binding_id`` on every start or
+        deterministic terminal path. They are eligible for one-time migration
+        only when the lifecycle event records a full Git baseline and the
+        complete current task-board file is byte-identical to the blob at that
+        baseline. The strict ledger reader still verifies the event id and
+        every other causal binding before accepting this map.
         """
 
         if self.task_source is not None:
@@ -35562,6 +35932,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if (
                 event.get("type")
                 not in {
+                    "implementation_started",
                     "implementation_finished",
                     "implementation_state_recovered",
                 }

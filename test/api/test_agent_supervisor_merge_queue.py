@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -1724,6 +1725,118 @@ def _post_merge_denial_consumption_record(
         **material,
         "consumption_id": content_identity(material),
     }
+
+
+def test_merge_queue_migrates_legacy_sqlite_denial_consumption_witness(
+    tmp_path: Path,
+) -> None:
+    repository_id = f"repository:sha256:{'d' * 64}"
+    target_branch = "agent/uiir"
+    denial = _post_merge_denial_record(
+        repository_id=repository_id,
+        target_branch=target_branch,
+    )
+    consumption = _post_merge_denial_consumption_record(denial)
+    queue_path = tmp_path / "queue"
+    queue_path.mkdir()
+    legacy_path = queue_path / "merge_queue.sqlite3"
+    legacy = sqlite3.connect(legacy_path)
+    try:
+        legacy.executescript(
+            """
+            CREATE TABLE post_merge_review_denials (
+                terminal_key_id TEXT PRIMARY KEY,
+                denial_id TEXT NOT NULL UNIQUE,
+                target_repository_id TEXT NOT NULL,
+                target_branch TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                canonical_task_key TEXT NOT NULL,
+                canonical_task_cid TEXT NOT NULL,
+                task_binding_id TEXT NOT NULL,
+                implementation_commit TEXT NOT NULL,
+                record_json TEXT NOT NULL,
+                created_at REAL NOT NULL
+            );
+            CREATE TABLE post_merge_review_denial_consumptions (
+                terminal_key_id TEXT PRIMARY KEY,
+                consumption_id TEXT NOT NULL UNIQUE,
+                denial_id TEXT NOT NULL,
+                target_repository_id TEXT NOT NULL,
+                target_branch TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                canonical_task_key TEXT NOT NULL,
+                canonical_task_cid TEXT NOT NULL,
+                task_binding_id TEXT NOT NULL,
+                implementation_commit TEXT NOT NULL,
+                record_json TEXT NOT NULL,
+                created_at REAL NOT NULL
+            );
+            """
+        )
+        legacy.execute(
+            """INSERT INTO post_merge_review_denials (
+                 terminal_key_id, denial_id,
+                 target_repository_id, target_branch, task_id,
+                 canonical_task_key, canonical_task_cid,
+                 task_binding_id, implementation_commit,
+                 record_json, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                denial["terminal_key_id"],
+                denial["denial_id"],
+                denial["target_repository_id"],
+                denial["target_branch"],
+                denial["task_id"],
+                denial["canonical_task_key"],
+                denial["canonical_task_cid"],
+                denial["task_binding_id"],
+                denial["implementation_commit"],
+                json.dumps(denial, sort_keys=True, separators=(",", ":")),
+                1.0,
+            ),
+        )
+        legacy.execute(
+            """INSERT INTO post_merge_review_denial_consumptions (
+                 terminal_key_id, consumption_id, denial_id,
+                 target_repository_id, target_branch, task_id,
+                 canonical_task_key, canonical_task_cid,
+                 task_binding_id, implementation_commit,
+                 record_json, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                consumption["terminal_key_id"],
+                consumption["consumption_id"],
+                consumption["denial_id"],
+                consumption["target_repository_id"],
+                consumption["target_branch"],
+                consumption["task_id"],
+                consumption["canonical_task_key"],
+                consumption["canonical_task_cid"],
+                consumption["task_binding_id"],
+                consumption["implementation_commit"],
+                json.dumps(
+                    consumption,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                2.0,
+            ),
+        )
+        legacy.commit()
+    finally:
+        legacy.close()
+
+    queue = MergeQueue(
+        queue_path,
+        target_repository_id=repository_id,
+        target_branch=target_branch,
+        require_target_binding=True,
+    )
+
+    assert queue.verified_post_merge_review_denials() == (denial,)
+    assert queue.verified_post_merge_review_denial_consumptions() == (
+        consumption,
+    )
 
 
 def _legacy_post_merge_denial_record(

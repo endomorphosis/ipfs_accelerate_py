@@ -2104,6 +2104,7 @@ class MergeQueue:
             table_names=(
                 "merge_requests",
                 "post_merge_review_denials",
+                "post_merge_review_denial_consumptions",
                 "post_merge_correction_chain_records",
                 "post_merge_correction_chain_heads",
             ),

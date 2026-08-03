@@ -2105,7 +2105,10 @@ def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
                         "canonical_task_cid": (
                             case.identity.canonical_task_cid
                         ),
+                        "consumed": False,
                         "attempt": attempt,
+                        "previous_display_count": attempt,
+                        "previous_cid_count": attempt,
                     },
                 },
                 enrich=False,
@@ -2119,6 +2122,7 @@ def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
                     "branch": (
                         f"implementation/rev-001-attempt-{attempt}"
                     ),
+                    "baseline_ref": case.merge_commit,
                     "implementation_commit": "",
                     "returncode": 78,
                     "attempt_consumed": True,
@@ -2183,15 +2187,99 @@ def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
         "recovery_seed_submodule_commit": "c" * 40,
     }
     materializations = []
+    contender_observations = []
+    published_lease_ids = []
+    advance_target_during_first_materialization = {"pending": True}
+    replace_lock_during_validation = {"pending": False}
+    replacement_lock_metadata = {}
 
     def materialize(**kwargs):
+        merge_lock_path = case.daemon._repo_merge_lock_path()
+        assert merge_lock_path.exists()
+        published_lock = json.loads(
+            merge_lock_path.read_text(encoding="utf-8")
+        )
+        assert published_lock["state_lifecycle_independent"] is True
+        assert published_lock["lease_id"]
+        published_lease_ids.append(published_lock["lease_id"])
+        contender_observations.append(
+            case.daemon._try_acquire_lock(
+                merge_lock_path,
+                lock_kind="merge",
+                owner_active=case.daemon._merge_lock_owner_is_active,
+            )
+        )
+        contender_fd, contender_reason, contender_owner = (
+            contender_observations[-1]
+        )
+        assert contender_fd is None
+        assert contender_reason == "lock_exists"
+        assert contender_owner == published_lock
         materializations.append(kwargs)
+        if advance_target_during_first_materialization["pending"]:
+            advance_target_during_first_materialization["pending"] = False
+            (case.repo / "concurrent-target-advance.txt").write_text(
+                "simulated checkout mutation that ignored the lock\n",
+                encoding="utf-8",
+            )
+            _git(case.repo, "add", "concurrent-target-advance.txt")
+            _git(case.repo, "commit", "-m", "simulate target advance")
         return dict(seed)
 
     monkeypatch.setattr(
         case.daemon,
         "_materialize_post_merge_recovery_seed",
         materialize,
+    )
+    seed_validations = []
+
+    def validate_seed(*, expected_target_commit="", **kwargs):
+        seed_validations.append(kwargs)
+        live_target_commit = _git(
+            case.repo,
+            "rev-parse",
+            case.daemon._main_branch_name(),
+        )
+        if expected_target_commit != live_target_commit:
+            return {}, "recovery_seed_target_changed"
+        assert {
+            name: kwargs[name] for name in seed
+        } == seed
+        if replace_lock_during_validation["pending"]:
+            replace_lock_during_validation["pending"] = False
+            merge_lock_path = case.daemon._repo_merge_lock_path()
+            published_lock = json.loads(
+                merge_lock_path.read_text(encoding="utf-8")
+            )
+            replacement_lock_metadata.update(
+                {
+                    **published_lock,
+                    "lease_id": "replacement-checkout-contender",
+                    "operation": "replacement_checkout_contender",
+                }
+            )
+            assert case.daemon._release_published_merge_lock(
+                merge_lock_path,
+                published_lock,
+            )
+            acquired, reason, existing = (
+                case.daemon._try_acquire_published_merge_lock(
+                    merge_lock_path,
+                    replacement_lock_metadata,
+                )
+            )
+            assert acquired is True
+            assert reason == "acquired"
+            assert existing is None
+        return {
+            **seed,
+            "recovery_seed_parent_commit": live_target_commit,
+        }, ""
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_validated_post_merge_recovery_seed_commit",
+        validate_seed,
     )
     migration_kwargs = {
         "task": case.task,
@@ -2208,11 +2296,227 @@ def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
         ],
     }
 
+    original_board = case.daemon.todo_path.read_bytes()
+    case.daemon.todo_path.write_bytes(
+        original_board + b"\n<!-- legacy baseline mismatch -->\n"
+    )
+    try:
+        with pytest.raises(
+            MergeQueueIntegrityError,
+            match="ledger binding changed",
+        ):
+            case.daemon.migrate_legacy_post_merge_correction_high_water(
+                **migration_kwargs
+            )
+    finally:
+        case.daemon.todo_path.write_bytes(original_board)
+    assert materializations == []
+
+    strict_ledger = list(
+        post_merge_review_module._strict_event_ledger(
+            case.daemon.events_path
+        )
+    )
+    recovery_event_id = attempt_events[-1]["terminal_event_id"]
+
+    def rejected_with_ledger(
+        ledger,
+        *,
+        events=attempt_events,
+        error=MergeQueueIntegrityError,
+        match,
+    ):
+        with monkeypatch.context() as scoped:
+            scoped.setattr(
+                post_merge_review_module,
+                "_strict_event_ledger",
+                lambda _path: tuple(ledger),
+            )
+            with pytest.raises(error, match=match):
+                case.daemon.migrate_legacy_post_merge_correction_high_water(
+                    **{
+                        **migration_kwargs,
+                        "attempt_events": events,
+                    }
+                )
+
+    for recovery_mutation in (
+        "reason",
+        "payload",
+        "attempt_type",
+        "consumed",
+        "previous_count",
+        "top_level_consumption",
+    ):
+        malformed_recovery_ledger = deepcopy(strict_ledger)
+        malformed_recovery = next(
+            event
+            for event in malformed_recovery_ledger
+            if event.get("event_id") == recovery_event_id
+        )
+        if recovery_mutation == "reason":
+            malformed_recovery["reason"] = "operator_reset"
+        elif recovery_mutation == "payload":
+            malformed_recovery["attempt_recovery"]["attempt"] = 99
+        elif recovery_mutation == "attempt_type":
+            malformed_recovery["attempt_recovery"]["attempt"] = 4.0
+        elif recovery_mutation == "consumed":
+            malformed_recovery["attempt_recovery"]["consumed"] = True
+        elif recovery_mutation == "previous_count":
+            malformed_recovery["attempt_recovery"][
+                "previous_display_count"
+            ] = 5
+        else:
+            malformed_recovery["attempt_consumed"] = True
+        rejected_with_ledger(
+            malformed_recovery_ledger,
+            match="recovery terminal is invalid",
+        )
+    assert materializations == []
+
+    malformed_outer_attempt_ledger = deepcopy(strict_ledger)
+    next(
+        event
+        for event in malformed_outer_attempt_ledger
+        if event.get("event_id") == recovery_event_id
+    )["attempt"] = 4.0
+    rejected_with_ledger(
+        malformed_outer_attempt_ledger,
+        match="ledger binding changed",
+    )
+
+    mismatched_branch_ledger = deepcopy(strict_ledger)
+    next(
+        event
+        for event in mismatched_branch_ledger
+        if event.get("event_id") == recovery_event_id
+    )["branch"] = "implementation/different-attempt-4"
+    rejected_with_ledger(
+        mismatched_branch_ledger,
+        match="lifecycle binding is incoherent",
+    )
+
+    mismatched_baseline_ledger = deepcopy(strict_ledger)
+    attempt_three_terminal_id = attempt_events[1]["terminal_event_id"]
+    next(
+        event
+        for event in mismatched_baseline_ledger
+        if event.get("event_id") == attempt_three_terminal_id
+    )["baseline_ref"] = "f" * 40
+    rejected_with_ledger(
+        mismatched_baseline_ledger,
+        match="terminal did not consume a failure",
+    )
+    assert materializations == []
+
+    terminal_above_high_water = deepcopy(
+        next(
+            event
+            for event in strict_ledger
+            if event.get("event_id") == recovery_event_id
+        )
+    )
+    terminal_above_high_water.update(
+        {
+            "event_id": "sha256:" + ("a" * 64),
+            "sequence": max(
+                int(event.get("sequence") or 0)
+                for event in strict_ledger
+            )
+            + 1,
+            "attempt": 5,
+        }
+    )
+    terminal_above_high_water["attempt_recovery"]["attempt"] = 5
+    rejected_with_ledger(
+        [*strict_ledger, terminal_above_high_water],
+        error=MergeQueueFenceError,
+        match="terminal above the high-water",
+    )
+
+    unverified_queue_terminal = deepcopy(
+        next(
+            event
+            for event in strict_ledger
+            if event.get("event_id") == recovery_event_id
+        )
+    )
+    unverified_queue_terminal.update(
+        {
+            "type": (
+                post_merge_review_module
+                .POST_MERGE_CORRECTION_QUEUE_RECONCILED_EVENT
+            ),
+            "event_id": "sha256:" + ("b" * 64),
+            "sequence": unverified_queue_terminal["sequence"] + 1,
+            "attempt_consumed": True,
+        }
+    )
+    unverified_queue_events = deepcopy(attempt_events)
+    unverified_queue_events[-1].update(
+        {
+            "terminal_event_id": unverified_queue_terminal["event_id"],
+            "terminal_event_sequence": unverified_queue_terminal[
+                "sequence"
+            ],
+            "terminal_event_type": unverified_queue_terminal["type"],
+        }
+    )
+    rejected_with_ledger(
+        [*strict_ledger, unverified_queue_terminal],
+        events=unverified_queue_events,
+        match="queue terminal is not verified",
+    )
+    assert materializations == []
+
+    with pytest.raises(
+        MergeQueueFenceError,
+        match="recovery seed lost its target fence",
+    ):
+        case.daemon.migrate_legacy_post_merge_correction_high_water(
+            **migration_kwargs
+        )
+    assert case.queue.verified_post_merge_correction_chain() == ()
+    assert not case.daemon._repo_merge_lock_path().exists()
+
+    replace_lock_during_validation["pending"] = True
+    with pytest.raises(
+        MergeQueueFenceError,
+        match="checkout mutation lease was lost before commit",
+    ):
+        case.daemon.migrate_legacy_post_merge_correction_high_water(
+            **migration_kwargs
+        )
+    assert case.queue.verified_post_merge_correction_chain() == ()
+    assert json.loads(
+        case.daemon._repo_merge_lock_path().read_text(encoding="utf-8")
+    ) == replacement_lock_metadata
+    assert case.daemon._release_published_merge_lock(
+        case.daemon._repo_merge_lock_path(),
+        replacement_lock_metadata,
+    )
+    assert not case.daemon._repo_merge_lock_path().exists()
+
+    record_anchor = (
+        case.queue.record_post_merge_correction_legacy_high_water_anchor
+    )
+
+    def record_anchor_under_lock(*args, **kwargs):
+        assert case.daemon._repo_merge_lock_path().exists()
+        return record_anchor(*args, **kwargs)
+
+    monkeypatch.setattr(
+        case.queue,
+        "record_post_merge_correction_legacy_high_water_anchor",
+        record_anchor_under_lock,
+    )
+
     anchor = (
         case.daemon.migrate_legacy_post_merge_correction_high_water(
             **migration_kwargs
         )
     )
+    validations_after_anchor = len(seed_validations)
     repeated = (
         case.daemon.migrate_legacy_post_merge_correction_high_water(
             **migration_kwargs
@@ -2220,7 +2524,10 @@ def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
     )
 
     assert repeated == anchor
-    assert len(materializations) == 1
+    assert len(materializations) == 3
+    assert len(contender_observations) == 3
+    assert len(set(published_lease_ids)) == 3
+    assert len(seed_validations) == validations_after_anchor + 1
     assert anchor["record_kind"] == "legacy_high_water_anchored"
     assert anchor["attempt"] == 4
     assert anchor["detail"]["legacy_denial_consumption_id"] == (
@@ -2243,6 +2550,32 @@ def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
             case.identity.canonical_task_cid
         ]
         == 4
+    )
+
+    for seed_failure_reason in (
+        "recovery_seed_commit_unavailable",
+        "recovery_seed_tree_mismatch",
+        "recovery_seed_parent_mismatch",
+        "recovery_seed_retention_ref_missing",
+        "recovery_seed_child_retention_ref_missing",
+    ):
+        monkeypatch.setattr(
+            case.daemon,
+            "_validated_post_merge_recovery_seed_commit",
+            lambda _reason=seed_failure_reason, **_kwargs: ({}, _reason),
+        )
+        with pytest.raises(
+            MergeQueueIntegrityError,
+            match=seed_failure_reason,
+        ):
+            case.daemon.migrate_legacy_post_merge_correction_high_water(
+                **migration_kwargs
+            )
+    assert len(materializations) == 3
+    monkeypatch.setattr(
+        case.daemon,
+        "_validated_post_merge_recovery_seed_commit",
+        validate_seed,
     )
 
     tampered_events = deepcopy(attempt_events)
