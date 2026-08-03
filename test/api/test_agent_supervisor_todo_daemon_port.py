@@ -21963,6 +21963,88 @@ def test_completion_recovery_is_not_suppressed_by_other_task_on_same_commit(
     )
 
 
+@pytest.mark.parametrize(
+    ("proof_passed", "expected_landed_commit", "expected_merge_commit"),
+    [
+        (True, "b" * 40, "c" * 40),
+        (False, "", ""),
+    ],
+)
+def test_completion_recovery_derives_missing_landed_refs_only_from_passed_proof(
+    tmp_path,
+    proof_passed,
+    expected_landed_commit,
+    expected_merge_commit,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "runtime.todo.md"
+    todo_path.write_text(
+        """## FVT-024 Recover completion persistence
+
+- Status: completed
+- Outputs: feature.py
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "task_state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+    )
+    implementation_commit = "a" * 40
+    landed_commit = "b" * 40
+    merge_commit = "c" * 40
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "FVT-024",
+            "attempt": 1,
+            "implementation_commit": implementation_commit,
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "post_merge_integration_commit_unproven",
+            },
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-024",
+            "attempt": 1,
+            "implementation_commit": implementation_commit,
+            "resolved": False,
+            "reason": "completion_persistence_failed",
+            "cleanup_result": {"cleaned": True},
+            # Older persistence-failure events omitted the duplicate top-level
+            # landed/merge fields even though the immutable nested proof had
+            # already passed.
+            "integration_commit_proof": {
+                "passed": proof_passed,
+                "implementation_commit": landed_commit,
+                "integration_ref": merge_commit,
+                "integration_commit": merge_commit,
+                "target_branch": "main",
+            },
+        },
+    )
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda *_args: True  # type: ignore[method-assign]
+
+    [candidate] = daemon._failed_merge_candidates(
+        skip_task_ids={"FVT-024"},
+    )
+    recovery = candidate["completion_persistence_recovery"]
+
+    assert recovery["landed_commit"] == expected_landed_commit
+    assert recovery["merge_commit"] == expected_merge_commit
+    assert recovery["integration_commit_proof"]["passed"] is proof_passed
+
+
 def test_completion_recovery_requires_exact_false_resolved_flag(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

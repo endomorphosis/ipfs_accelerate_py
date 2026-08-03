@@ -35253,6 +35253,14 @@ class PortalImplementationDaemon:
                 recovery_proof = recovery_event.get(
                     "integration_commit_proof"
                 )
+                passed_recovery_proof = (
+                    recovery_proof
+                    if (
+                        isinstance(recovery_proof, Mapping)
+                        and recovery_proof.get("passed") is True
+                    )
+                    else {}
+                )
                 recovery_cleanup = recovery_event.get("cleanup_result")
                 recovery_bindings = recovery_event.get(
                     "completion_task_cids"
@@ -35266,13 +35274,21 @@ class PortalImplementationDaemon:
                         recovery_event.get("implementation_commit") or ""
                     ),
                     "landed_commit": str(
-                        recovery_event.get("landed_commit") or ""
+                        recovery_event.get("landed_commit")
+                        or passed_recovery_proof.get(
+                            "implementation_commit"
+                        )
+                        or ""
                     ),
                     "landed_ref_source": str(
                         recovery_event.get("landed_ref_source") or ""
                     ),
                     "merge_commit": str(
-                        recovery_event.get("merge_commit") or ""
+                        recovery_event.get("merge_commit")
+                        or passed_recovery_proof.get(
+                            "integration_commit"
+                        )
+                        or ""
                     ),
                     "cleanup_cleaned": bool(
                         isinstance(recovery_cleanup, Mapping)
