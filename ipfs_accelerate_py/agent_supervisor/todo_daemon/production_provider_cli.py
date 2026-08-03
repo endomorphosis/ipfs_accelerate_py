@@ -219,7 +219,7 @@ def _production_response_json_schema(
             "findings": {
                 "type": "array",
                 "items": {"type": "string", "maxLength": 4_096},
-                "maxItems": 64,
+                "maxItems": 0,
             },
         }
         required = [*binding_required, "decision", "findings"]
@@ -312,11 +312,7 @@ def _validate_production_native_response(
         findings = response.get("findings")
         if (
             decision not in {"approve", "reject"}
-            or not isinstance(findings, list)
-            or len(findings) > 64
-            or not all(
-                isinstance(item, str) and len(item) <= 4_096 for item in findings
-            )
+            or findings != []
         ):
             raise RuntimeError("production Codex response violates its strict schema")
     return response
@@ -578,11 +574,12 @@ class BoundProductionCLIProvider:
             findings = response.get("findings")
             if (
                 decision not in {"approve", "reject"}
-                or not isinstance(findings, list)
+                or findings != []
                 or response.get("proposal") not in (None, {})
             ):
                 raise RuntimeError(
-                    "production Codex review must be an approve/reject decision"
+                    "production Codex review must be an approve/reject decision "
+                    "with an empty findings list"
                 )
 
         response["supervisor_provider_execution"] = {

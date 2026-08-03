@@ -1205,7 +1205,7 @@ def _proposal_payload_failures(
     review = dict(binding.review_proposal_payload)
     if (
         review.get("decision") != "approve"
-        or not isinstance(review.get("findings"), list)
+        or review.get("findings") != []
         or review.get("proposal") not in (None, {})
     ):
         failures.append("reviewed_effect_codex_approval_invalid")
@@ -1373,7 +1373,7 @@ def capture_production_reviewed_effect(
         or selected.response_digest != implementation.response_digest
         or dict(selected.payload) != dict(implementation.payload)
         or review.payload.get("decision") != "approve"
-        or not isinstance(review.payload.get("findings"), list)
+        or review.payload.get("findings") != []
         or review.payload.get("proposal") not in (None, {})
     ):
         raise ValueError("reviewed effect requires Grok final bytes and Codex approval")

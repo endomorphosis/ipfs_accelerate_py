@@ -246,6 +246,69 @@ def test_reviewed_effect_round_trip_reconstructs_exact_commit(tmp_path: Path) ->
     ).admitted
 
 
+def test_reviewed_effect_rejects_approval_with_findings_at_both_boundaries(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    task, baseline, packet, result, captured = _route(repo)
+    assert result.review_proposal is not None
+    contradictory_payload = {
+        **dict(result.review_proposal.payload),
+        "findings": ["approval cannot carry a finding"],
+    }
+    contradictory_review = replace(
+        result.review_proposal,
+        payload=contradictory_payload,
+    )
+    contradictory_result = replace(result, review_proposal=contradictory_review)
+
+    try:
+        capture_production_reviewed_effect(
+            repo_root=repo,
+            task=task,
+            task_identity=IDENTITY,
+            packet=packet,
+            route_result=contradictory_result,
+            baseline_ref=baseline,
+        )
+    except ValueError as error:
+        assert "Grok final bytes and Codex approval" in str(error)
+    else:  # pragma: no cover - a release-critical fail-closed assertion
+        raise AssertionError("contradictory approval must fail effect capture")
+
+    commit = _commit(repo, "reviewed proposal A")
+    tree = f"git-tree:{_git(repo, 'rev-parse', f'{commit}^{{tree}}')}"
+    finalized = finalize_production_reviewed_effect(
+        captured,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        implementation_commit=commit,
+    )
+    contradictory_binding_payload = json.loads(
+        json.dumps(finalized.review_proposal_payload)
+    )
+    contradictory_binding_payload["findings"] = [
+        "approval cannot carry a finding"
+    ]
+    contradictory_binding = _recid(
+        finalized,
+        review_proposal_payload=contradictory_binding_payload,
+        review_proposal_payload_cid=content_identity(contradictory_binding_payload),
+    )
+    verification = verify_finalized_production_reviewed_effect(
+        contradictory_binding,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        expected_implementation_commit=commit,
+        expected_implementation_tree_id=tree,
+    )
+
+    assert not verification.admitted
+    assert "reviewed_effect_codex_approval_invalid" in verification.reason_codes
+
+
 def test_validation_mutation_and_proposal_a_commit_b_are_rejected(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     task, _baseline, _packet, _result, captured = _route(repo)

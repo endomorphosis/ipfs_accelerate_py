@@ -2167,6 +2167,20 @@ class ImplementationProviderRouter:
                 review_proposal=review,
                 attempts=attempts,
             )
+        # An approving review cannot simultaneously report findings.  Keep
+        # this defense at the writer boundary as well as in the production
+        # provider adapter so an injected/custom provider cannot turn a
+        # contradictory review into an admitted repository mutation.
+        if decision == "approve" and review.payload.get("findings") != []:
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+                packet_id=packet_id,
+                packet=packet_identity,
+                implementation_proposal=grok,
+                review_proposal=review,
+                attempts=attempts,
+            )
         selected = grok
         if review.payload.get("proposal") not in (None, {}):
             return self._result(

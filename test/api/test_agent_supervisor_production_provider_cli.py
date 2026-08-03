@@ -421,6 +421,9 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
     assert "--verbatim" in observed["grok_cli"]["command"]
     assert "--output-schema" in observed["codex_cli"]["command"]
     assert observed["codex_cli"]["command"][-1] == "-"
+    assert observed["codex_cli"]["schema"]["properties"]["findings"][
+        "maxItems"
+    ] == 0
 
     for response, expected_provider, expected_model in (
         (grok_response, "grok_cli", "grok-4.5"),
@@ -475,6 +478,77 @@ def test_native_pair_rejects_response_with_wrong_request_binding(
 
     with pytest.raises(RuntimeError, match="request binding"):
         codex(request)
+
+
+def test_native_codex_rejects_approve_with_findings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _native_request(ProviderRole.CODEX_REVIEW)
+    monkeypatch.setattr(
+        native_cli.shutil,
+        "which",
+        lambda name: f"/trusted/bin/{name}",
+    )
+
+    def contradictory_review(
+        command: Any,
+        *,
+        cwd: Path,
+        timeout_seconds: int,
+        stdin_text: str | None = None,
+    ) -> tuple[str, str]:
+        del cwd, timeout_seconds, stdin_text
+        cmd = list(command)
+        response_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        response_path.write_text(
+            json.dumps(
+                {
+                    "packet_id": request.packet_id,
+                    "snapshot_id": request.snapshot_id,
+                    "task_id": request.task_id,
+                    "decision": "approve",
+                    "findings": ["the proposal is unsafe"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return "", ""
+
+    monkeypatch.setattr(
+        native_cli,
+        "_run_native_cli_process",
+        contradictory_review,
+    )
+    _grok, codex = build_production_cli_provider_pair()
+
+    with pytest.raises(RuntimeError, match="strict schema"):
+        codex(request)
+
+
+def test_custom_invoker_codex_rejects_approve_with_findings() -> None:
+    policy = ProductionCLIProviderPolicy()
+
+    def contradictory_review(_prompt, config):
+        return (
+            json.dumps(
+                {
+                    "decision": "approve",
+                    "findings": ["the proposal is unsafe"],
+                }
+            ),
+            _child_receipt(config),
+        )
+
+    reviewer = BoundProductionCLIProvider(
+        policy=policy,
+        role=ProviderRole.CODEX_REVIEW,
+        provider_name=policy.codex_provider,
+        model_name=policy.codex_model,
+        invoker=contradictory_review,
+    )
+
+    with pytest.raises(RuntimeError, match="empty findings list"):
+        reviewer(_request(ProviderRole.CODEX_REVIEW))
 
 
 def test_native_codex_response_file_is_limited_before_read(

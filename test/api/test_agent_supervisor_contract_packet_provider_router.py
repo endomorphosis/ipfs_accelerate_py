@@ -161,7 +161,8 @@ def test_no_provider_receives_repository_path_corpus_or_expansion_bodies() -> No
     router = ImplementationProviderRouter(
         grok_provider=capture,
         codex_provider=lambda request: (
-            seen.append(request.to_dict()) or {"decision": "approve"}
+            seen.append(request.to_dict())
+            or {"decision": "approve", "findings": []}
         ),
         admission_gate=_accept,
     )
@@ -276,6 +277,51 @@ def test_review_repair_requires_a_further_review_and_never_writes() -> None:
     assert result.reason_code == ProviderReason.REVIEW_REJECTED.value
     assert result.selected_proposal is None
     assert not result.write_performed
+
+
+def test_approve_with_findings_is_rejected_before_writer() -> None:
+    writes = []
+    result = ImplementationProviderRouter(
+        grok_provider=_grok,
+        codex_provider=lambda _request: {
+            "decision": "approve",
+            "findings": ["the proposal is unsafe"],
+        },
+        admission_gate=_accept,
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+    ).route(
+        _Packet(),
+        current_snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:contradictory-review",
+    )
+
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.PROVIDER_RESPONSE_MALFORMED.value
+    assert result.selected_proposal is None
+    assert result.write_performed is False
+    assert writes == []
+
+
+def test_approve_without_findings_is_rejected_before_writer() -> None:
+    writes = []
+    result = ImplementationProviderRouter(
+        grok_provider=_grok,
+        codex_provider=lambda _request: {"decision": "approve"},
+        admission_gate=_accept,
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+    ).route(
+        _Packet(),
+        current_snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:missing-review-findings",
+    )
+
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.PROVIDER_RESPONSE_MALFORMED.value
+    assert result.selected_proposal is None
+    assert result.write_performed is False
+    assert writes == []
 
 
 def test_missing_admission_or_writer_lease_never_writes() -> None:

@@ -1123,6 +1123,8 @@ def test_cli_adapters_use_native_request_bound_schema_and_verbatim_prompt(
         assert schema["properties"]["leaf_id"]["enum"] == [
             request.payload["leaf"]["leaf_id"]
         ]
+        assert schema["properties"]["findings"]["maxItems"] == 0
+        assert "oneOf" not in schema
         command = record["command"]
         model_flag = "--model"
         assert command[command.index(model_flag) + 1] == expected_model
@@ -1139,6 +1141,50 @@ def test_cli_adapters_use_native_request_bound_schema_and_verbatim_prompt(
     assert grok_observation.effective_model == policy.grok.model
     assert codex_observation.effective_provider == "codex_cli"
     assert codex_observation.effective_model == policy.codex.model
+
+
+def test_native_response_parser_requires_empty_findings_but_keeps_reject(
+    tmp_path: Path,
+) -> None:
+    _private, issuer = _private_key_file(tmp_path / "key")
+    policy = legacy.parse_legacy_landed_review_policy(
+        _policy_payload(issuer_key_id=issuer)
+    )
+    task = policy.task("ASE-005")
+    manifest = legacy.build_legacy_landed_byte_manifest(policy, _binding(task))
+    request = legacy._leaf_review_request(  # noqa: SLF001
+        policy=policy,
+        task=task,
+        manifest=manifest,
+        leaf=manifest["leaves"][0],
+        provider=policy.grok,
+    )
+    response_schema = legacy_cli._leaf_decision_json_schema(  # noqa: SLF001
+        request
+    )
+    response = {
+        "schema": legacy.LEGACY_LANDED_LEAF_DECISION_SCHEMA,
+        "decision": "approve",
+        "manifest_id": request.payload["manifest_id"],
+        "leaf_id": request.payload["leaf"]["leaf_id"],
+        "findings": ["approval cannot carry a finding"],
+    }
+
+    with pytest.raises(RuntimeError, match="violates its schema"):
+        legacy_cli._validate_native_response(  # noqa: SLF001
+            json.dumps(response), response_schema
+        )
+
+    response["decision"] = "reject"
+    with pytest.raises(RuntimeError, match="violates its schema"):
+        legacy_cli._validate_native_response(  # noqa: SLF001
+            json.dumps(response), response_schema
+        )
+
+    response["findings"] = []
+    assert legacy_cli._validate_native_response(  # noqa: SLF001
+        json.dumps(response), response_schema
+    ) == response
 
 
 def test_native_schema_boundary_rejects_grok_prose_and_mismatched_codex_json(

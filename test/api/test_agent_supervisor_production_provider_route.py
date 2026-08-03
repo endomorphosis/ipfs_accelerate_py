@@ -434,7 +434,7 @@ def test_grok_cannot_self_review_on_production_route(
                     "files": [{"path": PATH, "content": "x\n"}],
                 }
             }
-        return {"decision": "approve"}
+        return {"decision": "approve", "findings": []}
 
     result = daemon.run_production_model_assisted_route(
         _task(),
@@ -811,7 +811,7 @@ def test_no_provider_receives_repository_corpus() -> None:
     def codex(request):
         seen.append(request.to_dict())
         assert request["role"] == ProviderRole.CODEX_REVIEW.value
-        return {"decision": "approve"}
+        return {"decision": "approve", "findings": []}
 
     packet = build_production_contract_packet(
         task_id="SCA-615",

@@ -99,6 +99,10 @@ def _leaf_decision_json_schema(
             "findings": {
                 "type": "array",
                 "items": {"type": "string"},
+                # Keep the native schema in the flat common subset accepted
+                # by both CLIs. Rejection remains an admissible fail-closed
+                # decision, but native responses cannot attach detail.
+                "maxItems": 0,
             },
         },
         "required": [
@@ -546,6 +550,7 @@ def _validate_native_response(
         or not isinstance(response.get("findings"), list)
         or len(response["findings"]) > 64
         or not all(isinstance(item, str) for item in response["findings"])
+        or response["findings"] != []
     ):
         raise RuntimeError("legacy native structured response violates its schema")
     return response
