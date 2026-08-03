@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import subprocess
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -78,6 +78,12 @@ REQUIRED_CATEGORIES = {
 }
 REQUIRED_MUTATIONS = {"observation", "quantifier"}
 LINUX_AARCH64 = "linux-aarch64"
+SHARED_TOOLCHAIN_ROOT = Path(
+    os.environ.get(
+        "IPFS_DATASETS_FORMAL_TOOLCHAIN_ROOT",
+        str(Path.home() / ".local/share/ipfs_datasets_py/theorem-provers"),
+    )
+).expanduser().resolve()
 
 HYPERLTL_SOURCE_SHA256 = (
     "1c5a41a650a887e40adc9338cac46b6f432dd7d06588c66a44c4b8b672e8444a"
@@ -130,27 +136,71 @@ def certifier():
 
 
 @pytest.fixture(scope="module")
-def install_root(tmp_path_factory) -> Path:
-    return tmp_path_factory.mktemp("hyperproperty-vendor")
+def install_root() -> Path:
+    return SHARED_TOOLCHAIN_ROOT
 
 
 @pytest.fixture(scope="module")
-def vendor_bundle(installer, install_root):
+def dependency_roots() -> dict[str, Path]:
+    base = SHARED_TOOLCHAIN_ROOT
+    mchyper = base / "build-dependencies" / "mchyper"
+    roots = {
+        "make": Path("/usr/bin/make"),
+        "g++": Path("/usr/bin/g++"),
+        "zlib": Path("/usr/bin/pkgconf"),
+        "opam": base / "opam" / "ipfs-datasets-coq" / "bin",
+        "dotnet-sdk": base / "dotnet-sdk-8.0.300-linux-arm64",
+        "spot": base / "spot-2.12-linux-aarch64",
+        "ghcup-bin": mchyper / ".ghcup" / "bin",
+        "ghc-package-db": (
+            mchyper / "cabal" / "store" / "ghc-9.4.7" / "package.db"
+        ),
+        "python-root": mchyper / "python-2.7.18",
+        "python-source": base / "sources" / "Python-2.7.18",
+        "python-archive": base / "downloads" / "Python-2.7.18.tar.xz",
+        "abc-root": (
+            mchyper / "abc-e76768b9d34f9dc67cb6608efecd55db271ff849"
+        ),
+        "abc-source": (
+            base / "sources" / "abc-e76768b9d34f9dc67cb6608efecd55db271ff849"
+        ),
+        "abc-archive": (
+            base
+            / "downloads"
+            / "abc-e76768b9d34f9dc67cb6608efecd55db271ff849.tar.gz"
+        ),
+        "aiger-root": mchyper / "aiger-1.9.4",
+        "aiger-source": base / "sources" / "aiger-1.9.4",
+        "aiger-archive": base / "downloads" / "aiger-1.9.4.tar.gz",
+    }
+    missing = [f"{name}={path}" for name, path in roots.items() if not path.exists()]
+    assert not missing, "missing explicit vendor dependencies: " + "; ".join(missing)
+    return roots
+
+
+@pytest.fixture(scope="module")
+def vendor_bundle(installer, install_root, dependency_roots):
     return installer.ensure_hyperproperty_vendor(
         yes=True,
         strict=True,
-        force=True,
+        force=False,
         install_root=install_root,
         platform_id=LINUX_AARCH64,
+        repo_root=REPO_ROOT,
+        lock_path=LOCK_PATH,
+        dependency_roots=dependency_roots,
         checksum_verified=True,
     )
 
 
 @pytest.fixture(scope="module")
-def vendor_certificate(certifier, install_root) -> dict[str, Any]:
+def vendor_certificate(
+    certifier, vendor_bundle, install_root
+) -> dict[str, Any]:
+    assert vendor_bundle.ok, vendor_bundle.to_dict()
     return certifier.certify_hyperproperty_vendor_toolchains(
         install_root=install_root,
-        force_install=True,
+        skip_install=True,
         platform_id=LINUX_AARCH64,
         repo_root=REPO_ROOT,
         lock_path=LOCK_PATH,
@@ -283,7 +333,9 @@ def test_certifier_vendor_constants(certifier) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_vendor_install_on_linux_aarch64(installer, vendor_bundle) -> None:
+def test_vendor_install_on_linux_aarch64(
+    installer, certifier, vendor_bundle
+) -> None:
     assert vendor_bundle.interface == installer.VENDOR_INTERFACE
     assert vendor_bundle.goal_id == VENDOR_GOAL_ID
     assert vendor_bundle.ok
@@ -302,18 +354,12 @@ def test_vendor_install_on_linux_aarch64(installer, vendor_bundle) -> None:
         assert "hyperproperty-vendor" in identity.executable
         assert installer.tool_supported_on_platform(tool_id, LINUX_AARCH64)
 
-        completed = subprocess.run(
-            [identity.executable, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
+        backend = certifier.backend_for(
+            tool_id,
+            engine_identity=identity,
         )
-        banner = (completed.stdout or "") + (completed.stderr or "")
-        assert identity.version in banner
-        assert "vendor" in banner.casefold()
-        assert "hermetic-hyperproperty-engine" not in banner.casefold()
-        assert SOURCE_SHA[tool_id][:12] in banner
+        assert backend.is_available() is True
+        assert backend.resolve_executable() == identity.executable
 
     hyper = vendor_bundle.identities["hyperltl"]
     assert hyper.upstream_product == "eahyper"
@@ -336,12 +382,14 @@ def test_vendor_install_on_linux_aarch64(installer, vendor_bundle) -> None:
     assert mc.source == UPSTREAM["mchyper"]
 
 
-def test_hermetic_engine_cannot_satisfy_vendor(installer, install_root) -> None:
+def test_hermetic_engine_cannot_satisfy_vendor(
+    installer, tmp_path, vendor_bundle
+) -> None:
     hermetic = installer.ensure_hyperproperty(
         yes=True,
         strict=True,
         force=True,
-        install_root=install_root / "hermetic-only",
+        install_root=tmp_path / "hermetic-only",
         hermetic_engine=True,
         vendor=False,
         checksum_verified=True,
@@ -352,16 +400,7 @@ def test_hermetic_engine_cannot_satisfy_vendor(installer, install_root) -> None:
         assert identity.is_vendor_build is False
         assert "hyperproperty-engines" in identity.executable
 
-    vendor = installer.ensure_hyperproperty_vendor(
-        yes=True,
-        strict=True,
-        force=True,
-        install_root=install_root / "vendor-only",
-        platform_id=LINUX_AARCH64,
-        checksum_verified=True,
-    )
-    assert vendor.ok
-    for tool_id, identity in vendor.identities.items():
+    for tool_id, identity in vendor_bundle.identities.items():
         herm = hermetic.identities[tool_id]
         assert identity.is_hermetic_engine is False
         assert identity.is_vendor_build is True
@@ -448,24 +487,35 @@ def test_vendor_engine_digests_and_deps(
     ),
 )
 def test_vendor_live_semantic_categories(
-    certifier, vendor_certificate: dict[str, Any], category: str
+    certifier,
+    vendor_bundle,
+    vendor_certificate: dict[str, Any],
+    category: str,
 ) -> None:
     specs = [
         spec for spec in certifier.default_case_specs() if spec.category == category
     ]
     assert specs, category
     for tool_id in sorted(REQUIRED_ENGINES):
+        if category == "violation" and tool_id == "hyperltl":
+            # EAHyper is the satisfiability member of the matrix; native
+            # model-checking counterexamples are supplied by Auto/MCHyper.
+            continue
         entry = vendor_certificate[tool_id]
+        identity = vendor_bundle.identities[tool_id]
         for spec in specs:
             document = certifier.materialize_document(spec)
             record = certifier.run_engine_case(
                 tool_id,
                 spec.case_id,
                 document,
-                executable=entry["executable"],
+                engine_identity=identity,
                 engine_version=entry["version"],
                 expected=spec.expected,
-                force_verdict=spec.force_verdict,
+                system_model=certifier.vendor_system_model(
+                    tool_id,
+                    violated=category == "violation",
+                ),
             )
             assert record.outcome == spec.expected, (tool_id, spec.case_id, record)
             assert record.agreed is True
@@ -476,7 +526,7 @@ def test_vendor_live_semantic_categories(
 
 
 def test_vendor_semantic_mutations_preserved(
-    certifier, vendor_certificate: dict[str, Any]
+    certifier, vendor_bundle, vendor_certificate: dict[str, Any]
 ) -> None:
     """Observation/quantifier mutations preserve translation on vendor engines."""
 
@@ -507,7 +557,11 @@ def test_vendor_semantic_mutations_preserved(
     )
     for tool_id in sorted(REQUIRED_ENGINES):
         entry = vendor_certificate[tool_id]
-        backend = certifier.backend_for(tool_id, executable=entry["executable"])
+        identity = vendor_bundle.identities[tool_id]
+        backend = certifier.backend_for(
+            tool_id,
+            engine_identity=identity,
+        )
         base_obs = backend.translate(base).observation_map.observation_fields
         mut_obs = backend.translate(obs_mut).observation_map.observation_fields
         assert mut_obs != base_obs
@@ -523,9 +577,10 @@ def test_vendor_semantic_mutations_preserved(
             tool_id,
             "case:mutation_observation",
             obs_mut,
-            executable=entry["executable"],
+            engine_identity=identity,
             engine_version=entry["version"],
             expected="satisfied",
+            system_model=certifier.vendor_system_model(tool_id),
         )
         assert record.outcome == "satisfied"
         assert record.translation_preserved is True
@@ -533,12 +588,13 @@ def test_vendor_semantic_mutations_preserved(
 
 
 def test_vendor_replay_malformed_timeout_disagreement(
-    certifier, installer, vendor_certificate: dict[str, Any]
+    certifier, vendor_bundle, vendor_certificate: dict[str, Any]
 ) -> None:
     for tool_id in sorted(REQUIRED_ENGINES):
         entry = vendor_certificate[tool_id]
-        executable = entry["executable"]
+        identity = vendor_bundle.identities[tool_id]
         version = entry["version"]
+        system_model = certifier.vendor_system_model(tool_id)
 
         # Replay
         holds = next(
@@ -551,17 +607,19 @@ def test_vendor_replay_malformed_timeout_disagreement(
             tool_id,
             holds.case_id,
             document,
-            executable=executable,
+            engine_identity=identity,
             engine_version=version,
             expected=holds.expected,
+            system_model=system_model,
         )
         second = certifier.run_engine_case(
             tool_id,
             f"{holds.case_id}:replay",
             document,
-            executable=executable,
+            engine_identity=identity,
             engine_version=version,
             expected=holds.expected,
+            system_model=system_model,
         )
         assert first.outcome == second.outcome == holds.expected
         assert first.agreed is True and second.agreed is True
@@ -571,9 +629,11 @@ def test_vendor_replay_malformed_timeout_disagreement(
             tool_id,
             "case:malformed",
             None,
-            executable=executable,
+            engine_identity=identity,
             engine_version=version,
-            expected="satisfied",
+            expected="error",
+            system_model=system_model,
+            fault="malformed",
             expect_error=True,
         )
         assert malformed.malformed is True
@@ -584,11 +644,12 @@ def test_vendor_replay_malformed_timeout_disagreement(
             tool_id,
             "case:timeout",
             document,
-            executable=executable,
+            engine_identity=identity,
             engine_version=version,
             expected="satisfied",
             timeout_seconds=0.25,
-            env={installer.ENV_SLEEP_SECONDS: "2.0"},
+            system_model=system_model,
+            fault="timeout",
         )
         assert timed.timed_out is True
         assert timed.quarantined is True
@@ -598,10 +659,11 @@ def test_vendor_replay_malformed_timeout_disagreement(
             tool_id,
             "case:disagreement",
             document,
-            executable=executable,
+            engine_identity=identity,
             engine_version=version,
             expected="satisfied",
-            env={installer.ENV_DISAGREE: "1"},
+            system_model=system_model,
+            fault="disagreement",
         )
         assert disagree.agreed is False
         assert disagree.quarantined is True

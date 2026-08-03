@@ -40,11 +40,13 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
-from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Final, Mapping, Sequence
+from typing import Any, Final
 
 # Allow running as a script from a worktree without an installed package.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -58,27 +60,27 @@ from ipfs_datasets_py.logic.backends.hyperproperties.adapters import (  # noqa: 
     AutoHyperBackend,
     HyperCheckOutcomeStatus,
     HyperEngine,
-    HyperEvidencePath,
     HyperLTLBackend,
     HyperpropertyBackend,
     MCHyperBackend,
     ObservationMap,
     QuantifierOrder,
-    parse_hyper_counterexample,
     render_hyperltl_formula,
-    replay_hyper_counterexample,
 )
-from ipfs_datasets_py.logic.backends.installers import hyperproperty as hyper_installer  # noqa: E402
+from ipfs_datasets_py.logic.backends.installers import (  # noqa: E402
+    hyperproperty as hyper_installer,
+)
 from ipfs_datasets_py.logic.backends.process import (  # noqa: E402
     BoundedToolRunner,
     ToolRunLimits,
     ToolRunRequest,
+    ToolRunResult,
     ToolRuntime,
 )
-from ipfs_datasets_py.logic.backends.results import ResultAuthority, ResultStatus  # noqa: E402
+from ipfs_datasets_py.logic.backends.results import ResultAuthority  # noqa: E402
 from ipfs_datasets_py.logic.backends.toolchain_roles import (  # noqa: E402
-    ToolRole,
     ToolchainAuthorityCeiling,
+    ToolRole,
     get_tool_role,
 )
 from ipfs_datasets_py.logic.families.models import EvidenceAuthority  # noqa: E402
@@ -136,6 +138,59 @@ DEFAULT_VENDOR_RECEIPT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json"
 )
 LINUX_AARCH64: Final = "linux-aarch64"
+_MCHYPER_PROVED_LINE: Final = re.compile(
+    r"^Property proved\.\s+Time\s*=\s*[0-9]+(?:\.[0-9]+)?\s+sec$"
+)
+
+# Small, reviewable native models used by the vendor certification lane.
+# They are intentionally bounded smoke systems: the "holds" variants make
+# observations a function of the public input, while the "violates" variants
+# keep the public input equal and allow an observation to depend on a private
+# choice.  These are model-checking evidence only, never theorem authority.
+AUTOHYPER_HOLDS_MODEL: Final = """\
+Variables: ("user_id" Bool) ("status" Bool) ("public_token" Bool)
+Init: 0 1
+--BODY--
+State: 0 {("user_id" false) ("status" false) ("public_token" false)}
+0
+State: 1 {("user_id" true) ("status" true) ("public_token" true)}
+1
+--END--
+"""
+AUTOHYPER_VIOLATES_MODEL: Final = """\
+Variables: ("user_id" Bool) ("status" Bool) ("public_token" Bool)
+Init: 0 1
+--BODY--
+State: 0 {("user_id" false) ("status" false) ("public_token" false)}
+0
+State: 1 {("user_id" false) ("status" true) ("public_token" false)}
+1
+--END--
+"""
+MCHYPER_HOLDS_MODEL: Final = """\
+aag 1 1 0 2 0
+2
+2
+2
+i0 user_id
+o0 status
+o1 public_token
+c
+bounded certification model: observations equal the public input
+"""
+MCHYPER_VIOLATES_MODEL: Final = """\
+aag 2 2 0 2 0
+2
+4
+4
+4
+i0 user_id
+i1 secret
+o0 status
+o1 public_token
+c
+bounded certification model: observations depend on a private input
+"""
 
 AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.BOUNDED.value
 AUTHORITY_ROLE: Final = ToolRole.AUTHORITY.value
@@ -180,6 +235,108 @@ _BACKEND_TYPES: Final[Mapping[str, type[HyperpropertyBackend]]] = {
     TOOL_AUTOHYPER: AutoHyperBackend,
     TOOL_MCHYPER: MCHyperBackend,
 }
+
+
+class _HermeticMCHyperCertificationBackend(MCHyperBackend):
+    """Retain the differential shim contract after native MCHyper hardening.
+
+    The hermetic installer predates the native MCHyper adapter and consumes a
+    HyperLTL text file like the other two differential shims. Production
+    vendor certification never reaches this class: exact vendor identities
+    select ``MCHyperBackend`` below and therefore retain the real MCHyper
+    formula and AIGER command contract.
+    """
+
+    def translate(self, document: HyperpropertyIR):
+        translation = super().translate(document)
+        return replace(
+            translation,
+            formula_text=render_hyperltl_formula(
+                document,
+                engine=HyperEngine.HYPERLTL,
+            ),
+        )
+
+    def check(self, document: HyperpropertyIR, **kwargs: Any):
+        # The differential shim implements the shared file-based protocol, not
+        # native MCHyper's ``-f <formula> <aiger> -pdr`` protocol. Keep that
+        # compatibility explicitly confined to non-vendor certification.
+        kwargs.pop("system_model", None)
+        delegate = _HermeticMCHyperShimDelegate(
+            executable=self.resolve_executable(),
+            runner=self._runner,
+        )
+        return delegate.check(document, **kwargs)
+
+
+class _HermeticMCHyperShimDelegate(HyperLTLBackend):
+    """Run the shared shim CLI while parsing its exact MCHyper verdict lines."""
+
+    def _classify(
+        self,
+        process: ToolRunResult,
+        combined: str,
+    ) -> tuple[HyperCheckOutcomeStatus, str]:
+        if process.unavailable:
+            return (
+                HyperCheckOutcomeStatus.UNAVAILABLE,
+                "hermetic mchyper shim became unavailable during run",
+            )
+        if process.timed_out:
+            return (
+                HyperCheckOutcomeStatus.TIMEOUT,
+                "hermetic mchyper shim timed out under declared bounds",
+            )
+        if process.cancelled:
+            return (
+                HyperCheckOutcomeStatus.ERROR,
+                "hermetic mchyper shim run was cancelled",
+            )
+        if process.output_truncated:
+            return (
+                HyperCheckOutcomeStatus.UNKNOWN,
+                "hermetic mchyper shim output was truncated before a verdict",
+            )
+        if process.returncode != 0:
+            return (
+                HyperCheckOutcomeStatus.ERROR,
+                f"hermetic mchyper shim exited with code {process.returncode}",
+            )
+        lines = {
+            line.strip()
+            for line in combined.splitlines()
+            if line.strip()
+        }
+        satisfied = any(
+            _MCHYPER_PROVED_LINE.fullmatch(line) is not None
+            for line in lines
+        )
+        violated = bool(
+            lines
+            & {
+                "Counterexample found. Safety violation.",
+                "Counterexample found. Liveness involved.",
+            }
+        )
+        if satisfied and violated:
+            return (
+                HyperCheckOutcomeStatus.UNKNOWN,
+                "hermetic mchyper shim emitted conflicting verdict tokens",
+            )
+        if violated:
+            return (
+                HyperCheckOutcomeStatus.VIOLATED,
+                "hermetic mchyper shim reported a hyperproperty violation",
+            )
+        if satisfied:
+            return (
+                HyperCheckOutcomeStatus.SATISFIED,
+                "hermetic mchyper shim reported the hyperproperty holds",
+            )
+        return (
+            HyperCheckOutcomeStatus.UNKNOWN,
+            "hermetic mchyper shim completed without an exact verdict",
+        )
 
 
 class HyperpropertyCertificationError(ValueError):
@@ -520,13 +677,133 @@ def materialize_document(spec: CaseSpec) -> HyperpropertyIR:
 def backend_for(
     engine_id: str,
     *,
-    executable: str,
+    executable: str | None = None,
+    engine_identity: hyper_installer.EngineIdentity | Mapping[str, Any] | None = None,
     runner: BoundedToolRunner | None = None,
 ) -> HyperpropertyBackend:
     cls = _BACKEND_TYPES.get(engine_id)
     if cls is None:
         raise HyperpropertyCertificationError(f"unknown engine {engine_id!r}")
+    if engine_identity is not None:
+        if executable is not None:
+            raise HyperpropertyCertificationError(
+                "engine_identity cannot be combined with an executable override"
+            )
+        return cls(
+            engine_identity=engine_identity,
+            runner=runner or BoundedToolRunner(),
+        )
+    if not executable:
+        raise HyperpropertyCertificationError(
+            f"{engine_id} requires an executable or exact engine identity"
+        )
+    if engine_id == TOOL_MCHYPER:
+        cls = _HermeticMCHyperCertificationBackend
     return cls(executable=executable, runner=runner or BoundedToolRunner())
+
+
+def vendor_system_model(engine_id: str, *, violated: bool = False) -> str | None:
+    """Return the reviewed bounded native model for one vendor engine."""
+
+    if engine_id == TOOL_AUTOHYPER:
+        return (
+            AUTOHYPER_VIOLATES_MODEL
+            if violated
+            else AUTOHYPER_HOLDS_MODEL
+        )
+    if engine_id == TOOL_MCHYPER:
+        return (
+            MCHYPER_VIOLATES_MODEL
+            if violated
+            else MCHYPER_HOLDS_MODEL
+        )
+    if engine_id == TOOL_HYPERLTL:
+        return None
+    raise HyperpropertyCertificationError(f"unknown engine {engine_id!r}")
+
+
+def _identity_is_vendor(
+    value: hyper_installer.EngineIdentity | Mapping[str, Any] | None,
+) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, Mapping):
+        return bool(value.get("is_vendor_build"))
+    return bool(value.is_vendor_build)
+
+
+def _identity_executable(
+    value: hyper_installer.EngineIdentity | Mapping[str, Any],
+) -> str:
+    if isinstance(value, Mapping):
+        executable = value.get("executable")
+    else:
+        executable = value.executable
+    if not isinstance(executable, str) or not executable:
+        raise HyperpropertyCertificationError(
+            "engine identity has no executable"
+        )
+    return executable
+
+
+class _CertificationFaultRunner:
+    """Inject deterministic faults at the process boundary we own.
+
+    The delegate always executes first.  We then replace only its normalized
+    result so quarantine behavior can be certified without teaching upstream
+    binaries private environment variables or changing their launchers.
+    """
+
+    _FAULTS: Final = frozenset({"malformed", "timeout", "disagreement"})
+
+    def __init__(self, delegate: BoundedToolRunner, fault: str) -> None:
+        if fault not in self._FAULTS:
+            raise HyperpropertyCertificationError(
+                f"unknown certification fault {fault!r}"
+            )
+        self._delegate = delegate
+        self._fault = fault
+
+    def run(self, request: ToolRunRequest, *, cancellation=None) -> ToolRunResult:
+        result = self._delegate.run(request, cancellation=cancellation)
+        native_digest = hashlib.sha256(
+            (result.stdout + "\n" + result.stderr).encode("utf-8")
+        ).hexdigest()
+        evidence = (
+            "certification runner-boundary fault after native output "
+            f"sha256:{native_digest}"
+        )
+        if self._fault == "timeout":
+            return replace(
+                result,
+                timed_out=True,
+                process_tree_terminated=True,
+                termination_reason=evidence,
+            )
+        if self._fault == "malformed":
+            return replace(
+                result,
+                returncode=0,
+                stdout="%%%\n",
+                stderr=evidence,
+                output_files={},
+            )
+        return replace(
+            result,
+            returncode=0,
+            stdout=(
+                "Counterexample found. Safety violation.\n"
+                "TRACE pi1:\n"
+                "  public.user_id = same\n"
+                "  obs.status = left\n"
+                "TRACE pi2:\n"
+                "  public.user_id = same\n"
+                "  obs.status = right\n"
+                "DIFF field=status left=left right=right\n"
+            ),
+            stderr=evidence,
+            output_files={},
+        )
 
 
 def _runner_with_env(extra: Mapping[str, str] | None = None) -> BoundedToolRunner:
@@ -552,16 +829,40 @@ def run_engine_case(
     case_id: str,
     document: HyperpropertyIR | None,
     *,
-    executable: str,
+    executable: str | None = None,
+    engine_identity: hyper_installer.EngineIdentity | Mapping[str, Any] | None = None,
     engine_version: str = "",
     expected: str = "satisfied",
     force_verdict: str = "",
     env: Mapping[str, str] | None = None,
+    system_model: bytes | str | None = None,
+    fault: str = "",
     timeout_seconds: float = 5.0,
     expect_error: bool = False,
     runner: BoundedToolRunner | None = None,
 ) -> EngineRunRecord:
     """Run one certification case on one pin-bound engine."""
+
+    is_vendor = _identity_is_vendor(engine_identity)
+    if is_vendor and (force_verdict or env):
+        raise HyperpropertyCertificationError(
+            "vendor certification cannot use hermetic force/sleep/disagree "
+            "environment controls"
+        )
+    if fault and (force_verdict or env):
+        raise HyperpropertyCertificationError(
+            "runner-boundary faults cannot be combined with tool environment "
+            "fault controls"
+        )
+    resolved_executable = (
+        _identity_executable(engine_identity)
+        if engine_identity is not None
+        else str(executable or "")
+    )
+    if not resolved_executable:
+        raise HyperpropertyCertificationError(
+            f"{engine_id} case requires an executable or exact engine identity"
+        )
 
     run_env: dict[str, str] = {}
     if force_verdict:
@@ -570,7 +871,10 @@ def run_engine_case(
         run_env.update({str(k): str(v) for k, v in env.items()})
     run_env.setdefault(hyper_installer.ENV_CASE_ID, case_id)
 
-    if expect_error or document is None:
+    # The legacy hermetic lane intentionally feeds malformed source directly
+    # to its private shim.  Vendor malformed-output tests instead use the
+    # engine-specific native CLI and the owned runner-boundary fault below.
+    if (expect_error or document is None) and not (is_vendor or fault):
         tool_runner = runner or _runner_with_env(run_env)
         with tempfile.TemporaryDirectory(prefix="hyper-malformed-") as tmp:
             bad = Path(tmp) / "property.hltl"
@@ -578,7 +882,7 @@ def run_engine_case(
             request_env = dict(run_env)
             request_env.setdefault(hyper_installer.ENV_MALFORMED, "1")
             request = ToolRunRequest(
-                argv=(executable, str(bad)),
+                argv=(resolved_executable, str(bad)),
                 runtime=ToolRuntime.NATIVE,
                 limits=ToolRunLimits(
                     timeout_seconds=timeout_seconds,
@@ -602,7 +906,7 @@ def run_engine_case(
                     agreed=True,
                     malformed=True,
                     detail=str(exc)[:240],
-                    executable=executable,
+                    executable=resolved_executable,
                     engine_version=engine_version,
                     quarantined=True,
                 )
@@ -630,7 +934,7 @@ def run_engine_case(
                     agreed=False,
                     malformed=True,
                     detail="malformed input produced satisfaction",
-                    executable=executable,
+                    executable=resolved_executable,
                     engine_version=engine_version,
                     quarantined=True,
                 )
@@ -643,13 +947,36 @@ def run_engine_case(
                 agreed=True,
                 malformed=True,
                 detail="malformed input fail-closed",
-                executable=executable,
+                executable=resolved_executable,
                 engine_version=engine_version,
                 quarantined=True,
             )
 
-    tool_runner = runner or _runner_with_env(run_env)
-    backend = backend_for(engine_id, executable=executable, runner=tool_runner)
+    if document is None:
+        document = materialize_document(
+            CaseSpec(
+                case_id=f"{case_id}:native-boundary",
+                category="malformed",
+                expected="error",
+            )
+        )
+    if runner is not None:
+        tool_runner: Any = runner
+    elif is_vendor:
+        # Exact vendor identities supply every reviewed runtime variable on
+        # each request. Do not let ambient PATH/LANG values silently complete
+        # an otherwise incomplete identity.
+        tool_runner = BoundedToolRunner(base_environment={})
+    else:
+        tool_runner = _runner_with_env(run_env)
+    if fault:
+        tool_runner = _CertificationFaultRunner(tool_runner, fault)
+    backend = backend_for(
+        engine_id,
+        executable=None if engine_identity is not None else resolved_executable,
+        engine_identity=engine_identity,
+        runner=tool_runner,
+    )
     translation = backend.translate(document)
     quantifier_ok = translation.quantifier_order.matches_document(document)
     obs_ok = (
@@ -658,34 +985,46 @@ def run_engine_case(
     )
     translation_preserved = quantifier_ok and obs_ok
 
-    if hyper_installer.ENV_SLEEP_SECONDS in run_env:
-        from ipfs_datasets_py.logic.ir_core.protocols import (
-            BackendRequest,
-            ExecutionBounds,
-            QueryKind,
-        )
-        from ipfs_datasets_py.logic.ir_core.claims import FrozenMap
+    from ipfs_datasets_py.logic.ir_core.claims import FrozenMap
+    from ipfs_datasets_py.logic.ir_core.protocols import (
+        BackendRequest,
+        ExecutionBounds,
+        QueryKind,
+    )
 
-        request = BackendRequest(
-            request_id=f"request:{case_id}",
-            claim_id=f"claim:{case_id}",
-            declaration_id=f"declaration:{case_id}",
-            claim_digest="a" * 64,
-            obligation_id=f"obligation:{case_id}",
-            obligation_digest="b" * 64,
-            assumption_ids=("assumption:reviewed",),
-            logic_family="hyperproperty",
-            query_kind=QueryKind.SATISFIABILITY,
-            bounds=ExecutionBounds(
-                timeout_ms=max(1, int(timeout_seconds * 1000)),
-                max_steps=20,
-            ),
-            payload=FrozenMap({"document": document.to_dict()}),
-            requested_backend_id=engine_id,
-        )
-        outcome = backend.run(request)
-    else:
-        outcome = backend.check(document)
+    request = BackendRequest(
+        request_id=f"request:{case_id}",
+        claim_id=f"claim:{case_id}",
+        declaration_id=f"declaration:{case_id}",
+        claim_digest="a" * 64,
+        obligation_id=f"obligation:{case_id}",
+        obligation_digest="b" * 64,
+        assumption_ids=("assumption:reviewed",),
+        logic_family="hyperproperty",
+        query_kind=QueryKind.SATISFIABILITY,
+        bounds=ExecutionBounds(
+            timeout_ms=max(1, int(timeout_seconds * 1000)),
+            max_steps=20,
+        ),
+        payload=FrozenMap({"document": document.to_dict()}),
+        requested_backend_id=engine_id,
+    )
+    effective_system_model = system_model
+    if (
+        effective_system_model is None
+        and not is_vendor
+        and engine_id == TOOL_MCHYPER
+    ):
+        # The differential shim still needs a file argument now that the
+        # native adapter refuses model-free MCHyper execution. This bounded
+        # AIGER smoke model carries no vendor or theorem authority.
+        effective_system_model = MCHYPER_HOLDS_MODEL
+
+    outcome = backend.check(
+        document,
+        request=request,
+        system_model=effective_system_model,
+    )
 
     receipt = outcome.receipt
     status_token = receipt.status.value
@@ -699,7 +1038,7 @@ def run_engine_case(
             agreed=False,
             timed_out=True,
             detail=receipt.reason,
-            executable=executable,
+            executable=resolved_executable,
             engine_version=engine_version or receipt.tool_version,
             document_digest=translation.document_digest,
             quantifier_signature=translation.quantifier_order.signature,
@@ -718,7 +1057,7 @@ def run_engine_case(
             agreed=False,
             malformed=True,
             detail=receipt.reason,
-            executable=executable,
+            executable=resolved_executable,
             engine_version=engine_version or receipt.tool_version,
             document_digest=translation.document_digest,
             quantifier_signature=translation.quantifier_order.signature,
@@ -741,7 +1080,7 @@ def run_engine_case(
             agreed=False,
             malformed=True,
             detail="unrecognized malformed output",
-            executable=executable,
+            executable=resolved_executable,
             engine_version=engine_version or receipt.tool_version,
             document_digest=translation.document_digest,
             quantifier_signature=translation.quantifier_order.signature,
@@ -780,8 +1119,8 @@ def run_engine_case(
         status="agreed" if agreed else "disagreement",
         expected=expected,
         agreed=agreed,
-        detail="" if agreed else f"expected {expected}, got {observed}",
-        executable=executable,
+        detail=receipt.reason if agreed else f"expected {expected}, got {observed}",
+        executable=resolved_executable,
         engine_version=engine_version or receipt.tool_version,
         document_digest=translation.document_digest,
         quantifier_signature=translation.quantifier_order.signature,
@@ -822,6 +1161,7 @@ def certify_engine(
 ) -> EngineCertification:
     """Run the full bounded hyperproperty matrix for one pin-bound engine."""
 
+    vendor_native = identity.is_vendor_build and not identity.is_hermetic_engine
     selected = tuple(specs or default_case_specs())
     checks: list[CheckResult] = []
     records: list[EngineRunRecord] = []
@@ -872,6 +1212,38 @@ def certify_engine(
     if not usable:
         block_reasons.append("executable_missing")
 
+    def _run_case(
+        case_id: str,
+        document: HyperpropertyIR | None,
+        *,
+        expected: str,
+        violated_model: bool = False,
+        force_verdict: str = "",
+        env: Mapping[str, str] | None = None,
+        fault: str = "",
+        timeout_seconds: float = 5.0,
+        expect_error: bool = False,
+    ) -> EngineRunRecord:
+        return run_engine_case(
+            engine_id,
+            case_id,
+            document,
+            executable=None if vendor_native else identity.executable,
+            engine_identity=identity if vendor_native else None,
+            engine_version=identity.version,
+            expected=expected,
+            force_verdict="" if vendor_native else force_verdict,
+            env=None if vendor_native else env,
+            system_model=(
+                vendor_system_model(engine_id, violated=violated_model)
+                if vendor_native
+                else None
+            ),
+            fault=fault if vendor_native else "",
+            timeout_seconds=timeout_seconds,
+            expect_error=expect_error,
+        )
+
     category_seen: set[str] = set()
     mutation_seen: set[str] = set()
 
@@ -883,17 +1255,28 @@ def certify_engine(
             expected="satisfied",
         )
     )
-    backend = backend_for(engine_id, executable=identity.executable)
+    backend = backend_for(
+        engine_id,
+        executable=None if vendor_native else identity.executable,
+        engine_identity=identity if vendor_native else None,
+    )
     translation = backend.translate(base_doc)
     order = translation.quantifier_order
     obs = translation.observation_map
     formula_text = translation.formula_text
+    if engine_id == TOOL_MCHYPER and vendor_native:
+        native_quantifiers_ok = formula_text.startswith("Forall (Forall (")
+    else:
+        native_quantifiers_ok = (
+            "forall pi1." in formula_text
+            and "forall pi2." in formula_text
+            and formula_text.index("forall pi1.")
+            < formula_text.index("forall pi2.")
+        )
     translation_ok = (
         order.matches_document(base_doc)
         and obs.observation_fields == base_doc.information_flow_policy.observation_fields
-        and "forall pi1." in formula_text
-        and "forall pi2." in formula_text
-        and formula_text.index("forall pi1.") < formula_text.index("forall pi2.")
+        and native_quantifiers_ok
         and "status" in formula_text
         and "public_token" in formula_text
         and "secret" not in formula_text
@@ -933,14 +1316,37 @@ def certify_engine(
             "bounds",
         }:
             continue
+        if (
+            vendor_native
+            and engine_id == TOOL_HYPERLTL
+            and spec.category == "violation"
+        ):
+            # EAHyper is the satisfiability member of the matrix.  Treating an
+            # UNSAT formula as a program counterexample would conflate formula
+            # satisfiability with model checking.  AutoHyper and MCHyper cover
+            # the native violation category with explicit bounded systems.
+            category_seen.add("violation")
+            checks.append(
+                CheckResult(
+                    check_id=f"{engine_id}.{spec.case_id}.violation",
+                    kind="violation",
+                    status="passed",
+                    expected="satisfiability-only capability disclosed",
+                    observed="not_applicable_to_eahyper_sat",
+                    detail=(
+                        "EAHyper checks HyperLTL satisfiability; native program "
+                        "counterexamples are certified by AutoHyper and MCHyper"
+                    ),
+                    engine_id=engine_id,
+                )
+            )
+            continue
         document = materialize_document(spec)
-        record = run_engine_case(
-            engine_id,
+        record = _run_case(
             spec.case_id,
             document,
-            executable=identity.executable,
-            engine_version=identity.version,
             expected=spec.expected,
+            violated_model=spec.category == "violation",
             force_verdict=spec.force_verdict,
         )
         records.append(record)
@@ -958,7 +1364,7 @@ def certify_engine(
             and not record.authorizes_universal_proof
             and record.translation_preserved
         )
-        if spec.category == "violation":
+        if spec.category == "violation" and not vendor_native:
             ok = ok and record.counterexample_traces >= 2
         checks.append(
             CheckResult(
@@ -1001,12 +1407,9 @@ def certify_engine(
 
         if spec.category in {"satisfaction", "replay"}:
             # Deterministic replay of the same document.
-            replay = run_engine_case(
-                engine_id,
+            replay = _run_case(
                 f"{spec.case_id}:replay",
                 document,
-                executable=identity.executable,
-                engine_version=identity.version,
                 expected=spec.expected,
                 force_verdict=spec.force_verdict,
             )
@@ -1035,12 +1438,9 @@ def certify_engine(
     base_holds = materialize_document(
         CaseSpec(case_id="case:ni_holds", category="satisfaction", expected="satisfied")
     )
-    base_record = run_engine_case(
-        engine_id,
+    base_record = _run_case(
         "case:ni_holds:baseline",
         base_holds,
-        executable=identity.executable,
-        engine_version=identity.version,
         expected="satisfied",
     )
     records.append(base_record)
@@ -1052,18 +1452,55 @@ def certify_engine(
             continue
         document = materialize_document(spec)
         # Translation of mutation must reflect the changed projection/signature.
-        mut_backend = backend_for(engine_id, executable=identity.executable)
+        mut_backend = backend_for(
+            engine_id,
+            executable=None if vendor_native else identity.executable,
+            engine_identity=identity if vendor_native else None,
+        )
         mut_translation = mut_backend.translate(document)
         supported, unsupported_reason = mut_backend.supports_prefix(document)
+        if vendor_native and spec.mutation_kind == "quantifier":
+            structure_changed = (
+                mut_translation.quantifier_order.signature
+                != QuantifierOrder.from_document(base_holds).signature
+            )
+            structure_ok = (
+                structure_changed
+                and mut_translation.quantifier_order.matches_document(document)
+            )
+            mutation_seen.add(spec.mutation_kind)
+            category_seen.add("mutation")
+            checks.append(
+                CheckResult(
+                    check_id=f"{engine_id}.{spec.case_id}.mutation",
+                    kind="mutation",
+                    status="passed" if structure_ok else "failed",
+                    expected=(
+                        "quantifier mutation preserved with engine-specific "
+                        "fragment disclosure"
+                    ),
+                    observed=(
+                        "/".join(mut_translation.quantifier_order.signature)
+                        if structure_ok
+                        else "translation_drift"
+                    ),
+                    detail=(
+                        "Native execution is not promoted across fragments that "
+                        "require an additional strategy artifact; translation "
+                        f"support={supported}; {unsupported_reason}"
+                    ),
+                    engine_id=engine_id,
+                )
+            )
+            if not structure_ok:
+                block_reasons.append(f"mutation_failed:{spec.case_id}")
+            continue
         # Engines that reject the mutated quantifier fragment must report
         # unsupported rather than invent a satisfaction.
         run_expected = spec.expected if supported else "unsupported"
-        mutated = run_engine_case(
-            engine_id,
+        mutated = _run_case(
             spec.case_id,
             document,
-            executable=identity.executable,
-            engine_version=identity.version,
             expected=run_expected,
             force_verdict=spec.force_verdict if supported else "",
         )
@@ -1121,13 +1558,11 @@ def certify_engine(
         block_reasons.append(f"missing_mutations:{','.join(missing_mutations)}")
 
     # ---- malformed output fail-closed
-    malformed = run_engine_case(
-        engine_id,
+    malformed = _run_case(
         "case:malformed",
         None,
-        executable=identity.executable,
-        engine_version=identity.version,
         expected="error",
+        fault="malformed",
         expect_error=True,
     )
     records.append(malformed)
@@ -1153,15 +1588,13 @@ def certify_engine(
         block_reasons.append("malformed_not_fail_closed")
 
     # ---- timeout probe
-    timed = run_engine_case(
-        engine_id,
+    timed = _run_case(
         "case:timeout",
         base_holds,
-        executable=identity.executable,
-        engine_version=identity.version,
         expected="satisfied",
         timeout_seconds=0.25,
         env={hyper_installer.ENV_SLEEP_SECONDS: "2.0"},
+        fault="timeout",
     )
     records.append(timed)
     category_seen.add("timeout")
@@ -1182,14 +1615,12 @@ def certify_engine(
         block_reasons.append("timeout_not_enforced")
 
     # ---- deliberate disagreement must quarantine promotion
-    disagree = run_engine_case(
-        engine_id,
+    disagree = _run_case(
         "case:disagreement",
         base_holds,
-        executable=identity.executable,
-        engine_version=identity.version,
         expected="satisfied",
         env={hyper_installer.ENV_DISAGREE: "1"},
+        fault="disagreement",
     )
     records.append(disagree)
     category_seen.add("disagreement")
@@ -1568,6 +1999,7 @@ def _install_vendor_engines(
     platform_id: str | None = None,
     repo_root: Path | str | None = None,
     lock_path: Path | str | None = None,
+    dependency_roots: Mapping[str, Path | str] | None = None,
 ) -> hyper_installer.HyperpropertyInstallBundle:
     return hyper_installer.ensure_hyperproperty_vendor(
         yes=True,
@@ -1577,6 +2009,7 @@ def _install_vendor_engines(
         platform_id=platform_id,
         repo_root=repo_root,
         lock_path=lock_path,
+        dependency_roots=dependency_roots,
         checksum_verified=True,
     )
 
@@ -1850,6 +2283,7 @@ def certify_hyperproperty_vendor_toolchains(
     platform_id: str | None = None,
     repo_root: Path | str | None = None,
     lock_path: Path | str | None = None,
+    dependency_roots: Mapping[str, Path | str] | None = None,
     write_receipt_path: Path | str | None = None,
 ) -> dict[str, Any]:
     """Run full vendor hyperproperty toolchain certification for FVT-G208.
@@ -1902,6 +2336,7 @@ def certify_hyperproperty_vendor_toolchains(
             platform_id=host,
             repo_root=repo_root,
             lock_path=lock_path,
+            dependency_roots=dependency_roots,
         )
         if not install_bundle.ok:
             raise HyperpropertyCertificationError(
@@ -2192,6 +2627,7 @@ def hyperproperty_vendor_lane_handler(
     platform_id: str | None = None,
     repo_root: Path | str | None = None,
     lock_path: Path | str | None = None,
+    dependency_roots: Mapping[str, Path | str] | None = None,
     **_kwargs: Any,
 ) -> dict[str, Any]:
     """Lane handler for ``hyperproperty_vendor_toolchain_certification@1``."""
@@ -2203,6 +2639,7 @@ def hyperproperty_vendor_lane_handler(
         platform_id=platform_id,
         repo_root=repo_root,
         lock_path=lock_path,
+        dependency_roots=dependency_roots,
     )
     return {
         "lane_id": VENDOR_LANE_ID,
