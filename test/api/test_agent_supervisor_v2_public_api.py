@@ -14,8 +14,8 @@ PACKAGE = "ipfs_accelerate_py.agent_supervisor"
 V2_OWNER_MODULES = frozenset(
     {
         PACKAGE,
-        f"{PACKAGE}.control_contracts",
-        f"{PACKAGE}.control_plane",
+        f"{PACKAGE}.control.control_contracts",
+        f"{PACKAGE}.control.control_plane",
         f"{PACKAGE}.supervisor_v2_contracts",
         f"{PACKAGE}.self_improvement_v2",
         f"{PACKAGE}.self_improvement_v2_rollout",
@@ -334,7 +334,8 @@ print(json.dumps({{
         "catalog_count": 1,
         "operation_identity": True,
         "canonical_exports": True,
-        "resolved_owner_modules": sorted(
-            V2_OWNER_MODULES.union(V2_COLD_LAZY_MODULES)
-        ),
+        # Resolving the stable manifest imports its declared owners only.  The
+        # benchmark remains a cold optional module because it owns no stable
+        # export in this manifest.
+        "resolved_owner_modules": sorted(V2_OWNER_MODULES),
     }

@@ -616,17 +616,39 @@ class _LandedModuleAliasFinder:
             return None
         if fullname in _sys.modules:
             return _importlib.util.find_spec(fullname)
+        real_name = (
+            f"{__name__}."
+            f"{AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE[rest]}.{rest}"
+        )
         try:
-            module = _load_landed_module(rest)
+            canonical_module = _importlib.import_module(real_name)
         except Exception:
             return None
 
         class _AliasLoader:
             def create_module(self, spec):  # type: ignore[no-untyped-def]
-                return module
+                # Returning the canonical module object here lets importlib
+                # overwrite its import metadata with the historical alias.
+                # A later canonical import then executes a second module and
+                # breaks public symbol identity.  Let importlib allocate a
+                # lightweight alias module instead.
+                return None
 
             def exec_module(self, module_):  # type: ignore[no-untyped-def]
-                return None
+                # Re-export the canonical objects without copying import
+                # metadata.  Functions, classes, catalogs, and mutable state
+                # therefore retain one canonical identity, while the alias
+                # keeps its own stable __spec__/__name__.
+                for name, value in canonical_module.__dict__.items():
+                    if name in {
+                        "__name__",
+                        "__loader__",
+                        "__package__",
+                        "__spec__",
+                    }:
+                        continue
+                    module_.__dict__[name] = value
+                module_.__dict__["__canonical_module__"] = canonical_module
 
         return _importlib.util.spec_from_loader(fullname, _AliasLoader())
 
