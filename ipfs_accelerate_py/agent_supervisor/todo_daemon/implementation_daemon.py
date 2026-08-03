@@ -17126,11 +17126,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self,
         task: PortalTask | None = None,
     ) -> bool:
-        """Whether model-assisted work must use the typed packet route.
+        """Whether this task must use the typed production packet route.
 
-        SCA-615 replaces the raw production model command.  Operators may
-        temporarily re-enable the legacy raw command only via an explicit env
-        override; that override is itself recorded as non-production.
+        Ordinary prompt tasks do not claim the independent-review guarantees
+        of the production route, so they use the Grok-first CLI route with its
+        bounded Codex fallback.  A task enters the production route only when
+        it declares the complete Grok-implement/Codex-review contract and all
+        packet inputs required to enforce that contract.  Partial or malformed
+        provider contracts fail closed instead of silently losing review.
+
+        SCA-615 still forbids a raw command for a complete production contract.
+        The existing explicit ``ALLOW_RAW_MODEL_COMMAND`` operator override is
+        the only downgrade path and remains non-production.
         """
 
         allow_raw = os.environ.get(
@@ -17138,13 +17145,62 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ).strip().lower()
         if allow_raw in {"1", "true", "yes", "on"}:
             return False
+
+        if task is None or self._task_uses_typed_local_execution(task):
+            return False
+
+        raw_role = self._task_metadata_value(task, "provider role")
+        if not raw_role:
+            return False
+        roles = {
+            item.strip().lower()
+            for item in re.split(r"[,;]", raw_role)
+            if item.strip()
+        }
+        production_roles = {
+            ProviderRole.GROK_IMPLEMENT.value,
+            "codex-review",
+        }
+        if roles != production_roles:
+            raise ImplementationRetryDeferred(
+                "model-assisted provider role must be exactly "
+                "'grok-implement, codex-review' or omitted",
+                backoff_seconds=300,
+            )
+
+        missing_fields: list[str] = []
+        if not task.outputs:
+            missing_fields.append("outputs")
+        if not task.validation:
+            missing_fields.append("validation")
+        if not str(task.acceptance or "").strip():
+            missing_fields.append("acceptance")
+        raw_context_budget = self._task_metadata_value(
+            task,
+            "context budget tokens",
+        )
+        try:
+            context_budget = int(raw_context_budget)
+        except (TypeError, ValueError):
+            context_budget = 0
+        if context_budget < 1:
+            missing_fields.append("positive context budget tokens")
+        if missing_fields:
+            raise ImplementationRetryDeferred(
+                "typed production provider contract is incomplete: "
+                + ", ".join(missing_fields),
+                backoff_seconds=300,
+            )
+
         configured = os.environ.get(
-            PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV, "1"
+            PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV, ""
         ).strip().lower()
         if configured in {"0", "false", "no", "off"}:
-            return False
-        if task is not None and self._task_uses_typed_local_execution(task):
-            return False
+            raise ImplementationRetryDeferred(
+                "typed production provider contract cannot run while the "
+                "production provider route is disabled",
+                backoff_seconds=300,
+            )
         return True
 
     def _current_production_snapshot_id(

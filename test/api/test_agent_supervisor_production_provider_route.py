@@ -16,10 +16,9 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
     PRODUCTION_PROVIDER_ROUTE_EVALUATION_SCHEMA,
     PRODUCTION_PROVIDER_ROUTE_INTERFACE,
@@ -42,10 +41,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT,
     PRODUCTION_PROVIDER_ROUTE_EVENT,
     PRODUCTION_PROVIDER_ROUTE_PENDING_EVENT,
+    ImplementationRetryDeferred,
     PortalTask,
     TodoImplementationDaemon,
 )
-
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EVALUATION_PATH = (
@@ -515,6 +514,95 @@ def test_deterministic_only_tasks_invoke_no_model(
             codex_provider=_codex,
             admission_gate=_accept,
         )
+
+
+def test_complete_provider_contract_infers_production_route(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE",
+        raising=False,
+    )
+
+    assert daemon._production_provider_route_enabled(_task()) is True
+
+
+@pytest.mark.parametrize(
+    "provider_role",
+    [
+        "grok-implement",
+        "codex-review",
+        "grok-implement, codex-review, unknown-provider",
+    ],
+)
+def test_partial_or_unknown_provider_contract_fails_closed(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider_role: str,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE",
+        raising=False,
+    )
+    task = _task(metadata={"Provider role": provider_role})
+
+    with pytest.raises(
+        ImplementationRetryDeferred,
+        match="provider role must be exactly",
+    ):
+        daemon._production_provider_route_enabled(task)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "missing"),
+    [
+        ({"outputs": []}, "outputs"),
+        ({"validation": []}, "validation"),
+        ({"acceptance": ""}, "acceptance"),
+        (
+            {
+                "metadata": {
+                    "Provider role": "grok-implement, codex-review",
+                }
+            },
+            "positive context budget tokens",
+        ),
+    ],
+)
+def test_incomplete_production_contract_fails_closed(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, Any],
+    missing: str,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE",
+        raising=False,
+    )
+
+    with pytest.raises(ImplementationRetryDeferred, match=missing):
+        daemon._production_provider_route_enabled(_task(**overrides))
+
+
+def test_complete_contract_cannot_silently_downgrade_when_route_disabled(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE",
+        "0",
+    )
+
+    with pytest.raises(
+        ImplementationRetryDeferred,
+        match="route is disabled",
+    ):
+        daemon._production_provider_route_enabled(_task())
 
 
 def test_no_provider_receives_repository_corpus() -> None:

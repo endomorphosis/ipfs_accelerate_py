@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_supervisor,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalTask,
     TodoImplementationDaemon,
 )
 
@@ -34,6 +35,30 @@ def _clear_provider_overrides(monkeypatch) -> None:
         raising=False,
     )
     monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.delenv(
+        implementation_daemon.PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv(
+        implementation_daemon.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        raising=False,
+    )
+
+
+def _prompt_task(**overrides) -> PortalTask:
+    payload = {
+        "task_id": "ASE-001",
+        "title": "Implement a prompt-only supervisor entrypoint",
+        "status": "ready",
+        "completion": "manual",
+        "priority": "high",
+        "track": "entrypoints",
+        "outputs": ["ipfs_accelerate_py/agent_supervisor/entrypoints/api.py"],
+        "validation": ["python -m pytest test/api/test_prompt_entrypoint.py -q"],
+        "acceptance": "A prompt can launch the inferred supervisor workflow.",
+    }
+    payload.update(overrides)
+    return PortalTask(**payload)
 
 
 def test_default_implementation_provider_prefers_grok(
@@ -80,6 +105,54 @@ def test_default_implementation_provider_prefers_grok(
     fallback_command = json.loads(command[fallback_index + 1])
     assert fallback_command[:2] == ["/opt/providers/codex", "exec"]
     assert fallback_command[-1] == "-"
+
+
+def test_ordinary_prompt_task_uses_grok_with_codex_fallback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _clear_provider_overrides(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_binary",
+        lambda: "/opt/providers/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_cli_command",
+        lambda *, workspace_path: [
+            "/opt/providers/grok-runner",
+            str(workspace_path),
+        ],
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon.shutil,
+        "which",
+        lambda name: "/opt/providers/codex" if name == "codex" else None,
+    )
+    daemon = _daemon(tmp_path)
+    task = _prompt_task()
+
+    assert daemon._production_provider_route_enabled(task) is False
+    command = daemon._build_implementation_command(tmp_path, task=task)
+
+    assert command[:2] == [
+        "/opt/providers/grok-runner",
+        str(tmp_path.resolve()),
+    ]
+    fallback_index = command.index("--codex-fallback-command-json")
+    fallback_command = json.loads(command[fallback_index + 1])
+    assert fallback_command[:2] == ["/opt/providers/codex", "exec"]
 
 
 def test_default_implementation_provider_falls_back_to_codex(
