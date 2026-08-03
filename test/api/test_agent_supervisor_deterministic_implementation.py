@@ -102,7 +102,7 @@ def _daemon(
     monkeypatch.setattr(
         daemon,
         "_mark_task_or_bundle_completed_in_todo",
-        lambda _task: {"updated": True, "test_double": True},
+        lambda _task, **_kwargs: {"updated": True, "test_double": True},
     )
     monkeypatch.setattr(
         daemon,

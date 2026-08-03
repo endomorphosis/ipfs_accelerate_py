@@ -110,7 +110,11 @@ def _git(root: Path, *arguments: str) -> str:
     ).stdout.strip()
 
 
-def _write_test_operator_seal(root: Path) -> str:
+def _write_test_operator_seal(
+    root: Path,
+    *,
+    policy_revision: str = "1",
+) -> str:
     _git(root, "init", "-q")
     _git(root, "add", ".")
     _git(root, "commit", "-qm", "reviewed base")
@@ -125,7 +129,7 @@ def _write_test_operator_seal(root: Path) -> str:
         "task_id": "TEST-001",
         "board_namespace": "test-supervisor-v1",
         "decision": "sealed",
-        "policy_revision": "1",
+        "policy_revision": policy_revision,
         "reviewed_base": {
             "commit": commit,
             "tree": tree,
@@ -151,7 +155,7 @@ def _write_test_operator_seal(root: Path) -> str:
             "type": "policy_activation",
             "allowed_actions": ["activate_policy_revision"],
             "board_namespace": "test-supervisor-v1",
-            "policy_revision": "1",
+            "policy_revision": policy_revision,
             "delegable": False,
             "mutation_authority": False,
             "completion_authority": False,
@@ -301,6 +305,36 @@ def test_scheduler_config_activates_protection_only_after_manual_completion(
     assert completed["verified_manual_completion_seals"]["TEST-001"].startswith(
         "sha256:"
     )
+    first_epoch_id = completed["manual_completion_authority_epoch_id"]
+
+    replacement_receipt_id = _write_test_operator_seal(
+        tmp_path,
+        policy_revision="2",
+    )
+    resealed_profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    resealed_profile["manual_completion_seals"]["TEST-001"][
+        "policy_revision"
+    ] = "2"
+    resealed_profile["manual_completion_seals"]["TEST-001"][
+        "expected_receipt_id"
+    ] = replacement_receipt_id
+    profile_path.write_text(
+        json.dumps(resealed_profile, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    resealed = load_supervisor_scheduler_config(
+        profile_path,
+        repo_root=tmp_path,
+    )
+
+    assert resealed["activated_protected_task_ids"] == (
+        "TEST-001",
+    )
+    assert resealed["manual_completion_authority_required_task_ids"] == ()
+    assert resealed["verified_manual_completion_seals"] == {
+        "TEST-001": replacement_receipt_id
+    }
+    assert resealed["manual_completion_authority_epoch_id"] != first_epoch_id
 
     seal_path = tmp_path / "config" / "operator-seal.json"
     original = seal_path.read_text(encoding="utf-8")

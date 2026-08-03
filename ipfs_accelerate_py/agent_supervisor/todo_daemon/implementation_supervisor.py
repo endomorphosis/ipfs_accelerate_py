@@ -94,7 +94,19 @@ from .supervisor import (
     worktree_phase_worker_status,
 )
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
-from .supervisor_runtime import RestartPolicy
+from .supervisor_runtime import (
+    SUPERVISED_CHILD_IDENTITY_PATH_ENV,
+    SUPERVISED_CHILD_OWNER_SCOPE_ENV,
+    OwnerLiveness,
+    RestartPolicy,
+    load_supervised_child_identity,
+    read_process_birth,
+    read_process_command_argv,
+    supervised_child_identity_liveness,
+    supervised_child_identity_path,
+    terminate_direct_child_process,
+    write_supervised_child_identity,
+)
 from .worktrees import WORKTREE_POOL_SCHEMA, pid_is_alive
 
 REPO_ROOT = Path.cwd()
@@ -645,8 +657,29 @@ def load_supervisor_scheduler_config(
     normalized["manual_completion_seals"] = manual_seals
     normalized["verified_manual_completion_seals"] = verified_manual_seals
     normalized["activated_protected_task_ids"] = tuple(activated_task_ids)
+    normalized["manual_completion_authority_task_ids"] = tuple(
+        sorted(staged_protected_paths)
+    )
     normalized["manual_completion_authority_required_task_ids"] = tuple(
         sorted(set(staged_protected_paths) - set(activated_task_ids))
+    )
+    authority_epoch = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "manual-completion-authority-epoch@1"
+        ),
+        "board_namespace": str(normalized["board_namespace"]),
+        "taskboard_path": str(normalized["taskboard_path"]),
+        "protected_after_manual_completion": staged_protected_paths,
+        "manual_completion_seals": manual_seals,
+        "verified_manual_completion_seals": verified_manual_seals,
+        "task_ids": list(normalized["manual_completion_authority_task_ids"]),
+        "required_task_ids": list(
+            normalized["manual_completion_authority_required_task_ids"]
+        ),
+    }
+    normalized["manual_completion_authority_epoch_id"] = (
+        content_identity(authority_epoch) if staged_protected_paths else ""
     )
     normalized["protected_paths"] = tuple(active_paths)
     normalized["_config_path"] = str(resolved_config_path)
@@ -699,9 +732,18 @@ def supervisor_scheduler_config_cli_defaults(
         options.extend(("--worktree-submodule-path", str(path)))
     for path in profile["protected_paths"]:
         options.extend(("--implementation-protected-path", str(path)))
+    for task_id in profile["manual_completion_authority_task_ids"]:
+        options.extend(("--manual-completion-authority-task-id", str(task_id)))
     for task_id in profile["manual_completion_authority_required_task_ids"]:
         options.extend(
             ("--manual-completion-authority-required-task-id", str(task_id))
+        )
+    authority_epoch_id = str(
+        profile.get("manual_completion_authority_epoch_id") or ""
+    ).strip()
+    if authority_epoch_id:
+        options.extend(
+            ("--manual-completion-authority-epoch-id", authority_epoch_id)
         )
     return options
 
@@ -970,9 +1012,14 @@ class PortalSupervisorConfig:
     merge_queue_dir: Path | None = None
     worktree_submodule_paths: tuple[str, ...] = field(default_factory=tuple)
     implementation_protected_paths: tuple[str, ...] = field(default_factory=tuple)
+    manual_completion_authority_task_ids: tuple[str, ...] = field(
+        default_factory=tuple
+    )
     manual_completion_authority_required_task_ids: tuple[str, ...] = field(
         default_factory=tuple
     )
+    manual_completion_authority_epoch_id: str = ""
+    manual_completion_authority_revalidation_only: bool = False
     worktree_reconciliation_enabled: bool = True
     worktree_reconciliation_max_merges: int = 1
     worktree_reconciliation_dry_run: bool = False
@@ -1080,6 +1127,24 @@ class PortalSupervisorConfig:
     daemon_script_path: Path | None = None
     supervisor_script_path: Path | None = None
 
+    def __post_init__(self) -> None:
+        if (
+            self.manual_completion_authority_revalidation_only
+            and not self.manual_completion_authority_task_ids
+        ):
+            raise ValueError(
+                "manual completion authority revalidation-only mode requires "
+                "at least one authority task ID"
+            )
+        if (
+            self.manual_completion_authority_revalidation_only
+            and not self.implement
+        ):
+            raise ValueError(
+                "manual completion authority revalidation-only mode requires "
+                "implementation execution to be enabled"
+            )
+
 
 class AdoptedManagedDaemonProcess:
     def __init__(self, pid: int) -> None:
@@ -1094,22 +1159,16 @@ class AdoptedManagedDaemonProcess:
         return self.returncode
 
     def terminate(self) -> None:
-        if self.poll() is not None:
-            return
-        try:
-            os.kill(self.pid, signal.SIGTERM)
-            self.returncode = -signal.SIGTERM
-        except ProcessLookupError:
-            self.returncode = 0
+        raise RuntimeError(
+            "adopted managed daemons must be terminated through the "
+            "supervisor ownership fence"
+        )
 
     def kill(self) -> None:
-        if self.poll() is not None:
-            return
-        try:
-            os.kill(self.pid, signal.SIGKILL)
-            self.returncode = -signal.SIGKILL
-        except ProcessLookupError:
-            self.returncode = 0
+        raise RuntimeError(
+            "adopted managed daemons must be killed through the "
+            "supervisor ownership fence"
+        )
 
     def wait(self, timeout: float | None = None) -> int:
         deadline = None if timeout is None else time.time() + timeout
@@ -2342,6 +2401,17 @@ class PortalImplementationSupervisor:
         *,
         include_refill: bool = True,
     ) -> dict[str, Any]:
+        if self.config.manual_completion_authority_revalidation_only:
+            update_maintenance_phase(
+                "manual_completion_authority_revalidation_only"
+            )
+            return {
+                "stuck": False,
+                "maintenance_blocked": False,
+                "reason": "manual_completion_authority_revalidation_only",
+                "manual_completion_authority_revalidation_only": True,
+                "ordinary_provider_dispatch_allowed": False,
+            }
         if not self.config.implementation_protected_paths:
             return self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
@@ -2885,7 +2955,18 @@ class PortalImplementationSupervisor:
 
     def _run_forever_loop(self) -> None:
         self.ensure_event_log_file()
-        self.ensure_managed_daemon_pid_file()
+        managed_daemon_guard = self.ensure_managed_daemon_pid_file()
+        if managed_daemon_guard.get("blocked", False):
+            self._record_event(
+                "managed_daemon_start_blocked",
+                managed_daemon_guard,
+            )
+            raise RuntimeError(
+                str(
+                    managed_daemon_guard.get("reason")
+                    or "managed_daemon_ownership_unproven"
+                )
+            )
         try:
             preflight = self.run_once(include_refill=False)
         except Exception as exc:
@@ -2962,6 +3043,19 @@ class PortalImplementationSupervisor:
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
+        child_env = _managed_daemon_child_environment()
+        child_env.update(
+            {
+                SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(
+                    self._managed_daemon_identity_path()
+                ),
+                SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                    self._managed_daemon_owner_scope(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            }
+        )
         proof_rollout_status_fields = self._proof_rollout_status_fields()
         autonomous_unstall_status = self._autonomous_unstall_status()
         if autonomous_unstall_status:
@@ -3002,7 +3096,7 @@ class PortalImplementationSupervisor:
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
-            child_env=_managed_daemon_child_environment(),
+            child_env=child_env,
             log_prefix=f"{prefix}_implementation_daemon",
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
@@ -7183,8 +7277,17 @@ class PortalImplementationSupervisor:
             implementation_protected_paths=(
                 self.config.implementation_protected_paths
             ),
+            manual_completion_authority_task_ids=(
+                self.config.manual_completion_authority_task_ids
+            ),
             manual_completion_authority_required_task_ids=(
                 self.config.manual_completion_authority_required_task_ids
+            ),
+            manual_completion_authority_epoch_id=(
+                self.config.manual_completion_authority_epoch_id
+            ),
+            manual_completion_authority_revalidation_only=(
+                self.config.manual_completion_authority_revalidation_only
             ),
             objective_path=self.config.objective_path,
             objective_bundle_dir=self.config.objective_bundle_dir,
@@ -12081,7 +12184,14 @@ class PortalImplementationSupervisor:
         return merged
 
     def _start_daemon(self) -> subprocess.Popen[str]:
-        self.ensure_managed_daemon_pid_file()
+        managed_daemon_guard = self.ensure_managed_daemon_pid_file()
+        if managed_daemon_guard.get("blocked", False):
+            raise RuntimeError(
+                str(
+                    managed_daemon_guard.get("reason")
+                    or "managed_daemon_ownership_unproven"
+                )
+            )
         command = self._build_daemon_command()
         child_env = dict(os.environ)
         child_env.update(_managed_daemon_child_environment())
@@ -12090,26 +12200,67 @@ class PortalImplementationSupervisor:
             cwd=self.config.repo_root,
             env=child_env,
             text=True,
+            start_new_session=True,
         )
+        try:
+            self._write_managed_daemon_identity(
+                pid=int(process.pid),
+                command=command,
+            )
+        except Exception:
+            direct_child_stopped = terminate_direct_child_process(
+                process,
+                grace_seconds=1.0,
+            )
+            launched_birth = None
+            if not direct_child_stopped:
+                try:
+                    launched_birth = read_process_birth(int(process.pid))
+                except OSError:
+                    launched_birth = None
+            if (
+                not direct_child_stopped
+                and launched_birth is not None
+                and launched_birth.parent_pid == os.getpid()
+            ):
+                terminate_pid_tree(
+                    int(process.pid),
+                    grace_seconds=1.0,
+                    freeze_first=True,
+                    require_gone=True,
+                    owned_process_group_id=int(process.pid),
+                    expected_root_start_time_ticks=(
+                        launched_birth.start_time_ticks
+                    ),
+                )
+            raise
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
         return process
 
     def _terminate(self, process: subprocess.Popen[str] | AdoptedManagedDaemonProcess) -> None:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=15)
-        pid_path = self._managed_daemon_pid_path()
-        if pid_path.exists():
-            if pid_path.is_dir():
-                backup_path = unique_backup_path(pid_path, "directory-backup")
-                pid_path.rename(backup_path)
-            else:
-                pid_path.unlink()
-        self._record_event("daemon_stop", {"returncode": process.returncode})
+        cleanup = self._terminate_managed_daemon_tree(grace_seconds=15.0)
+        if not cleanup.get("quiesced", False):
+            self._record_event("daemon_stop_blocked", cleanup)
+            raise RuntimeError(
+                str(
+                    cleanup.get("fence", {}).get("reason")
+                    or "managed_daemon_termination_unproven"
+                )
+            )
+        returncode = process.poll()
+        if isinstance(process, AdoptedManagedDaemonProcess):
+            process.returncode = 0 if returncode is None else returncode
+        self._record_event(
+            "daemon_stop",
+            {
+                "returncode": (
+                    process.returncode
+                    if process.returncode is not None
+                    else 0
+                ),
+                "managed_daemon_cleanup": cleanup,
+            },
+        )
 
     def _build_daemon_command(self) -> list[str]:
         daemon_script_path = self.config.daemon_script_path
@@ -12237,9 +12388,24 @@ class PortalImplementationSupervisor:
             command.extend(["--external-reservation-manifest-path", str(path)])
         for task_id in self.config.assumed_completed_task_ids:
             command.extend(["--assume-completed-task-id", str(task_id)])
+        for task_id in self.config.manual_completion_authority_task_ids:
+            command.extend(
+                ["--manual-completion-authority-task-id", str(task_id)]
+            )
         for task_id in self.config.manual_completion_authority_required_task_ids:
             command.extend(
                 ["--manual-completion-authority-required-task-id", str(task_id)]
+            )
+        if self.config.manual_completion_authority_epoch_id:
+            command.extend(
+                [
+                    "--manual-completion-authority-epoch-id",
+                    self.config.manual_completion_authority_epoch_id,
+                ]
+            )
+        if self.config.manual_completion_authority_revalidation_only:
+            command.append(
+                "--manual-completion-authority-revalidation-only"
             )
         for task_id in self.config.execution_slice_task_ids:
             command.extend(["--execution-slice-task-id", str(task_id)])
@@ -12250,39 +12416,263 @@ class PortalImplementationSupervisor:
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
 
+    def _managed_daemon_identity_path(self) -> Path:
+        return supervised_child_identity_path(
+            self._managed_daemon_pid_path()
+        )
+
+    def _managed_daemon_owner_scope(self) -> dict[str, str]:
+        daemon_script_path = self.config.daemon_script_path
+        daemon_entrypoint = (
+            str(Path(daemon_script_path).resolve(strict=False))
+            if daemon_script_path is not None
+            else (
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_daemon"
+            )
+        )
+        return {
+            "repo_root": str(self.config.repo_root.resolve(strict=False)),
+            "state_dir": str(self.config.state_dir.resolve(strict=False)),
+            "state_prefix": str(self.config.state_prefix),
+            "todo_path": str(self.config.todo_path.resolve(strict=False)),
+            "daemon_entrypoint": daemon_entrypoint,
+        }
+
+    def _managed_daemon_command_belongs_to_scope(
+        self,
+        command: Sequence[str],
+    ) -> bool:
+        tokens = tuple(str(part) for part in command)
+        daemon_script_path = self.config.daemon_script_path
+        daemon_token = (
+            str(daemon_script_path)
+            if daemon_script_path is not None
+            else (
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_daemon"
+            )
+        )
+        if daemon_token not in tokens:
+            return False
+
+        def exact_option(option: str, expected: str) -> bool:
+            values = [
+                tokens[index + 1]
+                for index, token in enumerate(tokens[:-1])
+                if token == option
+            ]
+            return values == [expected]
+
+        return (
+            exact_option("--state-dir", str(self.config.state_dir))
+            and exact_option("--state-prefix", self.config.state_prefix)
+            and exact_option("--todo-path", str(self.config.todo_path))
+        )
+
+    def _remove_managed_daemon_identity_markers(
+        self,
+        *,
+        expected_pid: int | None = None,
+    ) -> bool:
+        pid_path = self._managed_daemon_pid_path()
+        identity_path = self._managed_daemon_identity_path()
+        if expected_pid is not None:
+            try:
+                recorded_pid = int(
+                    pid_path.read_text(encoding="utf-8").strip()
+                )
+            except (OSError, ValueError):
+                return False
+            if recorded_pid != int(expected_pid):
+                return False
+        for path in (pid_path, identity_path):
+            try:
+                if path.is_file() or path.is_symlink():
+                    path.unlink()
+            except OSError:
+                return False
+        return True
+
+    def _quarantine_managed_daemon_identity_markers(
+        self,
+        *,
+        reason: str,
+    ) -> dict[str, str]:
+        quarantined: dict[str, str] = {}
+        for label, path in (
+            ("pid", self._managed_daemon_pid_path()),
+            ("identity", self._managed_daemon_identity_path()),
+        ):
+            if not path.exists() and not path.is_symlink():
+                continue
+            try:
+                backup = unique_backup_path(path, reason)
+                path.rename(backup)
+            except OSError:
+                continue
+            quarantined[label] = str(backup)
+        return quarantined
+    def _write_managed_daemon_identity(
+        self,
+        *,
+        pid: int,
+        command: Sequence[str],
+        require_direct_child: bool = True,
+    ) -> None:
+        write_supervised_child_identity(
+            self._managed_daemon_identity_path(),
+            pid=int(pid),
+            command=command,
+            owner_scope=self._managed_daemon_owner_scope(),
+            require_direct_child=require_direct_child,
+        )
+
+    def _fence_recorded_managed_daemon(
+        self,
+        *,
+        pid: int,
+        grace_seconds: float = 1.0,
+    ) -> dict[str, Any]:
+        identity_path = self._managed_daemon_identity_path()
+        identity = load_supervised_child_identity(identity_path)
+        if identity is None:
+            return {
+                "fenced": False,
+                "reason": "managed_daemon_ownership_unproven",
+            }
+        if (
+            identity.process_birth.pid != int(pid)
+            or dict(identity.owner_scope)
+            != self._managed_daemon_owner_scope()
+            or not self._managed_daemon_command_belongs_to_scope(
+                identity.command
+            )
+        ):
+            return {
+                "fenced": False,
+                "reason": "managed_daemon_ownership_scope_mismatch",
+            }
+        liveness = supervised_child_identity_liveness(identity)
+        if liveness is OwnerLiveness.DEAD:
+            return {
+                "fenced": False,
+                "pid_reused": bool(process_is_running(pid)),
+                "reason": "managed_daemon_recorded_process_dead",
+            }
+        if liveness is not OwnerLiveness.ALIVE:
+            return {
+                "fenced": False,
+                "reason": "managed_daemon_ownership_liveness_unknown",
+            }
+        observed_argv = read_process_command_argv(pid)
+        if observed_argv is None or observed_argv != identity.command:
+            return {
+                "fenced": False,
+                "reason": "managed_daemon_command_identity_mismatch",
+            }
+        # Re-read birth identity immediately before entering the existing
+        # freeze/rescan/kill fence. A reused numeric PID is never signalled.
+        if supervised_child_identity_liveness(identity) is not OwnerLiveness.ALIVE:
+            return {
+                "fenced": False,
+                "reason": "managed_daemon_process_birth_changed",
+            }
+        fenced = terminate_pid_tree(
+            int(pid),
+            grace_seconds=max(0.0, float(grace_seconds)),
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=int(pid),
+            expected_root_start_time_ticks=(
+                identity.process_birth.start_time_ticks
+            ),
+        )
+        gone = (
+            supervised_child_identity_liveness(identity)
+            is OwnerLiveness.DEAD
+        )
+        return {
+            "fenced": bool(fenced and gone),
+            "reason": (
+                "managed_daemon_owned_process_fenced"
+                if fenced and gone
+                else "managed_daemon_owned_process_fence_failed"
+            ),
+        }
+
     def _terminate_managed_daemon_tree(self, *, grace_seconds: float = 1.0) -> dict[str, Any]:
         """Stop the daemon this supervisor owns, including late-spawned workers."""
 
         pid_path = self._managed_daemon_pid_path()
+        repair = self.ensure_managed_daemon_pid_file()
+        if repair.get("blocked", False):
+            return {
+                "pid": self._read_managed_daemon_pid(),
+                "terminated": False,
+                "quiesced": False,
+                "remaining_pid": self._find_matching_managed_daemon_pid(),
+                "pid_path": str(pid_path),
+                "identity_path": str(
+                    self._managed_daemon_identity_path()
+                ),
+                "fence": {
+                    "fenced": False,
+                    "reason": str(
+                        repair.get("reason")
+                        or "managed_daemon_ownership_unproven"
+                    ),
+                },
+                "repair": repair,
+            }
         pid = self._read_managed_daemon_pid()
-        if pid is not None:
-            command_line = process_command_line(pid) if process_is_running(pid) else ""
-            if not self._managed_daemon_matches_command_line(command_line):
-                pid = None
         if pid is None:
-            pid = self._find_matching_managed_daemon_pid()
+            remaining_pid = self._find_matching_managed_daemon_pid()
+            return {
+                "pid": None,
+                "terminated": False,
+                "quiesced": remaining_pid is None,
+                "remaining_pid": remaining_pid,
+                "pid_path": str(pid_path),
+                "identity_path": str(
+                    self._managed_daemon_identity_path()
+                ),
+                "fence": {
+                    "fenced": False,
+                    "reason": (
+                        "managed_daemon_not_found"
+                        if remaining_pid is None
+                        else "managed_daemon_ownership_unproven"
+                    ),
+                },
+                "repair": repair,
+            }
 
-        terminated = bool(
-            pid is not None
-            and terminate_pid_tree(
-                pid,
-                grace_seconds=max(0.0, float(grace_seconds)),
-                freeze_first=True,
-                require_gone=True,
+        fence = (
+            self._fence_recorded_managed_daemon(
+                pid=pid,
+                grace_seconds=grace_seconds,
             )
+            if pid is not None
+            else {
+                "fenced": False,
+                "reason": "managed_daemon_not_found",
+            }
         )
+        terminated = bool(fence.get("fenced", False))
         remaining_pid = self._find_matching_managed_daemon_pid()
-        try:
-            if pid_path.is_file():
-                pid_path.unlink()
-        except OSError:
-            pass
+        if terminated:
+            self._remove_managed_daemon_identity_markers(
+                expected_pid=pid,
+            )
         return {
             "pid": pid,
             "terminated": terminated,
-            "quiesced": remaining_pid is None,
+            "quiesced": (pid is None or terminated) and remaining_pid is None,
             "remaining_pid": remaining_pid,
             "pid_path": str(pid_path),
+            "identity_path": str(self._managed_daemon_identity_path()),
+            "fence": fence,
         }
 
     def _read_managed_daemon_pid(self) -> int | None:
@@ -12308,7 +12698,103 @@ class PortalImplementationSupervisor:
         """Remove stale or malformed managed-daemon PID state before adoption."""
 
         pid_path = self._managed_daemon_pid_path()
+        identity_path = self._managed_daemon_identity_path()
         if not pid_path.exists():
+            identity_exists = identity_path.exists() or identity_path.is_symlink()
+            if identity_exists:
+                identity = load_supervised_child_identity(identity_path)
+                if identity is None:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_identity_invalid",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                    }
+                if (
+                    dict(identity.owner_scope)
+                    != self._managed_daemon_owner_scope()
+                    or not self._managed_daemon_command_belongs_to_scope(
+                        identity.command
+                    )
+                ):
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_identity_scope_mismatch",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                    }
+                identity_liveness = supervised_child_identity_liveness(
+                    identity
+                )
+                if identity_liveness is OwnerLiveness.UNKNOWN:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_identity_liveness_unknown",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                    }
+                if identity_liveness is OwnerLiveness.DEAD:
+                    matching_pid = self._find_matching_managed_daemon_pid()
+                    if matching_pid is not None:
+                        return {
+                            "repaired": False,
+                            "blocked": True,
+                            "reason": "matching_managed_daemon_ownership_unproven",
+                            "path": str(pid_path),
+                            "identity_path": str(identity_path),
+                            "pid": int(matching_pid),
+                        }
+                    quarantined = (
+                        self._quarantine_managed_daemon_identity_markers(
+                            reason="stale-orphaned-managed-daemon"
+                        )
+                    )
+                    result = {
+                        "repaired": True,
+                        "reason": "stale_orphaned_managed_daemon_identity",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                        "quarantined": quarantined,
+                    }
+                    self._record_event(
+                        "managed_daemon_pid_file_repaired",
+                        result,
+                    )
+                    return result
+                observed_argv = read_process_command_argv(
+                    identity.process_birth.pid
+                )
+                if observed_argv != identity.command:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_command_identity_mismatch",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                    }
+                write_text_atomic(
+                    pid_path,
+                    f"{identity.process_birth.pid}\n",
+                )
+                recovery = self.ensure_managed_daemon_pid_file()
+                recovery["repaired"] = True
+                recovery["orphaned_identity_recovered"] = True
+                if recovery.get("reason") == "active":
+                    recovery["reason"] = (
+                        "orphaned_live_managed_daemon_pid_reconstructed"
+                    )
+                self._record_event(
+                    "managed_daemon_pid_file_repaired",
+                    recovery,
+                )
+                return recovery
             return {"repaired": False, "reason": "missing", "path": str(pid_path)}
         if pid_path.is_dir():
             backup_path = unique_backup_path(pid_path, "directory-backup")
@@ -12366,77 +12852,268 @@ class PortalImplementationSupervisor:
             if result.get("repaired"):
                 self._record_event("managed_daemon_pid_file_repaired", result)
             return result
-        if not process_is_running(pid):
-            replacement_pid = self._find_matching_managed_daemon_pid(exclude_pids={pid})
-            if replacement_pid:
-                write_text_atomic(pid_path, f"{replacement_pid}\n")
-                result = {
-                    "repaired": True,
-                    "reason": "stale_managed_pid_replaced_with_matching_daemon",
-                    "path": str(pid_path),
-                    "stale_pid": pid,
-                    "replacement_pid": replacement_pid,
-                }
-                self._record_event("managed_daemon_pid_file_repaired", result)
-                return result
-            try:
-                pid_path.unlink()
-                result = {
-                    "repaired": True,
-                    "reason": "stale_managed_pid",
-                    "path": str(pid_path),
-                    "pid": pid,
-                }
-            except OSError as exc:
-                result = {
+        identity_exists = identity_path.exists() or identity_path.is_symlink()
+        identity = load_supervised_child_identity(identity_path)
+        recorded_pid_running = process_is_running(pid)
+        if identity_exists:
+            if identity is None:
+                return {
                     "repaired": False,
-                    "reason": "stale_managed_pid_unrepairable",
+                    "blocked": True,
+                    "reason": "managed_daemon_ownership_unproven",
                     "path": str(pid_path),
+                    "identity_path": str(identity_path),
                     "pid": pid,
-                    "error": str(exc),
                 }
-            if result.get("repaired"):
-                self._record_event("managed_daemon_pid_file_repaired", result)
+            identity_liveness = supervised_child_identity_liveness(identity)
+            if identity_liveness is OwnerLiveness.UNKNOWN:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "managed_daemon_ownership_liveness_unknown",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": pid,
+                }
+            if identity_liveness is OwnerLiveness.ALIVE:
+                observed_identity_argv = read_process_command_argv(
+                    identity.process_birth.pid
+                )
+                if (
+                    dict(identity.owner_scope)
+                    != self._managed_daemon_owner_scope()
+                    or not self._managed_daemon_command_belongs_to_scope(
+                        identity.command
+                    )
+                    or observed_identity_argv != identity.command
+                ):
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "managed_daemon_ownership_scope_mismatch",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": pid,
+                        "identity_pid": identity.process_birth.pid,
+                    }
+                if identity.process_birth.pid != pid:
+                    write_text_atomic(
+                        pid_path,
+                        f"{identity.process_birth.pid}\n",
+                    )
+                    recovery = self.ensure_managed_daemon_pid_file()
+                    recovery["repaired"] = True
+                    recovery["recorded_pid_reconciled"] = pid
+                    if recovery.get("reason") == "active":
+                        recovery["reason"] = (
+                            "managed_daemon_pid_reconciled_from_live_identity"
+                        )
+                    self._record_event(
+                        "managed_daemon_pid_file_repaired",
+                        recovery,
+                    )
+                    return recovery
+                if not recorded_pid_running:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "managed_daemon_process_liveness_inconsistent",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": pid,
+                    }
+        if not recorded_pid_running:
+            matching_pid = self._find_matching_managed_daemon_pid()
+            if matching_pid is not None:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "matching_managed_daemon_ownership_unproven",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": int(matching_pid),
+                }
+            quarantined = self._quarantine_managed_daemon_identity_markers(
+                reason="stale-managed-daemon"
+            )
+            result = {
+                "repaired": True,
+                "reason": "stale_managed_pid",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "quarantined": quarantined,
+            }
+            self._record_event("managed_daemon_pid_file_repaired", result)
             return result
+
         command_line = process_command_line(pid)
-        if not self._managed_daemon_matches_command_line(command_line):
-            replacement_pid = self._find_matching_managed_daemon_pid(exclude_pids={pid})
-            if replacement_pid:
-                write_text_atomic(pid_path, f"{replacement_pid}\n")
-                result = {
-                    "repaired": True,
-                    "reason": "managed_pid_command_mismatch_replaced_with_matching_daemon",
-                    "path": str(pid_path),
-                    "pid": pid,
-                    "replacement_pid": replacement_pid,
-                }
-                self._record_event("managed_daemon_pid_file_repaired", result)
-                return result
-            try:
-                pid_path.unlink()
-                result = {
-                    "repaired": True,
-                    "reason": "managed_pid_command_mismatch",
-                    "path": str(pid_path),
-                    "pid": pid,
-                }
-            except OSError as exc:
-                result = {
+        desired_command = tuple(self._build_daemon_command())
+        desired_command_matches = self._managed_daemon_matches_command_line(
+            command_line
+        )
+        if not identity_exists and desired_command_matches:
+            # One-time migration for a live legacy daemon is safe only while
+            # it already has the exact desired supervisor configuration.
+            observed_argv = read_process_command_argv(pid)
+            if observed_argv != desired_command:
+                return {
                     "repaired": False,
-                    "reason": "managed_pid_command_mismatch_unrepairable",
+                    "blocked": True,
+                    "reason": "managed_daemon_ownership_unproven",
                     "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": pid,
+                }
+            try:
+                self._write_managed_daemon_identity(
+                    pid=pid,
+                    command=desired_command,
+                    require_direct_child=False,
+                )
+            except Exception as exc:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "managed_daemon_identity_migration_failed",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
                     "pid": pid,
                     "error": str(exc),
                 }
-            if result.get("repaired"):
-                self._record_event("managed_daemon_pid_file_repaired", result)
+            result = {
+                "repaired": True,
+                "reason": "active_legacy_managed_daemon_identity_migrated",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+            self._record_event("managed_daemon_pid_file_repaired", result)
             return result
-        return {"repaired": False, "reason": "active", "path": str(pid_path), "pid": pid}
+
+        if identity is None:
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_ownership_unproven",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+
+        identity_liveness = supervised_child_identity_liveness(identity)
+        if identity.process_birth.pid != pid or identity_liveness is OwnerLiveness.DEAD:
+            # The numeric PID now belongs to another process. Never signal it;
+            # If any process already has the desired daemon command, its
+            # ownership is not proved by this stale identity.  Fail closed so
+            # startup cannot launch a duplicate matching daemon.
+            matching_pid = self._find_matching_managed_daemon_pid()
+            if matching_pid is not None:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "matching_managed_daemon_ownership_unproven",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": int(matching_pid),
+                }
+            quarantined = self._quarantine_managed_daemon_identity_markers(
+                reason="pid-reuse"
+            )
+            result = {
+                "repaired": True,
+                "reason": "managed_daemon_pid_reused",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "quarantined": quarantined,
+            }
+            self._record_event("managed_daemon_pid_file_repaired", result)
+            return result
+        if identity_liveness is not OwnerLiveness.ALIVE:
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_ownership_liveness_unknown",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+        observed_argv = read_process_command_argv(pid)
+        if (
+            dict(identity.owner_scope) != self._managed_daemon_owner_scope()
+            or not self._managed_daemon_command_belongs_to_scope(
+                identity.command
+            )
+            or observed_argv != identity.command
+        ):
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_ownership_scope_mismatch",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+
+        if identity.command == desired_command:
+            return {
+                "repaired": False,
+                "reason": "active",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+
+        fence = self._fence_recorded_managed_daemon(pid=pid)
+        if not fence.get("fenced", False):
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_obsolete_fence_failed",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "fence": fence,
+            }
+        if not self._remove_managed_daemon_identity_markers(
+            expected_pid=pid
+        ):
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_obsolete_marker_cleanup_failed",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "fence": fence,
+            }
+        result = {
+            "repaired": True,
+            "reason": "obsolete_owned_managed_daemon_fenced",
+            "path": str(pid_path),
+            "identity_path": str(identity_path),
+            "pid": pid,
+            "fence": fence,
+        }
+        self._record_event("managed_daemon_pid_file_repaired", result)
+        return result
 
     def _adopt_existing_daemon(self) -> AdoptedManagedDaemonProcess | None:
         pid_path = self._managed_daemon_pid_path()
         repair = self.ensure_managed_daemon_pid_file()
-        if repair.get("repaired") or not pid_path.exists() or pid_path.is_dir():
+        if repair.get("blocked", False):
+            raise RuntimeError(
+                str(
+                    repair.get("reason")
+                    or "managed_daemon_ownership_unproven"
+                )
+            )
+        if (
+            repair.get("repaired")
+            and repair.get("reason")
+            != "active_legacy_managed_daemon_identity_migrated"
+        ) or not pid_path.exists() or pid_path.is_dir():
             return None
         try:
             pid = int(pid_path.read_text(encoding="utf-8").strip())
@@ -12454,11 +13131,18 @@ class PortalImplementationSupervisor:
             return None
         command_line = process_command_line(pid)
         if not self._managed_daemon_matches_command_line(command_line):
-            try:
-                pid_path.unlink()
-            except OSError:
-                pass
-            return None
+            raise RuntimeError("managed_daemon_command_identity_mismatch")
+        identity = load_supervised_child_identity(
+            self._managed_daemon_identity_path()
+        )
+        if (
+            identity is None
+            or identity.process_birth.pid != pid
+            or identity.command != tuple(self._build_daemon_command())
+            or supervised_child_identity_liveness(identity)
+            is not OwnerLiveness.ALIVE
+        ):
+            raise RuntimeError("managed_daemon_ownership_identity_mismatch")
         return AdoptedManagedDaemonProcess(pid)
 
     def _managed_daemon_matches_command_line(self, command_line: str) -> bool:
@@ -12509,9 +13193,28 @@ class PortalImplementationSupervisor:
             self.config.execution_slice_task_ids
         ):
             return False
+        if option_values("--manual-completion-authority-task-id") != set(
+            self.config.manual_completion_authority_task_ids
+        ):
+            return False
         if option_values(
             "--manual-completion-authority-required-task-id"
         ) != set(self.config.manual_completion_authority_required_task_ids):
+            return False
+        expected_authority_epoch_ids = (
+            {self.config.manual_completion_authority_epoch_id}
+            if self.config.manual_completion_authority_epoch_id
+            else set()
+        )
+        if option_values(
+            "--manual-completion-authority-epoch-id"
+        ) != expected_authority_epoch_ids:
+            return False
+        if (
+            "--manual-completion-authority-revalidation-only" in tokens
+        ) != bool(
+            self.config.manual_completion_authority_revalidation_only
+        ):
             return False
         if option_values("--execution-slice-task-cid") != set(
             self.config.execution_slice_task_cids
@@ -12645,6 +13348,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--manual-completion-authority-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID governed by operator-sealed manual "
+            "completion. Pending descendants must be freshly revalidated "
+            "after its seal becomes active."
+        ),
+    )
+    parser.add_argument(
         "--manual-completion-authority-required-task-id",
         action="append",
         default=[],
@@ -12652,6 +13365,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Repeatable staged task ID whose status cannot be selected or "
             "accepted as complete until a fresh scheduler load verifies its "
             "operator seal."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-epoch-id",
+        default="",
+        help=(
+            "Content-addressed identity of the verified manual-completion "
+            "seal and policy set used for descendant revalidation."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-revalidation-only",
+        action="store_true",
+        help=(
+            "Supervise only zero-provider manual-completion authority "
+            "revalidation and suppress ordinary supervisor maintenance, "
+            "refill, merge repair, and implementation dispatch."
         ),
     )
     parser.add_argument(
@@ -13341,6 +14071,15 @@ def supervisor_config_from_args(
             resolved_implementation_protected_paths,
             repo_root=effective_repo_root,
         ),
+        manual_completion_authority_task_ids=tuple(
+            dict.fromkeys(
+                str(task_id).strip()
+                for task_id in (
+                    args.manual_completion_authority_task_id or ()
+                )
+                if str(task_id).strip()
+            )
+        ),
         manual_completion_authority_required_task_ids=tuple(
             dict.fromkeys(
                 str(task_id).strip()
@@ -13348,6 +14087,16 @@ def supervisor_config_from_args(
                     args.manual_completion_authority_required_task_id or ()
                 )
                 if str(task_id).strip()
+            )
+        ),
+        manual_completion_authority_epoch_id=str(
+            getattr(args, "manual_completion_authority_epoch_id", "") or ""
+        ).strip(),
+        manual_completion_authority_revalidation_only=bool(
+            getattr(
+                args,
+                "manual_completion_authority_revalidation_only",
+                False,
             )
         ),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,

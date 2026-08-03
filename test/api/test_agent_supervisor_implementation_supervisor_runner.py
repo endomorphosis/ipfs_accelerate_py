@@ -227,6 +227,10 @@ def test_build_portal_implementation_supervisor_from_args_applies_defaults(tmp_p
     assert supervisor.config.repo_root == tmp_path
     assert supervisor.config.daemon_script_path == daemon_script
     assert supervisor.config.worktree_submodule_paths == ("module-a", "module-b")
+    assert parsed.manual_completion_authority_revalidation_only is False
+    assert (
+        supervisor.config.manual_completion_authority_revalidation_only is False
+    )
     assert context.state_path == tmp_path / "state" / "example_task_state.json"
     assert context.strategy_path == tmp_path / "state" / "example_strategy.json"
     assert context.events_path == tmp_path / "state" / "example_supervisor_events.jsonl"
@@ -314,6 +318,56 @@ def test_run_portal_implementation_supervisor_runs_before_and_after_once_hooks(c
     assert calls == ["before:state.json", "run_once", "after:daemon-events.jsonl"]
     assert "before hook: ['before-result']" in caplog.text
     assert "after hook: ['after-result']" in caplog.text
+
+
+def test_run_portal_implementation_supervisor_suppresses_hooks_for_revalidation_only():
+    class FakeSupervisor:
+        def run_once(self) -> dict[str, int]:
+            calls.append("run_once")
+            return {"checks": 1}
+
+        def run_forever(self) -> None:
+            calls.append("run_forever")
+
+    calls: list[str] = []
+    parsed = argparse.Namespace(
+        once=True,
+        manual_completion_authority_revalidation_only=True,
+    )
+    context = ImplementationSupervisorRunContext(
+        parsed=parsed,
+        config=object(),
+        state_path=Path("state.json"),
+        strategy_path=Path("strategy.json"),
+        events_path=Path("supervisor-events.jsonl"),
+        daemon_events_path=Path("daemon-events.jsonl"),
+    )
+
+    def forbidden_hook(_context: ImplementationSupervisorRunContext) -> None:
+        calls.append("hook")
+
+    def forbidden_runtime_repair(
+        _context: ImplementationSupervisorRunContext,
+    ) -> None:
+        calls.append("repair")
+
+    result = run_portal_implementation_supervisor(
+        FakeSupervisor(),
+        context,
+        logger=logging.getLogger("test-supervisor-runner-revalidation-only"),
+        hooks=(
+            SupervisorRunHook("before", "before hook: %s", forbidden_hook),
+            SupervisorRunHook(
+                "after_once",
+                "after hook: %s",
+                forbidden_hook,
+            ),
+        ),
+        repair_runtime_callback=forbidden_runtime_repair,
+    )
+
+    assert result == {"checks": 1}
+    assert calls == ["run_once"]
 
 
 def _scan_result(

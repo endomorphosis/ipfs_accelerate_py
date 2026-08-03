@@ -2424,11 +2424,10 @@ def test_supervisor_loop_adopts_existing_child_before_launch(tmp_path, monkeypat
         child_pid_path=state_dir / "child.pid",
     )
 
-    monkeypatch.setattr(supervisor_loop_module, "adopt_supervised_child", lambda _spec: adopted)
     monkeypatch.setattr(
         supervisor_loop_module,
-        "launch_supervised_child",
-        lambda _spec: pytest.fail("supervisor loop launched a duplicate child"),
+        "adopt_or_launch_supervised_child",
+        lambda _spec, **_kwargs: adopted,
     )
     monkeypatch.setattr(supervisor_loop_module, "_poll_child_exit", lambda _child: None)
     monkeypatch.setattr(supervisor_loop_module, "terminate_supervised_child", lambda *_args, **_kwargs: True)
@@ -14516,7 +14515,7 @@ def test_implementation_supervisor_repairs_directory_managed_pid_path(tmp_path):
     assert events[-1]["type"] == "managed_daemon_pid_file_repaired"
 
 
-def test_implementation_supervisor_repoints_mismatched_managed_pid_to_matching_daemon(
+def test_implementation_supervisor_blocks_unowned_mismatched_managed_pid_without_repointing(
     tmp_path,
     monkeypatch,
 ):
@@ -14561,10 +14560,11 @@ def test_implementation_supervisor_repoints_mismatched_managed_pid_to_matching_d
 
     result = supervisor.ensure_managed_daemon_pid_file()
 
-    assert result["repaired"] is True
-    assert result["reason"] == "managed_pid_command_mismatch_replaced_with_matching_daemon"
-    assert result["replacement_pid"] == 222
-    assert pid_path.read_text(encoding="utf-8").strip() == "222"
+    assert result["repaired"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "managed_daemon_ownership_unproven"
+    assert pid_path.read_text(encoding="utf-8").strip() == "111"
+    assert not supervisor._managed_daemon_identity_path().exists()
 
 
 def test_implementation_supervisor_repairs_stale_managed_pid_file(tmp_path):
@@ -29881,6 +29881,106 @@ def test_implementation_daemon_fallback_initializes_only_configured_submodule(
             "external/dependency",
         ]
     ]
+
+
+def test_offline_authority_submodule_setup_never_repairs_or_fetches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    repo = tmp_path / "repo"
+    worktree = tmp_path / "worktree"
+    repo.mkdir()
+    worktree.mkdir()
+    (worktree / ".gitmodules").write_text(
+        (
+            '[submodule "external/dependency"]\n'
+            "    path = external/dependency\n"
+            "    url = ../dependency\n"
+        ),
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["external/dependency"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_repair_stale_submodule_worktree_configs",
+        lambda *_args, **_kwargs: pytest.fail(
+            "offline setup repaired shared repository metadata"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_git",
+        lambda *_args, **_kwargs: pytest.fail(
+            "offline setup attempted git submodule update"
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="offline authority revalidation submodule setup failed",
+    ):
+        daemon._initialize_worktree_submodules(
+            worktree,
+            offline_local_only=True,
+        )
+
+
+def test_offline_submodule_ref_resolution_never_fetches_or_falls_back(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_git_ref_exists_in_repo",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_event",
+        lambda kind, payload: events.append((kind, dict(payload))),
+    )
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "offline ref resolution invoked a subprocess"
+        ),
+    )
+
+    resolved = daemon._resolve_submodule_worktree_base_ref(
+        repo,
+        "a" * 40,
+        source_key="external/dependency",
+        worktree_path=tmp_path / "candidate",
+        offline_local_only=True,
+    )
+
+    assert resolved is None
+    assert events[-1][0] == "submodule_gitlink_ref_missing"
+    assert events[-1][1]["fetch_attempted"] is False
+    assert events[-1][1]["fallback_used"] is False
 
 
 def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):

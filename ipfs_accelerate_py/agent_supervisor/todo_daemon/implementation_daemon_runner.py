@@ -1134,10 +1134,27 @@ def build_portal_implementation_daemon_from_args(
         merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
         worktree_submodule_paths=worktree_submodule_paths,
         implementation_protected_paths=implementation_protected_paths,
+        manual_completion_authority_task_ids=getattr(
+            parsed,
+            "manual_completion_authority_task_id",
+            (),
+        ),
         manual_completion_authority_required_task_ids=getattr(
             parsed,
             "manual_completion_authority_required_task_id",
             (),
+        ),
+        manual_completion_authority_epoch_id=getattr(
+            parsed,
+            "manual_completion_authority_epoch_id",
+            "",
+        ),
+        manual_completion_authority_revalidation_only=bool(
+            getattr(
+                parsed,
+                "manual_completion_authority_revalidation_only",
+                False,
+            )
         ),
         objective_path=parsed.objective_path or default_objective_path,
         objective_bundle_dir=parsed.objective_bundle_dir or default_objective_bundle_dir,
@@ -1229,13 +1246,31 @@ def run_portal_implementation_daemon_loop(
     """Run a configured daemon with optional before/after pass hooks."""
 
     parsed = context.parsed
+    authority_revalidation_only = bool(
+        getattr(
+            parsed,
+            "manual_completion_authority_revalidation_only",
+            False,
+        )
+    )
+    effective_hooks = () if authority_revalidation_only else hooks
     pass_index = 0
     try:
         while True:
             pass_context = context.for_pass(pass_index)
-            _run_hooks(hooks, phase="before", context=pass_context, logger=logger)
+            _run_hooks(
+                effective_hooks,
+                phase="before",
+                context=pass_context,
+                logger=logger,
+            )
             result = daemon.run_once()
-            _run_hooks(hooks, phase="after", context=pass_context, logger=logger)
+            _run_hooks(
+                effective_hooks,
+                phase="after",
+                context=pass_context,
+                logger=logger,
+            )
             logger.info(pass_complete_message, result)
             if parsed.once:
                 break

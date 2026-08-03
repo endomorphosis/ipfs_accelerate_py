@@ -2509,9 +2509,22 @@ def run_portal_implementation_supervisor(
 ) -> Any:
     """Run a configured supervisor with optional local hooks and runtime repair."""
 
+    authority_revalidation_only = bool(
+        getattr(
+            context.parsed,
+            "manual_completion_authority_revalidation_only",
+            False,
+        )
+    )
+    effective_hooks = () if authority_revalidation_only else hooks
     if bool(getattr(context.parsed, "once", False)):
-        _run_hooks(hooks, phase="before", context=context, logger=logger)
-    elif hooks:
+        _run_hooks(
+            effective_hooks,
+            phase="before",
+            context=context,
+            logger=logger,
+        )
+    elif effective_hooks:
         logger.debug(
             "Skipping supervisor before hooks for long-running startup; "
             "managed watchdog maintenance will run refill hooks after daemon launch."
@@ -2523,14 +2536,19 @@ def run_portal_implementation_supervisor(
         logger.info(ensure_running_message, result)
         return result
 
-    if repair_runtime_callback is not None:
+    if repair_runtime_callback is not None and not authority_revalidation_only:
         repairs = repair_runtime_callback(context)
         if isinstance(repairs, dict) and (repairs.get("removed") or repairs.get("updated_status")):
             logger.info(repair_runtime_message, repairs)
 
     if context.parsed.once:
         result = supervisor.run_once()
-        _run_hooks(hooks, phase="after_once", context=context, logger=logger)
+        _run_hooks(
+            effective_hooks,
+            phase="after_once",
+            context=context,
+            logger=logger,
+        )
         logger.info(once_complete_message, result)
         return result
     return supervisor.run_forever()

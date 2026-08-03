@@ -17,9 +17,8 @@ from .supervisor_runtime import (
     RestartPolicy,
     SupervisedChild,
     SupervisedChildSpec,
-    adopt_supervised_child,
+    adopt_or_launch_supervised_child,
     clear_child_pid_file,
-    launch_supervised_child,
     supervised_log_path,
     supervisor_run_id,
     terminate_supervised_child,
@@ -465,7 +464,20 @@ class SupervisorLoop:
             self.last_run_id = run_id
             self.last_log_path = log_path
             try:
-                child = adopt_supervised_child(child_spec) or launch_supervised_child(child_spec)
+                launch_lock_path = self.config.spec.resolve(
+                    self.config.spec.supervisor_lock_path
+                )
+                if launch_lock_path is None:
+                    resolved_child_pid_path = child_spec.resolve(
+                        child_spec.child_pid_path
+                    )
+                    launch_lock_path = resolved_child_pid_path.with_name(
+                        f".{resolved_child_pid_path.name}.launch.lock"
+                    )
+                child = adopt_or_launch_supervised_child(
+                    child_spec,
+                    launch_lock_path=launch_lock_path,
+                )
             except Exception as exc:
                 self.last_exit_code = 127
                 self.last_recycle_reason = "launch_failed"
@@ -510,7 +522,18 @@ class SupervisorLoop:
                     if decision.action == "stop":
                         final_status = decision.status or "stopped"
                         self.last_recycle_reason = decision.reason
-                        terminate_supervised_child(child, grace_seconds=self.config.stop_grace_seconds)
+                        stopped = terminate_supervised_child(
+                            child,
+                            grace_seconds=self.config.stop_grace_seconds,
+                            clear_pid_file=False,
+                        )
+                        if not stopped:
+                            final_status = "termination_blocked"
+                            self.last_recycle_reason = (
+                                "supervised_child_termination_unproven"
+                            )
+                            stop_requested = True
+                            break
                         self.last_exit_code = wait_for_child_exit(child)
                         stop_requested = True
                         break
@@ -523,13 +546,25 @@ class SupervisorLoop:
                             log_path=log_path,
                             extra={"watchdog_decision": decision.detail},
                         )
-                        terminate_supervised_child(child, grace_seconds=self.config.stop_grace_seconds)
+                        stopped = terminate_supervised_child(
+                            child,
+                            grace_seconds=self.config.stop_grace_seconds,
+                            clear_pid_file=False,
+                        )
+                        if not stopped:
+                            final_status = "termination_blocked"
+                            self.last_recycle_reason = (
+                                "supervised_child_termination_unproven"
+                            )
+                            stop_requested = True
+                            break
                         self.last_exit_code = wait_for_child_exit(child)
                         recycled = True
                         break
                 self.sleep(max(0.01, min(float(self.config.heartbeat_seconds), float(self.config.poll_seconds))))
 
-            clear_child_pid_file(child)
+            if final_status != "termination_blocked":
+                clear_child_pid_file(child)
             if stop_requested:
                 break
             run_duration = self.monotonic() - child_started_at

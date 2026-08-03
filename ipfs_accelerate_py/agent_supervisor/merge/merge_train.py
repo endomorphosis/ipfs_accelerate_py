@@ -94,6 +94,16 @@ INTEGRATED_QUARANTINE_RECOVERY_LIMIT: Final = 32
 INTEGRATED_HANDOFF_MAX_PATHS: Final = 64
 INTEGRATED_HANDOFF_MAX_PATH_BYTES: Final = 1024
 INTEGRATED_HANDOFF_MAX_PATH_COMPONENTS: Final = 64
+AUTHORITY_QUARANTINE_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "manual_completion_authority_required",
+        "manual_completion_authority_dependency_required",
+        "manual_completion_authority_revalidation_required",
+        "cross_board_manual_completion_authority_unavailable",
+        "cross_board_manual_completion_authority_metadata_missing",
+        "cross_board_manual_completion_authority_metadata_invalid",
+    }
+)
 DISTRIBUTED_LANE_PUBLICATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/distributed-lane-publication@1"
 )
@@ -2972,6 +2982,8 @@ class MergeTrain:
         for request in snapshot(
             limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
         ):
+            if request.failure_reason in AUTHORITY_QUARANTINE_REASONS:
+                continue
             if not self._quarantined_candidate_is_integrated(request):
                 continue
             revived = revive(
@@ -3427,7 +3439,7 @@ class MergeTrain:
                 "candidate_commit_missing",
                 "validation_failed",
                 "branch_has_no_changes",
-            }
+            } | set(AUTHORITY_QUARANTINE_REASONS)
             return self._finish_failure(
                 request,
                 reason=callback_reason,

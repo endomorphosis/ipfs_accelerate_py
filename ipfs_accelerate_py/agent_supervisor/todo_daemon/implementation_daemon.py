@@ -337,6 +337,54 @@ VALIDATION_MAX_WORKERS_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_MAX_WORKERS"
 VALIDATION_RESOURCE_BUDGET_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_RESOURCE_BUDGET"
 DEFAULT_VALIDATION_MAX_WORKERS = 2
 MAX_MERGE_PROOF_METADATA_ITEMS = 256
+MANUAL_COMPLETION_REVALIDATION_STORE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "manual-completion-revalidation-store@2"
+)
+MANUAL_COMPLETION_REVALIDATION_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "manual-completion-revalidation-receipt@2"
+)
+MANUAL_COMPLETION_VALIDATION_PLAN_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "manual-completion-validation-plan@2"
+)
+MANUAL_COMPLETION_AUTHORITY_RENEWAL_MAX_FAILURES = 3
+MANUAL_COMPLETION_AUTHORITY_RENEWAL_BASE_COOLDOWN_SECONDS = 300.0
+MANUAL_COMPLETION_AUTHORITY_RENEWAL_MAX_COOLDOWN_SECONDS = 14400.0
+AUTHORITY_VALIDATION_CONTAINER_IMAGE_ENV = (
+    "IPFS_ACCELERATE_AGENT_AUTHORITY_VALIDATION_CONTAINER_IMAGE"
+)
+AUTHORITY_VALIDATION_DOCKER_PATH = Path("/usr/bin/docker")
+AUTHORITY_VALIDATION_DOCKER_SHA256 = (
+    "414d9e16a30060770648522f8ecadef2f2b57b50b8c61d4b0ae9d3b8b64c2a02"
+)
+AUTHORITY_VALIDATION_NVIDIA_SMI_PATH = Path("/usr/bin/nvidia-smi")
+AUTHORITY_VALIDATION_NVIDIA_SMI_SHA256 = (
+    "934be0af12e24ad46e3deca64234be7493d8f3552461c9956d43fbedd6ff9c67"
+)
+AUTHORITY_VALIDATION_DOCKER_SERVER_IDENTITY = "29.1.3|linux|arm64"
+AUTHORITY_VALIDATION_GPU_IDENTITY = (
+    "GPU-fd94473f-d6ba-bada-c1e2-5a1e9ad037e4, 580.142"
+)
+AUTHORITY_VALIDATION_GPU_UUID = (
+    "GPU-fd94473f-d6ba-bada-c1e2-5a1e9ad037e4"
+)
+# Updated only after the operator builds and validates the immutable local
+# CUDA image. A mutable tag is never an authority-bearing input.
+DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE = (
+    "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6"
+)
+AUTHORITY_VALIDATION_IMAGE_SITE_PACKAGES = (
+    "/opt/ipfs-validation-site-packages"
+)
+AUTHORITY_VALIDATION_DOCKER_ENDPOINT = "unix:///run/docker.sock"
+AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES = 16 * 1024 * 1024
+AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES = 4 * 1024 * 1024 * 1024
+AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES = 1024 * 1024 * 1024
+AUTHORITY_VALIDATION_CPU_LIMIT = 4
+AUTHORITY_VALIDATION_PIDS_LIMIT = 256
+AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS = 900
 MAX_MERGE_PROOF_METADATA_DEPTH = 8
 MAX_MERGE_PROOF_METADATA_TEXT = 4096
 TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
@@ -3125,6 +3173,54 @@ def dependency_satisfied_references(
     return satisfied
 
 
+def transitive_task_dependents(
+    tasks: Sequence[PortalTask],
+    *,
+    root_task_ids: Iterable[str] = (),
+) -> set[str]:
+    """Return tasks transitively dependent on any declared root task.
+
+    Dependencies may name either a task or an objective goal.  A goal cannot
+    be satisfied while one of its member tasks is authority-blocked, so goal
+    references participate in the same fixed-point closure.
+    """
+
+    declared_task_ids = {task.task_id for task in tasks}
+    roots = {
+        str(task_id)
+        for task_id in root_task_ids
+        if str(task_id).strip() and str(task_id) in declared_task_ids
+    }
+    affected_task_ids = set(roots)
+    task_ids_by_goal: dict[str, set[str]] = {}
+    for task in tasks:
+        for goal_id in split_csv(task.metadata.get("goal id", "")):
+            task_ids_by_goal.setdefault(goal_id, set()).add(task.task_id)
+
+    while True:
+        affected_goal_ids = {
+            goal_id
+            for goal_id, task_ids in task_ids_by_goal.items()
+            if task_ids & affected_task_ids
+        }
+        newly_affected = {
+            task.task_id
+            for task in tasks
+            if (
+                task.task_id not in affected_task_ids
+                and any(
+                    dependency in affected_task_ids
+                    or dependency in affected_goal_ids
+                    for dependency in task.depends_on
+                )
+            )
+        }
+        if not newly_affected:
+            break
+        affected_task_ids.update(newly_affected)
+    return affected_task_ids - roots
+
+
 class PortalImplementationDaemon:
     shared_todo_runner_class = TodoDaemonRunner
     shared_todo_hooks_class = TodoDaemonHooks
@@ -3153,7 +3249,10 @@ class PortalImplementationDaemon:
         merge_target_branch: str | None = None,
         worktree_submodule_paths: Any = None,
         implementation_protected_paths: Any = None,
+        manual_completion_authority_task_ids: Sequence[str] = (),
         manual_completion_authority_required_task_ids: Sequence[str] = (),
+        manual_completion_authority_epoch_id: str = "",
+        manual_completion_authority_revalidation_only: bool = False,
         objective_path: Path | None = None,
         objective_bundle_dir: Path | None = None,
         generated_status_paths: Sequence[Path | str] = (),
@@ -3258,6 +3357,62 @@ class PortalImplementationDaemon:
             for task_id in manual_completion_authority_required_task_ids
             if str(task_id).strip()
         )
+        self.manual_completion_authority_task_ids = frozenset(
+            {
+                str(task_id).strip()
+                for task_id in manual_completion_authority_task_ids
+                if str(task_id).strip()
+            }
+            | set(self.manual_completion_authority_required_task_ids)
+        )
+        self.manual_completion_authority_epoch_id = str(
+            manual_completion_authority_epoch_id or ""
+        ).strip()
+        self.manual_completion_authority_revalidation_only = bool(
+            manual_completion_authority_revalidation_only
+        )
+        if (
+            self.manual_completion_authority_revalidation_only
+            and not self.manual_completion_authority_task_ids
+        ):
+            raise ValueError(
+                "manual completion authority revalidation-only mode requires "
+                "at least one authority task ID"
+            )
+        if self.manual_completion_authority_revalidation_only and not implement:
+            raise ValueError(
+                "manual completion authority revalidation-only mode requires "
+                "implementation execution to be enabled"
+            )
+        if self.manual_completion_authority_revalidation_only and (
+            decision_runtime is not None
+            or decision_runtime_config is not None
+        ):
+            raise ValueError(
+                "manual completion authority revalidation-only mode forbids "
+                "a custom decision runtime"
+            )
+        # These are refreshed from the canonical task board before any
+        # recovery, merge, or completion mutation.  The configured roots are
+        # retained as the fail-closed floor until that first refresh succeeds.
+        self._manual_completion_authority_hard_blocked_task_ids = frozenset(
+            self.manual_completion_authority_required_task_ids
+        )
+        self._manual_completion_authority_effective_required_task_ids = (
+            frozenset(self.manual_completion_authority_required_task_ids)
+        )
+        self._manual_completion_authority_revocation_generation = 0
+        self._trusted_manual_completion_revalidation_receipt_ids: set[str] = (
+            set()
+        )
+        self._trusted_manual_completion_revalidation_evidence_ids: set[str] = (
+            set()
+        )
+        self._manual_completion_authority_revalidation_task_ids = frozenset()
+        self._manual_completion_authority_historical_task_ids = frozenset(
+            self.manual_completion_authority_required_task_ids
+        )
+        self._manual_completion_authority_affected_goal_ids = frozenset()
         self.shared_worktree_source_roots = shared_worktree_source_roots(self.repo_root)
         self.task_header_prefix = normalize_task_header_prefix(task_header_prefix)
         self.implement = implement
@@ -7652,13 +7807,19 @@ class PortalImplementationDaemon:
         self,
         state: PortalTaskState,
         tasks: Sequence[PortalTask],
+        *,
+        excluded_task_ids: Iterable[str] = (),
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Consume completed repair receipts once in each durable lane."""
 
         latest_repairs: dict[str, tuple[PortalTask, str]] = {}
         tasks_by_id = {task.task_id: task for task in tasks}
+        excluded = {str(task_id) for task_id in excluded_task_ids}
         for repair_task in tasks:
-            if normalize_status(repair_task.status) != "completed":
+            if (
+                repair_task.task_id in excluded
+                or normalize_status(repair_task.status) != "completed"
+            ):
                 continue
             source_task_id, failure_kind = retry_budget_repair_source(repair_task)
             if source_task_id:
@@ -7755,12 +7916,18 @@ class PortalImplementationDaemon:
         self,
         strategy: dict[str, Any],
         tasks: Sequence[PortalTask],
+        *,
+        excluded_task_ids: Iterable[str] = (),
     ) -> list[dict[str, str]]:
         """Release only source tasks named by completed retry repairs."""
 
         completed_repairs: dict[str, tuple[str, str]] = {}
+        excluded = {str(task_id) for task_id in excluded_task_ids}
         for repair_task in tasks:
-            if normalize_status(repair_task.status) != "completed":
+            if (
+                repair_task.task_id in excluded
+                or normalize_status(repair_task.status) != "completed"
+            ):
                 continue
             source_task_id, failure_kind = retry_budget_repair_source(
                 repair_task
@@ -7811,17 +7978,21 @@ class PortalImplementationDaemon:
         tasks: Sequence[PortalTask],
         resolved_statuses: Mapping[str, str],
         state: PortalTaskState,
+        *,
+        exempt_task_ids: Iterable[str] = (),
     ) -> tuple[list[PortalTask], list[dict[str, Any]]]:
         """Remove ready tasks whose durable canonical attempt limit is spent."""
 
         if self.max_task_attempts <= 0:
             return list(tasks), []
+        exempt = {str(task_id) for task_id in exempt_task_ids}
         selectable: list[PortalTask] = []
         limited: list[dict[str, Any]] = []
         for task in tasks:
             attempt_count = self._task_attempt_count(state, task)
             if (
-                resolved_statuses.get(task.task_id) == "ready"
+                task.task_id not in exempt
+                and resolved_statuses.get(task.task_id) == "ready"
                 and attempt_count >= self.max_task_attempts
             ):
                 identity = self._identity_for_task(task)
@@ -8081,6 +8252,7 @@ class PortalImplementationDaemon:
             self.strategy_path,
             self._implementation_protected_active_snapshot_path(),
             self._implementation_protected_incident_path(),
+            self._manual_completion_revalidation_store_path(),
         ]
         return {
             "task_board": (self.todo_path,),
@@ -8117,6 +8289,19 @@ class PortalImplementationDaemon:
         # create a feedback loop on the next preflight.
         sources["event_log"] = [self._runtime_path_metadata(self.events_path)]
         sources["state"] = [self._runtime_path_metadata(self.state_path)]
+        authority_policy = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "manual-completion-authority-policy@2"
+            ),
+            "task_ids": sorted(self.manual_completion_authority_task_ids),
+            "required_task_ids": sorted(
+                self.manual_completion_authority_required_task_ids
+            ),
+            "scheduler_epoch_id": self.manual_completion_authority_epoch_id,
+        }
+        authority_policy["policy_id"] = content_identity(authority_policy)
+        sources["manual_completion_authority_policy"] = [authority_policy]
         if self.task_source is not None:
             try:
                 task_source_snapshot = self.task_source.snapshot()
@@ -8181,6 +8366,12 @@ class PortalImplementationDaemon:
             "strategy_path",
             "events_path",
             "task_source_identity",
+            "manual_completion_authority_task_ids",
+            "manual_completion_authority_required_task_ids",
+            "manual_completion_authority_dependency_task_ids",
+            "manual_completion_revalidation_task_ids",
+            "manual_completion_authority_affected_goal_ids",
+            "quarantined_manual_completion_status_task_ids",
             "reason",
         )
         return {key: result[key] for key in keys if key in result}
@@ -8518,6 +8709,49 @@ class PortalImplementationDaemon:
             append_jsonl_event(self.events_path, "event_log_repaired", result)
         return result
 
+    def _inspect_event_log_file_read_only(self) -> dict[str, Any]:
+        """Validate JSONL storage without repairing or replacing any bytes."""
+
+        result: dict[str, Any] = {
+            "repaired": False,
+            "reason": "valid",
+            "path": str(self.events_path),
+            "valid_count": 0,
+            "invalid_count": 0,
+        }
+        if not self.events_path.exists():
+            result["reason"] = "missing"
+            return result
+        if not self.events_path.is_file():
+            result["reason"] = "event_path_not_file"
+            result["invalid_count"] = 1
+            return result
+        try:
+            lines = self.events_path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as exc:
+            result.update(
+                {
+                    "reason": "unreadable",
+                    "invalid_count": 1,
+                    "error_type": type(exc).__name__,
+                }
+            )
+            return result
+        for raw_line in lines:
+            if not raw_line.strip():
+                continue
+            try:
+                event = json.loads(raw_line)
+            except json.JSONDecodeError:
+                event = None
+            if isinstance(event, dict):
+                result["valid_count"] += 1
+            else:
+                result["invalid_count"] += 1
+        if result["invalid_count"]:
+            result["reason"] = "invalid_jsonl"
+        return result
+
     def run_once(self) -> dict[str, Any]:
         """Run one pass and establish its durable file-cursor boundary."""
 
@@ -8533,20 +8767,2009 @@ class PortalImplementationDaemon:
                 synchronize_file_cursors()
         return result
 
-    def _run_once(self) -> dict[str, Any]:
-        try:
-            protected_checkout_recovery = (
-                self._recover_protected_checkout_mutation()
+    def _manual_completion_revalidation_store_path(self) -> Path:
+        """Return the shared, board-scoped durable revalidation store."""
+
+        board_key = hashlib.sha256(
+            str(self.todo_path.resolve(strict=False)).encode("utf-8")
+        ).hexdigest()
+        return (
+            Path(self.merge_queue_dir)
+            / "manual-completion-authority"
+            / f"{board_key}.json"
+        )
+
+    def _validated_manual_completion_revalidation_store(
+        self,
+        payload: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if not isinstance(payload, Mapping):
+            return None
+        normalized = dict(payload)
+        store_id = str(normalized.pop("store_id", "") or "")
+        if (
+            normalized.get("schema")
+            != MANUAL_COMPLETION_REVALIDATION_STORE_SCHEMA
+            or normalized.get("todo_path")
+            != str(self.todo_path.resolve(strict=False))
+            or not isinstance(normalized.get("records"), Mapping)
+            or type(normalized.get("revocation_generation")) is not int
+            or normalized.get("revocation_generation", -1) < 0
+            or not isinstance(normalized.get("task_statuses"), Mapping)
+            or any(
+                not isinstance(task_id, str)
+                or not task_id.strip()
+                or not isinstance(status, str)
+                or not status.strip()
+                for task_id, status in normalized.get(
+                    "task_statuses", {}
+                ).items()
             )
-        except Exception as exc:
-            protected_checkout_recovery = {
-                "required": True,
-                "recovered": False,
-                "blocked": True,
-                "reason": "protected_checkout_recovery_failed",
-                "exception_type": type(exc).__name__,
-                "error": str(exc)[-4000:],
+            or not store_id
+            or content_identity(normalized) != store_id
+        ):
+            return None
+        normalized["records"] = dict(normalized["records"])
+        normalized["task_statuses"] = dict(normalized["task_statuses"])
+        normalized["store_id"] = store_id
+        return normalized
+
+    def _write_manual_completion_revalidation_store(
+        self,
+        path: Path,
+        *,
+        records: Mapping[str, Any],
+        revocation_generation: int,
+        task_statuses: Mapping[str, str],
+    ) -> dict[str, Any]:
+        body = {
+            "schema": MANUAL_COMPLETION_REVALIDATION_STORE_SCHEMA,
+            "todo_path": str(self.todo_path.resolve(strict=False)),
+            "revocation_generation": int(revocation_generation),
+            "task_statuses": dict(sorted(task_statuses.items())),
+            "records": dict(records),
+        }
+        payload = {**body, "store_id": content_identity(body)}
+        write_json_atomic(path, payload)
+        return payload
+
+    def _archive_invalid_manual_completion_revalidation_store(
+        self,
+        path: Path,
+    ) -> Path:
+        """Move a malformed authority store aside without discarding evidence."""
+
+        raw = path.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        archive = path.parent / "invalid" / f"{path.stem}.{digest}.json"
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        if archive.exists():
+            archive = archive.with_name(
+                f"{path.stem}.{digest}.{time.time_ns()}.json"
+            )
+        os.replace(path, archive)
+        return archive
+
+    def _synchronize_manual_completion_revocation_generation(
+        self,
+        *,
+        task_statuses: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Durably advance the authority generation on completed-status reset."""
+
+        path = self._manual_completion_revalidation_store_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        normalized_statuses = {
+            str(task_id): normalize_status(status)
+            for task_id, status in task_statuses.items()
+            if str(task_id).strip()
+        }
+        archive_path = ""
+        recovered = False
+        rollback_detected = False
+        revoked_task_ids: list[str] = []
+        generation_floor = int(
+            self._manual_completion_authority_revocation_generation
+        )
+        had_trusted_state = bool(
+            self._trusted_manual_completion_revalidation_receipt_ids
+            or self._trusted_manual_completion_revalidation_evidence_ids
+        )
+        try:
+            with serialized_lock_update(path):
+                path_present = path.exists()
+                raw_store = load_json_dict(path)
+                store = self._validated_manual_completion_revalidation_store(
+                    raw_store
+                )
+                if (
+                    store is not None
+                    and int(store["revocation_generation"])
+                    < generation_floor
+                ):
+                    archive_path = str(
+                        self._archive_invalid_manual_completion_revalidation_store(
+                            path
+                        )
+                    )
+                    rollback_detected = True
+                    recovered = True
+                    store = None
+                if path_present and store is None:
+                    if not archive_path and path.exists():
+                        archive_path = str(
+                            self._archive_invalid_manual_completion_revalidation_store(
+                                path
+                            )
+                        )
+                    recovered = True
+                if not path_present and (
+                    generation_floor > 0 or had_trusted_state
+                ):
+                    # Deleting the monotonic store is also a rollback attempt;
+                    # never recreate generation zero in a live process.
+                    rollback_detected = True
+                    recovered = True
+                if store is None:
+                    records: dict[str, Any] = {}
+                    generation = (
+                        generation_floor + 1
+                        if recovered
+                        else generation_floor
+                    )
+                    previous_statuses: dict[str, str] = {}
+                else:
+                    records = dict(store["records"])
+                    generation = int(store["revocation_generation"])
+                    previous_statuses = dict(store["task_statuses"])
+                revoked_task_ids = sorted(
+                    task_id
+                    for task_id, previous_status in previous_statuses.items()
+                    if normalize_status(previous_status) == "completed"
+                    and normalize_status(
+                        normalized_statuses.get(task_id, "missing")
+                    )
+                    != "completed"
+                )
+                if revoked_task_ids:
+                    generation += 1
+                    records = {}
+                expected_statuses = dict(sorted(normalized_statuses.items()))
+                if (
+                    store is None
+                    or revoked_task_ids
+                    or previous_statuses != expected_statuses
+                ):
+                    written = self._write_manual_completion_revalidation_store(
+                        path,
+                        records=records,
+                        revocation_generation=generation,
+                        task_statuses=expected_statuses,
+                    )
+                    store_id = str(written["store_id"])
+                else:
+                    store_id = str(store.get("store_id") or "")
+        except (OSError, RuntimeError, ValueError) as exc:
+            return {
+                "available": False,
+                "reason": "manual_completion_revocation_state_unavailable",
+                "path": str(path),
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-2000:],
             }
+        if revoked_task_ids or recovered:
+            self._trusted_manual_completion_revalidation_receipt_ids.clear()
+            self._trusted_manual_completion_revalidation_evidence_ids.clear()
+        self._manual_completion_authority_revocation_generation = generation
+        result = {
+            "available": True,
+            "path": str(path),
+            "revocation_generation": generation,
+            "revoked_task_ids": revoked_task_ids,
+            "recovered_invalid_store": recovered,
+            "rollback_detected": rollback_detected,
+            "invalid_store_archive_path": archive_path,
+            "store_id": store_id,
+        }
+        if revoked_task_ids or recovered:
+            self._record_event(
+                "manual_completion_authority_revocation_advanced"
+                if revoked_task_ids
+                else "manual_completion_revalidation_store_recovered",
+                result,
+            )
+        return result
+
+    def _manual_completion_validation_plan_binding(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        declared_commands: list[str] = []
+        for raw_command in task.validation:
+            command, _notes = self._normalize_validation_command(raw_command)
+            declared_commands.append(
+                normalize_validation_command_text(command)
+            )
+        binding = {
+            "schema": MANUAL_COMPLETION_VALIDATION_PLAN_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_cid": (
+                self._identity_for_task(task).canonical_task_cid
+            ),
+            "declared_dependencies": sorted(
+                {
+                    str(dependency).strip()
+                    for dependency in task.depends_on
+                    if str(dependency).strip()
+                }
+            ),
+            "declared_commands": declared_commands,
+        }
+        return {**binding, "validation_plan_id": content_identity(binding)}
+
+    @staticmethod
+    def _manual_completion_revalidation_evidence_id(
+        evidence: Mapping[str, Any],
+    ) -> str:
+        """Bind only the authority-bearing projection of a validation run."""
+
+        raw_results = evidence.get("results")
+        results = (
+            [
+                {
+                    key: item.get(key)
+                    for key in (
+                        "command",
+                        "returncode",
+                        "cache_hit",
+                        "timed_out",
+                        "infrastructure_failure",
+                        "validation_result_digest",
+                        "authority_validation_isolation_receipt",
+                    )
+                    if key in item
+                }
+                for item in raw_results
+                if isinstance(item, Mapping)
+            ]
+            if isinstance(raw_results, Sequence)
+            and not isinstance(raw_results, (str, bytes, bytearray))
+            else []
+        )
+        projection = {
+            key: evidence.get(key)
+            for key in (
+                "attempted",
+                "passed",
+                "returncode",
+                "manual_completion_authority_context_id",
+                "manual_completion_authority_revalidation",
+                "manual_completion_authority_force_uncached",
+                "manual_completion_authority_task_id",
+                "manual_completion_authority_task_cid",
+                "manual_completion_authority_validation_plan_id",
+                "manual_completion_authority_declared_validation_commands",
+                "manual_completion_authority_revocation_generation",
+                "manual_completion_authority_validated_tree_identity",
+                "manual_completion_authority_validated_tree_id",
+                "manual_completion_authority_validation_result_count",
+            )
+        }
+        projection["results"] = results
+        return content_identity(projection)
+
+    def _current_manual_completion_revalidation_receipts(
+        self,
+        tasks: Sequence[PortalTask],
+        *,
+        authority_context_id: str,
+    ) -> tuple[set[str], dict[str, Any]]:
+        """Return completed task IDs with exact current-context receipts."""
+
+        path = self._manual_completion_revalidation_store_path()
+        raw = load_json_dict(path)
+        if raw is None:
+            return set(), {
+                "available": True,
+                "path": str(path),
+                "valid_task_ids": [],
+                "invalid_task_ids": [],
+            }
+        store = self._validated_manual_completion_revalidation_store(raw)
+        if store is None:
+            return set(), {
+                "available": False,
+                "path": str(path),
+                "reason": "manual_completion_revalidation_store_invalid",
+                "valid_task_ids": [],
+                "invalid_task_ids": [],
+            }
+        tasks_by_id = {task.task_id: task for task in tasks}
+        store_generation = int(store["revocation_generation"])
+        valid_task_ids: set[str] = set()
+        invalid_task_ids: set[str] = set()
+        for raw_task_id, raw_receipt in store["records"].items():
+            task_id = str(raw_task_id or "").strip()
+            task = tasks_by_id.get(task_id)
+            if not task_id or task is None or not isinstance(raw_receipt, Mapping):
+                if task_id:
+                    invalid_task_ids.add(task_id)
+                continue
+            receipt = dict(raw_receipt)
+            receipt_id = str(receipt.pop("receipt_id", "") or "")
+            result_digests = receipt.get("validation_result_digests")
+            digest_values = (
+                list(result_digests)
+                if isinstance(result_digests, Sequence)
+                and not isinstance(result_digests, (str, bytes, bytearray))
+                else []
+            )
+            valid = bool(
+                receipt.get("schema")
+                == MANUAL_COMPLETION_REVALIDATION_RECEIPT_SCHEMA
+                and receipt.get("todo_path")
+                == str(self.todo_path.resolve(strict=False))
+                and receipt.get("task_id") == task_id
+                and receipt.get("canonical_task_cid")
+                == self._identity_for_task(task).canonical_task_cid
+                and receipt.get("validation_plan_id")
+                == self._manual_completion_validation_plan_binding(task).get(
+                    "validation_plan_id"
+                )
+                and type(receipt.get("revocation_generation")) is int
+                and receipt.get("revocation_generation") == store_generation
+                and store_generation
+                == self._manual_completion_authority_revocation_generation
+                and receipt.get("manual_completion_authority_context_id")
+                == authority_context_id
+                and isinstance(
+                    receipt.get("validated_tree_identity"), Mapping
+                )
+                and str(receipt.get("validated_tree_id") or "")
+                == content_identity(receipt["validated_tree_identity"])
+                and self._manual_completion_validated_tree_is_current(
+                    receipt["validated_tree_identity"]
+                )
+                and re.fullmatch(
+                    r"b[a-z2-7]+",
+                    str(receipt.get("validation_evidence_id") or ""),
+                )
+                and type(receipt.get("validation_result_count")) is int
+                and receipt.get("validation_result_count")
+                == len(digest_values)
+                and bool(digest_values)
+                and all(
+                    re.fullmatch(
+                        r"[0-9a-f]{64}",
+                        str(digest or ""),
+                    )
+                    for digest in digest_values
+                )
+                and receipt_id
+                and receipt_id
+                in self._trusted_manual_completion_revalidation_receipt_ids
+                and content_identity(receipt) == receipt_id
+            )
+            if valid:
+                valid_task_ids.add(task_id)
+            else:
+                invalid_task_ids.add(task_id)
+        return valid_task_ids, {
+            "available": True,
+            "path": str(path),
+            "valid_task_ids": sorted(valid_task_ids),
+            "invalid_task_ids": sorted(invalid_task_ids),
+            "store_id": str(store.get("store_id") or ""),
+            "revocation_generation": store_generation,
+        }
+
+    def _manual_completion_validated_tree_is_current(
+        self,
+        identity: Mapping[str, Any],
+    ) -> bool:
+        """Verify durable tree evidence still names real repository ancestry."""
+
+        target_commit = str(identity.get("target_commit") or "")
+        if target_commit == "uncommitted":
+            # Non-Git validation evidence remains process-local through the
+            # trusted producer token; restart always forces revalidation.
+            return True
+        if re.fullmatch(r"[0-9a-f]{40,64}", target_commit) is None:
+            return False
+        resolved_tree = self._candidate_repository_tree(target_commit)
+        if not resolved_tree:
+            return False
+        repository_tree_id = str(identity.get("repository_tree_id") or "")
+        if repository_tree_id and repository_tree_id != f"git-tree:{resolved_tree}":
+            return False
+        target_branch = self._main_branch_name()
+        try:
+            current_target = self._run_git(
+                ["rev-parse", "--verify", f"{target_branch}^{{commit}}"],
+                cwd=self.repo_root,
+            ).stdout.strip()
+        except (OSError, RuntimeError):
+            return False
+        return bool(current_target and current_target == target_commit)
+
+    def _persist_manual_completion_revalidation_receipts(
+        self,
+        task_ids: Sequence[str],
+        *,
+        authority_context_id: str,
+        authority_evidence: Mapping[str, Any],
+        expected_target_commit: str = "",
+    ) -> dict[str, Any]:
+        """Persist exact task/CID/context bindings after durable completion."""
+
+        target_task_ids = sorted(
+            {
+                str(task_id).strip()
+                for task_id in task_ids
+                if str(task_id).strip()
+            }
+            & set(self._manual_completion_authority_revalidation_task_ids)
+        )
+        if not target_task_ids:
+            return {"persisted": False, "reason": "not_required"}
+        tasks_by_id = {task.task_id: task for task in self._load_tasks()}
+        missing_task_ids = sorted(set(target_task_ids) - set(tasks_by_id))
+        if missing_task_ids:
+            return {
+                "persisted": False,
+                "reason": "revalidation_receipt_tasks_missing",
+                "missing_task_ids": missing_task_ids,
+            }
+        bounded_evidence = _bounded_merge_proof_value(
+            authority_evidence,
+            field_name="manual_completion_authority_evidence",
+        )
+        if not isinstance(bounded_evidence, Mapping):
+            return {
+                "persisted": False,
+                "reason": "revalidation_receipt_evidence_invalid",
+            }
+        evidence_task_id = str(
+            bounded_evidence.get("manual_completion_authority_task_id") or ""
+        )
+        evidence_task_cid = str(
+            bounded_evidence.get("manual_completion_authority_task_cid") or ""
+        )
+        evidence_plan_id = str(
+            bounded_evidence.get(
+                "manual_completion_authority_validation_plan_id"
+            )
+            or ""
+        )
+        validated_tree_identity = bounded_evidence.get(
+            "manual_completion_authority_validated_tree_identity"
+        )
+        validated_tree_id = str(
+            bounded_evidence.get(
+                "manual_completion_authority_validated_tree_id"
+            )
+            or ""
+        )
+        if (
+            target_task_ids != [evidence_task_id]
+            or not isinstance(validated_tree_identity, Mapping)
+            or validated_tree_id
+            != content_identity(validated_tree_identity)
+        ):
+            return {
+                "persisted": False,
+                "reason": "revalidation_receipt_evidence_binding_invalid",
+            }
+        current_task = tasks_by_id[evidence_task_id]
+        current_task_cid = self._identity_for_task(
+            current_task
+        ).canonical_task_cid
+        current_plan_id = str(
+            self._manual_completion_validation_plan_binding(current_task).get(
+                "validation_plan_id"
+            )
+            or ""
+        )
+        if (
+            evidence_task_cid != current_task_cid
+            or evidence_plan_id != current_plan_id
+        ):
+            return {
+                "persisted": False,
+                "reason": "revalidation_receipt_task_revision_changed",
+                "expected_task_cid": evidence_task_cid,
+                "current_task_cid": current_task_cid,
+                "expected_validation_plan_id": evidence_plan_id,
+                "current_validation_plan_id": current_plan_id,
+            }
+        raw_results = bounded_evidence.get("results")
+        results = (
+            list(raw_results)
+            if isinstance(raw_results, Sequence)
+            and not isinstance(raw_results, (str, bytes, bytearray))
+            else []
+        )
+        result_digests = [
+            str(result.get("validation_result_digest") or "")
+            for result in results
+            if isinstance(result, Mapping)
+        ]
+        if (
+            not result_digests
+            or len(result_digests) != len(results)
+            or any(
+                re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    digest,
+                )
+                is None
+                for digest in result_digests
+            )
+        ):
+            return {
+                "persisted": False,
+                "reason": "revalidation_receipt_result_digests_invalid",
+            }
+        path = self._manual_completion_revalidation_store_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_ids: dict[str, str] = {}
+        try:
+            with serialized_lock_update(path):
+                if expected_target_commit:
+                    current_target = self._run_git(
+                        [
+                            "rev-parse",
+                            "--verify",
+                            f"{self._main_branch_name()}^{{commit}}",
+                        ],
+                        cwd=self.repo_root,
+                    ).stdout.strip()
+                    if current_target != expected_target_commit:
+                        raise ValueError(
+                            "manual completion target changed before receipt "
+                            "publication"
+                        )
+                raw_store = load_json_dict(path)
+                store = self._validated_manual_completion_revalidation_store(
+                    raw_store
+                )
+                if store is None:
+                    raise ValueError(
+                        "manual completion revalidation store is unavailable"
+                    )
+                if int(store["revocation_generation"]) != int(
+                    self._manual_completion_authority_revocation_generation
+                ):
+                    raise ValueError(
+                        "manual completion revocation generation changed"
+                    )
+                records = dict(store["records"])
+                for task_id in target_task_ids:
+                    receipt = {
+                        "schema": (
+                            MANUAL_COMPLETION_REVALIDATION_RECEIPT_SCHEMA
+                        ),
+                        "todo_path": str(
+                            self.todo_path.resolve(strict=False)
+                        ),
+                        "task_id": task_id,
+                        "canonical_task_cid": evidence_task_cid,
+                        "validation_plan_id": evidence_plan_id,
+                        "validated_tree_identity": dict(
+                            validated_tree_identity
+                        ),
+                        "validated_tree_id": validated_tree_id,
+                        "revocation_generation": int(
+                            self._manual_completion_authority_revocation_generation
+                        ),
+                        "manual_completion_authority_context_id": (
+                            authority_context_id
+                        ),
+                        "validation_evidence_id": content_identity(
+                            bounded_evidence
+                        ),
+                        "validation_result_count": len(result_digests),
+                        "validation_result_digests": result_digests,
+                    }
+                    receipt_id = content_identity(receipt)
+                    records[task_id] = {
+                        **receipt,
+                        "receipt_id": receipt_id,
+                    }
+                    receipt_ids[task_id] = receipt_id
+                written = self._write_manual_completion_revalidation_store(
+                    path,
+                    records=records,
+                    revocation_generation=int(
+                        store["revocation_generation"]
+                    ),
+                    task_statuses={
+                        **dict(store["task_statuses"]),
+                        **{
+                            task_id: normalize_status(
+                                tasks_by_id[task_id].status
+                            )
+                            for task_id in target_task_ids
+                        },
+                    },
+                )
+        except (OSError, RuntimeError, ValueError) as exc:
+            return {
+                "persisted": False,
+                "reason": "revalidation_receipt_persistence_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-2000:],
+                "path": str(path),
+            }
+        result = {
+            "persisted": True,
+            "path": str(path),
+            "task_ids": target_task_ids,
+            "receipt_ids": receipt_ids,
+            "manual_completion_authority_context_id": authority_context_id,
+            "revocation_generation": (
+                self._manual_completion_authority_revocation_generation
+            ),
+            "store_id": str(written.get("store_id") or ""),
+        }
+        self._trusted_manual_completion_revalidation_receipt_ids.update(
+            receipt_ids.values()
+        )
+        self._record_event(
+            "manual_completion_authority_revalidation_persisted",
+            result,
+        )
+        return result
+
+    def _publish_manual_completion_authority_revalidation_receipt_only(
+        self,
+        task: PortalTask,
+        *,
+        expected_task_cid: str,
+        expected_target_commit: str,
+        authority_context_id: str,
+        authority_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """CAS-prove one completed claim and publish only its authority receipt."""
+
+        task_id = str(task.task_id or "").strip()
+        failure = {
+            "updated": False,
+            "durable": False,
+            "task_id": task_id,
+            "completion_reason": (
+                "manual_completion_authority_revalidation"
+            ),
+            "expected_task_ids": [task_id] if task_id else [],
+            "authority_receipt_only": True,
+        }
+        if self.task_source is not None:
+            return {
+                **failure,
+                "reason": (
+                    "authority_receipt_only_task_source_unsupported"
+                ),
+            }
+        expected_cid = str(expected_task_cid or "").strip()
+        expected_target = str(expected_target_commit or "").strip()
+        if (
+            not task_id
+            or not expected_cid
+            or not expected_target
+            or normalize_status(task.status) != "completed"
+        ):
+            return {
+                **failure,
+                "reason": "authority_receipt_only_binding_invalid",
+            }
+        authority_rejection = self._manual_completion_authority_rejection(
+            [task_id],
+            authority_context_id=authority_context_id,
+            authority_evidence=authority_evidence,
+        )
+        if authority_rejection is not None:
+            return {
+                **failure,
+                **authority_rejection,
+            }
+        expected_generation = int(
+            self._manual_completion_authority_revocation_generation
+        )
+
+        def publish() -> dict[str, Any]:
+            mutation_rejection = (
+                self._manual_completion_authority_rejection(
+                    [task_id],
+                    authority_context_id=authority_context_id,
+                    authority_evidence=authority_evidence,
+                )
+            )
+            actual_generation = int(
+                self._manual_completion_authority_revocation_generation
+            )
+            if (
+                mutation_rejection is not None
+                or actual_generation != expected_generation
+            ):
+                return {
+                    **failure,
+                    "reason": (
+                        str(mutation_rejection.get("reason") or "")
+                        if mutation_rejection is not None
+                        else (
+                            "manual_completion_authority_generation_changed"
+                        )
+                    ),
+                    "expected_manual_completion_authority_generation": (
+                        expected_generation
+                    ),
+                    "actual_manual_completion_authority_generation": (
+                        actual_generation
+                    ),
+                    **(mutation_rejection or {}),
+                }
+            try:
+                with locked_taskboard(self.todo_path) as taskboard:
+                    path_before = self.todo_path.stat()
+                    descriptor_before = os.fstat(taskboard.fileno())
+                    before_identity = (
+                        int(path_before.st_dev),
+                        int(path_before.st_ino),
+                    )
+                    if before_identity != (
+                        int(descriptor_before.st_dev),
+                        int(descriptor_before.st_ino),
+                    ):
+                        raise RuntimeError(
+                            "taskboard path changed while acquiring CAS lock"
+                        )
+                    taskboard.seek(0)
+                    taskboard_text = taskboard.read()
+                    current_target = self._run_git(
+                        [
+                            "rev-parse",
+                            "--verify",
+                            f"{self._main_branch_name()}^{{commit}}",
+                        ],
+                        cwd=self.repo_root,
+                    ).stdout.strip()
+                    if current_target != expected_target:
+                        return {
+                            **failure,
+                            "reason": (
+                                "manual_completion_authority_target_changed"
+                            ),
+                            "expected_target_commit": expected_target,
+                            "actual_target_commit": current_target,
+                        }
+                    parsed = parse_task_text(
+                        taskboard_text,
+                        path=self.todo_path,
+                        task_header_prefix=self.task_header_prefix,
+                    )
+                    matches = [
+                        candidate
+                        for candidate in parsed
+                        if candidate.task_id == task_id
+                    ]
+                    current_cid = (
+                        self._identity_for_task(matches[0]).canonical_task_cid
+                        if len(matches) == 1
+                        else ""
+                    )
+                    current_status = (
+                        normalize_status(matches[0].status)
+                        if len(matches) == 1
+                        else ""
+                    )
+                    if (
+                        len(matches) != 1
+                        or current_cid != expected_cid
+                        or current_status != "completed"
+                    ):
+                        status_mismatches = (
+                            {
+                                task_id: {
+                                    "expected_status": "completed",
+                                    "current_status": current_status,
+                                }
+                            }
+                            if current_status != "completed"
+                            else {}
+                        )
+                        return {
+                            **failure,
+                            "reason": (
+                                "completion_task_status_changed"
+                                if current_status != "completed"
+                                else "completion_task_revision_changed"
+                            ),
+                            "expected_task_cid": expected_cid,
+                            "current_task_cid": current_cid,
+                            "expected_status": "completed",
+                            "current_status": current_status,
+                            "match_count": len(matches),
+                            "status_mismatches": status_mismatches,
+                        }
+                    receipt = (
+                        self._persist_manual_completion_revalidation_receipts(
+                            [task_id],
+                            authority_context_id=authority_context_id,
+                            authority_evidence=authority_evidence,
+                            expected_target_commit=expected_target,
+                        )
+                    )
+                    taskboard.seek(0)
+                    taskboard_after = taskboard.read()
+                    path_after = self.todo_path.stat()
+                    descriptor_after = os.fstat(taskboard.fileno())
+                    after_identity = (
+                        int(path_after.st_dev),
+                        int(path_after.st_ino),
+                    )
+                    stable = bool(
+                        taskboard_after == taskboard_text
+                        and after_identity == before_identity
+                        and after_identity
+                        == (
+                            int(descriptor_after.st_dev),
+                            int(descriptor_after.st_ino),
+                        )
+                    )
+            except (
+                OSError,
+                RuntimeError,
+                TaskSourceError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                return {
+                    **failure,
+                    "reason": "authority_receipt_only_cas_failed",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[-2000:],
+                }
+            persisted = bool(
+                stable and receipt.get("persisted") is True
+            )
+            result = {
+                **failure,
+                "durable": persisted,
+                "reason": (
+                    "already_completed"
+                    if persisted
+                    else str(receipt.get("reason") or "")
+                    or "revalidation_receipt_not_durable"
+                ),
+                "path": str(self.todo_path),
+                "updated_task_ids": [],
+                "already_completed_task_ids": [task_id],
+                "missing_task_ids": [],
+                "missing_status_task_ids": [],
+                "inserted_status_task_ids": [],
+                "updated_checkbox_task_ids": [],
+                "expected_target_commit": expected_target,
+                "observed_target_commit": expected_target,
+                "taskboard_revision": taskboard_revision(
+                    taskboard_text
+                ),
+                "protected_board_postcondition": {
+                    "checked": True,
+                    "trusted": persisted,
+                    "unchanged": stable,
+                    "reason": (
+                        "authority_receipt_only_cas_proven"
+                        if persisted
+                        else "authority_receipt_only_cas_unproven"
+                    ),
+                    "taskboard_revision": taskboard_revision(
+                        taskboard_text
+                    ),
+                    "canonical_task_cid": current_cid,
+                    "status": current_status,
+                    "target_commit": expected_target,
+                },
+                "manual_completion_authority_revalidation_receipt": (
+                    receipt
+                ),
+            }
+            return result
+
+        return self._run_checkout_mutation_transaction(
+            task_id=task_id,
+            operation=(
+                "publish_manual_completion_authority_revalidation_receipt"
+            ),
+            callback=publish,
+            failure_fields=failure,
+            extra={
+                "expected_task_cid": expected_cid,
+                "expected_target_commit": expected_target,
+            },
+        )
+
+    def _refresh_manual_completion_authority_guard(
+        self,
+        tasks: Sequence[PortalTask] | None = None,
+    ) -> dict[str, Any]:
+        """Refresh the exact root/descendant completion-authority fence."""
+
+        configured = bool(self.manual_completion_authority_task_ids)
+        if not configured:
+            self._manual_completion_authority_revocation_generation = 0
+            self._manual_completion_authority_effective_required_task_ids = (
+                frozenset()
+            )
+            self._manual_completion_authority_hard_blocked_task_ids = (
+                frozenset()
+            )
+            self._manual_completion_authority_revalidation_task_ids = (
+                frozenset()
+            )
+            self._manual_completion_authority_historical_task_ids = (
+                frozenset()
+            )
+            self._manual_completion_authority_affected_goal_ids = (
+                frozenset()
+            )
+            return {
+                "available": True,
+                "configured": False,
+                "_tasks": list(tasks) if tasks is not None else None,
+            }
+        try:
+            current_tasks = list(tasks) if tasks is not None else self._load_tasks()
+        except Exception as exc:
+            # Descendants cannot be derived without the canonical board.  Do
+            # not let an old callback or merge run with only the root subset.
+            return {
+                "available": False,
+                "configured": True,
+                "reason": "manual_completion_authority_guard_unavailable",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-2000:],
+                "_tasks": None,
+            }
+
+        task_id_counts: dict[str, int] = {}
+        for task in current_tasks:
+            task_id_counts[task.task_id] = task_id_counts.get(task.task_id, 0) + 1
+        missing_root_task_ids = sorted(
+            set(self.manual_completion_authority_task_ids) - set(task_id_counts)
+        )
+        duplicate_root_task_ids = sorted(
+            task_id
+            for task_id in self.manual_completion_authority_task_ids
+            if task_id_counts.get(task_id, 0) != 1
+        )
+        if missing_root_task_ids or duplicate_root_task_ids:
+            return {
+                "available": False,
+                "configured": True,
+                "reason": "manual_completion_authority_guard_roots_invalid",
+                "missing_root_task_ids": missing_root_task_ids,
+                "duplicate_root_task_ids": duplicate_root_task_ids,
+                "_tasks": None,
+            }
+        declared_task_ids = set(task_id_counts)
+        declared_goal_ids = {
+            goal_id
+            for task in current_tasks
+            for goal_id in split_csv(task.metadata.get("goal id", ""))
+        }
+        task_goal_id_collisions = sorted(
+            declared_task_ids & declared_goal_ids
+        )
+        if task_goal_id_collisions:
+            return {
+                "available": False,
+                "configured": True,
+                "reason": "manual_completion_authority_task_goal_collision",
+                "task_goal_id_collisions": task_goal_id_collisions,
+                "_tasks": None,
+            }
+        staged_roots = (
+            set(self.manual_completion_authority_task_ids)
+            & declared_task_ids
+        )
+        task_status_by_id = {
+            task.task_id: normalize_status(task.status)
+            for task in current_tasks
+        }
+        live_revoked_roots = {
+            task_id
+            for task_id in staged_roots
+            if task_status_by_id.get(task_id) != "completed"
+        }
+        required_roots = (
+            set(self.manual_completion_authority_required_task_ids)
+            | live_revoked_roots
+        ) & declared_task_ids
+        self._manual_completion_authority_effective_required_task_ids = (
+            frozenset(required_roots)
+        )
+        required_descendants = transitive_task_dependents(
+            current_tasks,
+            root_task_ids=required_roots,
+        )
+        staged_descendants = transitive_task_dependents(
+            current_tasks,
+            root_task_ids=staged_roots,
+        )
+        authority_scope_task_ids = staged_roots | staged_descendants
+        revocation_guard = (
+            self._synchronize_manual_completion_revocation_generation(
+                task_statuses={
+                    task_id: task_status_by_id[task_id]
+                    for task_id in sorted(authority_scope_task_ids)
+                }
+            )
+        )
+        if revocation_guard.get("available") is not True:
+            self._manual_completion_authority_hard_blocked_task_ids = (
+                frozenset(authority_scope_task_ids)
+            )
+            self._manual_completion_authority_revalidation_task_ids = (
+                frozenset(staged_descendants)
+            )
+            return {
+                "available": False,
+                "configured": True,
+                "reason": "manual_completion_revocation_state_unavailable",
+                "revocation_guard": revocation_guard,
+                "hard_blocked_task_ids": sorted(authority_scope_task_ids),
+                "_tasks": None,
+            }
+        receipt_task_ids, receipt_guard = (
+            self._current_manual_completion_revalidation_receipts(
+                current_tasks,
+                authority_context_id=(
+                    self._manual_completion_authority_policy_id()
+                ),
+            )
+        )
+        current_revalidated_completed_task_ids = {
+            task_id
+            for task_id in receipt_task_ids & staged_descendants
+            if task_status_by_id.get(task_id) == "completed"
+        }
+        hard_blocked_task_ids = required_roots | required_descendants
+        revalidation_task_ids = required_descendants | (
+            staged_descendants - current_revalidated_completed_task_ids
+        )
+        historical_task_ids = required_roots | revalidation_task_ids
+        affected_goal_ids = {
+            goal_id
+            for task in current_tasks
+            if task.task_id in historical_task_ids
+            for goal_id in split_csv(task.metadata.get("goal id", ""))
+        }
+        self._manual_completion_authority_hard_blocked_task_ids = frozenset(
+            hard_blocked_task_ids
+        )
+        self._manual_completion_authority_revalidation_task_ids = frozenset(
+            revalidation_task_ids
+        )
+        self._manual_completion_authority_historical_task_ids = frozenset(
+            historical_task_ids
+        )
+        self._manual_completion_authority_affected_goal_ids = frozenset(
+            affected_goal_ids
+        )
+        return {
+            "available": True,
+            "configured": True,
+            "required_task_ids": sorted(required_roots),
+            "live_revoked_task_ids": sorted(live_revoked_roots),
+            "revalidation_receipt_task_ids": sorted(
+                current_revalidated_completed_task_ids
+            ),
+            "revalidation_receipt_guard": receipt_guard,
+            "revocation_guard": revocation_guard,
+            "revocation_generation": (
+                self._manual_completion_authority_revocation_generation
+            ),
+            "hard_blocked_task_ids": sorted(hard_blocked_task_ids),
+            "revalidation_task_ids": sorted(revalidation_task_ids),
+            "historical_task_ids": sorted(historical_task_ids),
+            "affected_goal_ids": sorted(affected_goal_ids),
+            "_tasks": current_tasks,
+        }
+
+    def _manual_completion_authority_policy_id(self) -> str:
+        """Return the epoch binding for staged-root completion evidence."""
+
+        return content_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "manual-completion-authority-context@3"
+                ),
+                "todo_path": str(self.todo_path.resolve(strict=False)),
+                "task_ids": sorted(self.manual_completion_authority_task_ids),
+                "required_task_ids": sorted(
+                    self._manual_completion_authority_effective_required_task_ids
+                ),
+                "scheduler_epoch_id": (
+                    self.manual_completion_authority_epoch_id
+                ),
+                "revocation_generation": (
+                    self._manual_completion_authority_revocation_generation
+                ),
+            }
+        )
+
+    def _manual_completion_authority_revalidation_only_task(
+        self,
+        task: PortalTask,
+    ) -> bool:
+        """Return whether a canonical completed claim needs validation only.
+
+        The authority revalidation set also contains pending descendants that
+        still need ordinary implementation.  Only a completed status from the
+        canonical task snapshot can select this no-provider path, and a hard
+        block always wins.
+        """
+
+        return bool(
+            normalize_status(task.status) == "completed"
+            and task.task_id
+            in self._manual_completion_authority_revalidation_task_ids
+            and task.task_id
+            not in self._manual_completion_authority_hard_blocked_task_ids
+        )
+
+    def _manual_completion_authority_renewal_key(
+        self,
+        task: PortalTask,
+        *,
+        target_commit: str = "",
+    ) -> str:
+        """Bind retry/quarantine state to the exact renewable proof claim."""
+
+        resolved_target = str(target_commit or "").strip()
+        if not resolved_target:
+            try:
+                resolved_target = self._run_git(
+                    [
+                        "rev-parse",
+                        "--verify",
+                        f"{self._main_branch_name()}^{{commit}}",
+                    ],
+                    cwd=self.repo_root,
+                ).stdout.strip()
+            except (OSError, RuntimeError):
+                resolved_target = "unavailable"
+        try:
+            validation_contract = (
+                canonical_validation_environment_contract()
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            validation_contract = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "validation-environment-contract-unavailable@1"
+                ),
+                "error_type": type(exc).__name__,
+            }
+        isolation_contract = self._authority_validation_isolation_contract()
+        return content_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "manual-completion-authority-renewal-key@1"
+                ),
+                "task_id": task.task_id,
+                "canonical_task_cid": self._canonical_ref(task),
+                "validation_plan_id": str(
+                    self._manual_completion_validation_plan_binding(task).get(
+                        "validation_plan_id"
+                    )
+                    or ""
+                ),
+                "target_commit": resolved_target,
+                "authority_context_id": (
+                    self._manual_completion_authority_policy_id()
+                ),
+                "revocation_generation": int(
+                    self._manual_completion_authority_revocation_generation
+                ),
+                "validation_environment_contract_id": content_identity(
+                    validation_contract
+                ),
+                "authority_validation_isolation_contract_id": str(
+                    isolation_contract.get("contract_id") or ""
+                ),
+            }
+        )
+
+    @staticmethod
+    def _authority_validation_isolation_contract() -> dict[str, Any]:
+        """Resolve the exact local, content-pinned CUDA validation sandbox."""
+
+        base: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-isolation@2"
+            ),
+            "backend": "docker-local-cuda",
+            "docker_endpoint": AUTHORITY_VALIDATION_DOCKER_ENDPOINT,
+            "network_mode": "none",
+            "host_filesystem": "workspace_only_read_only",
+            "workspace_mode": "read_only",
+            "writable_filesystems": ["private_tmpfs", "private_shm"],
+            "pid_namespace": "private",
+            "capabilities": "none",
+            "no_new_privileges": True,
+            "container_auto_remove": True,
+            "container_root": "read_only",
+            "image_pull_allowed": False,
+            "container_log_driver": "none",
+            "output_limit_bytes": AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES,
+            "memory_limit_bytes": AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES,
+            "tmpfs_limit_bytes": AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES,
+            "cpu_limit": AUTHORITY_VALIDATION_CPU_LIMIT,
+            "pids_limit": AUTHORITY_VALIDATION_PIDS_LIMIT,
+            "timeout_limit_seconds": (
+                AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS
+            ),
+            "gpu_requested": True,
+            "validation_site_packages": (
+                AUTHORITY_VALIDATION_IMAGE_SITE_PACKAGES
+            ),
+        }
+        docker_host = str(os.environ.get("DOCKER_HOST") or "").strip()
+        docker_context = str(
+            os.environ.get("DOCKER_CONTEXT") or ""
+        ).strip()
+        allowed_hosts = {
+            "",
+            AUTHORITY_VALIDATION_DOCKER_ENDPOINT,
+            "unix:///var/run/docker.sock",
+        }
+        if docker_host not in allowed_hosts or docker_context not in {
+            "",
+            "default",
+        }:
+            body = {
+                **base,
+                "available": False,
+                "reason": "authority_validation_nonlocal_docker_forbidden",
+                "configured_docker_host": docker_host,
+                "configured_docker_context": docker_context,
+            }
+            return {**body, "contract_id": content_identity(body)}
+        socket_path = Path(
+            AUTHORITY_VALIDATION_DOCKER_ENDPOINT.removeprefix("unix://")
+        )
+        try:
+            resolved_socket = socket_path.resolve(strict=True)
+            socket_stat = resolved_socket.stat()
+            socket_valid = bool(
+                resolved_socket == Path("/run/docker.sock")
+                and stat_module.S_ISSOCK(socket_stat.st_mode)
+                and int(socket_stat.st_uid) == 0
+                and stat_module.S_IMODE(socket_stat.st_mode) & 0o007 == 0
+            )
+        except OSError as exc:
+            body = {
+                **base,
+                "available": False,
+                "reason": "authority_validation_local_docker_socket_invalid",
+                "error_type": type(exc).__name__,
+            }
+            return {**body, "contract_id": content_identity(body)}
+        if not socket_valid:
+            body = {
+                **base,
+                "available": False,
+                "reason": "authority_validation_local_docker_socket_invalid",
+                "docker_socket_path": str(resolved_socket),
+            }
+            return {**body, "contract_id": content_identity(body)}
+        try:
+            docker_path = AUTHORITY_VALIDATION_DOCKER_PATH.resolve(
+                strict=True
+            )
+            docker_stat = docker_path.stat()
+            docker_sha256 = hashlib.sha256(
+                docker_path.read_bytes()
+            ).hexdigest()
+            nvidia_smi_path = (
+                AUTHORITY_VALIDATION_NVIDIA_SMI_PATH.resolve(strict=True)
+            )
+            nvidia_smi_stat = nvidia_smi_path.stat()
+            nvidia_smi_sha256 = hashlib.sha256(
+                nvidia_smi_path.read_bytes()
+            ).hexdigest()
+        except OSError as exc:
+            body = {
+                **base,
+                "available": False,
+                "reason": "authority_validation_docker_unreadable",
+                "error_type": type(exc).__name__,
+            }
+            return {**body, "contract_id": content_identity(body)}
+        trusted_binaries = bool(
+            docker_path == AUTHORITY_VALIDATION_DOCKER_PATH
+            and stat_module.S_ISREG(docker_stat.st_mode)
+            and int(docker_stat.st_uid) == 0
+            and stat_module.S_IMODE(docker_stat.st_mode) & 0o022 == 0
+            and os.access(docker_path, os.X_OK)
+            and docker_sha256 == AUTHORITY_VALIDATION_DOCKER_SHA256
+            and nvidia_smi_path == AUTHORITY_VALIDATION_NVIDIA_SMI_PATH
+            and stat_module.S_ISREG(nvidia_smi_stat.st_mode)
+            and int(nvidia_smi_stat.st_uid) == 0
+            and stat_module.S_IMODE(nvidia_smi_stat.st_mode) & 0o022 == 0
+            and os.access(nvidia_smi_path, os.X_OK)
+            and nvidia_smi_sha256
+            == AUTHORITY_VALIDATION_NVIDIA_SMI_SHA256
+        )
+        if not trusted_binaries:
+            body = {
+                **base,
+                "available": False,
+                "reason": "authority_validation_tcb_binary_unapproved",
+                "docker_path": str(docker_path),
+                "docker_sha256": docker_sha256,
+                "nvidia_smi_path": str(nvidia_smi_path),
+                "nvidia_smi_sha256": nvidia_smi_sha256,
+            }
+            return {**body, "contract_id": content_identity(body)}
+        image_reference = str(
+            os.environ.get(AUTHORITY_VALIDATION_CONTAINER_IMAGE_ENV)
+            or DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE
+        ).strip()
+        if image_reference != DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE:
+            body = {
+                **base,
+                "available": False,
+                "reason": "authority_validation_image_unapproved",
+                "docker_path": str(docker_path),
+                "docker_sha256": docker_sha256,
+            }
+            return {**body, "contract_id": content_identity(body)}
+        docker_environment = {
+            "DOCKER_CONFIG": "/nonexistent/ipfs-accelerate-docker-config",
+            "DOCKER_HOST": AUTHORITY_VALIDATION_DOCKER_ENDPOINT,
+            "HOME": "/nonexistent/ipfs-accelerate-docker-home",
+            "PATH": os.defpath,
+        }
+        docker_prefix = [
+            str(docker_path),
+            "--host",
+            AUTHORITY_VALIDATION_DOCKER_ENDPOINT,
+        ]
+        try:
+            info = subprocess.run(
+                [
+                    *docker_prefix,
+                    "info",
+                    "--format",
+                    "{{json .SecurityOptions}}",
+                ],
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=10,
+                check=False,
+                env=docker_environment,
+            )
+            server = subprocess.run(
+                [
+                    *docker_prefix,
+                    "version",
+                    "--format",
+                    "{{.Server.Version}}|{{.Server.Os}}|{{.Server.Arch}}",
+                ],
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=10,
+                check=False,
+                env=docker_environment,
+            )
+            image = subprocess.run(
+                [
+                    *docker_prefix,
+                    "image",
+                    "inspect",
+                    "--format",
+                    "{{.Id}}",
+                    image_reference,
+                ],
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=10,
+                check=False,
+                env=docker_environment,
+            )
+            gpu = subprocess.run(
+                [
+                    str(nvidia_smi_path),
+                    "--query-gpu=uuid,driver_version",
+                    "--format=csv,noheader,nounits",
+                ],
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=10,
+                check=False,
+                env={"HOME": "/nonexistent", "PATH": os.defpath},
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            body = {
+                **base,
+                "available": False,
+                "reason": "authority_validation_docker_probe_failed",
+                "docker_path": str(docker_path),
+                "docker_sha256": docker_sha256,
+                "image_reference": image_reference,
+                "error_type": type(exc).__name__,
+            }
+            return {**body, "contract_id": content_identity(body)}
+        security_output = str(info.stdout or "").strip()
+        server_identity = str(server.stdout or "").strip()
+        image_id = str(image.stdout or "").strip()
+        gpu_lines = [
+            line.strip()
+            for line in str(gpu.stdout or "").splitlines()
+            if line.strip()
+        ]
+        gpu_identity = gpu_lines[0] if gpu_lines else ""
+        gpu_uuid = gpu_identity.split(",", 1)[0].strip()
+        security_options_valid = bool(
+            info.returncode == 0
+            and "name=seccomp" in security_output
+            and "name=cgroupns" in security_output
+            and "name=apparmor" in security_output
+        )
+        server_valid = bool(
+            server.returncode == 0
+            and server_identity
+            == AUTHORITY_VALIDATION_DOCKER_SERVER_IDENTITY
+        )
+        image_valid = bool(
+            image.returncode == 0
+            and image_id == DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE
+        )
+        gpu_valid = bool(
+            gpu.returncode == 0
+            and gpu_identity == AUTHORITY_VALIDATION_GPU_IDENTITY
+            and gpu_uuid == AUTHORITY_VALIDATION_GPU_UUID
+        )
+        body = {
+            **base,
+            "available": bool(
+                security_options_valid
+                and server_valid
+                and image_valid
+                and gpu_valid
+            ),
+            "reason": (
+                "available"
+                if (
+                    security_options_valid
+                    and server_valid
+                    and image_valid
+                    and gpu_valid
+                )
+                else "authority_validation_docker_contract_unavailable"
+            ),
+            "docker_path": str(docker_path),
+            "docker_sha256": docker_sha256,
+            "docker_socket_path": str(resolved_socket),
+            "docker_socket_device": int(socket_stat.st_dev),
+            "docker_socket_inode": int(socket_stat.st_ino),
+            "docker_socket_mode": stat_module.S_IMODE(socket_stat.st_mode),
+            "docker_server_identity": server_identity,
+            "security_options": security_output,
+            "image_reference": image_reference,
+            "image_id": image_id if image_valid else "",
+            "nvidia_smi_path": str(nvidia_smi_path),
+            "nvidia_smi_sha256": nvidia_smi_sha256,
+            "gpu_identity": gpu_identity if gpu_valid else "",
+            "gpu_uuid": gpu_uuid if gpu_valid else "",
+        }
+        return {**body, "contract_id": content_identity(body)}
+
+    def _manual_completion_authority_renewal_retry_state(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        renewal_key = self._manual_completion_authority_renewal_key(task)
+        state = self.task_queue.authority_renewal_state(
+            self._canonical_ref(task),
+            renewal_key,
+        )
+        return {**state, "renewal_key": renewal_key}
+
+    def _record_manual_completion_authority_renewal_outcome(
+        self,
+        task: PortalTask,
+        returncode: int,
+        *,
+        renewal_key: str,
+        reason: str = "",
+    ) -> dict[str, Any]:
+        canonical_task_cid = self._canonical_ref(task)
+        if returncode == 0:
+            self.task_queue.record_authority_renewal_success(
+                canonical_task_cid,
+                renewal_key,
+            )
+        else:
+            self.task_queue.record_authority_renewal_failure(
+                canonical_task_cid,
+                renewal_key,
+                reason=reason,
+                max_failures=(
+                    MANUAL_COMPLETION_AUTHORITY_RENEWAL_MAX_FAILURES
+                ),
+                base_cooldown_seconds=(
+                    MANUAL_COMPLETION_AUTHORITY_RENEWAL_BASE_COOLDOWN_SECONDS
+                ),
+                max_cooldown_seconds=(
+                    MANUAL_COMPLETION_AUTHORITY_RENEWAL_MAX_COOLDOWN_SECONDS
+                ),
+            )
+        self.task_queue.save()
+        return self.task_queue.authority_renewal_state(
+            canonical_task_cid,
+            renewal_key,
+        )
+
+    def reset_manual_completion_authority_renewal_quarantine(
+        self,
+        task_ids: Iterable[str],
+    ) -> dict[str, Any]:
+        """Explicit operator API for resetting same-claim renewal failures."""
+
+        requested = sorted(
+            {
+                str(task_id).strip()
+                for task_id in task_ids
+                if str(task_id).strip()
+            }
+        )
+        tasks = self._load_tasks()
+        self._register_task_identities(tasks)
+        tasks_by_id = {task.task_id: task for task in tasks}
+        missing = sorted(set(requested) - set(tasks_by_id))
+        reset_task_ids: list[str] = []
+        unchanged_task_ids: list[str] = []
+        for task_id in requested:
+            task = tasks_by_id.get(task_id)
+            if task is None:
+                continue
+            changed = self.task_queue.reset_authority_renewal_state(
+                self._canonical_ref(task)
+            )
+            (reset_task_ids if changed else unchanged_task_ids).append(
+                task_id
+            )
+        self.task_queue.save()
+        result = {
+            "reset": not missing,
+            "requested_task_ids": requested,
+            "reset_task_ids": reset_task_ids,
+            "unchanged_task_ids": unchanged_task_ids,
+            "missing_task_ids": missing,
+            "task_queue_path": str(
+                getattr(self.task_queue, "_path", "") or ""
+            ),
+        }
+        self._record_event(
+            "manual_completion_authority_renewal_quarantine_reset",
+            result,
+        )
+        return result
+
+    def _manual_completion_authority_rejection(
+        self,
+        task_ids: Iterable[str],
+        *,
+        authority_context_id: str = "",
+        authority_evidence: Mapping[str, Any] | None = None,
+        expected_validated_tree_identity: Mapping[str, Any] | None = None,
+        refresh: bool = True,
+    ) -> dict[str, Any] | None:
+        """Reject a completion/integration touching a currently gated closure."""
+
+        expected_task_ids = {
+            str(task_id).strip()
+            for task_id in task_ids
+            if str(task_id).strip()
+        }
+        if not self.manual_completion_authority_task_ids:
+            return None
+        guard = (
+            self._refresh_manual_completion_authority_guard()
+            if refresh
+            else {"available": True}
+        )
+        if guard.get("available") is not True:
+            return {
+                key: value
+                for key, value in guard.items()
+                if key != "_tasks"
+            }
+        blocked_task_ids = sorted(
+            expected_task_ids
+            & set(
+                self._manual_completion_authority_hard_blocked_task_ids
+            )
+        )
+        if not blocked_task_ids:
+            revalidation_task_ids = sorted(
+                expected_task_ids
+                & set(
+                    self._manual_completion_authority_revalidation_task_ids
+                )
+            )
+            if not revalidation_task_ids:
+                return None
+            expected_context_id = (
+                self._manual_completion_authority_policy_id()
+            )
+            evidence = (
+                dict(authority_evidence)
+                if isinstance(authority_evidence, Mapping)
+                else {}
+            )
+            raw_results = evidence.get("results")
+            validation_results = (
+                [item for item in raw_results if isinstance(item, Mapping)]
+                if isinstance(raw_results, Sequence)
+                and not isinstance(raw_results, (str, bytes, bytearray))
+                else []
+            )
+            evidence_task_id = str(
+                evidence.get("manual_completion_authority_task_id") or ""
+            )
+            evidence_task_cid = str(
+                evidence.get("manual_completion_authority_task_cid") or ""
+            )
+            evidence_plan_id = str(
+                evidence.get(
+                    "manual_completion_authority_validation_plan_id"
+                )
+                or ""
+            )
+            evidence_generation = evidence.get(
+                "manual_completion_authority_revocation_generation"
+            )
+            validated_tree_identity = evidence.get(
+                "manual_completion_authority_validated_tree_identity"
+            )
+            validated_tree_id = str(
+                evidence.get(
+                    "manual_completion_authority_validated_tree_id"
+                )
+                or ""
+            )
+            current_tasks_by_id = {
+                task.task_id: task
+                for task in guard.get("_tasks", ())
+                if isinstance(task, PortalTask)
+            }
+            evidence_task = current_tasks_by_id.get(evidence_task_id)
+            pending_revalidation_prerequisite_ids = sorted(
+                {
+                    str(dependency_id).strip()
+                    for dependency_id in (
+                        evidence_task.depends_on
+                        if evidence_task is not None
+                        else ()
+                    )
+                    if str(dependency_id).strip()
+                    in self._manual_completion_authority_revalidation_task_ids
+                }
+            )
+            current_plan_binding = (
+                self._manual_completion_validation_plan_binding(evidence_task)
+                if evidence_task is not None
+                else {}
+            )
+            evidence_result_count = evidence.get(
+                "manual_completion_authority_validation_result_count"
+            )
+            evidence_id = self._manual_completion_revalidation_evidence_id(
+                evidence
+            )
+            producer_trusted = bool(
+                evidence_id
+                in self._trusted_manual_completion_revalidation_evidence_ids
+            )
+            runtime_tree_identity_valid = bool(
+                isinstance(validated_tree_identity, Mapping)
+                and set(validated_tree_identity)
+                == {
+                    "schema",
+                    "target_commit",
+                    "dependency_state_id",
+                    "candidate_binding_id",
+                }
+                and validated_tree_identity.get("schema")
+                == (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "manual-completion-validated-tree@1"
+                )
+                and str(validated_tree_identity.get("target_commit") or "")
+                and re.fullmatch(
+                    r"b[a-z2-7]+",
+                    str(
+                        validated_tree_identity.get("dependency_state_id")
+                        or ""
+                    ),
+                )
+                and re.fullmatch(
+                    r"b[a-z2-7]+",
+                    str(
+                        validated_tree_identity.get("candidate_binding_id")
+                        or ""
+                    ),
+                )
+            )
+            candidate_tree_identity_valid = bool(
+                isinstance(validated_tree_identity, Mapping)
+                and set(validated_tree_identity)
+                == {"schema", "target_commit", "repository_tree_id"}
+                and validated_tree_identity.get("schema")
+                == (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "manual-completion-validated-tree@1"
+                )
+                and re.fullmatch(
+                    r"[0-9a-f]{40,64}",
+                    str(validated_tree_identity.get("target_commit") or ""),
+                )
+                and re.fullmatch(
+                    r"git-tree:[0-9a-f]{40,64}",
+                    str(
+                        validated_tree_identity.get("repository_tree_id")
+                        or ""
+                    ),
+                )
+            )
+            expected_tree_identity_valid = bool(
+                isinstance(expected_validated_tree_identity, Mapping)
+                and isinstance(validated_tree_identity, Mapping)
+                and dict(validated_tree_identity)
+                == dict(expected_validated_tree_identity)
+            )
+            validated_tree_binding_valid = bool(
+                producer_trusted
+                and (
+                    expected_tree_identity_valid
+                    if expected_validated_tree_identity is not None
+                    else (
+                        runtime_tree_identity_valid
+                        or (
+                            candidate_tree_identity_valid
+                            and self._manual_completion_validated_tree_is_current(
+                                validated_tree_identity
+                            )
+                        )
+                    )
+                )
+            )
+
+            def explicit_zero_returncode(value: Any) -> bool:
+                return bool(
+                    (type(value) is int and value == 0)
+                    or (type(value) is str and value == "0")
+                )
+
+            current_isolation_contract = (
+                self._authority_validation_isolation_contract()
+            )
+
+            def successful_uncached_result(item: Mapping[str, Any]) -> bool:
+                raw_returncode = item.get("returncode")
+                if not explicit_zero_returncode(raw_returncode):
+                    return False
+                result_digest = str(
+                    item.get("validation_result_digest") or ""
+                )
+                raw_receipt = item.get(
+                    "authority_validation_isolation_receipt"
+                )
+                isolation_receipt = (
+                    dict(raw_receipt)
+                    if isinstance(raw_receipt, Mapping)
+                    else {}
+                )
+                receipt_id = str(
+                    isolation_receipt.pop("receipt_id", "") or ""
+                )
+                isolation_valid = bool(
+                    current_isolation_contract.get("available") is True
+                    and isolation_receipt.get("backend")
+                    == "docker-local-cuda"
+                    and isolation_receipt.get("contract_id")
+                    == current_isolation_contract.get("contract_id")
+                    and isolation_receipt.get("image_id")
+                    == current_isolation_contract.get("image_id")
+                    and isolation_receipt.get("network_mode") == "none"
+                    and isolation_receipt.get("host_filesystem")
+                    == "workspace_only_read_only"
+                    and isolation_receipt.get("workspace_read_only") is True
+                    and isolation_receipt.get("private_pid_namespace") is True
+                    and isolation_receipt.get("capabilities_dropped") == "all"
+                    and isolation_receipt.get("no_new_privileges") is True
+                    and isolation_receipt.get("container_removed") is True
+                    and isolation_receipt.get("process_tree_quiesced") is True
+                    and isolation_receipt.get("output_bounded") is True
+                    and isolation_receipt.get("storage_bounded") is True
+                    and isolation_receipt.get("cpu_bounded") is True
+                    and isolation_receipt.get("gpu_requested") is True
+                    and receipt_id
+                    and receipt_id == content_identity(isolation_receipt)
+                )
+                return bool(
+                    str(item.get("command") or "").strip()
+                    and item.get("cache_hit") is False
+                    and item.get("timed_out") is False
+                    and item.get("infrastructure_failure") is not True
+                    and isolation_valid
+                    and re.fullmatch(
+                        r"[0-9a-f]{64}",
+                        result_digest,
+                    )
+                )
+
+            evidence_valid = bool(
+                evidence.get("attempted") is True
+                and evidence.get("passed") is True
+                and explicit_zero_returncode(evidence.get("returncode"))
+                and evidence.get(
+                    "manual_completion_authority_revalidation"
+                )
+                is True
+                and evidence.get(
+                    "manual_completion_authority_force_uncached"
+                )
+                is True
+                # One command report is issued for one canonical task.  It
+                # must never authorize sibling bundle members that did not
+                # run their own current-epoch validation.
+                and set(revalidation_task_ids) == {evidence_task_id}
+                and evidence_task is not None
+                and not pending_revalidation_prerequisite_ids
+                and evidence_task_cid
+                == str(current_plan_binding.get("canonical_task_cid") or "")
+                and evidence_plan_id
+                == str(current_plan_binding.get("validation_plan_id") or "")
+                and evidence.get(
+                    "manual_completion_authority_declared_validation_commands"
+                )
+                == current_plan_binding.get("declared_commands")
+                and type(evidence_generation) is int
+                and evidence_generation
+                == self._manual_completion_authority_revocation_generation
+                and isinstance(validated_tree_identity, Mapping)
+                and validated_tree_id
+                == content_identity(validated_tree_identity)
+                and validated_tree_binding_valid
+                and validation_results
+                and len(validation_results) == len(raw_results)
+                and type(evidence_result_count) is int
+                and evidence_result_count == len(validation_results)
+                and all(successful_uncached_result(item) for item in validation_results)
+            )
+            evidence_context_id = str(
+                evidence.get("manual_completion_authority_context_id") or ""
+            )
+            supplied_context_id = str(authority_context_id or "")
+            if (
+                evidence_context_id == expected_context_id
+                and (
+                    not supplied_context_id
+                    or supplied_context_id == expected_context_id
+                )
+                and evidence_valid
+            ):
+                return None
+            return {
+                "reason": (
+                    "manual_completion_authority_prerequisite_"
+                    "revalidation_required"
+                    if pending_revalidation_prerequisite_ids
+                    else "manual_completion_authority_revalidation_required"
+                ),
+                "manual_completion_authority_revalidation_task_ids": (
+                    revalidation_task_ids
+                ),
+                "expected_manual_completion_authority_context_id": (
+                    expected_context_id
+                ),
+                "actual_manual_completion_authority_context_id": str(
+                    evidence_context_id
+                ),
+                "manual_completion_authority_evidence_valid": evidence_valid,
+                "manual_completion_authority_pending_prerequisite_task_ids": (
+                    pending_revalidation_prerequisite_ids
+                ),
+            }
+        blocked_roots = sorted(
+            set(blocked_task_ids)
+            & set(
+                self._manual_completion_authority_effective_required_task_ids
+            )
+        )
+        return {
+            "reason": (
+                "manual_completion_authority_required"
+                if set(blocked_task_ids) == set(blocked_roots)
+                else "manual_completion_authority_dependency_required"
+            ),
+            "manual_completion_authority_required_task_ids": blocked_roots,
+            "manual_completion_authority_blocked_task_ids": blocked_task_ids,
+            "manual_completion_authority_hard_blocked_task_ids": sorted(
+                self._manual_completion_authority_hard_blocked_task_ids
+            ),
+        }
+
+    def _run_once(self) -> dict[str, Any]:
+        authority_guard: dict[str, Any] = {}
+        if self.manual_completion_authority_task_ids:
+            authority_guard = self._refresh_manual_completion_authority_guard()
+            authority_guard.pop("_tasks", None)
+            if authority_guard.get("available") is not True:
+                return {
+                    "blocked": True,
+                    "reason": "manual_completion_authority_guard_unavailable",
+                    "manual_completion_authority_guard": authority_guard,
+                    "state_path": str(self.state_path),
+                    "strategy_path": str(self.strategy_path),
+                    "events_path": str(self.events_path),
+                    "unchanged": True,
+                    "write_count": 0,
+                    "projection_delta": {},
+                    "implementation_result": None,
+                    "merge_reconciliation": [],
+                    "wake_kinds": [],
+                    "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+                }
+        if self.manual_completion_authority_revalidation_only:
+            checkout_mutation_path = checkout_mutation_lock_path(
+                self.repo_root
+            )
+            try:
+                retained_checkout_mutation = checkout_mutation_path.exists()
+            except OSError:
+                retained_checkout_mutation = True
+            protected_checkout_recovery = {
+                "required": retained_checkout_mutation,
+                "recovered": False,
+                "blocked": retained_checkout_mutation,
+                "reason": (
+                    "protected_checkout_recovery_forbidden"
+                    if retained_checkout_mutation
+                    else "manual_completion_authority_revalidation_only_clean"
+                ),
+                "checkout_mutation_path": str(checkout_mutation_path),
+            }
+        else:
+            try:
+                protected_checkout_recovery = (
+                    self._recover_protected_checkout_mutation()
+                )
+            except Exception as exc:
+                protected_checkout_recovery = {
+                    "required": True,
+                    "recovered": False,
+                    "blocked": True,
+                    "reason": "protected_checkout_recovery_failed",
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                }
         if (
             protected_checkout_recovery.get("required", False)
             and not protected_checkout_recovery.get(
@@ -8582,7 +10805,12 @@ class PortalImplementationDaemon:
             self._acknowledge_runtime_events()
             return result
         external_completion_recovery = (
-            self._recover_pending_external_completion_callbacks()
+            {
+                "recovered": False,
+                "reason": "manual_completion_authority_revalidation_only",
+            }
+            if self.manual_completion_authority_revalidation_only
+            else self._recover_pending_external_completion_callbacks()
         )
         if external_completion_recovery.get("blocked", False):
             return {
@@ -8605,6 +10833,26 @@ class PortalImplementationDaemon:
                 "wake_kinds": [],
                 "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
             }
+        prefetched_tasks: list[PortalTask] | None = None
+        if self.manual_completion_authority_task_ids:
+            authority_guard = self._refresh_manual_completion_authority_guard()
+            prefetched_tasks = authority_guard.pop("_tasks", None)
+            if authority_guard.get("available") is not True:
+                return {
+                    "blocked": True,
+                    "reason": "manual_completion_authority_guard_unavailable",
+                    "manual_completion_authority_guard": authority_guard,
+                    "state_path": str(self.state_path),
+                    "strategy_path": str(self.strategy_path),
+                    "events_path": str(self.events_path),
+                    "unchanged": False,
+                    "write_count": 0,
+                    "projection_delta": {},
+                    "implementation_result": None,
+                    "merge_reconciliation": [],
+                    "wake_kinds": [],
+                    "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+                }
         wake_kinds = self._consume_runtime_wake_kinds()
         self._current_runtime_wake_kinds = set(wake_kinds)
         source_digest, _source_metadata = self._runtime_source_head()
@@ -8619,7 +10867,11 @@ class PortalImplementationDaemon:
             and not safety_reconciliation_due
         )
         if preflight_unchanged:
-            provider_retry_schedule = self._provider_capacity_backoff_schedule()
+            provider_retry_schedule = (
+                {}
+                if self.manual_completion_authority_revalidation_only
+                else self._provider_capacity_backoff_schedule()
+            )
             provider_retry_due = bool(
                 provider_retry_schedule
                 and not provider_retry_schedule.get("active", False)
@@ -8642,11 +10894,66 @@ class PortalImplementationDaemon:
                     wake_kinds=wake_kinds,
                 )
         self._last_safety_reconciliation_monotonic = time.monotonic()
-        event_log_repair = self.ensure_event_log_file()
-        state_file_repair = self.ensure_state_file()
-        protected_path_reconciliation = (
-            self._reconcile_implementation_protected_path_fence()
-        )
+        if self.manual_completion_authority_revalidation_only:
+            event_log_repair = self._inspect_event_log_file_read_only()
+            state_reason = state_file_repair_reason(self.state_path)
+            state_file_repair = {
+                "repaired": False,
+                "reason": state_reason or "valid",
+                "path": str(self.state_path),
+            }
+            invalid_state = state_reason not in {
+                "",
+                "missing_state_file",
+            }
+            if event_log_repair.get("invalid_count") or invalid_state:
+                return {
+                    "blocked": True,
+                    "reason": (
+                        "authority_revalidation_state_storage_invalid"
+                    ),
+                    "state_path": str(self.state_path),
+                    "strategy_path": str(self.strategy_path),
+                    "events_path": str(self.events_path),
+                    "event_log_repair": event_log_repair,
+                    "state_file_repair": state_file_repair,
+                    "unchanged": True,
+                    "write_count": 0,
+                    "projection_delta": {},
+                    "implementation_result": None,
+                    "merge_reconciliation": [],
+                    "wake_kinds": sorted(wake_kinds),
+                    "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+                }
+        else:
+            event_log_repair = self.ensure_event_log_file()
+            state_file_repair = self.ensure_state_file()
+        if self.manual_completion_authority_revalidation_only:
+            protected_fence_paths = (
+                self._implementation_protected_active_snapshot_path(),
+                self._implementation_protected_incident_path(),
+            )
+            try:
+                retained_protected_fence_paths = [
+                    str(path) for path in protected_fence_paths if path.exists()
+                ]
+            except OSError:
+                retained_protected_fence_paths = [
+                    str(path) for path in protected_fence_paths
+                ]
+            protected_path_reconciliation = {
+                "blocked": bool(retained_protected_fence_paths),
+                "reason": (
+                    "protected_path_reconciliation_forbidden"
+                    if retained_protected_fence_paths
+                    else "manual_completion_authority_revalidation_only_clean"
+                ),
+                "retained_paths": retained_protected_fence_paths,
+            }
+        else:
+            protected_path_reconciliation = (
+                self._reconcile_implementation_protected_path_fence()
+            )
         if protected_path_reconciliation.get("blocked", False):
             result = {
                 "blocked": True,
@@ -8681,30 +10988,34 @@ class PortalImplementationDaemon:
             self._runtime_last_result = self._runtime_result_projection(result)
             self._acknowledge_runtime_events()
             return result
-        try:
-            tasks = self._load_tasks()
-        except (OSError, UnicodeDecodeError, TaskSourceError, ValueError) as exc:
-            reason = (
-                "task_source_invalid"
-                if self.task_source is not None
-                else "todo_read_failed"
-            )
-            return self._record_empty_backlog_state(reason=reason, error=str(exc))
+        if prefetched_tasks is not None:
+            tasks = prefetched_tasks
+        else:
+            try:
+                tasks = self._load_tasks()
+            except (OSError, UnicodeDecodeError, TaskSourceError, ValueError) as exc:
+                reason = (
+                    "task_source_invalid"
+                    if self.task_source is not None
+                    else "todo_read_failed"
+                )
+                return self._record_empty_backlog_state(reason=reason, error=str(exc))
         if not tasks:
             return self._record_empty_backlog_state(reason="no_tasks_found")
         aliases_by_cid = self._register_task_identities(tasks)
         merge_train_progress: dict[str, Any] | None = None
-        try:
-            merge_train_progress = self._consume_one_merge_candidate()
-        except Exception as exc:
-            self._record_event(
-                "merge_train_consumer_deferred",
-                {
-                    "reason": "merge_train_consumer_unavailable",
-                    "exception_type": type(exc).__name__,
-                    "error": str(exc)[-4000:],
-                },
-            )
+        if not self.manual_completion_authority_revalidation_only:
+            try:
+                merge_train_progress = self._consume_one_merge_candidate()
+            except Exception as exc:
+                self._record_event(
+                    "merge_train_consumer_deferred",
+                    {
+                        "reason": "merge_train_consumer_unavailable",
+                        "exception_type": type(exc).__name__,
+                        "error": str(exc)[-4000:],
+                    },
+                )
         shared_active_merge_cids = self._shared_merge_queue_task_cids(
             "active_canonical_task_ids"
         )
@@ -8716,16 +11027,34 @@ class PortalImplementationDaemon:
         )
         shared_active_merge_cids.difference_update(shared_completed_merge_cids)
         declared_task_ids = {task.task_id for task in tasks}
-        manual_completion_authority_required_task_ids = (
-            set(self.manual_completion_authority_required_task_ids)
-            & declared_task_ids
+        manual_completion_authority_required_task_ids = set(
+            self._manual_completion_authority_effective_required_task_ids
+        ) & declared_task_ids
+        manual_completion_authority_task_ids = set(
+            self.manual_completion_authority_task_ids
+        ) & declared_task_ids
+        manual_completion_authority_dependency_task_ids = (
+            set(self._manual_completion_authority_hard_blocked_task_ids)
+            - manual_completion_authority_required_task_ids
+        )
+        manual_completion_authority_hard_blocked_task_ids = set(
+            self._manual_completion_authority_hard_blocked_task_ids
+        )
+        manual_completion_revalidation_task_ids = set(
+            self._manual_completion_authority_revalidation_task_ids
+        )
+        historical_completion_quarantine_task_ids = set(
+            self._manual_completion_authority_historical_task_ids
+        )
+        manual_completion_authority_affected_goal_ids = set(
+            self._manual_completion_authority_affected_goal_ids
         )
         shared_completed_task_ids = {
             task.task_id
             for task in tasks
             if (
                 task.task_id
-                not in manual_completion_authority_required_task_ids
+                not in historical_completion_quarantine_task_ids
                 and (
                     self._canonical_ref(task) in shared_completed_merge_cids
                     or self._canonical_ref(task)
@@ -8736,16 +11065,36 @@ class PortalImplementationDaemon:
         shared_active_merge_task_ids = {
             task.task_id
             for task in tasks
-            if self._canonical_ref(task) in shared_active_merge_cids
+            if (
+                task.task_id
+                not in historical_completion_quarantine_task_ids
+                and self._canonical_ref(task) in shared_active_merge_cids
+            )
         }
         previous = PortalTaskState.load(self.state_path)
-        strategy = self.load_strategy()
-        released_retry_budget_strategy_blocks = (
-            self._release_completed_retry_budget_strategy_blocks(
-                strategy,
-                tasks,
+        if self.manual_completion_authority_revalidation_only:
+            strategy = {
+                "generation": 0,
+                "focus_tracks": DEFAULT_TRACKS,
+                "blocked_tasks": [],
+                "deprioritized_tasks": [],
+                "last_rewrite_at": "",
+                "last_rewrite_reason": (
+                    "manual_completion_authority_revalidation_only"
+                ),
+            }
+            released_retry_budget_strategy_blocks = []
+        else:
+            strategy = self.load_strategy()
+            released_retry_budget_strategy_blocks = (
+                self._release_completed_retry_budget_strategy_blocks(
+                    strategy,
+                    tasks,
+                    excluded_task_ids=(
+                        self._manual_completion_authority_historical_task_ids
+                    ),
+                )
             )
-        )
         now = utc_now()
         board_completed_task_ids = {
             task.task_id
@@ -8753,17 +11102,37 @@ class PortalImplementationDaemon:
             if (
                 task.status == "completed"
                 and task.task_id
-                not in manual_completion_authority_required_task_ids
+                not in historical_completion_quarantine_task_ids
             )
         }
         quarantined_manual_completion_status_task_ids = {
             task.task_id
             for task in tasks
             if (
-                task.status == "completed"
+                normalize_status(task.status) == "completed"
                 and task.task_id
-                in manual_completion_authority_required_task_ids
+                in historical_completion_quarantine_task_ids
             )
+        }
+        manual_completion_revalidation_only_task_ids = {
+            task.task_id
+            for task in tasks
+            if self._manual_completion_authority_revalidation_only_task(task)
+        }
+        manual_completion_renewal_retry_states = {
+            task.task_id: (
+                self._manual_completion_authority_renewal_retry_state(task)
+            )
+            for task in tasks
+            if task.task_id
+            in manual_completion_revalidation_only_task_ids
+        }
+        manual_completion_renewal_quarantined_task_ids = {
+            task_id
+            for task_id, retry_state in (
+                manual_completion_renewal_retry_states.items()
+            )
+            if retry_state.get("quarantined") is True
         }
         status_completed_task_ids = board_completed_task_ids | shared_completed_task_ids
         pending_retry_repair_source_ids = pending_retry_budget_repair_sources(
@@ -8777,9 +11146,33 @@ class PortalImplementationDaemon:
         # implementation merges must still be reconciled unless the janitor
         # explicitly retired the task as off-mission.
         strategy_deprioritized_task_ids = self._strict_off_mission_deprioritized_task_ids(strategy)
-        merge_skip_task_ids = status_completed_task_ids | strategy_blocked_task_ids
+        merge_skip_task_ids = (
+            status_completed_task_ids
+            | strategy_blocked_task_ids
+            | historical_completion_quarantine_task_ids
+        )
         live_inflight_implementation = self._find_live_inflight_implementation()
         if previous.implementation_in_progress and live_inflight_implementation is None:
+            if self.manual_completion_authority_revalidation_only:
+                return {
+                    "blocked": True,
+                    "reason": (
+                        "ordinary_implementation_state_recovery_forbidden"
+                    ),
+                    "active_task_id": previous.active_task_id,
+                    "active_attempt": previous.active_attempt,
+                    "active_worktree_path": previous.active_worktree_path,
+                    "state_path": str(self.state_path),
+                    "strategy_path": str(self.strategy_path),
+                    "events_path": str(self.events_path),
+                    "unchanged": True,
+                    "write_count": 0,
+                    "projection_delta": {},
+                    "implementation_result": None,
+                    "merge_reconciliation": [],
+                    "wake_kinds": sorted(wake_kinds),
+                    "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+                }
             recovered_state = PortalTaskState.load(self.state_path)
             recovered_attempt = consume_stale_active_attempt(recovered_state)
             self._clear_active_execution_state(recovered_state)
@@ -8796,18 +11189,30 @@ class PortalImplementationDaemon:
                 },
             )
             previous = recovered_state
-        retry_budget_resets, retry_budget_reset_deferred = (
-            self._reset_attempt_budgets_for_completed_retry_repairs(
-                previous,
-                tasks,
+        if self.manual_completion_authority_revalidation_only:
+            retry_budget_resets = []
+            retry_budget_reset_deferred = []
+            merge_reconciliation = []
+            merged_worktree_cleanup = {
+                "attempted": False,
+                "reason": "manual_completion_authority_revalidation_only",
+            }
+        else:
+            retry_budget_resets, retry_budget_reset_deferred = (
+                self._reset_attempt_budgets_for_completed_retry_repairs(
+                    previous,
+                    tasks,
+                    excluded_task_ids=(
+                        historical_completion_quarantine_task_ids
+                    ),
+                )
             )
-        )
-        merge_reconciliation = self._reconcile_failed_merges(
-            skip_task_ids=merge_skip_task_ids,
-            deprioritized_task_ids=strategy_deprioritized_task_ids,
-        )
-        merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
-        self._periodic_maintenance()
+            merge_reconciliation = self._reconcile_failed_merges(
+                skip_task_ids=merge_skip_task_ids,
+                deprioritized_task_ids=strategy_deprioritized_task_ids,
+            )
+            merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
+            self._periodic_maintenance()
         unresolved_merge_failures = self._unresolved_merge_failures_by_task(skip_task_ids=merge_skip_task_ids)
         unresolved_merge_failure_task_ids = set(unresolved_merge_failures)
         transient_merge_deferrals = self._transient_merge_deferrals_by_task(skip_task_ids=merge_skip_task_ids)
@@ -8818,14 +11223,17 @@ class PortalImplementationDaemon:
         successfully_merged_task_ids = self._successfully_merged_task_ids()
         completion_receipt_task_ids = (
             successfully_merged_task_ids | shared_completed_task_ids
-        ) - manual_completion_authority_required_task_ids
+        ) - historical_completion_quarantine_task_ids
         merged_status_repair: dict[str, Any] = {}
         stale_merged_completed_task_ids = [
             task.task_id
             for task in tasks
             if task.task_id in completion_receipt_task_ids and task.task_id not in board_completed_task_ids
         ]
-        if stale_merged_completed_task_ids:
+        if (
+            stale_merged_completed_task_ids
+            and not self.manual_completion_authority_revalidation_only
+        ):
             merged_status_repair = self._mark_tasks_completed_in_todo(
                 stale_merged_completed_task_ids,
                 primary_task_id=stale_merged_completed_task_ids[0],
@@ -8866,7 +11274,7 @@ class PortalImplementationDaemon:
                 and not unresolved_merge_failure
                 and not transient_merge_deferral
             )
-            if task.task_id in manual_completion_authority_required_task_ids:
+            if task.task_id in historical_completion_quarantine_task_ids:
                 continue
             if task.task_id in status_completed_task_ids or artifact_complete or merged_complete:
                 completed_set.add(task.task_id)
@@ -8879,7 +11287,10 @@ class PortalImplementationDaemon:
         completed_set.update(
             task.task_id
             for task in tasks
-            if self._canonical_ref(task) in completed_cids
+            if (
+                task.task_id not in historical_completion_quarantine_task_ids
+                and self._canonical_ref(task) in completed_cids
+            )
         )
         protected_path_conflicts_by_task = {
             task.task_id: task_implementation_protected_path_conflicts(
@@ -8891,14 +11302,19 @@ class PortalImplementationDaemon:
         protected_path_conflicts_by_task = {
             task_id: conflicts
             for task_id, conflicts in protected_path_conflicts_by_task.items()
-            if conflicts
+            if (
+                conflicts
+                and task_id
+                not in manual_completion_revalidation_only_task_ids
+            )
         }
         dependency_satisfied_task_ids = dependency_satisfied_references(
             tasks,
             completed_task_ids=completed_set,
             assumed_completed_references=(
                 self.assumed_completed_task_ids
-                - manual_completion_authority_required_task_ids
+                - historical_completion_quarantine_task_ids
+                - manual_completion_authority_affected_goal_ids
             ),
         )
         dependency_reopen_candidates = [
@@ -8915,9 +11331,17 @@ class PortalImplementationDaemon:
                 )
             )
         ]
-        dependency_reopen_result = self._mark_tasks_ready_in_todo(
-            dependency_reopen_candidates,
-            reason="dependencies_completed",
+        dependency_reopen_result = (
+            {
+                "updated_task_ids": [],
+                "already_ready_task_ids": [],
+                "reason": "manual_completion_authority_revalidation_only",
+            }
+            if self.manual_completion_authority_revalidation_only
+            else self._mark_tasks_ready_in_todo(
+                dependency_reopen_candidates,
+                reason="dependencies_completed",
+            )
         )
         dependency_reopened_task_ids = {
             *dependency_reopen_result.get("updated_task_ids", []),
@@ -8925,8 +11349,33 @@ class PortalImplementationDaemon:
         }
 
         for task in tasks:
-            if task.task_id in manual_completion_authority_required_task_ids:
-                resolved_statuses[task.task_id] = "blocked"
+            if task.task_id in manual_completion_authority_hard_blocked_task_ids:
+                resolved_statuses[task.task_id] = (
+                    "blocked"
+                    if task.task_id
+                    in manual_completion_authority_required_task_ids
+                    else "waiting"
+                )
+                continue
+            if task.task_id in manual_completion_revalidation_only_task_ids:
+                retry_state = manual_completion_renewal_retry_states.get(
+                    task.task_id,
+                    {},
+                )
+                if retry_state.get("quarantined") is True:
+                    resolved_statuses[task.task_id] = "blocked"
+                    continue
+                unresolved_deps = [
+                    dependency
+                    for dependency in task.depends_on
+                    if dependency not in dependency_satisfied_task_ids
+                ]
+                # One authority-owning process walks the already-validated DAG
+                # topologically.  A downstream claim never publishes before
+                # each current-epoch predecessor receipt is accepted.
+                resolved_statuses[task.task_id] = (
+                    "waiting" if unresolved_deps else "ready"
+                )
                 continue
             if task.task_id in completed_set:
                 resolved_statuses[task.task_id] = "completed"
@@ -8950,17 +11399,33 @@ class PortalImplementationDaemon:
                 # merge-queued in every lane's projection.
                 resolved_statuses[task.task_id] = "merge-queued"
                 continue
-            if task.task_id in transient_merge_deferral_task_ids:
+            if (
+                task.task_id in transient_merge_deferral_task_ids
+                and task.task_id
+                not in manual_completion_revalidation_only_task_ids
+            ):
                 resolved_statuses[task.task_id] = "waiting"
                 continue
-            if task.task_id in queued_merge_task_ids:
+            if (
+                task.task_id in queued_merge_task_ids
+                and task.task_id
+                not in manual_completion_revalidation_only_task_ids
+            ):
                 # Validated and enqueued; not board-complete until integrated.
                 resolved_statuses[task.task_id] = "merge-queued"
                 continue
-            if task.task_id in quarantined_merge_task_ids:
+            if (
+                task.task_id in quarantined_merge_task_ids
+                and task.task_id
+                not in manual_completion_revalidation_only_task_ids
+            ):
                 resolved_statuses[task.task_id] = "blocked"
                 continue
-            if task.task_id in unresolved_merge_failure_task_ids:
+            if (
+                task.task_id in unresolved_merge_failure_task_ids
+                and task.task_id
+                not in manual_completion_revalidation_only_task_ids
+            ):
                 resolved_statuses[task.task_id] = "blocked"
                 continue
             unresolved_deps = [
@@ -9006,6 +11471,13 @@ class PortalImplementationDaemon:
             task
             for task in execution_tasks
             if (
+                (
+                    not self.manual_completion_authority_revalidation_only
+                    or self._manual_completion_authority_revalidation_only_task(
+                        task
+                    )
+                )
+                and
                 task.task_id in representative_task_ids
                 and self._task_belongs_to_shard(task.task_id)
                 and task.task_id not in active_task_claims
@@ -9024,7 +11496,13 @@ class PortalImplementationDaemon:
                 task
                 for task in execution_tasks
                 if (
-                    task.task_id in representative_task_ids
+                    (
+                        not self.manual_completion_authority_revalidation_only
+                        or self._manual_completion_authority_revalidation_only_task(
+                            task
+                        )
+                    )
+                    and task.task_id in representative_task_ids
                     and task.task_id not in active_task_claims
                     and task.task_id not in resource_reserved_task_ids
                     and resolved_statuses.get(task.task_id) == "ready"
@@ -9044,6 +11522,9 @@ class PortalImplementationDaemon:
             selectable_tasks,
             resolved_statuses,
             previous,
+            exempt_task_ids=(
+                manual_completion_revalidation_only_task_ids
+            ),
         )
         attempt_limit_idle_reason = ""
         if attempt_limited_tasks:
@@ -9095,7 +11576,11 @@ class PortalImplementationDaemon:
         state.ready_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "ready"]
         state.selectable_ready_task_ids = list(selection_scope["selectable_ready_task_ids"])
         state.external_reserved_task_ids = sorted(external_task_reservations)
-        state.assumed_completed_task_ids = sorted(self.assumed_completed_task_ids)
+        state.assumed_completed_task_ids = sorted(
+            self.assumed_completed_task_ids
+            - historical_completion_quarantine_task_ids
+            - manual_completion_authority_affected_goal_ids
+        )
         state.eligible_ready_task_ids = list(selection_scope["eligible_ready_task_ids"])
         state.strict_deprioritized_ready_task_ids = list(selection_scope["strict_deprioritized_ready_task_ids"])
         state.waiting_task_ids = [
@@ -9206,13 +11691,19 @@ class PortalImplementationDaemon:
             projection_delta = self._projection_delta(previous, state)
 
         completion_receipt_bindings = (
-            self._task_completion_receipt_bindings(
+            set()
+            if self.manual_completion_authority_revalidation_only
+            else self._task_completion_receipt_bindings(
                 self._iter_merge_lifecycle_events()
             )
         )
         completion_receipt_writes: list[dict[str, Any]] = []
         newly_completed_task_ids = set(newly_completed)
-        for task in tasks:
+        for task in (
+            ()
+            if self.manual_completion_authority_revalidation_only
+            else tasks
+        ):
             if task.task_id not in completed_set:
                 continue
             identity = self._identity_for_task(task)
@@ -9251,7 +11742,11 @@ class PortalImplementationDaemon:
         implementation_result: dict[str, Any] | None = None
         if self.implement and selected is not None and resolved_statuses.get(selected.task_id) == "ready":
             unresolved_for_selected = unresolved_merge_failures.get(selected.task_id)
-            if unresolved_for_selected is not None:
+            if (
+                unresolved_for_selected is not None
+                and selected.task_id
+                not in manual_completion_revalidation_only_task_ids
+            ):
                 implementation_result = {
                     "skipped": True,
                     "reason": "unresolved_merge_failure",
@@ -9260,7 +11755,14 @@ class PortalImplementationDaemon:
                     "implementation_commit": str(unresolved_for_selected.get("implementation_commit") or ""),
                 }
                 self._record_event("implementation_skipped", implementation_result)
-            elif self._task_has_recent_no_change_outcome(selected.task_id, recent_outcomes):
+            elif (
+                selected.task_id
+                not in manual_completion_revalidation_only_task_ids
+                and self._task_has_recent_no_change_outcome(
+                    selected.task_id,
+                    recent_outcomes,
+                )
+            ):
                 implementation_result = {
                     "skipped": True,
                     "reason": "recent_no_change",
@@ -9339,6 +11841,30 @@ class PortalImplementationDaemon:
                     "manual_completion_authority_required_task_ids": sorted(
                         manual_completion_authority_required_task_ids
                     ),
+                    "manual_completion_authority_task_ids": sorted(
+                        manual_completion_authority_task_ids
+                    ),
+                    "manual_completion_authority_revalidation_only": (
+                        self.manual_completion_authority_revalidation_only
+                    ),
+                    "ordinary_provider_dispatch_allowed": (
+                        not self.manual_completion_authority_revalidation_only
+                    ),
+                    "manual_completion_authority_dependency_task_ids": sorted(
+                        manual_completion_authority_dependency_task_ids
+                    ),
+                    "manual_completion_revalidation_task_ids": sorted(
+                        manual_completion_revalidation_task_ids
+                    ),
+                    "manual_completion_revalidation_only_task_ids": sorted(
+                        manual_completion_revalidation_only_task_ids
+                    ),
+                    "manual_completion_renewal_quarantined_task_ids": sorted(
+                        manual_completion_renewal_quarantined_task_ids
+                    ),
+                    "manual_completion_authority_affected_goal_ids": sorted(
+                        manual_completion_authority_affected_goal_ids
+                    ),
                     "quarantined_manual_completion_status_task_ids": sorted(
                         quarantined_manual_completion_status_task_ids
                     ),
@@ -9379,6 +11905,36 @@ class PortalImplementationDaemon:
             },
             "manual_completion_authority_required_task_ids": sorted(
                 manual_completion_authority_required_task_ids
+            ),
+            "manual_completion_authority_task_ids": sorted(
+                manual_completion_authority_task_ids
+            ),
+            "manual_completion_authority_revalidation_only": (
+                self.manual_completion_authority_revalidation_only
+            ),
+            "ordinary_provider_dispatch_allowed": (
+                not self.manual_completion_authority_revalidation_only
+            ),
+            "manual_completion_authority_dependency_task_ids": sorted(
+                manual_completion_authority_dependency_task_ids
+            ),
+            "manual_completion_revalidation_task_ids": sorted(
+                manual_completion_revalidation_task_ids
+            ),
+            "manual_completion_revalidation_only_task_ids": sorted(
+                manual_completion_revalidation_only_task_ids
+            ),
+            "manual_completion_renewal_retry_states": {
+                task_id: dict(retry_state)
+                for task_id, retry_state in sorted(
+                    manual_completion_renewal_retry_states.items()
+                )
+            },
+            "manual_completion_renewal_quarantined_task_ids": sorted(
+                manual_completion_renewal_quarantined_task_ids
+            ),
+            "manual_completion_authority_affected_goal_ids": sorted(
+                manual_completion_authority_affected_goal_ids
             ),
             "quarantined_manual_completion_status_task_ids": sorted(
                 quarantined_manual_completion_status_task_ids
@@ -9807,7 +12363,33 @@ class PortalImplementationDaemon:
         now = time.time()
         due_task_ids: list[str] = []
         future_deadlines: list[float] = []
+        try:
+            tasks_by_id = {
+                task.task_id: task for task in self._load_tasks()
+            }
+        except (OSError, UnicodeDecodeError, TaskSourceError, ValueError):
+            tasks_by_id = {}
         for task_id in task_ids:
+            task = tasks_by_id.get(task_id)
+            if (
+                task is not None
+                and self._manual_completion_authority_revalidation_only_task(
+                    task
+                )
+            ):
+                renewal_state = (
+                    self._manual_completion_authority_renewal_retry_state(task)
+                )
+                if renewal_state.get("quarantined") is True:
+                    continue
+                renewal_deadline = float(
+                    renewal_state.get("cooldown_until") or 0.0
+                )
+                if renewal_deadline <= now:
+                    due_task_ids.append(task_id)
+                else:
+                    future_deadlines.append(renewal_deadline)
+                continue
             canonical_ref = self.task_queue.resolve_key(task_id)
             entry = self.task_queue.entries.get(canonical_ref)
             if entry is None or entry.cooldown_until <= now:
@@ -9850,7 +12432,11 @@ class PortalImplementationDaemon:
             result.pop(key, None)
 
         retry_after_seconds: list[float] = []
-        provider_backoff = self._active_provider_capacity_backoff()
+        provider_backoff = (
+            {}
+            if self.manual_completion_authority_revalidation_only
+            else self._active_provider_capacity_backoff()
+        )
         if provider_backoff:
             result["provider_capacity_retry_at"] = provider_backoff["retry_at"]
             retry_after_seconds.append(provider_backoff["retry_after_seconds"])
@@ -9940,11 +12526,28 @@ class PortalImplementationDaemon:
         return result
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
+        authority_revalidation_only = (
+            self._manual_completion_authority_revalidation_only_task(task)
+        )
+        if (
+            self.manual_completion_authority_revalidation_only
+            and not authority_revalidation_only
+        ):
+            result = {
+                "skipped": True,
+                "reason": "manual_completion_authority_revalidation_only",
+                "task_id": task.task_id,
+                "attempt": self._task_attempt(state, task),
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+            }
+            self._record_event("implementation_skipped", result)
+            return result
         protected_conflicts = task_implementation_protected_path_conflicts(
             task,
             self.implementation_protected_paths,
         )
-        if protected_conflicts:
+        if protected_conflicts and not authority_revalidation_only:
             result = {
                 "skipped": True,
                 "reason": "implementation_protected_path_declared",
@@ -9954,12 +12557,15 @@ class PortalImplementationDaemon:
             }
             self._record_event("implementation_skipped", result)
             return result
-        deterministic_only = self._task_uses_typed_local_execution(task)
+        deterministic_only = bool(
+            authority_revalidation_only
+            or self._task_uses_typed_local_execution(task)
+        )
         completion_scope = completion_gap_edit_scope(
             task,
             repo_root=self.repo_root,
         )
-        if completion_scope == ():
+        if completion_scope == () and not authority_revalidation_only:
             result = {
                 "skipped": True,
                 "reason": "completion_gap_missing_precise_edit_targets",
@@ -9997,19 +12603,23 @@ class PortalImplementationDaemon:
 
         # PDR-033: require active plan revision + compiled execution plan, and
         # acquire compiled lease/worktree/fence names before publishing claim.
-        plan_runtime_rejection = self._require_plan_runtime_before_claim(
-            task,
-            active_task_ids=tuple(
-                str(item)
-                for item in (
-                    getattr(state, "active_task_id", None),
-                    *(
-                        inflight_id
-                        for inflight_id in ()
-                    ),
-                )
-                if item
-            ),
+        plan_runtime_rejection = (
+            None
+            if authority_revalidation_only
+            else self._require_plan_runtime_before_claim(
+                task,
+                active_task_ids=tuple(
+                    str(item)
+                    for item in (
+                        getattr(state, "active_task_id", None),
+                        *(
+                            inflight_id
+                            for inflight_id in ()
+                        ),
+                    )
+                    if item
+                ),
+            )
         )
         if plan_runtime_rejection is not None:
             plan_runtime_rejection.setdefault(
@@ -10176,7 +12786,13 @@ class PortalImplementationDaemon:
         acquired_lock = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         try:
-            if deterministic_only:
+            if authority_revalidation_only:
+                if self._implementation_cancel_requested():
+                    raise ImplementationRetryDeferred(
+                        "authority revalidation dispatch cancelled"
+                    )
+                prompt = ""
+            elif deterministic_only:
                 if not task.validation:
                     execution_role = self._task_declared_implementation_provider(
                         task
@@ -10303,6 +12919,7 @@ class PortalImplementationDaemon:
             "results": [],
             "reason": "not_run",
         }
+        deterministic_commit_result: dict[str, Any] = {}
         todo_update_result: dict[str, Any] = {}
         completion_durability_deferred = False
         completion_published_in_transaction = False
@@ -10312,8 +12929,6 @@ class PortalImplementationDaemon:
         task_execution_receipt_path: Path | None = None
         task_execution_receipt: dict[str, Any] = {}
         operator_prepared_outputs: tuple[dict[str, Any], ...] = ()
-        checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
-        timeout_policy = self._implementation_timeout_policy(task)
 
         try:
             acquired_lock, lock_reason, existing_lock = (
@@ -10334,6 +12949,16 @@ class PortalImplementationDaemon:
                     result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
                 self._record_event("implementation_skipped", result)
                 return result
+            if authority_revalidation_only:
+                return self._run_manual_completion_authority_revalidation(
+                    task=task,
+                    state=state,
+                    attempt=attempt,
+                    started_at=started_at,
+                    log_path=log_path,
+                )
+            checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
+            timeout_policy = self._implementation_timeout_policy(task)
             context_receipt_path = self._persist_implementation_context_receipt(
                 task,
                 attempt,
@@ -10612,7 +13237,11 @@ class PortalImplementationDaemon:
                         "reason": "implementation_protected_path_mutated",
                         "protected_path_violation": protected_path_violation,
                     }
-                else:
+                elif not validation_result.get("passed", False):
+                    effective_returncode = int(
+                        validation_result.get("returncode") or 1
+                    )
+                elif not deterministic_only:
                     validation_result = (
                         self._restore_and_verify_post_validation_candidate(
                             workspace_path,
@@ -10630,6 +13259,34 @@ class PortalImplementationDaemon:
                         effective_returncode = int(
                             validation_result.get("returncode") or 1
                         )
+                elif validation_result.get("passed", False):
+                    # The typed local plan may materialize a proposal-authorized
+                    # output.  In the direct checkout that candidate must cross
+                    # the same durable commit gate used by the isolated path
+                    # before the tracked-output/completion tail can inspect it.
+                    deterministic_commit_result = (
+                        self._commit_worktree_changes(
+                            workspace_path,
+                            task,
+                            attempt,
+                            baseline_ref=baseline_ref,
+                        )
+                    )
+                    if not (
+                        deterministic_commit_result.get("committed") is True
+                        or deterministic_commit_result.get("reason")
+                        == "no_changes"
+                    ):
+                        effective_returncode = 1
+                        validation_result = {
+                            **validation_result,
+                            "passed": False,
+                            "returncode": 1,
+                            "reason": (
+                                "implementation_commit_handoff_failed"
+                            ),
+                            "commit_result": deterministic_commit_result,
+                        }
             if not protected_path_violation:
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -10653,9 +13310,16 @@ class PortalImplementationDaemon:
                 _repository_id, completion_tree_id = (
                     self._implementation_repository_and_tree_ids(task)
                 )
-                completion_tasks, completion_tasks_error = (
-                    self._completion_tasks_for_declared_output_gate({}, task)
-                )
+                if deterministic_only:
+                    completion_tasks = [task]
+                    completion_tasks_error: dict[str, Any] = {}
+                else:
+                    completion_tasks, completion_tasks_error = (
+                        self._completion_tasks_for_declared_output_gate(
+                            {},
+                            task,
+                        )
+                    )
                 declared_output_invariant = (
                     self._declared_output_tracking_invariant(
                         completion_tasks,
@@ -10684,13 +13348,21 @@ class PortalImplementationDaemon:
                         ),
                     }
                 else:
+                    projected_validation = _bounded_merge_proof_value(
+                        validation_result,
+                        field_name="validation",
+                    )
                     completion_evidence = {
                         "passed": bool(
                             validation_result.get("passed", False)
                         ),
                         "completion_authoritative": True,
                         "repository_tree_id": completion_tree_id,
-                        "validation": dict(validation_result),
+                        "validation": (
+                            projected_validation
+                            if isinstance(projected_validation, Mapping)
+                            else {}
+                        ),
                         "declared_output_invariant": (
                             declared_output_invariant
                         ),
@@ -10704,6 +13376,15 @@ class PortalImplementationDaemon:
                         self._mark_task_or_bundle_completed_in_todo(
                             task,
                             completion_intent=completion_intent,
+                            manual_completion_authority_context_id=str(
+                                validation_result.get(
+                                    "manual_completion_authority_context_id"
+                                )
+                                or ""
+                            ),
+                            manual_completion_authority_evidence=(
+                                validation_result
+                            ),
                         )
                     )
                     completion_published_in_transaction = bool(
@@ -10764,6 +13445,8 @@ class PortalImplementationDaemon:
                 "validation_result": validation_result,
                 "context_receipt_path": str(context_receipt_path),
             }
+            if deterministic_commit_result:
+                result["commit_result"] = deterministic_commit_result
             if task_execution_receipt_path is not None:
                 result["task_execution_receipt_path"] = str(
                     task_execution_receipt_path
@@ -11006,6 +13689,627 @@ class PortalImplementationDaemon:
                     )
             except OSError:
                 logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
+
+    @staticmethod
+    def _manual_completion_authority_checkout_snapshot(
+        workspace_path: Path,
+    ) -> dict[str, Any]:
+        """Capture the checkout identity and complete dirty projection."""
+
+        def run(arguments: Sequence[str]) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                ["git", *arguments],
+                cwd=workspace_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        head = run(("rev-parse", "--verify", "HEAD^{commit}"))
+        branch = run(("symbolic-ref", "--quiet", "--short", "HEAD"))
+        status = run(
+            (
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "--ignore-submodules=none",
+            )
+        )
+        available = bool(
+            head.returncode == 0
+            and str(head.stdout or "").strip()
+            and status.returncode == 0
+            and branch.returncode in {0, 1}
+        )
+        return {
+            "available": available,
+            "head": str(head.stdout or "").strip(),
+            "branch": str(branch.stdout or "").strip(),
+            "status": str(status.stdout or ""),
+            "head_returncode": int(head.returncode),
+            "branch_returncode": int(branch.returncode),
+            "status_returncode": int(status.returncode),
+        }
+
+    def _bind_manual_completion_authority_validated_tree(
+        self,
+        validation_result: Mapping[str, Any],
+        *,
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Rebind process-local authority to the final clean baseline."""
+
+        result = dict(validation_result)
+        self._trusted_manual_completion_revalidation_evidence_ids.discard(
+            self._manual_completion_revalidation_evidence_id(result)
+        )
+        candidate_binding = result.get("candidate_binding")
+        if not (
+            result.get("attempted") is True
+            and result.get("passed") is True
+            and isinstance(candidate_binding, Mapping)
+            and candidate_binding.get("verified") is True
+            and baseline_ref
+        ):
+            return result
+        validated_tree_identity = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "manual-completion-validated-tree@1"
+            ),
+            "target_commit": baseline_ref,
+            "dependency_state_id": content_identity(
+                result.get("dependency_state") or {}
+            ),
+            "candidate_binding_id": content_identity(candidate_binding),
+        }
+        result[
+            "manual_completion_authority_validated_tree_identity"
+        ] = validated_tree_identity
+        result[
+            "manual_completion_authority_validated_tree_id"
+        ] = content_identity(validated_tree_identity)
+        self._trusted_manual_completion_revalidation_evidence_ids.add(
+            self._manual_completion_revalidation_evidence_id(result)
+        )
+        return result
+
+    def _run_manual_completion_authority_revalidation(
+        self,
+        *,
+        task: PortalTask,
+        state: PortalTaskState,
+        attempt: int,
+        started_at: str,
+        log_path: Path,
+    ) -> dict[str, Any]:
+        """Renew one completed claim with isolated, read-only validation.
+
+        This path deliberately has no implementation prompt, provider route,
+        prepared-output import, prior-attempt seed, or shared context seed.
+        The disposable checkout is removed before the singleton authority
+        receipt is published.
+        """
+
+        self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
+        self.worktree_root.mkdir(parents=True, exist_ok=True)
+        safe_task_id = re.sub(
+            r"[^a-z0-9._-]+",
+            "-",
+            task.task_id.lower(),
+        ).strip("-") or "task"
+        execution_suffix = (
+            f"{self._identity_for_task(task).short_id}-"
+            f"{os.getpid()}-{time.time_ns()}"
+        )
+        worktree_path = self.worktree_root / (
+            f"{safe_task_id}-{execution_suffix}-authority-revalidation"
+        )
+        branch_name = (
+            f"implementation/{safe_task_id}-{execution_suffix}-"
+            "authority-revalidation"
+        )
+        baseline_ref = ""
+        target_branch = self._main_branch_name()
+        source_before = self._manual_completion_authority_checkout_snapshot(
+            self.repo_root
+        )
+        target_before = ""
+        renewal_key = self._manual_completion_authority_renewal_key(
+            task,
+            target_commit="unavailable",
+        )
+        validation_result: dict[str, Any] = {
+            "attempted": False,
+            "passed": False,
+            "returncode": 1,
+            "results": [],
+            "reason": "manual_completion_authority_revalidation_not_run",
+        }
+        task_execution_receipt_path: Path | None = None
+        task_execution_receipt: dict[str, Any] = {}
+        todo_update_result: dict[str, Any] = {}
+        cleanup_result: dict[str, Any] = {
+            "cleaned": False,
+            "reason": "not_attempted",
+        }
+        lifecycle_record: WorkspaceLifecycleRecord | None = None
+        protected_path_snapshot: dict[str, dict[str, Any]] | None = None
+        protected_path_violation: dict[str, Any] = {}
+        protected_path_finalized = False
+        worktree_created = False
+        implementation_started = False
+        failure_detail: dict[str, Any] = {}
+
+        try:
+            target_before = self._run_git(
+                ["rev-parse", "--verify", f"{target_branch}^{{commit}}"],
+                cwd=self.repo_root,
+            ).stdout.strip()
+            if not source_before.get("available") or not target_before:
+                raise RuntimeError("authority revalidation source identity unavailable")
+            renewal_key = self._manual_completion_authority_renewal_key(
+                task,
+                target_commit=target_before,
+            )
+            lifecycle_record = self.worktree_lifecycle.begin_preparing(
+                task_id=task.task_id,
+                canonical_task_cid=self._canonical_ref(task),
+                attempt=attempt,
+                lane_id=self._worktree_lifecycle_lane_id(),
+                workspace_path=worktree_path,
+                branch=branch_name,
+                merge_target=target_branch,
+                state_dir=str(self.state_path.parent.resolve()),
+            )
+            self._active_worktree_lifecycle = lifecycle_record
+            baseline_ref = self._create_seeded_worktree(
+                worktree_path,
+                branch_name,
+                task=task,
+                allow_pool=False,
+                seed_context=False,
+                offline_local_only=True,
+            )
+            worktree_created = True
+            if baseline_ref != target_before:
+                raise RuntimeError("authority revalidation baseline changed during setup")
+            lifecycle_record = self._sync_worktree_lifecycle_workspace(
+                lifecycle_record,
+                worktree_path,
+            )
+            clean_before = self._manual_completion_authority_checkout_snapshot(
+                worktree_path
+            )
+            if not (
+                clean_before.get("available") is True
+                and clean_before.get("head") == baseline_ref
+                and clean_before.get("branch") == branch_name
+                and not str(clean_before.get("status") or "")
+            ):
+                validation_result["reason"] = (
+                    "manual_completion_authority_revalidation_workspace_not_clean"
+                )
+                validation_result["workspace_guard"] = clean_before
+                raise RuntimeError(validation_result["reason"])
+            protected_path_snapshot = (
+                self._require_implementation_protected_snapshot(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=worktree_path,
+                )
+            )
+            lifecycle_record = self.worktree_lifecycle.mark_active(
+                lifecycle_record.workspace_path,
+                lease_id=lifecycle_record.lease_id,
+                expected_fence=lifecycle_record.fence,
+            )
+            self._active_worktree_lifecycle = lifecycle_record
+            self._mark_implementation_started(
+                state,
+                task=task,
+                attempt=attempt,
+                started_at=started_at,
+                log_path=log_path,
+                worktree_path=worktree_path,
+                branch_name=branch_name,
+                consume_attempt=False,
+            )
+            implementation_started = True
+            self._record_event(
+                "manual_completion_authority_revalidation_started",
+                {
+                    "task_id": task.task_id,
+                    "canonical_task_cid": self._canonical_ref(task),
+                    "attempt": attempt,
+                    "worktree_path": str(worktree_path),
+                    "branch": branch_name,
+                    "baseline_ref": baseline_ref,
+                    "forced_isolation": True,
+                    "worktree_pool_allowed": False,
+                    "seeded_context": False,
+                    "prior_attempt_seeded": False,
+                    "prepared_outputs_seeded": False,
+                    "provider_dispatched": False,
+                    "prompt_compiled": False,
+                    "implementation_context_compiled": False,
+                },
+            )
+            with log_path.open("w", encoding="utf-8") as log_fh:
+                log_fh.write(f"Task: {task.task_id} {task.title}\n")
+                log_fh.write(f"Started: {started_at}\n")
+                log_fh.write(f"Workspace: {worktree_path}\n")
+                log_fh.write(f"Branch: {branch_name}\n")
+                log_fh.write(f"Baseline: {baseline_ref}\n")
+                log_fh.write(
+                    "Execution: manual-completion authority read-only "
+                    "declared-validation-plan\n"
+                )
+            self._mark_active_phase(
+                state,
+                phase="validating",
+                phase_detail="manual completion authority revalidation",
+                worktree_path=worktree_path,
+                branch_name=branch_name,
+            )
+            (
+                validation_result,
+                task_execution_receipt_path,
+                task_execution_receipt,
+            ) = self._execute_deterministic_validation_plan(
+                workspace_path=worktree_path,
+                task=task,
+                attempt=attempt,
+                log_path=log_path,
+                state=state,
+                baseline_ref=baseline_ref,
+                read_only_revalidation=True,
+            )
+            # _run_validation_commands initially binds authority before the
+            # clean-candidate helper attaches its final candidate binding.
+            # Remove that provisional producer token immediately; only the
+            # post-cleanup final binding below may regain trust.
+            self._trusted_manual_completion_revalidation_evidence_ids.discard(
+                self._manual_completion_revalidation_evidence_id(
+                    validation_result
+                )
+            )
+            protected_path_violation = (
+                self._finalize_implementation_protected_path_fence(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=worktree_path,
+                    before=protected_path_snapshot,
+                    reason=(
+                        "manual_completion_authority_revalidation_unchanged"
+                    ),
+                )
+            )
+            protected_path_finalized = True
+            if protected_path_violation:
+                validation_result.update(
+                    {
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": "implementation_protected_path_mutated",
+                        "protected_path_violation": protected_path_violation,
+                    }
+                )
+            workspace_after = (
+                self._manual_completion_authority_checkout_snapshot(
+                    worktree_path
+                )
+            )
+            target_after_validation = self._run_git(
+                ["rev-parse", "--verify", f"{target_branch}^{{commit}}"],
+                cwd=self.repo_root,
+            ).stdout.strip()
+            guard_reasons: list[str] = []
+            if workspace_after.get("available") is not True:
+                guard_reasons.append("workspace_identity_unavailable")
+            if workspace_after.get("head") != baseline_ref:
+                guard_reasons.append("workspace_head_changed")
+            if workspace_after.get("branch") != branch_name:
+                guard_reasons.append("workspace_branch_changed")
+            if str(workspace_after.get("status") or ""):
+                guard_reasons.append("workspace_diff_changed")
+            if target_after_validation != target_before:
+                guard_reasons.append("target_baseline_changed")
+            if guard_reasons:
+                validation_result.update(
+                    {
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": (
+                            "manual_completion_authority_"
+                            "revalidation_mutated_candidate"
+                        ),
+                        "repository_guard": {
+                            "passed": False,
+                            "reasons": guard_reasons,
+                            "workspace": workspace_after,
+                            "expected_baseline": baseline_ref,
+                            "expected_branch": branch_name,
+                            "expected_target": target_before,
+                            "actual_target": target_after_validation,
+                        },
+                    }
+                )
+        except DuplicateAttemptError as exc:
+            validation_result.update(
+                {
+                    "reason": (
+                        "manual_completion_authority_revalidation_"
+                        "lifecycle_claim_exists"
+                    ),
+                    "error": str(exc)[-1000:],
+                }
+            )
+        except Exception as exc:
+            failure_detail = {
+                "exception_type": type(exc).__name__,
+                "message": str(exc)[-4000:],
+            }
+            if validation_result.get("reason") == (
+                "manual_completion_authority_revalidation_not_run"
+            ):
+                validation_result["reason"] = (
+                    "manual_completion_authority_revalidation_setup_failed"
+                )
+            validation_result.update(
+                {
+                    "passed": False,
+                    "returncode": 1,
+                    "exception_type": type(exc).__name__,
+                }
+            )
+        finally:
+            if (
+                protected_path_snapshot is not None
+                and not protected_path_finalized
+            ):
+                try:
+                    protected_path_violation = (
+                        self._finalize_implementation_protected_path_fence(
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=worktree_path,
+                            before=protected_path_snapshot,
+                            reason=(
+                                "manual_completion_authority_revalidation_"
+                                "exception_unchanged"
+                            ),
+                        )
+                    )
+                    protected_path_finalized = True
+                except Exception as exc:
+                    protected_path_violation = {
+                        "reason": "protected_path_verification_failed",
+                        "exception_type": type(exc).__name__,
+                    }
+                if protected_path_violation:
+                    validation_result.update(
+                        {
+                            "passed": False,
+                            "returncode": 1,
+                            "reason": "implementation_protected_path_mutated",
+                            "protected_path_violation": (
+                                protected_path_violation
+                            ),
+                        }
+                    )
+            if worktree_created or worktree_path.exists():
+                try:
+                    cleanup_result = self._cleanup_merged_worktree(
+                        worktree_path,
+                        branch_name,
+                        reusable=False,
+                    )
+                except Exception as exc:
+                    cleanup_result = {
+                        "cleaned": False,
+                        "reason": "authority_revalidation_cleanup_failed",
+                        "exception_type": type(exc).__name__,
+                        "error": str(exc)[-2000:],
+                    }
+            elif lifecycle_record is not None:
+                cleanup_result = self._finalize_exact_worktree_lifecycle(
+                    lifecycle_record,
+                    reason="authority_revalidation_setup_failed",
+                )
+                cleanup_result["cleaned"] = bool(
+                    cleanup_result.get("finalized")
+                )
+            if cleanup_result.get("cleaned") is True:
+                self._active_worktree_lifecycle = None
+
+        source_after = self._manual_completion_authority_checkout_snapshot(
+            self.repo_root
+        )
+        try:
+            target_after_cleanup = self._run_git(
+                ["rev-parse", "--verify", f"{target_branch}^{{commit}}"],
+                cwd=self.repo_root,
+            ).stdout.strip()
+        except (OSError, RuntimeError):
+            target_after_cleanup = ""
+        source_unchanged = bool(
+            source_before.get("available") is True
+            and source_after.get("available") is True
+            and source_after.get("head") == source_before.get("head")
+            and source_after.get("branch") == source_before.get("branch")
+            and source_after.get("status") == source_before.get("status")
+            and target_after_cleanup == target_before
+        )
+        if not source_unchanged:
+            validation_result.update(
+                {
+                    "passed": False,
+                    "returncode": 1,
+                    "reason": (
+                        "manual_completion_authority_"
+                        "revalidation_source_checkout_changed"
+                    ),
+                    "source_checkout_guard": {
+                        "passed": False,
+                        "before": source_before,
+                        "after": source_after,
+                        "expected_target": target_before,
+                        "actual_target": target_after_cleanup,
+                    },
+                }
+            )
+        if cleanup_result.get("cleaned") is not True:
+            validation_result.update(
+                {
+                    "passed": False,
+                    "returncode": 1,
+                    "reason": (
+                        "manual_completion_authority_"
+                        "revalidation_cleanup_failed"
+                    ),
+                }
+            )
+
+        declared_output_invariant = (
+            self._declared_output_tracking_invariant(
+                [task],
+                repository_ref=baseline_ref,
+            )
+            if baseline_ref
+            else {
+                "passed": False,
+                "reason": "authority_revalidation_baseline_missing",
+            }
+        )
+        validation_result["declared_output_invariant"] = (
+            declared_output_invariant
+        )
+        if declared_output_invariant.get("passed") is not True:
+            validation_result.update(
+                {
+                    "passed": False,
+                    "returncode": 1,
+                    "reason": "declared_outputs_missing_or_untracked",
+                }
+            )
+
+        if validation_result.get("passed") is True:
+            validation_result = (
+                self._bind_manual_completion_authority_validated_tree(
+                    validation_result,
+                    baseline_ref=baseline_ref,
+                )
+            )
+            completion_tree_id = baseline_ref
+            todo_update_result = (
+                self._publish_manual_completion_authority_revalidation_receipt_only(
+                    task,
+                    expected_task_cid=self._canonical_ref(task),
+                    expected_target_commit=baseline_ref,
+                    authority_context_id=str(
+                        validation_result.get(
+                            "manual_completion_authority_context_id"
+                        )
+                        or ""
+                    ),
+                    authority_evidence=validation_result,
+                )
+            )
+            persisted_receipt = todo_update_result.get(
+                "manual_completion_authority_revalidation_receipt"
+            )
+            completion_durable = bool(
+                self._todo_completion_is_durable(todo_update_result)
+                and isinstance(persisted_receipt, Mapping)
+                and persisted_receipt.get("persisted") is True
+            )
+            if not completion_durable:
+                self._trusted_manual_completion_revalidation_evidence_ids.discard(
+                    self._manual_completion_revalidation_evidence_id(
+                        validation_result
+                    )
+                )
+                validation_result.update(
+                    {
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": (
+                            str(todo_update_result.get("reason") or "")
+                            or "manual_completion_authority_"
+                            "revalidation_receipt_not_durable"
+                        ),
+                    }
+                )
+        else:
+            completion_tree_id = ""
+
+        returncode = 0 if validation_result.get("passed") is True else 1
+        finished_at = utc_now()
+        state.last_implementation_started_at = started_at
+        state.last_implementation_finished_at = finished_at
+        state.last_implementation_returncode = returncode
+        state.last_implementation_log_path = str(log_path)
+        state.last_implementation_worktree_path = str(worktree_path)
+        state.last_implementation_branch = branch_name
+        if implementation_started or state.active_task_id == task.task_id:
+            self._mark_implementation_finished(state, finished_at=finished_at)
+        state.save(self.state_path)
+        renewal_retry_state = (
+            self._record_manual_completion_authority_renewal_outcome(
+                task,
+                returncode,
+                renewal_key=renewal_key,
+                reason=str(validation_result.get("reason") or ""),
+            )
+        )
+        result: dict[str, Any] = {
+            "task_id": task.task_id,
+            "task_cid": self._canonical_ref(task),
+            "canonical_task_cid": self._canonical_ref(task),
+            "attempt": attempt,
+            "returncode": returncode,
+            "reason": str(validation_result.get("reason") or ""),
+            "log_path": str(log_path),
+            "worktree_path": str(worktree_path),
+            "branch": branch_name,
+            "baseline_ref": baseline_ref,
+            "completion_tree_id": completion_tree_id,
+            "validation_result": validation_result,
+            "cleanup_result": cleanup_result,
+            "todo_update_result": todo_update_result,
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "authority_revalidation_only": True,
+            "forced_isolation": True,
+            "worktree_pool_allowed": False,
+            "seeded_context": False,
+            "prior_attempt_seeded": False,
+            "prepared_outputs_seeded": False,
+            "prompt_compiled": False,
+            "implementation_context_compiled": False,
+            "provider_metadata_consulted": False,
+            "source_checkout_unchanged": source_unchanged,
+            "authority_renewal_key": renewal_key,
+            "authority_renewal_retry_state": renewal_retry_state,
+        }
+        if task_execution_receipt_path is not None:
+            result["task_execution_receipt_path"] = str(
+                task_execution_receipt_path
+            )
+            result["task_execution_receipt_id"] = str(
+                task_execution_receipt.get("receipt_id") or ""
+            )
+        if protected_path_violation:
+            result["protected_path_violation"] = protected_path_violation
+        if failure_detail:
+            result["exception_result"] = failure_detail
+        self._record_event(
+            "manual_completion_authority_revalidation_finished",
+            result,
+        )
+        self._record_event("implementation_finished", result)
+        return result
 
     def _todo_board_is_implementation_protected(self) -> bool:
         """Return whether the markdown board is an exact protected path."""
@@ -11878,12 +15182,22 @@ class PortalImplementationDaemon:
         *,
         expected_task_cids: Mapping[str, str] | None = None,
         completion_intent: Mapping[str, Any] | None = None,
+        manual_completion_authority_context_id: str = "",
+        manual_completion_authority_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         completion_kwargs: dict[str, Any] = {}
         if expected_task_cids is not None:
             completion_kwargs["expected_task_cids"] = expected_task_cids
         if completion_intent is not None:
             completion_kwargs["completion_intent"] = completion_intent
+        if manual_completion_authority_context_id:
+            completion_kwargs[
+                "manual_completion_authority_context_id"
+            ] = manual_completion_authority_context_id
+        if manual_completion_authority_evidence is not None:
+            completion_kwargs[
+                "manual_completion_authority_evidence"
+            ] = manual_completion_authority_evidence
         return self._mark_tasks_completed_in_todo(
             [task_id],
             primary_task_id=task_id,
@@ -11944,6 +15258,8 @@ class PortalImplementationDaemon:
     def _completion_callback_expectation(
         self,
         task_ids: Sequence[str],
+        *,
+        manual_completion_authority_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Snapshot the exact members and canonical source before first CAS."""
 
@@ -11957,6 +15273,19 @@ class PortalImplementationDaemon:
             "task_ids": expected_task_ids,
             "expected_status": "completed",
         }
+        if self.manual_completion_authority_task_ids:
+            expectation[
+                "manual_completion_authority_context_id"
+            ] = self._manual_completion_authority_policy_id()
+            if manual_completion_authority_evidence is not None:
+                expectation[
+                    "manual_completion_authority_evidence"
+                ] = _bounded_merge_proof_value(
+                    manual_completion_authority_evidence,
+                    field_name=(
+                        "manual_completion_authority_evidence"
+                    ),
+                )
         if self.task_source is None:
             tasks_by_id = {
                 task.task_id: task for task in self._load_tasks()
@@ -12074,6 +15403,11 @@ class PortalImplementationDaemon:
         """Return whether board completion crossed its protected commit gate."""
 
         if result.get("durable") is False:
+            return False
+        if (
+            result.get("updated") is not True
+            and result.get("reason") != "already_completed"
+        ):
             return False
         postcondition = result.get("protected_board_postcondition")
         if isinstance(postcondition, Mapping):
@@ -12326,6 +15660,37 @@ class PortalImplementationDaemon:
                     "reason": "completion_callback_journal_incomplete",
                     "record_path": str(record_path),
                 }
+            authority_rejection = (
+                self._manual_completion_authority_rejection(
+                    expectation.get("task_ids", ()),
+                    authority_context_id=str(
+                        expectation.get(
+                            "manual_completion_authority_context_id"
+                        )
+                        or ""
+                    ),
+                    authority_evidence=(
+                        expectation.get(
+                            "manual_completion_authority_evidence"
+                        )
+                        if isinstance(
+                            expectation.get(
+                                "manual_completion_authority_evidence"
+                            ),
+                            Mapping,
+                        )
+                        else None
+                    ),
+                )
+            )
+            if authority_rejection is not None:
+                return {
+                    "required": True,
+                    "blocked": True,
+                    "recovered": recovered,
+                    "record_path": str(record_path),
+                    **authority_rejection,
+                }
             try:
                 sink = self._validated_completion_publication_sink(
                     completion_intent
@@ -12381,12 +15746,20 @@ class PortalImplementationDaemon:
         task: PortalTask,
         *,
         completion_intent: Mapping[str, Any] | None = None,
+        manual_completion_authority_context_id: str = "",
+        manual_completion_authority_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         work_order = self._bundle_work_order_for_task(task)
         if work_order is None:
             return self._mark_task_completed_in_todo(
                 task.task_id,
                 completion_intent=completion_intent,
+                manual_completion_authority_context_id=(
+                    manual_completion_authority_context_id
+                ),
+                manual_completion_authority_evidence=(
+                    manual_completion_authority_evidence
+                ),
             )
         return self._mark_tasks_completed_in_todo(
             work_order.task_ids,
@@ -12394,6 +15767,12 @@ class PortalImplementationDaemon:
             completion_reason="bundle_work_order",
             bundle_work_order=work_order.to_dict(),
             completion_intent=completion_intent,
+            manual_completion_authority_context_id=(
+                manual_completion_authority_context_id
+            ),
+            manual_completion_authority_evidence=(
+                manual_completion_authority_evidence
+            ),
         )
 
     def _mark_reconciled_completion_in_todo(
@@ -12401,6 +15780,8 @@ class PortalImplementationDaemon:
         task: PortalTask,
         completion_tasks: Sequence[PortalTask],
         completion_task_cids: Mapping[str, str],
+        *,
+        validation_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Persist reconciliation completion under exact task-revision CIDs."""
 
@@ -12419,6 +15800,13 @@ class PortalImplementationDaemon:
                 else None
             ),
             expected_task_cids=completion_task_cids,
+            manual_completion_authority_context_id=str(
+                (validation_evidence or {}).get(
+                    "manual_completion_authority_context_id"
+                )
+                or ""
+            ),
+            manual_completion_authority_evidence=validation_evidence,
         )
 
     def _fsynced_runtime_taskboard_completion_snapshot(
@@ -12946,35 +16334,43 @@ class PortalImplementationDaemon:
         completion_reason: str,
         bundle_work_order: dict[str, Any] | None = None,
         expected_task_cids: Mapping[str, str] | None = None,
+        expected_task_statuses: Mapping[str, str] | None = None,
+        expected_target_commit: str = "",
         completion_intent: Mapping[str, Any] | None = None,
+        manual_completion_authority_context_id: str = "",
+        manual_completion_authority_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         expected_task_ids = [
             str(task_id).strip()
             for task_id in dict.fromkeys(task_ids)
             if str(task_id).strip()
         ]
-        authority_required_task_ids = sorted(
-            set(expected_task_ids)
-            & set(self.manual_completion_authority_required_task_ids)
+        authority_rejection = self._manual_completion_authority_rejection(
+            expected_task_ids,
+            authority_context_id=manual_completion_authority_context_id,
+            authority_evidence=manual_completion_authority_evidence,
         )
-        if authority_required_task_ids:
+        if authority_rejection is not None:
             result = {
                 "updated": False,
                 "durable": False,
                 "task_id": primary_task_id,
-                "reason": "manual_completion_authority_required",
                 "completion_reason": completion_reason,
                 "expected_task_ids": expected_task_ids,
-                "manual_completion_authority_required_task_ids": (
-                    authority_required_task_ids
-                ),
+                **authority_rejection,
             }
             self._record_event("todo_status_update_failed", result)
             return result
+        authority_generation_before_mutation = int(
+            self._manual_completion_authority_revocation_generation
+        )
         callback_expectation: dict[str, Any] | None
         try:
             callback_expectation = self._completion_callback_expectation(
-                expected_task_ids
+                expected_task_ids,
+                manual_completion_authority_evidence=(
+                    manual_completion_authority_evidence
+                ),
             )
         except FileNotFoundError:
             # Legacy merge reconciliation may need to finish after its
@@ -12992,12 +16388,60 @@ class PortalImplementationDaemon:
             callback_expectation = None
 
         def mutation() -> dict[str, Any]:
+            if self.manual_completion_authority_task_ids:
+                mutation_authority_rejection = (
+                    self._manual_completion_authority_rejection(
+                        expected_task_ids,
+                        authority_context_id=(
+                            manual_completion_authority_context_id
+                        ),
+                        authority_evidence=(
+                            manual_completion_authority_evidence
+                        ),
+                    )
+                )
+                actual_generation = int(
+                    self._manual_completion_authority_revocation_generation
+                )
+                if (
+                    mutation_authority_rejection is not None
+                    or actual_generation
+                    != authority_generation_before_mutation
+                ):
+                    denied = {
+                        "updated": False,
+                        "durable": False,
+                        "task_id": primary_task_id,
+                        "completion_reason": completion_reason,
+                        "expected_task_ids": expected_task_ids,
+                        "reason": (
+                            str(
+                                mutation_authority_rejection.get("reason")
+                                or ""
+                            )
+                            if mutation_authority_rejection is not None
+                            else (
+                                "manual_completion_authority_generation_changed"
+                            )
+                        ),
+                        "expected_manual_completion_authority_generation": (
+                            authority_generation_before_mutation
+                        ),
+                        "actual_manual_completion_authority_generation": (
+                            actual_generation
+                        ),
+                        **(mutation_authority_rejection or {}),
+                    }
+                    self._record_event("todo_status_update_failed", denied)
+                    return denied
             result = self._mark_tasks_completed_in_todo_unchecked(
                 expected_task_ids,
                 primary_task_id=primary_task_id,
                 completion_reason=completion_reason,
                 bundle_work_order=bundle_work_order,
                 expected_task_cids=expected_task_cids,
+                expected_task_statuses=expected_task_statuses,
+                expected_target_commit=expected_target_commit,
             )
             evidence = (
                 self._completion_callback_evidence(
@@ -13065,7 +16509,7 @@ class PortalImplementationDaemon:
                     completion_intent=completion_intent,
                     callback=unchecked_mutation,
                 )
-        return self._decision_runtime_mutation(
+        result = self._decision_runtime_mutation(
             "task_board_mutation",
             {
                 "operation": "mark_tasks_completed",
@@ -13074,9 +16518,43 @@ class PortalImplementationDaemon:
                 "primary_task_id": primary_task_id,
                 "completion_reason": completion_reason,
                 "expected_task_cids": dict(expected_task_cids or {}),
+                "expected_task_statuses": dict(
+                    expected_task_statuses or {}
+                ),
+                "expected_target_commit": expected_target_commit,
             },
             mutation,
         )
+        revalidation_members = sorted(
+            set(expected_task_ids)
+            & set(self._manual_completion_authority_revalidation_task_ids)
+        )
+        if (
+            revalidation_members
+            and isinstance(manual_completion_authority_evidence, Mapping)
+            and self._todo_completion_is_durable(result)
+        ):
+            receipt_result = (
+                self._persist_manual_completion_revalidation_receipts(
+                    revalidation_members,
+                    authority_context_id=str(
+                        manual_completion_authority_evidence.get(
+                            "manual_completion_authority_context_id"
+                        )
+                        or ""
+                    ),
+                    authority_evidence=(
+                        manual_completion_authority_evidence
+                    ),
+                    expected_target_commit=expected_target_commit,
+                )
+            )
+            result[
+                "manual_completion_authority_revalidation_receipt"
+            ] = receipt_result
+            if receipt_result.get("persisted") is not True:
+                result["durable"] = False
+        return result
 
     def _mark_tasks_completed_in_todo_unchecked(
         self,
@@ -13086,6 +16564,8 @@ class PortalImplementationDaemon:
         completion_reason: str,
         bundle_work_order: dict[str, Any] | None = None,
         expected_task_cids: Mapping[str, str] | None = None,
+        expected_task_statuses: Mapping[str, str] | None = None,
+        expected_target_commit: str = "",
     ) -> dict[str, Any]:
         target_task_ids = [
             str(task_id).strip()
@@ -13097,12 +16577,18 @@ class PortalImplementationDaemon:
             for task_id, task_cid in (expected_task_cids or {}).items()
             if str(task_id).strip() and str(task_cid).strip()
         }
+        normalized_expected_task_statuses = {
+            str(task_id).strip(): normalize_status(str(status))
+            for task_id, status in (expected_task_statuses or {}).items()
+            if str(task_id).strip() and str(status).strip()
+        }
         if expected_task_cids is not None and (
             len(normalized_expected_task_cids) != len(expected_task_cids)
             or set(normalized_expected_task_cids) != set(target_task_ids)
         ):
             result = {
                 "updated": False,
+                "durable": False,
                 "task_id": primary_task_id,
                 "reason": "completion_task_cid_binding_malformed",
                 "completion_reason": completion_reason,
@@ -13111,6 +16597,53 @@ class PortalImplementationDaemon:
             }
             self._record_event("todo_status_update_failed", result)
             return result
+        if expected_task_statuses is not None and (
+            len(normalized_expected_task_statuses)
+            != len(expected_task_statuses)
+            or set(normalized_expected_task_statuses)
+            != set(target_task_ids)
+        ):
+            result = {
+                "updated": False,
+                "durable": False,
+                "task_id": primary_task_id,
+                "reason": "completion_task_status_binding_malformed",
+                "completion_reason": completion_reason,
+                "expected_task_ids": sorted(target_task_ids),
+                "bound_task_ids": sorted(
+                    normalized_expected_task_statuses
+                ),
+            }
+            self._record_event("todo_status_update_failed", result)
+            return result
+
+        def target_commit_rejection() -> dict[str, Any] | None:
+            expected = str(expected_target_commit or "").strip()
+            if not expected:
+                return None
+            try:
+                actual = self._run_git(
+                    [
+                        "rev-parse",
+                        "--verify",
+                        f"{self._main_branch_name()}^{{commit}}",
+                    ],
+                    cwd=self.repo_root,
+                ).stdout.strip()
+            except (OSError, RuntimeError):
+                actual = ""
+            if actual == expected:
+                return None
+            return {
+                "updated": False,
+                "durable": False,
+                "task_id": primary_task_id,
+                "reason": "manual_completion_authority_target_changed",
+                "completion_reason": completion_reason,
+                "expected_target_commit": expected,
+                "actual_target_commit": actual,
+            }
+
         if self.task_source is not None:
             updated_task_ids: list[str] = []
             already_completed_task_ids: list[str] = []
@@ -13137,9 +16670,62 @@ class PortalImplementationDaemon:
                         "completion task revision changed: "
                         + json.dumps(revision_mismatches, sort_keys=True)
                     )
+                status_mismatches = {
+                    task_id: {
+                        "expected_status": expected_status,
+                        "current_status": normalize_status(
+                            current_by_id[task_id].status
+                        ),
+                    }
+                    for task_id, expected_status in (
+                        normalized_expected_task_statuses.items()
+                    )
+                    if normalize_status(current_by_id[task_id].status)
+                    != expected_status
+                }
+                if status_mismatches:
+                    raise TaskSourceConflictError(
+                        "completion task status changed: "
+                        + json.dumps(status_mismatches, sort_keys=True)
+                    )
+                target_rejection = target_commit_rejection()
+                if target_rejection is not None:
+                    self._record_event(
+                        "todo_status_update_failed",
+                        target_rejection,
+                    )
+                    return target_rejection
                 for task_id in target_task_ids:
                     current = current_by_id[task_id]
                     if normalize_status(current.status) == "completed":
+                        if task_id in normalized_expected_task_statuses:
+                            # A no-op CAS obtains the task source's mutation
+                            # lock and proves the operator has not reopened the
+                            # task at the publication boundary.
+                            unchanged = self.task_source.compare_and_swap_status(
+                                task_id,
+                                expected_status=current.status,
+                                new_status=current.status,
+                                expected_revision=current.revision,
+                                receipt={
+                                    "operation": (
+                                        "prove_task_status_for_completion"
+                                    ),
+                                    "primary_task_id": primary_task_id,
+                                    "completion_reason": completion_reason,
+                                },
+                            )
+                            if (
+                                normalize_status(unchanged.task.status)
+                                != "completed"
+                                or not str(unchanged.receipt_id or "")
+                                or unchanged.identity
+                                != self.task_source.identity
+                            ):
+                                raise TaskSourceIntegrityError(
+                                    "task-source status proof returned "
+                                    "untrusted evidence"
+                                )
                         already_completed_task_ids.append(task_id)
                         completion_receipts.append(
                             {
@@ -13211,6 +16797,7 @@ class PortalImplementationDaemon:
             except (TaskSourceError, KeyError, ValueError) as exc:
                 result = {
                     "updated": False,
+                    "durable": False,
                     "task_id": primary_task_id,
                     "reason": "task_source_update_failed",
                     "error": str(exc),
@@ -13300,6 +16887,13 @@ class PortalImplementationDaemon:
         try:
             with locked_taskboard(self.todo_path) as taskboard:
                 taskboard_text = taskboard.read()
+                target_rejection = target_commit_rejection()
+                if target_rejection is not None:
+                    self._record_event(
+                        "todo_status_update_failed",
+                        target_rejection,
+                    )
+                    return target_rejection
                 locked_tasks = parse_task_text(
                     taskboard_text,
                     path=self.todo_path,
@@ -13341,19 +16935,44 @@ class PortalImplementationDaemon:
                         != expected_cid
                     )
                 }
+                status_mismatches = {
+                    task_id: {
+                        "expected_status": expected_status,
+                        "current_status": normalize_status(
+                            locked_by_id[task_id][0].status
+                        ),
+                    }
+                    for task_id, expected_status in (
+                        normalized_expected_task_statuses.items()
+                    )
+                    if (
+                        len(locked_by_id.get(task_id, ())) != 1
+                        or normalize_status(
+                            locked_by_id[task_id][0].status
+                        )
+                        != expected_status
+                    )
+                }
                 if (
                     missing_locked_ids
                     or ambiguous_locked_ids
                     or revision_mismatches
+                    or status_mismatches
                 ):
                     result = {
                         "updated": False,
+                        "durable": False,
                         "task_id": primary_task_id,
-                        "reason": "completion_task_revision_changed",
+                        "reason": (
+                            "completion_task_status_changed"
+                            if status_mismatches
+                            else "completion_task_revision_changed"
+                        ),
                         "completion_reason": completion_reason,
                         "missing_task_ids": missing_locked_ids,
                         "ambiguous_task_ids": ambiguous_locked_ids,
                         "mismatches": revision_mismatches,
+                        "status_mismatches": status_mismatches,
                     }
                     self._record_event("todo_status_update_failed", result)
                     return result
@@ -14079,6 +17698,56 @@ class PortalImplementationDaemon:
         completion_task_ids = (
             work_order.task_ids if work_order is not None else [task.task_id]
         )
+        authority_context_id = self._manual_completion_authority_policy_id()
+        if self.manual_completion_authority_task_ids:
+            authority_guard = self._refresh_manual_completion_authority_guard()
+            if authority_guard.get("available") is not True:
+                raise RuntimeError(
+                    "merge candidate authority guard unavailable"
+                )
+            # The effective required-root set can change when a live board
+            # revokes a previously completed seal.  Bind queued metadata only
+            # after that set has been refreshed from the canonical board.
+            authority_context_id = (
+                self._manual_completion_authority_policy_id()
+            )
+            revalidation_members = sorted(
+                set(completion_task_ids)
+                & set(
+                    self._manual_completion_authority_revalidation_task_ids
+                )
+            )
+            validation_context_id = (
+                str(
+                    (validation_result or {}).get(
+                        "manual_completion_authority_context_id"
+                    )
+                    or ""
+                )
+            )
+            validation_authority_rejection = (
+                self._manual_completion_authority_rejection(
+                    completion_task_ids,
+                    authority_context_id=validation_context_id,
+                    authority_evidence=validation_result,
+                )
+            )
+            if validation_authority_rejection:
+                raise RuntimeError(
+                    "merge candidate lacks current manual completion "
+                    "authority: "
+                    f"{validation_authority_rejection.get('reason') or 'rejected'}"
+                )
+            authority_context_id = (
+                self._manual_completion_authority_policy_id()
+            )
+            if revalidation_members and len(
+                (validation_result or {}).get("results", ())
+            ) > MAX_MERGE_PROOF_METADATA_ITEMS:
+                raise RuntimeError(
+                    "merge candidate manual completion authority evidence "
+                    "exceeds the durable proof record bound"
+                )
         completion_task_cids, completion_binding_error = (
             self._current_completion_task_cids(
                 completion_task_ids,
@@ -14141,6 +17810,21 @@ class PortalImplementationDaemon:
             "implementation_protected_paths": list(
                 self.implementation_protected_paths
             ),
+            "manual_completion_authority_context_id": (
+                authority_context_id
+            ),
+            "manual_completion_authority_task_ids": sorted(
+                self.manual_completion_authority_task_ids
+            ),
+            "manual_completion_authority_required_task_ids": sorted(
+                self._manual_completion_authority_effective_required_task_ids
+            ),
+            "manual_completion_authority_epoch_id": (
+                self.manual_completion_authority_epoch_id
+            ),
+            "manual_completion_authority_revocation_generation": int(
+                self._manual_completion_authority_revocation_generation
+            ),
         }
         if changed_submodule_paths is not None:
             metadata["changed_submodule_paths"] = sorted(
@@ -14158,13 +17842,16 @@ class PortalImplementationDaemon:
                         "verdict",
                         "reason",
                         "timed_out",
+                        "infrastructure_failure",
                         "cache_hit",
                         "cache_key",
                         "cache_evidence_id",
+                        "validation_result_digest",
                         "stage",
                         "ordinal",
                         "started_at",
                         "finished_at",
+                        "authority_validation_isolation_receipt",
                     )
                     if key in item
                 }
@@ -14214,7 +17901,98 @@ class PortalImplementationDaemon:
                 ),
                 "cache_hits": int(validation_result.get("cache_hits") or 0),
                 "cache_misses": int(validation_result.get("cache_misses") or 0),
+                "manual_completion_authority_context_id": str(
+                    validation_result.get(
+                        "manual_completion_authority_context_id"
+                    )
+                    or ""
+                ),
+                "manual_completion_authority_revalidation": bool(
+                    validation_result.get(
+                        "manual_completion_authority_revalidation"
+                    )
+                ),
+                "manual_completion_authority_force_uncached": bool(
+                    validation_result.get(
+                        "manual_completion_authority_force_uncached"
+                    )
+                ),
+                "manual_completion_authority_task_id": str(
+                    validation_result.get(
+                        "manual_completion_authority_task_id"
+                    )
+                    or ""
+                ),
+                "manual_completion_authority_task_cid": str(
+                    validation_result.get(
+                        "manual_completion_authority_task_cid"
+                    )
+                    or ""
+                ),
+                "manual_completion_authority_validation_plan_id": str(
+                    validation_result.get(
+                        "manual_completion_authority_validation_plan_id"
+                    )
+                    or ""
+                ),
+                "manual_completion_authority_declared_validation_commands": (
+                    _bounded_merge_proof_value(
+                        validation_result.get(
+                            "manual_completion_authority_declared_validation_commands"
+                        )
+                        or [],
+                        field_name=(
+                            "manual_completion_authority_declared_validation_commands"
+                        ),
+                    )
+                ),
+                "manual_completion_authority_revocation_generation": int(
+                    validation_result.get(
+                        "manual_completion_authority_revocation_generation"
+                    )
+                    or 0
+                ),
+                "manual_completion_authority_validated_tree_identity": (
+                    _bounded_merge_proof_value(
+                        validation_result.get(
+                            "manual_completion_authority_validated_tree_identity"
+                        )
+                        or {},
+                        field_name=(
+                            "manual_completion_authority_validated_tree_identity"
+                        ),
+                    )
+                ),
+                "manual_completion_authority_validated_tree_id": str(
+                    validation_result.get(
+                        "manual_completion_authority_validated_tree_id"
+                    )
+                    or ""
+                ),
+                "manual_completion_authority_validation_result_count": int(
+                    validation_result.get(
+                        "manual_completion_authority_validation_result_count"
+                    )
+                    or 0
+                ),
             }
+            if validation_proof.get(
+                "manual_completion_authority_revalidation"
+            ):
+                candidate_authority_tree_identity = {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "manual-completion-validated-tree@1"
+                    ),
+                    "target_commit": implementation_commit,
+                    "repository_tree_id": repository_tree_id,
+                }
+                validation_proof[
+                    "manual_completion_authority_validated_tree_identity"
+                ] = candidate_authority_tree_identity
+                validation_proof[
+                    "manual_completion_authority_validated_tree_id"
+                ] = content_identity(candidate_authority_tree_identity)
             raw_proof_gate = validation_result.get(
                 "proof_gate",
                 validation_result.get("proof_gate_packet"),
@@ -14239,6 +18017,19 @@ class PortalImplementationDaemon:
                         )
                     )
             metadata["validation_proof"] = validation_proof
+            if validation_proof.get(
+                "manual_completion_authority_revalidation"
+            ):
+                # Projection to the immutable candidate tree creates a new
+                # authority-bearing evidence identity.  Trust it only because
+                # the original runtime evidence passed the in-process gate
+                # above; a queue file reconstructed after restart cannot mint
+                # this producer token for itself.
+                self._trusted_manual_completion_revalidation_evidence_ids.add(
+                    self._manual_completion_revalidation_evidence_id(
+                        validation_proof
+                    )
+                )
         if self.formal_verification_policy is not None:
             metadata["formal_verification_policy"] = _bounded_merge_proof_value(
                 self.formal_verification_policy,
@@ -14487,9 +18278,10 @@ class PortalImplementationDaemon:
             worktree_root=self.worktree_root,
             merge_target_branch=self.resolved_merge_target_branch,
             worktree_submodule_paths=self.worktree_submodule_paths,
-            manual_completion_authority_required_task_ids=(
-                self.manual_completion_authority_required_task_ids
-            ),
+            # Authority scope is board-local. A request for another canonical
+            # task source must carry and enforce that source's own policy.
+            manual_completion_authority_task_ids=(),
+            manual_completion_authority_required_task_ids=(),
             merge_queue=self.merge_queue,
             merge_queue_dir=self.merge_queue_dir,
             decision_runtime=self.decision_runtime,
@@ -15633,6 +19425,140 @@ class PortalImplementationDaemon:
                 "actual_target_branch": actual_branch,
                 "actual_target_binding_schema": actual_schema,
             }
+        request_todo_path = Path(
+            str(metadata.get("todo_path") or self.todo_path)
+        )
+        cross_board_request = request_todo_path != self.todo_path
+        authority_metadata_fields = {
+            "manual_completion_authority_context_id",
+            "manual_completion_authority_task_ids",
+            "manual_completion_authority_required_task_ids",
+            "manual_completion_authority_epoch_id",
+            "manual_completion_authority_revocation_generation",
+        }
+        missing_authority_metadata_fields = sorted(
+            authority_metadata_fields - set(metadata)
+        )
+        if cross_board_request and missing_authority_metadata_fields:
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": (
+                    "cross_board_manual_completion_authority_metadata_missing"
+                ),
+                "request_todo_path": str(request_todo_path),
+                "consumer_todo_path": str(self.todo_path),
+                "missing_metadata_fields": missing_authority_metadata_fields,
+            }
+        raw_authority_task_ids = metadata.get(
+            "manual_completion_authority_task_ids"
+        )
+        raw_authority_required_task_ids = metadata.get(
+            "manual_completion_authority_required_task_ids"
+        )
+        queued_authority_task_ids = (
+            [str(task_id).strip() for task_id in raw_authority_task_ids]
+            if isinstance(raw_authority_task_ids, Sequence)
+            and not isinstance(
+                raw_authority_task_ids, (str, bytes, bytearray)
+            )
+            and all(
+                isinstance(task_id, str) and task_id.strip()
+                for task_id in raw_authority_task_ids
+            )
+            else []
+        )
+        queued_authority_required_task_ids = (
+            [
+                str(task_id).strip()
+                for task_id in raw_authority_required_task_ids
+            ]
+            if isinstance(raw_authority_required_task_ids, Sequence)
+            and not isinstance(
+                raw_authority_required_task_ids,
+                (str, bytes, bytearray),
+            )
+            and all(
+                isinstance(task_id, str) and task_id.strip()
+                for task_id in raw_authority_required_task_ids
+            )
+            else []
+        )
+        queued_authority_context_id = str(
+            metadata.get("manual_completion_authority_context_id") or ""
+        ).strip()
+        queued_authority_epoch_id = str(
+            metadata.get("manual_completion_authority_epoch_id") or ""
+        ).strip()
+        queued_authority_generation = metadata.get(
+            "manual_completion_authority_revocation_generation"
+        )
+        expected_cross_board_context_id = ""
+        if (
+            queued_authority_task_ids
+            and len(queued_authority_task_ids)
+            == len(set(queued_authority_task_ids))
+            and len(queued_authority_required_task_ids)
+            == len(set(queued_authority_required_task_ids))
+            and set(queued_authority_required_task_ids)
+            <= set(queued_authority_task_ids)
+            and queued_authority_epoch_id
+            and type(queued_authority_generation) is int
+            and queued_authority_generation >= 0
+        ):
+            expected_cross_board_context_id = content_identity(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "manual-completion-authority-context@3"
+                    ),
+                    "todo_path": str(
+                        request_todo_path.resolve(strict=False)
+                    ),
+                    "task_ids": sorted(queued_authority_task_ids),
+                    "required_task_ids": sorted(
+                        queued_authority_required_task_ids
+                    ),
+                    "scheduler_epoch_id": queued_authority_epoch_id,
+                    "revocation_generation": queued_authority_generation,
+                }
+            )
+        if cross_board_request and (
+            not expected_cross_board_context_id
+            or queued_authority_context_id
+            != expected_cross_board_context_id
+        ):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": (
+                    "cross_board_manual_completion_authority_metadata_invalid"
+                ),
+                "request_todo_path": str(request_todo_path),
+                "consumer_todo_path": str(self.todo_path),
+                "expected_manual_completion_authority_context_id": (
+                    expected_cross_board_context_id
+                ),
+                "actual_manual_completion_authority_context_id": (
+                    queued_authority_context_id
+                ),
+            }
+        if cross_board_request:
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": (
+                    "cross_board_manual_completion_authority_unavailable"
+                ),
+                "request_todo_path": str(request_todo_path),
+                "consumer_todo_path": str(self.todo_path),
+                "manual_completion_authority_task_ids": sorted(
+                    queued_authority_task_ids
+                ),
+            }
         completion_daemon = self._completion_daemon_for_merge_request(
             metadata
         )
@@ -15692,6 +19618,67 @@ class PortalImplementationDaemon:
         branch_name = str(request.branch_name or "")
         implementation_commit = str(
             request.commit_sha or metadata.get("implementation_commit") or ""
+        )
+        authority_candidate_tree = self._candidate_repository_tree(
+            implementation_commit
+        )
+        completion_authority_validated_tree_identity = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "manual-completion-validated-tree@1"
+            ),
+            "target_commit": implementation_commit,
+            "repository_tree_id": (
+                f"git-tree:{authority_candidate_tree}"
+                if authority_candidate_tree
+                else ""
+            ),
+        }
+        completion_authority_task_ids = set(completion_task_cids) or {
+            task.task_id
+        }
+        bundle_payload = metadata.get("bundle_work_order")
+        if isinstance(bundle_payload, Mapping):
+            completion_authority_task_ids.update(
+                str(task_id).strip()
+                for task_id in (
+                    bundle_payload.get("primary_task_id"),
+                    *(bundle_payload.get("covered_task_ids") or ()),
+                )
+                if str(task_id or "").strip()
+            )
+        authority_rejection = (
+            completion_daemon._manual_completion_authority_rejection(
+                completion_authority_task_ids,
+                authority_context_id=str(
+                    metadata.get(
+                        "manual_completion_authority_context_id"
+                    )
+                    or ""
+                ),
+                authority_evidence=(
+                    metadata.get("validation_proof")
+                    if isinstance(
+                        metadata.get("validation_proof"),
+                        Mapping,
+                    )
+                    else None
+                ),
+                expected_validated_tree_identity=(
+                    completion_authority_validated_tree_identity
+                ),
+            )
+        )
+        if authority_rejection is not None:
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "task_id": task.task_id,
+                **authority_rejection,
+            }
+        authority_generation_before_merge = int(
+            completion_daemon._manual_completion_authority_revocation_generation
         )
         try:
             queued_protected_paths = normalize_implementation_protected_paths(
@@ -16044,12 +20031,39 @@ class PortalImplementationDaemon:
                     },
                 )
                 return result
+            merge_authority_kwargs: dict[str, Any] = {}
+            if completion_daemon.manual_completion_authority_task_ids:
+                merge_authority_kwargs = {
+                    "manual_completion_authority_task_ids": sorted(
+                        completion_authority_task_ids
+                    ),
+                    "manual_completion_authority_context_id": str(
+                        metadata.get(
+                            "manual_completion_authority_context_id"
+                        )
+                        or ""
+                    ),
+                    "manual_completion_authority_evidence": (
+                        metadata.get("validation_proof")
+                        if isinstance(
+                            metadata.get("validation_proof"), Mapping
+                        )
+                        else None
+                    ),
+                    "manual_completion_authority_expected_generation": (
+                        authority_generation_before_merge
+                    ),
+                    "manual_completion_authority_expected_tree_identity": (
+                        completion_authority_validated_tree_identity
+                    ),
+                }
             result = self._merge_branch_to_main(
                 branch_name,
                 task,
                 int(request.attempt or 0),
                 baseline_ref=str(metadata.get("baseline_ref") or ""),
                 changed_submodule_paths=changed_submodule_paths,
+                **merge_authority_kwargs,
             )
             if submodule_durability_preflight.get("attempted", False):
                 result["submodule_durability_preflight"] = (
@@ -16321,9 +20335,8 @@ class PortalImplementationDaemon:
                         implementation_protected_paths=(
                             effective_protected_paths
                         ),
-                        manual_completion_authority_required_task_ids=(
-                            self.manual_completion_authority_required_task_ids
-                        ),
+                        manual_completion_authority_task_ids=(),
+                        manual_completion_authority_required_task_ids=(),
                         merge_queue=self.merge_queue,
                         merge_queue_dir=self.merge_queue_dir,
                         decision_runtime=self.decision_runtime,
@@ -16365,6 +20378,25 @@ class PortalImplementationDaemon:
                         else None
                     ),
                 }
+                if completion_daemon.manual_completion_authority_task_ids:
+                    completion_mutation_kwargs.update(
+                        {
+                            "manual_completion_authority_context_id": str(
+                                metadata.get(
+                                    "manual_completion_authority_context_id"
+                                )
+                                or ""
+                            ),
+                            "manual_completion_authority_evidence": (
+                                metadata.get("validation_proof")
+                                if isinstance(
+                                    metadata.get("validation_proof"),
+                                    Mapping,
+                                )
+                                else None
+                            ),
+                        }
+                    )
                 if (
                     completion_daemon.task_source is not None
                     or completion_daemon._todo_board_is_implementation_protected()
@@ -17531,6 +21563,15 @@ class PortalImplementationDaemon:
         log_path: Path,
         prompt: str,
     ) -> dict[str, Any]:
+        if self.manual_completion_authority_revalidation_only:
+            return {
+                "skipped": True,
+                "reason": "manual_completion_authority_revalidation_only",
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+            }
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
         deterministic_only = self._task_uses_typed_local_execution(task)
@@ -18908,6 +22949,15 @@ class PortalImplementationDaemon:
                         self._mark_task_or_bundle_completed_in_todo(
                             task,
                             completion_intent=completion_intent,
+                            manual_completion_authority_context_id=str(
+                                validation_result.get(
+                                    "manual_completion_authority_context_id"
+                                )
+                                or ""
+                            ),
+                            manual_completion_authority_evidence=(
+                                validation_result
+                            ),
                         )
                     )
                     completion_published_in_transaction = bool(
@@ -19297,6 +23347,7 @@ class PortalImplementationDaemon:
         log_path: Path,
         worktree_path: Path | None = None,
         branch_name: str = "",
+        consume_attempt: bool = True,
     ) -> None:
         state.active_task_id = task.task_id
         identity = self._identity_for_task(task)
@@ -19326,11 +23377,12 @@ class PortalImplementationDaemon:
         state.last_implementation_commit = ""
         state.heartbeat_at = started_at
         state.last_progress_at = started_at
-        # Charge the model invocation atomically with the active marker.  A
-        # process death after this save therefore cannot evade a finite retry
-        # budget. Confirmed provider-capacity deferrals explicitly roll this
-        # charge back.
-        self._record_task_attempt(state, task, attempt)
+        # Charge ordinary implementation atomically with the active marker.
+        # Authority renewal has no provider/model invocation and is a
+        # validation lease rather than an implementation attempt, so its
+        # caller explicitly opts out without rewriting the prior count.
+        if consume_attempt:
+            self._record_task_attempt(state, task, attempt)
         state.save(self.state_path)
 
     def _mark_active_phase(
@@ -20498,13 +24550,20 @@ class PortalImplementationDaemon:
         branch_name: str,
         *,
         task: PortalTask | None = None,
+        allow_pool: bool = True,
+        seed_context: bool = True,
+        offline_local_only: bool = False,
     ) -> str:
-        if self.worktree_pool is not None:
+        if self.worktree_pool is not None and allow_pool:
             base_ref = self._main_branch_name()
             cache_key = self._implementation_worktree_cache_key()
 
             def activate(candidate: Path) -> None:
-                self._initialize_worktree_submodules(candidate, branch_name=branch_name)
+                self._initialize_worktree_submodules(
+                    candidate,
+                    branch_name=branch_name,
+                    offline_local_only=offline_local_only,
+                )
 
             lease = self.worktree_pool.acquire(
                 cache_key=cache_key,
@@ -20527,8 +24586,13 @@ class PortalImplementationDaemon:
             # deliberately per lease.  Neither is allowed to become part of a
             # clean pooled image or leak from one task into the next.
             try:
-                self._link_shared_worktree_paths(lease_path)
-                self._seed_untracked_worktree_context(lease_path, task=task, overwrite_existing=True)
+                if seed_context:
+                    self._link_shared_worktree_paths(lease_path)
+                    self._seed_untracked_worktree_context(
+                        lease_path,
+                        task=task,
+                        overwrite_existing=True,
+                    )
             except BaseException as exc:
                 release_result = lease.release(reusable=False)
                 if release_result.get("released") is True:
@@ -20568,9 +24632,18 @@ class PortalImplementationDaemon:
             cwd=self.repo_root,
         )
         baseline_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
-        self._initialize_worktree_submodules(worktree_path, branch_name=branch_name)
-        self._link_shared_worktree_paths(worktree_path)
-        self._seed_untracked_worktree_context(worktree_path, task=task, overwrite_existing=True)
+        self._initialize_worktree_submodules(
+            worktree_path,
+            branch_name=branch_name,
+            offline_local_only=offline_local_only,
+        )
+        if seed_context:
+            self._link_shared_worktree_paths(worktree_path)
+            self._seed_untracked_worktree_context(
+                worktree_path,
+                task=task,
+                overwrite_existing=True,
+            )
         return baseline_ref
 
     def _effective_pooled_worktree_path(self, requested_path: Path) -> Path:
@@ -20743,21 +24816,34 @@ class PortalImplementationDaemon:
             "pool_enabled": self.worktree_pool is not None,
         }
 
-    def _initialize_worktree_submodules(self, worktree_path: Path, *, branch_name: str = "") -> None:
+    def _initialize_worktree_submodules(
+        self,
+        worktree_path: Path,
+        *,
+        branch_name: str = "",
+        offline_local_only: bool = False,
+    ) -> None:
         init_failures: list[dict[str, Any]] = []
         # A removed task worktree can leave a shared submodule gitdir's
         # ``core.worktree`` pointing at the deleted checkout. Repair those
         # pointers before deciding that the canonical local checkout is
         # unavailable and falling back to a network-backed submodule update.
-        self._repair_stale_submodule_worktree_configs(self.repo_root)
+        if not offline_local_only:
+            self._repair_stale_submodule_worktree_configs(self.repo_root)
         for relative in self.worktree_submodule_paths:
-            if self._create_local_submodule_worktree(worktree_path, relative, branch_name=branch_name):
+            if self._create_local_submodule_worktree(
+                worktree_path,
+                relative,
+                branch_name=branch_name,
+                offline_local_only=offline_local_only,
+            ):
                 target = worktree_path / relative
                 if self._is_git_worktree(target):
                     self._initialize_nested_worktree_submodules(
                         target,
                         branch_name=branch_name,
                         parent_relative=relative,
+                        offline_local_only=offline_local_only,
                     )
                     # Validate submodule initialization
                     validation = self._validate_submodule_init(target, relative)
@@ -20771,6 +24857,15 @@ class PortalImplementationDaemon:
                     init_failures.append(validation)
                 continue
             if self._worktree_declares_submodule(worktree_path, relative):
+                if offline_local_only:
+                    init_failures.append(
+                        {
+                            "valid": False,
+                            "path": relative,
+                            "reason": "offline_submodule_object_missing",
+                        }
+                    )
+                    continue
                 # Initialize exactly the configured dependency. Recursing here
                 # can follow repository cycles (datasets -> kit -> accelerate
                 # -> datasets) and fail on unrelated, deeply nested gitlinks.
@@ -20780,6 +24875,7 @@ class PortalImplementationDaemon:
                         target,
                         branch_name=branch_name,
                         parent_relative=relative,
+                        offline_local_only=offline_local_only,
                     )
                     # Validate submodule initialization
                     validation = self._validate_submodule_init(target, relative)
@@ -20798,7 +24894,16 @@ class PortalImplementationDaemon:
                 "branch_name": branch_name,
                 "failures": init_failures,
                 "failure_count": len(init_failures),
+                "offline_local_only": offline_local_only,
             })
+            if offline_local_only:
+                raise RuntimeError(
+                    "offline authority revalidation submodule setup failed: "
+                    + ", ".join(
+                        str(item.get("path") or "unknown")
+                        for item in init_failures
+                    )
+                )
 
     def _validate_submodule_init(self, target: Path, relative: str) -> dict[str, Any]:
         """Validate that a submodule was properly initialized in a worktree."""
@@ -20831,6 +24936,7 @@ class PortalImplementationDaemon:
         *,
         branch_name: str,
         parent_relative: str,
+        offline_local_only: bool = False,
         _depth: int = 0,
         _ancestor_identities: frozenset[str] | None = None,
         _configured_identities: frozenset[str] | None = None,
@@ -20947,6 +25053,7 @@ class PortalImplementationDaemon:
                 relative,
                 branch_name=branch_name,
                 source_relative=full_relative,
+                offline_local_only=offline_local_only,
             ):
                 target = worktree_path / relative
                 if self._is_git_worktree(target):
@@ -20989,6 +25096,7 @@ class PortalImplementationDaemon:
                         target,
                         branch_name=branch_name,
                         parent_relative=full_relative,
+                        offline_local_only=offline_local_only,
                         _depth=child_depth,
                         _ancestor_identities=frozenset(
                             {
@@ -21202,6 +25310,7 @@ class PortalImplementationDaemon:
         *,
         branch_name: str = "",
         source_relative: str | None = None,
+        offline_local_only: bool = False,
     ) -> bool:
         source_key = source_relative or relative
         if not self._repo_relative_path_safe(source_key):
@@ -21214,6 +25323,10 @@ class PortalImplementationDaemon:
                 expected_ref=gitlink_ref,
             )
             if discovered_source is None:
+                if offline_local_only:
+                    raise RuntimeError(
+                        "offline submodule source unavailable: " + source_key
+                    )
                 return False
             source = discovered_source
         elif gitlink_ref and not self._git_ref_exists_in_repo(source, gitlink_ref):
@@ -21231,6 +25344,7 @@ class PortalImplementationDaemon:
             source_key=source_key,
             worktree_path=worktree_path,
             fallback_when_missing=source_relative is None,
+            offline_local_only=offline_local_only,
         )
         target = worktree_path / relative
         if base_ref is None:
@@ -21261,8 +25375,13 @@ class PortalImplementationDaemon:
                     "target": str(target),
                     "missing_ref": gitlink_ref,
                     "reason": "gitlink_ref_unavailable",
+                    "offline_local_only": offline_local_only,
                 },
             )
+            if offline_local_only:
+                raise RuntimeError(
+                    "offline submodule gitlink unavailable: " + source_key
+                )
             return False
         if self._is_git_worktree(target) and not target.is_symlink():
             if branch_name:
@@ -21303,6 +25422,8 @@ class PortalImplementationDaemon:
             try:
                 self._run_git(["worktree", "add", "-b", submodule_branch, str(target), base_ref], cwd=source)
             except RuntimeError:
+                if offline_local_only:
+                    raise
                 fallback_ref = self._fallback_submodule_worktree_ref(
                     source,
                     bad_ref=base_ref,
@@ -21417,9 +25538,28 @@ class PortalImplementationDaemon:
         source_key: str,
         worktree_path: Path,
         fallback_when_missing: bool = True,
+        offline_local_only: bool = False,
     ) -> str | None:
         if not base_ref or base_ref == "HEAD" or self._git_ref_exists_in_repo(source, base_ref):
             return base_ref or "HEAD"
+
+        if offline_local_only:
+            self._record_event(
+                "submodule_gitlink_ref_missing",
+                {
+                    "source": str(source),
+                    "source_key": source_key,
+                    "worktree_path": str(worktree_path),
+                    "missing_ref": base_ref,
+                    "fallback_ref": "",
+                    "fallback_used": False,
+                    "fetch_attempted": False,
+                    "fetch_returncode": None,
+                    "fetch_error": "",
+                    "offline_local_only": True,
+                },
+            )
+            return None
 
         fetch_result = subprocess.run(
             ["git", "fetch", "--quiet", "origin"],
@@ -27152,6 +31292,8 @@ class PortalImplementationDaemon:
         self,
         workspace_path: Path,
         task: PortalTask,
+        *,
+        allow_read_only: bool = False,
     ) -> dict[str, Any]:
         """Bind one reviewed task's validation population without a prompt.
 
@@ -27174,20 +31316,24 @@ class PortalImplementationDaemon:
                 "deterministic-only task requires a declared validation command"
             )
 
-        completion_scope = completion_gap_edit_scope(
-            task,
-            repo_root=self.repo_root,
-        )
-        changed_paths = list(
-            completion_scope
-            if completion_scope is not None
-            else task.outputs
-        )
-        for metadata_key in ("predicted files", "predicted outputs"):
-            for path in split_csv(self._task_metadata_value(task, metadata_key)):
-                if path not in changed_paths:
-                    changed_paths.append(path)
-        if not changed_paths:
+        changed_paths: list[str] = []
+        if not allow_read_only:
+            completion_scope = completion_gap_edit_scope(
+                task,
+                repo_root=self.repo_root,
+            )
+            changed_paths = list(
+                completion_scope
+                if completion_scope is not None
+                else task.outputs
+            )
+            for metadata_key in ("predicted files", "predicted outputs"):
+                for path in split_csv(
+                    self._task_metadata_value(task, metadata_key)
+                ):
+                    if path not in changed_paths:
+                        changed_paths.append(path)
+        if not changed_paths and not allow_read_only:
             raise ValueError(
                 "deterministic-only task requires a declared output/edit target"
             )
@@ -27205,11 +31351,35 @@ class PortalImplementationDaemon:
         tree_id = str(workspace_head.stdout or "").strip()
         if workspace_head.returncode != 0 or not tree_id:
             tree_id = fallback_tree_id
-        bound_commands, graph = build_declared_validation_plan_graph(
-            commands,
-            repository_tree_id=tree_id,
-            changed_paths=changed_paths,
-        )
+        if changed_paths:
+            bound_commands, graph = build_declared_validation_plan_graph(
+                commands,
+                repository_tree_id=tree_id,
+                changed_paths=changed_paths,
+            )
+            graph_id = graph.graph_id
+            graph_version = graph.graph_version
+        else:
+            # Authority renewal validates an already-completed claim and is
+            # forbidden from producing a candidate.  Bind the declared
+            # commands directly to the immutable baseline rather than
+            # inventing a writable path merely to satisfy the ordinary
+            # proposal graph contract.
+            bound_commands = build_validation_commands(commands)
+            read_only_graph = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "declared-read-only-validation-plan@1"
+                ),
+                "task_id": task.task_id,
+                "canonical_task_cid": self._canonical_ref(task),
+                "repository_tree_id": tree_id,
+                "validation_ids": [
+                    spec.validation_id for spec in bound_commands
+                ],
+            }
+            graph_id = content_identity(read_only_graph)
+            graph_version = "declared-read-only-validation-plan-v1"
         command_bindings = [
             {
                 "validation_id": spec.validation_id,
@@ -27229,8 +31399,8 @@ class PortalImplementationDaemon:
             "canonical_task_cid": self._canonical_ref(task),
             "repository_id": repository_id,
             "repository_tree_id": tree_id,
-            "graph_id": graph.graph_id,
-            "graph_version": graph.graph_version,
+            "graph_id": graph_id,
+            "graph_version": graph_version,
             "command_count": len(command_bindings),
             "commands": command_bindings,
             "changed_paths": sorted(dict.fromkeys(changed_paths)),
@@ -27299,6 +31469,8 @@ class PortalImplementationDaemon:
         attempt: int,
         log_path: Path,
         state: PortalTaskState,
+        baseline_ref: str = "",
+        read_only_revalidation: bool = False,
     ) -> tuple[dict[str, Any], Path, dict[str, Any]]:
         """Authorize and execute exactly one task-declared validation plan.
 
@@ -27313,6 +31485,7 @@ class PortalImplementationDaemon:
         binding = self._deterministic_validation_plan_binding(
             workspace_path,
             task,
+            allow_read_only=read_only_revalidation,
         )
         plan_cid = str(binding["validation_plan_cid"])
         declared_commands: list[str] = []
@@ -27355,7 +31528,11 @@ class PortalImplementationDaemon:
                 "validation_graph_id": str(binding["graph_id"]),
             }
 
-        declared_token_limit = self._task_context_token_limit(task)
+        declared_token_limit = (
+            None
+            if read_only_revalidation
+            else self._task_context_token_limit(task)
+        )
         token_limit = (
             MAX_TASK_CONTEXT_TOKENS
             if declared_token_limit in (None, 0)
@@ -27428,13 +31605,43 @@ class PortalImplementationDaemon:
             }
         else:
             try:
-                validation_result = self._run_validation_commands(
-                    workspace_path,
-                    task,
-                    log_path,
-                    state=state,
-                    force_uncached=True,
-                )
+                if read_only_revalidation:
+                    clean_result = self._run_clean_candidate_validation(
+                        workspace_path,
+                        task,
+                        log_path,
+                        state=state,
+                        baseline_ref=baseline_ref,
+                    )
+                    validation_result = (
+                        clean_result
+                        if clean_result is not None
+                        else {
+                            "attempted": False,
+                            "passed": False,
+                            "returncode": 1,
+                            "results": [],
+                            "reason": (
+                                "manual_completion_authority_"
+                                "revalidation_candidate_not_clean"
+                            ),
+                        }
+                    )
+                    if validation_result.get("reason") == (
+                        "candidate_changed_during_validation"
+                    ):
+                        validation_result["reason"] = (
+                            "manual_completion_authority_"
+                            "revalidation_mutated_candidate"
+                        )
+                else:
+                    validation_result = self._run_validation_commands(
+                        workspace_path,
+                        task,
+                        log_path,
+                        state=state,
+                        force_uncached=True,
+                    )
             except Exception as exc:
                 validation_result = {
                     "attempted": True,
@@ -27691,6 +31898,11 @@ class PortalImplementationDaemon:
         never sets completion authority.
         """
 
+        if self.manual_completion_authority_revalidation_only:
+            raise RuntimeError(
+                "model-assisted routing is forbidden in manual completion "
+                "authority revalidation-only mode"
+            )
         router_kwargs: dict[str, Any] = {
             "grok_provider": grok_provider,
             "codex_provider": codex_provider,
@@ -28038,10 +32250,51 @@ class PortalImplementationDaemon:
         proposal_validation: Any = None,
         force_uncached: bool = False,
     ) -> dict[str, Any]:
+        authority_context_id = ""
+        authority_revalidation_required = False
+        if self.manual_completion_authority_task_ids:
+            authority_guard = self._refresh_manual_completion_authority_guard()
+            if authority_guard.get("available") is not True:
+                return {
+                    "attempted": False,
+                    "passed": False,
+                    "returncode": 2,
+                    "results": [],
+                    "reason": "manual_completion_authority_guard_unavailable",
+                    "manual_completion_authority_guard": {
+                        key: value
+                        for key, value in authority_guard.items()
+                        if key != "_tasks"
+                    },
+                }
+            authority_context_id = (
+                self._manual_completion_authority_policy_id()
+            )
+            authority_revalidation_required = task.task_id in set(
+                self._manual_completion_authority_revalidation_task_ids
+            )
+            if authority_revalidation_required:
+                force_uncached = True
         if not workspace_path.exists():
-            return self._missing_validation_workspace_result(workspace_path, task=task, log_path=log_path)
+            missing = self._missing_validation_workspace_result(
+                workspace_path,
+                task=task,
+                log_path=log_path,
+            )
+            if authority_context_id:
+                missing["manual_completion_authority_context_id"] = (
+                    authority_context_id
+                )
+            return missing
 
-        proof_options = self._proof_workflow_options(workspace_path, task)
+        # Authority renewal executes only the reviewed declared validation
+        # plan.  Configured proof callables/executors are implementation
+        # surfaces and must not become an indirect provider/plugin route.
+        proof_options = (
+            {}
+            if authority_revalidation_required
+            else self._proof_workflow_options(workspace_path, task)
+        )
         self._decision_runtime_route(
             "validation_selection",
             {
@@ -28057,13 +32310,28 @@ class PortalImplementationDaemon:
             and not proof_options
             and proposal_validation is None
         ):
-            return {
+            no_commands = {
                 "attempted": False,
-                "passed": True,
-                "returncode": 0,
+                "passed": not authority_revalidation_required,
+                "returncode": 2 if authority_revalidation_required else 0,
                 "results": [],
-                "reason": "no_commands",
+                "reason": (
+                    "manual_completion_authority_revalidation_commands_missing"
+                    if authority_revalidation_required
+                    else "no_commands"
+                ),
             }
+            if authority_context_id:
+                no_commands["manual_completion_authority_context_id"] = (
+                    authority_context_id
+                )
+                no_commands[
+                    "manual_completion_authority_revalidation"
+                ] = authority_revalidation_required
+                no_commands[
+                    "manual_completion_authority_task_id"
+                ] = task.task_id
+            return no_commands
 
         commands: list[str] = []
         normalization_notes: list[str] = []
@@ -28085,6 +32353,11 @@ class PortalImplementationDaemon:
                 replace(spec, cacheable=False)
                 for spec in build_validation_commands(commands)
             )
+        validation_runner = (
+            self._authority_validation_command_runner
+            if authority_revalidation_required
+            else self._validation_command_runner
+        )
 
         # Validation is the last gate before a candidate is committed/enqueued
         # (or before an in-place task is marked complete).  Impact selection is
@@ -28104,7 +32377,7 @@ class PortalImplementationDaemon:
                     workspace_path=workspace_path,
                     require_full_validation=True,
                     scope="pre_merge",
-                    runner=self._validation_command_runner,
+                    runner=validation_runner,
                     **proof_options,
                 ),
             )
@@ -28167,7 +32440,7 @@ class PortalImplementationDaemon:
                             require_impact_graph=True,
                             require_full_validation=True,
                             scope="pre_merge",
-                            runner=self._validation_command_runner,
+                            runner=validation_runner,
                             **proof_options,
                         ),
                     )
@@ -28413,7 +32686,472 @@ class PortalImplementationDaemon:
                 )
             if failure_heads:
                 result["failure_head"] = "\n".join(failure_heads)[:2000]
+        if authority_context_id:
+            result["manual_completion_authority_context_id"] = (
+                authority_context_id
+            )
+            result["manual_completion_authority_revalidation"] = (
+                authority_revalidation_required
+            )
+            result["manual_completion_authority_force_uncached"] = bool(
+                authority_revalidation_required
+            )
+            result["manual_completion_authority_task_id"] = task.task_id
+            if authority_revalidation_required:
+                plan_binding = self._manual_completion_validation_plan_binding(
+                    task
+                )
+                validated_tree_identity = {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "manual-completion-validated-tree@1"
+                    ),
+                    "target_commit": str(
+                        result.get("target_commit")
+                        or result.get("repository_tree_id")
+                        or ""
+                    ),
+                    "dependency_state_id": content_identity(
+                        result.get("dependency_state") or {}
+                    ),
+                    "candidate_binding_id": content_identity(
+                        result.get("candidate_binding") or {}
+                    ),
+                }
+                result["manual_completion_authority_task_cid"] = str(
+                    plan_binding["canonical_task_cid"]
+                )
+                result[
+                    "manual_completion_authority_validation_plan_id"
+                ] = str(plan_binding["validation_plan_id"])
+                result[
+                    "manual_completion_authority_declared_validation_commands"
+                ] = list(plan_binding["declared_commands"])
+                result[
+                    "manual_completion_authority_revocation_generation"
+                ] = int(
+                    self._manual_completion_authority_revocation_generation
+                )
+                result[
+                    "manual_completion_authority_validated_tree_identity"
+                ] = validated_tree_identity
+                result[
+                    "manual_completion_authority_validated_tree_id"
+                ] = content_identity(validated_tree_identity)
+                result[
+                    "manual_completion_authority_validation_result_count"
+                ] = len(
+                    [
+                        item
+                        for item in result.get("results", ())
+                        if isinstance(item, Mapping)
+                    ]
+                )
+                self._trusted_manual_completion_revalidation_evidence_ids.add(
+                    self._manual_completion_revalidation_evidence_id(result)
+                )
         return result
+
+    @staticmethod
+    def _authority_validation_command_runner(
+        *,
+        spec: Any,
+        workspace_path: Path,
+        timeout_seconds: float,
+        environment: dict[str, str],
+    ) -> dict[str, Any]:
+        """Run authority-bearing validation inside a pinned Docker sandbox."""
+
+        started_at = utc_now()
+        contract = (
+            PortalImplementationDaemon._authority_validation_isolation_contract()
+        )
+        base = {
+            "command": str(spec.command),
+            "raw_command": str(spec.raw_command or spec.command),
+            "started_at": started_at,
+            "authority_validation_isolation": contract,
+        }
+        if contract.get("available") is not True:
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 75,
+                "output": "",
+                "error": "authority_validation_isolation_unavailable",
+                "reason": str(
+                    contract.get("reason")
+                    or "authority_validation_isolation_unavailable"
+                ),
+                "infrastructure_failure": True,
+            }
+        try:
+            command_argv = validation_shell_command(str(spec.command))
+            workspace = workspace_path.resolve(strict=True)
+        except (OSError, ValidationRuntimeError) as exc:
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 78,
+                "output": f"{type(exc).__name__}: {exc}\n",
+                "error": "validation_command_policy_rejected",
+                "reason": "validation_shell_command_policy_violation",
+                "infrastructure_failure": False,
+            }
+        workspace_text = str(workspace)
+        if (
+            not workspace.is_dir()
+            or any(character in workspace_text for character in ",\r\n\0")
+        ):
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 75,
+                "output": "",
+                "error": "authority_validation_workspace_invalid",
+                "reason": "authority_validation_workspace_mount_unsafe",
+                "infrastructure_failure": True,
+            }
+
+        child_environment = {
+            str(key): str(value)
+            for key, value in environment.items()
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(key))
+            and "\0" not in str(value)
+        }
+        allowed_python_paths: list[str] = []
+        for raw_path in str(child_environment.get("PYTHONPATH") or "").split(
+            os.pathsep
+        ):
+            candidate_text = raw_path.strip()
+            if not candidate_text:
+                continue
+            candidate = Path(candidate_text)
+            if not candidate.is_absolute():
+                candidate = workspace / candidate
+            try:
+                resolved_candidate = candidate.resolve(strict=True)
+                resolved_candidate.relative_to(workspace)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            normalized_candidate = str(resolved_candidate)
+            if normalized_candidate not in allowed_python_paths:
+                allowed_python_paths.append(normalized_candidate)
+        if workspace_text not in allowed_python_paths:
+            allowed_python_paths.insert(0, workspace_text)
+        allowed_python_paths.append(
+            AUTHORITY_VALIDATION_IMAGE_SITE_PACKAGES
+        )
+        child_environment.update(
+            {
+                "HOME": "/tmp/validation-home",
+                "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE": (
+                    "/usr/bin/python"
+                ),
+                "PATH": (
+                    "/usr/local/nvidia/bin:/usr/local/cuda/bin:"
+                    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:"
+                    "/sbin:/bin"
+                ),
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTHONPATH": os.pathsep.join(allowed_python_paths),
+                "TMPDIR": "/tmp",
+                "XDG_CACHE_HOME": "/tmp/validation-home/.cache",
+                "XDG_CONFIG_HOME": "/tmp/validation-home/.config",
+                "XDG_DATA_HOME": "/tmp/validation-home/.local/share",
+                "XDG_STATE_HOME": "/tmp/validation-home/.local/state",
+            }
+        )
+        docker_path = str(contract["docker_path"])
+        image_id = str(contract["image_id"])
+        docker_endpoint = str(contract["docker_endpoint"])
+        gpu_uuid = str(contract["gpu_uuid"])
+        docker_environment = {
+            "DOCKER_CONFIG": "/nonexistent/ipfs-accelerate-docker-config",
+            "DOCKER_HOST": docker_endpoint,
+            "HOME": "/nonexistent/ipfs-accelerate-docker-home",
+            "PATH": os.defpath,
+        }
+        docker_prefix = [docker_path, "--host", docker_endpoint]
+        container_name = (
+            f"ipfs-accelerate-authority-validation-{os.getpid()}-"
+            f"{time.time_ns()}"
+        )
+        docker_command = [
+            *docker_prefix,
+            "run",
+            "--rm",
+            "--pull=never",
+            f"--name={container_name}",
+            "--init",
+            "--stop-timeout=1",
+            "--network=none",
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges:true",
+            "--log-driver=none",
+            f"--pids-limit={AUTHORITY_VALIDATION_PIDS_LIMIT}",
+            f"--cpus={AUTHORITY_VALIDATION_CPU_LIMIT:g}",
+            f"--memory={AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES}",
+            f"--memory-swap={AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES}",
+            f"--shm-size={AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES}",
+            f"--gpus=device={gpu_uuid}",
+            f"--user={os.getuid()}:{os.getgid()}",
+            (
+                "--mount=type=bind,src="
+                f"{workspace_text},dst={workspace_text},readonly"
+            ),
+            (
+                "--tmpfs=/tmp:rw,nosuid,nodev,exec,"
+                f"size={AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES},mode=1777"
+            ),
+            f"--workdir={workspace_text}",
+        ]
+        for key, value in sorted(child_environment.items()):
+            docker_command.extend(["--env", f"{key}={value}"])
+        docker_command.extend([image_id, *command_argv])
+
+        timed_out = False
+        output_limit_exceeded = False
+        infrastructure_failure = False
+        process: subprocess.Popen[bytes] | None = None
+        output_bytes = bytearray()
+        output_overflow = threading.Event()
+        reader_finished = threading.Event()
+        reader: threading.Thread | None = None
+
+        def collect_output() -> None:
+            try:
+                if process is None or process.stdout is None:
+                    return
+                while True:
+                    chunk = process.stdout.read(64 * 1024)
+                    if not chunk:
+                        return
+                    remaining = (
+                        AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES
+                        - len(output_bytes)
+                    )
+                    if remaining > 0:
+                        output_bytes.extend(chunk[:remaining])
+                    if len(chunk) > remaining:
+                        output_overflow.set()
+                        return
+            finally:
+                reader_finished.set()
+
+        def docker_control(
+            arguments: Sequence[str],
+        ) -> subprocess.CompletedProcess[str] | None:
+            try:
+                return subprocess.run(
+                    [*docker_prefix, *arguments],
+                    text=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=10,
+                    check=False,
+                    env=docker_environment,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+
+        try:
+            process = subprocess.Popen(
+                docker_command,
+                cwd=workspace,
+                text=False,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                start_new_session=(os.name == "posix"),
+                env=docker_environment,
+            )
+            reader = threading.Thread(
+                target=collect_output,
+                name=f"{container_name}-output",
+                daemon=True,
+            )
+            reader.start()
+            deadline = time.monotonic() + max(
+                0.001,
+                min(
+                    float(timeout_seconds),
+                    float(AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS),
+                ),
+            )
+            while process.poll() is None:
+                if output_overflow.is_set():
+                    output_limit_exceeded = True
+                    break
+                if time.monotonic() >= deadline:
+                    timed_out = True
+                    break
+                time.sleep(0.05)
+            if timed_out or output_limit_exceeded:
+                docker_control(["container", "kill", container_name])
+            if process.poll() is None:
+                try:
+                    if os.name == "posix":
+                        os.killpg(process.pid, signal.SIGTERM)
+                    else:
+                        process.terminate()
+                    process.wait(timeout=2)
+                except (OSError, subprocess.TimeoutExpired):
+                    try:
+                        if os.name == "posix":
+                            os.killpg(process.pid, signal.SIGKILL)
+                        else:
+                            process.kill()
+                    except OSError:
+                        pass
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        infrastructure_failure = True
+            returncode = int(
+                process.returncode
+                if process.returncode is not None
+                else 75
+            )
+        except OSError as exc:
+            infrastructure_failure = True
+            returncode = 75
+            output_bytes.extend(
+                f"{type(exc).__name__}: {exc}\n".encode(
+                    "utf-8",
+                    errors="replace",
+                )[:AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES]
+            )
+
+        if process is not None and process.poll() is None:
+            docker_control(["container", "kill", container_name])
+        if reader is not None:
+            reader.join(timeout=3)
+            if not reader_finished.is_set():
+                infrastructure_failure = True
+                if process is not None and process.stdout is not None:
+                    try:
+                        process.stdout.close()
+                    except OSError:
+                        pass
+                reader.join(timeout=1)
+
+        listed = docker_control(
+            [
+                "container",
+                "ls",
+                "--all",
+                "--filter",
+                f"name=^/{container_name}$",
+                "--format",
+                "{{.ID}}",
+            ]
+        )
+        container_removed = bool(
+            listed is not None
+            and listed.returncode == 0
+            and not str(listed.stdout or "").strip()
+        )
+        if not container_removed:
+            docker_control(
+                ["container", "rm", "--force", container_name]
+            )
+            verified = docker_control(
+                [
+                    "container",
+                    "ls",
+                    "--all",
+                    "--filter",
+                    f"name=^/{container_name}$",
+                    "--format",
+                    "{{.ID}}",
+                ]
+            )
+            container_removed = bool(
+                verified is not None
+                and verified.returncode == 0
+                and not str(verified.stdout or "").strip()
+            )
+            infrastructure_failure = True
+            returncode = 75
+
+        if timed_out:
+            returncode = 124
+        if output_overflow.is_set():
+            output_limit_exceeded = True
+            infrastructure_failure = True
+            returncode = 75
+        output = output_bytes.decode("utf-8", errors="replace")
+
+        if returncode == 125:
+            infrastructure_failure = True
+            returncode = 75
+        isolation_receipt_body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-isolation-receipt@2"
+            ),
+            "contract_id": str(contract.get("contract_id") or ""),
+            "backend": "docker-local-cuda",
+            "docker_endpoint": docker_endpoint,
+            "image_id": image_id,
+            "gpu_uuid": gpu_uuid,
+            "gpu_requested": True,
+            "network_mode": "none",
+            "host_filesystem": "workspace_only_read_only",
+            "workspace_path": workspace_text,
+            "workspace_read_only": True,
+            "private_pid_namespace": True,
+            "cgroup_process_limit": AUTHORITY_VALIDATION_PIDS_LIMIT,
+            "memory_limit_bytes": AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES,
+            "tmpfs_limit_bytes": AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES,
+            "cpu_limit": AUTHORITY_VALIDATION_CPU_LIMIT,
+            "timeout_limit_seconds": (
+                AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS
+            ),
+            "capabilities_dropped": "all",
+            "no_new_privileges": True,
+            "container_root_read_only": True,
+            "container_log_driver": "none",
+            "output_limit_bytes": AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES,
+            "output_limit_exceeded": output_limit_exceeded,
+            "output_bounded": True,
+            "storage_bounded": True,
+            "cpu_bounded": True,
+            "container_removed": container_removed,
+            "process_tree_quiesced": container_removed,
+        }
+        isolation_receipt = {
+            **isolation_receipt_body,
+            "receipt_id": content_identity(isolation_receipt_body),
+        }
+        return {
+            **base,
+            "finished_at": utc_now(),
+            "returncode": returncode,
+            "output": output,
+            "timed_out": timed_out,
+            "infrastructure_failure": infrastructure_failure,
+            "error": (
+                "authority_validation_output_limit_exceeded"
+                if output_limit_exceeded
+                else "authority_validation_container_runtime_failed"
+                if infrastructure_failure
+                else ""
+            ),
+            "reason": (
+                "authority_validation_container_not_quiesced"
+                if not container_removed
+                else "authority_validation_output_limit_exceeded"
+                if output_limit_exceeded
+                else "authority_validation_timed_out"
+                if timed_out
+                else ""
+            ),
+            "authority_validation_isolation_receipt": isolation_receipt,
+        }
 
     @staticmethod
     @sealed_validation_python_runner
@@ -29094,6 +33832,13 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str = "",
         changed_submodule_paths: set[str] | None = None,
+        manual_completion_authority_task_ids: Sequence[str] = (),
+        manual_completion_authority_context_id: str = "",
+        manual_completion_authority_evidence: Mapping[str, Any] | None = None,
+        manual_completion_authority_expected_generation: int | None = None,
+        manual_completion_authority_expected_tree_identity: (
+            Mapping[str, Any] | None
+        ) = None,
     ) -> dict[str, Any]:
         """Merge one candidate while owning the checkout from first mutation."""
 
@@ -29109,6 +33854,21 @@ class PortalImplementationDaemon:
                 attempt,
                 baseline_ref=baseline_ref,
                 changed_submodule_paths=changed_submodule_paths,
+                manual_completion_authority_task_ids=(
+                    manual_completion_authority_task_ids
+                ),
+                manual_completion_authority_context_id=(
+                    manual_completion_authority_context_id
+                ),
+                manual_completion_authority_evidence=(
+                    manual_completion_authority_evidence
+                ),
+                manual_completion_authority_expected_generation=(
+                    manual_completion_authority_expected_generation
+                ),
+                manual_completion_authority_expected_tree_identity=(
+                    manual_completion_authority_expected_tree_identity
+                ),
             ),
             failure_fields={
                 "attempted": False,
@@ -29129,10 +33889,65 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str = "",
         changed_submodule_paths: set[str] | None = None,
+        manual_completion_authority_task_ids: Sequence[str] = (),
+        manual_completion_authority_context_id: str = "",
+        manual_completion_authority_evidence: Mapping[str, Any] | None = None,
+        manual_completion_authority_expected_generation: int | None = None,
+        manual_completion_authority_expected_tree_identity: (
+            Mapping[str, Any] | None
+        ) = None,
     ) -> dict[str, Any]:
         """Merge one candidate while the caller owns the checkout lease."""
 
         started_at = utc_now()
+        def merge_authority_cas_rejection() -> dict[str, Any] | None:
+            if not manual_completion_authority_task_ids:
+                return None
+            authority_rejection = self._manual_completion_authority_rejection(
+                manual_completion_authority_task_ids,
+                authority_context_id=(
+                    manual_completion_authority_context_id
+                ),
+                authority_evidence=manual_completion_authority_evidence,
+                expected_validated_tree_identity=(
+                    manual_completion_authority_expected_tree_identity
+                ),
+            )
+            actual_generation = int(
+                self._manual_completion_authority_revocation_generation
+            )
+            if (
+                authority_rejection is not None
+                or type(manual_completion_authority_expected_generation)
+                is not int
+                or actual_generation
+                != manual_completion_authority_expected_generation
+            ):
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "branch": branch_name,
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                    "reason": (
+                        str(authority_rejection.get("reason") or "")
+                        if authority_rejection is not None
+                        else "manual_completion_authority_generation_changed"
+                    ),
+                    "expected_manual_completion_authority_generation": (
+                        manual_completion_authority_expected_generation
+                    ),
+                    "actual_manual_completion_authority_generation": (
+                        actual_generation
+                    ),
+                    **(authority_rejection or {}),
+                }
+            return None
+
+        merge_authority_denial = merge_authority_cas_rejection()
+        if merge_authority_denial is not None:
+            return merge_authority_denial
         self._preserve_generated_nested_worktree_directories()
         stale_submodule_worktree_config_repair = self._repair_stale_submodule_worktree_configs(self.repo_root)
         target_branch = self._main_branch_name()
@@ -29141,6 +33956,9 @@ class PortalImplementationDaemon:
             branch_name,
         )
         # Attempt to rebase stale submodule pointers before merge
+        merge_authority_denial = merge_authority_cas_rejection()
+        if merge_authority_denial is not None:
+            return merge_authority_denial
         submodule_rebase = self._rebase_stale_submodule_pointers(branch_name, target_branch)
         if submodule_rebase.get("rebased"):
             self._record_event("submodule_pointer_rebase", submodule_rebase)
@@ -29200,6 +34018,9 @@ class PortalImplementationDaemon:
                 }
                 self._record_event("merge_finished", result)
                 return result
+            merge_authority_denial = merge_authority_cas_rejection()
+            if merge_authority_denial is not None:
+                return merge_authority_denial
             workspace_result = self._prepare_main_merge_workspace(target_branch, branch_name)
             llm_workspace_resolver: dict[str, Any] = {}
             if not workspace_result.get("available", False):
@@ -29341,6 +34162,12 @@ class PortalImplementationDaemon:
                     self._record_event("merge_finished", result)
                     return result
 
+            # Conflict inspection and workspace preparation may be long.  CAS
+            # the live board generation again immediately before the final
+            # destructive workspace edit and Git merge.
+            merge_authority_denial = merge_authority_cas_rejection()
+            if merge_authority_denial is not None:
+                return merge_authority_denial
             removed_untracked = self._remove_untracked_paths_for_merge(identical_untracked_paths, cwd=merge_workspace)
             self._record_event(
                 "merge_started",
@@ -30455,6 +35282,13 @@ class PortalImplementationDaemon:
         reason: str = "merge_conflict",
         dirty_paths: list[str] | None = None,
     ) -> dict[str, Any]:
+        if self.manual_completion_authority_revalidation_only:
+            return {
+                "attempted": False,
+                "applied": False,
+                "reason": "manual_completion_authority_revalidation_only",
+                "provider_dispatched": False,
+            }
         command_template = self.llm_merge_resolver_command
         if not command_template:
             return {"attempted": False, "reason": "resolver_command_not_configured"}
@@ -35089,6 +39923,14 @@ class PortalImplementationDaemon:
                         task,
                         completion_tasks,
                         completion_task_cids,
+                        validation_evidence=(
+                            event.get("validation_result")
+                            if isinstance(
+                                event.get("validation_result"),
+                                Mapping,
+                            )
+                            else None
+                        ),
                     )
                     if integration_ready
                     else {}
@@ -35424,6 +40266,14 @@ class PortalImplementationDaemon:
                         task,
                         completion_tasks,
                         completion_task_cids,
+                        validation_evidence=(
+                            event.get("validation_result")
+                            if isinstance(
+                                event.get("validation_result"),
+                                Mapping,
+                            )
+                            else None
+                        ),
                     )
                     if integration_ready
                     else {}
@@ -35651,6 +40501,14 @@ class PortalImplementationDaemon:
                     task,
                     completion_tasks,
                     completion_task_cids,
+                    validation_evidence=(
+                        event.get("validation_result")
+                        if isinstance(
+                            event.get("validation_result"),
+                            Mapping,
+                        )
+                        else None
+                    ),
                 )
                 if integration_ready
                 else {}
@@ -36568,6 +41426,7 @@ class PortalImplementationDaemon:
         operation: str,
         timeout_seconds: float = 0.0,
         extra: Mapping[str, Any] | None = None,
+        preserve_existing: bool = False,
     ) -> tuple[
         CheckoutMutationLease | None,
         str,
@@ -36591,7 +41450,11 @@ class PortalImplementationDaemon:
         result = acquire_checkout_mutation_lease(
             self._repo_merge_lock_path(),
             metadata,
-            owner_active=self._merge_lock_owner_is_active,
+            owner_active=(
+                (lambda _metadata: True)
+                if preserve_existing
+                else self._merge_lock_owner_is_active
+            ),
             timeout_seconds=timeout_seconds,
         )
         lease, _reason, cleared_owner, _waited = result
@@ -37819,6 +42682,72 @@ class PortalImplementationDaemon:
     def _recover_protected_checkout_mutation(self) -> dict[str, Any]:
         """Autonomously finish a retained protected generated-file mutation."""
 
+        existing = read_checkout_mutation_lease(
+            self._repo_merge_lock_path()
+        )
+        if existing is not None and (
+            existing.metadata.get("protected_recovery_required") is True
+            and str(
+                existing.metadata.get("protected_recovery_owner") or ""
+            )
+            in {"", "implementation_daemon"}
+        ):
+            existing_intent = existing.metadata.get(
+                "protected_recovery_intent"
+            )
+            if isinstance(existing_intent, Mapping):
+                recovery_task_ids = {
+                    str(existing_intent.get("task_id") or "").strip()
+                }
+                expectation = existing_intent.get(
+                    "callback_expectation"
+                )
+                if isinstance(expectation, Mapping):
+                    recovery_task_ids.update(
+                        str(task_id).strip()
+                        for task_id in expectation.get("task_ids", ())
+                        if str(task_id).strip()
+                    )
+                recovery_task_ids.discard("")
+                authority_rejection = (
+                    self._manual_completion_authority_rejection(
+                        recovery_task_ids,
+                        authority_context_id=(
+                            str(
+                                expectation.get(
+                                    "manual_completion_authority_context_id"
+                                )
+                                or ""
+                            )
+                            if isinstance(expectation, Mapping)
+                            else ""
+                        ),
+                        authority_evidence=(
+                            expectation.get(
+                                "manual_completion_authority_evidence"
+                            )
+                            if isinstance(expectation, Mapping)
+                            and isinstance(
+                                expectation.get(
+                                    "manual_completion_authority_evidence"
+                                ),
+                                Mapping,
+                            )
+                            else None
+                        ),
+                    )
+                )
+                if authority_rejection is not None:
+                    return {
+                        "required": True,
+                        "blocked": True,
+                        "recovered": False,
+                        "checkout_mutation_lease_retained": True,
+                        "checkout_mutation_recovery_required": True,
+                        "lock_path": str(existing.lock_path),
+                        **authority_rejection,
+                    }
+
         adoption = self._adopt_protected_checkout_recovery()
         if not adoption.get("required", False):
             return {"required": False, "recovered": False}
@@ -38123,7 +43052,10 @@ class PortalImplementationDaemon:
         """Run a complete shared-checkout mutation under one atomic lease."""
 
         current = self._current_checkout_mutation_lease()
-        if current is None:
+        if (
+            current is None
+            and not self.manual_completion_authority_revalidation_only
+        ):
             recovery = self._recover_protected_checkout_mutation()
             if recovery.get("required", False):
                 if not recovery.get(
@@ -38275,6 +43207,9 @@ class PortalImplementationDaemon:
                 branch=branch,
                 operation=operation,
                 extra=extra,
+                preserve_existing=(
+                    self.manual_completion_authority_revalidation_only
+                ),
             )
         )
         if lease is None:
@@ -39534,6 +44469,11 @@ class PortalImplementationDaemon:
         *,
         task: PortalTask | None = None,
     ) -> list[str]:
+        if self.manual_completion_authority_revalidation_only:
+            raise RuntimeError(
+                "model dispatch is forbidden in manual completion authority "
+                "revalidation-only mode"
+            )
         workspace_path = workspace_path.resolve()
         declared_provider = self._task_declared_implementation_provider(task)
         if self._task_uses_typed_local_execution(task):
@@ -42484,23 +47424,50 @@ class PortalImplementationDaemon:
         recent_outcomes: dict[str, dict[str, Any]],
     ) -> PortalTask | None:
         ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        if self.manual_completion_authority_revalidation_only:
+            ready = [
+                task
+                for task in ready
+                if self._manual_completion_authority_revalidation_only_task(
+                    task
+                )
+            ]
         # The durable queue is authoritative across isolated lane state dirs.
         # Consult both canonical and display identities for compatibility with
         # queue records written before canonical task ids were introduced.
         ready = [
             task
             for task in ready
-            if not self.merge_queue.has_pending_for_task(self._canonical_ref(task))
-            and not self.merge_queue.has_pending_for_task(task.task_id)
+            if self._manual_completion_authority_revalidation_only_task(task)
+            or (
+                not self.merge_queue.has_pending_for_task(
+                    self._canonical_ref(task)
+                )
+                and not self.merge_queue.has_pending_for_task(task.task_id)
+            )
         ]
         strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
         if strict_deprioritized:
-            ready = [task for task in ready if task.task_id not in strict_deprioritized]
+            ready = [
+                task
+                for task in ready
+                if (
+                    task.task_id not in strict_deprioritized
+                    or self._manual_completion_authority_revalidation_only_task(
+                        task
+                    )
+                )
+            ]
         # Graceful degradation: skip tasks that depend on degraded submodules
         degraded_skipped: list[str] = []
         if self.degradation_state.degraded_submodules():
             filtered_ready = []
             for task in ready:
+                if self._manual_completion_authority_revalidation_only_task(
+                    task
+                ):
+                    filtered_ready.append(task)
+                    continue
                 degraded_sub = self.degradation_state.should_skip_task(
                     task_declared_output_paths(task),
                     getattr(task, "inputs", None),
@@ -42539,7 +47506,19 @@ class PortalImplementationDaemon:
         if not ready:
             return None
         # Filter out tasks in cooldown from persistent queue
-        cooled_ready = [t for t in ready if not self.task_queue.is_cooled_down(self._canonical_ref(t))]
+        cooled_ready: list[PortalTask] = []
+        for task in ready:
+            if self._manual_completion_authority_revalidation_only_task(task):
+                renewal_state = (
+                    self._manual_completion_authority_renewal_retry_state(task)
+                )
+                if renewal_state.get("cooled_down", False) or (
+                    renewal_state.get("quarantined", False)
+                ):
+                    continue
+            elif self.task_queue.is_cooled_down(self._canonical_ref(task)):
+                continue
+            cooled_ready.append(task)
         if not cooled_ready:
             return None
         ready = cooled_ready
@@ -42681,6 +47660,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--manual-completion-authority-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID governed by operator-sealed manual "
+            "completion. Pending descendants ignore historical completion "
+            "evidence until they are freshly revalidated."
+        ),
+    )
+    parser.add_argument(
         "--manual-completion-authority-required-task-id",
         action="append",
         default=[],
@@ -42688,6 +47677,33 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Repeatable staged task ID that autonomous scheduling and task-"
             "status completion must quarantine until a fresh supervisor "
             "load verifies its operator seal."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-epoch-id",
+        default="",
+        help=(
+            "Content-addressed identity of the verified manual-completion "
+            "seal and policy set used for descendant revalidation."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-revalidation-only",
+        action="store_true",
+        help=(
+            "Run only zero-provider revalidation of completed tasks governed "
+            "by manual-completion authority; disable ordinary implementation, "
+            "merge reconciliation, and repository maintenance paths."
+        ),
+    )
+    parser.add_argument(
+        "--reset-manual-completion-authority-renewal-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Operator-only maintenance action: clear the bounded renewal "
+            "failure/quarantine state for an exact current task ID, print "
+            "the audit result, and exit. May be repeated."
         ),
     )
     parser.add_argument(
@@ -43007,8 +48023,17 @@ def main(argv: list[str] | None = None) -> None:
         merge_queue_dir=args.merge_queue_dir,
         worktree_submodule_paths=args.worktree_submodule_path or None,
         implementation_protected_paths=args.implementation_protected_path,
+        manual_completion_authority_task_ids=(
+            args.manual_completion_authority_task_id
+        ),
         manual_completion_authority_required_task_ids=(
             args.manual_completion_authority_required_task_id
+        ),
+        manual_completion_authority_epoch_id=(
+            args.manual_completion_authority_epoch_id
+        ),
+        manual_completion_authority_revalidation_only=(
+            args.manual_completion_authority_revalidation_only
         ),
         objective_path=args.objective_path,
         objective_bundle_dir=args.objective_bundle_dir,
@@ -43039,6 +48064,16 @@ def main(argv: list[str] | None = None) -> None:
         previous_term = signal.signal(signal.SIGTERM, request_stop)
         previous_int = signal.signal(signal.SIGINT, request_stop)
     try:
+        if args.reset_manual_completion_authority_renewal_task_id:
+            result = (
+                daemon.reset_manual_completion_authority_renewal_quarantine(
+                    args.reset_manual_completion_authority_renewal_task_id
+                )
+            )
+            print(json.dumps(result, indent=2, sort_keys=True))
+            if not result.get("reset"):
+                raise SystemExit(2)
+            return
         if args.clear_protected_path_incident:
             result = daemon.clear_implementation_protected_path_incident(
                 approved_commits=args.approve_protected_path_commit,
