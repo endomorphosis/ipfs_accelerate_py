@@ -15,7 +15,7 @@
 - **Source anchors:**
   - `ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py` — `LeaseCoordinator`, `LeaseGrant`, `StaleFencingTokenError`, `LeaseExpiredError`, heartbeats
   - `ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py` — lane-scoped lease adaptation
-  - `ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py` — serialized Git checkout mutations
+  - `ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py` — serialized shared-target and merge critical sections
   - `ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py` — `WorktreePool`, `WorktreeLease`
   - `ipfs_accelerate_py/agent_supervisor/worktree_lifecycle.py` — fenced cross-lane worktree ownership, `ProcessBirthIdentity`, stale reclamation
   - `ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py` — `ResourceAdmissionLease` (capacity, not task authority)
@@ -57,10 +57,14 @@ Filesystem isolation alone is not authority; liveness alone is not ownership.
 
 ### Normative protocol
 
-1. **Worktree isolation.** Each claimed task (or managed lane attempt) mutates
-   repository state only inside an exclusive checkout from `WorktreePool` /
-   `WorktreeLease` (or an equivalently fenced lifecycle workspace). Concurrent
-   lanes must not share a dirty main working tree for implementation edits.
+1. **Worktree isolation.** In a concurrent profile, each claimed task (or
+   managed lane attempt) mutates repository state only inside an exclusive
+   checkout from `WorktreePool` / `WorktreeLease` (or an equivalently fenced
+   lifecycle workspace). `--no-ephemeral-worktree` remains a single-lane
+   compatibility escape hatch that executes in the main checkout and therefore
+   sits outside this concurrency guarantee; multi-lane runners must not enable
+   it. Concurrent lanes must not share a dirty main working tree for
+   implementation edits.
 2. **Single live owner.** At most one accepted live claim exists per task (or
    lane/workspace scope) for the current fencing epoch. Claims are persisted by
    `LeaseCoordinator` (DuckDB coordination store) on the composed path.
@@ -74,17 +78,20 @@ Filesystem isolation alone is not authority; liveness alone is not ownership.
    reclaims capacity and advances the epoch so a recovered owner receives a
    **higher** fence; expired workers cannot publish under the old token.
 5. **Process identity is multi-factor.** Lifecycle liveness uses
-   `ProcessBirthIdentity` (PID + start-time ticks + boot id, and parent when
-   available). A matching PID after reuse or reboot is treated as a dead or
-   unknown owner—never as continued exclusive ownership.
+   `ProcessBirthIdentity` and compares PID, start-time ticks, and boot id. The
+   parent PID is recorded for provenance but is not a liveness comparison
+   factor. A matching PID after reuse or reboot is treated as a dead or unknown
+   owner—never as continued exclusive ownership.
 6. **Worktree is isolation, not authority.** A dirty, reused, or path-present
    worktree proves nothing without a current lease, fence, and bound receipts.
    Cleanup and reuse require terminal or provably stale fenced records; peer
    cleaners must not delete nonterminal claims merely because a branch tip
    matches the merge target.
-7. **Checkout serialization.** Concurrent Git checkout mutations are locked
-   (`checkout_lock`) so merge and worktree operations do not corrupt shared
-   repository metadata even when leases are correctly fenced.
+7. **Shared-target serialization.** `checkout_lock` serializes shared target
+   and merge critical sections so concurrent landing operations do not corrupt
+   repository metadata. `WorktreePool` performs its own add, move, remove, and
+   prune operations; the repo-global checkout lock does not wrap every pool
+   mutation.
 8. **Retries re-claim.** A retry attempt re-obtains a current lease and fence
    (or worktree lifecycle claim on the plain daemon path) and re-validates on
    the current worktree tip. Prior provider exit codes and prior fence tokens
@@ -102,7 +109,7 @@ Filesystem isolation alone is not authority; liveness alone is not ownership.
 | Filesystem exclusive checkout | `todo_daemon/worktrees.WorktreePool` / `WorktreeLease` |
 | Cross-lane worktree publish/cleanup fence | `worktree_lifecycle` |
 | Host/provider capacity reservation | `runtime/resource_scheduler.ResourceAdmissionLease` |
-| Git mutation serialization | `merge/checkout_lock` |
+| Shared-target and merge serialization | `merge/checkout_lock` |
 
 ## Alternatives
 
@@ -267,7 +274,7 @@ python -m pytest \
 rg -n 'StaleFencingTokenError|LeaseCoordinator|ProcessBirthIdentity|WorktreePool' \
   ipfs_accelerate_py/agent_supervisor
 
-# Guide still documents non-authoritative PID and fence monoticity
+# Guide still documents non-authoritative PID and fence monotonicity
 rg -n 'stale fencing|PID alone|Worktree is isolation' \
   docs/architecture/agent_supervisor/EXECUTION_AND_RECOVERY.md
 ```
@@ -277,9 +284,9 @@ lifecycle still requires matching fence for cleanup; documentation continues to
 treat PID and dirty worktrees as non-authoritative.
 
 Fail signals (ADR stale): terminal publish without fence check; reclaim of
-non-expired live owners by PID alone; shared main-checkout implementation path
-without worktree or equivalent isolation; removal of fencing epochs in favor of
-boolean locks.
+non-expired live owners by PID alone; a multi-lane or otherwise concurrent
+shared-main-checkout implementation path without worktree or equivalent
+isolation; removal of fencing epochs in favor of boolean locks.
 
 ## Review triggers
 

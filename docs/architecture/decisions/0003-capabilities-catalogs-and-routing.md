@@ -11,7 +11,7 @@
   the modality routers that perform provider construction and wire calls.
 - **Non-goals:** MCP/MCP++ transport and UCAN policy (see `MCP_RUNTIME.md`);
   agent-supervisor admission and leases (see `AGENT_SUPERVISOR_ARCHITECTURE.md`
-  and ADR-0004 when published); package install policy and hardware probe
+  and ADR-0004); package install policy and hardware probe
   implementation details beyond the importability rule; sealing new catalog or
   usage delivery plans.
 - **Supersedes:** none
@@ -137,9 +137,10 @@ collapsing them into one mutable registry.
 
 - **Package authority:** `ipfs_accelerate_py/endpoint_usage/`.
 - **Scope identity:** `EndpointUsageScope` (provider, deployment/endpoint
-  fingerprint, protocol, operation, optional model, tenant/project
-  pseudonyms, credential-scope fingerprint). Unrelated credentials, accounts,
-  tenants, or endpoints are never pooled.
+  fingerprint, protocol, operation, optional model, account/project/
+  organization pseudonyms, region, and credential pseudonym). Only calls
+  deliberately normalized to one scope are pooled; distinct endpoint,
+  credential, account, project, or organization scopes are not.
 - **Reads:** snapshot, headroom, and limit queries are side-effect free; they
   never reserve, probe providers, refresh the catalog, or invoke models.
 - **Mutations:** `UsageCoordinator.reserve` atomically claims an estimate
