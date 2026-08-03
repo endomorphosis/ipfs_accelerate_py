@@ -34,10 +34,10 @@ PROOF_REUSE_DATASETS_SOURCE_ENV: Final = (
 )
 
 DATASETS_VERIFIER_REVISION: Final = (
-    "399297053dfb0ca8edec13e08dd8c8c299169f41"
+    "9abf9f1987800bc88abacbf9d7341eddb59dde90"
 )
 DATASETS_VERIFIER_SOURCE_SHA256: Final = (
-    "d6345cdb49840da9961ffd5550af128552afcc7d8b3ad1812dda6b9eb9b331fb"
+    "da02643318acb108e45cfd918f77e0ea669a9d0480f2550228b7eb0b0653db81"
 )
 DATASETS_VERIFIER_DISTRIBUTION: Final = "ipfs_datasets_py==0.2.0"
 DATASETS_VERIFIER_REMOTE_SOURCE_PUBLISHED: Final = False
@@ -366,7 +366,68 @@ class AllowlistedPipInstaller:
 
     @staticmethod
     def _detached_git_head(source: Path) -> str | None:
-        """Read a detached submodule HEAD without starting a git process."""
+        """Read a reviewed checkout HEAD without starting a git process.
+
+        Accepts detached HEADs and worktree/branch refs (``ref: refs/...``)
+        resolved through the git directory and any linked ``commondir``.
+        Symbolic-ref cycles and missing objects return ``None`` so the
+        installer fails closed to RUN.
+        """
+
+        def _is_commit_id(value: str) -> bool:
+            return len(value) == 40 and all(
+                character in "0123456789abcdef" for character in value
+            )
+
+        def _search_roots(git_dir: Path) -> tuple[Path, ...]:
+            roots = [git_dir]
+            try:
+                common_pointer = git_dir / "commondir"
+                if common_pointer.is_file():
+                    common = Path(common_pointer.read_text(encoding="utf-8").strip())
+                    if not common.is_absolute():
+                        common = (git_dir / common).resolve(strict=True)
+                    else:
+                        common = common.resolve(strict=True)
+                    if common not in roots:
+                        roots.append(common)
+            except (OSError, RuntimeError, UnicodeError):
+                pass
+            return tuple(roots)
+
+        def _read_ref(git_dir: Path, ref_name: str, *, depth: int = 0) -> str | None:
+            if depth > 8 or not ref_name.startswith("refs/"):
+                return None
+            for root in _search_roots(git_dir):
+                ref_path = root / ref_name
+                try:
+                    if ref_path.is_file():
+                        payload = ref_path.read_text(encoding="ascii").strip()
+                        if payload.lower().startswith("ref:"):
+                            return _read_ref(
+                                git_dir,
+                                payload.split(":", 1)[1].strip(),
+                                depth=depth + 1,
+                            )
+                        if _is_commit_id(payload):
+                            return payload
+                        continue
+                    packed = root / "packed-refs"
+                    if not packed.is_file():
+                        continue
+                    for line in packed.read_text(encoding="ascii").splitlines():
+                        text = line.strip()
+                        if not text or text.startswith("#") or text.startswith("^"):
+                            continue
+                        parts = text.split()
+                        if len(parts) != 2:
+                            continue
+                        commit_id, name = parts
+                        if name == ref_name and _is_commit_id(commit_id):
+                            return commit_id
+                except (OSError, RuntimeError, UnicodeError):
+                    continue
+            return None
 
         dot_git = source / ".git"
         try:
@@ -383,13 +444,13 @@ class AllowlistedPipInstaller:
             else:
                 return None
             head = (git_dir / "HEAD").read_text(encoding="ascii").strip()
-        except (OSError, RuntimeError):
+        except (OSError, RuntimeError, UnicodeError):
             return None
-        if len(head) != 40 or any(
-            character not in "0123456789abcdef" for character in head
-        ):
-            return None
-        return head
+        if _is_commit_id(head):
+            return head
+        if head.lower().startswith("ref:"):
+            return _read_ref(git_dir, head.split(":", 1)[1].strip())
+        return None
 
     def _validated_local_datasets_distribution(
         self,
@@ -643,6 +704,183 @@ class LazyProofReuseServiceResolver:
         return self._resolution
 
 
+DEFAULT_PROOF_REUSE_SERVICES_INTERFACE: Final = "ProofReuseServices@1"
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultProofReuseServices:
+    """Session-scoped default dependency injection for one pytest process.
+
+    Explicit injected handles always override lazy defaults.  Construction and
+    attribute access never open a network socket or install a package; callers
+    resolve optional lookup/store/provider services through the lazy resolver.
+    """
+
+    interface: str = DEFAULT_PROOF_REUSE_SERVICES_INTERFACE
+    identity_services: Any = None
+    lookup: Any = None
+    store: Any = None
+    provider: Any = None
+    issuer: Any = None
+    revalidator: Any = None
+    resolver: Any = None
+    resolution: Any = None
+    source: str = "defaults"
+    degraded: bool = False
+    reason_code: str = ""
+
+    @property
+    def available(self) -> bool:
+        return not self.degraded
+
+    def with_overrides(
+        self,
+        *,
+        identity_services: Any = None,
+        lookup: Any = None,
+        store: Any = None,
+        provider: Any = None,
+        issuer: Any = None,
+        revalidator: Any = None,
+    ) -> "DefaultProofReuseServices":
+        """Return a copy with only the provided non-None fields replaced."""
+
+        return DefaultProofReuseServices(
+            interface=self.interface,
+            identity_services=(
+                identity_services
+                if identity_services is not None
+                else self.identity_services
+            ),
+            lookup=lookup if lookup is not None else self.lookup,
+            store=store if store is not None else self.store,
+            provider=provider if provider is not None else self.provider,
+            issuer=issuer if issuer is not None else self.issuer,
+            revalidator=(
+                revalidator if revalidator is not None else self.revalidator
+            ),
+            resolver=self.resolver,
+            resolution=self.resolution,
+            source=self.source if identity_services is None else "explicit",
+            degraded=self.degraded,
+            reason_code=self.reason_code,
+        )
+
+
+def compose_default_proof_reuse_services(
+    *,
+    mode: Any = None,
+    root_path: str | os.PathLike[str] | None = None,
+    config: Any = None,
+    cache_root: str | os.PathLike[str] | None = None,
+    resolver: Any = None,
+    installer: Any = None,
+    identity_services: Any = None,
+    lookup: Any = None,
+    store: Any = None,
+    provider: Any = None,
+    issuer: Any = None,
+    revalidator: Any = None,
+    environ: Mapping[str, str] | None = None,
+) -> DefaultProofReuseServices:
+    """Assemble scoped defaults without item monkeypatches or path registries.
+
+    Every optional-boundary failure returns a degraded-but-usable bundle so
+    collection and execution continue.  Explicit service arguments always win.
+    """
+
+    reason_code = ""
+    degraded = False
+    resolved_identity = identity_services
+    if resolved_identity is None and mode is not None:
+        try:
+            from .default_identity_services import build_default_identity_services
+
+            resolved_identity = build_default_identity_services(
+                mode=mode,
+                root_path=root_path,
+                config=config,
+            )
+        except Exception:
+            resolved_identity = None
+            degraded = True
+            reason_code = "identity_services_unavailable"
+
+    resolved_resolver = resolver
+    resolution: ProofReuseServiceResolution | None = None
+    if lookup is None or store is None or provider is None:
+        if resolved_resolver is None:
+            try:
+                active_installer = installer
+                if active_installer is None and automatic_install_enabled(
+                    environ
+                ):
+                    active_installer = AllowlistedPipInstaller(
+                        environ=environ
+                    )
+                resolved_resolver = LazyProofReuseServiceResolver(
+                    installer=active_installer
+                )
+            except Exception:
+                resolved_resolver = None
+                degraded = True
+                reason_code = reason_code or "service_resolver_unavailable"
+        if resolved_resolver is not None and cache_root is not None:
+            try:
+                resolution = resolved_resolver.resolve(cache_root=cache_root)
+            except Exception:
+                resolution = ProofReuseServiceResolution.unavailable(
+                    "plugin_unavailable"
+                )
+                degraded = True
+                reason_code = reason_code or "plugin_unavailable"
+
+    resolved_lookup = lookup
+    resolved_store = store
+    resolved_provider = provider
+    if isinstance(resolution, ProofReuseServiceResolution) and resolution.available:
+        if resolved_lookup is None:
+            resolved_lookup = resolution.lookup
+        if resolved_store is None:
+            resolved_store = resolution.store
+        if resolved_provider is None:
+            resolved_provider = resolution.provider
+    elif (
+        isinstance(resolution, ProofReuseServiceResolution)
+        and not resolution.available
+    ):
+        degraded = True
+        reason_code = reason_code or resolution.reason_code or "plugin_unavailable"
+
+    resolved_revalidator = revalidator
+    if resolved_revalidator is None and resolved_store is not None:
+        try:
+            from .runtime_revalidation import build_runtime_context_revalidator
+
+            resolved_revalidator = build_runtime_context_revalidator(
+                candidate_store=resolved_store,
+                require_runtime_frontier=True,
+            )
+        except Exception:
+            resolved_revalidator = None
+            degraded = True
+            reason_code = reason_code or "revalidator_unavailable"
+
+    return DefaultProofReuseServices(
+        identity_services=resolved_identity,
+        lookup=resolved_lookup,
+        store=resolved_store,
+        provider=resolved_provider,
+        issuer=issuer,
+        revalidator=resolved_revalidator,
+        resolver=resolved_resolver,
+        resolution=resolution,
+        source="defaults" if identity_services is None else "explicit",
+        degraded=degraded,
+        reason_code=reason_code,
+    )
+
+
 __all__ = [
     "AllowlistedPipInstaller",
     "DATASETS_VERIFIER_DEPENDENCY",
@@ -652,6 +890,8 @@ __all__ = [
     "DATASETS_VERIFIER_RELEASE_BLOCKER",
     "DATASETS_VERIFIER_REMOTE_SOURCE_PUBLISHED",
     "DATASETS_VERIFIER_SOURCE_SHA256",
+    "DEFAULT_PROOF_REUSE_SERVICES_INTERFACE",
+    "DefaultProofReuseServices",
     "LOOKUP_MODULE",
     "JSONSCHEMA_DEPENDENCY",
     "JSONSCHEMA_MODULE",
@@ -667,5 +907,6 @@ __all__ = [
     "ProofReuseServiceResolution",
     "STORE_MODULE",
     "automatic_install_enabled",
+    "compose_default_proof_reuse_services",
     "proof_reuse_dependency_plan",
 ]

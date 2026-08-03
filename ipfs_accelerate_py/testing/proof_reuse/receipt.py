@@ -25,10 +25,60 @@ from ...agent_supervisor.proof.test_execution_contracts import (
 
 PROOF_REUSE_RECEIPT_INTERFACE: Final = "ProofReuseReceiptCapture@1"
 TEST_PASS_RECEIPT_COLLECTOR_INTERFACE: Final = "TestPassReceiptCollector@1"
+DEFERRED_ISSUANCE_ENVELOPE_INTERFACE: Final = "DeferredIssuanceEnvelope@1"
 
 ITEM_COLLECTOR_ATTRIBUTE: Final = "_ipfs_proof_reuse_receipt_collector"
 ITEM_RECEIPT_RESULT_ATTRIBUTE: Final = "_ipfs_proof_reuse_receipt_result"
 CONFIG_COLLECTORS_ATTRIBUTE: Final = "_ipfs_proof_reuse_receipt_collectors"
+
+# Fields workers may publish for controller-side deferred reconstruction.
+# Witness, private secrets, and raw statement bodies are intentionally absent.
+_PUBLIC_DEFERRED_FIELDS: Final = frozenset(
+    {
+        "interface",
+        "request_id",
+        "receipt_cid",
+        "execution_key_cid",
+        "candidate_context_cid",
+        "policy_cid",
+        "statement_cid",
+        "circuit_cid",
+        "verifying_key_cid",
+        "issuer_id",
+        "epoch",
+        "locator_cid",
+        "backend_id",
+        "proof_system_id",
+        "content_profile",
+        "statement_version",
+        "statement_interface",
+        "statement_digest",
+        "retained_receipt_bytes_hex",
+        "retained_candidate_context_bytes_hex",
+    }
+)
+_PRIVATE_DEFERRED_MARKERS: Final = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "authorization",
+        "cookie",
+        "credential",
+        "hidden_witness",
+        "password",
+        "private",
+        "private_key",
+        "private_premise",
+        "private_witness",
+        "refresh_token",
+        "secret",
+        "session_token",
+        "witness",
+        "witness_bytes",
+        "witness_hex",
+        "witness_json",
+    }
+)
 
 DEFAULT_OUTCOME_POLICY_ID: Final = "pytest-complete-pass-v1"
 PHASES: Final = ("setup", "call", "teardown")
@@ -1215,9 +1265,269 @@ def capture_complete_pass_from_reports(
     return finalize_test_pass_receipt(collector, **finalize_kwargs)
 
 
+def _field_is_private(name: str) -> bool:
+    lowered = name.strip().lower()
+    if not lowered:
+        return True
+    if lowered in _PRIVATE_DEFERRED_MARKERS:
+        return True
+    return any(marker in lowered for marker in _PRIVATE_DEFERRED_MARKERS)
+
+
+def public_deferred_mapping(value: Any) -> dict[str, Any] | None:
+    """Return only public deferred fields; reject private/witness keys."""
+
+    if value is None:
+        return None
+    if hasattr(value, "to_dict") and callable(value.to_dict):
+        try:
+            value = value.to_dict()
+        except Exception:
+            return None
+    if not isinstance(value, Mapping):
+        return None
+    public: dict[str, Any] = {}
+    for raw_key, raw_value in value.items():
+        key = str(raw_key)
+        if _field_is_private(key):
+            continue
+        if key not in _PUBLIC_DEFERRED_FIELDS:
+            continue
+        if isinstance(raw_value, (str, int, float, bool)) or raw_value is None:
+            public[key] = raw_value
+        elif isinstance(raw_value, Mapping):
+            # Nested maps are not accepted on the public envelope.
+            continue
+        else:
+            text = _bounded_text(raw_value, max_chars=_MAX_REASON_CHARS)
+            if text:
+                public[key] = text
+    if "interface" not in public:
+        public["interface"] = DEFERRED_ISSUANCE_ENVELOPE_INTERFACE
+    return public
+
+
+@dataclass(frozen=True, slots=True)
+class DeferredIssuanceEnvelope:
+    """Public-only deferred issuance transport for workers and controllers.
+
+    Workers may serialize this envelope.  Controllers reconstruct typed
+    issuance requests from retained public receipt/candidate bytes instead of
+    trusting worker-supplied private material.
+    """
+
+    receipt_cid: str
+    execution_key_cid: str = ""
+    candidate_context_cid: str = ""
+    policy_cid: str = ""
+    statement_cid: str = ""
+    circuit_cid: str = ""
+    verifying_key_cid: str = ""
+    issuer_id: str = ""
+    epoch: str = ""
+    locator_cid: str = ""
+    backend_id: str = ""
+    proof_system_id: str = ""
+    retained_receipt_bytes_hex: str = ""
+    retained_candidate_context_bytes_hex: str = ""
+    statement_digest: str = ""
+    content_profile: str = ""
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def interface(self) -> str:
+        return DEFERRED_ISSUANCE_ENVELOPE_INTERFACE
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = {
+            "interface": self.interface,
+            "receipt_cid": self.receipt_cid,
+            "execution_key_cid": self.execution_key_cid,
+            "candidate_context_cid": self.candidate_context_cid,
+            "policy_cid": self.policy_cid,
+            "statement_cid": self.statement_cid,
+            "circuit_cid": self.circuit_cid,
+            "verifying_key_cid": self.verifying_key_cid,
+            "issuer_id": self.issuer_id,
+            "epoch": self.epoch,
+            "locator_cid": self.locator_cid,
+            "backend_id": self.backend_id,
+            "proof_system_id": self.proof_system_id,
+            "retained_receipt_bytes_hex": self.retained_receipt_bytes_hex,
+            "retained_candidate_context_bytes_hex": (
+                self.retained_candidate_context_bytes_hex
+            ),
+            "statement_digest": self.statement_digest,
+            "content_profile": self.content_profile,
+        }
+        return {key: value for key, value in payload.items() if value not in ("", None)}
+
+    @classmethod
+    def from_mapping(cls, value: Any) -> "DeferredIssuanceEnvelope | None":
+        public = public_deferred_mapping(value)
+        if public is None:
+            return None
+        receipt_cid = str(public.get("receipt_cid") or "")
+        if not receipt_cid:
+            return None
+        return cls(
+            receipt_cid=receipt_cid,
+            execution_key_cid=str(public.get("execution_key_cid") or ""),
+            candidate_context_cid=str(public.get("candidate_context_cid") or ""),
+            policy_cid=str(public.get("policy_cid") or ""),
+            statement_cid=str(public.get("statement_cid") or ""),
+            circuit_cid=str(public.get("circuit_cid") or ""),
+            verifying_key_cid=str(public.get("verifying_key_cid") or ""),
+            issuer_id=str(public.get("issuer_id") or ""),
+            epoch=str(public.get("epoch") or ""),
+            locator_cid=str(public.get("locator_cid") or ""),
+            backend_id=str(public.get("backend_id") or ""),
+            proof_system_id=str(public.get("proof_system_id") or ""),
+            retained_receipt_bytes_hex=str(
+                public.get("retained_receipt_bytes_hex") or ""
+            ),
+            retained_candidate_context_bytes_hex=str(
+                public.get("retained_candidate_context_bytes_hex") or ""
+            ),
+            statement_digest=str(public.get("statement_digest") or ""),
+            content_profile=str(public.get("content_profile") or ""),
+        )
+
+    @classmethod
+    def from_admitted_receipt(
+        cls,
+        receipt: Any,
+        *,
+        locator_cid: str = "",
+        candidate_context_cid: str = "",
+        backend_id: str = "",
+        proof_system_id: str = "",
+        retained_receipt_bytes: bytes | bytearray | None = None,
+        retained_candidate_context_bytes: bytes | bytearray | None = None,
+        extras: Mapping[str, Any] | None = None,
+    ) -> "DeferredIssuanceEnvelope | None":
+        """Build a public envelope from an admitted pass receipt only."""
+
+        if receipt is None:
+            return None
+        try:
+            receipt_cid = str(
+                getattr(receipt, "receipt_id", None)
+                or getattr(receipt, "receipt_cid", None)
+                or ""
+            )
+            if not receipt_cid and isinstance(receipt, Mapping):
+                receipt_cid = str(
+                    receipt.get("receipt_id") or receipt.get("receipt_cid") or ""
+                )
+            if not receipt_cid:
+                return None
+            if hasattr(receipt, "to_dict") and callable(receipt.to_dict):
+                payload = receipt.to_dict()
+            elif isinstance(receipt, Mapping):
+                payload = dict(receipt)
+            else:
+                payload = {}
+            admitted = getattr(receipt, "admitted", payload.get("admitted"))
+            if admitted is False:
+                return None
+            execution_key_cid = str(
+                getattr(receipt, "execution_key_cid", None)
+                or payload.get("execution_key_cid")
+                or ""
+            )
+            policy_cid = str(
+                getattr(receipt, "policy_cid", None) or payload.get("policy_cid") or ""
+            )
+            resolved_locator = locator_cid or str(
+                getattr(receipt, "locator_cid", None)
+                or payload.get("locator_cid")
+                or ""
+            )
+            retained_receipt_hex = ""
+            if isinstance(retained_receipt_bytes, (bytes, bytearray)):
+                retained_receipt_hex = bytes(retained_receipt_bytes).hex()
+            retained_candidate_hex = ""
+            if isinstance(retained_candidate_context_bytes, (bytes, bytearray)):
+                retained_candidate_hex = bytes(retained_candidate_context_bytes).hex()
+            extra = dict(extras or {})
+            return cls(
+                receipt_cid=receipt_cid,
+                execution_key_cid=execution_key_cid,
+                candidate_context_cid=candidate_context_cid
+                or str(extra.get("candidate_context_cid") or ""),
+                policy_cid=policy_cid,
+                statement_cid=str(extra.get("statement_cid") or ""),
+                circuit_cid=str(extra.get("circuit_cid") or ""),
+                verifying_key_cid=str(extra.get("verifying_key_cid") or ""),
+                issuer_id=str(
+                    getattr(receipt, "issuer_key_id", None)
+                    or extra.get("issuer_id")
+                    or ""
+                ),
+                epoch=str(
+                    getattr(receipt, "epoch_policy_id", None) or extra.get("epoch") or ""
+                ),
+                locator_cid=resolved_locator,
+                backend_id=backend_id or str(extra.get("backend_id") or ""),
+                proof_system_id=proof_system_id
+                or str(extra.get("proof_system_id") or ""),
+                retained_receipt_bytes_hex=retained_receipt_hex,
+                retained_candidate_context_bytes_hex=retained_candidate_hex,
+                statement_digest=str(extra.get("statement_digest") or ""),
+                content_profile=str(extra.get("content_profile") or ""),
+            )
+        except Exception:
+            return None
+
+
+def reconstruct_deferred_request_from_public(
+    envelope: Any,
+    *,
+    retained_receipt_bytes: bytes | bytearray | None = None,
+    retained_candidate_context_bytes: bytes | bytearray | None = None,
+) -> dict[str, Any] | None:
+    """Controller-side reconstruction of a public deferred request.
+
+    Workers are never trusted for private witness data.  The controller rebuilds
+    the issuance envelope from public retained bytes plus identity bindings.
+    """
+
+    try:
+        if isinstance(envelope, DeferredIssuanceEnvelope):
+            public = envelope.to_dict()
+        else:
+            public = public_deferred_mapping(envelope)
+        if not public:
+            return None
+        if retained_receipt_bytes is not None:
+            public["retained_receipt_bytes_hex"] = bytes(
+                retained_receipt_bytes
+            ).hex()
+        if retained_candidate_context_bytes is not None:
+            public["retained_candidate_context_bytes_hex"] = bytes(
+                retained_candidate_context_bytes
+            ).hex()
+        # Prefer datasets typed reconstruction when available; fall back to the
+        # public envelope itself so issuance remains deferred rather than lost.
+        try:
+            from ipfs_datasets_py.logic.zkp.test_certificate_issuer import (
+                DeferredTestCertificateRequest,
+            )
+
+            typed = DeferredTestCertificateRequest.from_public_mapping(public)
+            return typed.to_dict()
+        except Exception:
+            public.setdefault("interface", DEFERRED_ISSUANCE_ENVELOPE_INTERFACE)
+            return public
+    except Exception:
+        return None
+
+
 __all__ = [
     "CONFIG_COLLECTORS_ATTRIBUTE",
     "DEFAULT_OUTCOME_POLICY_ID",
+    "DEFERRED_ISSUANCE_ENVELOPE_INTERFACE",
     "DISQUALIFIER_DISABLED",
     "DISQUALIFIER_ERROR",
     "DISQUALIFIER_FAIL",
@@ -1232,6 +1542,7 @@ __all__ = [
     "DISQUALIFIER_TIMEOUT",
     "DISQUALIFIER_XFAIL",
     "DISQUALIFIER_XPASS",
+    "DeferredIssuanceEnvelope",
     "ITEM_COLLECTOR_ATTRIBUTE",
     "ITEM_RECEIPT_RESULT_ATTRIBUTE",
     "PHASES",
@@ -1248,6 +1559,8 @@ __all__ = [
     "get_collector",
     "get_or_create_collector",
     "map_report_to_phase_outcome",
+    "public_deferred_mapping",
     "pytest_runtest_logreport",
+    "reconstruct_deferred_request_from_public",
     "register_collector",
 ]

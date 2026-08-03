@@ -29,8 +29,12 @@ SERVICE_RESOLUTION_ATTRIBUTE = "_ipfs_proof_reuse_service_resolution"
 IDENTITY_SERVICES_ATTRIBUTE = "_ipfs_proof_reuse_identity_services"
 RUNTIME_PLUGIN_ATTRIBUTE = "_ipfs_proof_reuse_runtime_plugin"
 RUNTIME_TRACE_ATTRIBUTE = "_ipfs_proof_reuse_runtime_trace"
+RUNTIME_TRACE_CAPTURE_ATTRIBUTE = "_ipfs_proof_reuse_runtime_trace_capture"
 DEFERRED_REQUEST_ATTRIBUTE = "_ipfs_proof_reuse_deferred_request"
 EXECUTION_RECORDED_ATTRIBUTE = "_ipfs_proof_reuse_execution_recorded"
+DEFAULT_SERVICES_ATTRIBUTE = "_ipfs_proof_reuse_default_services"
+COMPOSITION_ATTRIBUTE = "_ipfs_proof_reuse_runtime_composition"
+PROOF_REUSE_RUNTIME_COMPOSITION_INTERFACE = "ProofReuseRuntimeComposition@1"
 
 MODE_OPTION = "--proof-reuse-mode"
 REQUIRED_AUDIT_OPTION = "--proof-reuse-required-audit"
@@ -238,6 +242,18 @@ def _proof_reuse_cache_root(config: Any) -> str:
     )
 
 
+def _config_root_path(config: Any) -> str | None:
+    root = getattr(config, "rootpath", None)
+    if root is None:
+        root = getattr(config, "rootdir", None)
+    if root is None:
+        return None
+    try:
+        return os.path.abspath(os.fspath(root))
+    except (TypeError, ValueError, OSError):
+        return None
+
+
 def _inject_default_services(config: Any) -> None:
     """Assemble enabled services once; every failure leaves tests runnable."""
 
@@ -253,21 +269,27 @@ def _inject_default_services(config: Any) -> None:
 
     from .services import (
         AllowlistedPipInstaller,
+        DefaultProofReuseServices,
         LazyProofReuseServiceResolver,
         ProofReuseServiceResolution,
         automatic_install_enabled,
+        compose_default_proof_reuse_services,
     )
 
+    proof_config = get_proof_reuse_config(config)
     resolver = getattr(config, SERVICE_RESOLVER_ATTRIBUTE, None)
-    if resolver is None:
-        installer = getattr(config, DEPENDENCY_INSTALLER_ATTRIBUTE, None)
-        worker_input = getattr(config, "workerinput", None)
-        if (
-            installer is None
-            and not isinstance(worker_input, Mapping)
-            and automatic_install_enabled(os.environ)
-        ):
+    installer = getattr(config, DEPENDENCY_INSTALLER_ATTRIBUTE, None)
+    worker_input = getattr(config, "workerinput", None)
+    if (
+        installer is None
+        and not isinstance(worker_input, Mapping)
+        and automatic_install_enabled(os.environ)
+    ):
+        try:
             installer = AllowlistedPipInstaller()
+        except Exception:
+            installer = None
+    if resolver is None:
         try:
             resolver = LazyProofReuseServiceResolver(installer=installer)
         except Exception:
@@ -276,18 +298,46 @@ def _inject_default_services(config: Any) -> None:
             setattr(config, SERVICE_RESOLVER_ATTRIBUTE, resolver)
 
     try:
-        resolution = (
-            resolver.resolve(cache_root=_proof_reuse_cache_root(config))
-            if resolver is not None
-            else ProofReuseServiceResolution.unavailable(
-                "plugin_unavailable"
-            )
+        defaults = compose_default_proof_reuse_services(
+            mode=proof_config.mode,
+            root_path=_config_root_path(config),
+            config=config,
+            cache_root=_proof_reuse_cache_root(config),
+            resolver=resolver,
+            installer=installer,
+            identity_services=getattr(config, IDENTITY_SERVICES_ATTRIBUTE, None),
+            lookup=getattr(config, LOOKUP_SERVICE_ATTRIBUTE, None),
+            store=getattr(config, STORE_SERVICE_ATTRIBUTE, None),
+            provider=getattr(config, PROVIDER_SERVICE_ATTRIBUTE, None),
+            issuer=getattr(config, ISSUER_SERVICE_ATTRIBUTE, None),
         )
     except Exception:
-        resolution = ProofReuseServiceResolution.unavailable(
-            "plugin_unavailable"
+        defaults = DefaultProofReuseServices(
+            degraded=True,
+            reason_code="plugin_unavailable",
         )
+    setattr(config, DEFAULT_SERVICES_ATTRIBUTE, defaults)
+
+    resolution = defaults.resolution
+    if resolution is None:
+        try:
+            resolution = (
+                resolver.resolve(cache_root=_proof_reuse_cache_root(config))
+                if resolver is not None
+                else ProofReuseServiceResolution.unavailable(
+                    "plugin_unavailable"
+                )
+            )
+        except Exception:
+            resolution = ProofReuseServiceResolution.unavailable(
+                "plugin_unavailable"
+            )
     setattr(config, SERVICE_RESOLUTION_ATTRIBUTE, resolution)
+    if defaults.degraded:
+        metrics = getattr(config, METRICS_ATTRIBUTE, None)
+        if metrics is not None and defaults.reason_code:
+            metrics.degraded(reason_code=defaults.reason_code)
+
     if not isinstance(resolution, ProofReuseServiceResolution):
         return
     if not resolution.available:
@@ -297,12 +347,137 @@ def _inject_default_services(config: Any) -> None:
         return
 
     for attribute, service in (
-        (LOOKUP_SERVICE_ATTRIBUTE, resolution.lookup),
-        (STORE_SERVICE_ATTRIBUTE, resolution.store),
-        (PROVIDER_SERVICE_ATTRIBUTE, resolution.provider),
+        (LOOKUP_SERVICE_ATTRIBUTE, defaults.lookup or resolution.lookup),
+        (STORE_SERVICE_ATTRIBUTE, defaults.store or resolution.store),
+        (PROVIDER_SERVICE_ATTRIBUTE, defaults.provider or resolution.provider),
+        (ISSUER_SERVICE_ATTRIBUTE, defaults.issuer),
     ):
         if service is not None and getattr(config, attribute, None) is None:
             setattr(config, attribute, service)
+
+
+@dataclass
+class ProofReuseRuntimeComposition:
+    """Compose lookup, revalidation, receipt capture, deferred issuance, xdist.
+
+    Implements ``ProofReuseRuntimeComposition@1``.  The plugin owns
+    orchestration but not trust: every optional-boundary failure degrades to
+    normal pytest execution or a retained deferred receipt.
+    """
+
+    config: Any
+    services: Any = None
+
+    @property
+    def interface(self) -> str:
+        return PROOF_REUSE_RUNTIME_COMPOSITION_INTERFACE
+
+    def ensure_identity_services(self) -> Any:
+        """Return session-scoped identity defaults without item registries."""
+
+        existing = getattr(self.config, IDENTITY_SERVICES_ATTRIBUTE, None)
+        if existing is not None:
+            return existing
+        root = _config_root_path(self.config)
+        if root is None:
+            # Hermetic shells without a root keep an empty provider bundle so
+            # existing unit tests observe PROVIDER_UNAVAILABLE rather than a
+            # fabricated root.
+            return None
+        try:
+            from .default_identity_services import build_default_identity_services
+
+            proof_config = get_proof_reuse_config(self.config)
+            services = build_default_identity_services(
+                mode=proof_config.mode,
+                root_path=root,
+                config=self.config,
+            )
+            setattr(self.config, IDENTITY_SERVICES_ATTRIBUTE, services)
+            return services
+        except Exception:
+            metrics = getattr(self.config, METRICS_ATTRIBUTE, None)
+            if metrics is not None:
+                metrics.degraded(reason_code="identity_services_unavailable")
+            return None
+
+    def ensure_runtime_services(self) -> Any:
+        try:
+            _inject_default_services(self.config)
+        except Exception:
+            metrics = getattr(self.config, METRICS_ATTRIBUTE, None)
+            if metrics is not None:
+                metrics.degraded(reason_code="plugin_unavailable")
+        return getattr(self.config, DEFAULT_SERVICES_ATTRIBUTE, None)
+
+    def attach_post_pass_capture(self, item: Any) -> Any:
+        """Attach a post-pass runtime observer that never re-invokes the body."""
+
+        existing = getattr(item, RUNTIME_TRACE_CAPTURE_ATTRIBUTE, None)
+        if existing is not None:
+            return existing
+        try:
+            from .runtime_revalidation import PostPassRuntimeTraceCapture
+
+            locator = getattr(item, "_ipfs_proof_reuse_locator", None)
+            execution_key = getattr(item, "_ipfs_proof_reuse_execution_key", None)
+            capture = PostPassRuntimeTraceCapture(
+                locator_cid=str(
+                    getattr(locator, "locator_id", None)
+                    or getattr(locator, "content_id", None)
+                    or ""
+                ),
+                execution_key_cid=str(
+                    getattr(execution_key, "execution_key_id", None)
+                    or getattr(execution_key, "content_id", None)
+                    or ""
+                ),
+            )
+            setattr(item, RUNTIME_TRACE_CAPTURE_ATTRIBUTE, capture)
+            return capture
+        except Exception:
+            return None
+
+    def note_phase(self, item: Any, report: Any) -> None:
+        capture = getattr(item, RUNTIME_TRACE_CAPTURE_ATTRIBUTE, None)
+        if capture is None:
+            return
+        when = str(getattr(report, "when", ""))
+        outcome = str(getattr(report, "outcome", ""))
+        try:
+            if when == "setup" and outcome == "passed":
+                capture.note_setup()
+            elif when == "call" and outcome == "passed":
+                capture.note_call()
+            elif when == "teardown":
+                # Teardown is always noted so incomplete teardown disqualifies.
+                capture.note_teardown()
+        except Exception:
+            # Capture faults never change pytest outcome.
+            metrics = getattr(self.config, METRICS_ATTRIBUTE, None)
+            if metrics is not None:
+                metrics.degraded(reason_code="runtime_trace_capture_failed")
+
+    def build_public_deferred_envelope(self, item: Any, receipt: Any) -> Any:
+        try:
+            from .receipt import DeferredIssuanceEnvelope
+
+            existing = getattr(item, DEFERRED_REQUEST_ATTRIBUTE, None)
+            if existing is not None:
+                envelope = DeferredIssuanceEnvelope.from_mapping(existing)
+                if envelope is not None:
+                    return envelope.to_dict()
+            envelope = DeferredIssuanceEnvelope.from_admitted_receipt(
+                receipt,
+                locator_cid=str(getattr(receipt, "locator_cid", "") or ""),
+            )
+            if envelope is None:
+                return None
+            public = envelope.to_dict()
+            setattr(item, DEFERRED_REQUEST_ATTRIBUTE, public)
+            return public
+        except Exception:
+            return None
 
 
 def set_proof_reuse_identity_services(config: Any, services: Any) -> None:
@@ -323,6 +498,10 @@ def set_proof_reuse_identity_services(config: Any, services: Any) -> None:
 def _install_runtime_plugin(config: Any) -> None:
     if getattr(config, RUNTIME_PLUGIN_ATTRIBUTE, None) is not None:
         return
+    composition = getattr(config, COMPOSITION_ATTRIBUTE, None)
+    if not isinstance(composition, ProofReuseRuntimeComposition):
+        composition = ProofReuseRuntimeComposition(config=config)
+        setattr(config, COMPOSITION_ATTRIBUTE, composition)
     try:
         import pytest
     except Exception:
@@ -440,22 +619,40 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
     # Item identity is assembled through one session-scoped DI boundary.  An
     # absent bundle is represented by an empty bundle: each enabled item then
     # receives a typed RUN diagnostic and no lookup request.  Existing manual
-    # identities are detected by the assembler and left untouched.
+    # identities are detected by the assembler and left untouched.  Explicit
+    # injections remain authoritative; otherwise a root-scoped default factory
+    # supplies session-memoized providers without per-test registries.
     from .item_identity import (
         ItemIdentityAssemblyServices,
         assemble_and_attach_item_identity,
     )
 
+    composition = getattr(config, COMPOSITION_ATTRIBUTE, None)
+    if not isinstance(composition, ProofReuseRuntimeComposition):
+        composition = ProofReuseRuntimeComposition(config=config)
+        setattr(config, COMPOSITION_ATTRIBUTE, composition)
+
+    metrics = getattr(config, METRICS_ATTRIBUTE, None)
     identity_services = getattr(config, IDENTITY_SERVICES_ATTRIBUTE, None)
     if not isinstance(identity_services, ItemIdentityAssemblyServices):
-        identity_services = ItemIdentityAssemblyServices()
+        defaults = composition.ensure_identity_services()
+        if isinstance(defaults, ItemIdentityAssemblyServices):
+            identity_services = defaults
+        else:
+            identity_services = ItemIdentityAssemblyServices()
     for item in collected:
         metadata = get_item_metadata(item)
         if metadata is None or metadata.disabled:
             continue
-        assemble_and_attach_item_identity(item, identity_services)
+        try:
+            assemble_and_attach_item_identity(item, identity_services)
+        except Exception:
+            if metrics is not None:
+                metrics.degraded(reason_code="identity_assembly_failed")
+            continue
+        if proof_config.writes_receipts:
+            composition.attach_post_pass_capture(item)
 
-    metrics = getattr(config, METRICS_ATTRIBUTE, None)
     coordinator = getattr(config, COORDINATOR_ATTRIBUTE, None)
     if not isinstance(coordinator, ProofReuseXdistCoordinator):
         if metrics is not None:
@@ -532,14 +729,26 @@ def _record_runtime_report(config: Any, item: Any, report: Any) -> None:
         ITEM_COLLECTOR_ATTRIBUTE,
         TestPassReceiptCollector,
         finalize_test_pass_receipt,
+        public_deferred_mapping,
     )
     from .xdist import ProofReuseXdistCoordinator
 
     metrics = getattr(config, METRICS_ATTRIBUTE, None)
     coordinator = getattr(config, COORDINATOR_ATTRIBUTE, None)
+    composition = getattr(config, COMPOSITION_ATTRIBUTE, None)
+    if not isinstance(composition, ProofReuseRuntimeComposition):
+        composition = ProofReuseRuntimeComposition(config=config)
+        setattr(config, COMPOSITION_ATTRIBUTE, composition)
+
     collector = getattr(item, ITEM_COLLECTOR_ATTRIBUTE, None)
     if isinstance(collector, TestPassReceiptCollector):
         collector.record_report(report)
+
+    try:
+        composition.note_phase(item, report)
+    except Exception:
+        if metrics is not None:
+            metrics.degraded(reason_code="runtime_trace_capture_failed")
 
     when = str(getattr(report, "when", ""))
     outcome = str(getattr(report, "outcome", ""))
@@ -590,22 +799,42 @@ def _record_runtime_report(config: Any, item: Any, report: Any) -> None:
             "_ipfs_proof_reuse_execution_key",
             None,
         )
+    runtime_trace = getattr(item, RUNTIME_TRACE_ATTRIBUTE, None)
+    capture = getattr(item, RUNTIME_TRACE_CAPTURE_ATTRIBUTE, None)
+    if runtime_trace is None and capture is not None:
+        # Prefer the complete observed post-pass capture when the item did not
+        # attach an explicit runtime trace object.
+        try:
+            if getattr(capture, "lifecycle_complete", False):
+                observation = getattr(capture, "observation", None)
+                if observation is not None:
+                    runtime_trace = observation
+                else:
+                    runtime_trace = capture
+        except Exception:
+            runtime_trace = capture
+
     result = finalize_test_pass_receipt(
         collector,
         locator=locator,
         execution_key=execution_key,
-        runtime_trace=getattr(item, RUNTIME_TRACE_ATTRIBUTE, None),
+        runtime_trace=runtime_trace,
         writes_receipts=False,
+        require_runtime_trace=True,
         item=item,
     )
     if result.admitted and result.receipt is not None:
+        deferred = composition.build_public_deferred_envelope(
+            item,
+            result.receipt,
+        )
+        if deferred is None:
+            deferred = public_deferred_mapping(
+                getattr(item, DEFERRED_REQUEST_ATTRIBUTE, None)
+            )
         coordinator.queue_publication(
             result.receipt,
-            deferred_request=getattr(
-                item,
-                DEFERRED_REQUEST_ATTRIBUTE,
-                None,
-            ),
+            deferred_request=deferred,
         )
 
 
@@ -753,8 +982,10 @@ def pytest_terminal_summary(
 
 
 __all__ = [
+    "COMPOSITION_ATTRIBUTE",
     "CONFIG_ATTRIBUTE",
     "COORDINATOR_ATTRIBUTE",
+    "DEFAULT_SERVICES_ATTRIBUTE",
     "DEPENDENCY_INSTALLER_ATTRIBUTE",
     "DEFERRED_REQUEST_ATTRIBUTE",
     "DISABLED_MARKER",
@@ -766,10 +997,13 @@ __all__ = [
     "LOOKUP_SERVICE_ATTRIBUTE",
     "METRICS_ATTRIBUTE",
     "PLUGIN_NAME",
+    "PROOF_REUSE_RUNTIME_COMPOSITION_INTERFACE",
     "PROVIDER_SERVICE_ATTRIBUTE",
     "ProofReuseItemMetadata",
+    "ProofReuseRuntimeComposition",
     "RUNTIME_PLUGIN_ATTRIBUTE",
     "RUNTIME_TRACE_ATTRIBUTE",
+    "RUNTIME_TRACE_CAPTURE_ATTRIBUTE",
     "SERVICE_RESOLUTION_ATTRIBUTE",
     "SERVICE_RESOLVER_ATTRIBUTE",
     "STORE_SERVICE_ATTRIBUTE",

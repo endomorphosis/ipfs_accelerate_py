@@ -65,6 +65,99 @@ def _canonical_digest(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _public_deferred_request(value: Any) -> Mapping[str, Any] | None:
+    """Strip witness/private fields before any worker/controller transport.
+
+    Known deferred identity fields are preferred, but additional scalar public
+    metadata (for example disagreement markers) may travel as long as no
+    private/witness key or nested body is present.
+    """
+
+    if value is None:
+        return None
+    if hasattr(value, "to_dict") and callable(value.to_dict):
+        try:
+            value = value.to_dict()
+        except Exception:
+            return None
+    if not isinstance(value, Mapping):
+        return None
+    private_markers = (
+        "witness",
+        "private",
+        "secret",
+        "password",
+        "token",
+        "credential",
+        "api_key",
+        "authorization",
+        "cookie",
+        "session",
+    )
+    cleaned: dict[str, Any] = {}
+    for raw_key, raw_value in value.items():
+        key = str(raw_key)
+        lowered = key.lower()
+        if any(marker in lowered for marker in private_markers):
+            continue
+        if isinstance(raw_value, (str, int, float, bool)) or raw_value is None:
+            if isinstance(raw_value, str) and len(raw_value) > 4096:
+                continue
+            cleaned[key] = raw_value
+        # Nested maps/lists are never transported: they may hide witness data.
+    return cleaned or None
+
+
+def _controller_deferred_request(
+    intent: "ProofReusePublicationIntent",
+) -> Mapping[str, Any] | None:
+    """Reconstruct issuance input from public retained bytes, not worker trust."""
+
+    try:
+        from .receipt import (
+            DeferredIssuanceEnvelope,
+            reconstruct_deferred_request_from_public,
+        )
+
+        envelope = DeferredIssuanceEnvelope.from_mapping(intent.deferred_request)
+        if envelope is None and intent.receipt_cid:
+            envelope = DeferredIssuanceEnvelope(
+                receipt_cid=intent.receipt_cid,
+                locator_cid=intent.locator_cid,
+                execution_key_cid=str(
+                    intent.receipt.get("execution_key_cid") or ""
+                ),
+                policy_cid=str(intent.receipt.get("policy_cid") or ""),
+                retained_receipt_bytes_hex="",
+            )
+        if envelope is None:
+            return _public_deferred_request(intent.deferred_request)
+        retained_receipt = None
+        retained_candidate = None
+        if envelope.retained_receipt_bytes_hex:
+            try:
+                retained_receipt = bytes.fromhex(
+                    envelope.retained_receipt_bytes_hex
+                )
+            except ValueError:
+                retained_receipt = None
+        if envelope.retained_candidate_context_bytes_hex:
+            try:
+                retained_candidate = bytes.fromhex(
+                    envelope.retained_candidate_context_bytes_hex
+                )
+            except ValueError:
+                retained_candidate = None
+        reconstructed = reconstruct_deferred_request_from_public(
+            envelope,
+            retained_receipt_bytes=retained_receipt,
+            retained_candidate_context_bytes=retained_candidate,
+        )
+        return _public_deferred_request(reconstructed or envelope.to_dict())
+    except Exception:
+        return _public_deferred_request(intent.deferred_request)
+
+
 @dataclass(frozen=True)
 class ProofReusePublicationIntent:
     """Serializable, content-addressed unit submitted by one worker."""
@@ -93,9 +186,7 @@ class ProofReusePublicationIntent:
             locator_cid=receipt.locator_cid,
             certificate=dict(certificate) if certificate is not None else None,
             certificate_cid=_bounded_token(certificate_cid),
-            deferred_request=(
-                dict(deferred_request) if deferred_request is not None else None
-            ),
+            deferred_request=_public_deferred_request(deferred_request),
         ).validated()
 
     def validated(self) -> "ProofReusePublicationIntent":
@@ -122,10 +213,11 @@ class ProofReusePublicationIntent:
                 raise ValueError("publication certificate receipt mismatch")
             if typed_certificate.execution_key_cid != typed.execution_key_cid:
                 raise ValueError("publication certificate execution key mismatch")
-        if self.deferred_request is not None and not isinstance(
-            self.deferred_request, Mapping
-        ):
-            raise ValueError("deferred request must be a mapping")
+        public_deferred = _public_deferred_request(self.deferred_request)
+        if self.deferred_request is not None and public_deferred is None:
+            raise ValueError("deferred request must be a public mapping")
+        if public_deferred is not self.deferred_request:
+            object.__setattr__(self, "deferred_request", public_deferred)
         return self
 
     @property
@@ -556,14 +648,14 @@ class ProofReuseXdistCoordinator:
                         issue = getattr(issuer, "issue", None)
                         if not callable(issue):
                             raise TypeError("deferred issuer unavailable")
-                        request = (
-                            dict(intent.deferred_request)
-                            if intent.deferred_request is not None
-                            else {
+                        # Controller reconstructs from public retained bytes;
+                        # worker-supplied private material is never accepted.
+                        request = _controller_deferred_request(intent)
+                        if request is None:
+                            request = {
                                 "receipt_cid": intent.receipt_cid,
                                 "locator_cid": intent.locator_cid,
                             }
-                        )
                         issue_result = issue(request)
                         status = str(
                             getattr(issue_result, "status", "")
