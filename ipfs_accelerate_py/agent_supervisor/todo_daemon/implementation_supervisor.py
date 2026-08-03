@@ -843,11 +843,17 @@ def _projection_is_quiescent_for_heartbeat_fallback(
         "ready_count",
         "selectable_ready_count",
         "eligible_ready_count",
-        "blocked_count",
     ):
         value = status[field_name]
         if isinstance(value, bool) or not isinstance(value, int) or value != 0:
             return False
+    blocked_count = status["blocked_count"]
+    if (
+        isinstance(blocked_count, bool)
+        or not isinstance(blocked_count, int)
+        or blocked_count < 0
+    ):
+        return False
     return True
 
 
@@ -7265,7 +7271,12 @@ class PortalImplementationSupervisor:
             ),
             repo_root=self.config.repo_root,
             task_header_prefix=self.config.task_prefix,
-            implement=False,
+            # Revalidation-only construction requires implement=True, while
+            # its daemon policy still forbids every model/provider seam. An
+            # ordinary reconciliation helper remains non-implementing.
+            implement=bool(
+                self.config.manual_completion_authority_revalidation_only
+            ),
             implementation_command=self.config.implementation_command,
             implementation_timeout=self.config.implementation_timeout,
             max_task_attempts=self.config.max_task_attempts,
@@ -13334,8 +13345,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help=(
             "Command used by the daemon for implementation. By default, "
-            "automatic routing selects authenticated Grok first, then "
-            "Codex/Copilot fallback."
+            "automatic routing selects authenticated Grok 4.5. Only a "
+            "typed durable Grok hard-quota latch authorizes a later "
+            "gpt-5.6-terra Codex attempt with medium reasoning; other "
+            "Grok failures remain fail closed."
         ),
     )
     parser.add_argument(

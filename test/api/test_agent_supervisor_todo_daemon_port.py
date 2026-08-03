@@ -70,6 +70,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives import (
     backlog_refinery as backlog_refinery_module,
 )
 from ipfs_accelerate_py.agent_supervisor import merge_resolver
+from ipfs_accelerate_py.agent_supervisor import provider_failure_policy
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MERGE_TARGET_BINDING_SCHEMA,
     MergeQueue,
@@ -186,6 +187,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     ObjectiveCompletionArtifactRefreshError,
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
+    _projection_is_quiescent_for_heartbeat_fallback,
     parse_args as parse_implementation_supervisor_args,
     supervisor_config_from_args,
 )
@@ -1256,9 +1258,9 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
     )
 
     # Hermetic against ambient agent-lane provider force (grok_cli) and PATH.
-    monkeypatch.delenv(
+    monkeypatch.setenv(
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        raising=False,
+        "codex",
     )
     monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
     monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
@@ -1287,9 +1289,10 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
         str(repo),
     ]
     assert command[-1] == "-"
-    assert ["-c", "model_context_window=200000"] == command[5:7]
+    assert "model_context_window=200000" in command
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
     assert "-c" in command
-    assert 'model_reasoning_effort="high"' in command
+    assert 'model_reasoning_effort="medium"' in command
     assert "agents.max_threads=10" in command
     assert "agents.max_depth=2" in command
 
@@ -1895,7 +1898,7 @@ def test_git_gc_aggressive_timeout_aborts_repack_and_defers_retry(
     assert collector.needs_aggressive_gc() is False
 
 
-def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
+def test_implementation_daemon_uses_explicit_authenticated_copilot(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -1909,9 +1912,9 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
     )
 
     # Hermetic against ambient agent-lane provider force (grok_cli) and PATH.
-    monkeypatch.delenv(
+    monkeypatch.setenv(
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        raising=False,
+        "copilot",
     )
     monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
     monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
@@ -1937,9 +1940,19 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
     command = daemon._build_implementation_command(repo)
 
     assert command[:2] == ["bash", "-lc"]
-    assert "falling back to copilot" in command[2]
-    assert command[3:7] == ["bash", "/usr/local/bin/codex", "/usr/local/bin/copilot", str(repo)]
-    assert command[7:] == ["", "200000", "high", "10", "2", "", "high", "long_context", "30"]
+    assert 'if [[ -n "$codex_bin" ]]' in command[2]
+    assert command[3:7] == ["bash", "", "/usr/local/bin/copilot", str(repo)]
+    assert command[7:] == [
+        "gpt-5.6-terra",
+        "200000",
+        "medium",
+        "10",
+        "2",
+        "",
+        "high",
+        "long_context",
+        "30",
+    ]
 
 
 def test_implementation_daemon_links_shared_dependencies_only_in_managed_worktrees(tmp_path):
@@ -4515,6 +4528,10 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
 def test_implementation_multi_supervisor_env_defaults_are_reusable():
     assert implementation_multi_supervisor_env_defaults() == {
         "PYTHONUNBUFFERED": "1",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "auto",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
         "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "900",
         "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
     }
@@ -4524,6 +4541,10 @@ def test_implementation_multi_supervisor_env_defaults_are_reusable():
         prefer_copilot_merge_resolver=True,
     ) == {
         "PYTHONUNBUFFERED": "0",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "auto",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
         "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0",
         "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
         "PREFER_COPILOT_MERGE_RESOLVER": "1",
@@ -13095,7 +13116,76 @@ def test_provider_declared_retry_reset_and_explicit_command_attribution(
     assert grok_daemon._active_provider_capacity_backoff() == {}
 
 
-def test_auto_provider_skips_active_grok_latch_and_uses_codex(
+def _record_test_grok_hard_quota_latch(
+    daemon,
+    *,
+    retry_at="2026-08-03T01:00:00+00:00",
+):
+    nonce = "c" * 64
+    returncode = 17
+    task_id = "ACCEL-001"
+    canonical_task_cid = "task:accel-001"
+    command = [
+        "/usr/bin/python3",
+        "/opt/grok_cli_runner.py",
+        "--model",
+        "grok-4.5",
+        "--grok-failure-receipt-nonce",
+        nonce,
+    ]
+    receipt = provider_failure_policy.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build status 402: out of credits",
+        nonce=nonce,
+        model="grok-4.5",
+        probe_returncode=returncode,
+        primary_dispatched=False,
+    )
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": 1,
+            "command": command,
+        },
+    )
+    start = daemon._iter_merge_lifecycle_events()[-1]
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": 1,
+            "returncode": returncode,
+            "providers": ["grok"],
+            "failure_class": "hard_quota_exhausted",
+            "hard_quota_exhausted_providers": ["grok"],
+            "retry_at": retry_at,
+            "quota_fallback_authority": {
+                "schema": (
+                    implementation_daemon_module.GROK_QUOTA_FALLBACK_AUTHORITY_SCHEMA
+                ),
+                "primary_provider": "grok",
+                "primary_model": "grok-4.5",
+                "failure_class": "hard_quota_exhausted",
+                "evidence_sha256": receipt["evidence_sha256"],
+                "task_id": task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "attempt": 1,
+                "primary_returncode": returncode,
+                "start_event_id": start["event_id"],
+                "start_sequence": start["sequence"],
+                "command_sha256": daemon._implementation_command_identity(
+                    command
+                ),
+                "runner_receipt_id": receipt["receipt_id"],
+                "runner_receipt": receipt,
+            },
+        },
+    )
+
+
+def test_auto_provider_uses_exact_codex_only_for_typed_grok_hard_quota(
     tmp_path,
     monkeypatch,
 ):
@@ -13141,19 +13231,15 @@ def test_auto_provider_skips_active_grok_latch_and_uses_codex(
         repo_root=repo,
         task_header_prefix="## ACCEL-",
     )
-    daemon._record_event(
-        "implementation_provider_exhausted",
-        {
-            "providers": ["grok"],
-            "retry_at": "2026-08-03T01:00:00+00:00",
-        },
-    )
+    _record_test_grok_hard_quota_latch(daemon)
 
     assert daemon._active_provider_capacity_backoff() == {}
     command = daemon._build_implementation_command(repo)
 
     assert command[0] == "/usr/local/bin/codex"
     assert "grok_cli_runner.py" not in " ".join(command)
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in command
 
 
 def test_explicit_grok_provider_keeps_its_capacity_latch_fail_closed(
@@ -13262,13 +13348,7 @@ def test_auto_provider_backs_off_when_all_available_families_are_latched(
         repo_root=repo,
         task_header_prefix="## ACCEL-",
     )
-    daemon._record_event(
-        "implementation_provider_exhausted",
-        {
-            "providers": ["grok"],
-            "retry_at": "2026-08-03T01:00:00+00:00",
-        },
-    )
+    _record_test_grok_hard_quota_latch(daemon)
     daemon._record_event(
         "implementation_started",
         {"command": ["/usr/local/bin/codex", "exec"]},
@@ -13288,7 +13368,7 @@ def test_auto_provider_backs_off_when_all_available_families_are_latched(
     assert backoff["providers"] == ["grok", "codex"]
     with pytest.raises(
         RuntimeError,
-        match="All available automatic implementation providers",
+        match="authorized Codex fallback is in capacity cooldown",
     ):
         daemon._build_implementation_command(repo)
 
@@ -15668,6 +15748,51 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     assert loop_config.watchdog_accept_fresh_child_log is True
 
 
+def test_implementation_supervisor_quiescent_heartbeat_allows_blocked_terminal_idle():
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        {
+            "active_task_id": "",
+            "implementation_in_progress": False,
+            "ready_count": 0,
+            "selectable_ready_count": 0,
+            "eligible_ready_count": 0,
+            "blocked_count": 5,
+            "selection_idle_reason": "no_shard_selectable_ready_tasks",
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    (
+        ("blocked_count", -1),
+        ("blocked_count", True),
+        ("blocked_count", "5"),
+        ("active_task_id", "PDR-060"),
+        ("implementation_in_progress", True),
+        ("ready_count", 1),
+        ("selectable_ready_count", 1),
+        ("eligible_ready_count", 1),
+    ),
+)
+def test_implementation_supervisor_quiescent_heartbeat_rejects_invalid_or_active_state(
+    field_name,
+    field_value,
+):
+    status = {
+        "active_task_id": "",
+        "implementation_in_progress": False,
+        "ready_count": 0,
+        "selectable_ready_count": 0,
+        "eligible_ready_count": 0,
+        "blocked_count": 5,
+        "selection_idle_reason": "no_shard_selectable_ready_tasks",
+    }
+    status[field_name] = field_value
+
+    assert not _projection_is_quiescent_for_heartbeat_fallback(status)
+
+
 def test_supervisor_loop_accepts_fresh_child_log_for_delta_only_idle_state(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -15697,16 +15822,31 @@ def test_supervisor_loop_accepts_fresh_child_log_for_delta_only_idle_state(tmp_p
             log_prefix="child",
             watchdog_stale_after_seconds=60,
             watchdog_log_heartbeat_fallback=True,
+            watchdog_quiescent_status_predicate=(
+                _projection_is_quiescent_for_heartbeat_fallback
+            ),
+            watchdog_accept_fresh_child_log=True,
         )
     )
     loop.last_log_path = str(latest_log)
     stale_status = {
         "heartbeat_at": "2000-01-01T00:00:00+00:00",
         "heartbeat_pid": os.getpid(),
+        "active_task_id": "",
+        "implementation_in_progress": False,
+        "ready_count": 0,
+        "selectable_ready_count": 0,
+        "eligible_ready_count": 0,
+        "blocked_count": 5,
+        "selection_idle_reason": "no_shard_selectable_ready_tasks",
     }
 
     decision = loop.default_watchdog(
-        SimpleNamespace(pid=os.getpid()),
+        SimpleNamespace(
+            pid=os.getpid(),
+            latest_log_path=latest_log,
+            log_path=latest_log,
+        ),
         stale_status,
     )
 
@@ -15743,16 +15883,31 @@ def test_supervisor_loop_recycles_when_state_and_child_log_are_stale(tmp_path):
             log_prefix="child",
             watchdog_stale_after_seconds=60,
             watchdog_log_heartbeat_fallback=True,
+            watchdog_quiescent_status_predicate=(
+                _projection_is_quiescent_for_heartbeat_fallback
+            ),
+            watchdog_accept_fresh_child_log=True,
         )
     )
     loop.last_log_path = str(latest_log)
     stale_status = {
         "heartbeat_at": "2000-01-01T00:00:00+00:00",
         "heartbeat_pid": os.getpid(),
+        "active_task_id": "",
+        "implementation_in_progress": False,
+        "ready_count": 0,
+        "selectable_ready_count": 0,
+        "eligible_ready_count": 0,
+        "blocked_count": 5,
+        "selection_idle_reason": "no_shard_selectable_ready_tasks",
     }
 
     decision = loop.default_watchdog(
-        SimpleNamespace(pid=os.getpid()),
+        SimpleNamespace(
+            pid=os.getpid(),
+            latest_log_path=latest_log,
+            log_path=latest_log,
+        ),
         stale_status,
     )
 
@@ -21038,7 +21193,7 @@ def test_task_llm_context_budget_caps_codex_window_without_widening_operator_lim
     assert resolution.provider_context_window == 6_000
     assert resolution.effective_input_limit == 4_500
     assert result.capsule.budget.max_input_tokens == 4_500
-    assert ["-c", "model_context_window=6000"] == command[5:7]
+    assert "model_context_window=6000" in command
     assert "model_context_window=200000" not in command
 
 
@@ -28496,6 +28651,35 @@ def test_supervisor_propagates_configured_generated_status_path_to_daemon(tmp_pa
     assert command[command.index("--generated-status-path") + 1] == str(generated_path)
     assert daemon.generated_status_paths == (generated_path,)
     assert daemon._path_is_generated_status_output("docs/generated-taskboard.md") is True
+
+
+def test_revalidation_only_shutdown_reconciliation_daemon_is_constructible(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    board = repo / "todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    parsed = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(repo / "state"),
+            "--implement",
+            "--manual-completion-authority-task-id",
+            "PDR-060",
+            "--manual-completion-authority-revalidation-only",
+        ]
+    )
+    supervisor = TodoImplementationSupervisor(
+        supervisor_config_from_args(parsed, repo_root=repo)
+    )
+
+    daemon = supervisor._build_worktree_reconciliation_daemon()
+
+    assert daemon.implement is True
+    assert daemon.manual_completion_authority_revalidation_only is True
 
 
 def test_implementation_supervisor_reuses_reconciliation_scan_cache_when_main_dirty(tmp_path, monkeypatch):

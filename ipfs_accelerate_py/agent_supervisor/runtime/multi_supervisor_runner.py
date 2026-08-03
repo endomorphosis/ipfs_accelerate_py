@@ -496,6 +496,10 @@ def _env_default_value(value: bool | int | str) -> str:
 def implementation_multi_supervisor_env_defaults(
     *,
     python_unbuffered: bool | int | str | None = True,
+    implementation_provider: str | None = "auto",
+    grok_model: str | None = "grok-4.5",
+    codex_model: str | None = "gpt-5.6-terra",
+    codex_reasoning_effort: str | None = "medium",
     codex_merge_resolver_timeout_seconds: int | str | None = 900,
     copilot_merge_resolver_timeout_seconds: int | str | None = 600,
     prefer_copilot_merge_resolver: bool | int | str | None = None,
@@ -505,6 +509,18 @@ def implementation_multi_supervisor_env_defaults(
     defaults: dict[str, str] = {}
     if python_unbuffered is not None:
         defaults["PYTHONUNBUFFERED"] = _env_default_value(python_unbuffered)
+    if implementation_provider is not None:
+        defaults["IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"] = str(
+            implementation_provider
+        )
+    if grok_model is not None:
+        defaults["IPFS_ACCELERATE_AGENT_GROK_MODEL"] = str(grok_model)
+    if codex_model is not None:
+        defaults["IPFS_ACCELERATE_AGENT_CODEX_MODEL"] = str(codex_model)
+    if codex_reasoning_effort is not None:
+        defaults["IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"] = str(
+            codex_reasoning_effort
+        )
     if codex_merge_resolver_timeout_seconds is not None:
         defaults["CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS"] = _env_default_value(
             codex_merge_resolver_timeout_seconds

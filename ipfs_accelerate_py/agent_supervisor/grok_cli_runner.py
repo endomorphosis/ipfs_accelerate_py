@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,14 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
 
+from ipfs_accelerate_py.agent_supervisor.provider_failure_policy import (
+    GROK_FAILURE_RECEIPT_PREFIX,
+    GROK_QUOTA_PROBE_PROMPT,
+    GROK_QUOTA_PROBE_TIMEOUT_SECONDS,
+    MAX_GROK_FAILURE_EVIDENCE_BYTES,
+    build_grok_failure_receipt,
+    render_grok_failure_receipt,
+)
 
 DEFAULT_GROK_MODEL = "grok-4.5"
 # Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
@@ -40,9 +49,7 @@ def _resolve_grok_bin(configured: str = "") -> str:
 
         candidate = str(_grok_cli_command() or "").strip()
         if candidate:
-            found = shutil.which(candidate) or (
-                candidate if Path(candidate).is_file() else ""
-            )
+            found = shutil.which(candidate) or (candidate if Path(candidate).is_file() else "")
             if found:
                 return found
     except Exception:
@@ -89,10 +96,7 @@ def _parse_codex_fallback_command(raw: str) -> list[str]:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise ValueError("Codex fallback command is not valid JSON") from exc
-    if (
-        not isinstance(payload, list)
-        or not 2 <= len(payload) <= MAX_CODEX_FALLBACK_ARGUMENTS
-    ):
+    if not isinstance(payload, list) or not 2 <= len(payload) <= MAX_CODEX_FALLBACK_ARGUMENTS:
         raise ValueError("Codex fallback command must be a bounded argv array")
     command: list[str] = []
     for item in payload:
@@ -101,15 +105,84 @@ def _parse_codex_fallback_command(raw: str) -> list[str]:
             or not item
             or len(item.encode("utf-8")) > MAX_CODEX_FALLBACK_ARGUMENT_BYTES
         ):
-            raise ValueError(
-                "Codex fallback command contains an invalid argument"
-            )
+            raise ValueError("Codex fallback command contains an invalid argument")
         command.append(item)
     if Path(command[0]).name.lower() not in {"codex", "codex.exe"}:
         raise ValueError("Codex fallback executable must be codex")
     if command[1] != "exec" or command[-1] != "-":
         raise ValueError("Codex fallback command must use `codex exec ... -`")
     return command
+
+
+def _run_grok_with_stderr_probe(
+    command: Sequence[str],
+    *,
+    env: dict[str, str],
+) -> tuple[int, str]:
+    """Run task Grok while escaping receipt-like child output.
+
+    The runner's own receipt line is a control-plane record. Child stdout and
+    stderr share this filtered data path so neither can imitate that prefix.
+    """
+
+    process = subprocess.Popen(
+        list(command),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    tail = bytearray()
+    assert process.stdout is not None
+    receipt_prefix = GROK_FAILURE_RECEIPT_PREFIX.encode("utf-8")
+    at_line_start = True
+    while True:
+        chunk = process.stdout.readline(4096)
+        if not chunk:
+            break
+        if at_line_start and chunk.startswith(receipt_prefix):
+            chunk = b"[grok-child-output-escaped] " + chunk
+        at_line_start = chunk.endswith(b"\n")
+        sink = getattr(sys.stdout, "buffer", None)
+        if sink is not None:
+            sink.write(chunk)
+            sink.flush()
+        else:
+            sys.stdout.write(chunk.decode("utf-8", errors="replace"))
+            sys.stdout.flush()
+        tail.extend(chunk)
+        if len(tail) > MAX_GROK_FAILURE_EVIDENCE_BYTES:
+            del tail[:-MAX_GROK_FAILURE_EVIDENCE_BYTES]
+    return int(process.wait()), tail.decode("utf-8", errors="replace")
+
+
+def _run_isolated_grok_quota_probe(
+    command: Sequence[str],
+    *,
+    env: dict[str, str],
+) -> tuple[int, str]:
+    """Run the fixed no-tools quota probe without exposing task context."""
+
+    try:
+        completed = subprocess.run(
+            list(command),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=False,
+            timeout=GROK_QUOTA_PROBE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return 124, "isolated Grok quota probe timeout"
+    stderr = bytes(completed.stderr or b"")
+    return (
+        int(completed.returncode),
+        stderr[-MAX_GROK_FAILURE_EVIDENCE_BYTES:].decode(
+            "utf-8",
+            errors="replace",
+        ),
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -135,9 +208,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--codex-fallback-command-json",
         default="",
         help=(
-            "Internal default-route Codex argv. It is run only after Grok "
-            "returns nonzero; forced-Grok routes omit this option."
+            "Deprecated internal Codex argv accepted for compatibility. "
+            "Inline cross-provider fallback is forbidden; the supervisor "
+            "may route a later attempt only after persisting a Grok quota "
+            "exhaustion latch."
         ),
+    )
+    parser.add_argument(
+        "--grok-failure-receipt-nonce",
+        default="",
+        help="Internal 256-bit nonce binding a runner-owned failure receipt.",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
     try:
@@ -146,6 +226,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
+        return 2
+    failure_receipt_nonce = str(args.grok_failure_receipt_nonce).strip()
+    if failure_receipt_nonce and not re.fullmatch(
+        r"[0-9a-f]{64}",
+        failure_receipt_nonce,
+    ):
+        print("Grok failure receipt nonce must be 64 lowercase hex digits", file=sys.stderr)
         return 2
 
     from ipfs_accelerate_py.llm_router import (
@@ -185,9 +272,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     permission_mode = (
         str(args.permission_mode).strip()
         or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE", "").strip()
-        or os.environ.get(
-            "ipfs_accelerate_py_GROK_CLI_PERMISSION_MODE", ""
-        ).strip()
+        or os.environ.get("ipfs_accelerate_py_GROK_CLI_PERMISSION_MODE", "").strip()
         or "bypassPermissions"
     )
 
@@ -224,29 +309,59 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
 
         os.chdir(workspace)
-        completed = subprocess.run(cmd, env=env, check=False)
-        primary_returncode = int(completed.returncode)
-        if primary_returncode == 0 or not codex_fallback_command:
-            return primary_returncode
-
-        print(
-            "grok CLI failed with exit "
-            f"{primary_returncode}; falling back to codex",
-            file=sys.stderr,
-        )
-        try:
-            fallback = subprocess.run(
-                codex_fallback_command,
-                cwd=workspace,
-                env=os.environ.copy(),
-                input=prompt,
-                text=True,
-                check=False,
+        if failure_receipt_nonce:
+            with tempfile.TemporaryDirectory(
+                prefix="ipfs-accelerate-grok-quota-probe-"
+            ) as probe_directory:
+                probe_root = Path(probe_directory)
+                probe_prompt_path = probe_root / "prompt.txt"
+                probe_prompt_path.write_text(
+                    GROK_QUOTA_PROBE_PROMPT,
+                    encoding="utf-8",
+                )
+                try:
+                    probe_command = build_grok_cli_command(
+                        mode="chat",
+                        workspace=probe_root,
+                        model_name=model,
+                        max_turns=1,
+                        grok_bin=grok_bin,
+                        prompt_file=probe_prompt_path,
+                        permission_mode="dontAsk",
+                        tools="",
+                    )
+                except LLMRouterError as exc:
+                    print(str(exc), file=sys.stderr)
+                    return 2
+                probe_returncode, probe_stderr = _run_isolated_grok_quota_probe(
+                    probe_command,
+                    env=env,
+                )
+            if probe_returncode != 0:
+                receipt = build_grok_failure_receipt(
+                    probe_stderr_text=probe_stderr,
+                    nonce=failure_receipt_nonce,
+                    model=model,
+                    probe_returncode=probe_returncode,
+                    primary_dispatched=False,
+                )
+                print(render_grok_failure_receipt(receipt), file=sys.stderr)
+                return probe_returncode
+            primary_returncode, _stderr_tail = _run_grok_with_stderr_probe(
+                cmd,
+                env=env,
             )
-        except OSError as exc:
-            print(f"unable to launch Codex fallback: {exc}", file=sys.stderr)
-            return 127
-        return int(fallback.returncode)
+        else:
+            completed = subprocess.run(cmd, env=env, check=False)
+            primary_returncode = int(completed.returncode)
+        if primary_returncode != 0 and codex_fallback_command:
+            print(
+                "inline Codex fallback suppressed; the supervisor requires "
+                "a durable Grok quota-exhaustion latch before routing "
+                "gpt-5.6-terra",
+                file=sys.stderr,
+            )
+        return primary_returncode
     finally:
         if prompt_path:
             try:

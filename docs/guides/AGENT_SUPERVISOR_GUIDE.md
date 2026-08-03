@@ -75,11 +75,12 @@ Defaults used by multi-lane programs in this repo:
 
 | Role | Variable | Recommended value |
 | --- | --- | --- |
-| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `auto` (Grok first, then Codex/Copilot) |
+| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `auto` (Grok 4.5; Codex only after typed hard-quota exhaustion) |
 | Grok model | `IPFS_ACCELERATE_AGENT_GROK_MODEL` | `grok-4.5` |
 | Grok binary | `IPFS_ACCELERATE_AGENT_GROK_BIN` | path to `grok` (e.g. `~/.local/bin/grok`) |
 | Grok permissions | `IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE` | `bypassPermissions` for unattended lanes |
 | Codex model (when Codex path is used) | `IPFS_ACCELERATE_AGENT_CODEX_MODEL` | `gpt-5.6-terra` |
+| Codex reasoning (when Codex path is used) | `IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT` | `medium` |
 
 Example `implementation.env` for a runtime directory:
 
@@ -89,20 +90,31 @@ export IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.5
 export IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE=bypassPermissions
 export IPFS_ACCELERATE_AGENT_GROK_BIN=/home/barberb/.local/bin/grok
 export IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra
+export IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT=medium
 ```
 
 Notes:
 
-- `provider=auto` selects authenticated Grok first. If Grok exits nonzero and
-  Codex is available, the bounded runner gives Codex the identical prompt in
-  the same task attempt. It also routes before dispatch to Codex/Copilot when
-  Grok is unavailable or in capacity cooldown.
+- `provider=auto` selects authenticated Grok 4.5 first. Codex becomes eligible
+  only when a fixed, isolated, no-tools preflight fails before the task prompt
+  is dispatched, classifies the failure as hard quota exhaustion, and the
+  supervisor persists its nonce-bound receipt against the exact task, attempt,
+  command, start event, and strict event hash chain. A 429, overload,
+  authentication, transport, invalid-request, missing-provider, model/tool
+  output, or generic nonzero failure does not authorize Codex; those paths
+  defer or fail closed.
+- The automatic Codex quota fallback is pinned in code to `gpt-5.6-terra` with
+  `medium` reasoning. Ambient model and reasoning variables cannot change that
+  fallback identity. Copilot and Goose remain available only when explicitly
+  selected; they are not automatic fallbacks.
 - `provider=grok` explicitly pins Grok and fails closed instead of changing
   provider families.
 - Codex is also used when the provider is explicitly `codex` / `openai`.
-  Always set
-  `IPFS_ACCELERATE_AGENT_CODEX_MODEL` so fallback does not inherit an unrelated
-  interactive Codex default.  
+  Explicit Codex routes may use the model and reasoning environment variables;
+  the automatic quota fallback ignores them and retains the pinned identity.
+- This contract governs the ordinary `provider=auto` implementation route.
+  Explicit provider pins and specialized planner, merge, review, or operator
+  lanes are separate authority surfaces and must be configured deliberately.
 - Source the env **before** starting multi-supervisor / daemons; children
   inherit process environment and do not re-read files unless you wire that
   yourself.

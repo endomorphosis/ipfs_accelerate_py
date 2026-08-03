@@ -643,6 +643,7 @@ def test_classify_codex_quota_does_not_poison_grok_capacity() -> None:
         "exhausted": True,
         "providers": ["codex"],
         "reason": "provider_capacity_exhausted",
+        "failure_class": "transient_capacity",
     }
 
 

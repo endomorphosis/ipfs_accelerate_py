@@ -42,12 +42,20 @@ When launching or diagnosing lanes (ops may override):
 | Path | Default |
 | --- | --- |
 | Grok-first routing | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto`, model `grok-4.5` |
-| Codex fallback | `IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra` |
+| Codex quota fallback | model `gpt-5.6-terra`, reasoning `medium` |
 
-Use `auto` for unattended lanes: it selects authenticated Grok first, retries
-the identical prompt with Codex when Grok exits nonzero, and routes before
-dispatch to Codex/Copilot when Grok is unavailable or in capacity cooldown.
-Explicit `grok` is a fail-closed provider pin and does not permit fallback.
+Use `auto` for unattended lanes: it selects authenticated Grok 4.5 first.
+Codex is eligible only after the daemon persists a typed, current Grok
+hard-quota-exhaustion latch from an isolated, no-tools pre-task preflight. The
+latch is bound to the task, attempt, runner receipt, start event, command, and
+strict event hash chain. That route pins `gpt-5.6-terra` with `medium` reasoning
+and ignores ambient model overrides. A transient 429, overload,
+authentication/configuration/transport failure, missing Grok installation,
+model/tool output, or ordinary nonzero exit does not authorize another
+provider. Copilot and Goose remain explicit-only providers. Explicit `grok` is
+a fail-closed provider pin and does not permit fallback. This default applies
+to the ordinary `provider=auto` implementation route; specialized and explicit
+provider surfaces retain their separately reviewed authority contracts.
 
 ## Codebase-proof loop (semantic)
 

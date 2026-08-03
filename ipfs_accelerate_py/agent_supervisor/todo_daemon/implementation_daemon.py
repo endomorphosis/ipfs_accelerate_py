@@ -11,6 +11,7 @@ import math
 import os
 import posixpath
 import re
+import secrets
 import signal
 import shlex
 import shutil
@@ -58,6 +59,11 @@ from ..implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     effective_implementation_hard_timeout,
     implementation_timeout_metadata_value,
+)
+from ..provider_failure_policy import (
+    extract_grok_failure_receipts,
+    valid_grok_failure_receipt,
+    valid_grok_hard_quota_receipt,
 )
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
@@ -429,6 +435,9 @@ PROVIDER_CAPACITY_PATTERNS = (
             re.IGNORECASE,
         ),
     ),
+)
+GROK_QUOTA_FALLBACK_AUTHORITY_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.grok-quota-fallback-authority@2"
 )
 PROVIDER_CAPACITY_FAMILY_ALIASES = {
     "grok": "grok",
@@ -1567,7 +1576,12 @@ def _grok_cli_available() -> bool:
         return False
 
 
-def _grok_cli_command(*, workspace_path: Path) -> list[str]:
+def _grok_cli_command(
+    *,
+    workspace_path: Path,
+    model_override: str | None = None,
+    failure_receipt_nonce: str = "",
+) -> list[str]:
     """Build a Grok CLI agent command through llm_router.grok_cli.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
@@ -1582,11 +1596,15 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         )
 
     model = (
-        os.environ.get(_GROK_MODEL_ENV, "").strip()
-        or os.environ.get("GROK_CLI_MODEL", "").strip()
-        or os.environ.get("GROK_MODEL", "").strip()
-        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-        or "grok-4.5"
+        str(model_override).strip()
+        if model_override is not None
+        else (
+            os.environ.get(_GROK_MODEL_ENV, "").strip()
+            or os.environ.get("GROK_CLI_MODEL", "").strip()
+            or os.environ.get("GROK_MODEL", "").strip()
+            or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
+            or "grok-4.5"
+        )
     )
     # Prefer an effectively uncapped turn budget; the implementation daemon
     # still enforces implementation_timeout as the hard wall-clock limit.
@@ -1595,7 +1613,7 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
     runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
     if not runner_path.is_file():
         raise RuntimeError(f"grok_cli_runner missing at {runner_path}")
-    return [
+    command = [
         sys.executable,
         str(runner_path),
         "--workspace",
@@ -1609,6 +1627,11 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         "--mode",
         "agent",
     ]
+    if failure_receipt_nonce:
+        command.extend(
+            ["--grok-failure-receipt-nonce", failure_receipt_nonce]
+        )
+    return command
 
 
 def _copilot_has_auth() -> bool:
@@ -1630,6 +1653,40 @@ _CODEX_CONTEXT_WINDOW_ENV = "IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW"
 _CODEX_REASONING_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 _CODEX_MAX_THREADS_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_THREADS"
 _CODEX_MAX_DEPTH_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH"
+DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.5"
+DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
+DEFAULT_CODEX_REASONING_EFFORT = "medium"
+GROK_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
+    {
+        "grok",
+        "grok_cli",
+        "grok-cli",
+        "grok_build",
+        "grok-build",
+        "xai_cli",
+        "xai-cli",
+    }
+)
+GOOSE_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
+    {
+        "goose",
+        "goose_meta",
+        "goose-meta",
+        "meta",
+        "meta_spark",
+        "meta-spark",
+        "muse",
+        "muse-spark",
+        "spark",
+    }
+)
+CODEX_IMPLEMENTATION_PROVIDER_NAMES = frozenset({"codex", "openai"})
+SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
+    {"auto", "copilot"}
+    | set(GROK_IMPLEMENTATION_PROVIDER_NAMES)
+    | set(GOOSE_IMPLEMENTATION_PROVIDER_NAMES)
+    | set(CODEX_IMPLEMENTATION_PROVIDER_NAMES)
+)
 _COPILOT_MODEL_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MODEL"
 _COPILOT_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_EFFORT"
 _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
@@ -1641,18 +1698,32 @@ def _codex_implementation_command(
     codex: str,
     workspace_path: Path,
     codex_context_window: int | None = None,
+    model_override: str | None = None,
+    reasoning_effort_override: str | None = None,
 ) -> list[str]:
     """Build the non-interactive Codex implementation argv."""
 
-    codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+    codex_model = (
+        str(model_override).strip()
+        if model_override is not None
+        else (
+            os.environ.get(_CODEX_MODEL_ENV, "").strip()
+            or DEFAULT_CODEX_MODEL
+        )
+    )
     codex_context = (
         str(codex_context_window)
         if codex_context_window is not None
         else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
     )
-    codex_reasoning = os.environ.get(
-        _CODEX_REASONING_EFFORT_ENV, "high"
-    ).strip()
+    codex_reasoning = (
+        str(reasoning_effort_override).strip()
+        if reasoning_effort_override is not None
+        else (
+            os.environ.get(_CODEX_REASONING_EFFORT_ENV, "").strip()
+            or DEFAULT_CODEX_REASONING_EFFORT
+        )
+    )
     codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
     codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
 
@@ -1693,13 +1764,19 @@ def _copilot_fallback_command(
     - Copilot: model selection, reasoning effort, long context, autopilot with continuation limit
     """
     # Codex configuration
-    codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+    codex_model = (
+        os.environ.get(_CODEX_MODEL_ENV, "").strip()
+        or DEFAULT_CODEX_MODEL
+    )
     codex_context = (
         str(codex_context_window)
         if codex_context_window is not None
         else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
     )
-    codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
+    codex_reasoning = (
+        os.environ.get(_CODEX_REASONING_EFFORT_ENV, "").strip()
+        or DEFAULT_CODEX_REASONING_EFFORT
+    )
     codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
     codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
 
@@ -2307,6 +2384,8 @@ def classify_provider_capacity_failure(
         "providers": unique_providers,
         "reason": "provider_capacity_exhausted" if unique_providers else "",
     }
+    if unique_providers:
+        result["failure_class"] = "transient_capacity"
     retry_at = parse_provider_declared_retry_at(text)
     if unique_providers and retry_at is not None:
         result["retry_at"] = retry_at.isoformat()
@@ -12025,13 +12104,39 @@ class PortalImplementationDaemon:
         log_path: Path,
         *,
         command: Sequence[str] = (),
+        returncode: int | None = None,
     ) -> dict[str, Any]:
         try:
             with log_path.open("rb") as handle:
                 handle.seek(0, os.SEEK_END)
                 size = handle.tell()
-                handle.seek(max(0, size - PROVIDER_CAPACITY_LOG_TAIL_BYTES))
-                text = handle.read().decode("utf-8", errors="replace")
+                tail_start = max(
+                    0,
+                    size - PROVIDER_CAPACITY_LOG_TAIL_BYTES,
+                )
+                # Read the preceding byte so the receipt parser can prove
+                # whether the bounded slice begins on an LF-delimited record
+                # boundary.  Never manufacture a trusted line start by
+                # cutting through model-controlled output at the tail limit.
+                read_start = max(0, tail_start - 1)
+                handle.seek(read_start)
+                bounded = handle.read()
+                tail_offset = tail_start - read_start
+                tail = bounded[tail_offset:]
+                text = tail.decode("utf-8", errors="replace")
+                if tail_start == 0 or bounded[:tail_offset] == b"\n":
+                    receipt_tail = tail
+                else:
+                    next_lf = tail.find(b"\n")
+                    receipt_tail = (
+                        tail[next_lf + 1 :]
+                        if next_lf >= 0
+                        else b""
+                    )
+                receipt_text = receipt_tail.decode(
+                    "utf-8",
+                    errors="replace",
+                )
         except OSError:
             return {"exhausted": False, "providers": [], "reason": ""}
         classified = classify_provider_capacity_failure(
@@ -12040,7 +12145,87 @@ class PortalImplementationDaemon:
                 command
             ),
         )
+        command_items = [str(item) for item in command]
+
+        def command_value(flag: str) -> str:
+            try:
+                index = command_items.index(flag)
+            except ValueError:
+                return ""
+            if index + 1 >= len(command_items):
+                return ""
+            return command_items[index + 1]
+
+        receipt_nonce = command_value("--grok-failure-receipt-nonce")
+        primary_model = command_value("--model")
+        valid_probe_receipt = False
+        if returncode is not None and receipt_nonce and primary_model:
+            for receipt in reversed(
+                extract_grok_failure_receipts(receipt_text)
+            ):
+                if not valid_grok_failure_receipt(
+                    receipt,
+                    nonce=receipt_nonce,
+                    model=primary_model,
+                    returncode=returncode,
+                ):
+                    continue
+                valid_probe_receipt = True
+                failure_class = str(
+                    receipt.get("failure_class") or "unknown"
+                )
+                classified.update(
+                    {
+                        "exhausted": True,
+                        "providers": ["grok"],
+                        "reason": "provider_capacity_exhausted",
+                        "failure_class": failure_class,
+                        "quota_probe_receipt": dict(receipt),
+                        "quota_probe_receipt_id": str(
+                            receipt.get("receipt_id") or ""
+                        ),
+                        "quota_probe_evidence_sha256": str(
+                            receipt.get("evidence_sha256") or ""
+                        ),
+                    }
+                )
+                if valid_grok_hard_quota_receipt(
+                    receipt,
+                    nonce=receipt_nonce,
+                    model=primary_model,
+                    returncode=returncode,
+                ):
+                    classified.update(
+                        {
+                            "hard_quota_exhausted_providers": ["grok"],
+                            "hard_quota_evidence_sha256": str(
+                                receipt.get("evidence_sha256") or ""
+                            ),
+                        }
+                    )
+                break
+            if not valid_probe_receipt:
+                # Automatic Grok task output is model-controlled. It may
+                # contain quota-looking text, but only the isolated preflight
+                # receipt can classify that command as provider capacity.
+                return {
+                    "exhausted": False,
+                    "providers": [],
+                    "reason": "",
+                }
         if not classified["exhausted"]:
+            return classified
+        if classified.get("failure_class") == "hard_quota_exhausted":
+            classified["evidence"] = [
+                "runner_receipt:"
+                + str(classified.get("quota_probe_receipt_id") or "")
+            ]
+            return classified
+        if classified.get("quota_probe_receipt_id"):
+            classified["evidence"] = [
+                "runner_receipt:"
+                + str(classified.get("quota_probe_receipt_id") or "")
+            ]
             return classified
         evidence = [
             line.strip()
@@ -12104,13 +12289,203 @@ class PortalImplementationDaemon:
             labels.update({"codex", "copilot", "provider"})
         return labels or {"provider"}
 
+    @staticmethod
+    def _implementation_command_identity(command: Sequence[Any]) -> str:
+        encoded = json.dumps(
+            [str(item) for item in command],
+            sort_keys=False,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _command_flag_value(command: Sequence[Any], flag: str) -> str:
+        items = [str(item) for item in command]
+        try:
+            index = items.index(flag)
+        except ValueError:
+            return ""
+        if index + 1 >= len(items):
+            return ""
+        return items[index + 1]
+
+    def _matching_quota_fallback_start_event(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Find the strict-chain start event bound to one probe receipt."""
+
+        try:
+            events = self._iter_merge_lifecycle_events()
+        except CursorReplayError:
+            return None
+        nonce = str(receipt.get("nonce") or "")
+        model = str(receipt.get("primary_model") or "")
+        canonical_task_cid = self._canonical_ref(task)
+        for event in reversed(events):
+            if str(event.get("type") or "") != "implementation_started":
+                continue
+            if (
+                str(event.get("task_id") or "") != task.task_id
+                or str(event.get("canonical_task_cid") or "")
+                != canonical_task_cid
+                or event.get("attempt") != attempt
+            ):
+                continue
+            command = event.get("command")
+            if not isinstance(command, list):
+                continue
+            if (
+                self._command_flag_value(
+                    command,
+                    "--grok-failure-receipt-nonce",
+                )
+                != nonce
+                or self._command_flag_value(command, "--model") != model
+                or not any(
+                    Path(str(item)).name == "grok_cli_runner.py"
+                    for item in command
+                )
+            ):
+                continue
+            return event
+        return None
+
+    def _quota_fallback_authority_is_valid(
+        self,
+        event: Mapping[str, Any],
+        *,
+        strict_events: Sequence[Mapping[str, Any]],
+        events_by_id: Mapping[str, Mapping[str, Any]],
+    ) -> bool:
+        """Verify a quota latch against its strict start/receipt chain."""
+
+        authority = event.get("quota_fallback_authority")
+        if not isinstance(authority, Mapping):
+            return False
+        expected_authority_fields = {
+            "schema",
+            "primary_provider",
+            "primary_model",
+            "failure_class",
+            "evidence_sha256",
+            "task_id",
+            "canonical_task_cid",
+            "attempt",
+            "primary_returncode",
+            "start_event_id",
+            "start_sequence",
+            "command_sha256",
+            "runner_receipt_id",
+            "runner_receipt",
+        }
+        if set(authority) != expected_authority_fields:
+            return False
+        runner_receipt = authority.get("runner_receipt")
+        if not isinstance(runner_receipt, Mapping):
+            return False
+        task_id = str(event.get("task_id") or "")
+        canonical_task_cid = str(
+            event.get("canonical_task_cid") or ""
+        )
+        attempt = event.get("attempt")
+        returncode = event.get("returncode")
+        start_event_id = str(authority.get("start_event_id") or "")
+        start_event = events_by_id.get(start_event_id)
+        if not isinstance(start_event, Mapping):
+            return False
+        command = start_event.get("command")
+        if not isinstance(command, list):
+            return False
+        nonce = self._command_flag_value(
+            command,
+            "--grok-failure-receipt-nonce",
+        )
+        model = self._command_flag_value(command, "--model")
+        start_sequence = start_event.get("sequence")
+        event_sequence = event.get("sequence")
+        if not (
+            event.get("type") == "implementation_provider_exhausted"
+            and event.get("providers") == ["grok"]
+            and event.get("failure_class") == "hard_quota_exhausted"
+            and event.get("hard_quota_exhausted_providers") == ["grok"]
+            and task_id
+            and canonical_task_cid
+            and isinstance(attempt, int)
+            and not isinstance(attempt, bool)
+            and attempt > 0
+            and isinstance(returncode, int)
+            and not isinstance(returncode, bool)
+            and returncode != 0
+            and authority.get("schema")
+            == GROK_QUOTA_FALLBACK_AUTHORITY_SCHEMA
+            and authority.get("primary_provider") == "grok"
+            and authority.get("primary_model")
+            == DEFAULT_AUTOMATIC_GROK_MODEL
+            and authority.get("failure_class") == "hard_quota_exhausted"
+            and authority.get("task_id") == task_id
+            and authority.get("canonical_task_cid")
+            == canonical_task_cid
+            and authority.get("attempt") == attempt
+            and authority.get("primary_returncode") == returncode
+            and authority.get("evidence_sha256")
+            == runner_receipt.get("evidence_sha256")
+            and authority.get("runner_receipt_id")
+            == runner_receipt.get("receipt_id")
+            and authority.get("start_sequence") == start_sequence
+            and start_event.get("type") == "implementation_started"
+            and start_event.get("event_id") == start_event_id
+            and start_event.get("task_id") == task_id
+            and start_event.get("canonical_task_cid")
+            == canonical_task_cid
+            and start_event.get("attempt") == attempt
+            and authority.get("command_sha256")
+            == self._implementation_command_identity(command)
+            and isinstance(start_sequence, int)
+            and not isinstance(start_sequence, bool)
+            and isinstance(event_sequence, int)
+            and not isinstance(event_sequence, bool)
+            and start_sequence < event_sequence
+            and valid_grok_hard_quota_receipt(
+                runner_receipt,
+                nonce=nonce,
+                model=model,
+                returncode=returncode,
+            )
+        ):
+            return False
+        for intervening in strict_events:
+            sequence = intervening.get("sequence")
+            if not (
+                isinstance(sequence, int)
+                and not isinstance(sequence, bool)
+                and start_sequence < sequence < event_sequence
+            ):
+                continue
+            if (
+                intervening.get("task_id") == task_id
+                and intervening.get("attempt") == attempt
+                and intervening.get("type")
+                in {
+                    "implementation_started",
+                    "implementation_finished",
+                    "implementation_provider_exhausted",
+                }
+            ):
+                return False
+        return True
+
     def _provider_capacity_latch_states(self) -> dict[str, dict[str, Any]]:
         """Return the latest durable cooldown state for each provider family.
 
         A later dispatch clears only the family named by its concrete command.
-        This preserves an active Grok latch while an automatic lane tries
-        Codex/Copilot, instead of either globally blocking the lane or
-        immediately selecting Grok again.
+        A strict, receipt-bound Grok hard-quota latch may authorize the pinned
+        Codex route; every other Grok latch remains a fail-closed cooldown.
         """
 
         now = _provider_capacity_now()
@@ -12118,8 +12493,19 @@ class PortalImplementationDaemon:
             now = now.replace(tzinfo=timezone.utc)
         else:
             now = now.astimezone(timezone.utc)
+        try:
+            strict_events = self._iter_merge_lifecycle_events()
+            events = strict_events
+        except CursorReplayError:
+            strict_events = []
+            events = self._iter_events()
+        events_by_id = {
+            str(event.get("event_id") or ""): event
+            for event in strict_events
+            if str(event.get("event_id") or "")
+        }
         states: dict[str, dict[str, Any]] = {}
-        for event in self._iter_events():
+        for event in events:
             event_type = str(event.get("type") or "")
             if event_type == "implementation_started":
                 for label in _provider_labels_from_implementation_command(
@@ -12133,6 +12519,14 @@ class PortalImplementationDaemon:
             if retry_at is None:
                 continue
             retry_at = retry_at.astimezone(timezone.utc)
+            hard_quota_authorized = bool(
+                strict_events
+                and self._quota_fallback_authority_is_valid(
+                    event,
+                    strict_events=strict_events,
+                    events_by_id=events_by_id,
+                )
+            )
             for label in event.get("providers") or ():
                 family = _provider_capacity_family(label)
                 if not family:
@@ -12146,11 +12540,20 @@ class PortalImplementationDaemon:
                         (retry_at - now).total_seconds(),
                     ),
                     "providers": list(event.get("providers") or []),
+                    "hard_quota_exhausted": bool(
+                        hard_quota_authorized and family == "grok"
+                    ),
                 }
         return states
 
     def _auto_implementation_provider_families(self) -> tuple[str, ...]:
-        """Return available automatic provider families in dispatch order."""
+        """Return the only provider families authorized for automatic routing.
+
+        Automatic implementation is a two-provider policy: Grok is primary and
+        Codex is a quota-only fallback. Copilot, Goose, and other providers can
+        still be selected explicitly, but their availability must never widen
+        this default authority boundary.
+        """
 
         families: list[str] = []
 
@@ -12162,15 +12565,8 @@ class PortalImplementationDaemon:
         if grok_ready and _grok_binary():
             add("grok")
         codex = shutil.which("codex")
-        copilot = shutil.which("copilot")
         if codex:
             add("codex")
-        if copilot and _copilot_has_auth():
-            add("copilot")
-        if grok_ready:
-            add("grok")
-        if _goose_meta_spark_available() and _goose_binary():
-            add("goose")
         return tuple(families)
 
     @staticmethod
@@ -12280,6 +12676,21 @@ class PortalImplementationDaemon:
             )
         )
         allow_family_fallback = bool(allow_family_fallback)
+        if allow_family_fallback:
+            grok_state = states.get("grok")
+            if (
+                grok_state
+                and grok_state.get("active", False)
+                and not grok_state.get(
+                    "hard_quota_exhausted",
+                    False,
+                )
+            ):
+                # A transient 429/overload latch is a Grok retry schedule,
+                # not authority to cross the provider boundary.
+                return self._provider_capacity_schedule_from_states(
+                    [grok_state]
+                )
         global_states = [
             states[family]
             for family in GLOBAL_PROVIDER_CAPACITY_FAMILIES
@@ -12342,7 +12753,7 @@ class PortalImplementationDaemon:
         """Apply task-owned provider authority before automatic fallback."""
 
         declared = self._task_declared_implementation_provider(task)
-        if not declared:
+        if not declared or declared == "auto":
             return self._active_provider_capacity_backoff()
         schedule = self._provider_capacity_backoff_schedule(
             provider_families=(_provider_capacity_family(declared),),
@@ -12500,6 +12911,7 @@ class PortalImplementationDaemon:
         state.save(self.state_path)
         result = {
             "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
             "attempt": attempt,
             "returncode": returncode,
             "log_path": str(log_path),
@@ -12511,6 +12923,75 @@ class PortalImplementationDaemon:
             "retry_at_source": retry_at_source,
             "attempt_consumed": False,
         }
+        failure_class = str(failure.get("failure_class") or "")
+        if failure_class:
+            result["failure_class"] = failure_class
+        hard_quota_providers = list(
+            failure.get("hard_quota_exhausted_providers") or []
+        )
+        hard_quota_evidence_sha256 = str(
+            failure.get("hard_quota_evidence_sha256") or ""
+        )
+        quota_probe_receipt = failure.get("quota_probe_receipt")
+        quota_probe_receipt = (
+            dict(quota_probe_receipt)
+            if isinstance(quota_probe_receipt, Mapping)
+            else {}
+        )
+        quota_start_event = (
+            self._matching_quota_fallback_start_event(
+                task=task,
+                attempt=attempt,
+                receipt=quota_probe_receipt,
+            )
+            if quota_probe_receipt
+            else None
+        )
+        if (
+            failure_class == "hard_quota_exhausted"
+            and hard_quota_providers == ["grok"]
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                hard_quota_evidence_sha256,
+            )
+            and quota_start_event is not None
+            and valid_grok_hard_quota_receipt(
+                quota_probe_receipt,
+                nonce=self._command_flag_value(
+                    quota_start_event.get("command") or (),
+                    "--grok-failure-receipt-nonce",
+                ),
+                model=self._command_flag_value(
+                    quota_start_event.get("command") or (),
+                    "--model",
+                ),
+                returncode=returncode,
+            )
+        ):
+            result["task_prompt_dispatched"] = False
+            result["hard_quota_exhausted_providers"] = ["grok"]
+            result["quota_fallback_authority"] = {
+                "schema": GROK_QUOTA_FALLBACK_AUTHORITY_SCHEMA,
+                "primary_provider": "grok",
+                "primary_model": DEFAULT_AUTOMATIC_GROK_MODEL,
+                "failure_class": failure_class,
+                "evidence_sha256": hard_quota_evidence_sha256,
+                "task_id": task.task_id,
+                "canonical_task_cid": self._canonical_ref(task),
+                "attempt": attempt,
+                "primary_returncode": returncode,
+                "start_event_id": str(
+                    quota_start_event.get("event_id") or ""
+                ),
+                "start_sequence": quota_start_event.get("sequence"),
+                "command_sha256": self._implementation_command_identity(
+                    quota_start_event.get("command") or ()
+                ),
+                "runner_receipt_id": str(
+                    quota_probe_receipt.get("receipt_id") or ""
+                ),
+                "runner_receipt": quota_probe_receipt,
+            }
         if worktree_path is not None:
             result["worktree_path"] = str(worktree_path)
         if branch_name:
@@ -12808,6 +13289,7 @@ class PortalImplementationDaemon:
                 self._compile_implementation_context(task, attempt)
                 prompt = ""
             else:
+                self._require_primary_provider_readiness(task)
                 prompt = self._build_implementation_prompt(task, attempt)
         except ImplementationRetryDeferred as exc:
             canonical_task_cid = self._canonical_ref(task)
@@ -12824,6 +13306,8 @@ class PortalImplementationDaemon:
                 "task_id": task.task_id,
                 "attempt": attempt,
                 "backoff_seconds": exc.backoff_seconds,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
                 "diagnostic_receipt_id": (
                     self._implementation_diagnostics[
                         self._canonical_ref(task)
@@ -13145,6 +13629,7 @@ class PortalImplementationDaemon:
                 provider_failure = self._provider_capacity_failure_from_log(
                     log_path,
                     command=command,
+                    returncode=completed.returncode,
                 )
                 if provider_failure.get("exhausted", False):
                     protected_path_violation = (
@@ -21894,6 +22379,7 @@ class PortalImplementationDaemon:
                 provider_failure = self._provider_capacity_failure_from_log(
                     log_path,
                     command=command,
+                    returncode=returncode,
                 )
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -44469,15 +44955,22 @@ class PortalImplementationDaemon:
                 )
             return next(iter(local_only_roles))
 
-        grok_roles = {"grok-implement", "grok-draft"}
+        grok_primary_roles = {"grok-implement", "grok-draft"}
+        grok_only_roles = {"grok-only", "grok-pinned"}
         codex_roles = {"codex-implement", "codex-draft"}
-        wants_grok = bool(roles & grok_roles)
+        wants_grok_primary = bool(roles & grok_primary_roles)
+        wants_grok_only = bool(roles & grok_only_roles)
         wants_codex = bool(roles & codex_roles)
-        if wants_grok and wants_codex:
+        if sum((wants_grok_primary, wants_grok_only, wants_codex)) > 1:
             raise RuntimeError(
                 "task declares more than one implementation provider"
             )
-        if wants_grok:
+        if wants_grok_primary:
+            # ``grok-implement`` describes the primary role, not an
+            # unconditional provider pin. Keep the task inside the audited
+            # Grok-first/quota-only-Codex route.
+            return "auto"
+        if wants_grok_only:
             return "grok"
         if wants_codex:
             return "codex"
@@ -44520,6 +45013,62 @@ class PortalImplementationDaemon:
     def _implementation_context_window(self, task: PortalTask) -> int:
         return self._configured_implementation_provider_context_window(task)
 
+    def _require_primary_provider_readiness(
+        self,
+        task: PortalTask | None,
+    ) -> None:
+        """Defer before prompt/worktree dispatch when Grok primary is absent."""
+
+        declared_provider = self._task_declared_implementation_provider(task)
+        if self.implementation_command and not declared_provider:
+            return
+        if (
+            os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
+            and not declared_provider
+        ):
+            return
+        provider = (
+            declared_provider
+            or os.environ.get(
+                IMPLEMENTATION_PROVIDER_ENV,
+                "",
+            ).strip().lower()
+            or "auto"
+        )
+        if provider not in SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES:
+            raise ImplementationRetryDeferred(
+                f"unsupported implementation provider {provider!r}",
+                backoff_seconds=300,
+            )
+        if provider == "auto":
+            states = self._provider_capacity_latch_states()
+            grok_state = states.get("grok", {})
+            if (
+                grok_state.get("active", False)
+                and grok_state.get("hard_quota_exhausted", False)
+            ):
+                return
+            if _grok_cli_available() and _grok_binary():
+                return
+            raise ImplementationRetryDeferred(
+                "authenticated Grok 4.5 primary is unavailable; Codex "
+                "requires typed hard-quota exhaustion authority",
+                backoff_seconds=300,
+            )
+        if provider in {
+            "grok",
+            "grok_cli",
+            "grok-cli",
+            "grok_build",
+            "grok-build",
+            "xai_cli",
+            "xai-cli",
+        } and not (_grok_cli_available() and _grok_binary()):
+            raise ImplementationRetryDeferred(
+                "explicit Grok provider is unavailable",
+                backoff_seconds=300,
+            )
+
     def _build_implementation_command(
         self,
         workspace_path: Path,
@@ -44552,6 +45101,11 @@ class PortalImplementationDaemon:
             declared_provider
             or configured_provider
         )
+        if provider not in SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES:
+            raise RuntimeError(
+                f"Unsupported implementation provider {provider!r}; "
+                "automatic routing fails closed on unknown values"
+            )
         grok_ready = _grok_cli_available()
         goose_meta_ready = _goose_meta_spark_available()
         prefer_grok = provider in {
@@ -44595,10 +45149,11 @@ class PortalImplementationDaemon:
             "muse-spark",
             "spark",
         }
-        force_codex = provider in {"codex", "copilot", "openai"}
+        force_codex = provider in {"codex", "openai"}
+        force_copilot = provider == "copilot"
         automatic_latches = (
             self._provider_capacity_latch_states()
-            if provider == "auto" and not declared_provider
+            if provider == "auto"
             else {}
         )
 
@@ -44610,8 +45165,79 @@ class PortalImplementationDaemon:
                 )
             )
 
+        if provider == "auto":
+            global_capacity_latched = any(
+                automatic_latches.get(family, {}).get("active", False)
+                for family in GLOBAL_PROVIDER_CAPACITY_FAMILIES
+            )
+            grok_capacity_latched = bool(
+                automatic_latches.get("grok", {}).get("active", False)
+            )
+            grok_quota_latched = bool(
+                grok_capacity_latched
+                and automatic_latches.get("grok", {}).get(
+                    "hard_quota_exhausted",
+                    False,
+                )
+            )
+            if global_capacity_latched:
+                raise RuntimeError(
+                    "Automatic implementation providers are in a global "
+                    "capacity cooldown"
+                )
+            if grok_quota_latched:
+                if self._task_declares_independent_codex_review(task):
+                    raise RuntimeError(
+                        "Grok quota is exhausted, but Codex fallback cannot "
+                        "implement a task that requires independent Codex "
+                        "review"
+                    )
+                codex = shutil.which("codex")
+                if not codex:
+                    raise RuntimeError(
+                        "Grok quota is exhausted, but the authorized Codex "
+                        "fallback is unavailable"
+                    )
+                if not automatic_family_allowed("codex"):
+                    raise RuntimeError(
+                        "Grok quota is exhausted and the authorized Codex "
+                        "fallback is in capacity cooldown"
+                    )
+                codex_context_window = (
+                    self._implementation_provider_context_window_for_task(
+                        task
+                    )[0]
+                    if task is not None
+                    else None
+                )
+                return _codex_implementation_command(
+                    codex=str(codex),
+                    workspace_path=workspace_path,
+                    codex_context_window=codex_context_window,
+                    model_override=DEFAULT_CODEX_MODEL,
+                    reasoning_effort_override=(
+                        DEFAULT_CODEX_REASONING_EFFORT
+                    ),
+                )
+            if grok_capacity_latched:
+                raise RuntimeError(
+                    "Grok is in transient capacity cooldown; Codex fallback "
+                    "requires typed hard-quota exhaustion authority"
+                )
+            if grok_ready and _grok_binary():
+                return _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
+                    failure_receipt_nonce=secrets.token_hex(32),
+                )
+            raise RuntimeError(
+                "Automatic implementation requires authenticated Grok 4.5; "
+                "Codex fallback is authorized only after a durable Grok "
+                "quota-exhaustion latch"
+            )
+
         # Prefer only when the binary is actually resolvable so an auth-only
-        # readiness signal does not block auto-fallback to codex/copilot.
+        # readiness signal does not bypass an explicit provider pin.
         if force_grok:
             if not grok_ready:
                 raise RuntimeError(
@@ -44624,34 +45250,10 @@ class PortalImplementationDaemon:
             prefer_grok
             and grok_ready
             and _grok_binary()
-            and automatic_family_allowed("grok")
             and not force_codex
             and not force_goose_meta
         ):
-            command = _grok_cli_command(workspace_path=workspace_path)
-            codex = shutil.which("codex")
-            if codex and automatic_family_allowed("codex"):
-                codex_context_window = (
-                    self._implementation_provider_context_window_for_task(
-                        task
-                    )[0]
-                    if task is not None
-                    else None
-                )
-                command.extend(
-                    [
-                        "--codex-fallback-command-json",
-                        json.dumps(
-                            _codex_implementation_command(
-                                codex=codex,
-                                workspace_path=workspace_path,
-                                codex_context_window=codex_context_window,
-                            ),
-                            separators=(",", ":"),
-                        ),
-                    ]
-                )
-            return command
+            return _grok_cli_command(workspace_path=workspace_path)
 
         if force_goose_meta:
             if not goose_meta_ready:
@@ -44677,6 +45279,28 @@ class PortalImplementationDaemon:
             and _copilot_has_auth()
             and automatic_family_allowed("copilot")
         )
+        if force_codex:
+            if not codex:
+                raise RuntimeError(
+                    f"Implementation provider {provider!r} requires Codex CLI"
+                )
+            return _codex_implementation_command(
+                codex=str(codex),
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
+            )
+        if force_copilot:
+            if not copilot_allowed:
+                raise RuntimeError(
+                    "Implementation provider 'copilot' requires an "
+                    "authenticated Copilot CLI"
+                )
+            return _copilot_fallback_command(
+                codex=None,
+                copilot=str(copilot),
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
+            )
         if copilot_allowed:
             return _copilot_fallback_command(
                 codex=codex if codex_allowed else None,
@@ -44807,17 +45431,27 @@ class PortalImplementationDaemon:
             provider = (
                 os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
             )
+        if not provider:
+            provider = "auto"
+        if provider not in SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES:
+            raise ImplementationRetryDeferred(
+                f"unsupported implementation provider {provider!r}",
+                backoff_seconds=300,
+            )
+        auto_uses_codex = False
+        if provider == "auto":
+            grok_state = self._provider_capacity_latch_states().get(
+                "grok",
+                {},
+            )
+            auto_uses_codex = bool(
+                grok_state.get("active", False)
+                and grok_state.get("hard_quota_exhausted", False)
+            )
         environment_name = (
             _GROK_CONTEXT_WINDOW_ENV
-            if provider in {
-                "grok",
-                "grok_cli",
-                "grok-cli",
-                "xai_cli",
-                "xai-cli",
-                "grok_build",
-                "grok-build",
-            }
+            if provider in GROK_IMPLEMENTATION_PROVIDER_NAMES
+            or (provider == "auto" and not auto_uses_codex)
             else _CODEX_CONTEXT_WINDOW_ENV
         )
         raw = os.environ.get(environment_name, "200000").strip()
@@ -47702,9 +48336,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help=(
             "Command used for implementation. By default, automatic routing "
-            "selects authenticated Grok first, immediately retries the same "
-            "prompt with Codex when Grok exits nonzero, and otherwise uses "
-            "available Codex/Copilot fallback routes."
+            "selects authenticated Grok 4.5. Only a typed durable Grok hard-"
+            "quota latch authorizes a later gpt-5.6-terra Codex attempt with "
+            "medium reasoning; other Grok failures remain fail closed."
         ),
     )
     parser.add_argument(
