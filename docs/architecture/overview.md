@@ -10,10 +10,13 @@ and the separation between the inference/data plane and the supervisor/control
 plane
 
 **Non-goals:** Full actor tables, deep router or MCP policy detail, and ADR
-records (see [SYSTEM_CONTEXT.md](SYSTEM_CONTEXT.md) and planned subsystem
-guides)
+records (see [SYSTEM_CONTEXT.md](SYSTEM_CONTEXT.md),
+[Inference runtime](INFERENCE_RUNTIME.md),
+[Model/service routing](MODEL_SERVICE_ROUTING.md),
+[MCP runtime](MCP_RUNTIME.md), and
+[Distributed runtime](DISTRIBUTED_RUNTIME.md))
 
-**Last verified:** `f279353053fe41593d76a95245416933d08e8999` (2026-08-03);
+**Last verified:** `e559ff0046c639ba1dadabe02ea0ea91d9877e20` (2026-08-03);
 aligned with package layout, `pyproject.toml` scripts, and
 [SYSTEM_CONTEXT.md](SYSTEM_CONTEXT.md)
 
@@ -43,7 +46,7 @@ For actors, container maps, trust boundaries, and change rationale, read
 ```text
 Application and examples                    [conceptual]
         |
-Python API / unified CLI / MCP server       [live: __init__, cli_entry/cli, mcp_server]
+Python API / unified CLI                    [live: __init__, cli_entry/cli]
         |
 Inference, model, embedding, voice, P2P     [live: ipfs_accelerate.py, routers, p2p_*]
         |
@@ -51,6 +54,11 @@ Hardware and provider adapters              [live: backends, api_backends, infer
         |
 IPFS, local storage, caches, external svcs  [live + optional: ipfs_backend_router, kit, FS/HF]
 ```
+
+The MCP server is a shared protocol edge alongside these layers: it exposes
+both product/data tools and supervisor/control tools, while authority remains
+with the handler's owning plane. See [MCP runtime](MCP_RUNTIME.md) for current
+transport-specific policy gaps and functional entrypoints.
 
 The package also contains a **separate** agent-supervisor control plane. It is
 not a layer inside the inference stack; it couples only through adapters:
@@ -119,7 +127,8 @@ provider output authoritative.
 
 `model_catalog/` and `endpoint_usage/` own catalog resolution and usage-aware
 routing identity when those paths are exercised. Deep lifecycle documentation
-belongs in the inference-runtime and model-service guides (DOC-006/DOC-007).
+is maintained in [Inference runtime](INFERENCE_RUNTIME.md) and
+[Model/service routing](MODEL_SERVICE_ROUTING.md).
 
 ## Current vs compatibility surfaces
 
@@ -128,7 +137,7 @@ belongs in the inference-runtime and model-service guides (DOC-006/DOC-007).
 | `get_instance()` / `ipfs_accelerate_py` | Current | Yes |
 | `ipfs-accelerate` (`cli_entry` → `cli.py`) | Current unified CLI | Yes |
 | `ipfs_accelerate` (`ai_inference_cli`) | Current **separate** script | Only when that parser is intentional |
-| `ipfs_accelerate_py.mcp_server` | **Canonical** MCP runtime | Yes |
+| `ipfs_accelerate_py.mcp_server` | **Canonical** registry/runtime package; entrypoints have different transport completeness | Yes, using the concrete entrypoint guidance in `MCP_RUNTIME.md` |
 | `ipfs_accelerate_py.mcp` | Compatibility facade | Migration / legacy recipes only |
 | Domain imports under `agent_supervisor.<pkg>` | Current | Yes |
 | Historical flat supervisor stems | Compatibility aliases | No |
@@ -136,11 +145,14 @@ belongs in the inference-runtime and model-service guides (DOC-006/DOC-007).
 The hyphenated and underscore CLI entry points are not interchangeable. Use
 each command’s own `--help`.
 
-The canonical MCP runtime is `ipfs_accelerate_py.mcp_server`. The
-`ipfs_accelerate_py.mcp` package remains a compatibility facade. MCP startup,
-tool registration, policy, artifact, and transport details are documented in
-the [MCP++ records](../../mcpplusplus/README.md) and the
-[canonical MCP server README](../../ipfs_accelerate_py/mcp_server/README.md).
+The canonical MCP registry/runtime package is
+`ipfs_accelerate_py.mcp_server`. The `ipfs_accelerate_py.mcp` package remains
+a compatibility facade. MCP startup, tool registration, policy, artifact, and
+transport details—including current direct-dispatch and standalone-host
+limitations—are documented in [MCP runtime](MCP_RUNTIME.md); the
+[MCP++ records](../../mcpplusplus/README.md) retain conformance evidence and
+the [canonical MCP server README](../../ipfs_accelerate_py/mcp_server/README.md)
+retains operator-oriented package notes.
 
 ## Hardware and optional capabilities
 
@@ -229,7 +241,7 @@ Run focused tests first:
 ```bash
 python -m pytest test/api/test_agent_supervisor_objective_graph.py -q
 python -m pytest test/api/test_agent_supervisor_todo_daemon_port.py -q
-python -m pytest test/api/test_unified_cli_integration.py -q
+python -m pytest test/test_unified_cli_integration.py -q
 ```
 
 Optional hardware, MCP, P2P, browser, and external-provider tests require their

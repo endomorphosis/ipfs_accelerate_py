@@ -1,21 +1,21 @@
 # Supervisor execution, landing, and recovery
 
-**Status:** Current  
+**Status:** Current
 **Audience:** Operators, developers, and implementation agents diagnosing
 blocked work, scheduling multi-lane execution, or interpreting merge and
-acceptance outcomes  
+acceptance outcomes
 **Scope:** Dependency and conflict admission, resource and provider scheduling,
 leases and fencing, worktree isolation, implementation providers, validation,
 merge queue/train, authoritative completion (separate from merge), heartbeats,
-retries, reconciliation, rescue, and quarantine  
+retries, reconciliation, rescue, and quarantine
 **Non-goals:** Transport-neutral control operations and authorization policy
 ([CONTROL_PLANE.md](CONTROL_PLANE.md)); planning, proof tiers, and assurance
 pipelines ([PLANNING_AND_ASSURANCE.md](PLANNING_AND_ASSURANCE.md)); prompt-first
-entrypoint facade status (planned `PROMPT_FIRST_RUNTIME.md` / DOC-014); package
+entrypoint facade status ([PROMPT_FIRST_RUNTIME.md](PROMPT_FIRST_RUNTIME.md) / DOC-014); package
 DAG placement rules ([PACKAGE_MAP.md](PACKAGE_MAP.md)); full operator runbooks
 ([Operator guide](../../guides/AGENT_SUPERVISOR_GUIDE.md)). This guide does not
-invent new daemons, leases, or completion authority.  
-**Last verified:** `0139cec6d5ad060bad9dc77fd5c2a84bbe76746c` (2026-08-03);
+invent new daemons, leases, or completion authority.
+**Last verified:** `e559ff0046c639ba1dadabe02ea0ea91d9877e20` (2026-08-03);
 lane lifecycle, lease/fence/worktree invariants, merge-versus-acceptance gates,
 resource admission, and rescue dispositions checked against `todo_daemon/`,
 `runtime/`, `merge/`, `validation/`, `rescue/`, and focused tests listed under
@@ -61,13 +61,13 @@ lands, and recovers** inside the agent supervisor.
 
 It answers:
 
-1. What is a **lane lifecycle**, and which packages own each phase?  
+1. What is a **lane lifecycle**, and which packages own each phase?
 2. How do **dependency, conflict, and resource admission** decide whether a
-   task may run *now* versus wait?  
+   task may run *now* versus wait?
 3. What **lease / fence / worktree** invariants stop stale workers from
-   mutating state?  
+   mutating state?
 4. Why is **merge** not **authoritative completion**, and when does **stale
-   evidence reopen acceptance**?  
+   evidence reopen acceptance**?
 5. How do operators distinguish **legitimate dependency idle** from
    **provider, resource, validation, merge, or recovery blocks**?
 
@@ -90,7 +90,11 @@ gates** decide. Callers cannot self-assert `completion_authoritative` on an
 ## 2. Context and component map
 
 Execution spans the ops and edge packages on the acyclic domain DAG. Higher
-layers orchestrate; lower layers own isolation and landing.
+layers orchestrate; lower layers own isolation and landing. The diagram below
+is the **fully composed bundle/leased-lane path**. The plain
+`runtime.multi_supervisor_runner` path instead starts sharded implementation
+daemon processes; it does not itself construct `LeaseCoordinator` or
+`ResourceScheduler`.
 
 ```text
  Taskboard projection (task_sources/) + control admission
@@ -118,7 +122,7 @@ layers orchestrate; lower layers own isolation and landing.
 
 | Layer | Responsibility | Owning packages |
 | --- | --- | --- |
-| **Admission** | Dependencies ready? Conflicts free? Capacity free? | `core/conflict_graph`, `runtime/resource_scheduler`, `merge/lease_coordination` |
+| **Admission (composed path)** | Dependencies ready? Conflicts free? Capacity free? | `objectives.bundle_supervisor`, `core/conflict_graph`, `runtime/resource_scheduler`, `merge/lease_coordination` |
 | **Actuation** | Claim, worktree, provider, validation commands | `todo_daemon/`, `validation/` |
 | **Landing** | Queue/train, conflict repair, Git hygiene | `merge/` |
 | **Acceptance** | Recompute gates; board mutation only when admitted | `todo_daemon/authoritative_completion` |
@@ -133,10 +137,13 @@ schedulable, identity-bound unit of work.
 
 ## 3. Lane lifecycle
 
-A **lane** is one admitted unit of concurrent execution: typically a claimed
-task, a fenced worktree, a provider process, validation, and optional merge
-submission. Multi-lane orchestration lives in `runtime/multi_supervisor_runner`
-and the implementation / supervisor daemon runners.
+A **lane** is one unit of concurrent execution: typically a claimed task, an
+isolated worktree, a provider process, validation, and optional merge
+submission. In the bundle-supervisor composition it is also lease/fence and
+resource-admission bound. The plain `runtime.multi_supervisor_runner` supplies
+process supervision and shard filters around implementation/supervisor daemon
+runners; those runners must not be described as implicitly acquiring the
+separate bundle supervisor's `LeaseCoordinator` or `ResourceAdmissionLease`.
 
 ### 3.1 Lifecycle phases (conceptual)
 
@@ -188,9 +195,9 @@ authority** of transitions do not.
   worktree is **not** healthy progress: terminal operations must fail closed
   (`StaleFencingTokenError`, `LeaseExpiredError`).
 
-Watchdogs (`supervisor_watchdog`) distinguish **slow work in a valid phase**
-from a **dead owner** by combining phase age, heartbeat freshness, and process
-probes—not PID alone.
+Watchdogs (`supervisor_watchdog`) distinguish a live lifecycle from a **dead
+owner** by combining heartbeat age, lifecycle state, and process probes—not PID
+alone. They do not implement a generic per-phase age timer.
 
 ### 3.3 Attempts and retries
 
@@ -198,7 +205,9 @@ Attempt budgets and repair tasks are policy inputs
 (`task_execution_policy`, retry-budget helpers on the implementation daemon).
 Retries:
 
-- must re-obtain a current **lease and fence** before mutation,
+- must re-obtain a current **lease and fence** before mutation on the fully
+  composed leased/control path; plain implementation-daemon retries instead
+  reacquire their own task/worktree lifecycle claim,
 - must re-run **validation** on the current worktree tip,
 - must not treat a previous provider exit as cached success,
 - terminate into **rescue**, **quarantine**, or a bounded repair task when
@@ -242,7 +251,9 @@ tasks.
 
 ### 4.3 Resource and provider admission
 
-`ResourceScheduler.admit` (and related APIs) produce an `AdmissionDecision`:
+`ResourceScheduler.evaluate()` evaluates a request and `acquire()` reserves an
+admitted lease; these APIs produce an `AdmissionDecision` and, on acquisition,
+a `ResourceAdmissionLease`:
 
 - `admitted: bool` plus structured `reasons`,
 - host vs provider available slots, resource class/pool, reserved process and
@@ -259,8 +270,11 @@ adapter “success” remains a proposal-class input to validation.
 
 Boards and multi-supervisor runners apply **shard filters** so parallel lanes
 drain disjoint task populations (by index, track, bundle, or conflict color).
-Sharding is a **scheduling partition**, not a second authority plane: the same
-lease, validation, merge, and completion rules apply on every shard.
+Sharding is a **scheduling partition**, not a second authority plane.
+Validation, merge, and completion rules remain shared; lease/fence and resource
+admission apply when the runner is composed through
+`objectives.bundle_supervisor` / `merge.leased_lane`, not merely because a
+plain implementation-daemon process received a shard filter.
 
 ---
 
@@ -508,11 +522,13 @@ retry budgets or restarting processes.
 
 ### 9.1 Crash and restart reconciliation
 
-On restart, recovery modules (`supervisor_recovery`, crash-fence helpers in the
-implementation daemon) **pause new admission** until tree, state, fence, and
-last terminal receipts reconcile. Incomplete work is bounded; exact successful
-mutations replay without re-applying effects; recovery **must not** invent
-authoritative completion.
+On restart, the recovery-composed leased path can **pause new admission** until
+tree, state, fence, and last terminal receipts reconcile. The plain
+implementation-daemon path performs its own bounded status, worktree, and merge
+reconciliation but does not inherit that global admission pause simply by
+running under `multi_supervisor_runner`. In every composition, recovery must
+not invent authoritative completion or re-apply an already proven exact
+successful mutation.
 
 ### 9.2 Rescue orchestration
 
@@ -595,13 +611,13 @@ ancestry** do not authorize completion mutations.
 ## 11. Rationale
 
 1. **Multi-process safety** — Daemons crash and restart; fencing makes late
-   workers harmless without blocking reclaim via lease expiry.  
+   workers harmless without blocking reclaim via lease expiry.
 2. **Capacity fairness** — Separating priority from resource/provider admission
-   prevents a hot model route from starving proof or validation lanes.  
+   prevents a hot model route from starving proof or validation lanes.
 3. **Merge ≠ truth** — Landing code is necessary but insufficient; post-merge
-   freshness and bound gates catch tip drift and incomplete evidence.  
+   freshness and bound gates catch tip drift and incomplete evidence.
 4. **Observable blocks** — Explicit idle vs block classes prevent operators from
-   “fixing” healthy dependency waits or treating capacity as task failure.  
+   “fixing” healthy dependency waits or treating capacity as task failure.
 5. **Recovery without authority expansion** — Rescue and quarantine restore
    schedulability; they do not mint completion.
 
@@ -626,18 +642,18 @@ ancestry** do not authorize completion mutations.
 
 **Positive**
 
-- Operators can map a stuck task to a named admission or acceptance boundary.  
-- Concurrent lanes scale under leases without trusting worktrees alone.  
+- Operators can map a stuck task to a named admission or acceptance boundary.
+- Concurrent lanes scale under leases without trusting worktrees alone.
 - Acceptance can reopen when evidence goes stale—correctness over vanity
-  “done” status.  
+  “done” status.
 - Merge train and completion gates evolve independently.
 
 **Negative / costs**
 
-- More states to learn (`merged_pending`, `acceptance_reopened`).  
-- Capacity waits require metrics literacy (`AdmissionDecision`, provider slots).  
+- More states to learn (`merged_pending`, `acceptance_reopened`).
+- Capacity waits require metrics literacy (`AdmissionDecision`, provider slots).
 - Dual isolation (task lease + resource lease + worktree) adds operational
-  surface.  
+  surface.
 - Forced revalidation after reopen can delay board closeout.
 
 ---
@@ -645,12 +661,12 @@ ancestry** do not authorize completion mutations.
 ## 14. Extension and compatibility
 
 1. New schedulers must emit **typed wait/deny reasons** (dependency vs resource
-   vs provider vs policy)—do not overload a single `blocked` bit.  
+   vs provider vs policy)—do not overload a single `blocked` bit.
 2. New merge strategies still produce non-authoritative
-   `ImplementationReceipt`s until completion gates recompute.  
+   `ImplementationReceipt`s until completion gates recompute.
 3. New providers plug in behind validation; they must not write completion
-   flags.  
-4. Rescue actions remain control-bound operations with effect lists and leases.  
+   flags.
+4. Rescue actions remain control-bound operations with effect lists and leases.
 5. Compatibility facades for flat module imports do not create alternate lease
    or completion authorities ([PACKAGE_MAP.md](PACKAGE_MAP.md)).
 
@@ -696,10 +712,10 @@ python -m pytest \
 
 Review checklist:
 
-- [ ] PID, provider exit, and merge are never described as completion.  
-- [ ] Stale post-merge / freshness path reopens acceptance.  
-- [ ] Dependency idle is distinct from provider/resource/validation/merge/recovery blocks.  
-- [ ] Source anchors resolve to live modules.  
+- [ ] PID, provider exit, and merge are never described as completion.
+- [ ] Stale post-merge / freshness path reopens acceptance.
+- [ ] Dependency idle is distinct from provider/resource/validation/merge/recovery blocks.
+- [ ] Source anchors resolve to live modules.
 - [ ] No claims of planned high-level facades as current runtime API.
 
 ---

@@ -1,19 +1,19 @@
 # Cross-repository and nested-package integration boundaries
 
-**Status:** Current  
+**Status:** Current
 **Audience:** Integrators, maintainers, security reviewers, and implementation
-agents placing code or evidence across sibling products  
+agents placing code or evidence across sibling products
 **Scope:** Ownership, dependency direction, gitlink pins, discovery, capability
 probes, graceful fallback, fail-closed assurance, and independent Git authority
 for `ipfs_accelerate_py`, sibling nested packages (`ipfs_datasets_py`,
 `ipfs_kit_py`, `ipfs_model_manager_py`, `ipfs_transformers_py`), MCP++ surfaces,
-and related reference checkouts  
-**Non-goals:** Backend CID/P2P runtime semantics (see planned
-`DISTRIBUTED_RUNTIME.md` / existing IPFS guides); MCP transport policy and tool
-registry (see MCP runtime guides); agent-supervisor intent/control plane beyond
+and related reference checkouts
+**Non-goals:** Backend CID/P2P runtime semantics (see
+[distributed runtime](DISTRIBUTED_RUNTIME.md) / existing IPFS guides); MCP transport policy and tool
+registry (see [MCP runtime](MCP_RUNTIME.md)); agent-supervisor intent/control plane beyond
 repository-forest and optional-provider boundaries; installation UX copy
-(DOC-021); initialization or mutation of any submodule gitlink  
-**Last verified:** `d71cc2df31ec89716d30b153c989a8bbb557c0b2` (2026-08-03);
+(DOC-021); initialization or mutation of any submodule gitlink
+**Last verified:** `e559ff0046c639ba1dadabe02ea0ea91d9877e20` (2026-08-03);
 `.gitmodules`, adapter modules, forest/manifest code, and focused integration
 tests inspected in this worktree (nested product directories present as empty
 gitlink slots unless initialized)
@@ -27,7 +27,7 @@ gitlink slots unless initialized)
 | Gitlink inventory | `.gitmodules` | Declared submodule paths and remotes |
 | Nested product policy | `docs/NESTED_PACKAGES.md` | Inventory and hygiene rules (not authority) |
 | Package path discovery | `ipfs_accelerate_py/__init__.py` (`_add_external_package`) | Optional `external/<pkg>` prepend only |
-| Kit integration | `ipfs_accelerate_py/ipfs_kit_integration.py` (`IPFSKitStorage`, `_resolve_ipfs_kit_source_path`) | Local-first storage; skips empty gitlinks |
+| Kit integration | `ipfs_accelerate_py/ipfs_kit_integration.py` (`IPFSKitStorage`, `_resolve_ipfs_kit_source_path`) | Compatibility adapter with explicit `using_fallback`; skips empty gitlinks; local writes return synthetic CID-like keys |
 | Backend roles | `ipfs_accelerate_py/ipfs_backend_router.py` (`BackendRole`, `ENABLE_IPFS_KIT`, `IPFS_KIT_DISABLE`) | Preferred `ipfs_kit_py` when enabled and available |
 | Kit fallback cache | `ipfs_accelerate_py/common/ipfs_kit_fallback.py` (`IPFSKitFallbackStore`) | Best-effort CID retrieval |
 | In-tree kit modules | `ipfs_accelerate_py/kit/` | **Not** the external `ipfs_kit_py` package |
@@ -239,12 +239,12 @@ import is not skipped (`IPFS_ACCEL_SKIP_CORE=1` avoids heavy core import).
 
 | Item | Detail |
 | --- | --- |
-| Adapter | `IPFSKitStorage` in `ipfs_kit_integration.py` |
-| Router | `ipfs_backend_router.py` role `ipfs_kit_py` |
+| Adapter | `IPFSKitStorage` in `ipfs_kit_integration.py`; independently falls back to its local cache and exposes `using_fallback` |
+| Router | `ipfs_backend_router.py`; separately selects an `IPFSKitBackend`, HF-cache, or Kubo role and emits `BackendSelectionReceipt` |
 | Env | `ENABLE_IPFS_KIT` (default true), `IPFS_KIT_DISABLE`, `IPFS_BACKEND`, `IPFS_KIT_CACHE_DIR` |
-| Happy path | Preferred distributed backend when enabled and importable |
-| Degradation | Local filesystem / HF cache / Kubo-compatible paths with **explicit** role reporting |
-| Fail-closed notes | Synthetic HF `bafy…` cache keys are not verified multiformats CIDs (router contract); codec/CAR claims require the active role |
+| Happy path | Router preference is `ipfs_kit_py` when enabled and available; adapter health still requires inspection rather than import inference |
+| Degradation | `IPFSKitStorage` can use its own local fallback (`using_fallback=true`); independently, the router can select HF cache or Kubo and records that selection |
+| Fail-closed notes | The adapter's local `bafy…` keys and synthetic HF `bafy…` keys are not verified multiformats CIDs; codec/CAR claims require verification, not a CID-like prefix |
 | Confusion to avoid | `ipfs_accelerate_py.kit` modules wrap accelerate concerns; they are not the external package |
 
 ### 4.3 `ipfs_datasets_py` (datasets and supervisor providers)
@@ -380,7 +380,7 @@ ReviewedForestManifest (aliases, sole_write, policies)
 
 | Integration | When missing / disabled | Behavior |
 | --- | --- | --- |
-| `ipfs_kit_py` | import fail, `IPFS_KIT_DISABLE`, `ENABLE_IPFS_KIT=false` | Local/cache/Kubo paths; report role |
+| `ipfs_kit_py` | Adapter constructor disables it, `IPFS_KIT_DISABLE`, or adapter import/init fails | `IPFSKitStorage` reports local `using_fallback`; `ENABLE_IPFS_KIT=false` is instead a router selection input, and the router independently reports HF cache or Kubo when its preferred candidate is unavailable |
 | `ipfs_datasets_py` (runtime) | auto mode import fail or explicit disable | Local datasets_integration fallbacks |
 | `ipfs_datasets_py` (analysis) | missing module, unhealthy, unsupported op | Typed degradation; local analysis continues |
 | MCP++ gitlink | uninitialized empty dir | Spec pin absent; runtime modules still present in package |
@@ -483,8 +483,8 @@ or commit submodule gitlinks. Operators update pins deliberately.
 | Signal | Where | Operator use |
 | --- | --- | --- |
 | `get_datasets_status()` | `datasets_integration` | available / path / mode / reason |
-| Backend role report | `ipfs_backend_router` | which role is active (`ipfs_kit_py` / kubo / cache) |
-| `IPFSKitStorage` logs | kit integration | import success vs forced fallback |
+| Backend selection receipt | `ipfs_backend_router` | which router role is active (`ipfs_kit_py` / kubo / cache) and why it degraded |
+| `IPFSKitStorage.get_backend_status()` / logs | kit integration | adapter availability and `using_fallback`, independent of router selection |
 | Analysis degradation evidence | supervisor integrations | typed reason + bound requirement IDs |
 | Forest / manifest replay reasons | `repository_forest_manifest` | authority_mismatch, missing root, etc. |
 | `git submodule status` | worktree | `-` prefix = not initialized |
@@ -557,8 +557,8 @@ PY
 | `docs/architecture/IPFS_KIT_INTEGRATION.md` | Kit-oriented feature notes (verify against current adapters) |
 | `docs/development/DOCUMENTATION_DRIFT_AUDIT_2026_08.md` | Finding 11: empty nested dirs / import prerequisites |
 | `docs/architecture/GUIDE_CONVENTIONS.md` | ArchitectureGuideContract@1 |
-| Planned `docs/architecture/DISTRIBUTED_RUNTIME.md` | CID/backend/P2P runtime (DOC-009); complements this ownership guide |
-| Planned MCP runtime architecture | Transport/tool planes (DOC-008) |
+| [Distributed runtime](DISTRIBUTED_RUNTIME.md) | CID/backend/P2P runtime (DOC-009); complements this ownership guide |
+| [MCP runtime](MCP_RUNTIME.md) | Transport/tool planes (DOC-008) |
 
 ---
 

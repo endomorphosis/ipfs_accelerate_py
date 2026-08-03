@@ -1,10 +1,14 @@
 # Inference runtime and router lifecycle
 
-**Status:** Current  
-**Audience:** Developers and agents tracing a single inference request from public entrypoint through catalog/router, backend/worker, and result  
-**Scope:** Inference/data-plane request lifecycle: discovery vs invocation, modality routers, provider selection, execution adapters, caching, result and error propagation, and graceful degradation when optional providers or hardware are absent  
-**Non-goals:** Agent-supervisor scheduling and objective heaps; MCP transport and tool-policy details (see MCP guides); catalog schema and resolution math in depth (see [AI Service Catalog](AI_SERVICE_CATALOG.md)); endpoint-usage admission product surface (see planned MODEL_SERVICE_ROUTING); package install profiles; P2P mesh topology beyond the task-queue handoff  
-**Last verified:** `f279353053fe41593d76a95245416933d08e8999` (2026-08-03); public entrypoints, router modules, backend manager, worker package, and optional unified service checked against the live tree  
+**Status:** Current
+
+**Audience:** Developers and agents tracing a single inference request from public entrypoint through catalog/router, backend/worker, and result
+
+**Scope:** Inference/data-plane request lifecycle: discovery vs invocation, modality routers, provider selection, execution adapters, caching, result and error propagation, and graceful degradation when optional providers or hardware are absent
+
+**Non-goals:** Agent-supervisor scheduling and objective heaps; MCP transport and tool-policy details (see MCP guides); catalog schema and resolution math in depth (see [AI Service Catalog](AI_SERVICE_CATALOG.md)); endpoint-usage admission product surface (see [model-service routing](MODEL_SERVICE_ROUTING.md)); package install profiles; P2P mesh topology beyond the task-queue handoff
+
+**Last verified:** `e559ff0046c639ba1dadabe02ea0ea91d9877e20` (2026-08-03); public entrypoints, router modules, backend manager, worker package, and optional unified service checked against the live tree
 
 This guide is the maintained **InferenceRequestFlow@1** and **RouterFallbackFlow@1** narrative. A developer should follow one request across public entrypoint → catalog/router → backend/worker → result **without assuming optional providers, GPUs, CLIs, or network backends are present**.
 
@@ -20,7 +24,7 @@ This guide is the maintained **InferenceRequestFlow@1** and **RouterFallbackFlow
 | LLM invocation | `ipfs_accelerate_py/llm_router.py` | `generate_text`, `chat_completions_create`, `get_llm_provider` |
 | Embeddings invocation | `ipfs_accelerate_py/embeddings_router.py` | `embed_text`, `embed_texts` |
 | Multimodal invocation | `ipfs_accelerate_py/multimodal_router.py` | `generate_multimodal`, `generate_multimodal_text` |
-| Voice invocation | `ipfs_accelerate_py/voice_router.py` | `synthesize`, `transcribe` (provider protocol) |
+| Voice invocation | `ipfs_accelerate_py/voice_router.py` | Public `text_to_speech`, `speech_to_text`; provider protocols may expose `synthesize`, `transcribe` |
 | Router DI / cache hooks | `ipfs_accelerate_py/router_deps.py` | Injected deps and process caches |
 | Information plane | `ipfs_accelerate_py/model_catalog/` | Descriptors only; no provider HTTP |
 | Catalog facade | `model_manager` (`get_default_model_manager`) | List/resolve; does not invoke |
@@ -37,11 +41,11 @@ This guide is the maintained **InferenceRequestFlow@1** and **RouterFallbackFlow
 
 Related maintained pages (read, do not treat as this guide’s output):
 
-- [Architecture overview](overview.md) — layers and capability-oriented stance  
-- [AI Service Catalog](AI_SERVICE_CATALOG.md) — discovery vs invocation boundary  
-- [Guide conventions](GUIDE_CONVENTIONS.md) — writing contract  
-- [Unified inference backend (optional)](../INFERENCE_BACKEND_README.md) — backend manager and service ops  
-- [MCP server README](../../ipfs_accelerate_py/mcp_server/README.md) — tools and transports  
+- [Architecture overview](overview.md) — layers and capability-oriented stance
+- [AI Service Catalog](AI_SERVICE_CATALOG.md) — discovery vs invocation boundary
+- [Guide conventions](GUIDE_CONVENTIONS.md) — writing contract
+- [Unified inference backend (optional)](../INFERENCE_BACKEND_README.md) — backend manager and service ops
+- [MCP server README](../../ipfs_accelerate_py/mcp_server/README.md) — tools and transports
 
 ---
 
@@ -87,11 +91,16 @@ Collapsing catalog into routers would make discovery side-effecting. Collapsing 
 | --- | --- |
 | Importing package modules that load without heavy deps | Remote API keys and paid providers |
 | Router entry functions that raise clearly when no provider exists | CUDA, ROCm, MPS, OpenVINO, WebNN, WebGPU, Qualcomm |
-| Capability and status helpers that report absence | `UnifiedInferenceService`, HF model server, libp2p |
+| Typed diagnostics with explicitly documented authority | `UnifiedInferenceService`, HF model server, libp2p |
 | CPU-oriented local paths when `transformers` (or similar) is installed | CLI binaries (codex, copilot, goose, grok, …) |
 | Failures that surface as exceptions or structured error dicts | P2P task mesh and remote peers |
 
-**Import success is never a capability signal.** Prefer `get_instance().get_capabilities(detail=True)`, router `list_providers()`, and explicit provider selection over assuming hardware or network backends.
+**Import success is never a capability signal.** Router `list_providers()` reports
+declared/projected descriptors, not live construction. The coordinator's
+`get_capabilities(detail=True)` is a process summary, but its legacy `hwtest`
+field includes synthetic defaults and is not proof that CUDA, OpenVINO, or
+another optional backend is usable. Confirm availability with the owning
+adapter's focused probe or a controlled invocation before scheduling work.
 
 ---
 
@@ -104,7 +113,7 @@ Multiple surfaces reach the same runtime. Pick one for the walkthrough below; th
 | **Python API (preferred for text)** | `from ipfs_accelerate_py import generate_text` or `from ipfs_accelerate_py.llm_router import generate_text` | `llm_router` → provider |
 | **Chat completions shape** | `chat_completions_create(...)` | Native chat if provider supports it; else `generate_text` |
 | **Embeddings** | `embed_text` / `embed_texts` from package or `embeddings_router` | Embeddings providers |
-| **Multimodal / voice** | `generate_multimodal*`, voice synthesize/transcribe | Respective routers |
+| **Multimodal / voice** | `generate_multimodal*`; `text_to_speech` / `speech_to_text` | Respective routers |
 | **Coordinator singleton** | `get_instance()` then `run_model` / `infer` / endpoint APIs | Local transformers, endpoint handlers, `api_backends` |
 | **CLI** | `ipfs-accelerate` via `cli_entry.main` | Same package; capability and command paths |
 | **MCP tools** | `mcp_server` tools such as `generate_text`, `inference_run_inference` | Routers / coordinator; policy in MCP docs |
@@ -113,7 +122,7 @@ Multiple surfaces reach the same runtime. Pick one for the walkthrough below; th
 Structural example (no network required for the *shape* of the call):
 
 ```python
-from ipfs_accelerate_py import generate_text, get_instance
+from ipfs_accelerate_py import generate_text
 
 # Invocation plane: text generation with automatic provider discovery.
 # Without credentials or local transformers, this raises rather than inventing success.
@@ -122,10 +131,11 @@ try:
 except Exception as exc:
     print(type(exc).__name__, exc)
 
-# Capability plane: what this process currently exposes (JSON-safe summary).
-caps = get_instance().get_capabilities(detail=True)
-print(caps.get("task_types"), caps.get("hwtest"))
 ```
+
+`get_instance()` is the process coordinator constructor, not a side-effect-free
+probe: it can initialize storage, cache/configuration, daemon integrations and
+external resources. Call it only when those coordinator services are intended.
 
 Optional catalog resolution (does **not** run inference):
 
@@ -169,7 +179,7 @@ provider.generate(prompt, model_name=..., **kwargs)
   |-- side-effecting/agent kwargs disable model retry and cross-provider fallback
   v
 str result
-  |-- set get_last_generation_trace() (effective provider/model)
+  |-- set get_last_generation_trace() (diagnostic provider/model when known)
   |-- optional response cache write
   |-- return to caller
 ```
@@ -187,7 +197,7 @@ Cross-provider **fallback** (RouterFallbackFlow@1) only runs when the primary pr
 | Backend select (optional stack) | `InferenceBackendManager` | Task, model, health filters | `BackendInfo` or `None` |
 | Execute | Provider / adapter / worker | Prompt or tensors | Text, embeddings, or error |
 | Result | Router | Provider return value | `str` / OpenAI-compat object / vectors |
-| Diagnostics | Thread-local traces | Effective names, admission codes | `get_last_generation_trace()` etc. |
+| Diagnostics | Thread-local traces | Provider/model names when the adapter exposes them; admission codes | `get_last_generation_trace()` etc. |
 
 ### 3.3 Sync / async boundary
 
@@ -237,10 +247,12 @@ static / router / deployment sources
 
 Rules developers must keep:
 
-1. `list` / `get` / `resolve` must not install packages, start servers, load weights, or spend API keys.  
-2. Credential-shaped env may be reported as **present/absent**, never returned as values.  
-3. A resolved binding ID is **not** a guarantee the provider will succeed at invoke time.  
-4. Routers may publish catalog descriptors (`list_providers`, `list_models`, `catalog_snapshot`) as **projections** of what they can construct; those projections still do not invoke.
+1. `list` / `get` / `resolve` must not install packages, start servers, load weights, or spend API keys.
+2. Credential-shaped env may be reported as **present/absent**, never returned as values.
+3. A resolved binding ID is **not** a guarantee the provider will succeed at invoke time.
+4. Routers may publish catalog descriptors (`list_providers`, `list_models`,
+   `catalog_snapshot`) as declarations/projections. Listing them neither
+   constructs a provider nor proves that invocation will succeed.
 
 ---
 
@@ -250,16 +262,16 @@ Rules developers must keep:
 
 When `provider` is omitted and no force-env is set, resolution roughly prefers:
 
-1. Accelerate/coordinator hook when enabled and available  
-2. First constructible optional API/CLI provider in a fixed discovery order (OpenRouter, OpenAI, HF Inference API, xAI, Meta AI, various CLIs, …) — **only if** credentials/binaries make construction succeed  
-3. Local HuggingFace transformers when the stack is importable  
+1. Accelerate/coordinator hook when enabled and available
+2. First constructible optional API/CLI provider in a fixed discovery order (OpenRouter, OpenAI, HF Inference API, xAI, Meta AI, various CLIs, …) — **only if** credentials/binaries make construction succeed
+3. Local HuggingFace transformers when the stack is importable
 4. Otherwise **raise** (no fake success)
 
 Environment force (examples; see module docstring for full list):
 
-- `IPFS_ACCELERATE_PY_LLM_PROVIDER` / `ipfs_accelerate_py_LLM_PROVIDER` — pin provider name  
-- Per-provider keys and model defaults (OpenRouter, xAI, HF, CLI commands, …)  
-- Opt-in discovery flags (e.g. Goose CLI discovery) so rare/heavy tools do not install themselves during automatic selection  
+- `IPFS_ACCELERATE_PY_LLM_PROVIDER` / `ipfs_accelerate_py_LLM_PROVIDER` — pin provider name
+- Per-provider keys and model defaults (OpenRouter, xAI, HF, CLI commands, …)
+- Opt-in discovery flags (e.g. Goose CLI discovery) so rare/heavy tools do not install themselves during automatic selection
 
 ### 5.2 Coordinator path (`run_model` / `infer`)
 
@@ -269,9 +281,9 @@ Use this path when integrating hardware endpoints and batch queues. Use `generat
 
 ### 5.3 API backends and worker
 
-- **`api_backends/`** — protocol adapters (OpenAI-compatible, HF TGI/TEI, Ollama, Groq, …). Shared `BaseAPIBackend` supplies priority queue and **circuit breaker** (CLOSED / OPEN / HALF_OPEN) so failing remotes degrade without tight spin loops.  
-- **`worker/`** — hardware-oriented worker (`worker_py`), skillsets, and utils (CUDA, OpenVINO, Apple, Qualcomm, llama.cpp, …). Presence of a skillset module does not prove the host can run it; probe at runtime.  
-- **`InferenceBackendManager`** — registers backends with capabilities and health; `select_backend_for_task` filters to **healthy** backends matching task/model/protocol. Returns `None` when nothing matches (caller must handle).  
+- **`api_backends/`** — protocol adapters (OpenAI-compatible, HF TGI/TEI, Ollama, Groq, …). Shared `BaseAPIBackend` supplies priority queue and **circuit breaker** (CLOSED / OPEN / HALF_OPEN) so failing remotes degrade without tight spin loops.
+- **`worker/`** — hardware-oriented worker (`worker_py`), skillsets, and utils (CUDA, OpenVINO, Apple, Qualcomm, llama.cpp, …). Presence of a skillset module does not prove the host can run it; probe at runtime.
+- **`InferenceBackendManager`** — registers backends with capabilities and health; `select_backend_for_task` filters to **healthy** backends matching task/model/protocol. Returns `None` when nothing matches (caller must handle).
 - **`UnifiedInferenceService`** — optional process that wires backend manager, HF server, WebSocket, and libp2p; dependencies are try/imported and disabled when missing.
 
 ### 5.4 Caching
@@ -309,7 +321,7 @@ Side-effecting / agent requests (`agent=True` / `side_effecting=True` style kwar
 | No API keys | Skip those providers in auto order |
 | No CLI binary | Skip CLI provider; explicit selection may offer install only when coded and allowed |
 | No `transformers` | Local HF path unavailable; remote providers may still work |
-| No CUDA / GPU libs | Hardware paths report false/unavailable; CPU or remote remains |
+| No CUDA / GPU libs | Owning adapters should report unavailable and CPU or remote remains; do not use legacy coordinator `hwtest` as proof |
 | No libp2p / P2P config | `submit_task` stays local queue or errors; mesh not required |
 | Unified service deps missing | Components log warning and stay `None`; package API still usable |
 | Cache backend failure | Miss-through; generation proceeds without cache |
@@ -325,7 +337,10 @@ Level 4  Local HF fallback when allow_local_fallback and available
 Level F  Raise original or last error (fail closed)
 ```
 
-**Never** treat fallback as proof that the preferred provider is healthy. Use `get_last_generation_trace()` for the **effective** provider and model after the call.
+**Never** treat fallback as proof that the preferred provider is healthy.
+`get_last_generation_trace()` is a thread-local diagnostic: after a successful
+call it records the effective provider and, when the provider exposes it, the
+selected model. It is not a health, admission, or billing receipt.
 
 ### 6.4 Error taxonomy (developer-facing)
 
@@ -341,8 +356,8 @@ Level F  Raise original or last error (fail closed)
 
 ### 6.5 Recovery boundaries
 
-- **Automatic:** within-provider model retries; unpinned cross-provider tries; circuit breaker half-open after timeout.  
-- **Operator:** install extras, set credentials, start HF server or llama.cpp, enable discovery flags.  
+- **Automatic:** within-provider model retries; unpinned cross-provider tries; circuit breaker half-open after timeout.
+- **Operator:** install extras, set credentials, start HF server or llama.cpp, enable discovery flags.
 - **Not recovery:** inventing a mock provider as production success; treating catalog `known` as `healthy`; treating board/todo status as inference health.
 
 ---
@@ -365,9 +380,9 @@ Level F  Raise original or last error (fail closed)
 
 **Rationale.** The runtime separates **what is known** (catalog), **how to invoke** (routers), and **how to talk to a wire or device** (adapters) so that:
 
-1. Discovery stays side-effect free and federatable.  
-2. Fallback, caching, and usage admission can be modality-consistent without rewriting every HTTP client.  
-3. Optional hardware and commercial providers can be absent without breaking the package import or the mental model of the hot path.  
+1. Discovery stays side-effect free and federatable.
+2. Fallback, caching, and usage admission can be modality-consistent without rewriting every HTTP client.
+3. Optional hardware and commercial providers can be absent without breaking the package import or the mental model of the hot path.
 4. Agent/side-effecting work can opt out of automatic fallback and caches to preserve safety.
 
 **Alternatives** that were rejected or would break invariants:
@@ -382,7 +397,7 @@ Level F  Raise original or last error (fail closed)
 
 **Consequences.**
 
-- **Positive:** Clear entry for apps (`generate_text`); capability-first ops; modular extras; consistent failure language.  
+- **Positive:** Clear entry for apps (`generate_text`); capability-first ops; modular extras; consistent failure language.
 - **Negative:** Multiple related entrypoints (`run_model` vs routers vs optional HTTP); dual MCP packages (canonical + facade); large router modules; operators must learn which plane they are in. Documentation must keep pointing at **current** symbols rather than historical “unified” diagrams alone.
 
 ---
@@ -405,9 +420,9 @@ Level F  Raise original or last error (fail closed)
 
 | Signal | How to read it |
 | --- | --- |
-| `get_instance().get_capabilities(detail=True)` | Task types, models/endpoints known to coordinator, hwtest booleans, MCP counts |
-| `list_providers()` / modality equivalents | Constructible/projected providers (still not live SLAs) |
-| `get_last_generation_trace()` | Effective provider and model after last LLM call |
+| `get_instance().get_capabilities(detail=True)` | Process summary. `hwtest` is legacy/synthetic and must not authorize optional hardware use |
+| `list_providers()` / modality equivalents | Declared/projected descriptors; no construction or liveness guarantee |
+| `get_last_generation_trace()` | Diagnostic provider and model, when known, after the last LLM call |
 | `get_last_usage_admission()` | Operational admission codes when usage path is wired |
 | Backend manager status report | Health, metrics, routing table when service is used |
 | Logs | Router and backend loggers; prefer structured reasons over scraping chat |
@@ -435,23 +450,27 @@ test -f ipfs_accelerate_py/inference_backend_manager.py
 test -f ipfs_accelerate_py/embeddings_router.py
 test -f ipfs_accelerate_py/worker/worker.py
 
-# Import and capability probe (may warn; must not require CUDA)
+# Static entrypoint checks; avoid get_instance(), which initializes storage,
+# cache/configuration and daemon integrations and may perform external I/O.
 python - <<'PY'
-from ipfs_accelerate_py import get_instance
-caps = get_instance().get_capabilities(detail=True)
-assert isinstance(caps, dict)
-assert "task_types" in caps
-print("capabilities_ok", sorted(caps.get("task_types") or []))
+from ipfs_accelerate_py import generate_text
+from ipfs_accelerate_py.voice_router import speech_to_text, text_to_speech
+from ipfs_accelerate_py.llm_router import get_last_generation_trace, list_providers
+
+assert callable(generate_text)
+assert callable(text_to_speech) and callable(speech_to_text)
+assert callable(list_providers) and callable(get_last_generation_trace)
+print("entrypoints_ok")
 PY
 ```
 
 Review checklist:
 
-- [ ] One request can be traced entrypoint → router → adapter → result  
-- [ ] Catalog is described as non-invoking  
-- [ ] Fallback levels and fail-closed cases are explicit  
-- [ ] Optional providers/hardware are never assumed present  
-- [ ] Routers vs execution adapters separation is stated with rationale  
+- [ ] One request can be traced entrypoint → router → adapter → result
+- [ ] Catalog is described as non-invoking
+- [ ] Fallback levels and fail-closed cases are explicit
+- [ ] Optional providers/hardware are never assumed present
+- [ ] Routers vs execution adapters separation is stated with rationale
 
 ---
 
@@ -466,7 +485,7 @@ Review checklist:
 | [../INFERENCE_BACKEND_README.md](../INFERENCE_BACKEND_README.md) | Optional unified backend ops |
 | [../UNIFIED_INFERENCE_ARCHITECTURE.md](../UNIFIED_INFERENCE_ARCHITECTURE.md) | Compatibility pointer to current design |
 | MCP server README under `ipfs_accelerate_py/mcp_server/` | Tools and transports |
-| Planned: `SYSTEM_CONTEXT.md`, `MODEL_SERVICE_ROUTING.md`, `MCP_RUNTIME.md`, `DISTRIBUTED_RUNTIME.md` | Sibling architecture guides in the documentation refresh |
+| [System context](SYSTEM_CONTEXT.md), [model-service routing](MODEL_SERVICE_ROUTING.md), [MCP runtime](MCP_RUNTIME.md), [distributed runtime](DISTRIBUTED_RUNTIME.md) | Current sibling architecture guides from the documentation refresh |
 
 ---
 

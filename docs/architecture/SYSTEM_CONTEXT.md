@@ -11,13 +11,15 @@ the separate supervisor/control plane, capability boundaries, trust and failure
 semantics, and the rationale for coupling those planes through adapters rather
 than collapsing them
 
-**Non-goals:** Deep router lifecycle (see planned `INFERENCE_RUNTIME.md` /
-DOC-006), model-catalog and endpoint-usage detail (DOC-007), full MCP transport
-and policy (DOC-008), IPFS/P2P runtime depth (DOC-009), cross-repo ownership
-depth (DOC-010), and supervisor domain deep dives under
-`docs/architecture/agent_supervisor/`
+**Non-goals:** Deep router lifecycle (see
+[Inference runtime](INFERENCE_RUNTIME.md)), model-catalog and endpoint-usage
+detail (see [Model/service routing](MODEL_SERVICE_ROUTING.md)), full MCP
+transport and policy (see [MCP runtime](MCP_RUNTIME.md)), IPFS/P2P runtime
+depth (see [Distributed runtime](DISTRIBUTED_RUNTIME.md)), cross-repository
+ownership depth (see [Integration boundaries](INTEGRATION_BOUNDARIES.md)), and
+supervisor domain deep dives under `docs/architecture/agent_supervisor/`
 
-**Last verified:** `f279353053fe41593d76a95245416933d08e8999` (2026-08-03);
+**Last verified:** `e559ff0046c639ba1dadabe02ea0ea91d9877e20` (2026-08-03);
 package layout, `pyproject.toml` scripts, public package exports, MCP canonical
 vs facade paths, and supervisor domain packages checked against the tree
 
@@ -94,8 +96,8 @@ only when wired by **adapters**:
 │  llm_router / embeddings /    │   │    todo_daemon, entrypoints          │
 │  multimodal / voice routers   │   │                                      │
 │  backends / container_backends │   │  Authority: leases, allowlists,       │
-│  mcp_server (tools over data) │   │  deterministic validation, receipts  │
-│  ipfs_backend_router, p2p_*   │   │                                      │
+│  ipfs_backend_router, p2p_*   │   │  deterministic validation, receipts  │
+│  product capability handlers │   │  supervisor/control handlers         │
 └───────────────┬───────────────┘   └──────────────────┬───────────────────┘
                 │                                      │
                 │     adapters (typed, non-authoritative provider calls)     │
@@ -110,10 +112,17 @@ only when wired by **adapters**:
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
+`mcp_server` is a **shared protocol edge**, not a data-plane authority owner.
+It exposes handlers from both boxes. Framing and registration stay at the
+edge; each handler retains the authority rules of its owning plane. In
+particular, exposing a supervisor operation through MCP does not bypass its
+leases, validation, or merge fences.
+
 | Plane | Owns | Must not own |
 | --- | --- | --- |
-| **Inference / data plane** | Endpoint registration, model/provider selection, hardware adapters, MCP tool execution over product capabilities, IPFS/P2P content and task paths | Authoritative completion of implementation work, lease fencing of git mutations, objective-heap truth |
+| **Inference / data plane** | Endpoint registration, model/provider selection, hardware adapters, product capability handlers, IPFS/P2P content and task paths | Authoritative completion of implementation work, lease fencing of git mutations, objective-heap truth |
 | **Supervisor / control plane** | Objectives, taskboards, admission, isolated implementation lanes, validation gates, merge/recovery, proof receipts | Hot-path inference serving, silent trust upgrade of model prose into merge authority |
+| **Shared MCP protocol edge** | Transport framing, tool registration and routing to data- or control-plane handlers | Replacing the owning handler's authorization, lease, validation, or usage rules |
 
 ### 1.4 Container and package map
 
@@ -158,7 +167,7 @@ Every named box maps to a live package or module, or is labelled **conceptual**.
 | `ipfs_accelerate_py.ipfs_accelerate_py` + `get_instance()` | **Current** coordinator API | Yes |
 | `ipfs-accelerate` → `cli_entry:main` → `cli.py` | **Current** unified CLI | Yes |
 | `ipfs_accelerate` → `ai_inference_cli:main` | **Current** but **separate** script | Only when that parser is intentional; not interchangeable with hyphenated CLI |
-| `ipfs_accelerate_py.mcp_server` | **Canonical** MCP runtime | Yes |
+| `ipfs_accelerate_py.mcp_server` | **Canonical** registry/runtime package; transport completeness varies by entrypoint | Yes, with the concrete transport guidance below |
 | `ipfs_accelerate_py.mcp` | **Compatibility facade** | Migration and older docs only; do not treat as preferred |
 | `ipfs_accelerate_py/ipfs_accelerate_py_legacy.py` | **Legacy** module | Avoid; not the default export path |
 | Flat `agent_supervisor.*` historical stems | **Compatibility aliases** (where still resolved) | Prefer domain imports (`agent_supervisor.control.…`) |
@@ -205,10 +214,10 @@ From `pyproject.toml` `[project.scripts]` (representative):
 
 | Entrypoint | Role |
 | --- | --- |
-| `from ipfs_accelerate_py.mcp_server import create_server` | **Canonical** programmatic start |
-| `python -m ipfs_accelerate_py.mcp_server` | Package module entry |
-| `python -m ipfs_accelerate_py.mcp_server.fastapi_service` | Standalone FastAPI host |
-| `ipfs-accelerate mcp start` | Operator-facing CLI when wired in unified CLI |
+| `from ipfs_accelerate_py.mcp_server import create_server` | Canonical in-process registry/lifecycle builder; not by itself a mounted MCP protocol host |
+| `python -m ipfs_accelerate_py.mcp_server` | Current lifecycle shell serves `/healthz` only; do not point MCP clients at it |
+| `python -m ipfs_accelerate_py.mcp_server.fastapi_service` | Current functional FastAPI/HTTP MCP host |
+| `ipfs-accelerate mcp start` | Unified CLI's Flask/integrated-dashboard path; it does not call canonical `mcp_server.create_server` |
 | `python -m ipfs_accelerate_py.mcp.cli …` | **Compatibility / direct** path still used in some operator recipes |
 
 ### 2.4 Supervisor control transports
@@ -227,7 +236,7 @@ configuration, not in operation meaning. See
 ```text
 Client / CLI / MCP tool
         |
-  admission at product edge (auth/policy if MCP; else caller trust)
+  transport delivery (authority depends on the selected MCP handler path)
         |
   coordinator or dedicated router
   (ipfs_accelerate_py | llm_router | embeddings_router | …)
@@ -241,6 +250,13 @@ Client / CLI / MCP tool
         |
   result or structured error
 ```
+
+The current FastAPI and MCP+p2p adapters can call a registered function or
+`manager.dispatch` directly. Risk, UCAN, temporal-policy, and dispatch-input
+gates are guaranteed only when the request explicitly invokes the
+`tools_dispatch` meta-tool. Until direct transport calls are funneled through
+that authority path, deployment authentication/allowlists must protect them;
+an HTTP or peer connection alone is not tool authorization.
 
 **Failure path:** missing optional dependency → feature disabled or explicit
 error (not silent “success”); provider timeout/fallback stays inside the router
@@ -500,7 +516,7 @@ doc verification.
 
 ---
 
-## 12. Related guides and planned deep dives
+## 12. Related guides and deep dives
 
 | Document | Role |
 | --- | --- |
@@ -510,8 +526,8 @@ doc verification.
 | [agent_supervisor/PACKAGE_MAP.md](agent_supervisor/PACKAGE_MAP.md) | Domain ownership DAG |
 | [../guides/AGENT_SUPERVISOR_GUIDE.md](../guides/AGENT_SUPERVISOR_GUIDE.md) | Operator journeys |
 | [../development/DOCUMENTATION_CURRENT_STATE.md](../development/DOCUMENTATION_CURRENT_STATE.md) | Normative vs historical docs |
-| `INFERENCE_RUNTIME.md` (DOC-006) | Planned: router lifecycle detail |
-| `MODEL_SERVICE_ROUTING.md` (DOC-007) | Planned: catalog and usage routing |
-| `MCP_RUNTIME.md` (DOC-008) | Planned: MCP/MCP++ depth |
-| `DISTRIBUTED_RUNTIME.md` (DOC-009) | Planned: IPFS/P2P depth |
-| `INTEGRATION_BOUNDARIES.md` (DOC-010) | Planned: sibling-repo ownership |
+| [INFERENCE_RUNTIME.md](INFERENCE_RUNTIME.md) | Current router and inference lifecycle |
+| [MODEL_SERVICE_ROUTING.md](MODEL_SERVICE_ROUTING.md) | Current catalog, usage and invocation boundaries |
+| [MCP_RUNTIME.md](MCP_RUNTIME.md) | Current MCP/MCP++ runtime and known transport gaps |
+| [DISTRIBUTED_RUNTIME.md](DISTRIBUTED_RUNTIME.md) | Current IPFS/P2P execution boundary |
+| [INTEGRATION_BOUNDARIES.md](INTEGRATION_BOUNDARIES.md) | Current sibling-repository ownership map |
