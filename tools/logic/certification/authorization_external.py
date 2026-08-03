@@ -19,6 +19,13 @@ linux-aarch64 and never counts as installed, complete, authoritative, or
 production-certified.  Hermetic shadows remain differential-only and cannot
 satisfy vendor production evidence.
 
+That legacy exception closes only the bounded FVT-G209 Souffle-vendor lane. It
+does not satisfy full live SecPAL readiness.  The certificate embeds the
+offline ``secpal-vendor-prerequisite-report/v1`` so the retired official
+distribution and missing artifact/checksum/provenance/license/runtime/
+executable/installer contracts remain explicit prerequisites for any future
+end-to-end SecPAL task.
+
 Objective validation repair (FVT-073)
 -------------------------------------
 Path evidence for this certifier, the vendor installer, the lock pins, the
@@ -1604,6 +1611,10 @@ def derive_secpal_platform_exception(
             TOOL_SECPAL, repo_root=repo_root, lock_path=lock_path
         )
     )
+    live_readiness = authz_installer.secpal_vendor_prerequisite_report(
+        repo_root=repo_root,
+        lock_path=lock_path,
+    )
     if supported:
         return {
             "tool_id": TOOL_SECPAL,
@@ -1617,6 +1628,10 @@ def derive_secpal_platform_exception(
             "production_certified": False,
             "supported_platforms": supported_platforms,
             "notes": "external SecPAL is supported on this host under the lock",
+            "live_ready": bool(live_readiness["ready"]),
+            "live_block_reasons": list(live_readiness["block_reasons"]),
+            "live_readiness": live_readiness,
+            "platform_exception_satisfies_live_readiness": False,
         }
     return {
         "tool_id": TOOL_SECPAL,
@@ -1629,6 +1644,10 @@ def derive_secpal_platform_exception(
         "authoritative": False,
         "production_certified": False,
         "supported_platforms": supported_platforms,
+        "live_ready": bool(live_readiness["ready"]),
+        "live_block_reasons": list(live_readiness["block_reasons"]),
+        "live_readiness": live_readiness,
+        "platform_exception_satisfies_live_readiness": False,
         "notes": (
             "external SecPAL is a narrow unsupported-platform exception on "
             f"{host} under the current contract and never counts as installed, "
@@ -2103,6 +2122,9 @@ def certify_external_authorization_vendor(
             ),
         },
         "secpal_platform_exception": secpal_exception,
+        "secpal_live_readiness": dict(
+            secpal_exception.get("live_readiness") or {}
+        ),
         "engines": [souffle_engine.to_dict()],
         "engine_ids": [TOOL_SOUFFLE],
         "categories_exercised": categories,
@@ -2124,6 +2146,8 @@ def certify_external_authorization_vendor(
             "souffle_source_archive_checksummed": True,
             "souffle_linux_aarch64_supported": True,
             "secpal_linux_aarch64_narrow_platform_exception": True,
+            "secpal_platform_exception_does_not_satisfy_live_readiness": True,
+            "secpal_requires_live_authoritative_vendor_evidence": True,
             "never_grants_theorem_authority": True,
             "never_grants_authorization_authority_to_shadows": True,
             "grants_theorem_authority": False,
@@ -2284,6 +2308,12 @@ def build_vendor_install_receipt(
             "authoritative": False,
             "production_certified": False,
             "supported_platforms": exception.get("supported_platforms") or [],
+            "live_ready": bool(exception.get("live_ready")),
+            "live_block_reasons": list(
+                exception.get("live_block_reasons") or []
+            ),
+            "live_readiness": dict(exception.get("live_readiness") or {}),
+            "platform_exception_satisfies_live_readiness": False,
             "notes": exception.get("notes") or "",
         },
         "categories_exercised": list(certificate.get("categories_exercised") or []),
@@ -2362,6 +2392,13 @@ def external_authorization_vendor_lane_handler(
         "host_platform": result.get("host_platform"),
         "secpal_exception": bool(
             (result.get("secpal_platform_exception") or {}).get("exception")
+        ),
+        "secpal_live_ready": bool(
+            (result.get("secpal_live_readiness") or {}).get("ready")
+        ),
+        "secpal_live_block_reasons": list(
+            (result.get("secpal_live_readiness") or {}).get("block_reasons")
+            or []
         ),
         "args_received": bool(args) or bool(kwargs),
         "interface": VENDOR_INTERFACE,

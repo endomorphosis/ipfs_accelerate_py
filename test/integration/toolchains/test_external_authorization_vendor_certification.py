@@ -233,6 +233,20 @@ def test_installer_vendor_constants(installer) -> None:
     assert meta["policy"]["hermetic_shadows_are_differential_only"] is True
     assert meta["policy"]["never_promote_hermetic_shadow_as_vendor"] is True
     assert meta["policy"]["secpal_linux_aarch64_is_narrow_platform_exception"] is True
+    assert (
+        meta["policy"]
+        ["secpal_platform_exception_does_not_satisfy_live_readiness"]
+        is True
+    )
+    prerequisites = meta["secpal_vendor_prerequisite_report"]
+    assert prerequisites["ready"] is False
+    assert prerequisites["historical_release_version"] == "1.1"
+    assert prerequisites["official_download_url"].endswith(
+        "details.aspx?id=52356"
+    )
+    assert prerequisites["upstream_distribution_status"] == "retired"
+    assert "vendor_license_evidence_missing" in prerequisites["block_reasons"]
+    assert "vendor_runtime_contract_missing" in prerequisites["block_reasons"]
     assert meta["policy"]["souffle_linux_aarch64_supported"] is True
     assert (
         meta["policy"]["souffle_relocation_requires_explicit_known_layout"]
@@ -344,6 +358,9 @@ def test_secpal_platform_exception_on_linux_aarch64(installer, vendor_bundle) ->
     assert payload["platform_exception"] is True
     assert not installer.tool_supported_on_platform("secpal", LINUX_AARCH64)
     assert installer.tool_supported_on_platform("souffle", LINUX_AARCH64)
+    assert "official_vendor_distribution_retired" in secpal.block_reasons
+    assert "vendor_artifact_checksum_missing" in secpal.block_reasons
+    assert "vendor_license_evidence_missing" in secpal.block_reasons
 
 
 def test_hermetic_shadow_cannot_satisfy_vendor(
@@ -695,6 +712,12 @@ def test_secpal_exception_in_certificate(vendor_certificate: dict[str, Any]) -> 
     assert exception["authoritative"] is False
     assert exception["production_certified"] is False
     assert LINUX_AARCH64 not in (exception.get("supported_platforms") or [])
+    assert exception["live_ready"] is False
+    assert exception["platform_exception_satisfies_live_readiness"] is False
+    assert exception["live_readiness"]["authoritative_live_evidence_available"] is False
+    assert "official_vendor_distribution_retired" in exception["live_block_reasons"]
+    assert "vendor_artifact_provenance_missing" in exception["live_block_reasons"]
+    assert "vendor_installer_not_implemented" in exception["live_block_reasons"]
 
 
 def test_vendor_lane_handler(certifier, install_root, dependency_prefix) -> None:
@@ -716,6 +739,10 @@ def test_vendor_lane_handler(certifier, install_root, dependency_prefix) -> None
     assert result["certified"] is True
     assert result["status"] == "certified"
     assert result["secpal_exception"] is True
+    assert result["secpal_live_ready"] is False
+    assert "official_vendor_distribution_retired" in result[
+        "secpal_live_block_reasons"
+    ]
     assert result["hermetic_shadows_are_differential_only"] is True
     assert result["grants_authorization_decision_authority"] is False
     assert result["certificate_digest_sha256"]
@@ -785,6 +812,10 @@ def test_write_vendor_receipt_roundtrip(
     assert loaded["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert loaded["objective_validation_repair"] is True
     assert loaded["repair_task_id"] == VENDOR_REPAIR_TASK_ID
+    secpal = loaded["secpal_platform_exception"]
+    assert secpal["live_ready"] is False
+    assert secpal["platform_exception_satisfies_live_readiness"] is False
+    assert "vendor_installer_not_implemented" in secpal["live_block_reasons"]
 
 
 def test_public_vendor_receipt_is_portable_and_self_digesting(
@@ -915,6 +946,12 @@ def test_objective_validation_repair_proves_g209_acceptance(
         vendor_certificate["policy"]["secpal_linux_aarch64_narrow_platform_exception"]
         is True
     )
+    assert (
+        vendor_certificate["policy"]
+        ["secpal_platform_exception_does_not_satisfy_live_readiness"]
+        is True
+    )
+    assert vendor_certificate["secpal_live_readiness"]["ready"] is False
     assert vendor_certificate["policy"]["never_mutate_system_package_manager"] is True
     assert vendor_certificate["acceptance"]["objective_validation_repair"] is True
     assert (
