@@ -4,7 +4,7 @@ Source todo: docs/architecture/formal_verification_tactician_readiness.todo.md
 Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
 Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
 
-## FVT-086 FVT:: Implement the genuine SecPAL external-toolchain path
+## FVT-086 FVT:: Bind the genuine SecPAL artifact-intake and capability ceiling
 
 - Status: todo
 - Completion: manual
@@ -25,7 +25,7 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Graph depth: 1
 - Objective heap index: 2
 - Parallel lane: formal-verification-tactician/secpal-live-toolchain
-- Conflict policy: Own SecPAL artifact provenance, platform matrix, installer, and external semantics; never invent an upstream release, accept an unreviewed mirror, bypass license terms, or label the in-process engine as the external vendor binary.
+- Conflict policy: Own SecPAL artifact provenance, platform matrix, artifact intake, and authority ceiling; never invent an upstream release, accept an unreviewed mirror, accept license terms on an operator's behalf, redistribute restricted bytes, promote sample compatibility, or label the in-process engine as the external vendor binary.
 - Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
 - Changed paths:
 - Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
@@ -40,7 +40,7 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Canonical task key: task/v1/673ddca40390b034f58919f5226f741b2125329a9949e689dc59c27aec8c82b0
 - Canonical task CID: baguqeeram465zjadscydj5mjdh2se33udmqskmu2tfe6nco4lhbhv3emqkya
 - Semantic identity: objective-evidence-obligation/v1/d0a201df52ad6c2dc470b370be114e87721612b0dd93527a071046a825aa86ff
-- Acceptance subset: Every supported SecPAL target binds an official publisher URL or operator-supplied reviewed artifact, immutable version and digest, redistribution and execution terms, architecture and OS, runtime dependencies, install plan, executable identity, and rollback behavior, unsupported hosts are derived from the reviewed lock and cannot install, certify, or count as complete, real allow, deny, unknown, delegation, conflict, rule/scope mutation, replay, malformed, timeout, and disagreement cases execute through the selected external engine, the in-process Datalog/SecPAL family and any hermetic adapter remain separately named and cannot impersonate the vendor tool.
+- Acceptance subset: The recovered Microsoft MSI binds exact official provenance, Authenticode identity, product metadata, size, digest, EULA digest, and reviewed restrictions; intake requires an explicit local path and explicit operator license acceptance, performs no download, extraction, execution, or redistribution, publishes non-executable bytes atomically beneath a bounded user-local root, and restores the exact previous tree after failure; the live execution platform matrix is empty and every host fails closed; authentic sample execution remains separately classified as non-promotable operator compatibility and cannot create arbitrary-policy, platform, production, engine, or external-authority evidence; fixtures, in-process Datalog/SecPAL, and hermetic adapters remain separately named.
 - Preconditions: objective goal FVT-G217 is schedulable
 - Effects: satisfy evidence requirement: test/integration/toolchains/test_secpal_live_toolchain_contract.py
 - Evidence subset: test/integration/toolchains/test_secpal_live_toolchain_contract.py
@@ -54,7 +54,7 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Rejection reasons: none (accepted)
 - Evidence obligation key: objective-evidence-obligation/v1/d0a201df52ad6c2dc470b370be114e87721612b0dd93527a071046a825aa86ff
 - Missing evidence: test/integration/toolchains/test_secpal_live_toolchain_contract.py
-- Embedding query: Replace ambiguous SecPAL acquisition and adapter behavior with an official-artifact, license-aware, host-specific lazy installer and live semantic runner.
+- Embedding query: Replace ambiguous SecPAL acquisition and adapter behavior with an exact official-artifact, license-aware, transactional local intake path that proves the recovered research release cannot be promoted to a live vendor engine.
 - AST query: test/integration/toolchains/test_secpal_live_toolchain_contract.py
 - Surplus group: objective/FVT-G217
 - Merge key: 66eff0af4b1533dd

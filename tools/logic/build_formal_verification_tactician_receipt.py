@@ -96,6 +96,86 @@ PRODUCTION_ELEVATION_FANIN_VALIDATION_COMMAND: Final = (
     "test/integration/test_formal_verification_real_tool_matrix.py -q"
 )
 
+# Authoritative vendor release reissue (FVT-G221 / FVT-089).  This is a
+# post-merge *gate*, not a way to manufacture missing external authority.  A
+# blocked receipt is still a useful, content-addressed release artifact: it
+# binds the evidence that was available and names every unmet condition.
+AUTHORITATIVE_VENDOR_RELEASE_INTERFACE: Final = (
+    "FormalVerificationAuthoritativeVendorRelease@1"
+)
+AUTHORITATIVE_VENDOR_RELEASE_SCHEMA_VERSION: Final = (
+    "formal-verification-authoritative-vendor-release/v1"
+)
+AUTHORITATIVE_VENDOR_RELEASE_GOAL_ID: Final = "FVT-G221"
+AUTHORITATIVE_VENDOR_RELEASE_TASK_ID: Final = "FVT-089"
+AUTHORITATIVE_VENDOR_RELEASE_PROGRAM: Final = (
+    "formal-verification-tactician/authoritative-vendor-release"
+)
+AUTHORITATIVE_VENDOR_RELEASE_VALIDATION_COMMAND: Final = (
+    "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/test_formal_verification_authoritative_vendor_release.py "
+    "test/integration/toolchains/"
+    "test_formal_verification_end_to_end_assurance_matrix.py "
+    "test/integration/toolchains/"
+    "test_secpal_ergoai_authoritative_live_evidence.py -q"
+)
+AUTHORITATIVE_VENDOR_RELEASE_MAX_EVIDENCE_AGE_SECONDS: Final = 86_400
+AUTHORITATIVE_VENDOR_RELEASE_CLOCK_SKEW_SECONDS: Final = 300
+
+# The historical SecPAL research release was recovered through Microsoft's
+# archived GUID download surface.  Only metadata may enter the public receipt:
+# the EULA forbids redistribution of the installer and tells third parties to
+# obtain the software from Microsoft.  Its research/non-live purpose remains a
+# deployment gate independent of signature or digest validity.
+SECPAL_RESEARCH_RELEASE_MSI_SHA256: Final = (
+    "c1988b9f1f6a2fb602bac4fc777a1765e59e74126285a095684a4743ea683159"
+)
+SECPAL_RESEARCH_RELEASE_MSI_SIZE_BYTES: Final = 2_458_624
+SECPAL_RESEARCH_RELEASE_PRODUCT_CODE: Final = (
+    "{957BD905-629C-45B0-AA93-EC1AAD218115}"
+)
+SECPAL_RESEARCH_RELEASE_PRODUCT_VERSION: Final = "1.0.0"
+SECPAL_RESEARCH_RELEASE_CLR_VERSION: Final = "v2.0.50727"
+SECPAL_RESEARCH_RELEASE_EULA_SHA256: Final = (
+    "de075e7848fb737b9da3cfec5ce7c906742f4767fa04ed2bc38e69e2dd5e4fad"
+)
+
+AUTHORITATIVE_VENDOR_REQUIRED_AXES: Final[tuple[str, ...]] = (
+    "dependency",
+    "packaging",
+    "installer",
+    "capability",
+    "semantic",
+    "platform",
+    "authority",
+    "freshness",
+    "public_surface",
+)
+SECPAL_AUTHORITATIVE_REQUIRED_CASE_KINDS: Final[tuple[str, ...]] = (
+    "allow",
+    "deny",
+    "unknown",
+    "delegation",
+    "conflict",
+    "rule_mutation",
+    "scope_mutation",
+    "replay",
+    "malformed",
+    "timeout",
+    "resource_bound",
+    "cross_engine_disagreement",
+)
+ERGOAI_AUTHORITATIVE_REQUIRED_CASE_KINDS: Final[tuple[str, ...]] = (
+    "entailment",
+    "non_entailment",
+    "contradiction",
+    "mutation",
+    "replay",
+    "malformed",
+    "timeout",
+    "resource_bound",
+)
+
 DEFAULT_OBJECTIVES_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_tactician_readiness.objectives.md"
 )
@@ -110,6 +190,31 @@ DEFAULT_RELEASE_CANDIDATE_RELATIVE: Final = Path(
 )
 DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
+)
+DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_authoritative_vendor_release.json"
+)
+DEFAULT_END_TO_END_ASSURANCE_MATRIX_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_end_to_end_assurance_matrix.json"
+)
+DEFAULT_SECPAL_AUTHORITATIVE_LIVE_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_secpal_live_receipt.json"
+)
+# The core ErgoAI live receipt is intentionally distinct from the optional
+# Java/JDK capability receipt.  Until a durable core receipt exists, the Java
+# receipt is bound as fallback evidence and rejected as a substitute.
+DEFAULT_ERGOAI_AUTHORITATIVE_LIVE_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_ergoai_live_receipt.json"
+)
+DEFAULT_ERGOAI_JAVA_API_LIVE_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_ergoai_java_api_live_receipt.json"
+)
+DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_TEST_RELATIVE: Final = Path(
+    "test/integration/test_formal_verification_authoritative_vendor_release.py"
+)
+DEFAULT_SECPAL_ERGOAI_AUTHORITATIVE_TEST_RELATIVE: Final = Path(
+    "test/integration/toolchains/"
+    "test_secpal_ergoai_authoritative_live_evidence.py"
 )
 DEFAULT_BUILDER_RELATIVE: Final = Path(
     "tools/logic/build_formal_verification_tactician_receipt.py"
@@ -9903,6 +10008,1859 @@ def verify_checked_production_elevation_fanin(
     }
 
 
+_AUTHORITATIVE_IDENTITY_FIELDS: Final[tuple[str, ...]] = (
+    "release_identity",
+    "matrix_identity",
+    "matrix_digest_sha256",
+    "receipt_identity",
+    "candidate_identity",
+    "receipt_digest_sha256",
+    "certificate_digest_sha256",
+)
+
+# A self-authored interface name and an unkeyed digest are not authority.  The
+# exact schema/goal/task tuple is checked independently before a repository
+# receipt can participate in the FVT-089 fan-in.
+_AUTHORITATIVE_INTERFACE_CONTRACTS: Final[
+    Mapping[str, Mapping[str, str]]
+] = {
+    "FormalVerificationEndToEndAssuranceMatrix@1": {
+        "schema_version": "formal-verification-end-to-end-assurance-matrix/v1",
+        "goal_id": "FVT-G220",
+        "task_id": "FVT-088",
+    },
+    "SecPALAuthoritativeLiveEvidence@1": {
+        "schema_version": "secpal-authoritative-live-evidence/v1",
+        "goal_id": "FVT-G219",
+        "task_id": "FVT-086",
+    },
+    "LiveErgoAIAdvisorCertification@1": {
+        "schema_version": "live-ergoai-advisor-certification/v1",
+        "goal_id": "FVT-G160",
+        "task_id": "FVT-050",
+    },
+    "ErgoAILiveToolchainContract@1": {
+        "schema_version": "ergoai-live-toolchain-contract/v1",
+        "goal_id": "FVT-G218",
+        "task_id": "FVT-085",
+    },
+    RELEASE_CANDIDATE_INTERFACE: {
+        "schema_version": RELEASE_CANDIDATE_SCHEMA_VERSION,
+        "goal_id": RELEASE_CANDIDATE_GOAL_ID,
+        "task_id": RELEASE_CANDIDATE_TASK_ID,
+    },
+    ROLE_AWARE_INTERFACE: {
+        "schema_version": ROLE_AWARE_SCHEMA_VERSION,
+        "goal_id": ROLE_AWARE_GOAL_ID,
+        "task_id": ROLE_AWARE_TASK_ID,
+    },
+    INTERFACE: {
+        "schema_version": SCHEMA_VERSION,
+        "completion_goal_id": COMPLETION_GOAL_ID,
+        "task_id": TASK_ID,
+    },
+}
+
+_AUTHORITATIVE_DISALLOWED_CLASSES: Final[frozenset[str]] = frozenset(
+    set(NON_AUTHORITATIVE_EVIDENCE_CLASSES)
+    | {
+        "fixture",
+        "fixture_only",
+        "parser_fixture",
+        "parser_only",
+        "wrapper_only",
+        "shim",
+        "hermetic_shim",
+        "hermetic_adapter_shim",
+        "hermetic_shadow_shim",
+        "identity_only",
+        "proposal",
+        "proposal_only",
+        "proposal_only_semantics",
+        "simulated",
+        "unsupported",
+        "unverified_or_incomplete",
+    }
+)
+
+
+def _authoritative_parse_timestamp(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _authoritative_nested_get(
+    payload: Mapping[str, Any],
+    dotted: str,
+) -> Any:
+    current: Any = payload
+    for component in dotted.split("."):
+        if not isinstance(current, Mapping) or component not in current:
+            return None
+        current = current[component]
+    return current
+
+
+def _authoritative_any_true(
+    payload: Mapping[str, Any],
+    paths: Sequence[str],
+) -> bool:
+    return any(
+        _authoritative_nested_get(payload, path) is True for path in paths
+    )
+
+
+def _authoritative_any_false(
+    payload: Mapping[str, Any],
+    paths: Sequence[str],
+) -> bool:
+    return any(
+        _authoritative_nested_get(payload, path) is False for path in paths
+    )
+
+
+def _authoritative_contains_scalar(payload: Any, expected: Any) -> bool:
+    """Return whether a scalar occurs in a receipt without exporting its body."""
+
+    if isinstance(payload, Mapping):
+        return any(
+            _authoritative_contains_scalar(value, expected)
+            for value in payload.values()
+        )
+    if isinstance(payload, (list, tuple)):
+        return any(
+            _authoritative_contains_scalar(value, expected)
+            for value in payload
+        )
+    if isinstance(expected, str):
+        return str(payload or "").lower() == expected.lower()
+    return payload == expected
+
+
+def _authoritative_identity_audit(
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate a declared receipt identity under both repository codecs."""
+
+    fields = [
+        field for field in _AUTHORITATIVE_IDENTITY_FIELDS if field in payload
+    ]
+    if not fields:
+        return {
+            "valid": False,
+            "field": None,
+            "declared": None,
+            "computed": None,
+            "failure": "declared_content_identity_missing",
+        }
+
+    # Interfaces in this repository use either the builder's ``sha256:`` form
+    # or the certifier's unprefixed form.  Unicode escaping is also historical
+    # schema behaviour, so accept either canonical codec but never a digest of
+    # a different body.
+    field = fields[0]
+    body = {key: value for key, value in payload.items() if key != field}
+    computed: set[str] = set()
+    for ensure_ascii in (False, True):
+        encoded = json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=ensure_ascii,
+            default=str,
+        ).encode("utf-8")
+        raw = hashlib.sha256(encoded).hexdigest()
+        computed.update({raw, f"sha256:{raw}"})
+    declared = str(payload.get(field) or "")
+    valid = bool(declared and declared in computed)
+    return {
+        "valid": valid,
+        "field": field,
+        "declared": declared or None,
+        "computed": sorted(computed),
+        "failure": None if valid else "declared_content_identity_mismatch",
+    }
+
+
+def _authoritative_freshness_audit(
+    payload: Mapping[str, Any],
+    *,
+    release_observed_at: datetime,
+    max_age_seconds: int,
+    wall_clock_at: datetime | None = None,
+) -> dict[str, Any]:
+    freshness = _safe_dict(payload.get("freshness"))
+    timestamp_value = next(
+        (
+            value
+            for value in (
+                freshness.get("observed_at"),
+                freshness.get("generated_at"),
+                payload.get("observed_at"),
+                payload.get("generated_at"),
+                payload.get("timestamp"),
+            )
+            if value
+        ),
+        None,
+    )
+    timestamp = _authoritative_parse_timestamp(timestamp_value)
+    stale_declared = bool(
+        payload.get("stale") is True
+        or freshness.get("stale") is True
+        or str(freshness.get("status") or "").lower() == "stale"
+        or freshness.get("satisfied") is False
+        or freshness.get("fresh") is False
+    )
+    wall_clock = (wall_clock_at or datetime.now(timezone.utc)).astimezone(
+        timezone.utc
+    )
+    age_seconds: float | None = None
+    wall_clock_age_seconds: float | None = None
+    if timestamp is not None:
+        age_seconds = (release_observed_at - timestamp).total_seconds()
+        wall_clock_age_seconds = (wall_clock - timestamp).total_seconds()
+    future_relative_to_release = bool(
+        age_seconds is not None
+        and age_seconds < -AUTHORITATIVE_VENDOR_RELEASE_CLOCK_SKEW_SECONDS
+    )
+    future_relative_to_wall_clock = bool(
+        wall_clock_age_seconds is not None
+        and wall_clock_age_seconds
+        < -AUTHORITATIVE_VENDOR_RELEASE_CLOCK_SKEW_SECONDS
+    )
+    release_age_seconds = (wall_clock - release_observed_at).total_seconds()
+    release_time_future = bool(
+        release_age_seconds < -AUTHORITATIVE_VENDOR_RELEASE_CLOCK_SKEW_SECONDS
+    )
+    release_time_stale = release_age_seconds > max_age_seconds
+    evidence_stale_at_release = bool(
+        age_seconds is not None and age_seconds > max_age_seconds
+    )
+    evidence_stale_at_wall_clock = bool(
+        wall_clock_age_seconds is not None
+        and wall_clock_age_seconds > max_age_seconds
+    )
+    fresh = bool(
+        timestamp is not None
+        and age_seconds is not None
+        and wall_clock_age_seconds is not None
+        and not stale_declared
+        and not future_relative_to_release
+        and not future_relative_to_wall_clock
+        and not release_time_future
+        and not release_time_stale
+        and not evidence_stale_at_release
+        and not evidence_stale_at_wall_clock
+    )
+    failures: list[str] = []
+    if timestamp is None:
+        failures.append("freshness_timestamp_missing_or_invalid")
+    if stale_declared:
+        failures.append("evidence_declared_stale")
+    if future_relative_to_release:
+        failures.append("evidence_timestamp_in_future")
+    if future_relative_to_wall_clock:
+        failures.append("evidence_timestamp_in_future_of_wall_clock")
+    if release_time_future:
+        failures.append("release_observed_at_in_future_of_wall_clock")
+    if release_time_stale:
+        failures.append("release_observed_at_age_exceeds_policy")
+    if evidence_stale_at_release or evidence_stale_at_wall_clock:
+        failures.append("evidence_age_exceeds_policy")
+    if evidence_stale_at_wall_clock:
+        failures.append("evidence_wall_clock_age_exceeds_policy")
+    return {
+        "valid": fresh,
+        "timestamp": timestamp.isoformat().replace("+00:00", "Z")
+        if timestamp is not None
+        else None,
+        "age_seconds": age_seconds,
+        "wall_clock_age_seconds": wall_clock_age_seconds,
+        "release_wall_clock_age_seconds": release_age_seconds,
+        "wall_clock_observed_at": wall_clock.isoformat().replace(
+            "+00:00", "Z"
+        ),
+        "max_age_seconds": max_age_seconds,
+        "clock_skew_seconds": AUTHORITATIVE_VENDOR_RELEASE_CLOCK_SKEW_SECONDS,
+        "failures": failures,
+    }
+
+
+def _authoritative_disallowed_findings(
+    payload: Any,
+    *,
+    path: str = "$",
+) -> list[dict[str, str]]:
+    """Find authority-lowering evidence labels without matching policy prose."""
+
+    findings: list[dict[str, str]] = []
+    if isinstance(payload, Mapping):
+        for raw_key, value in payload.items():
+            key = str(raw_key)
+            lowered_key = key.lower()
+            child_path = f"{path}.{key}"
+            if lowered_key in {
+                "evidence_class",
+                "artifact_class",
+                "execution_class",
+                "lane_class",
+            }:
+                lowered_value = str(value or "").strip().lower()
+                if lowered_value in _AUTHORITATIVE_DISALLOWED_CLASSES:
+                    findings.append(
+                        {
+                            "path": child_path,
+                            "reason": f"disallowed_evidence_class:{lowered_value}",
+                        }
+                    )
+            if lowered_key in {"status", "state", "disposition"}:
+                lowered_value = str(value or "").strip().lower()
+                if lowered_value in {
+                    "unsupported",
+                    "fixture",
+                    "shim",
+                    "stale",
+                    "external_blocked",
+                    "externally_blocked",
+                    "proposal_only",
+                }:
+                    findings.append(
+                        {
+                            "path": child_path,
+                            "reason": f"disallowed_state:{lowered_value}",
+                        }
+                    )
+            if lowered_key in {
+                "is_fixture",
+                "fixture",
+                "fixture_only",
+                "is_shim",
+                "is_hermetic_advisor_shim",
+                "unsupported",
+                "proposal_only",
+                "parser_only",
+                "wrapper_only",
+                "identity_only",
+            } and value is True:
+                findings.append(
+                    {
+                        "path": child_path,
+                        "reason": f"disallowed_boolean:{lowered_key}",
+                    }
+                )
+            findings.extend(
+                _authoritative_disallowed_findings(value, path=child_path)
+            )
+    elif isinstance(payload, (list, tuple)):
+        for index, value in enumerate(payload):
+            findings.extend(
+                _authoritative_disallowed_findings(
+                    value,
+                    path=f"{path}[{index}]",
+                )
+            )
+    # Deterministic de-duplication keeps the checked artifact compact.
+    unique = {
+        (item["path"], item["reason"]): item for item in findings
+    }
+    return [unique[key] for key in sorted(unique)]
+
+
+def _authoritative_case_kind(value: Any) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(value or "").lower()).strip(
+        "_"
+    )
+    aliases = {
+        "nonentailment": "non_entailment",
+        "non_entails": "non_entailment",
+        "rule_scope_mutation": "scope_mutation",
+        "resourcebound": "resource_bound",
+        "cross_engine": "cross_engine_disagreement",
+        "disagreement": "cross_engine_disagreement",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _authoritative_case_audit(
+    payload: Mapping[str, Any],
+    *,
+    required: Sequence[str],
+) -> dict[str, Any]:
+    rows = [
+        row
+        for collection in (
+            payload.get("cases"),
+            payload.get("checks"),
+            _safe_dict(payload.get("semantics")).get("cases"),
+            _safe_dict(payload.get("semantic_evidence")).get("cases"),
+        )
+        for row in _safe_list(collection)
+        if isinstance(row, Mapping)
+    ]
+    passed: set[str] = set()
+    failed: set[str] = set()
+    for row in rows:
+        kind = _authoritative_case_kind(
+            row.get("kind")
+            or row.get("case_kind")
+            or row.get("case_id")
+            or row.get("check_id")
+        )
+        # Check ids often contain a namespace prefix; accept an exact required
+        # suffix while keeping each required kind independently represented.
+        matched = kind if kind in set(required) else next(
+            (
+                expected
+                for expected in sorted(required, key=len, reverse=True)
+                if kind.endswith(f"_{expected}")
+            ),
+            None,
+        )
+        if matched is None:
+            continue
+        status = str(row.get("status") or "").lower()
+        row_passed = bool(
+            row.get("passed") is True
+            or row.get("satisfied") is True
+            or status in {"passed", "succeeded", "ready", "agreed"}
+        )
+        if row_passed:
+            passed.add(matched)
+        else:
+            failed.add(matched)
+    missing = sorted(set(required) - passed)
+    failed_required = sorted(failed & set(required))
+    return {
+        "valid": not missing and not failed_required,
+        "required": list(required),
+        "passed": sorted(passed),
+        "missing": missing,
+        "failed": failed_required,
+        "case_count": len(rows),
+    }
+
+
+def _authoritative_public_audit(
+    *,
+    certifier: Any,
+    payload: Mapping[str, Any],
+    repo_root: Path,
+) -> dict[str, Any]:
+    try:
+        result = certifier.public_evidence_audit(payload, repo_root=repo_root)
+    except Exception as exc:  # noqa: BLE001 - an audit failure is a hard gate
+        return {
+            "satisfied": False,
+            "failures": [f"public_evidence_audit_error:{type(exc).__name__}"],
+        }
+    if not isinstance(result, Mapping):
+        return {
+            "satisfied": False,
+            "failures": ["public_evidence_audit_non_mapping"],
+        }
+    return {
+        "satisfied": result.get("satisfied") is True,
+        "failure_count": len(_safe_list(result.get("failures"))),
+        "failures": list(_safe_list(result.get("failures"))),
+    }
+
+
+def _authoritative_dependency(
+    *,
+    repo_root: Path,
+    relative: Path,
+    supplied: Mapping[str, Any] | None,
+    expected_interfaces: Sequence[str],
+    release_observed_at: datetime,
+    max_age_seconds: int,
+    certifier: Any,
+    fallback_relative: Path | None = None,
+    wall_clock_at: datetime | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    selected_relative = relative
+    source_kind = "provided_mapping" if supplied is not None else "checked_file"
+    payload = dict(supplied) if isinstance(supplied, Mapping) else load_json(
+        repo_root / relative
+    )
+    fallback_used = False
+    if payload is None and supplied is None and fallback_relative is not None:
+        fallback = load_json(repo_root / fallback_relative)
+        if fallback is not None:
+            payload = fallback
+            selected_relative = fallback_relative
+            fallback_used = True
+    payload = payload or {}
+    selected_path = repo_root / selected_relative
+    checked_payload = load_json(selected_path)
+    repository_body_matches = bool(
+        payload
+        and checked_payload is not None
+        and payload == checked_payload
+    )
+    relative_text = selected_relative.as_posix()
+    head_blob = _git_stdout(
+        repo_root,
+        "rev-parse",
+        f"HEAD:{relative_text}",
+    )
+    working_blob = (
+        _git_stdout(repo_root, "hash-object", relative_text)
+        if selected_path.is_file()
+        else None
+    )
+    committed_file_bound = bool(
+        head_blob
+        and working_blob
+        and re.fullmatch(r"[0-9a-f]{40,64}", head_blob)
+        and head_blob == working_blob
+    )
+    identity = _authoritative_identity_audit(payload) if payload else {
+        "valid": False,
+        "field": None,
+        "declared": None,
+        "computed": None,
+        "failure": "dependency_missing",
+    }
+    freshness = _authoritative_freshness_audit(
+        payload,
+        release_observed_at=release_observed_at,
+        max_age_seconds=max_age_seconds,
+        wall_clock_at=wall_clock_at,
+    ) if payload else {
+        "valid": False,
+        "timestamp": None,
+        "age_seconds": None,
+        "max_age_seconds": max_age_seconds,
+        "clock_skew_seconds": AUTHORITATIVE_VENDOR_RELEASE_CLOCK_SKEW_SECONDS,
+        "failures": ["dependency_missing"],
+    }
+    public = _authoritative_public_audit(
+        certifier=certifier,
+        payload=payload,
+        repo_root=repo_root,
+    ) if payload else {
+        "satisfied": False,
+        "failures": ["dependency_missing"],
+    }
+    interface = str(payload.get("interface") or "")
+    interface_valid = interface in set(expected_interfaces)
+    interface_contract = _safe_dict(
+        _AUTHORITATIVE_INTERFACE_CONTRACTS.get(interface)
+    )
+    contract_failures = sorted(
+        field_name
+        for field_name, expected in interface_contract.items()
+        if payload.get(field_name) != expected
+    )
+    interface_contract_valid = bool(
+        interface_contract and not contract_failures
+    )
+    repository_content_bound = bool(
+        repository_body_matches and committed_file_bound
+    )
+    binding_failures: list[str] = []
+    if not payload:
+        binding_failures.append("dependency_missing")
+    if not repository_body_matches:
+        binding_failures.append("payload_does_not_match_selected_repository_file")
+    if not committed_file_bound:
+        binding_failures.append("selected_repository_file_not_committed_at_head")
+    if identity.get("valid") is not True:
+        binding_failures.append(
+            str(identity.get("failure") or "declared_content_identity_invalid")
+        )
+    if not interface_valid:
+        binding_failures.append("interface_not_accepted_for_dependency")
+    if not interface_contract_valid:
+        binding_failures.extend(
+            f"interface_contract_mismatch:{field_name}"
+            for field_name in (contract_failures or ["interface"])
+        )
+    binding = {
+        "path": selected_relative.as_posix(),
+        "source_kind": source_kind,
+        "fallback_used": fallback_used,
+        "present": bool(payload),
+        "reachable": bool(payload),
+        "file_present": selected_path.is_file(),
+        "file_sha256": sha256_file(selected_path),
+        "repository_body_matches": repository_body_matches,
+        "repository_head_blob": head_blob,
+        "repository_working_blob": working_blob,
+        "repository_file_committed_at_head": committed_file_bound,
+        "repository_content_bound": repository_content_bound,
+        "interface": interface or None,
+        "schema_version": payload.get("schema_version"),
+        "goal_id": payload.get("goal_id"),
+        "task_id": payload.get("task_id"),
+        "status": payload.get("status"),
+        "declared_identity_field": identity.get("field"),
+        "declared_identity": identity.get("declared"),
+        "payload_content_identity": content_digest(payload) if payload else None,
+        "identity_valid": identity.get("valid") is True,
+        "interface_valid": interface_valid,
+        "interface_contract_valid": interface_contract_valid,
+        "interface_contract_failures": contract_failures,
+        "fresh": freshness.get("valid") is True,
+        "public_safe": public.get("satisfied") is True,
+        "freshness": freshness,
+        "public_evidence_audit": public,
+        "binding_failures": sorted(set(binding_failures)),
+        "binding_valid": bool(
+            payload
+            and identity.get("valid") is True
+            and interface_valid
+            and interface_contract_valid
+            and repository_content_bound
+        ),
+    }
+    return payload, binding
+
+
+def _authoritative_matrix_rows(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    raw: Any = (
+        payload.get("rows")
+        or payload.get("provider_host_rows")
+        or payload.get("providers")
+        or payload.get("matrix")
+        or []
+    )
+    if isinstance(raw, Mapping):
+        rows = []
+        for key, value in raw.items():
+            if isinstance(value, Mapping):
+                row = dict(value)
+                row.setdefault("row_id", str(key))
+                rows.append(row)
+        return rows
+    return [dict(row) for row in _safe_list(raw) if isinstance(row, Mapping)]
+
+
+def _authoritative_axis_state(axis: Any) -> str:
+    if isinstance(axis, Mapping):
+        return str(
+            axis.get("state") or axis.get("status") or axis.get("disposition") or ""
+        ).lower()
+    return str(axis or "").lower()
+
+
+def _authoritative_axis_has_evidence(axis: Any) -> bool:
+    if not isinstance(axis, Mapping):
+        return False
+    return any(
+        bool(axis.get(key))
+        for key in (
+            "evidence_refs",
+            "evidence",
+            "bindings",
+            "receipt_refs",
+            "artifact_identities",
+            "identity",
+        )
+    )
+
+
+def _audit_authoritative_matrix(
+    payload: Mapping[str, Any],
+    *,
+    certifier: Any | None = None,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Audit the matrix through its canonical, repository-aware validator.
+
+    Local row inspection is useful disclosure, but it cannot grant readiness:
+    row states and evidence references are self-authored JSON.  The hardened
+    certifier validator reconstructs every row from the checked certificate,
+    lock, and current repository files and is therefore a mandatory gate.
+    """
+
+    if certifier is None or repo_root is None:
+        hardened_validation: dict[str, Any] = {
+            "valid": False,
+            "failures": ["hardened_matrix_validator_context_missing"],
+            "rows_validated": 0,
+            "axes_validated": 0,
+        }
+    else:
+        try:
+            raw_validation = certifier.validate_end_to_end_assurance_matrix(
+                payload,
+                repo_root=repo_root,
+                verify_repository_evidence=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - fail closed at the gate
+            hardened_validation = {
+                "valid": False,
+                "failures": [
+                    "hardened_matrix_validator_error:"
+                    f"{type(exc).__name__}"
+                ],
+                "rows_validated": 0,
+                "axes_validated": 0,
+            }
+        else:
+            hardened_validation = (
+                dict(raw_validation)
+                if isinstance(raw_validation, Mapping)
+                else {
+                    "valid": False,
+                    "failures": ["hardened_matrix_validator_non_mapping"],
+                    "rows_validated": 0,
+                    "axes_validated": 0,
+                }
+            )
+    rows = _authoritative_matrix_rows(payload)
+    row_audits: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        axes = _safe_dict(row.get("axes"))
+        if not axes:
+            axes = {
+                name: row.get(name)
+                for name in AUTHORITATIVE_VENDOR_REQUIRED_AXES
+                if name in row
+            }
+        states = {
+            name: _authoritative_axis_state(axes.get(name))
+            for name in AUTHORITATIVE_VENDOR_REQUIRED_AXES
+        }
+        missing = sorted(name for name, state in states.items() if not state)
+        non_ready = sorted(
+            name for name, state in states.items() if state and state != "ready"
+        )
+        evidence_missing = sorted(
+            name
+            for name in AUTHORITATIVE_VENDOR_REQUIRED_AXES
+            if states[name] == "ready"
+            and not _authoritative_axis_has_evidence(axes.get(name))
+        )
+        row_id = str(
+            row.get("row_id")
+            or row.get("provider_host_id")
+            or row.get("provider_id")
+            or row.get("tool_id")
+            or f"row-{index}"
+        )
+        row_audits.append(
+            {
+                "row_id": row_id,
+                "tool_id": row.get("tool_id") or row.get("provider_id"),
+                "host": row.get("host") or row.get("platform"),
+                "states": states,
+                "missing_axes": missing,
+                "non_ready_axes": non_ready,
+                "ready_axes_without_evidence": evidence_missing,
+                "ready": not missing and not non_ready and not evidence_missing,
+            }
+        )
+    identifiers = " ".join(
+        str(
+            row.get("row_id")
+            or row.get("tool_id")
+            or row.get("provider_id")
+            or ""
+        ).lower()
+        for row in rows
+    )
+    secpal_present = "secpal" in identifiers
+    ergoai_present = "ergo" in identifiers
+    all_ready = bool(rows) and all(row["ready"] for row in row_audits)
+    packaging_bound = bool(rows) and all(
+        row["states"]["packaging"] == "ready"
+        and "packaging" not in row["ready_axes_without_evidence"]
+        for row in row_audits
+    )
+    installer_bound = bool(rows) and all(
+        row["states"]["installer"] == "ready"
+        and "installer" not in row["ready_axes_without_evidence"]
+        for row in row_audits
+    )
+    dependency_platform_bound = bool(rows) and all(
+        row["states"][axis] == "ready"
+        and axis not in row["ready_axes_without_evidence"]
+        for row in row_audits
+        for axis in ("dependency", "platform")
+    )
+    specialized_semantics_bound = bool(rows) and all(
+        row["states"]["semantic"] == "ready"
+        and "semantic" not in row["ready_axes_without_evidence"]
+        for row in row_audits
+    )
+    locally_ready = bool(all_ready and secpal_present and ergoai_present)
+    return {
+        "valid": bool(
+            locally_ready and hardened_validation.get("valid") is True
+        ),
+        "local_row_claims_ready": locally_ready,
+        "hardened_validation_valid": (
+            hardened_validation.get("valid") is True
+        ),
+        "hardened_validation": hardened_validation,
+        "row_count": len(rows),
+        "required_axes": list(AUTHORITATIVE_VENDOR_REQUIRED_AXES),
+        "rows": row_audits,
+        "all_rows_jointly_ready": all_ready,
+        "secpal_external_row_present": secpal_present,
+        "ergoai_row_present": ergoai_present,
+        "clean_wheel_evidence_bound": packaging_bound,
+        "lazy_install_receipts_bound": installer_bound,
+        "exact_dependency_and_platform_identities_bound": (
+            dependency_platform_bound
+        ),
+        "complete_specialized_semantic_cases_bound": (
+            specialized_semantics_bound
+        ),
+    }
+
+
+def _audit_secpal_authoritative_live(
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    cases = _authoritative_case_audit(
+        payload,
+        required=SECPAL_AUTHORITATIVE_REQUIRED_CASE_KINDS,
+    )
+    authentic_release = all(
+        _authoritative_contains_scalar(payload, value)
+        for value in (
+            SECPAL_RESEARCH_RELEASE_MSI_SHA256,
+            SECPAL_RESEARCH_RELEASE_MSI_SIZE_BYTES,
+            SECPAL_RESEARCH_RELEASE_PRODUCT_CODE,
+            SECPAL_RESEARCH_RELEASE_PRODUCT_VERSION,
+            SECPAL_RESEARCH_RELEASE_EULA_SHA256,
+        )
+    )
+    signature_verified = _authoritative_any_true(
+        payload,
+        (
+            "authenticode.verified",
+            "authenticode.signature_valid",
+            "artifact.signature_verified",
+            "provenance.publisher_signature_verified",
+            "acceptance.microsoft_signature_verified",
+        ),
+    )
+    live_vendor_execution = _authoritative_any_true(
+        payload,
+        (
+            "live_vendor_execution",
+            "execution.live_vendor_execution",
+            "acceptance.live_vendor_execution",
+        ),
+    )
+    vendor_supported_platform = _authoritative_any_true(
+        payload,
+        (
+            "vendor_supported_platform",
+            "host.vendor_supported",
+            "platform.vendor_supported",
+            "platform.supported",
+            "acceptance.vendor_supported_platform",
+        ),
+    )
+    operator_compatibility_only = _authoritative_any_true(
+        payload,
+        (
+            "operator_compatibility_only",
+            "execution.operator_compatibility_only",
+            "platform.operator_compatibility_only",
+        ),
+    )
+    authority = _authoritative_any_true(
+        payload,
+        (
+            "authoritative_live_evidence",
+            "acceptance.authoritative_live_evidence",
+            "authority.authoritative_live_evidence",
+        ),
+    )
+    arbitrary_cases = _authoritative_any_true(
+        payload,
+        (
+            "arbitrary_policy_query_execution",
+            "execution.arbitrary_policy_query_execution",
+            "acceptance.arbitrary_policy_query_execution",
+        ),
+    ) or cases["valid"]
+    terms_reviewed = _authoritative_any_true(
+        payload,
+        (
+            "license.terms_reviewed",
+            "license.reviewed",
+            "acquisition.license_terms_reviewed",
+            "acceptance.license_terms_reviewed",
+        ),
+    )
+    claimed_production_use_allowed = _authoritative_any_true(
+        payload,
+        (
+            "license.production_use_allowed",
+            "license.live_environment_use_allowed",
+            "acceptance.production_use_allowed",
+        ),
+    )
+    # The exact EULA bound above states that this research release is not
+    # intended for a live environment.  A receipt-authored boolean cannot
+    # override the reviewed vendor terms.  Because this gate requires the exact
+    # historical release/EULA identities, the disposition is a permanent hard
+    # blocker unless a different lawfully reviewed vendor release is added to a
+    # future schema revision.
+    known_eula_live_purpose_block = bool(authentic_release)
+    production_use_allowed = bool(
+        claimed_production_use_allowed and not known_eula_live_purpose_block
+    )
+    restricted_bytes_absent = not _authoritative_any_true(
+        payload,
+        (
+            "restricted_bytes_published",
+            "public_envelope.restricted_bytes_included",
+            "artifact.bytes_embedded",
+            "eula.text_embedded",
+        ),
+    )
+    clr_identity_bound = _authoritative_contains_scalar(
+        payload,
+        SECPAL_RESEARCH_RELEASE_CLR_VERSION,
+    )
+    blockers = [
+        name
+        for name, satisfied in (
+            ("official_release_identity_bound", authentic_release),
+            ("microsoft_authenticode_verified", signature_verified),
+            ("live_vendor_execution", live_vendor_execution),
+            ("vendor_supported_platform", vendor_supported_platform),
+            ("not_operator_compatibility_only", not operator_compatibility_only),
+            ("authoritative_live_evidence", authority),
+            ("arbitrary_policy_query_cases_complete", arbitrary_cases),
+            ("license_terms_reviewed", terms_reviewed),
+            ("production_use_allowed", production_use_allowed),
+            ("restricted_bytes_absent", restricted_bytes_absent),
+            ("clr_identity_bound", clr_identity_bound),
+        )
+        if not satisfied
+    ]
+    blockers.extend(
+        f"semantic_case_missing:{kind}" for kind in cases["missing"]
+    )
+    blockers.extend(
+        f"semantic_case_failed:{kind}" for kind in cases["failed"]
+    )
+    external = sorted(
+        {
+            str(reason)
+            for key in ("external_authority_blockers", "block_reasons")
+            for reason in _safe_list(payload.get(key))
+            if reason
+        }
+    )
+    blockers.extend(f"external:{reason}" for reason in external)
+    return {
+        "valid": not blockers,
+        "official_release_identity_bound": authentic_release,
+        "microsoft_authenticode_verified": signature_verified,
+        "live_vendor_execution": live_vendor_execution,
+        "vendor_supported_platform": vendor_supported_platform,
+        "operator_compatibility_only": operator_compatibility_only,
+        "authoritative_live_evidence": authority,
+        "arbitrary_policy_query_execution": arbitrary_cases,
+        "license_terms_reviewed": terms_reviewed,
+        "claimed_production_use_allowed": claimed_production_use_allowed,
+        "known_eula_live_purpose_block": known_eula_live_purpose_block,
+        "production_use_allowed": production_use_allowed,
+        "restricted_bytes_absent": restricted_bytes_absent,
+        "clr_identity_bound": clr_identity_bound,
+        "semantic_cases": cases,
+        "external_authority_blockers": external,
+        "blockers": sorted(set(blockers)),
+    }
+
+
+def _authoritative_ergoai_lock_identity(
+    repo_root: Path,
+    *,
+    selected_platform: str,
+) -> dict[str, Any]:
+    """Re-derive the reviewed ErgoAI pin from the current lock."""
+
+    lock_path = repo_root / DEFAULT_TOOLCHAIN_LOCK_RELATIVE
+    lock = load_json(lock_path) or {}
+    tool = next(
+        (
+            dict(row)
+            for row in _safe_list(lock.get("tools"))
+            if isinstance(row, Mapping) and row.get("tool_id") == "ergoai"
+        ),
+        {},
+    )
+    pin = next(
+        (
+            dict(row)
+            for row in _safe_list(tool.get("pins"))
+            if isinstance(row, Mapping)
+            and row.get("platform") == selected_platform
+        ),
+        {},
+    )
+    contract = _safe_dict(tool.get("deployment_contract"))
+    return {
+        "valid": bool(
+            lock
+            and tool
+            and pin
+            and tool.get("tool_id") == "ergoai"
+            and pin.get("tool_id") == "ergoai"
+            and pin.get("version") == "3.0"
+            and re.fullmatch(r"[0-9a-f]{64}", str(pin.get("sha256") or ""))
+            and pin.get("platform") in _safe_list(
+                contract.get("supported_platforms")
+            )
+            and contract.get("authority_ceiling") == "advisory"
+        ),
+        "lock_sha256": sha256_file(lock_path),
+        "version": pin.get("version"),
+        "artifact_sha256": pin.get("sha256"),
+        "platform": pin.get("platform"),
+        "release_tag": pin.get("release_tag"),
+        "authority_ceiling": contract.get("authority_ceiling"),
+        "required_case_kinds": list(
+            _safe_list(contract.get("live_semantic_checks_required"))
+        ),
+    }
+
+
+def _authoritative_digest_value(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _authoritative_rederive_ergoai_live(
+    *,
+    repo_root: Path,
+    interface: str,
+    selected_platform: str,
+) -> tuple[dict[str, Any], str | None]:
+    """Re-run the checked, offline ErgoAI certifier against managed bytes."""
+
+    try:
+        advisors = importlib.import_module(
+            "tools.logic.certification.advisors"
+        )
+        if interface == "LiveErgoAIAdvisorCertification@1":
+            result = advisors.certify_live_ergoai_vendor(
+                repo_root=repo_root,
+                platform_key=selected_platform,
+                timeout=30.0,
+            )
+        elif interface == "ErgoAILiveToolchainContract@1":
+            result = advisors.build_ergoai_live_toolchain_contract(
+                repo_root=repo_root,
+                platform_key=selected_platform,
+                timeout=30.0,
+                run_semantics=True,
+            )
+        else:
+            return {}, "unsupported_ergoai_live_interface"
+    except Exception as exc:  # noqa: BLE001 - a failed rerun blocks authority
+        return {}, f"independent_ergoai_rederivation_error:{type(exc).__name__}"
+    if not isinstance(result, Mapping):
+        return {}, "independent_ergoai_rederivation_non_mapping"
+    return dict(result), None
+
+
+def _audit_ergoai_authoritative_live(
+    payload: Mapping[str, Any],
+    *,
+    repo_root: Path | None = None,
+    dependency_binding: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate ErgoAI claims from repository and freshly rerun evidence.
+
+    Receipt booleans, arbitrary case names, and a non-empty identity mapping
+    are deliberately treated as claims only.  Authority requires the exact
+    committed receipt, the current lock pin, and an offline re-execution whose
+    raw check digest and managed tool identity match that receipt.
+    """
+
+    claimed_cases = _authoritative_case_audit(
+        payload,
+        required=ERGOAI_AUTHORITATIVE_REQUIRED_CASE_KINDS,
+    )
+    binding = _safe_dict(dependency_binding)
+    repository_receipt_bound = bool(
+        binding.get("repository_content_bound") is True
+        and binding.get("binding_valid") is True
+    )
+    interface = str(payload.get("interface") or "")
+    selected_platform = str(
+        payload.get("selected_platform")
+        or _authoritative_nested_get(payload, "managed_identity.selected_platform")
+        or _authoritative_nested_get(payload, "pin.platform")
+        or ""
+    )
+    lock_identity = (
+        _authoritative_ergoai_lock_identity(
+            repo_root,
+            selected_platform=selected_platform,
+        )
+        if repo_root is not None and selected_platform
+        else {"valid": False}
+    )
+    managed_identity = _safe_dict(payload.get("managed_identity"))
+    pin_identity = _safe_dict(payload.get("pin"))
+    claimed_artifact_sha256 = str(
+        managed_identity.get("release_artifact_sha256")
+        or pin_identity.get("sha256")
+        or _authoritative_nested_get(
+            payload, "lock_projection.inventory.sha256"
+        )
+        or ""
+    )
+    claimed_version = str(
+        payload.get("locked_version")
+        or managed_identity.get("version")
+        or pin_identity.get("version")
+        or ""
+    )
+    lock_identity_bound = bool(
+        lock_identity.get("valid") is True
+        and payload.get("tool_id") == "ergoai"
+        and claimed_version == str(lock_identity.get("version") or "")
+        and claimed_artifact_sha256
+        == str(lock_identity.get("artifact_sha256") or "")
+        and selected_platform == lock_identity.get("platform")
+    )
+
+    claimed_checks = [
+        dict(row)
+        for row in _safe_list(payload.get("checks"))
+        if isinstance(row, Mapping)
+    ]
+    claimed_raw_check_digest = _authoritative_digest_value(claimed_checks)
+    claimed_executable_sha256 = str(
+        managed_identity.get("vendor_executable_sha256")
+        or _authoritative_nested_get(payload, "identity.executable_sha256")
+        or payload.get("executable_sha256")
+        or ""
+    )
+    claimed_tool_identity_present = bool(
+        re.fullmatch(r"[0-9a-f]{64}", claimed_executable_sha256)
+    )
+
+    independently_rederived: dict[str, Any] = {}
+    rederivation_error: str | None = None
+    # Avoid executing a tool for caller-created/self-resealed JSON.  Only an
+    # exact committed receipt with a current lock identity reaches the bounded
+    # offline certifier.
+    if repository_receipt_bound and lock_identity_bound:
+        independently_rederived, rederivation_error = (
+            _authoritative_rederive_ergoai_live(
+                repo_root=repo_root,
+                interface=interface,
+                selected_platform=selected_platform,
+            )
+        )
+    elif not repository_receipt_bound:
+        rederivation_error = "exact_committed_ergoai_receipt_not_bound"
+    else:
+        rederivation_error = "ergoai_lock_identity_not_bound"
+
+    rederived_checks = [
+        dict(row)
+        for row in _safe_list(independently_rederived.get("checks"))
+        if isinstance(row, Mapping)
+    ]
+    rederived_raw_check_digest = _authoritative_digest_value(rederived_checks)
+    raw_checks_digest_bound = bool(
+        claimed_checks
+        and rederived_checks
+        and claimed_raw_check_digest == rederived_raw_check_digest
+    )
+    cases = _authoritative_case_audit(
+        independently_rederived,
+        required=ERGOAI_AUTHORITATIVE_REQUIRED_CASE_KINDS,
+    )
+    rederived_managed_identity = _safe_dict(
+        independently_rederived.get("managed_identity")
+    )
+    rederived_pin_identity = _safe_dict(independently_rederived.get("pin"))
+    rederived_artifact_sha256 = str(
+        rederived_managed_identity.get("release_artifact_sha256")
+        or rederived_pin_identity.get("sha256")
+        or _authoritative_nested_get(
+            independently_rederived, "lock_projection.inventory.sha256"
+        )
+        or ""
+    )
+    rederived_executable_sha256 = str(
+        rederived_managed_identity.get("vendor_executable_sha256")
+        or _authoritative_nested_get(
+            independently_rederived, "identity.executable_sha256"
+        )
+        or independently_rederived.get("executable_sha256")
+        or ""
+    )
+    artifact_identity_bound = bool(
+        lock_identity_bound
+        and rederived_artifact_sha256 == claimed_artifact_sha256
+        and rederived_artifact_sha256
+        == str(lock_identity.get("artifact_sha256") or "")
+    )
+    managed_tool_identity_bound = bool(
+        claimed_tool_identity_present
+        and re.fullmatch(r"[0-9a-f]{64}", rederived_executable_sha256)
+        and claimed_executable_sha256 == rederived_executable_sha256
+    )
+    platform_bound = bool(
+        selected_platform
+        and selected_platform == lock_identity.get("platform")
+        and selected_platform
+        == str(independently_rederived.get("selected_platform") or "")
+    )
+    managed_vendor = bool(
+        independently_rederived.get("managed_vendor_live_evidence") is True
+        or independently_rederived.get("live_vendor_execution") is True
+    )
+    certified = bool(
+        independently_rederived.get("vendor_certified") is True
+        or independently_rederived.get("contract_passed") is True
+    )
+    ceiling = str(payload.get("authority_ceiling") or "").lower()
+    rederived_ceiling = str(
+        independently_rederived.get("authority_ceiling") or ""
+    ).lower()
+    authority_boundary = bool(
+        ceiling == "advisory"
+        and rederived_ceiling == "advisory"
+        and payload.get("grants_proof_authority") is False
+        and payload.get("grants_theorem_authority") is False
+        and independently_rederived.get("grants_proof_authority") is False
+        and independently_rederived.get("grants_theorem_authority") is False
+    )
+    no_install = bool(
+        independently_rederived.get("install_attempted") is False
+        and independently_rederived.get("download_attempted") is False
+        and independently_rederived.get("network_used") is False
+    )
+    rederivation_succeeded = bool(
+        independently_rederived and rederivation_error is None
+    )
+    blockers = [
+        name
+        for name, satisfied in (
+            ("exact_committed_repository_receipt_bound", repository_receipt_bound),
+            ("current_lock_identity_bound", lock_identity_bound),
+            ("independent_live_rederivation_succeeded", rederivation_succeeded),
+            ("managed_vendor_live_evidence", managed_vendor),
+            ("vendor_certified_for_advisor_role", certified),
+            ("release_artifact_identity_bound", artifact_identity_bound),
+            ("managed_runtime_tool_identity_bound", managed_tool_identity_bound),
+            ("platform_identity_bound", platform_bound),
+            ("raw_checks_digest_bound_to_independent_rerun", raw_checks_digest_bound),
+            ("semantic_cases_complete", cases["valid"]),
+            ("advisory_authority_ceiling_respected", authority_boundary),
+            ("certification_did_not_install_or_download", no_install),
+        )
+        if not satisfied
+    ]
+    blockers.extend(
+        f"semantic_case_missing:{kind}" for kind in cases["missing"]
+    )
+    blockers.extend(
+        f"semantic_case_failed:{kind}" for kind in cases["failed"]
+    )
+    if rederivation_error:
+        blockers.append(rederivation_error)
+    blockers.extend(
+        f"receipt:{reason}"
+        for reason in _safe_list(payload.get("block_reasons"))
+        if reason
+    )
+    return {
+        "valid": not blockers,
+        "repository_receipt_bound": repository_receipt_bound,
+        "managed_vendor_live_evidence": managed_vendor,
+        "vendor_certified_for_advisor_role": certified,
+        "managed_vendor_provenance_bound": bool(
+            artifact_identity_bound and managed_tool_identity_bound
+        ),
+        "lock_identity_bound": lock_identity_bound,
+        "release_artifact_identity_bound": artifact_identity_bound,
+        "managed_runtime_tool_identity_bound": managed_tool_identity_bound,
+        "platform_identity_bound": platform_bound,
+        "raw_checks_digest_bound": raw_checks_digest_bound,
+        "claimed_raw_checks_digest_sha256": claimed_raw_check_digest,
+        "rederived_raw_checks_digest_sha256": rederived_raw_check_digest,
+        "independent_rederivation_succeeded": rederivation_succeeded,
+        "independent_rederivation_error": rederivation_error,
+        "rederived_interface": independently_rederived.get("interface"),
+        "rederived_receipt_digest_sha256": (
+            _authoritative_digest_value(independently_rederived)
+            if independently_rederived
+            else None
+        ),
+        "authority_ceiling": ceiling or None,
+        "advisory_authority_ceiling_respected": authority_boundary,
+        "certification_did_not_install_or_download": no_install,
+        "claimed_semantic_cases": claimed_cases,
+        "semantic_cases": cases,
+        "lock_identity": lock_identity,
+        "blockers": sorted(set(blockers)),
+    }
+
+
+def _observe_recursive_gitlinks(repo_root: Path) -> dict[str, Any]:
+    """Inspect checked-out gitlinks recursively without fetching or mutation."""
+
+    rows: list[dict[str, Any]] = []
+    visited: set[Path] = set()
+
+    def visit(repository: Path, prefix: str) -> None:
+        resolved = repository.resolve()
+        if resolved in visited:
+            return
+        visited.add(resolved)
+        listing = _git_stdout(
+            repository,
+            "ls-tree",
+            "-r",
+            "HEAD",
+            allow_empty=True,
+        )
+        if listing is None:
+            return
+        for line in listing.splitlines():
+            metadata, separator, raw_path = line.partition("\t")
+            parts = metadata.split()
+            if not separator or len(parts) < 3 or parts[0] != "160000":
+                continue
+            pinned = parts[2]
+            relative = Path(raw_path)
+            checkout = repository / relative
+            head = (
+                _git_stdout(checkout, "rev-parse", "HEAD")
+                if checkout.is_dir()
+                else None
+            )
+            origin = (
+                _git_stdout(checkout, "rev-parse", "origin/main")
+                if checkout.is_dir()
+                else None
+            )
+            porcelain = (
+                _git_stdout(
+                    checkout,
+                    "status",
+                    "--porcelain",
+                    allow_empty=True,
+                )
+                if checkout.is_dir()
+                else None
+            )
+            path = f"{prefix}/{relative.as_posix()}".lstrip("/")
+            row = {
+                "path": path,
+                "mode": "160000",
+                "pinned_commit": pinned,
+                "checkout_present": checkout.is_dir(),
+                "checkout_head": head,
+                "origin_main": origin,
+                "working_tree_clean": porcelain == "",
+                "matches_checkout": bool(head and pinned == head),
+                "published_to_origin_main": bool(origin and pinned == origin),
+            }
+            row["bound"] = all(
+                row[key] is True
+                for key in (
+                    "checkout_present",
+                    "working_tree_clean",
+                    "matches_checkout",
+                    "published_to_origin_main",
+                )
+            )
+            rows.append(row)
+            if checkout.is_dir():
+                visit(checkout, path)
+
+    visit(repo_root, "")
+    return {
+        "valid": bool(rows) and all(row["bound"] for row in rows),
+        "gitlink_count": len(rows),
+        "rows": rows,
+        "network_used": False,
+        "fetch_attempted": False,
+    }
+
+
+def build_authoritative_vendor_release(
+    *,
+    repo_root: Path,
+    observed_at: str | None = None,
+    end_to_end_assurance_matrix: Mapping[str, Any] | None = None,
+    secpal_authoritative_live_receipt: Mapping[str, Any] | None = None,
+    ergoai_authoritative_live_receipt: Mapping[str, Any] | None = None,
+    role_aware_release_candidate: Mapping[str, Any] | None = None,
+    post_merge_deployment_receipt: Mapping[str, Any] | None = None,
+    completion_receipt: Mapping[str, Any] | None = None,
+    max_evidence_age_seconds: int = (
+        AUTHORITATIVE_VENDOR_RELEASE_MAX_EVIDENCE_AGE_SECONDS
+    ),
+) -> dict[str, Any]:
+    """Build the FVT-G221 release fan-in without inventing vendor authority.
+
+    All input bodies are independently content-checked and then represented by
+    compact bindings.  Missing, stale, fixture, shim, unsupported,
+    proposal-only, externally blocked, or license-ineligible evidence remains
+    visible and makes ``deployment_ready`` false.
+    """
+
+    root = repo_root.resolve()
+    timestamp = observed_at or datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    release_time = _authoritative_parse_timestamp(timestamp)
+    if release_time is None:
+        raise ValueError("observed_at must be an ISO-8601 timestamp")
+    wall_clock_time = datetime.now(timezone.utc)
+    if (
+        isinstance(max_evidence_age_seconds, bool)
+        or not isinstance(max_evidence_age_seconds, int)
+        or max_evidence_age_seconds <= 0
+    ):
+        raise ValueError("max_evidence_age_seconds must be a positive integer")
+
+    certifier = _load_certifier_module(root)
+    matrix, matrix_binding = _authoritative_dependency(
+        repo_root=root,
+        relative=DEFAULT_END_TO_END_ASSURANCE_MATRIX_RELATIVE,
+        supplied=end_to_end_assurance_matrix,
+        expected_interfaces=("FormalVerificationEndToEndAssuranceMatrix@1",),
+        release_observed_at=release_time,
+        max_age_seconds=max_evidence_age_seconds,
+        certifier=certifier,
+        wall_clock_at=wall_clock_time,
+    )
+    secpal, secpal_binding = _authoritative_dependency(
+        repo_root=root,
+        relative=DEFAULT_SECPAL_AUTHORITATIVE_LIVE_RECEIPT_RELATIVE,
+        supplied=secpal_authoritative_live_receipt,
+        expected_interfaces=("SecPALAuthoritativeLiveEvidence@1",),
+        release_observed_at=release_time,
+        max_age_seconds=max_evidence_age_seconds,
+        certifier=certifier,
+        wall_clock_at=wall_clock_time,
+    )
+    ergoai, ergoai_binding = _authoritative_dependency(
+        repo_root=root,
+        relative=DEFAULT_ERGOAI_AUTHORITATIVE_LIVE_RECEIPT_RELATIVE,
+        fallback_relative=DEFAULT_ERGOAI_JAVA_API_LIVE_RECEIPT_RELATIVE,
+        supplied=ergoai_authoritative_live_receipt,
+        expected_interfaces=(
+            "LiveErgoAIAdvisorCertification@1",
+            "ErgoAILiveToolchainContract@1",
+        ),
+        release_observed_at=release_time,
+        max_age_seconds=max_evidence_age_seconds,
+        certifier=certifier,
+        wall_clock_at=wall_clock_time,
+    )
+    candidate, candidate_binding = _authoritative_dependency(
+        repo_root=root,
+        relative=DEFAULT_RELEASE_CANDIDATE_RELATIVE,
+        supplied=role_aware_release_candidate,
+        expected_interfaces=(RELEASE_CANDIDATE_INTERFACE,),
+        release_observed_at=release_time,
+        max_age_seconds=max_evidence_age_seconds,
+        certifier=certifier,
+        wall_clock_at=wall_clock_time,
+    )
+    post_merge, post_merge_binding = _authoritative_dependency(
+        repo_root=root,
+        relative=DEFAULT_ROLE_AWARE_RECEIPT_RELATIVE,
+        supplied=post_merge_deployment_receipt,
+        expected_interfaces=(ROLE_AWARE_INTERFACE,),
+        release_observed_at=release_time,
+        max_age_seconds=max_evidence_age_seconds,
+        certifier=certifier,
+        wall_clock_at=wall_clock_time,
+    )
+    completion, completion_binding = _authoritative_dependency(
+        repo_root=root,
+        relative=DEFAULT_RECEIPT_RELATIVE,
+        supplied=completion_receipt,
+        expected_interfaces=(INTERFACE,),
+        release_observed_at=release_time,
+        max_age_seconds=max_evidence_age_seconds,
+        certifier=certifier,
+        wall_clock_at=wall_clock_time,
+    )
+
+    dependencies = {
+        "end_to_end_assurance_matrix": matrix_binding,
+        "secpal_authoritative_live": secpal_binding,
+        "ergoai_managed_vendor_live": ergoai_binding,
+        "role_aware_release_candidate": candidate_binding,
+        "post_merge_deployment_attestation": post_merge_binding,
+        "tactician_completion": completion_binding,
+    }
+    matrix_audit = _audit_authoritative_matrix(
+        matrix,
+        certifier=certifier,
+        repo_root=root,
+    )
+    secpal_audit = _audit_secpal_authoritative_live(secpal)
+    ergoai_audit = _audit_ergoai_authoritative_live(
+        ergoai,
+        repo_root=root,
+        dependency_binding=ergoai_binding,
+    )
+
+    candidate_acceptance = _safe_dict(candidate.get("acceptance"))
+    candidate_quarantine = _safe_dict(candidate.get("quarantine_state"))
+    candidate_claims = _safe_dict(candidate.get("claims"))
+    candidate_ready = bool(
+        candidate_binding["binding_valid"]
+        and candidate_binding["fresh"]
+        and candidate_binding["public_safe"]
+        and candidate.get("status") == "role_aware_release_candidate_ready"
+        and not _safe_list(candidate.get("blockers"))
+        and not _safe_list(candidate.get("platform_exceptions"))
+        and candidate_acceptance.get("authority_ceiling_respected") is True
+        and candidate_acceptance.get("semantic_receipts_full_and_bound") is True
+        and candidate_quarantine.get("bound") is True
+        and candidate_claims.get("merge") is False
+        and candidate_claims.get("deployment") is False
+    )
+
+    post_acceptance = _safe_dict(post_merge.get("acceptance"))
+    post_requirements = _safe_dict(post_merge.get("readiness_requirements"))
+    supervisor = _safe_dict(post_merge.get("supervisor_evidence"))
+    source = _safe_dict(post_merge.get("source"))
+    commit_bindings = [
+        row
+        for row in _safe_list(supervisor.get("commit_bindings"))
+        if isinstance(row, Mapping)
+    ]
+    final_commit_binding = dict(commit_bindings[-1]) if commit_bindings else {}
+    post_merge_ready = bool(
+        post_merge_binding["binding_valid"]
+        and post_merge_binding["fresh"]
+        and post_merge_binding["public_safe"]
+        and post_merge.get("status")
+        == "role_aware_deployment_ready_for_attestation_publication"
+        and post_requirements
+        and all(value is True for value in post_requirements.values())
+        and not _safe_list(post_merge.get("deployment_blockers"))
+    )
+    durable_supervisor = bool(
+        supervisor.get("bound") is True
+        and supervisor.get("provisional_bound") is True
+        and supervisor.get("publication_bound") is True
+        and supervisor.get("member_completion_receipt_bound") is True
+        and supervisor.get("validation_bound") is True
+        and supervisor.get("state_terminal_bound") is True
+    )
+    source_and_merged_trees = bool(
+        source.get("source_commit_bound") is True
+        and source.get("valid_for_attestation") is True
+        and source.get("certified_source_commit")
+        and source.get("certified_source_tree")
+        and source.get("datasets_gitlink")
+        and source.get("datasets_gitlink") == source.get("datasets_embedded_head")
+        and supervisor.get("merge_commit_tree_bound") is True
+        and final_commit_binding.get("source_trees_bound") is True
+        and final_commit_binding.get("merge_tree_matches_implementation") is True
+    )
+    origin_publication = bool(
+        supervisor.get("publication_bound") is True
+        and supervisor.get("publication_phase") == "published_final"
+        and final_commit_binding.get("published_to_origin_main") is True
+    )
+
+    completion_acceptance = _safe_dict(completion.get("acceptance"))
+    completion_hard_zero = _safe_dict(completion.get("hard_zero_gates"))
+    completion_implementation = _safe_dict(completion.get("implementation"))
+    completion_ready = bool(
+        completion_binding["binding_valid"]
+        and completion_binding["fresh"]
+        and completion_binding["public_safe"]
+        and completion_acceptance.get("implementation_complete") is True
+        and completion_acceptance.get("hard_zero_gates_clear") is True
+        and completion_implementation.get("status") == "complete"
+        and all(
+            int(completion_hard_zero.get(key) or 0) == 0
+            for key in HARD_ZERO_GATE_KEYS
+        )
+    )
+
+    recursive_gitlinks = _observe_recursive_gitlinks(root)
+    disallowed_by_dependency = {
+        name: _authoritative_disallowed_findings(payload)
+        for name, payload in (
+            ("end_to_end_assurance_matrix", matrix),
+            ("secpal_authoritative_live", secpal),
+            ("ergoai_managed_vendor_live", ergoai),
+            ("role_aware_release_candidate", candidate),
+            ("post_merge_deployment_attestation", post_merge),
+            ("tactician_completion", completion),
+        )
+        if payload
+    }
+    disallowed_count = sum(
+        len(findings) for findings in disallowed_by_dependency.values()
+    )
+
+    dependencies_reachable = all(
+        binding["reachable"] for binding in dependencies.values()
+    )
+    dependencies_identity_bound = all(
+        binding["binding_valid"] for binding in dependencies.values()
+    )
+    dependencies_fresh = all(
+        binding["fresh"] for binding in dependencies.values()
+    )
+    dependency_public_safe = all(
+        binding["public_safe"] for binding in dependencies.values()
+    )
+
+    acceptance: dict[str, bool] = {
+        "dependencies_reachable": dependencies_reachable,
+        "dependencies_content_identity_bound": dependencies_identity_bound,
+        "dependencies_fresh": dependencies_fresh,
+        "clean_wheel_evidence_bound": bool(
+            matrix_binding["binding_valid"]
+            and matrix_audit["hardened_validation_valid"]
+            and matrix_audit["clean_wheel_evidence_bound"]
+        ),
+        "lazy_install_receipts_bound": bool(
+            matrix_binding["binding_valid"]
+            and matrix_audit["hardened_validation_valid"]
+            and matrix_audit["lazy_install_receipts_bound"]
+        ),
+        "exact_dependency_and_platform_identities_bound": bool(
+            matrix_binding["binding_valid"]
+            and matrix_audit["hardened_validation_valid"]
+            and matrix_audit[
+                "exact_dependency_and_platform_identities_bound"
+            ]
+        ),
+        "every_readiness_axis_jointly_ready": bool(
+            matrix_binding["binding_valid"] and matrix_audit["valid"]
+        ),
+        "complete_specialized_semantic_cases_bound": bool(
+            matrix_binding["binding_valid"]
+            and matrix_audit["hardened_validation_valid"]
+            and matrix_audit["complete_specialized_semantic_cases_bound"]
+            and candidate_acceptance.get(
+                "semantic_receipts_full_and_bound"
+            )
+            is True
+        ),
+        "secpal_authoritative_live_receipt_bound": bool(
+            secpal_binding["binding_valid"]
+            and secpal_binding["fresh"]
+            and secpal_audit["valid"]
+        ),
+        "secpal_production_use_permitted": bool(
+            secpal_audit["production_use_allowed"]
+        ),
+        "ergoai_managed_vendor_live_receipt_bound": bool(
+            ergoai_binding["binding_valid"]
+            and ergoai_binding["fresh"]
+            and ergoai_audit["valid"]
+        ),
+        "authority_ceilings_bound": bool(
+            candidate_acceptance.get("authority_ceiling_respected") is True
+            and secpal_audit["authoritative_live_evidence"]
+            and ergoai_audit["advisory_authority_ceiling_respected"]
+        ),
+        "disagreement_quarantines_bound": bool(
+            candidate_quarantine.get("bound") is True
+            and not secpal_audit["semantic_cases"]["missing"]
+            and "cross_engine_disagreement"
+            in secpal_audit["semantic_cases"]["passed"]
+        ),
+        "public_safe_envelopes_bound": dependency_public_safe,
+        "release_candidate_bound_and_ready": candidate_ready,
+        "post_merge_attestation_bound_and_ready": post_merge_ready,
+        "durable_supervisor_completion_bound": durable_supervisor,
+        "source_and_merged_trees_bound": source_and_merged_trees,
+        "recursive_gitlinks_bound": recursive_gitlinks["valid"] is True,
+        "origin_publication_bound": origin_publication,
+        "tactician_completion_bound_and_clear": completion_ready,
+        "no_fixture_shim_unsupported_proposal_or_stale_lane": (
+            disallowed_count == 0
+        ),
+        "current_task_future_merge_not_claimed": True,
+    }
+    deployment_ready = all(acceptance.values())
+    blockers = sorted(
+        key for key, satisfied in acceptance.items() if not satisfied
+    )
+    blocker_details = sorted(
+        set(
+            [f"secpal:{reason}" for reason in secpal_audit["blockers"]]
+            + [f"ergoai:{reason}" for reason in ergoai_audit["blockers"]]
+            + [
+                f"{name}:{finding['reason']}:{finding['path']}"
+                for name, findings in disallowed_by_dependency.items()
+                for finding in findings
+            ]
+            + [
+                f"matrix:{row['row_id']}:{axis}:{state}"
+                for row in matrix_audit["rows"]
+                for axis, state in row["states"].items()
+                if state != "ready"
+            ]
+        )
+    )
+
+    receipt: dict[str, Any] = {
+        "schema_version": AUTHORITATIVE_VENDOR_RELEASE_SCHEMA_VERSION,
+        "interface": AUTHORITATIVE_VENDOR_RELEASE_INTERFACE,
+        "program_interface": PROGRAM_INTERFACE,
+        "program_goal_id": PROGRAM_GOAL_ID,
+        "goal_id": AUTHORITATIVE_VENDOR_RELEASE_GOAL_ID,
+        "task_id": AUTHORITATIVE_VENDOR_RELEASE_TASK_ID,
+        "program": AUTHORITATIVE_VENDOR_RELEASE_PROGRAM,
+        "observed_at": release_time.isoformat().replace("+00:00", "Z"),
+        "status": (
+            "authoritative_vendor_release_ready_for_publication"
+            if deployment_ready
+            else "authoritative_vendor_release_blocked"
+        ),
+        "deployment_ready": deployment_ready,
+        "description": (
+            "Content-addressed, fail-closed reissue gate for packaging, lazy "
+            "installers, readiness axes, genuine SecPAL and ErgoAI execution, "
+            "authority ceilings, supervisor completion, trees, gitlinks, and "
+            "origin publication. Authentic provenance never substitutes for "
+            "platform, semantics, license, freshness, or deployment authority."
+        ),
+        "policy": {
+            "max_evidence_age_seconds": max_evidence_age_seconds,
+            "freshness_uses_current_utc_wall_clock": True,
+            "future_clock_skew_seconds": (
+                AUTHORITATIVE_VENDOR_RELEASE_CLOCK_SKEW_SECONDS
+            ),
+            "unkeyed_self_digest_is_not_authority": True,
+            "exact_committed_repository_receipt_required": True,
+            "matrix_claims_require_canonical_reconstruction": True,
+            "ergoai_claims_require_independent_offline_rerun": True,
+            "required_readiness_axes": list(
+                AUTHORITATIVE_VENDOR_REQUIRED_AXES
+            ),
+            "fixture_shim_unsupported_proposal_and_stale_block": True,
+            "external_authority_blockers_block": True,
+            "unsupported_platform_never_counts_as_complete": True,
+            "operator_compatibility_is_not_vendor_platform_support": True,
+            "vendor_provenance_is_not_production_permission": True,
+            "advisory_ergoai_never_grants_proof_authority": True,
+            "restricted_vendor_bytes_forbidden_from_public_receipt": True,
+            "no_install": True,
+            "no_download": True,
+            "no_network": True,
+        },
+        "known_secpal_release": {
+            "msi_sha256": SECPAL_RESEARCH_RELEASE_MSI_SHA256,
+            "msi_size_bytes": SECPAL_RESEARCH_RELEASE_MSI_SIZE_BYTES,
+            "product_code": SECPAL_RESEARCH_RELEASE_PRODUCT_CODE,
+            "product_version": SECPAL_RESEARCH_RELEASE_PRODUCT_VERSION,
+            "target_clr": SECPAL_RESEARCH_RELEASE_CLR_VERSION,
+            "eula_sha256": SECPAL_RESEARCH_RELEASE_EULA_SHA256,
+            "artifact_bytes_embedded": False,
+            "eula_text_embedded": False,
+            "redistribution_disposition": "prohibited_obtain_from_microsoft",
+            "production_purpose_disposition": "not_intended_for_live_environment",
+        },
+        "dependency_bindings": dependencies,
+        "end_to_end_assurance": matrix_audit,
+        "vendor_evidence": {
+            "secpal": secpal_audit,
+            "ergoai": ergoai_audit,
+        },
+        "release_chain": {
+            "candidate_ready": candidate_ready,
+            "post_merge_ready": post_merge_ready,
+            "completion_ready": completion_ready,
+            "durable_supervisor_completion_bound": durable_supervisor,
+            "source_and_merged_trees_bound": source_and_merged_trees,
+            "origin_publication_bound": origin_publication,
+            "post_merge_acceptance_count": len(post_acceptance),
+        },
+        "recursive_gitlinks": recursive_gitlinks,
+        "disallowed_evidence": {
+            "count": disallowed_count,
+            "by_dependency": disallowed_by_dependency,
+        },
+        "acceptance": acceptance,
+        "blockers": blockers,
+        "blocker_details": blocker_details,
+        "claims": {
+            "deployment_ready": deployment_ready,
+            "current_task_merge": False,
+            "current_release_artifact_published": False,
+            "post_merge_ancestor_evidence_bound": origin_publication,
+            "self_referential_current_tree": False,
+        },
+        "evidence": {
+            "receipt": DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE.as_posix(),
+            "integration_test": (
+                DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_TEST_RELATIVE.as_posix()
+            ),
+            "vendor_evidence_test": (
+                DEFAULT_SECPAL_ERGOAI_AUTHORITATIVE_TEST_RELATIVE.as_posix()
+            ),
+            "builder": DEFAULT_BUILDER_RELATIVE.as_posix(),
+            "validation_command": (
+                AUTHORITATIVE_VENDOR_RELEASE_VALIDATION_COMMAND
+            ),
+        },
+        "notes": [
+            "The recovered Microsoft MSI signature, hash, ProductCode, and "
+            "EULA hash satisfy provenance only; they do not grant live-use or "
+            "redistribution authority.",
+            "Authentic SecPAL sample execution under operator-selected Mono is "
+            "compatibility evidence, not Microsoft platform support or an "
+            "arbitrary-policy production interface.",
+            "ErgoAI remains bounded by its advisory authority ceiling even "
+            "when genuine managed-vendor execution is complete.",
+            "This receipt never attests FVT-089's own future merge or publication.",
+        ],
+    }
+    public_policy = _authoritative_public_audit(
+        certifier=certifier,
+        payload=receipt,
+        repo_root=root,
+    )
+    receipt["public_evidence_policy"] = public_policy
+    if public_policy.get("satisfied") is not True:
+        receipt["acceptance"]["public_safe_envelopes_bound"] = False
+        receipt["deployment_ready"] = False
+        receipt["claims"]["deployment_ready"] = False
+        receipt["status"] = "authoritative_vendor_release_blocked"
+        if "public_safe_envelopes_bound" not in receipt["blockers"]:
+            receipt["blockers"].append("public_safe_envelopes_bound")
+            receipt["blockers"].sort()
+    receipt["release_identity"] = content_digest(receipt)
+    return receipt
+
+
 def write_receipt(receipt: Mapping[str, Any], output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(receipt, indent=2, ensure_ascii=False) + "\n"
@@ -9918,7 +11876,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Build the formal verification tactician completion receipt "
             f"({INTERFACE}), optional role-aware deployment receipt "
             f"({ROLE_AWARE_INTERFACE}), and optional role-aware release "
-            f"candidate ({RELEASE_CANDIDATE_INTERFACE})."
+            f"candidate ({RELEASE_CANDIDATE_INTERFACE}), or the fail-closed "
+            "authoritative vendor release gate "
+            f"({AUTHORITATIVE_VENDOR_RELEASE_INTERFACE})."
         )
     )
     parser.add_argument(
@@ -9984,6 +11944,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=(
             "Build and write ProductionSemanticElevationFanIn@1 "
             "(FVT-G213 / FVT-081)"
+        ),
+    )
+    parser.add_argument(
+        "--authoritative-vendor-release-output",
+        type=Path,
+        default=None,
+        help=(
+            "Write the authoritative vendor release gate "
+            f"(default: {DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE})"
+        ),
+    )
+    parser.add_argument(
+        "--authoritative-vendor-release",
+        action="store_true",
+        help=(
+            "Build FormalVerificationAuthoritativeVendorRelease@1 from "
+            "durable checked evidence without installing, downloading, or "
+            "claiming the current task's future merge (FVT-G221)"
         ),
     )
     parser.add_argument(
@@ -10056,6 +12034,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--supervisor-integration-branch must not be empty")
 
     root = (args.repo_root or repo_root_from()).resolve()
+    want_authoritative_vendor_release = bool(
+        args.authoritative_vendor_release
+        or args.authoritative_vendor_release_output is not None
+    )
     want_release_candidate = bool(
         args.release_candidate or args.release_candidate_output is not None
     )
@@ -10065,6 +12047,50 @@ def main(argv: Sequence[str] | None = None) -> int:
         or want_release_candidate
     )
     want_role_aware = bool(args.role_aware or args.role_aware_output is not None)
+    if want_authoritative_vendor_release and any(
+        (want_role_aware, want_release_candidate, want_production_elevation_fanin)
+    ):
+        parser.error(
+            "--authoritative-vendor-release is a standalone read-only fan-in; "
+            "do not combine it with receipt regeneration modes"
+        )
+    if want_authoritative_vendor_release:
+        authoritative_release = build_authoritative_vendor_release(
+            repo_root=root,
+            observed_at=args.observed_at,
+        )
+        if args.stdout and args.authoritative_vendor_release_output is None:
+            json.dump(
+                authoritative_release,
+                sys.stdout,
+                indent=2,
+                ensure_ascii=False,
+            )
+            sys.stdout.write("\n")
+        else:
+            authoritative_output = (
+                args.authoritative_vendor_release_output.resolve()
+                if args.authoritative_vendor_release_output
+                else root / DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE
+            )
+            write_receipt(authoritative_release, authoritative_output)
+            if not args.quiet:
+                print(f"wrote {authoritative_output}", file=sys.stderr)
+        if not args.quiet:
+            print(
+                "authoritative_vendor_release_status="
+                f"{authoritative_release['status']} "
+                "deployment_ready="
+                f"{authoritative_release['deployment_ready']} "
+                f"blockers={len(authoritative_release['blockers'])}",
+                file=sys.stderr,
+            )
+            print(
+                "authoritative_vendor_release_identity="
+                f"{authoritative_release['release_identity']}",
+                file=sys.stderr,
+            )
+        return 0
     if args.supervisor_release_evidence and not want_role_aware:
         parser.error(
             "--supervisor-release-evidence requires --role-aware or "
