@@ -2238,6 +2238,36 @@ class ToolCertification:
         return payload
 
 
+def _rebind_primary_executable_artifact(cert: ToolCertification) -> None:
+    """Keep the primary artifact row aligned with executable scalar fields."""
+
+    if (
+        not cert.executable_path
+        or not cert.executable_sha256
+        or cert.executable_artifact_class in {"", "none"}
+    ):
+        return
+    primary = {
+        "kind": "executable",
+        "path": cert.executable_path,
+        "sha256": cert.executable_sha256,
+        "artifact_class": cert.executable_artifact_class,
+    }
+    rebound: list[dict[str, Any]] = []
+    inserted = False
+    for raw_artifact in cert.artifact_identities:
+        artifact = dict(raw_artifact)
+        if artifact.get("kind") == "executable":
+            if not inserted:
+                rebound.append(primary)
+                inserted = True
+            continue
+        rebound.append(artifact)
+    if not inserted:
+        rebound.insert(0, primary)
+    cert.artifact_identities = rebound
+
+
 @dataclass
 class DisagreementQuarantine:
     quarantine_id: str
@@ -8434,6 +8464,7 @@ def apply_semantic_elevations(
                     cert.executable_artifact_class = classify_executable_artifact(
                         resolved_executable
                     )
+                    _rebind_primary_executable_artifact(cert)
                 if semantic_identity.get("version_string"):
                     cert.version_string = str(semantic_identity["version_string"])
                 version_exact = True
@@ -8523,6 +8554,7 @@ def apply_semantic_elevations(
                     cert.executable_artifact_class = classify_executable_artifact(
                         resolved_executable
                     )
+                    _rebind_primary_executable_artifact(cert)
                 if semantic_identity.get("version_string"):
                     cert.version_string = str(semantic_identity["version_string"])
                 version_exact = True
@@ -9566,7 +9598,14 @@ def write_certificate(
     destination: Path,
 ) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(certificate, indent=2, sort_keys=False) + "\n"
+    # The role-aware certificate intentionally retains one portable copy of
+    # every canonical semantic receipt.  Keep that evidence lossless, but do
+    # not spend the checked-in size budget on JSON presentation whitespace.
+    text = json.dumps(
+        certificate,
+        sort_keys=False,
+        separators=(",", ":"),
+    ) + "\n"
     # Atomic replace.
     fd, tmp_name = tempfile.mkstemp(
         prefix=destination.name + ".",

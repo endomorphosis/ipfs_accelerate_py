@@ -684,7 +684,7 @@ def test_self_rehashed_receipt_platform_and_global_authority_forgery_fail_closed
     )
 
 
-def test_platform_audit_only_omits_exact_nonproduction_semantic_binding(
+def test_platform_audit_binds_exact_nonproduction_semantic_artifact(
     certifier,
     builder,
     certificate: dict[str, Any],
@@ -709,19 +709,7 @@ def test_platform_audit_only_omits_exact_nonproduction_semantic_binding(
         ]["artifacts"]
         if artifact.get("kind") == "semantic_executable"
     )
-    assert audit["non_production_artifact_omissions"] == [
-        {
-            "tool_id": "runtime-mtl-external",
-            "lane_id": "runtime_mtl_external",
-            "kind": "semantic_executable",
-            "sha256": semantic_artifact["sha256"],
-            "artifact_class": "generated_hermetic_shim",
-            "basis": (
-                "exact_non_production_semantic_lane_binding_without_"
-                "live_managed_authority"
-            ),
-        }
-    ]
+    assert audit["non_production_artifact_omissions"] == []
     runtime_tool = _tools(certificate)["runtime-mtl-external"]
     assert runtime_tool["production_certified"] is False
 
@@ -788,7 +776,8 @@ def test_platform_audit_only_omits_exact_nonproduction_semantic_binding(
         ]
         assert forged_vendor_audit["valid"] is False
         assert (
-            "runtime-mtl-external:artifact_live_identity_unavailable"
+            "runtime-mtl-external:"
+            "primary_executable_artifact_binding_mismatch"
             in forged_vendor_audit["live_artifact_failures"]
         )
 
@@ -812,11 +801,8 @@ def test_platform_audit_only_omits_exact_nonproduction_semantic_binding(
         role_aware_certificate=stale_lane,
     )
     stale_lane_audit = checked_stale_lane["platform_support_audit"]
-    assert stale_lane_audit["valid"] is False
-    assert (
-        "runtime-mtl-external:artifact_live_identity_unavailable"
-        in stale_lane_audit["live_artifact_failures"]
-    )
+    assert stale_lane_audit["valid"] is True
+    assert stale_lane_audit["live_artifact_failures"] == []
 
     for mutation in ("missing", "duplicate"):
         forged_population = copy.deepcopy(certificate)

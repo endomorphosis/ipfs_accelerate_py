@@ -275,6 +275,33 @@ def test_checked_certificate_is_compact_without_losing_handler_identities(
     assert set(composite_handlers) == set(handlers)
 
 
+def test_semantic_elevation_rebinds_each_primary_executable_artifact(
+    certificate: dict[str, Any],
+) -> None:
+    tools = {
+        str(tool["tool_id"]): tool for tool in certificate["tools"]
+    }
+    for tool_id in ("hyperltl", "autohyper", "mchyper"):
+        tool = tools[tool_id]
+        primary = [
+            artifact
+            for artifact in tool["artifact_identities"]
+            if artifact.get("kind") == "executable"
+        ]
+        assert primary == [
+            {
+                "kind": "executable",
+                "path": tool["executable_path"],
+                "sha256": tool["executable_sha256"],
+                "artifact_class": tool["executable_artifact_class"],
+            }
+        ]
+        assert tool["launcher_binding"]["valid"] is True
+        assert tool["launcher_binding"]["launcher_path"] != tool[
+            "executable_path"
+        ]
+
+
 def test_mutated_supported_non_ran_lane_fails_semantic_binding(
     certifier,
     builder,
