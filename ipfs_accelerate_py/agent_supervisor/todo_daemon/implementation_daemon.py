@@ -3387,6 +3387,12 @@ class PortalImplementationDaemon:
         self._implementation_retry_not_before: dict[str, float] = {}
         self._implementation_seed_failure_guidance: dict[str, str] = {}
         self._implementation_scope_adjudications: dict[str, Any] = {}
+        # In-process issuance is the attempt authority for the separate
+        # already-satisfied gate.  Content IDs prove integrity; membership here
+        # proves that this daemon actually issued the gate for this attempt.
+        self._implementation_no_change_policy_gates: dict[
+            str, dict[str, Any]
+        ] = {}
         self.use_ephemeral_worktree = use_ephemeral_worktree
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
         # The implementation runner executes with the ephemeral worktree as
@@ -9796,6 +9802,10 @@ class PortalImplementationDaemon:
 
         started_at = utc_now()
         attempt = self._task_attempt(state, task)
+        # No-change gates authorize only this implementation attempt.  Any
+        # unconsumed gate from a prior protected-path interruption or failed
+        # completion must not be reusable by a later attempt.
+        self._implementation_no_change_policy_gates.clear()
         task_claim_path = self._implementation_task_claim_path(
             task.task_id,
             canonical_task_cid=self._canonical_ref(task),
@@ -10071,6 +10081,7 @@ class PortalImplementationDaemon:
             raise
         workspace_path = self.repo_root
         baseline_ref = ""
+        baseline_branch = ""
         command: list[str] = []
         result: dict[str, Any]
         validation_result: dict[str, Any] = {
@@ -10080,6 +10091,7 @@ class PortalImplementationDaemon:
             "results": [],
             "reason": "not_run",
         }
+        proposal_validation: Any = None
         todo_update_result: dict[str, Any] = {}
         completion_durability_deferred = False
         completion_published_in_transaction = False
@@ -10253,6 +10265,7 @@ class PortalImplementationDaemon:
                 ).stdout.strip()
             except (OSError, RuntimeError):
                 baseline_ref = ""
+            baseline_branch = self._git_current_branch(workspace_path)
             command = (
                 []
                 if deterministic_only
@@ -10432,18 +10445,39 @@ class PortalImplementationDaemon:
                         )
                     )
                 else:
-                    proposal_validation = self._validate_implementation_patch(
-                        workspace_path,
-                        task,
-                        baseline_ref=baseline_ref,
-                    )
-                    validation_result = self._run_validation_commands(
+                    validation_result = self._run_clean_candidate_validation(
                         workspace_path,
                         task,
                         log_path,
                         state=state,
-                        proposal_validation=proposal_validation,
+                        baseline_ref=baseline_ref,
                     )
+                    if validation_result is None:
+                        proposal_validation = self._validate_implementation_patch(
+                            workspace_path,
+                            task,
+                            baseline_ref=baseline_ref,
+                        )
+                        validation_result = self._run_validation_commands(
+                            workspace_path,
+                            task,
+                            log_path,
+                            state=state,
+                            proposal_validation=proposal_validation,
+                        )
+                    elif (
+                        validation_result.get("reason")
+                        == "candidate_changed_during_validation"
+                    ):
+                        validation_result = (
+                            self._run_validation_with_candidate_binding(
+                                workspace_path,
+                                task,
+                                log_path,
+                                state=state,
+                                baseline_ref=baseline_ref,
+                            )
+                        )
                 protected_path_violation = (
                     self._implementation_protected_path_violation(
                         task=task,
@@ -10461,7 +10495,7 @@ class PortalImplementationDaemon:
                         "reason": "implementation_protected_path_mutated",
                         "protected_path_violation": protected_path_violation,
                     }
-                else:
+                elif not deterministic_only and proposal_validation is not None:
                     validation_result = (
                         self._restore_and_verify_post_validation_candidate(
                             workspace_path,
@@ -10475,10 +10509,10 @@ class PortalImplementationDaemon:
                             allow_candidate_stabilization=True,
                         )
                     )
-                    if not validation_result.get("passed", False):
-                        effective_returncode = int(
-                            validation_result.get("returncode") or 1
-                        )
+                if not validation_result.get("passed", False):
+                    effective_returncode = int(
+                        validation_result.get("returncode") or 1
+                    )
             if not protected_path_violation:
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -10497,6 +10531,47 @@ class PortalImplementationDaemon:
                         "returncode": 1,
                         "reason": "implementation_protected_path_mutated",
                         "protected_path_violation": protected_path_violation,
+                    }
+            no_change_policy_gate = validation_result.get(
+                "no_change_policy_gate"
+            )
+            if (
+                effective_returncode == 0
+                and isinstance(no_change_policy_gate, Mapping)
+            ):
+                try:
+                    current_head = self._run_git(
+                        ["rev-parse", "HEAD"],
+                        cwd=workspace_path,
+                    ).stdout.strip()
+                except (OSError, RuntimeError):
+                    current_head = ""
+                no_change_guard = (
+                    self._validated_no_change_completion_guard(
+                        baseline_ref=baseline_ref,
+                        current_head=current_head,
+                        expected_branch=baseline_branch,
+                        current_branch=self._git_current_branch(
+                            workspace_path
+                        ),
+                        validation_result=validation_result,
+                        expected_task_id=task.task_id,
+                        expected_task_cid=self._canonical_ref(task),
+                        authoritative_no_change_policy_gate=(
+                            self._take_issued_no_change_policy_gate(
+                                validation_result
+                            )
+                        ),
+                    )
+                )
+                validation_result["no_change_guard"] = no_change_guard
+                if not no_change_guard["allowed"]:
+                    effective_returncode = 1
+                    validation_result = {
+                        **validation_result,
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": "validated_no_change_guard_failed",
                     }
             if effective_returncode == 0:
                 _repository_id, completion_tree_id = (
@@ -17886,35 +17961,59 @@ class PortalImplementationDaemon:
                                     for item in operator_prepared_outputs
                                 ]
                         else:
-                            proposal_validation = self._validate_implementation_patch(
-                                worktree_path,
-                                task,
-                                baseline_ref=baseline_ref,
-                                replayable_consumed_proposal_ids=(
-                                    seed_replayable_proposal_ids
-                                ),
-                            )
-                            validation_result = self._run_validation_commands(
+                            validation_result = self._run_clean_candidate_validation(
                                 worktree_path,
                                 task,
                                 log_path,
                                 state=state,
-                                proposal_validation=proposal_validation,
+                                baseline_ref=baseline_ref,
                             )
-                            validation_result = (
-                                self._apply_implementation_failure_review(
-                                    task=task,
-                                    attempt=attempt,
-                                    workspace_path=worktree_path,
-                                    validation_result=validation_result,
-                                    log_path=log_path,
-                                    proposal_validation=proposal_validation,
-                                    baseline_ref=baseline_ref,
-                                    state=state,
+                            if validation_result is None:
+                                proposal_validation = (
+                                    self._validate_implementation_patch(
+                                        worktree_path,
+                                        task,
+                                        baseline_ref=baseline_ref,
+                                        replayable_consumed_proposal_ids=(
+                                            seed_replayable_proposal_ids
+                                        ),
+                                    )
                                 )
-                            )
+                                validation_result = self._run_validation_commands(
+                                    worktree_path,
+                                    task,
+                                    log_path,
+                                    state=state,
+                                    proposal_validation=proposal_validation,
+                                )
+                                validation_result = (
+                                    self._apply_implementation_failure_review(
+                                        task=task,
+                                        attempt=attempt,
+                                        workspace_path=worktree_path,
+                                        validation_result=validation_result,
+                                        log_path=log_path,
+                                        proposal_validation=proposal_validation,
+                                        baseline_ref=baseline_ref,
+                                        state=state,
+                                    )
+                                )
+                            elif (
+                                validation_result.get("reason")
+                                == "candidate_changed_during_validation"
+                            ):
+                                validation_result = (
+                                    self._run_validation_with_candidate_binding(
+                                        worktree_path,
+                                        task,
+                                        log_path,
+                                        state=state,
+                                        baseline_ref=baseline_ref,
+                                    )
+                                )
                         if (
                             not deterministic_only
+                            and proposal_validation is not None
                             and validation_result.get("passed", False)
                         ):
                             validation_result = (
@@ -18001,6 +18100,17 @@ class PortalImplementationDaemon:
                                 expected_branch=branch_name,
                                 current_branch=current_branch,
                                 validation_result=validation_result,
+                                require_no_change_policy_gate=(
+                                    not deterministic_only
+                                ),
+                                expected_task_id=task.task_id,
+                                expected_task_cid=self._canonical_ref(task),
+                                authoritative_no_change_policy_gate=(
+                                    self._take_issued_no_change_policy_gate(
+                                        validation_result,
+                                        required=not deterministic_only,
+                                    )
+                                ),
                             )
                         )
                         commit_result["no_change_guard"] = no_change_guard
@@ -18219,6 +18329,7 @@ class PortalImplementationDaemon:
                         worktree_path=worktree_path,
                         branch_name=branch_name,
                     )
+                    proposal_validation: Any = None
                     try:
                         self._prepare_worktree_for_validation(
                             worktree_path,
@@ -18232,8 +18343,15 @@ class PortalImplementationDaemon:
                             )
                         )
                     else:
-                        proposal_validation = (
-                            self._validate_implementation_patch(
+                        validation_result = self._run_clean_candidate_validation(
+                            worktree_path,
+                            task,
+                            log_path,
+                            state=state,
+                            baseline_ref=baseline_ref,
+                        )
+                        if validation_result is None:
+                            proposal_validation = self._validate_implementation_patch(
                                 worktree_path,
                                 task,
                                 baseline_ref=baseline_ref,
@@ -18241,26 +18359,38 @@ class PortalImplementationDaemon:
                                     seed_replayable_proposal_ids
                                 ),
                             )
-                        )
-                        validation_result = self._run_validation_commands(
-                            worktree_path,
-                            task,
-                            log_path,
-                            state=state,
-                            proposal_validation=proposal_validation,
-                        )
-                        validation_result = (
-                            self._apply_implementation_failure_review(
-                                task=task,
-                                attempt=attempt,
-                                workspace_path=worktree_path,
-                                validation_result=validation_result,
-                                log_path=log_path,
-                                proposal_validation=proposal_validation,
-                                baseline_ref=baseline_ref,
+                            validation_result = self._run_validation_commands(
+                                worktree_path,
+                                task,
+                                log_path,
                                 state=state,
+                                proposal_validation=proposal_validation,
                             )
-                        )
+                            validation_result = (
+                                self._apply_implementation_failure_review(
+                                    task=task,
+                                    attempt=attempt,
+                                    workspace_path=worktree_path,
+                                    validation_result=validation_result,
+                                    log_path=log_path,
+                                    proposal_validation=proposal_validation,
+                                    baseline_ref=baseline_ref,
+                                    state=state,
+                                )
+                            )
+                        elif (
+                            validation_result.get("reason")
+                            == "candidate_changed_during_validation"
+                        ):
+                            validation_result = (
+                                self._run_validation_with_candidate_binding(
+                                    worktree_path,
+                                    task,
+                                    log_path,
+                                    state=state,
+                                    baseline_ref=baseline_ref,
+                                )
+                            )
                     protected_path_violation = (
                         self._implementation_protected_path_violation(
                             task=task,
@@ -18279,7 +18409,10 @@ class PortalImplementationDaemon:
                                 protected_path_violation
                             ),
                         }
-                    elif validation_result.get("passed", False):
+                    elif (
+                        proposal_validation is not None
+                        and validation_result.get("passed", False)
+                    ):
                         validation_result = (
                             self._restore_and_verify_post_validation_candidate(
                                 worktree_path,
@@ -18349,11 +18482,49 @@ class PortalImplementationDaemon:
                             )
                             commit_handoff_ready = True
                         elif commit_result.get("reason") == "no_changes":
-                            cleanup_result = self._cleanup_merged_worktree(
-                                worktree_path,
-                                branch_name,
+                            current_head = self._run_git(
+                                ["rev-parse", "HEAD"],
+                                cwd=worktree_path,
+                            ).stdout.strip()
+                            current_branch = self._git_current_branch(
+                                worktree_path
                             )
-                            commit_handoff_ready = True
+                            no_change_guard = (
+                                self._validated_no_change_completion_guard(
+                                    baseline_ref=baseline_ref,
+                                    current_head=current_head,
+                                    expected_branch=branch_name,
+                                    current_branch=current_branch,
+                                    validation_result=validation_result,
+                                    expected_task_id=task.task_id,
+                                    expected_task_cid=self._canonical_ref(task),
+                                    authoritative_no_change_policy_gate=(
+                                        self._take_issued_no_change_policy_gate(
+                                            validation_result
+                                        )
+                                    ),
+                                )
+                            )
+                            commit_result["no_change_guard"] = no_change_guard
+                            if no_change_guard["allowed"]:
+                                cleanup_result = self._cleanup_merged_worktree(
+                                    worktree_path,
+                                    branch_name,
+                                )
+                                commit_handoff_ready = True
+                            else:
+                                validation_result = {
+                                    **validation_result,
+                                    "passed": False,
+                                    "returncode": 1,
+                                    "reason": (
+                                        "validated_candidate_missing_before_commit"
+                                    ),
+                                    "no_change_guard": no_change_guard,
+                                }
+                                timeout_result["reason"] = (
+                                    "validated_candidate_missing_before_commit"
+                                )
                         else:
                             returncode = 1
                             validation_result = {
@@ -19168,6 +19339,28 @@ class PortalImplementationDaemon:
         self._record_event("implementation_finished", result)
         return result
 
+    def _take_issued_no_change_policy_gate(
+        self,
+        validation_result: Mapping[str, Any],
+        *,
+        required: bool = True,
+    ) -> dict[str, Any] | None:
+        """Consume the attempt-local authority for a no-change gate."""
+
+        if not required:
+            return None
+        gate = validation_result.get("no_change_policy_gate")
+        if not isinstance(gate, Mapping):
+            return None
+        gate_id = str(gate.get("gate_id") or "")
+        if not gate_id:
+            return None
+        issued = self._implementation_no_change_policy_gates.pop(
+            gate_id,
+            None,
+        )
+        return dict(issued) if isinstance(issued, Mapping) else None
+
     @staticmethod
     def _validated_no_change_completion_guard(
         *,
@@ -19176,6 +19369,10 @@ class PortalImplementationDaemon:
         expected_branch: str,
         current_branch: str,
         validation_result: Mapping[str, Any],
+        require_no_change_policy_gate: bool = True,
+        expected_task_id: str = "",
+        expected_task_cid: str = "",
+        authoritative_no_change_policy_gate: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         selection = validation_result.get("selection") or {}
         changed_files = (
@@ -19189,6 +19386,176 @@ class PortalImplementationDaemon:
             if str(path).strip()
         ]
         reasons: list[str] = []
+        no_change_policy_gate = validation_result.get(
+            "no_change_policy_gate"
+        )
+        candidate_binding = validation_result.get("candidate_binding")
+        proposal_gate = validation_result.get("proposal_gate")
+        gate_identity_valid = False
+        if isinstance(no_change_policy_gate, Mapping):
+            normalized_gate = dict(no_change_policy_gate)
+            claimed_gate_id = str(normalized_gate.pop("gate_id", "") or "")
+            gate_identity_valid = bool(
+                claimed_gate_id
+                and content_identity(normalized_gate) == claimed_gate_id
+            )
+        if require_no_change_policy_gate:
+            expected_findings = sorted(
+                [
+                    [
+                        "empty_patch",
+                        "patch",
+                        "candidate diff contains no file changes",
+                        "",
+                    ],
+                    [
+                        "missing_required_field",
+                        "structure",
+                        "structured proposal requires operations",
+                        "",
+                    ],
+                    [
+                        "missing_required_field",
+                        "structure",
+                        "structured proposal requires patch_text",
+                        "",
+                    ],
+                ]
+            )
+            empty_fingerprint = "sha256:" + hashlib.sha256(
+                b"[]"
+            ).hexdigest()
+            if (
+                not isinstance(no_change_policy_gate, Mapping)
+                or no_change_policy_gate.get("accepted") is not True
+                or not str(no_change_policy_gate.get("gate_id") or "")
+                or not str(
+                    no_change_policy_gate.get("proposal_receipt_id") or ""
+                )
+            ):
+                reasons.append("no_change_policy_gate_missing")
+            else:
+                semantic_gate_valid = bool(
+                    no_change_policy_gate.get("schema")
+                    == (
+                        "ipfs_accelerate_py.agent_supervisor/"
+                        "no-change-candidate-policy-gate@1"
+                    )
+                    and no_change_policy_gate.get("proposal_accepted") is False
+                    and list(
+                        no_change_policy_gate.get("changed_paths") or []
+                    )
+                    == []
+                    and list(
+                        no_change_policy_gate.get("actual_findings") or []
+                    )
+                    == expected_findings
+                    and list(
+                        no_change_policy_gate.get("expected_findings") or []
+                    )
+                    == expected_findings
+                    and str(
+                        no_change_policy_gate.get("candidate_fingerprint")
+                        or ""
+                    )
+                    == empty_fingerprint
+                    and str(
+                        no_change_policy_gate.get("repository_tree_id") or ""
+                    )
+                    == baseline_ref
+                    and str(
+                        no_change_policy_gate.get("baseline_id") or ""
+                    )
+                    == baseline_ref
+                    and not str(
+                        no_change_policy_gate.get(
+                            "proposal_collection_error"
+                        )
+                        or ""
+                    )
+                    and str(
+                        no_change_policy_gate.get("validation_plan_id") or ""
+                    )
+                    and str(
+                        no_change_policy_gate.get(
+                            "expected_output_preflight_id"
+                        )
+                        or ""
+                    )
+                    and (
+                        not expected_task_id
+                        or str(
+                            no_change_policy_gate.get("task_id") or ""
+                        )
+                        == expected_task_id
+                    )
+                    and (
+                        not expected_task_cid
+                        or str(
+                            no_change_policy_gate.get(
+                                "canonical_task_cid"
+                            )
+                            or ""
+                        )
+                        == expected_task_cid
+                    )
+                )
+                if not gate_identity_valid:
+                    reasons.append(
+                        "no_change_policy_gate_identity_mismatch"
+                    )
+                if not semantic_gate_valid:
+                    reasons.append(
+                        "no_change_policy_gate_authority_mismatch"
+                    )
+                if (
+                    not isinstance(
+                        authoritative_no_change_policy_gate,
+                        Mapping,
+                    )
+                    or dict(authoritative_no_change_policy_gate)
+                    != dict(no_change_policy_gate)
+                ):
+                    reasons.append(
+                        "no_change_policy_gate_not_issued_for_attempt"
+                    )
+            if (
+                not isinstance(proposal_gate, Mapping)
+                or proposal_gate.get("accepted") is not False
+                or list(proposal_gate.get("changed_paths") or []) != []
+                or sorted(
+                    str(code)
+                    for code in (
+                        proposal_gate.get("reason_codes") or []
+                    )
+                )
+                != ["empty_patch", "missing_required_field"]
+                or not isinstance(no_change_policy_gate, Mapping)
+                or str(proposal_gate.get("proposal_id") or "")
+                != str(no_change_policy_gate.get("proposal_id") or "")
+                or str(proposal_gate.get("policy_id") or "")
+                != str(no_change_policy_gate.get("policy_id") or "")
+                or str(proposal_gate.get("receipt_id") or "")
+                != str(
+                    no_change_policy_gate.get("proposal_receipt_id") or ""
+                )
+                or str(proposal_gate.get("repository_tree_id") or "")
+                != baseline_ref
+            ):
+                reasons.append("no_change_proposal_gate_mismatch")
+            if (
+                not isinstance(candidate_binding, Mapping)
+                or candidate_binding.get("verified") is not True
+                or str(
+                    candidate_binding.get("expected_fingerprint") or ""
+                )
+                != empty_fingerprint
+                or str(
+                    candidate_binding.get("current_fingerprint") or ""
+                )
+                != empty_fingerprint
+            ):
+                reasons.append("no_change_candidate_binding_missing")
         if normalized_changed_files:
             reasons.append("validated_diff_disappeared")
         if baseline_ref and current_head != baseline_ref:
@@ -19203,6 +19570,18 @@ class PortalImplementationDaemon:
             "expected_branch": expected_branch,
             "current_branch": current_branch,
             "validated_changed_files": normalized_changed_files,
+            "no_change_policy_gate_id": (
+                str(no_change_policy_gate.get("gate_id") or "")
+                if isinstance(no_change_policy_gate, Mapping)
+                else ""
+            ),
+            "proposal_receipt_id": (
+                str(
+                    no_change_policy_gate.get("proposal_receipt_id") or ""
+                )
+                if isinstance(no_change_policy_gate, Mapping)
+                else ""
+            ),
         }
 
     def _missing_validation_workspace_result(
@@ -25830,6 +26209,7 @@ class PortalImplementationDaemon:
         replayable_consumed_proposal_ids: Sequence[str] = (),
         record_event: bool = True,
         allow_scope_adjudication: bool = True,
+        diagnostics: dict[str, Any] | None = None,
     ) -> Any:
         """Validate a candidate patch before task validation is dispatched."""
 
@@ -26249,6 +26629,17 @@ class PortalImplementationDaemon:
                 else ""
             ),
         )
+        if diagnostics is not None:
+            diagnostics.clear()
+            diagnostics.update(
+                {
+                    "collection_error": collection_error,
+                    "changed_paths": list(changed_paths),
+                    "submodule_expansion_count": len(
+                        submodule_expansions
+                    ),
+                }
+            )
         if record_event:
             self._record_event(
                 "implementation_expected_outputs_checked",
@@ -27027,6 +27418,213 @@ class PortalImplementationDaemon:
             "error": "proposal_candidate_binding_failed",
         }
 
+    @staticmethod
+    def _no_change_candidate_policy_gate(
+        proposal_validation: Any,
+        *,
+        candidate_fingerprint: str,
+        canonical_task_cid: str,
+        expected_output_preflight_id: str,
+        proposal_diagnostics: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Bind an empty candidate to the ordinary proposal policy receipt.
+
+        The strict proposal contract intentionally rejects an empty patch.  An
+        already-satisfied task may nevertheless run its declared validation,
+        but only after every *other* proposal gate has passed.  Keep the
+        proposal rejected and issue a separate, content-addressed gate that
+        admits exactly the structural findings inherent to an empty diff.
+        """
+
+        from ..validation.proposal_validation import (
+            ProposalFindingCode,
+            ProposalGate,
+        )
+
+        proposal = getattr(proposal_validation, "proposal", None)
+        policy = getattr(proposal_validation, "policy", None)
+        receipt = getattr(proposal_validation, "receipt", None)
+        findings = tuple(
+            getattr(proposal_validation, "findings", ()) or ()
+        )
+        actual_findings = tuple(
+            sorted(
+                (
+                    str(
+                        getattr(
+                            getattr(finding, "code", ""),
+                            "value",
+                            getattr(finding, "code", ""),
+                        )
+                        or ""
+                    ),
+                    str(
+                        getattr(
+                            getattr(finding, "gate", ""),
+                            "value",
+                            getattr(finding, "gate", ""),
+                        )
+                        or ""
+                    ),
+                    str(getattr(finding, "message", "") or ""),
+                    str(getattr(finding, "path", "") or ""),
+                )
+                for finding in findings
+            )
+        )
+        expected_findings = tuple(
+            sorted(
+                (
+                    (
+                        ProposalFindingCode.EMPTY_PATCH.value,
+                        ProposalGate.PATCH.value,
+                        "candidate diff contains no file changes",
+                        "",
+                    ),
+                    (
+                        ProposalFindingCode.MISSING_REQUIRED_FIELD.value,
+                        ProposalGate.STRUCTURE.value,
+                        "structured proposal requires operations",
+                        "",
+                    ),
+                    (
+                        ProposalFindingCode.MISSING_REQUIRED_FIELD.value,
+                        ProposalGate.STRUCTURE.value,
+                        "structured proposal requires patch_text",
+                        "",
+                    ),
+                )
+            )
+        )
+        changed_paths = tuple(
+            getattr(proposal, "changed_paths", ()) or ()
+        )
+        candidate_diff = tuple(
+            getattr(proposal, "candidate_diff", ()) or ()
+        )
+        validation_plan = tuple(
+            getattr(proposal, "validation_plan", ()) or ()
+        )
+        validation_plan_projection = [
+            (
+                step.to_dict()
+                if callable(getattr(step, "to_dict", None))
+                else {
+                    "command": list(
+                        getattr(step, "command", ()) or ()
+                    ),
+                    "rationale_refs": list(
+                        getattr(step, "rationale_refs", ()) or ()
+                    ),
+                }
+            )
+            for step in validation_plan
+        ]
+        proposal_id = str(
+            getattr(proposal, "proposal_id", "") or ""
+        )
+        policy_id = str(getattr(policy, "policy_id", "") or "")
+        receipt_id = str(getattr(receipt, "receipt_id", "") or "")
+        repository_tree_id = str(
+            getattr(proposal, "repository_tree_id", "") or ""
+        )
+        diff_digest = str(
+            getattr(proposal, "diff_digest", "") or ""
+        )
+        task_id = str(getattr(proposal, "task_id", "") or "")
+        repository_id = str(
+            getattr(proposal, "repository_id", "") or ""
+        )
+        baseline_id = str(
+            getattr(proposal, "baseline_id", "") or ""
+        )
+        context_id = str(
+            getattr(proposal, "context_id", "") or ""
+        )
+        accepted_plan_id = str(
+            getattr(proposal, "accepted_plan_id", "") or ""
+        )
+        objective_id = str(
+            getattr(proposal, "objective_id", "") or ""
+        )
+        replay_nonce = str(
+            getattr(proposal, "replay_nonce", "") or ""
+        )
+        collection_error = str(
+            proposal_diagnostics.get("collection_error") or ""
+        )
+        accepted = bool(
+            not getattr(proposal_validation, "accepted", False)
+            and actual_findings == expected_findings
+            and not changed_paths
+            and not candidate_diff
+            and validation_plan
+            and proposal_id
+            and policy_id
+            and receipt_id
+            and repository_tree_id
+            and diff_digest
+            and task_id
+            and canonical_task_cid
+            and repository_id
+            and baseline_id
+            and context_id
+            and accepted_plan_id
+            and objective_id
+            and replay_nonce
+            and expected_output_preflight_id
+            and candidate_fingerprint
+            and not collection_error
+            and int(
+                proposal_diagnostics.get("submodule_expansion_count") or 0
+            )
+            == 0
+        )
+        payload: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor/"
+                "no-change-candidate-policy-gate@1"
+            ),
+            "attempted": True,
+            "accepted": accepted,
+            "reason": (
+                "empty_candidate_policy_admitted"
+                if accepted
+                else "empty_candidate_policy_rejected"
+            ),
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "proposal_id": proposal_id,
+            "policy_id": policy_id,
+            "proposal_receipt_id": receipt_id,
+            "repository_tree_id": repository_tree_id,
+            "repository_id": repository_id,
+            "baseline_id": baseline_id,
+            "context_id": context_id,
+            "accepted_plan_id": accepted_plan_id,
+            "objective_id": objective_id,
+            "replay_nonce": replay_nonce,
+            "diff_digest": diff_digest,
+            "candidate_fingerprint": candidate_fingerprint,
+            "validation_plan_id": content_identity(
+                validation_plan_projection
+            ),
+            "expected_output_preflight_id": (
+                expected_output_preflight_id
+            ),
+            "proposal_collection_error": collection_error,
+            "changed_paths": list(changed_paths[:256]),
+            "proposal_accepted": bool(
+                getattr(proposal_validation, "accepted", False)
+            ),
+            "expected_findings": [list(item) for item in expected_findings],
+            "actual_findings": [list(item) for item in actual_findings[:32]],
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+        payload["gate_id"] = content_identity(payload)
+        return payload
+
     def _run_clean_candidate_validation(
         self,
         workspace_path: Path,
@@ -27047,19 +27645,140 @@ class PortalImplementationDaemon:
 
         if not task.validation:
             return None
+        scope_paths = self._proposal_scope_paths(task)
         try:
+            expected_output_preflight = (
+                self._prepare_proposal_expected_outputs(
+                    workspace_path,
+                    task,
+                    baseline_ref=baseline_ref,
+                    scope_paths=scope_paths,
+                )
+            )
             self._stage_declared_ignored_outputs(workspace_path, task)
             entries, submodule_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,
                     baseline_ref=baseline_ref,
-                    scope_paths=self._proposal_scope_paths(task),
+                    scope_paths=scope_paths,
                 )
             )
         except (OSError, RuntimeError, ValueError):
             return None
         if entries or submodule_expansions:
             return None
+
+        expected_output_issues = self._proposal_expected_output_issues(
+            expected_output_preflight,
+            changed_paths=(),
+            candidate_entries=(),
+        )
+        if expected_output_issues:
+            # Missing, untracked, or unsafe outputs must continue through the
+            # strict proposal gate.  A green command alone cannot turn an
+            # incomplete baseline into an already-satisfied task.
+            return None
+        self._record_event(
+            "implementation_expected_outputs_checked",
+            {
+                "task_id": task.task_id,
+                "proposal_id": "",
+                "expected_paths": (
+                    expected_output_preflight.get("expected_paths") or []
+                )[:256],
+                "staged_paths": (
+                    expected_output_preflight.get("staged_paths") or []
+                )[:256],
+                "force_staged_paths": [],
+                "issues": [],
+                "passed": True,
+                "reason": "validated_no_change_candidate",
+                "proof_authoritative": False,
+                "completion_authoritative": False,
+            },
+        )
+
+        # Reuse the exact strict proposal policy for command, authority,
+        # boundary, and output checks.  The proposal must remain rejected only
+        # for the three findings that are intrinsic to an empty candidate;
+        # every other finding fails closed before validation dispatch.
+        proposal_validation = self._validate_implementation_patch(
+            workspace_path,
+            task,
+            baseline_ref=baseline_ref,
+            allow_scope_adjudication=False,
+            diagnostics=(proposal_diagnostics := {}),
+        )
+        empty_fingerprint = self._proposal_candidate_fingerprint(())
+        no_change_policy_gate = self._no_change_candidate_policy_gate(
+            proposal_validation,
+            candidate_fingerprint=empty_fingerprint,
+            canonical_task_cid=self._canonical_ref(task),
+            expected_output_preflight_id=content_identity(
+                expected_output_preflight
+            ),
+            proposal_diagnostics=proposal_diagnostics,
+        )
+        try:
+            self._stage_declared_ignored_outputs(workspace_path, task)
+            policy_bound_entries, policy_bound_expansions = (
+                self._collect_proposal_candidate_diff(
+                    workspace_path,
+                    baseline_ref=baseline_ref,
+                    scope_paths=scope_paths,
+                )
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            policy_bound_entries = ()
+            policy_bound_expansions = ()
+            no_change_policy_gate = {
+                **no_change_policy_gate,
+                "accepted": False,
+                "reason": "empty_candidate_policy_collection_failed",
+                "collection_error": type(exc).__name__,
+            }
+            no_change_policy_gate["gate_id"] = content_identity(
+                {
+                    key: value
+                    for key, value in no_change_policy_gate.items()
+                    if key != "gate_id"
+                }
+            )
+        if policy_bound_entries or policy_bound_expansions:
+            no_change_policy_gate = {
+                **no_change_policy_gate,
+                "accepted": False,
+                "reason": "empty_candidate_changed_before_dispatch",
+            }
+            no_change_policy_gate["gate_id"] = content_identity(
+                {
+                    key: value
+                    for key, value in no_change_policy_gate.items()
+                    if key != "gate_id"
+                }
+            )
+        self._record_event(
+            (
+                "implementation_no_change_policy_validated"
+                if no_change_policy_gate["accepted"]
+                else "implementation_no_change_policy_rejected"
+            ),
+            {
+                "task_id": task.task_id,
+                **no_change_policy_gate,
+            },
+        )
+        if not no_change_policy_gate["accepted"]:
+            rejected = self._run_validation_commands(
+                workspace_path,
+                task,
+                log_path,
+                state=state,
+                proposal_validation=proposal_validation,
+                force_uncached=True,
+            )
+            rejected["no_change_policy_gate"] = no_change_policy_gate
+            return rejected
 
         result = self._run_validation_commands(
             workspace_path,
@@ -27068,14 +27787,12 @@ class PortalImplementationDaemon:
             state=state,
             force_uncached=True,
         )
-        proposal_gate = {
-            "attempted": False,
-            "accepted": True,
-            "reason": "validated_no_change_candidate",
-            "changed_paths": [],
-            "reason_codes": [],
-        }
+        proposal_gate = self._compact_proposal_validation(
+            proposal_validation
+        )
+        proposal_gate["reason"] = "empty_patch_reserved_for_no_change_gate"
         result["proposal_gate"] = proposal_gate
+        result["no_change_policy_gate"] = no_change_policy_gate
         if not result.get("passed", False):
             return result
         if not result.get("attempted", False):
@@ -27134,6 +27851,22 @@ class PortalImplementationDaemon:
         )
         if verified:
             result["candidate_binding"] = binding
+            gate_id = str(no_change_policy_gate.get("gate_id") or "")
+            if gate_id:
+                if (
+                    gate_id not in self._implementation_no_change_policy_gates
+                    and len(self._implementation_no_change_policy_gates) >= 64
+                ):
+                    oldest_gate_id = next(
+                        iter(self._implementation_no_change_policy_gates)
+                    )
+                    self._implementation_no_change_policy_gates.pop(
+                        oldest_gate_id,
+                        None,
+                    )
+                self._implementation_no_change_policy_gates[gate_id] = dict(
+                    no_change_policy_gate
+                )
             return result
         return {
             **result,
@@ -28319,35 +29052,18 @@ class PortalImplementationDaemon:
                 }
             else:
                 proposal = getattr(proposal_validation, "proposal", None)
-                try:
-                    bound_commands, declared_graph = (
-                        build_declared_validation_plan_graph(
-                            scheduled_commands,
-                            repository_tree_id=str(
-                                getattr(
-                                    proposal,
-                                    "repository_tree_id",
-                                    "",
-                                )
-                                or ""
-                            ),
-                            changed_paths=tuple(
-                                getattr(proposal, "changed_paths", ()) or ()
-                            ),
-                        )
+                proposal_accepted = bool(
+                    getattr(proposal_validation, "accepted", False)
+                )
+                if isinstance(proposal_validation, Mapping):
+                    proposal_accepted = bool(
+                        proposal_validation.get("accepted", False)
                     )
-                except (TypeError, ValueError) as exc:
-                    result = {
-                        "attempted": False,
-                        "passed": False,
-                        "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
-                        "results": [],
-                        "reason": "declared_validation_plan_invalid",
-                        "error": "validation_configuration_failed",
-                        "configuration_error": type(exc).__name__,
-                        "configuration_detail": str(exc)[:1000],
-                    }
-                else:
+                if not proposal_accepted:
+                    # Rejected proposals are already terminal.  Dispatch them
+                    # to the strict scheduler before graph construction so an
+                    # intentionally empty rejected candidate reports the
+                    # proposal gate failure instead of a misleading DAG error.
                     result = self._decision_runtime_mutation(
                         "validation_execution",
                         {
@@ -28355,30 +29071,80 @@ class PortalImplementationDaemon:
                             "workspace_path": str(workspace_path),
                             "commands": tuple(commands),
                             "scope": "pre_merge",
-                            "validation_graph_id": declared_graph.graph_id,
+                            "proposal_accepted": False,
                         },
                         lambda: strict_runner(
                             proposal_validation,
-                            bound_commands,
+                            scheduled_commands,
                             workspace_path=workspace_path,
-                            impact_graph=declared_graph,
-                            require_impact_graph=True,
+                            require_impact_graph=False,
                             require_full_validation=True,
                             scope="pre_merge",
                             runner=self._validation_command_runner,
                             **proof_options,
                         ),
                     )
-                    result["validation_plan_binding"] = {
-                        "source": "proposal_declared_validation_plan",
-                        "graph_id": declared_graph.graph_id,
-                        "graph_version": declared_graph.graph_version,
-                        "command_count": len(bound_commands),
-                        "validation_ids": [
-                            command.validation_id
-                            for command in bound_commands
-                        ],
-                    }
+                else:
+                    try:
+                        bound_commands, declared_graph = (
+                            build_declared_validation_plan_graph(
+                                scheduled_commands,
+                                repository_tree_id=str(
+                                    getattr(
+                                        proposal,
+                                        "repository_tree_id",
+                                        "",
+                                    )
+                                    or ""
+                                ),
+                                changed_paths=tuple(
+                                    getattr(proposal, "changed_paths", ()) or ()
+                                ),
+                            )
+                        )
+                    except (TypeError, ValueError) as exc:
+                        result = {
+                            "attempted": False,
+                            "passed": False,
+                            "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                            "results": [],
+                            "reason": "declared_validation_plan_invalid",
+                            "error": "validation_configuration_failed",
+                            "configuration_error": type(exc).__name__,
+                            "configuration_detail": str(exc)[:1000],
+                        }
+                    else:
+                        result = self._decision_runtime_mutation(
+                            "validation_execution",
+                            {
+                                "task_id": task.task_id,
+                                "workspace_path": str(workspace_path),
+                                "commands": tuple(commands),
+                                "scope": "pre_merge",
+                                "validation_graph_id": declared_graph.graph_id,
+                            },
+                            lambda: strict_runner(
+                                proposal_validation,
+                                bound_commands,
+                                workspace_path=workspace_path,
+                                impact_graph=declared_graph,
+                                require_impact_graph=True,
+                                require_full_validation=True,
+                                scope="pre_merge",
+                                runner=self._validation_command_runner,
+                                **proof_options,
+                            ),
+                        )
+                        result["validation_plan_binding"] = {
+                            "source": "proposal_declared_validation_plan",
+                            "graph_id": declared_graph.graph_id,
+                            "graph_version": declared_graph.graph_version,
+                            "command_count": len(bound_commands),
+                            "validation_ids": [
+                                command.validation_id
+                                for command in bound_commands
+                            ],
+                        }
 
             # The scheduler needs full source-bound records in process, while
             # daemon state and JSONL events retain only compact repair data.
@@ -42568,8 +43334,89 @@ class PortalImplementationDaemon:
         self.task_queue.record_selection(self._canonical_ref(selected))
         return selected
 
+    @staticmethod
+    def _implementation_finished_event_payload(
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Bound large setup receipts in the terminal event projection.
+
+        The returned implementation result and the earlier
+        ``implementation_started`` event retain the complete dependency
+        preflight receipt.  A terminal event can also carry diagnostic receipt
+        references, which intentionally gives it the stricter receipt-bearing
+        event limit.  Preserve the receipt identity and decision here without
+        duplicating its potentially large per-project metadata graph.
+        """
+
+        projected = dict(payload)
+        raw_setup = projected.get("workspace_setup")
+        if not isinstance(raw_setup, Mapping):
+            return projected
+        setup = dict(raw_setup)
+        raw_preflight = setup.get(
+            "validation_project_dependency_preflight"
+        )
+        if not isinstance(raw_preflight, Mapping):
+            projected["workspace_setup"] = setup
+            return projected
+
+        def bounded_count(field: str) -> int:
+            value = raw_preflight.get(field)
+            if isinstance(value, Sequence) and not isinstance(
+                value,
+                (str, bytes, bytearray),
+            ):
+                return len(value)
+            return 0
+
+        def bounded_int(field: str) -> int:
+            try:
+                return max(0, int(raw_preflight.get(field) or 0))
+            except (TypeError, ValueError):
+                return 0
+
+        setup["validation_project_dependency_preflight"] = {
+            "schema": str(raw_preflight.get("schema") or "")[:512],
+            "receipt_id": str(
+                raw_preflight.get("receipt_id") or ""
+            )[:1024],
+            "retry_fingerprint": str(
+                raw_preflight.get("retry_fingerprint") or ""
+            )[:1024],
+            "passed": raw_preflight.get("passed") is True,
+            "applicable": raw_preflight.get("applicable") is True,
+            "reason": str(raw_preflight.get("reason") or "")[:1000],
+            "automatic_install_attempted": (
+                raw_preflight.get("automatic_install_attempted") is True
+            ),
+            "probe_scope": str(
+                raw_preflight.get("probe_scope") or ""
+            )[:512],
+            "validation_command_count": bounded_int(
+                "validation_command_count"
+            ),
+            "project_count": bounded_count("projects"),
+            "project_root_count": bounded_count("project_roots"),
+            "missing_count": bounded_count("missing_requirements"),
+            "incompatible_count": bounded_count(
+                "incompatible_requirements"
+            ),
+            "invalid_requirement_count": bounded_count(
+                "invalid_requirements"
+            ),
+            "invalid_command_count": bounded_count("invalid_commands"),
+            "event_projection_compacted": True,
+            "full_receipt_event": "implementation_started",
+        }
+        projected["workspace_setup"] = setup
+        return projected
+
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
-        enriched = dict(payload)
+        enriched = (
+            self._implementation_finished_event_payload(payload)
+            if event_type == "implementation_finished"
+            else dict(payload)
+        )
         task_source_identity = self._task_source_identity_record()
         if task_source_identity is not None:
             enriched.setdefault("task_source_identity", task_source_identity)
