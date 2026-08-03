@@ -5830,6 +5830,7 @@ class DynamicBundleScheduler:
         install_handlers = max_cycles is None and threading.current_thread() is threading.main_thread()
         previous_term: Any = None
         previous_int: Any = None
+        run_error: BaseException | None = None
 
         def request_stop(_signum: int, _frame: object) -> None:
             self._stop_event.set()
@@ -5850,7 +5851,8 @@ class DynamicBundleScheduler:
                     break
                 if external_stop and external_stop.is_set():
                     break
-        except BaseException:
+        except BaseException as exc:
+            run_error = exc
             self._stop_event.set()
             raise
         finally:
@@ -5858,46 +5860,60 @@ class DynamicBundleScheduler:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
             if self._stop_event.is_set() or (external_stop and external_stop.is_set()):
-                payload = self.stop()
+                try:
+                    payload = self.stop()
+                except BaseException:
+                    if run_error is None:
+                        raise
+                    logger.exception(
+                        "Scheduler cleanup failed while preserving the original run error"
+                    )
         return payload
 
     def stop(self, *, grace_seconds: float = 5.0) -> dict[str, Any]:
         """Stop owned processes and release only leases still fenced to them."""
 
         self._stop_event.set()
-        with self._lock, LeaseCoordinator(self.coordination_path) as coordinator:
+        with self._lock:
+            stopped_running = list(self._running.items())
             stopped_task_cids = set(self._running)
-            for task_cid, running in list(self._running.items()):
+            for _task_cid, running in stopped_running:
                 self._terminate_handle(running.handle, grace_seconds=grace_seconds)
-                try:
-                    if coordinator.active_lease(task_cid) is not None:
-                        coordinator.release(running.grant, reason="scheduler stopped")
-                except LeaseError:
-                    pass
                 if running.resource_lease is not None:
                     self.resource_scheduler.cancel(
                         running.resource_lease,
                         reason="scheduler_stopped",
                     )
             self._running.clear()
-            try:
-                discovered = self._plan()
-            except (OSError, ValueError, json.JSONDecodeError):
-                discovered = []
-            current_task_cids = {
-                lane.task_cid
-                for lane in discovered
-                if lane.task_cid
-            }
-            current_task_cids.update(stopped_task_cids)
-            projection = (
-                coordinator.list_tasks(
-                    task_cids=current_task_cids,
-                    include_claimability=True,
+
+            with LeaseCoordinator(self.coordination_path) as coordinator:
+                for task_cid, running in stopped_running:
+                    try:
+                        if coordinator.active_lease(task_cid) is not None:
+                            coordinator.release(
+                                running.grant,
+                                reason="scheduler stopped",
+                            )
+                    except LeaseError:
+                        pass
+                try:
+                    discovered = self._plan()
+                except (OSError, ValueError, json.JSONDecodeError):
+                    discovered = []
+                current_task_cids = {
+                    lane.task_cid
+                    for lane in discovered
+                    if lane.task_cid
+                }
+                current_task_cids.update(stopped_task_cids)
+                projection = (
+                    coordinator.list_tasks(
+                        task_cids=current_task_cids,
+                        include_claimability=True,
+                    )
+                    if current_task_cids
+                    else []
                 )
-                if current_task_cids
-                else []
-            )
         return self._write_live_manifest(
             discovered=discovered,
             task_projection=projection,

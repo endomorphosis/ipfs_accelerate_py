@@ -2343,6 +2343,75 @@ def test_stop_manifest_excludes_superseded_bundle_revisions(
     assert observed_queries == [({current_task_cid}, True)]
 
 
+def test_run_preserves_primary_error_when_stop_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    scheduler = _scheduler(tmp_path, index, launcher)
+    primary_error = RuntimeError("primary reconciliation failure")
+
+    def fail_reconciliation() -> dict[str, Any]:
+        raise primary_error
+
+    def fail_cleanup(*, grace_seconds: float = 5.0) -> dict[str, Any]:
+        del grace_seconds
+        raise OSError("secondary cleanup failure")
+
+    monkeypatch.setattr(scheduler, "reconcile_once", fail_reconciliation)
+    monkeypatch.setattr(scheduler, "stop", fail_cleanup)
+
+    with pytest.raises(RuntimeError, match="primary reconciliation failure") as error:
+        scheduler.run(max_cycles=1)
+
+    assert error.value is primary_error
+
+
+def test_stop_cleans_local_lane_before_coordination_open_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    scheduler = _scheduler(tmp_path, index, launcher)
+    process = _FakeProcess(pid=12345)
+    resource_lease = object()
+    scheduler._running["task-cid"] = SimpleNamespace(
+        handle=process,
+        resource_lease=resource_lease,
+        grant=object(),
+    )
+    cancelled: list[tuple[object, str]] = []
+    monkeypatch.setattr(
+        scheduler.resource_scheduler,
+        "cancel",
+        lambda lease, *, reason: cancelled.append((lease, reason)),
+    )
+
+    class UnavailableCoordinator:
+        def __init__(self, _path: Path) -> None:
+            raise RuntimeError("coordination unavailable")
+
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "LeaseCoordinator",
+        UnavailableCoordinator,
+    )
+
+    with pytest.raises(RuntimeError, match="coordination unavailable"):
+        scheduler.stop(grace_seconds=0)
+
+    assert process.terminate_calls == 1
+    assert process.wait_calls == 1
+    assert cancelled == [(resource_lease, "scheduler_stopped")]
+    assert scheduler._running == {}
+
+
 def test_live_bundle_revision_blocks_replacement_with_the_same_bundle_key(
     tmp_path: Path,
 ) -> None:
