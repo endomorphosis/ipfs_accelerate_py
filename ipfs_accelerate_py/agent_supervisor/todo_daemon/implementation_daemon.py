@@ -131,6 +131,7 @@ from ..validation.validation_scheduler import (
     build_declared_validation_plan_graph,
 )
 from .diagnostics import summarize_test_failure
+from .post_merge_validation import build_post_merge_validation_evidence
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
 from .contract_packet_provider_router import (
@@ -10209,17 +10210,26 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 gate_evidence = self._preserved_provider_review_evidence(
                     metadata
                 )
+                repository_tree_id = (
+                    f"git-tree:{completion_tree}"
+                    if completion_tree
+                    else ""
+                )
+                post_merge_validation = (
+                    completion_daemon._validate_exact_post_merge_commit(
+                        task,
+                        target_commit=completion_commit,
+                        repository_tree_id=repository_tree_id,
+                    )
+                )
+                result["post_merge_validation"] = post_merge_validation
                 acceptance_result = (
                     completion_daemon.apply_post_merge_authoritative_acceptance(
                         task,
                         implementation_commit=implementation_commit,
                         merge_commit=completion_commit,
-                        repository_tree_id=(
-                            f"git-tree:{completion_tree}"
-                            if completion_tree
-                            else ""
-                        ),
-                        validation_result=validation_proof,
+                        repository_tree_id=repository_tree_id,
+                        validation_result=post_merge_validation,
                         gate_evidence=gate_evidence or None,
                         model_invocation_observed=bool(
                             metadata.get("model_invocation_observed")
@@ -10255,6 +10265,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 result["todo_update_result"] = todo_update_result
                 result["acceptance_result"] = acceptance_result
                 result["completion_authoritative"] = authoritatively_completed
+                result["acceptance_pending"] = not authoritatively_completed
         return result
 
     def _rehydrate_merge_request_branch(
@@ -18375,9 +18386,67 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         state: PortalTaskState | None = None,
         proposal_validation: Any = None,
         force_uncached: bool = False,
+        scope: str = "pre_merge",
+        target_commit: str = "",
     ) -> dict[str, Any]:
+        validation_scope = str(scope or "pre_merge").strip()
+        expected_target_commit = str(target_commit or "").strip()
+        if validation_scope not in {"pre_merge", "post_merge"}:
+            return {
+                "attempted": False,
+                "passed": False,
+                "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                "results": [],
+                "reason": "validation_scope_invalid",
+                "validation_scope": validation_scope,
+                "target_commit": expected_target_commit,
+                "validated_commit": "",
+                "stale": True,
+            }
+        if validation_scope == "post_merge" and not expected_target_commit:
+            return {
+                "attempted": False,
+                "passed": False,
+                "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                "results": [],
+                "reason": "post_merge_validation_target_missing",
+                "validation_scope": validation_scope,
+                "target_commit": "",
+                "validated_commit": "",
+                "stale": True,
+            }
         if not workspace_path.exists():
-            return self._missing_validation_workspace_result(workspace_path, task=task, log_path=log_path)
+            return {
+                **self._missing_validation_workspace_result(
+                    workspace_path,
+                    task=task,
+                    log_path=log_path,
+                ),
+                "validation_scope": validation_scope,
+                "target_commit": expected_target_commit,
+                "validated_commit": "",
+                "stale": bool(expected_target_commit),
+            }
+
+        workspace_commit_before = self._resolve_git_commit_in_repo(
+            workspace_path,
+            "HEAD",
+        )
+        if (
+            expected_target_commit
+            and workspace_commit_before != expected_target_commit
+        ):
+            return {
+                "attempted": False,
+                "passed": False,
+                "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                "results": [],
+                "reason": "validation_target_binding_mismatch",
+                "validation_scope": validation_scope,
+                "target_commit": expected_target_commit,
+                "validated_commit": workspace_commit_before,
+                "stale": True,
+            }
 
         proof_options = self._proof_workflow_options(workspace_path, task)
         self._decision_runtime_route(
@@ -18388,6 +18457,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "declared_commands": tuple(task.validation),
                 "proposal_bound": proposal_validation is not None,
                 "proof_workflow": bool(proof_options),
+                "force_uncached": bool(
+                    force_uncached or validation_scope == "post_merge"
+                ),
+                "scope": validation_scope,
+                "target_commit": expected_target_commit,
             },
         )
         if (
@@ -18395,13 +18469,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and not proof_options
             and proposal_validation is None
         ):
-            return {
+            result = {
                 "attempted": False,
                 "passed": True,
                 "returncode": 0,
                 "results": [],
                 "reason": "no_commands",
             }
+            result.update(
+                {
+                    "validation_scope": validation_scope,
+                    "target_commit": expected_target_commit,
+                    "validated_commit": workspace_commit_before,
+                    "stale": False,
+                }
+            )
+            return result
 
         commands: list[str] = []
         normalization_notes: list[str] = []
@@ -18418,7 +18501,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if pythonpath_note:
                 normalization_notes.append(pythonpath_note)
         scheduled_commands: Sequence[Any] = commands
-        if force_uncached:
+        if force_uncached or validation_scope == "post_merge":
             scheduled_commands = tuple(
                 replace(spec, cacheable=False)
                 for spec in build_validation_commands(commands)
@@ -18435,13 +18518,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "task_id": task.task_id,
                     "workspace_path": str(workspace_path),
                     "commands": tuple(commands),
-                    "scope": "pre_merge",
+                    "scope": validation_scope,
+                    "target_commit": expected_target_commit,
                 },
                 lambda: self.validation_scheduler.run(
                     scheduled_commands,
                     workspace_path=workspace_path,
+                    target_commit=expected_target_commit or None,
                     require_full_validation=True,
-                    scope="pre_merge",
+                    scope=validation_scope,
                     runner=self._validation_command_runner,
                     **proof_options,
                 ),
@@ -18494,7 +18579,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "task_id": task.task_id,
                             "workspace_path": str(workspace_path),
                             "commands": tuple(commands),
-                            "scope": "pre_merge",
+                            "scope": validation_scope,
+                            "target_commit": expected_target_commit,
                             "validation_graph_id": declared_graph.graph_id,
                         },
                         lambda: strict_runner(
@@ -18503,8 +18589,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             workspace_path=workspace_path,
                             impact_graph=declared_graph,
                             require_impact_graph=True,
+                            target_commit=expected_target_commit or None,
                             require_full_validation=True,
-                            scope="pre_merge",
+                            scope=validation_scope,
                             runner=self._validation_command_runner,
                             **proof_options,
                         ),
@@ -18737,7 +18824,433 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
             if failure_heads:
                 result["failure_head"] = "\n".join(failure_heads)[:2000]
+        workspace_commit_after = self._resolve_git_commit_in_repo(
+            workspace_path,
+            "HEAD",
+        )
+        result.update(
+            {
+                "validation_scope": validation_scope,
+                "target_commit": expected_target_commit,
+                "validated_commit": workspace_commit_after,
+            }
+        )
+        target_changed = bool(
+            expected_target_commit
+            and workspace_commit_after != expected_target_commit
+        )
+        if target_changed:
+            result.update(
+                {
+                    "passed": False,
+                    "stale": True,
+                    "reason": "validation_target_changed_during_execution",
+                }
+            )
+        else:
+            result.setdefault("stale", False)
         return result
+
+    def _validate_exact_post_merge_commit(
+        self,
+        task: PortalTask,
+        *,
+        target_commit: str,
+        repository_tree_id: str = "",
+        log_path: Path | None = None,
+    ) -> dict[str, Any]:
+        """Run uncached validation in a detached worktree at one target tip.
+
+        A passing command result is insufficient by itself.  The live target
+        ref, detached ``HEAD``, immutable Git tree, and workspace cleanliness
+        must agree before and after execution.  Any drift returns a
+        content-bound but non-passing receipt so reconciliation can retry
+        acceptance without ever retrying the already-landed merge mutation.
+        """
+
+        expected_commit = str(target_commit or "").strip()
+        expected_tree_id = str(repository_tree_id or "").strip()
+        raw_result: dict[str, Any] = {
+            "attempted": False,
+            "passed": False,
+            "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+            "results": [],
+            "reason": "post_merge_validation_binding_missing",
+            "stale": True,
+            "freshness_authoritative": False,
+            "validation_scope": "post_merge",
+            "target_commit": expected_commit,
+            "validated_commit": "",
+            "force_uncached": True,
+        }
+
+        def finish(
+            result: Mapping[str, Any],
+            *,
+            validated_commit: str,
+        ) -> dict[str, Any]:
+            def receipt_safe(value: Any) -> Any:
+                if isinstance(value, float):
+                    # Formal proof contract identities intentionally reject
+                    # JSON floats.  Durations are diagnostic, so retain their
+                    # exact Python spelling as text rather than authority.
+                    return repr(value)
+                if isinstance(value, Mapping):
+                    return {
+                        key: receipt_safe(item)
+                        for key, item in value.items()
+                    }
+                if isinstance(value, Sequence) and not isinstance(
+                    value,
+                    (str, bytes, bytearray),
+                ):
+                    return [receipt_safe(item) for item in value]
+                return value
+
+            payload = receipt_safe(dict(result))
+            if not expected_commit or not expected_tree_id:
+                self._record_event(
+                    "post_merge_validation_finished",
+                    {
+                        "task_id": task.task_id,
+                        "target_commit": expected_commit,
+                        "repository_tree_id": expected_tree_id,
+                        "attempted": bool(payload.get("attempted")),
+                        "passed": False,
+                        "stale": True,
+                        "reason": str(
+                            payload.get("reason")
+                            or "post_merge_validation_binding_missing"
+                        ),
+                    },
+                )
+                return payload
+            try:
+                evidence = build_post_merge_validation_evidence(
+                    task_id=task.task_id,
+                    target_commit=expected_commit,
+                    repository_tree_id=expected_tree_id,
+                    validation_result=payload,
+                    validated_commit=validated_commit,
+                )
+            except (TypeError, ValueError) as exc:
+                payload.update(
+                    {
+                        "passed": False,
+                        "stale": True,
+                        "freshness_authoritative": False,
+                        "reason": "post_merge_validation_receipt_build_failed",
+                        "receipt_error": f"{type(exc).__name__}: {exc}"[:1000],
+                    }
+                )
+                evidence = payload
+            self._record_event(
+                "post_merge_validation_finished",
+                {
+                    "task_id": task.task_id,
+                    "target_commit": expected_commit,
+                    "repository_tree_id": expected_tree_id,
+                    "attempted": bool(evidence.get("attempted")),
+                    "passed": bool(evidence.get("passed")),
+                    "stale": bool(evidence.get("stale", True)),
+                    "reason": str(evidence.get("reason") or ""),
+                    "validation_receipt_id": str(
+                        evidence.get("validation_receipt_id") or ""
+                    ),
+                },
+            )
+            return evidence
+
+        if not expected_commit:
+            raw_result["reason"] = "post_merge_validation_target_missing"
+            return finish(raw_result, validated_commit="")
+
+        resolved_commit = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            expected_commit,
+        )
+        if resolved_commit != expected_commit:
+            raw_result.update(
+                {
+                    "reason": "post_merge_validation_target_unresolvable",
+                    "validated_commit": resolved_commit,
+                }
+            )
+            return finish(raw_result, validated_commit=resolved_commit)
+
+        tree_result = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                f"{resolved_commit}^{{tree}}",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        resolved_tree_id = (
+            f"git-tree:{tree_result.stdout.strip()}"
+            if tree_result.returncode == 0 and tree_result.stdout.strip()
+            else ""
+        )
+        if not expected_tree_id:
+            expected_tree_id = resolved_tree_id
+        if not resolved_tree_id:
+            raw_result["reason"] = "post_merge_validation_tree_unresolvable"
+            return finish(raw_result, validated_commit=resolved_commit)
+        if expected_tree_id != resolved_tree_id:
+            raw_result.update(
+                {
+                    "reason": "post_merge_validation_tree_binding_mismatch",
+                    "resolved_repository_tree_id": resolved_tree_id,
+                }
+            )
+            return finish(raw_result, validated_commit=resolved_commit)
+
+        try:
+            target_branch = self._main_branch_name()
+        except (OSError, RuntimeError) as exc:
+            raw_result.update(
+                {
+                    "reason": "post_merge_validation_target_ref_unavailable",
+                    "target_ref_error": f"{type(exc).__name__}: {exc}"[:1000],
+                }
+            )
+            return finish(raw_result, validated_commit=resolved_commit)
+        live_target_before = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            target_branch,
+        )
+        if live_target_before != expected_commit:
+            raw_result.update(
+                {
+                    "reason": "post_merge_validation_target_changed_before_execution",
+                    "live_target_commit": live_target_before,
+                }
+            )
+            return finish(raw_result, validated_commit=resolved_commit)
+
+        validation_root = self.worktree_root / ".post-merge-validation-worktrees"
+        workspace: Path | None = None
+        worktree_added = False
+        cleanup_failed = False
+        validated_commit = resolved_commit
+
+        def snapshot(selected_workspace: Path) -> dict[str, Any]:
+            head = self._resolve_git_commit_in_repo(selected_workspace, "HEAD")
+            selected_tree = ""
+            if head:
+                selected_tree_result = subprocess.run(
+                    [
+                        "git",
+                        "rev-parse",
+                        "--verify",
+                        f"{head}^{{tree}}",
+                    ],
+                    cwd=selected_workspace,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if (
+                    selected_tree_result.returncode == 0
+                    and selected_tree_result.stdout.strip()
+                ):
+                    selected_tree = (
+                        f"git-tree:{selected_tree_result.stdout.strip()}"
+                    )
+            status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                cwd=selected_workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            dirty_paths = [
+                line[3:].strip()
+                for line in status.stdout.splitlines()
+                if len(line) >= 4 and line[3:].strip()
+            ][:64]
+            return {
+                "live_target_commit": self._resolve_git_commit_in_repo(
+                    self.repo_root,
+                    target_branch,
+                ),
+                "workspace_head": head,
+                "workspace_tree_id": selected_tree,
+                "workspace_clean": bool(
+                    status.returncode == 0 and not status.stdout.strip()
+                ),
+                "status_returncode": int(status.returncode),
+                "dirty_paths": dirty_paths,
+            }
+
+        def fence_reason(
+            record: Mapping[str, Any],
+            *,
+            stage: str,
+        ) -> str:
+            if record.get("live_target_commit") != expected_commit:
+                return f"post_merge_validation_target_changed_{stage}"
+            if record.get("workspace_head") != expected_commit:
+                return f"post_merge_validation_head_changed_{stage}"
+            if record.get("workspace_tree_id") != expected_tree_id:
+                return f"post_merge_validation_tree_changed_{stage}"
+            if record.get("workspace_clean") is not True:
+                return f"post_merge_validation_workspace_dirty_{stage}"
+            return ""
+
+        try:
+            validation_root.mkdir(parents=True, exist_ok=True)
+            workspace = Path(
+                tempfile.mkdtemp(
+                    prefix=(
+                        f"{self._safe_ref_path_fragment(task.task_id)}-"
+                        f"{expected_commit[:12]}-"
+                    ),
+                    dir=validation_root,
+                )
+            )
+            add = subprocess.run(
+                [
+                    "git",
+                    "worktree",
+                    "add",
+                    "--detach",
+                    str(workspace),
+                    expected_commit,
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if add.returncode != 0:
+                raw_result.update(
+                    {
+                        "reason": "post_merge_validation_worktree_add_failed",
+                        "worktree_returncode": int(add.returncode),
+                        "worktree_error": add.stderr[-2000:],
+                    }
+                )
+            else:
+                worktree_added = True
+                before = snapshot(workspace)
+                before_reason = fence_reason(before, stage="before_execution")
+                if before_reason:
+                    raw_result.update(
+                        {
+                            "reason": before_reason,
+                            "fence": {"before": before},
+                        }
+                    )
+                    validated_commit = str(
+                        before.get("workspace_head") or resolved_commit
+                    )
+                else:
+                    selected_log_path = log_path or (
+                        self.implementation_log_dir
+                        / (
+                            f"{self._safe_ref_path_fragment(task.task_id).lower()}-"
+                            f"post-merge-{expected_commit[:12]}.log"
+                        )
+                    )
+                    try:
+                        raw_result = self._run_validation_commands(
+                            workspace,
+                            task,
+                            selected_log_path,
+                            force_uncached=True,
+                            scope="post_merge",
+                            target_commit=expected_commit,
+                        )
+                    except Exception as exc:
+                        raw_result = {
+                            "attempted": True,
+                            "passed": False,
+                            "returncode": (
+                                PROPOSAL_VALIDATION_FAILURE_RETURN_CODE
+                            ),
+                            "results": [],
+                            "reason": "post_merge_validation_execution_exception",
+                            "exception_type": type(exc).__name__,
+                            "exception_detail": str(exc)[-1000:],
+                            "stale": True,
+                            "freshness_authoritative": False,
+                            "validation_scope": "post_merge",
+                            "target_commit": expected_commit,
+                            "force_uncached": True,
+                        }
+                    after = snapshot(workspace)
+                    validated_commit = str(
+                        after.get("workspace_head") or ""
+                    )
+                    after_reason = fence_reason(
+                        after,
+                        stage="after_execution",
+                    )
+                    raw_result["fence"] = {
+                        "before": before,
+                        "after": after,
+                    }
+                    raw_result["force_uncached"] = True
+                    if after_reason:
+                        raw_result.update(
+                            {
+                                "passed": False,
+                                "stale": True,
+                                "freshness_authoritative": False,
+                                "reason": after_reason,
+                            }
+                        )
+                    else:
+                        raw_result.setdefault("stale", False)
+                        raw_result.setdefault(
+                            "freshness_authoritative",
+                            True,
+                        )
+        except OSError as exc:
+            raw_result.update(
+                {
+                    "reason": "post_merge_validation_workspace_unavailable",
+                    "workspace_error": f"{type(exc).__name__}: {exc}"[:1000],
+                }
+            )
+        finally:
+            if worktree_added and workspace is not None:
+                remove = subprocess.run(
+                    [
+                        "git",
+                        "worktree",
+                        "remove",
+                        "--force",
+                        str(workspace),
+                    ],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                cleanup_failed = remove.returncode != 0
+                if cleanup_failed:
+                    raw_result["worktree_cleanup_error"] = (
+                        remove.stderr[-2000:]
+                    )
+            if workspace is not None:
+                shutil.rmtree(workspace, ignore_errors=True)
+
+        if cleanup_failed:
+            raw_result.update(
+                {
+                    "passed": False,
+                    "stale": True,
+                    "freshness_authoritative": False,
+                    "reason": "post_merge_validation_worktree_cleanup_failed",
+                }
+            )
+        return finish(raw_result, validated_commit=validated_commit)
 
     @staticmethod
     def _validation_command_runner(
@@ -23781,16 +24294,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if isinstance(raw_merge_result, Mapping)
             else {}
         )
-        raw_validation = merge_result.get("post_merge_validation")
-        if not isinstance(raw_validation, Mapping):
-            raw_validation = merge_result.get("validation_result")
-        if not isinstance(raw_validation, Mapping):
-            raw_validation = event.get("validation_result")
-        validation_result = (
-            dict(raw_validation)
-            if isinstance(raw_validation, Mapping)
-            else {}
-        )
         prior_receipt = self._acceptance_receipt_from_event(event)
         gate_evidence = prior_receipt.get("gate_evidence")
         gate_evidence = (
@@ -23825,6 +24328,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "acceptance_attempted": False,
             }
 
+        # Persisted pre-merge or prior post-merge verdicts are diagnostic only.
+        # Reconciliation always reruns the current task's declared validation
+        # uncached against the exact live target before it can retry acceptance.
+        validation_result = self._validate_exact_post_merge_commit(
+            task,
+            target_commit=merge_commit,
+            repository_tree_id=repository_tree_id,
+        )
         acceptance = self.apply_post_merge_authoritative_acceptance(
             task,
             implementation_commit=implementation_commit,

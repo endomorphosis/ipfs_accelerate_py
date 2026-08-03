@@ -85,6 +85,27 @@ def test_builder_rejects_keys_that_collide_after_bounding() -> None:
         )
 
 
+def test_builder_redacts_raw_output_and_verifier_rejects_unbound_extra() -> None:
+    evidence = build_post_merge_validation_evidence(
+        task_id=TASK_ID,
+        target_commit=MERGE_COMMIT,
+        repository_tree_id=REPOSITORY_TREE_ID,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [{"returncode": 0, "stdout": "private output"}],
+        },
+    )
+    results = evidence["validation_result"]["results"]  # type: ignore[index]
+    assert results == [{"returncode": 0}]
+
+    evidence["validation_result"]["stdout"] = "unbound"  # type: ignore[index]
+    verified, reasons = verify_post_merge_validation_evidence(evidence)
+    assert verified is False
+    assert "post_merge_validation_result_not_canonical" in reasons
+
+
 @pytest.mark.parametrize(
     ("path", "replacement", "reason"),
     [

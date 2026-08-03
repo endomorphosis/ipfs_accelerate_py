@@ -44,6 +44,37 @@ _RESERVED_RESULT_FIELDS = frozenset(
 _MAX_PROJECTION_DEPTH = 8
 _MAX_PROJECTION_ITEMS = 256
 _MAX_TEXT_LENGTH = 4096
+_SENSITIVE_RESULT_FIELDS = frozenset(
+    {
+        "output",
+        "outputs",
+        "stdout",
+        "stderr",
+        "witness",
+        "witnesses",
+        "counterexample",
+        "counterexamples",
+        "prompt",
+        "prompts",
+        "model_output",
+        "provider_response",
+        "proof_blob",
+        "proof_bytes",
+        "proof_text",
+        "raw_context",
+        "raw_output",
+        "raw_response",
+    }
+)
+
+
+def _sensitive_result_field(value: str) -> bool:
+    normalized = value.strip().lower().replace("-", "_")
+    return bool(
+        normalized in _SENSITIVE_RESULT_FIELDS
+        or normalized.endswith("_witness")
+        or normalized.endswith("_output")
+    )
 
 
 def _canonical_projection(
@@ -72,6 +103,8 @@ def _canonical_projection(
             )
         projected: dict[str, Any] = {}
         for key in sorted(value)[:_MAX_PROJECTION_ITEMS]:
+            if _sensitive_result_field(key):
+                continue
             bounded_key = key[:_MAX_TEXT_LENGTH]
             if bounded_key in projected:
                 raise ContractValidationError(
@@ -201,10 +234,32 @@ def verify_post_merge_validation_evidence(
         reasons.append("post_merge_validation_schema_invalid")
     if value.get("validation_scope") != "post_merge":
         reasons.append("post_merge_validation_scope_invalid")
-    task_id = str(value.get("task_id") or "")
-    target_commit = str(value.get("target_commit") or "")
-    validated_commit = str(value.get("validated_commit") or "")
-    repository_tree_id = str(value.get("repository_tree_id") or "")
+    for field in (
+        "task_id",
+        "target_commit",
+        "validated_commit",
+        "repository_tree_id",
+        "validation_result_cid",
+        "validation_receipt_id",
+    ):
+        if not isinstance(value.get(field), str):
+            reasons.append(f"post_merge_validation_{field}_invalid")
+    task_id = value.get("task_id") if isinstance(value.get("task_id"), str) else ""
+    target_commit = (
+        value.get("target_commit")
+        if isinstance(value.get("target_commit"), str)
+        else ""
+    )
+    validated_commit = (
+        value.get("validated_commit")
+        if isinstance(value.get("validated_commit"), str)
+        else ""
+    )
+    repository_tree_id = (
+        value.get("repository_tree_id")
+        if isinstance(value.get("repository_tree_id"), str)
+        else ""
+    )
     if not task_id:
         reasons.append("post_merge_validation_task_missing")
     if not target_commit:
@@ -246,6 +301,8 @@ def verify_post_merge_validation_evidence(
         except (ContractValidationError, TypeError, ValueError):
             reasons.append("post_merge_validation_result_invalid")
         else:
+            if dict(raw_result) != projected_result:
+                reasons.append("post_merge_validation_result_not_canonical")
             if value.get("validation_result_cid") != expected_result_cid:
                 reasons.append("post_merge_validation_result_cid_mismatch")
 
