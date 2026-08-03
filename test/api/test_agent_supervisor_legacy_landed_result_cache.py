@@ -6,7 +6,11 @@ import copy
 import json
 import multiprocessing
 import os
+import resource
 import subprocess
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -189,6 +193,37 @@ class _SharedApprovingProvider:
         leaf = request.payload["leaf"]
         return legacy.LegacyProviderObservation(
             observation_id=f"shared:{os.getpid()}:{call}",
+            requested_provider=request.provider,
+            requested_model=request.model,
+            effective_provider=request.provider,
+            effective_model=request.model,
+            provider_chain=(request.provider,),
+            fallback_used=False,
+            supervisor_observed=True,
+            response={
+                "schema": legacy.LEGACY_LANDED_LEAF_DECISION_SCHEMA,
+                "decision": "approve",
+                "manifest_id": request.payload["manifest_id"],
+                "leaf_id": leaf["leaf_id"],
+                "findings": [],
+            },
+        )
+
+
+class _ThreadSafeApprovingProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+        self._lock = threading.Lock()
+
+    def __call__(
+        self, request: legacy.LegacyLeafReviewRequest
+    ) -> legacy.LegacyProviderObservation:
+        with self._lock:
+            self.calls += 1
+            call = self.calls
+        leaf = request.payload["leaf"]
+        return legacy.LegacyProviderObservation(
+            observation_id=f"load-observation:{call}",
             requested_provider=request.provider,
             requested_model=request.model,
             effective_provider=request.provider,
@@ -714,6 +749,145 @@ def test_four_processes_same_key_perform_exactly_one_provider_call(
     assert sum(item[1] is False for item in results) == 1
     assert len({item[2] for item in results}) == 4
     assert len(cache.records()) == 1
+
+
+@pytest.mark.timeout(700)
+def test_exact_1052_leaf_four_lane_cold_and_warm_resume_load(
+    tmp_path: Path,
+) -> None:
+    cache, policy, _task, _manifest, key_path = _cache_fixture(tmp_path)
+    exact_leaf_counts = {
+        "ASE-005": 101,
+        "ASE-006": 114,
+        "ASE-007": 161,
+        "ASE-008": 126,
+        "ASE-009": 180,
+        "ASE-012": 107,
+        "ASE-023": 124,
+        "ASE-038": 139,
+    }
+    assert sum(exact_leaf_counts.values()) == 1_052
+    manifests: dict[str, dict[str, Any]] = {}
+    work_by_lane: list[list[tuple[Any, ...]]] = [[], [], [], []]
+    global_leaf_index = 0
+    for task_id, leaf_count in exact_leaf_counts.items():
+        task = policy.task(task_id)
+        leaves = [
+            {
+                "leaf_index": leaf_index,
+                "leaf_id": content_identity(
+                    {
+                        "load_task_id": task_id,
+                        "load_leaf_index": leaf_index,
+                    }
+                ),
+                "payload": "",
+            }
+            for leaf_index in range(leaf_count)
+        ]
+        manifest = {
+            "manifest_id": content_identity(
+                {"load_manifest_task_id": task_id, "leaf_count": leaf_count}
+            ),
+            "merkle_root": content_identity(
+                {"load_merkle_task_id": task_id, "leaf_count": leaf_count}
+            ),
+            "leaf_count": leaf_count,
+            "leaves": leaves,
+        }
+        manifests[task_id] = manifest
+        for leaf in leaves:
+            lane = global_leaf_index % 4
+            for provider in (policy.grok, policy.codex):
+                work_by_lane[lane].append((task, manifest, leaf, provider))
+            global_leaf_index += 1
+    assert global_leaf_index == 1_052
+    provider = _ThreadSafeApprovingProvider()
+    cold_caches = [
+        LegacyLandedLeafResultCache(
+            cache.path,
+            policy=policy,
+            operator_key_path=key_path,
+        )
+        for _lane in range(4)
+    ]
+
+    def cold_lane(lane: int) -> int:
+        misses = 0
+        for index, (task, manifest, leaf, provider_policy) in enumerate(
+            work_by_lane[lane]
+        ):
+            result = cold_caches[lane].review_leaf(
+                task=task,
+                manifest=manifest,
+                leaf=leaf,
+                provider=provider_policy,
+                invoker=provider,
+                review_run_id=(
+                    f"legacy-load-cold:{lane:02x}:{index:044x}"
+                ),
+                wait_timeout_seconds=120,
+            )
+            misses += int(not result.cache_hit)
+        return misses
+
+    cold_started = time.monotonic()
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        cold_misses = sum(executor.map(cold_lane, range(4)))
+    cold_elapsed = time.monotonic() - cold_started
+    assert cold_misses == 2_104
+    assert provider.calls == 2_104
+    assert len(cache.records()) == 2_104
+
+    warm_caches = [
+        LegacyLandedLeafResultCache(
+            cache.path,
+            policy=policy,
+            operator_key_path=key_path,
+        )
+        for _lane in range(4)
+    ]
+
+    def forbidden(_request: legacy.LegacyLeafReviewRequest) -> Any:
+        raise AssertionError("warm 1,052-leaf load invoked a provider")
+
+    def warm_lane(lane: int) -> int:
+        hits = 0
+        for index, (task, manifest, leaf, provider_policy) in enumerate(
+            work_by_lane[lane]
+        ):
+            result = warm_caches[lane].review_leaf(
+                task=task,
+                manifest=manifest,
+                leaf=leaf,
+                provider=provider_policy,
+                invoker=forbidden,
+                review_run_id=(
+                    f"legacy-load-warm:{lane:02x}:{index:044x}"
+                ),
+                wait_timeout_seconds=120,
+            )
+            hits += int(result.cache_hit)
+        return hits
+
+    warm_started = time.monotonic()
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        warm_hits = sum(executor.map(warm_lane, range(4)))
+    warm_elapsed = time.monotonic() - warm_started
+    total_elapsed = cold_elapsed + warm_elapsed
+    peak_rss_kib = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    print(
+        "legacy_exact_load "
+        f"cold_seconds={cold_elapsed:.3f} "
+        f"warm_seconds={warm_elapsed:.3f} "
+        f"total_seconds={total_elapsed:.3f} "
+        f"peak_rss_kib={peak_rss_kib}"
+    )
+    assert warm_hits == 2_104
+    assert provider.calls == 2_104
+    assert total_elapsed < 600
+    assert peak_rss_kib < 1_048_576
+    assert set(manifests) == set(exact_leaf_counts)
 
 
 class _InsertDuringRawPutBackend(InMemoryConformantBackend):
