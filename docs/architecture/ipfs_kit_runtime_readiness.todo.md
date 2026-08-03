@@ -551,7 +551,7 @@ or write authority.
 
 ## KITA-017 Retire competing GraphRAG engines and prove package CLI MCP parity
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
