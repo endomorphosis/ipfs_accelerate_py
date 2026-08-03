@@ -54,6 +54,14 @@ MAX_INSTALLED_VERSION_BYTES = 512
 MAX_PROBE_OUTPUT_BYTES = 2 * 1024 * 1024
 MAX_PROBE_SOURCE_BYTES = 512 * 1024
 BOUNDED_FILE_READ_CHUNK_BYTES = 64 * 1024
+MAX_DEPENDENCY_CLOSURE_NODES = 256
+MAX_DEPENDENCY_CLOSURE_EDGES = 2048
+MAX_DEPENDENCY_CLOSURE_DEPTH = 32
+MAX_DEPENDENCY_CLOSURE_REQUIREMENTS = 4096
+MAX_DEPENDENCY_CLOSURE_CONTEXTS = 4096
+MAX_DEPENDENCY_CLOSURE_REQUIREMENT_BYTES = MAX_REQUIREMENT_BYTES
+MAX_DEPENDENCY_CLOSURE_METADATA_TEXT_BYTES = 2 * 1024 * 1024
+MAX_DEPENDENCY_CLOSURE_INSTALLED_VERSION_BYTES = 256
 DEPENDENCY_PROBE_TIMEOUT_SECONDS = 30.0
 PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
     "test",
@@ -61,6 +69,8 @@ PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
     "dev",
 )
 PYTEST_COMMAND_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])pytest(?=$|[\s;&|])")
+_DEFAULT_VERSION_GETTER = importlib.metadata.version
+_DEFAULT_REQUIRES_GETTER = object()
 _PROBE_ARGV_BOOTSTRAP = (
     "import base64,hashlib,sys,zlib;"
     "payload=sys.argv.pop(1);"
@@ -816,10 +826,629 @@ def _bounded_static_project(
     }
 
 
+class _DependencyClosureEvaluator:
+    """Verify a bounded installed-distribution closure using metadata only."""
+
+    def __init__(
+        self,
+        project: dict[str, Any],
+        *,
+        marker_environment: Mapping[str, str],
+        requirement_factory: Callable[[str], Any],
+        invalid_requirement_type: type[Exception],
+        version_factory: Callable[[str], Any],
+        invalid_version_type: type[Exception],
+        canonicalize_name: Callable[[str], str],
+        version_getter: Callable[[str], str],
+        requires_getter: Callable[[str], Sequence[str] | None] | None,
+    ) -> None:
+        self.project = project
+        self.marker_environment = dict(marker_environment)
+        self.requirement_factory = requirement_factory
+        self.invalid_requirement_type = invalid_requirement_type
+        self.version_factory = version_factory
+        self.invalid_version_type = invalid_version_type
+        self.canonicalize_name = canonicalize_name
+        self.version_getter = version_getter
+        self.requires_getter = requires_getter
+
+        self.node_states: dict[str, dict[str, Any]] = {}
+        self.metadata_cache: dict[str, tuple[str, ...] | None] = {}
+        self.expanded_contexts: set[tuple[str, str]] = set()
+        self.processed_metadata_edges: set[tuple[str, str]] = set()
+        self.cycles: dict[tuple[str, ...], dict[str, Any]] = {}
+        self.edge_count = 0
+        self.requirement_evaluation_count = 0
+        self.metadata_requirement_count = 0
+        self.metadata_text_bytes = 0
+        self.stopped_on_bound = False
+
+    def _append_invalid(self, record: Mapping[str, Any]) -> None:
+        self.project["passed"] = False
+        self.project["invalid"].append(dict(record))
+
+    def _bound_failure(
+        self,
+        bound: str,
+        *,
+        maximum: int,
+        observed: int,
+        context: Mapping[str, Any] | None = None,
+    ) -> None:
+        if self.stopped_on_bound:
+            return
+        record: dict[str, Any] = {
+            "kind": "dependency_closure_bound",
+            "bound": str(bound),
+            "maximum": int(maximum),
+            "observed": int(observed),
+        }
+        if context:
+            record.update(
+                {
+                    str(key): value
+                    for key, value in context.items()
+                    if value not in (None, "")
+                }
+            )
+        self._append_invalid(record)
+        self.stopped_on_bound = True
+
+    @staticmethod
+    def _deduplicate(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for record in records:
+            encoded = _canonical_json(record)
+            if encoded in seen:
+                continue
+            seen.add(encoded)
+            result.append(dict(record))
+        return result
+
+    def _safe_requirement_record(
+        self,
+        requirement: Any,
+        *,
+        requirement_sha256: str,
+        source: str,
+        parent_name: str,
+        depth: int,
+    ) -> dict[str, Any]:
+        name = str(self.canonicalize_name(str(requirement.name)))
+        extras = sorted(
+            {
+                str(self.canonicalize_name(str(extra)))
+                for extra in requirement.extras
+            }
+        )
+        specifier = str(requirement.specifier)
+        record: dict[str, Any] = {
+            "name": name,
+            "requirement": (
+                name
+                + (f"[{','.join(extras)}]" if extras else "")
+                + specifier
+            ),
+            "requirement_sha256": requirement_sha256,
+            "specifier": specifier,
+            "extras": extras,
+            "source": source,
+            "depth": int(depth),
+        }
+        if parent_name:
+            record["parent_name"] = parent_name
+        if requirement.marker is not None:
+            record["marker_sha256"] = hashlib.sha256(
+                str(requirement.marker).encode("utf-8", errors="surrogatepass")
+            ).hexdigest()
+        return record
+
+    def _node_state(self, name: str) -> dict[str, Any] | None:
+        cached = self.node_states.get(name)
+        if cached is not None:
+            return cached
+        observed_nodes = len(self.node_states) + 1
+        if observed_nodes > MAX_DEPENDENCY_CLOSURE_NODES:
+            self._bound_failure(
+                "nodes",
+                maximum=MAX_DEPENDENCY_CLOSURE_NODES,
+                observed=observed_nodes,
+                context={"name": name},
+            )
+            return None
+
+        try:
+            raw_version = self.version_getter(name)
+        except importlib.metadata.PackageNotFoundError:
+            state = {"status": "missing"}
+            self.node_states[name] = state
+            return state
+        except Exception as exc:
+            state = {
+                "status": "invalid",
+                "kind": "distribution_version_metadata",
+                "error_type": type(exc).__name__,
+            }
+            self.node_states[name] = state
+            return state
+        if not isinstance(raw_version, str):
+            state = {
+                "status": "invalid",
+                "kind": "installed_version",
+                "error_type": "InstalledVersionIsNotString",
+                "value_type": type(raw_version).__name__,
+            }
+            self.node_states[name] = state
+            return state
+
+        encoded_version = raw_version.encode("utf-8", errors="surrogatepass")
+        version_sha256 = hashlib.sha256(encoded_version).hexdigest()
+        if len(encoded_version) > MAX_INSTALLED_VERSION_BYTES:
+            state = {
+                "status": "invalid",
+                "kind": "installed_version",
+                "error_type": "InstalledVersionExceedsBound",
+                "installed_version_sha256": version_sha256,
+                "installed_version_bytes": len(encoded_version),
+            }
+            self.node_states[name] = state
+            return state
+        if len(encoded_version) > MAX_DEPENDENCY_CLOSURE_INSTALLED_VERSION_BYTES:
+            self._bound_failure(
+                "installed_version_bytes",
+                maximum=MAX_DEPENDENCY_CLOSURE_INSTALLED_VERSION_BYTES,
+                observed=len(encoded_version),
+                context={
+                    "name": name,
+                    "installed_version_sha256": version_sha256,
+                },
+            )
+            state = {"status": "invalid"}
+            self.node_states[name] = state
+            return None
+        try:
+            parsed_version = self.version_factory(raw_version)
+        except self.invalid_version_type as exc:
+            state = {
+                "status": "invalid",
+                "kind": "installed_version",
+                "error_type": type(exc).__name__,
+                "installed_version_sha256": version_sha256,
+                "installed_version_bytes": len(encoded_version),
+            }
+            self.node_states[name] = state
+            return state
+        state = {
+            "status": "present",
+            "version": str(parsed_version),
+            "parsed_version": parsed_version,
+            "version_sha256": version_sha256,
+        }
+        self.node_states[name] = state
+        return state
+
+    def _metadata_requirements(self, name: str) -> tuple[str, ...] | None:
+        if name in self.metadata_cache:
+            return self.metadata_cache[name]
+        if self.requires_getter is None:
+            self.metadata_cache[name] = ()
+            return ()
+        try:
+            raw_requirements = self.requires_getter(name)
+        except Exception as exc:
+            self._append_invalid(
+                {
+                    "kind": "distribution_requirements_metadata",
+                    "name": name,
+                    "error_type": type(exc).__name__,
+                }
+            )
+            self.metadata_cache[name] = None
+            return None
+        if raw_requirements is None:
+            self.metadata_cache[name] = ()
+            return ()
+        if not isinstance(raw_requirements, (list, tuple)):
+            self._append_invalid(
+                {
+                    "kind": "distribution_requirements_metadata",
+                    "name": name,
+                    "error_type": "InvalidMetadataRequirementsType",
+                    "value_type": type(raw_requirements).__name__,
+                }
+            )
+            self.metadata_cache[name] = None
+            return None
+        projected_count = (
+            self.requirement_evaluation_count + len(raw_requirements)
+        )
+        if projected_count > MAX_DEPENDENCY_CLOSURE_REQUIREMENTS:
+            self._bound_failure(
+                "requirements",
+                maximum=MAX_DEPENDENCY_CLOSURE_REQUIREMENTS,
+                observed=projected_count,
+                context={"name": name},
+            )
+            self.metadata_cache[name] = None
+            return None
+
+        normalized: list[str] = []
+        for index, raw_requirement in enumerate(raw_requirements):
+            if not isinstance(raw_requirement, str):
+                self._append_invalid(
+                    {
+                        "kind": "distribution_requirements_metadata",
+                        "name": name,
+                        "metadata_requirement_index": index,
+                        "error_type": "InvalidMetadataRequirementType",
+                        "value_type": type(raw_requirement).__name__,
+                    }
+                )
+                self.metadata_cache[name] = None
+                return None
+            encoded = raw_requirement.encode("utf-8", errors="surrogatepass")
+            requirement_sha256 = hashlib.sha256(encoded).hexdigest()
+            if len(encoded) > MAX_DEPENDENCY_CLOSURE_REQUIREMENT_BYTES:
+                self._bound_failure(
+                    "requirement_bytes",
+                    maximum=MAX_DEPENDENCY_CLOSURE_REQUIREMENT_BYTES,
+                    observed=len(encoded),
+                    context={
+                        "name": name,
+                        "requirement_sha256": requirement_sha256,
+                    },
+                )
+                self.metadata_cache[name] = None
+                return None
+            self.metadata_text_bytes += len(encoded)
+            if (
+                self.metadata_text_bytes
+                > MAX_DEPENDENCY_CLOSURE_METADATA_TEXT_BYTES
+            ):
+                self._bound_failure(
+                    "metadata_text_bytes",
+                    maximum=MAX_DEPENDENCY_CLOSURE_METADATA_TEXT_BYTES,
+                    observed=self.metadata_text_bytes,
+                    context={"name": name},
+                )
+                self.metadata_cache[name] = None
+                return None
+            normalized.append(raw_requirement)
+        normalized.sort(
+            key=lambda value: (
+                hashlib.sha256(
+                    value.encode("utf-8", errors="surrogatepass")
+                ).hexdigest(),
+                value,
+            )
+        )
+        self.metadata_requirement_count += len(normalized)
+        result = tuple(normalized)
+        self.metadata_cache[name] = result
+        return result
+
+    def _record_cycle(
+        self,
+        ancestry: tuple[str, ...],
+        target_name: str,
+    ) -> None:
+        start = ancestry.index(target_name)
+        body = ancestry[start:]
+        rotations = tuple(body[index:] + body[:index] for index in range(len(body)))
+        canonical = min(rotations)
+        path = canonical + (canonical[0],)
+        self.cycles[path] = {
+            "path": list(path),
+            "cycle_sha256": hashlib.sha256(
+                "\0".join(path).encode("utf-8")
+            ).hexdigest(),
+        }
+
+    def _expand_distribution(
+        self,
+        name: str,
+        *,
+        active_extra: str,
+        node_depth: int,
+        ancestry: tuple[str, ...],
+    ) -> None:
+        context_key = (name, active_extra)
+        if self.stopped_on_bound or context_key in self.expanded_contexts:
+            return
+        observed_contexts = len(self.expanded_contexts) + 1
+        if observed_contexts > MAX_DEPENDENCY_CLOSURE_CONTEXTS:
+            self._bound_failure(
+                "contexts",
+                maximum=MAX_DEPENDENCY_CLOSURE_CONTEXTS,
+                observed=observed_contexts,
+                context={"name": name, "depth": node_depth},
+            )
+            return
+        self.expanded_contexts.add(context_key)
+        requirements = self._metadata_requirements(name)
+        if requirements is None or self.stopped_on_bound:
+            return
+        for raw_requirement in requirements:
+            self._visit_requirement(
+                raw_requirement,
+                source="distribution_metadata",
+                parent_name=name,
+                depth=node_depth + 1,
+                ancestry=ancestry,
+                active_extra=active_extra,
+            )
+            if self.stopped_on_bound:
+                return
+
+    def _visit_requirement(
+        self,
+        raw_requirement: object,
+        *,
+        source: str,
+        parent_name: str,
+        depth: int,
+        ancestry: tuple[str, ...],
+        active_extra: str,
+    ) -> None:
+        if self.stopped_on_bound:
+            return
+        self.requirement_evaluation_count += 1
+        if (
+            self.requirement_evaluation_count
+            > MAX_DEPENDENCY_CLOSURE_REQUIREMENTS
+        ):
+            self._bound_failure(
+                "requirements",
+                maximum=MAX_DEPENDENCY_CLOSURE_REQUIREMENTS,
+                observed=self.requirement_evaluation_count,
+                context={"parent_name": parent_name, "depth": depth},
+            )
+            return
+        if not isinstance(raw_requirement, str):
+            self._append_invalid(
+                {
+                    "kind": "dependency",
+                    "source": source,
+                    "parent_name": parent_name,
+                    "depth": depth,
+                    "error_type": "InvalidRequirementType",
+                    "value_type": type(raw_requirement).__name__,
+                }
+            )
+            return
+        encoded = raw_requirement.encode("utf-8", errors="surrogatepass")
+        requirement_sha256 = hashlib.sha256(encoded).hexdigest()
+        if len(encoded) > MAX_DEPENDENCY_CLOSURE_REQUIREMENT_BYTES:
+            self._bound_failure(
+                "requirement_bytes",
+                maximum=MAX_DEPENDENCY_CLOSURE_REQUIREMENT_BYTES,
+                observed=len(encoded),
+                context={
+                    "parent_name": parent_name,
+                    "depth": depth,
+                    "requirement_sha256": requirement_sha256,
+                },
+            )
+            return
+        try:
+            requirement = self.requirement_factory(raw_requirement)
+        except self.invalid_requirement_type as exc:
+            self._append_invalid(
+                {
+                    "kind": "dependency",
+                    "source": source,
+                    "parent_name": parent_name,
+                    "depth": depth,
+                    "requirement_sha256": requirement_sha256,
+                    "error_type": type(exc).__name__,
+                }
+            )
+            return
+        safe_record = self._safe_requirement_record(
+            requirement,
+            requirement_sha256=requirement_sha256,
+            source=source,
+            parent_name=parent_name,
+            depth=depth,
+        )
+        if source == "project" and active_extra:
+            safe_record["selected_extra"] = active_extra
+        marker_environment = dict(self.marker_environment)
+        marker_environment["extra"] = active_extra
+        try:
+            applies = requirement.marker is None or requirement.marker.evaluate(
+                environment=marker_environment
+            )
+        except Exception as exc:
+            self._append_invalid(
+                {
+                    **safe_record,
+                    "kind": "marker",
+                    "marker_extra": active_extra,
+                    "error_type": type(exc).__name__,
+                }
+            )
+            return
+        if not applies:
+            self.project["marker_skipped"].append(
+                {
+                    **safe_record,
+                    "marker_extra": active_extra,
+                }
+            )
+            return
+
+        if source == "distribution_metadata":
+            edge_identity = (parent_name, requirement_sha256)
+            if edge_identity in self.processed_metadata_edges:
+                return
+            self.processed_metadata_edges.add(edge_identity)
+        self.edge_count += 1
+        if self.edge_count > MAX_DEPENDENCY_CLOSURE_EDGES:
+            self._bound_failure(
+                "edges",
+                maximum=MAX_DEPENDENCY_CLOSURE_EDGES,
+                observed=self.edge_count,
+                context={
+                    "name": safe_record["name"],
+                    "parent_name": parent_name,
+                    "depth": depth,
+                },
+            )
+            return
+        if requirement.url:
+            self._append_invalid(
+                {
+                    **safe_record,
+                    "kind": "direct_reference_unverifiable",
+                    "direct_reference_sha256": hashlib.sha256(
+                        requirement.url.encode(
+                            "utf-8",
+                            errors="surrogatepass",
+                        )
+                    ).hexdigest(),
+                }
+            )
+            return
+
+        name = str(safe_record["name"])
+        is_cycle = name in ancestry
+        if depth > MAX_DEPENDENCY_CLOSURE_DEPTH:
+            self._bound_failure(
+                "depth",
+                maximum=MAX_DEPENDENCY_CLOSURE_DEPTH,
+                observed=depth,
+                context={"name": name, "parent_name": parent_name},
+            )
+            return
+        state = self._node_state(name)
+        if state is None or self.stopped_on_bound:
+            return
+        if state.get("status") == "missing":
+            self.project["passed"] = False
+            self.project["missing"].append(safe_record)
+            return
+        if state.get("status") != "present":
+            self._append_invalid(
+                {
+                    **safe_record,
+                    **{
+                        str(key): value
+                        for key, value in state.items()
+                        if key != "status"
+                    },
+                }
+            )
+            return
+
+        observed = {
+            **safe_record,
+            "installed_version": str(state["version"]),
+            "installed_version_sha256": str(state["version_sha256"]),
+        }
+        self.project["observed"].append(observed)
+        if (
+            requirement.specifier
+            and state["parsed_version"] not in requirement.specifier
+        ):
+            self.project["passed"] = False
+            self.project["incompatible"].append(observed)
+        requested_extras = tuple(safe_record["extras"])
+        if is_cycle:
+            self._record_cycle(ancestry, name)
+            for marker_extra in ("", *requested_extras):
+                self._expand_distribution(
+                    name,
+                    active_extra=str(marker_extra),
+                    node_depth=depth,
+                    ancestry=ancestry,
+                )
+                if self.stopped_on_bound:
+                    return
+            return
+
+        child_ancestry = ancestry + (name,)
+        for marker_extra in ("", *requested_extras):
+            self._expand_distribution(
+                name,
+                active_extra=str(marker_extra),
+                node_depth=depth,
+                ancestry=child_ancestry,
+            )
+            if self.stopped_on_bound:
+                return
+
+    def evaluate(
+        self,
+        requirements: Sequence[object],
+        marker_extras: Sequence[str],
+    ) -> None:
+        for requirement_index, raw_requirement in enumerate(requirements):
+            self._visit_requirement(
+                raw_requirement,
+                source="project",
+                parent_name="",
+                depth=0,
+                ancestry=(),
+                active_extra=marker_extras[requirement_index],
+            )
+            if self.stopped_on_bound:
+                break
+
+        for field_name in (
+            "missing",
+            "incompatible",
+            "invalid",
+            "marker_skipped",
+            "observed",
+        ):
+            self.project[field_name] = self._deduplicate(
+                self.project[field_name]
+            )
+        cycles = [self.cycles[key] for key in sorted(self.cycles)]
+        self.project["dependency_closure"] = {
+            "mode": (
+                "recursive_installed_metadata"
+                if self.requires_getter is not None
+                else "direct_only_injected_inventory"
+            ),
+            "node_count": len(self.node_states),
+            "edge_count": self.edge_count,
+            "requirement_evaluation_count": self.requirement_evaluation_count,
+            "metadata_distribution_count": len(self.metadata_cache),
+            "metadata_requirement_count": self.metadata_requirement_count,
+            "metadata_text_bytes": self.metadata_text_bytes,
+            "expanded_context_count": len(self.expanded_contexts),
+            "cycle_count": len(cycles),
+            "cycles": cycles,
+            "stopped_on_bound": self.stopped_on_bound,
+            "bounds": {
+                "nodes": MAX_DEPENDENCY_CLOSURE_NODES,
+                "edges": MAX_DEPENDENCY_CLOSURE_EDGES,
+                "depth": MAX_DEPENDENCY_CLOSURE_DEPTH,
+                "requirements": MAX_DEPENDENCY_CLOSURE_REQUIREMENTS,
+                "contexts": MAX_DEPENDENCY_CLOSURE_CONTEXTS,
+                "requirement_bytes": (
+                    MAX_DEPENDENCY_CLOSURE_REQUIREMENT_BYTES
+                ),
+                "metadata_text_bytes": (
+                    MAX_DEPENDENCY_CLOSURE_METADATA_TEXT_BYTES
+                ),
+                "installed_version_bytes": (
+                    MAX_DEPENDENCY_CLOSURE_INSTALLED_VERSION_BYTES
+                ),
+            },
+        }
+
+
 def _evaluate_dependency_payload(
     payload: Mapping[str, Any],
     *,
-    version_getter: Callable[[str], str] = importlib.metadata.version,
+    version_getter: Callable[[str], str] = _DEFAULT_VERSION_GETTER,
+    requires_getter: (
+        Callable[[str], Sequence[str] | None] | None | object
+    ) = _DEFAULT_REQUIRES_GETTER,
 ) -> dict[str, Any]:
     """Evaluate requirements without importing any requested distribution."""
 
@@ -834,6 +1463,7 @@ def _evaluate_dependency_payload(
         from packaging.markers import default_environment
         from packaging.requirements import InvalidRequirement, Requirement
         from packaging.specifiers import InvalidSpecifier, SpecifierSet
+        from packaging.utils import canonicalize_name
         from packaging.version import InvalidVersion, Version
     except (ImportError, ModuleNotFoundError) as exc:
         result.update(
@@ -847,6 +1477,24 @@ def _evaluate_dependency_payload(
     projects = payload.get("projects")
     if not isinstance(projects, list):
         result["reason"] = "dependency_probe_payload_invalid"
+        return result
+    if requires_getter is _DEFAULT_REQUIRES_GETTER:
+        effective_requires_getter = (
+            importlib.metadata.requires
+            if version_getter is _DEFAULT_VERSION_GETTER
+            else None
+        )
+    elif requires_getter is None:
+        effective_requires_getter = None
+    elif callable(requires_getter):
+        effective_requires_getter = requires_getter
+    else:
+        result.update(
+            {
+                "reason": "dependency_probe_metadata_getter_invalid",
+                "error_type": type(requires_getter).__name__,
+            }
+        )
         return result
     environment = default_environment()
     environment["extra"] = ""
@@ -929,142 +1577,18 @@ def _evaluate_dependency_payload(
             )
             marker_extras = []
             requirements = []
-        for requirement_index, raw_requirement in enumerate(requirements):
-            selected_extra = marker_extras[requirement_index]
-            requirement_text = str(raw_requirement)
-            requirement_sha256 = hashlib.sha256(requirement_text.encode("utf-8")).hexdigest()
-            try:
-                requirement = Requirement(requirement_text)
-            except InvalidRequirement as exc:
-                project["passed"] = False
-                project["invalid"].append(
-                    {
-                        "kind": "dependency",
-                        "requirement_sha256": requirement_sha256,
-                        "error_type": type(exc).__name__,
-                    }
-                )
-                continue
-            extras = sorted(requirement.extras)
-            safe_requirement = (
-                requirement.name
-                + (f"[{','.join(extras)}]" if extras else "")
-                + str(requirement.specifier)
-            )
-            safe_record = {
-                "name": requirement.name,
-                "requirement": safe_requirement,
-                "requirement_sha256": requirement_sha256,
-                "specifier": str(requirement.specifier),
-                "extras": extras,
-            }
-            if selected_extra:
-                safe_record["selected_extra"] = selected_extra
-            if requirement.marker is not None:
-                safe_record["marker_sha256"] = hashlib.sha256(
-                    str(requirement.marker).encode("utf-8")
-                ).hexdigest()
-            if requirement.url:
-                direct_reference_sha256 = hashlib.sha256(
-                    requirement.url.encode("utf-8")
-                ).hexdigest()
-            else:
-                direct_reference_sha256 = ""
-            try:
-                marker_environment = dict(environment)
-                marker_environment["extra"] = selected_extra
-                applies = requirement.marker is None or requirement.marker.evaluate(
-                    environment=marker_environment
-                )
-            except Exception as exc:
-                project["passed"] = False
-                project["invalid"].append(
-                    {
-                        **safe_record,
-                        "kind": "marker",
-                        "error_type": type(exc).__name__,
-                    }
-                )
-                continue
-            if not applies:
-                project["marker_skipped"].append(safe_record)
-                continue
-            if direct_reference_sha256:
-                project["passed"] = False
-                project["invalid"].append(
-                    {
-                        **safe_record,
-                        "kind": "direct_reference_unverifiable",
-                        "direct_reference_sha256": (direct_reference_sha256),
-                    }
-                )
-                continue
-            try:
-                raw_installed_version = version_getter(requirement.name)
-            except importlib.metadata.PackageNotFoundError:
-                project["passed"] = False
-                project["missing"].append(safe_record)
-                continue
-            except Exception as exc:
-                project["passed"] = False
-                project["invalid"].append(
-                    {
-                        **safe_record,
-                        "kind": "distribution_metadata",
-                        "error_type": type(exc).__name__,
-                    }
-                )
-                continue
-            if not isinstance(raw_installed_version, str):
-                project["passed"] = False
-                project["invalid"].append(
-                    {
-                        **safe_record,
-                        "kind": "installed_version",
-                        "error_type": "InstalledVersionIsNotString",
-                    }
-                )
-                continue
-            installed_version_sha256 = hashlib.sha256(
-                raw_installed_version.encode("utf-8")
-            ).hexdigest()
-            if len(raw_installed_version.encode("utf-8")) > MAX_INSTALLED_VERSION_BYTES:
-                project["passed"] = False
-                project["invalid"].append(
-                    {
-                        **safe_record,
-                        "kind": "installed_version",
-                        "installed_version_sha256": installed_version_sha256,
-                        "error_type": "InstalledVersionExceedsBound",
-                    }
-                )
-                continue
-            try:
-                parsed_installed_version = Version(raw_installed_version)
-            except InvalidVersion as exc:
-                project["passed"] = False
-                project["invalid"].append(
-                    {
-                        **safe_record,
-                        "kind": "installed_version",
-                        "installed_version_sha256": installed_version_sha256,
-                        "error_type": type(exc).__name__,
-                    }
-                )
-                continue
-            installed_version = str(parsed_installed_version)
-            observed = {
-                **safe_record,
-                "installed_version": installed_version,
-                "installed_version_sha256": installed_version_sha256,
-            }
-            project["observed"].append(observed)
-            compatible = (
-                not requirement.specifier or parsed_installed_version in requirement.specifier
-            )
-            if not compatible:
-                project["passed"] = False
-                project["incompatible"].append(observed)
+        closure = _DependencyClosureEvaluator(
+            project,
+            marker_environment=environment,
+            requirement_factory=Requirement,
+            invalid_requirement_type=InvalidRequirement,
+            version_factory=Version,
+            invalid_version_type=InvalidVersion,
+            canonicalize_name=canonicalize_name,
+            version_getter=version_getter,
+            requires_getter=effective_requires_getter,
+        )
+        closure.evaluate(requirements, marker_extras)
         if project["passed"] is not True:
             project["reason"] = "project_dependency_drift_detected"
             all_passed = False
