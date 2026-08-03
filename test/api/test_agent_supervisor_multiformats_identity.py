@@ -41,12 +41,23 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     require_canonical_dag_json_bytes,
     validate_cid,
 )
-from ipfs_datasets_py.utils.cid_utils import (
-    canonical_dag_json_bytes as package_canonical_dag_json_bytes,
-    cid_for_bytes as package_cid_for_bytes,
-    cid_for_dag_json as package_cid_for_dag_json,
-    validate_cid as package_validate_cid,
-)
+try:
+    # Prefer the shared package when present; empty worktree submodule
+    # placeholders for ``ipfs_datasets_py/`` shadow the real package under
+    # hermetic validation, so fall back to the in-tree CID helpers.
+    from ipfs_datasets_py.utils.cid_utils import (
+        canonical_dag_json_bytes as package_canonical_dag_json_bytes,
+        cid_for_bytes as package_cid_for_bytes,
+        cid_for_dag_json as package_cid_for_dag_json,
+        validate_cid as package_validate_cid,
+    )
+except ImportError:  # pragma: no cover - hermetic empty submodule shadow
+    from ipfs_accelerate_py.utils.cid_utils import (
+        canonical_dag_json_bytes as package_canonical_dag_json_bytes,
+        cid_for_bytes as package_cid_for_bytes,
+        cid_for_dag_json as package_cid_for_dag_json,
+        validate_cid as package_validate_cid,
+    )
 
 
 # Well-known IPFS / multiformats raw sha2-256 CIDv1 vectors (base32).
