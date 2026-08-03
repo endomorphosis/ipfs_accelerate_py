@@ -155,6 +155,66 @@ def test_ordinary_prompt_task_uses_grok_with_codex_fallback(
     assert fallback_command[:2] == ["/opt/providers/codex", "exec"]
 
 
+def test_systemd_minimal_path_still_selects_user_local_grok(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _clear_provider_overrides(monkeypatch)
+    fake_home = tmp_path / "home"
+    fake_grok = fake_home / ".local" / "bin" / "grok"
+    fake_grok.parent.mkdir(parents=True)
+    fake_grok.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_grok.chmod(0o700)
+    auth_path = fake_home / ".grok" / "auth.json"
+    auth_path.parent.mkdir(parents=True)
+    auth_path.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv(
+        "PATH",
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    )
+    for name in (
+        "ipfs_accelerate_py_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+        "IPFS_DATASETS_PY_GROK_CLI_CMD",
+        implementation_daemon._GROK_BIN_ENV,
+        "GROK_CLI_CMD",
+        "GROK_BIN",
+        "GROK_HOME",
+        "XAI_API_KEY",
+        "ipfs_accelerate_py_XAI_API_KEY",
+        "IPFS_ACCELERATE_PY_XAI_API_KEY",
+        "IPFS_DATASETS_PY_XAI_API_KEY",
+        "GROK_AUTH_PROVIDER_COMMAND",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    real_which = implementation_daemon.shutil.which
+    monkeypatch.setattr(
+        implementation_daemon.shutil,
+        "which",
+        lambda name: (
+            "/usr/local/bin/codex"
+            if name == "codex"
+            else real_which(name)
+        ),
+    )
+    daemon = _daemon(tmp_path)
+
+    command = daemon._build_implementation_command(
+        tmp_path,
+        task=_prompt_task(),
+    )
+
+    assert command[0] == implementation_daemon.sys.executable
+    assert command[1].endswith("grok_cli_runner.py")
+    assert command[command.index("--grok-bin") + 1] == str(fake_grok)
+    fallback_index = command.index("--codex-fallback-command-json")
+    assert json.loads(command[fallback_index + 1])[:2] == [
+        "/usr/local/bin/codex",
+        "exec",
+    ]
+
+
 def test_default_implementation_provider_falls_back_to_codex(
     tmp_path: Path,
     monkeypatch,

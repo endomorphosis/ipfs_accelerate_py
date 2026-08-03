@@ -2606,15 +2606,15 @@ def _clean_grok_cli_output(text: str) -> str:
 
 
 def _grok_cli_command() -> str:
-    return (
-        _coalesce_env(
-            "ipfs_accelerate_py_GROK_CLI_CMD",
-            "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
-            "IPFS_DATASETS_PY_GROK_CLI_CMD",
-            "GROK_CLI_CMD",
-        )
-        or "grok"
+    configured = _coalesce_env(
+        "ipfs_accelerate_py_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+        "IPFS_DATASETS_PY_GROK_CLI_CMD",
+        "GROK_CLI_CMD",
     )
+    if configured:
+        return configured
+    return find_grok_cli() or "grok"
 
 
 def _grok_cli_auth_path() -> Path:
@@ -4068,7 +4068,13 @@ def build_goose_cli_env(
 
 
 def find_grok_cli() -> Optional[str]:
-    """Locate the official Grok CLI binary without starting a process."""
+    """Locate the official Grok CLI binary without starting a process.
+
+    User services commonly receive systemd's minimal ``PATH`` rather than the
+    interactive login path.  Check the two conventional per-user install
+    locations after configured/PATH discovery so an authenticated local Grok
+    install remains the default in supervised processes.
+    """
 
     configured = _coalesce_env(
         "ipfs_accelerate_py_GROK_CLI_CMD",
@@ -4087,7 +4093,19 @@ def find_grok_cli() -> Optional[str]:
             found = shutil.which(parts[0])
             if found:
                 return found
-    return shutil.which("grok")
+    found = shutil.which("grok")
+    if found:
+        return found
+    for candidate in (
+        Path.home() / ".local" / "bin" / "grok",
+        Path.home() / ".grok" / "bin" / "grok",
+    ):
+        try:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+        except OSError:
+            continue
+    return None
 
 
 def _grok_default_model() -> str:
