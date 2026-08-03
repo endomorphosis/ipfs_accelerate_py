@@ -189,7 +189,7 @@
     "disagreement_quarantined": true,
     "live_cases": [
       {
-        "artifact_digest": "9d61a33a38790794357539d30e099035a02c9c8c9db36c75e3004ef0ba05ad93",
+        "artifact_digest": "862bb943addf55508fe7cfdbf4a13717bcfd8e8e76edd2292f01f557f0c85881",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -208,8 +208,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "5b11164acd875daae93515fe7bc763b111d4f4995bcd5be7805cb40e029af761",
-        "raw_szs_output_digest": "5b11164acd875daae93515fe7bc763b111d4f4995bcd5be7805cb40e029af761",
+        "output_digest": "451392623b695066ac4833c641ad0ba89491a33f11332267c912730602c858f3",
+        "raw_szs_output_digest": "451392623b695066ac4833c641ad0ba89491a33f11332267c912730602c858f3",
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
         "status": "theorem_candidate",
@@ -301,7 +301,7 @@
         "tool_id": "vampire"
       },
       {
-        "artifact_digest": "d2c03feb262a85a905fa4df7ef4bb77b3aab04bee0b66e3f7c967da2bbd763cc",
+        "artifact_digest": "b2f2eaead8d210247d2af17c6aa16117f8b68bb2948541877969416acebd2df0",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -320,8 +320,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "1ca95c6b9fcfb38cd9312a49659c9b5c4f52c16c463f20638d168d81a9726c7c",
-        "raw_szs_output_digest": "1ca95c6b9fcfb38cd9312a49659c9b5c4f52c16c463f20638d168d81a9726c7c",
+        "output_digest": "c35081396a6ccea821b028c863885236199f2ee8b04c0ed2c3e6fe211b790e08",
+        "raw_szs_output_digest": "c35081396a6ccea821b028c863885236199f2ee8b04c0ed2c3e6fe211b790e08",
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
         "status": "theorem_candidate",
@@ -329,7 +329,7 @@
         "tool_id": "vampire"
       },
       {
-        "artifact_digest": "8f0803395e8fed1d3fcee954c4bd87ab3e568f36b4fa9dd5941d7ae793ca5c89",
+        "artifact_digest": "5ff9a0f9846b0bab3ab55e5e2c4e7f8b3b38b8d4ff15ffe227104d35a17aff76",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -348,8 +348,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "7c54b4f60cccfa73fb14f253b4bd5ae889af9de61a3d5c4bedac242f17b62d54",
-        "raw_szs_output_digest": "7c54b4f60cccfa73fb14f253b4bd5ae889af9de61a3d5c4bedac242f17b62d54",
+        "output_digest": "1dc3e9c7087511d0b9fbaf3ececf60a50cc07c5ce427a99590a6ac421581e944",
+        "raw_szs_output_digest": "1dc3e9c7087511d0b9fbaf3ececf60a50cc07c5ce427a99590a6ac421581e944",
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
         "status": "theorem_candidate",
@@ -418,7 +418,7 @@
         "tool_id": "vampire"
       },
       {
-        "artifact_digest": "333dc825a2b823275423960b1b3ea95510272727541dc29de10eb7a26dfa854c",
+        "artifact_digest": "f71154457bf4be47ec4de11f76431631bce3f058af5e824371a7231d4416cd66",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -437,8 +437,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "848e9d53123bc338f6a9883c4344a5dbf07292e6e9cd158139b04607416c5c83",
-        "raw_szs_output_digest": "848e9d53123bc338f6a9883c4344a5dbf07292e6e9cd158139b04607416c5c83",
+        "output_digest": "89c1ef9abcd3718b24c0bde9089c18fb6a8cadf2d867e4566fae55ee8d5451a6",
+        "raw_szs_output_digest": "89c1ef9abcd3718b24c0bde9089c18fb6a8cadf2d867e4566fae55ee8d5451a6",
         "reconstruction_status": "kernel_receipt_missing",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
         "status": "theorem_candidate",
@@ -446,7 +446,7 @@
         "tool_id": "vampire"
       },
       {
-        "artifact_digest": "22a173f4f2776ab748050ff5492dbc3724d6df41b27d38e4d8a93f3b1baa70dc",
+        "artifact_digest": "1079367ea33668b03fe87ae075bcca5a70c4a94375306a20ffbe7f29c0e8d868",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -474,7 +474,7 @@
         "tool_id": "vampire"
       },
       {
-        "artifact_digest": "307220a1aae34b0e684756356a164b97532dbdc35acb24df98cde58a209d971b",
+        "artifact_digest": "63a59c4f4f866037d79ad0de058f8e811f42b81ba43969378e593d8b6adab2d5",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -493,8 +493,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "b3eb99ed42cba804409b73f1cec400610adbc3718a5870576e9a3c10a47a1b5d",
-        "raw_szs_output_digest": "b3eb99ed42cba804409b73f1cec400610adbc3718a5870576e9a3c10a47a1b5d",
+        "output_digest": "caf6072eec1f64da4440d3f3b010781a4e11ec65e65b8b4238ff8175519007e5",
+        "raw_szs_output_digest": "caf6072eec1f64da4440d3f3b010781a4e11ec65e65b8b4238ff8175519007e5",
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
         "status": "theorem_candidate",
@@ -502,7 +502,7 @@
         "tool_id": "eprover"
       },
       {
-        "artifact_digest": "2fafc6fdb326e7de2b693286a5114a39034695039f0d0f11af10f1a34ae7d404",
+        "artifact_digest": "7620a45deef872cd0f4cbff82397616f83ba59b0774e332f352ec93c885ad4df",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -521,8 +521,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "6b74e05f17e97209de37576a79b31c4bd3df9f9d888984f3b2d43a1649c0fd85",
-        "raw_szs_output_digest": "6b74e05f17e97209de37576a79b31c4bd3df9f9d888984f3b2d43a1649c0fd85",
+        "output_digest": "6029447cffe67456d70c35ef504b7fb7e0c78891523ddb0601d7748347b07e80",
+        "raw_szs_output_digest": "6029447cffe67456d70c35ef504b7fb7e0c78891523ddb0601d7748347b07e80",
         "reconstruction_status": "unreconstructed",
         "source_digest": "2c871116f413942d4801e86ceebe7213632e52c4fd86795914128db84b32d648",
         "status": "non_theorem_candidate",
@@ -530,7 +530,7 @@
         "tool_id": "eprover"
       },
       {
-        "artifact_digest": "e6ddaedff394518912ab0bf88654ee586e207bb53c8353af72b246aa58d98804",
+        "artifact_digest": "831b07c1e82411e175b28403517ce29d9b2eab80b9412605a2ff24758bbb5ce9",
         "assumptions": [
           "fof(ax1, axiom, ~p)."
         ],
@@ -549,8 +549,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "7ec5a975b99724e57a6d1dfd0846727b392f646c6b050157cc09e6e4643c187c",
-        "raw_szs_output_digest": "7ec5a975b99724e57a6d1dfd0846727b392f646c6b050157cc09e6e4643c187c",
+        "output_digest": "36fcd8acc8aabd4df6efcaf526a84ea31c2a05efd1910da513d0c792ec0422cd",
+        "raw_szs_output_digest": "36fcd8acc8aabd4df6efcaf526a84ea31c2a05efd1910da513d0c792ec0422cd",
         "reconstruction_status": "unreconstructed",
         "source_digest": "a255406efa939e3d5176feed45a31b032f1bab026e6d093277a907fbc84f4bae",
         "status": "non_theorem_candidate",
@@ -558,7 +558,7 @@
         "tool_id": "eprover"
       },
       {
-        "artifact_digest": "ed4498ae5a56c5a98c98fdd832c4eecd9d5f39075d336b52172977a4961524e7",
+        "artifact_digest": "fe51cbeaaf5f277003289c2beceacd001fdc3f29159fcbdb74da6c2c0822daf7",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -577,8 +577,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "3ce428545027ccb36c3f970ea0e303759d9989b94df82faac07629f95e6c1fa1",
-        "raw_szs_output_digest": "3ce428545027ccb36c3f970ea0e303759d9989b94df82faac07629f95e6c1fa1",
+        "output_digest": "192f6508eee765b2f529dcf9049a1feae05b275b45f117541530a04d9161ffc4",
+        "raw_szs_output_digest": "192f6508eee765b2f529dcf9049a1feae05b275b45f117541530a04d9161ffc4",
         "reconstruction_status": "unreconstructed",
         "source_digest": "5ecfb212fc2d627b0cfb0d9b50589fb5af7ac4a4a0c53c67d60d6f5d6bed6b4f",
         "status": "non_theorem_candidate",
@@ -586,7 +586,7 @@
         "tool_id": "eprover"
       },
       {
-        "artifact_digest": "26ac420f5491faaa186c7104e5470e64507fa44ba2c4aa03592101b5bba73f9b",
+        "artifact_digest": "d7b2b4ede5da94763696443dbeedea4f851c2b902a920c9ede3f76bddfa31930",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -605,8 +605,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "1bc0e0a785e8fa5f20a0c3c4bfa958ab776b33a0251ffb273c20fa3726d404e7",
-        "raw_szs_output_digest": "1bc0e0a785e8fa5f20a0c3c4bfa958ab776b33a0251ffb273c20fa3726d404e7",
+        "output_digest": "1f9e02952db95acc3842299c7208b1fb5601a86f18b3120c9cbf13ee157eee7e",
+        "raw_szs_output_digest": "1f9e02952db95acc3842299c7208b1fb5601a86f18b3120c9cbf13ee157eee7e",
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
         "status": "theorem_candidate",
@@ -614,7 +614,7 @@
         "tool_id": "eprover"
       },
       {
-        "artifact_digest": "b67faf53dca1a5c2190a13ecdd575ced26d88facea7d26c1f13344477e8128b2",
+        "artifact_digest": "cdce08f591615579c73132b9dac3612377f009e3ff346588764298dc99cdc4b7",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -633,8 +633,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "7822fbb7e9db8875b82ca7cf2803726258d4694759cff0178aaa4be8f0e0d69d",
-        "raw_szs_output_digest": "7822fbb7e9db8875b82ca7cf2803726258d4694759cff0178aaa4be8f0e0d69d",
+        "output_digest": "3f16bc26effb25140e79a20c84810e1cd7c377b9bcf9912c6a7b29d4a5b3acb5",
+        "raw_szs_output_digest": "3f16bc26effb25140e79a20c84810e1cd7c377b9bcf9912c6a7b29d4a5b3acb5",
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
         "status": "theorem_candidate",
@@ -642,7 +642,7 @@
         "tool_id": "eprover"
       },
       {
-        "artifact_digest": "9547fb08f4e47ada06e4c443c95204b53f2f0c3a29342b98cf28eef86b57e6c9",
+        "artifact_digest": "784441c96f740e20d9f20acf983496fb8779157117c501110e6c667a95e60820",
         "assumptions": [],
         "authority": "candidate",
         "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
@@ -659,8 +659,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "0d48b7655da06add2f83f370c81fbd7fef9a77eea397fd985d0cdc6d4d714ce2",
-        "raw_szs_output_digest": "0d48b7655da06add2f83f370c81fbd7fef9a77eea397fd985d0cdc6d4d714ce2",
+        "output_digest": "b1c55d50d2e879af2b0d1f19c5500fe17ab2abf90136dc87b99a23b8d29bf025",
+        "raw_szs_output_digest": "b1c55d50d2e879af2b0d1f19c5500fe17ab2abf90136dc87b99a23b8d29bf025",
         "reconstruction_status": "unreconstructed",
         "source_digest": "e7fff66cd7ccacc12ee6b9a19d1ddec2a862e94300ea3af49e5b2ddd22a829d6",
         "status": "quarantined",
@@ -703,7 +703,7 @@
         "tool_id": "eprover"
       },
       {
-        "artifact_digest": "bd1029a0b0820466ca40a03b426b3ce898d40b4a74ff6718c7628772e1d741c6",
+        "artifact_digest": "3b343138f17f4dd8758c0bd8f435c7480890ddb2e2dd16d74f6250074d4e7cb8",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -722,8 +722,8 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "21fb8afa81e1b86c3f5e97ac18aafb0373e9a39fa3d7dfd6e90cdf0250033de8",
-        "raw_szs_output_digest": "21fb8afa81e1b86c3f5e97ac18aafb0373e9a39fa3d7dfd6e90cdf0250033de8",
+        "output_digest": "8767876bfeda28e35edd348c7ab679d21b8f18f46d753a8b3504d055581d2038",
+        "raw_szs_output_digest": "8767876bfeda28e35edd348c7ab679d21b8f18f46d753a8b3504d055581d2038",
         "reconstruction_status": "kernel_receipt_missing",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
         "status": "theorem_candidate",
@@ -731,7 +731,7 @@
         "tool_id": "eprover"
       },
       {
-        "artifact_digest": "884dca35837ded817622ebf860ab04ab2fa8c3cfef5f87e26dfd3b12b3349710",
+        "artifact_digest": "814b628b2cba14f4608343591d8ce3361dc5eeef62ef89a65e414f92a22c5a10",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -764,7 +764,7 @@
   "boolean_reconstruction_claim_cannot_elevate": true,
   "cases": [
     {
-      "artifact_digest": "9d61a33a38790794357539d30e099035a02c9c8c9db36c75e3004ef0ba05ad93",
+      "artifact_digest": "862bb943addf55508fe7cfdbf4a13717bcfd8e8e76edd2292f01f557f0c85881",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -788,10 +788,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "5b11164acd875daae93515fe7bc763b111d4f4995bcd5be7805cb40e029af761",
+      "output_digest": "451392623b695066ac4833c641ad0ba89491a33f11332267c912730602c858f3",
       "proof_bound": true,
       "proof_object_present": true,
-      "raw_szs_output_digest": "5b11164acd875daae93515fe7bc763b111d4f4995bcd5be7805cb40e029af761",
+      "raw_szs_output_digest": "451392623b695066ac4833c641ad0ba89491a33f11332267c912730602c858f3",
       "raw_szs_output_preview": "% Running in auto input_syntax mode. Trying TPTP\n% Refutation found. Thanks to Tanya!\n% SZS status Theorem for vampire_problem\n% SZS output start Proof for vampire_problem\nfof(f1,axiom,(\n  p),\n  file('<host-path-redacted>/vampire_problem.p',unknown)).\nfof(f2,conjecture,(\n  p),\n  file('<host-path-redacted>/vampire_problem.p',unknown)).\nfof(f3,negated_conjecture,(\n  ~p),\n  inference(negated_conj",
       "reason_codes": [
         "szs:Theorem",
@@ -936,7 +936,7 @@
       "tool_id": "vampire"
     },
     {
-      "artifact_digest": "d2c03feb262a85a905fa4df7ef4bb77b3aab04bee0b66e3f7c967da2bbd763cc",
+      "artifact_digest": "b2f2eaead8d210247d2af17c6aa16117f8b68bb2948541877969416acebd2df0",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -960,10 +960,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "1ca95c6b9fcfb38cd9312a49659c9b5c4f52c16c463f20638d168d81a9726c7c",
+      "output_digest": "c35081396a6ccea821b028c863885236199f2ee8b04c0ed2c3e6fe211b790e08",
       "proof_bound": true,
       "proof_object_present": true,
-      "raw_szs_output_digest": "1ca95c6b9fcfb38cd9312a49659c9b5c4f52c16c463f20638d168d81a9726c7c",
+      "raw_szs_output_digest": "c35081396a6ccea821b028c863885236199f2ee8b04c0ed2c3e6fe211b790e08",
       "raw_szs_output_preview": "% Running in auto input_syntax mode. Trying TPTP\n% Refutation found. Thanks to Tanya!\n% SZS status Theorem for vampire_problem\n% SZS output start Proof for vampire_problem\nfof(f1,axiom,(\n  p),\n  file('<host-path-redacted>/vampire_problem.p',unknown)).\nfof(f2,conjecture,(\n  p),\n  file('<host-path-redacted>/vampire_problem.p',unknown)).\nfof(f3,negated_conjecture,(\n  ~p),\n  inference(negated_conj",
       "reason_codes": [
         "szs:Theorem",
@@ -979,7 +979,7 @@
       "tool_id": "vampire"
     },
     {
-      "artifact_digest": "8f0803395e8fed1d3fcee954c4bd87ab3e568f36b4fa9dd5941d7ae793ca5c89",
+      "artifact_digest": "5ff9a0f9846b0bab3ab55e5e2c4e7f8b3b38b8d4ff15ffe227104d35a17aff76",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -1003,10 +1003,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "7c54b4f60cccfa73fb14f253b4bd5ae889af9de61a3d5c4bedac242f17b62d54",
+      "output_digest": "1dc3e9c7087511d0b9fbaf3ececf60a50cc07c5ce427a99590a6ac421581e944",
       "proof_bound": true,
       "proof_object_present": true,
-      "raw_szs_output_digest": "7c54b4f60cccfa73fb14f253b4bd5ae889af9de61a3d5c4bedac242f17b62d54",
+      "raw_szs_output_digest": "1dc3e9c7087511d0b9fbaf3ececf60a50cc07c5ce427a99590a6ac421581e944",
       "raw_szs_output_preview": "% Running in auto input_syntax mode. Trying TPTP\n% Refutation found. Thanks to Tanya!\n% SZS status Theorem for vampire_problem\n% SZS output start Proof for vampire_problem\nfof(f1,axiom,(\n  p),\n  file('<host-path-redacted>/vampire_problem.p',unknown)).\nfof(f2,conjecture,(\n  p),\n  file('<host-path-redacted>/vampire_problem.p',unknown)).\nfof(f3,negated_conjecture,(\n  ~p),\n  inference(negated_conj",
       "reason_codes": [
         "szs:Theorem",
@@ -1113,7 +1113,7 @@
       "tool_id": "vampire"
     },
     {
-      "artifact_digest": "333dc825a2b823275423960b1b3ea95510272727541dc29de10eb7a26dfa854c",
+      "artifact_digest": "f71154457bf4be47ec4de11f76431631bce3f058af5e824371a7231d4416cd66",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -1137,10 +1137,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "848e9d53123bc338f6a9883c4344a5dbf07292e6e9cd158139b04607416c5c83",
+      "output_digest": "89c1ef9abcd3718b24c0bde9089c18fb6a8cadf2d867e4566fae55ee8d5451a6",
       "proof_bound": true,
       "proof_object_present": true,
-      "raw_szs_output_digest": "848e9d53123bc338f6a9883c4344a5dbf07292e6e9cd158139b04607416c5c83",
+      "raw_szs_output_digest": "89c1ef9abcd3718b24c0bde9089c18fb6a8cadf2d867e4566fae55ee8d5451a6",
       "raw_szs_output_preview": "% Running in auto input_syntax mode. Trying TPTP\n% Refutation found. Thanks to Tanya!\n% SZS status Theorem for vampire_problem\n% SZS output start Proof for vampire_problem\nfof(f1,axiom,(\n  p),\n  file('<host-path-redacted>/vampire_problem.p',unknown)).\nfof(f2,conjecture,(\n  p),\n  file('<host-path-redacted>/vampire_problem.p',unknown)).\nfof(f3,negated_conjecture,(\n  ~p),\n  inference(negated_conj",
       "reason_codes": [
         "szs:Theorem",
@@ -1157,7 +1157,7 @@
       "tool_id": "vampire"
     },
     {
-      "artifact_digest": "22a173f4f2776ab748050ff5492dbc3724d6df41b27d38e4d8a93f3b1baa70dc",
+      "artifact_digest": "1079367ea33668b03fe87ae075bcca5a70c4a94375306a20ffbe7f29c0e8d868",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -1201,7 +1201,7 @@
       "tool_id": "vampire"
     },
     {
-      "artifact_digest": "307220a1aae34b0e684756356a164b97532dbdc35acb24df98cde58a209d971b",
+      "artifact_digest": "63a59c4f4f866037d79ad0de058f8e811f42b81ba43969378e593d8b6adab2d5",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -1225,10 +1225,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "b3eb99ed42cba804409b73f1cec400610adbc3718a5870576e9a3c10a47a1b5d",
+      "output_digest": "caf6072eec1f64da4440d3f3b010781a4e11ec65e65b8b4238ff8175519007e5",
       "proof_bound": true,
       "proof_object_present": true,
-      "raw_szs_output_digest": "b3eb99ed42cba804409b73f1cec400610adbc3718a5870576e9a3c10a47a1b5d",
+      "raw_szs_output_digest": "caf6072eec1f64da4440d3f3b010781a4e11ec65e65b8b4238ff8175519007e5",
       "raw_szs_output_preview": "# Initializing proof state\n# Scanning for AC axioms\n#\n#cnf(i_0_1, plain, (p)).\n#\n# Proof found!\n# SZS status Theorem\n# SZS output start CNFRefutation\nfof(goal, conjecture, p, file('<host-path-redacted>/eprover_problem.p', goal)).\nfof(ax1, axiom, p, file('<host-path-redacted>/eprover_problem.p', ax1)).\nfof(c_0_2, negated_conjecture, ~p, inference(fof_simplification,[status(thm)],[inference(assu",
       "reason_codes": [
         "szs:Theorem",
@@ -1244,7 +1244,7 @@
       "tool_id": "eprover"
     },
     {
-      "artifact_digest": "2fafc6fdb326e7de2b693286a5114a39034695039f0d0f11af10f1a34ae7d404",
+      "artifact_digest": "7620a45deef872cd0f4cbff82397616f83ba59b0774e332f352ec93c885ad4df",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -1268,10 +1268,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "6b74e05f17e97209de37576a79b31c4bd3df9f9d888984f3b2d43a1649c0fd85",
+      "output_digest": "6029447cffe67456d70c35ef504b7fb7e0c78891523ddb0601d7748347b07e80",
       "proof_bound": false,
       "proof_object_present": true,
-      "raw_szs_output_digest": "6b74e05f17e97209de37576a79b31c4bd3df9f9d888984f3b2d43a1649c0fd85",
+      "raw_szs_output_digest": "6029447cffe67456d70c35ef504b7fb7e0c78891523ddb0601d7748347b07e80",
       "raw_szs_output_preview": "# Initializing proof state\n# Scanning for AC axioms\n#\n#cnf(i_0_1, plain, (p)).\n#\n#cnf(i_0_2, negated_conjecture, (~q)).\n\n# No proof found!\n# SZS status CounterSatisfiable\n# SZS output start Saturation\nfof(goal, conjecture, q, file('<host-path-redacted>/eprover_problem.p', goal)).\nfof(ax1, axiom, p, file('<host-path-redacted>/eprover_problem.p', ax1)).\nfof(c_0_2, negated_conjecture, ~q, inferen",
       "reason_codes": [
         "szs:CounterSatisfiable",
@@ -1287,7 +1287,7 @@
       "tool_id": "eprover"
     },
     {
-      "artifact_digest": "e6ddaedff394518912ab0bf88654ee586e207bb53c8353af72b246aa58d98804",
+      "artifact_digest": "831b07c1e82411e175b28403517ce29d9b2eab80b9412605a2ff24758bbb5ce9",
       "assumptions": [
         "fof(ax1, axiom, ~p)."
       ],
@@ -1311,10 +1311,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "7ec5a975b99724e57a6d1dfd0846727b392f646c6b050157cc09e6e4643c187c",
+      "output_digest": "36fcd8acc8aabd4df6efcaf526a84ea31c2a05efd1910da513d0c792ec0422cd",
       "proof_bound": false,
       "proof_object_present": true,
-      "raw_szs_output_digest": "7ec5a975b99724e57a6d1dfd0846727b392f646c6b050157cc09e6e4643c187c",
+      "raw_szs_output_digest": "36fcd8acc8aabd4df6efcaf526a84ea31c2a05efd1910da513d0c792ec0422cd",
       "raw_szs_output_preview": "# Initializing proof state\n# Scanning for AC axioms\n#\n#cnf(i_0_1, plain, (~p)).\n#\n# No proof found!\n# SZS status CounterSatisfiable\n# SZS output start Saturation\nfof(ax1, axiom, ~(p), file('<host-path-redacted>/eprover_problem.p', ax1)).\nfof(c_0_1, plain, ~p, inference(fof_simplification,[status(thm)],[ax1])).\nfof(c_0_2, plain, ~p, inference(fof_nnf,[status(thm)],[c_0_1])).\ncnf(c_0_3, plain, (~p",
       "reason_codes": [
         "szs:CounterSatisfiable",
@@ -1330,7 +1330,7 @@
       "tool_id": "eprover"
     },
     {
-      "artifact_digest": "ed4498ae5a56c5a98c98fdd832c4eecd9d5f39075d336b52172977a4961524e7",
+      "artifact_digest": "fe51cbeaaf5f277003289c2beceacd001fdc3f29159fcbdb74da6c2c0822daf7",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -1354,10 +1354,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "3ce428545027ccb36c3f970ea0e303759d9989b94df82faac07629f95e6c1fa1",
+      "output_digest": "192f6508eee765b2f529dcf9049a1feae05b275b45f117541530a04d9161ffc4",
       "proof_bound": false,
       "proof_object_present": true,
-      "raw_szs_output_digest": "3ce428545027ccb36c3f970ea0e303759d9989b94df82faac07629f95e6c1fa1",
+      "raw_szs_output_digest": "192f6508eee765b2f529dcf9049a1feae05b275b45f117541530a04d9161ffc4",
       "raw_szs_output_preview": "# Initializing proof state\n# Scanning for AC axioms\n#\n#cnf(i_0_1, plain, (p)).\n#\n#cnf(i_0_2, negated_conjecture, (~r)).\n\n# No proof found!\n# SZS status CounterSatisfiable\n# SZS output start Saturation\nfof(goal, conjecture, r, file('<host-path-redacted>/eprover_problem.p', goal)).\nfof(ax1, axiom, p, file('<host-path-redacted>/eprover_problem.p', ax1)).\nfof(c_0_2, negated_conjecture, ~r, inferen",
       "reason_codes": [
         "szs:CounterSatisfiable",
@@ -1373,7 +1373,7 @@
       "tool_id": "eprover"
     },
     {
-      "artifact_digest": "26ac420f5491faaa186c7104e5470e64507fa44ba2c4aa03592101b5bba73f9b",
+      "artifact_digest": "d7b2b4ede5da94763696443dbeedea4f851c2b902a920c9ede3f76bddfa31930",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -1397,10 +1397,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "1bc0e0a785e8fa5f20a0c3c4bfa958ab776b33a0251ffb273c20fa3726d404e7",
+      "output_digest": "1f9e02952db95acc3842299c7208b1fb5601a86f18b3120c9cbf13ee157eee7e",
       "proof_bound": true,
       "proof_object_present": true,
-      "raw_szs_output_digest": "1bc0e0a785e8fa5f20a0c3c4bfa958ab776b33a0251ffb273c20fa3726d404e7",
+      "raw_szs_output_digest": "1f9e02952db95acc3842299c7208b1fb5601a86f18b3120c9cbf13ee157eee7e",
       "raw_szs_output_preview": "# Initializing proof state\n# Scanning for AC axioms\n#\n#cnf(i_0_1, plain, (p)).\n#\n# Proof found!\n# SZS status Theorem\n# SZS output start CNFRefutation\nfof(goal, conjecture, p, file('<host-path-redacted>/eprover_problem.p', goal)).\nfof(ax1, axiom, p, file('<host-path-redacted>/eprover_problem.p', ax1)).\nfof(c_0_2, negated_conjecture, ~p, inference(fof_simplification,[status(thm)],[inference(assu",
       "reason_codes": [
         "szs:Theorem",
@@ -1416,7 +1416,7 @@
       "tool_id": "eprover"
     },
     {
-      "artifact_digest": "b67faf53dca1a5c2190a13ecdd575ced26d88facea7d26c1f13344477e8128b2",
+      "artifact_digest": "cdce08f591615579c73132b9dac3612377f009e3ff346588764298dc99cdc4b7",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -1440,10 +1440,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "7822fbb7e9db8875b82ca7cf2803726258d4694759cff0178aaa4be8f0e0d69d",
+      "output_digest": "3f16bc26effb25140e79a20c84810e1cd7c377b9bcf9912c6a7b29d4a5b3acb5",
       "proof_bound": true,
       "proof_object_present": true,
-      "raw_szs_output_digest": "7822fbb7e9db8875b82ca7cf2803726258d4694759cff0178aaa4be8f0e0d69d",
+      "raw_szs_output_digest": "3f16bc26effb25140e79a20c84810e1cd7c377b9bcf9912c6a7b29d4a5b3acb5",
       "raw_szs_output_preview": "# Initializing proof state\n# Scanning for AC axioms\n#\n#cnf(i_0_1, plain, (p)).\n#\n# Proof found!\n# SZS status Theorem\n# SZS output start CNFRefutation\nfof(goal, conjecture, p, file('<host-path-redacted>/eprover_problem.p', goal)).\nfof(ax1, axiom, p, file('<host-path-redacted>/eprover_problem.p', ax1)).\nfof(c_0_2, negated_conjecture, ~p, inference(fof_simplification,[status(thm)],[inference(assu",
       "reason_codes": [
         "szs:Theorem",
@@ -1459,7 +1459,7 @@
       "tool_id": "eprover"
     },
     {
-      "artifact_digest": "9547fb08f4e47ada06e4c443c95204b53f2f0c3a29342b98cf28eef86b57e6c9",
+      "artifact_digest": "784441c96f740e20d9f20acf983496fb8779157117c501110e6c667a95e60820",
       "assumptions": [],
       "authority": "candidate",
       "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
@@ -1481,10 +1481,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "0d48b7655da06add2f83f370c81fbd7fef9a77eea397fd985d0cdc6d4d714ce2",
+      "output_digest": "b1c55d50d2e879af2b0d1f19c5500fe17ab2abf90136dc87b99a23b8d29bf025",
       "proof_bound": false,
       "proof_object_present": false,
-      "raw_szs_output_digest": "0d48b7655da06add2f83f370c81fbd7fef9a77eea397fd985d0cdc6d4d714ce2",
+      "raw_szs_output_digest": "b1c55d50d2e879af2b0d1f19c5500fe17ab2abf90136dc87b99a23b8d29bf025",
       "raw_szs_output_preview": "eprover: <host-path-redacted>/eprover_problem.p:1:(Column 1):(just read 'this'): No token (probably EOF) expected, but Identifier not terminating in a number read \n",
       "reason_codes": [
         "malformed_output",
@@ -1550,7 +1550,7 @@
       "tool_id": "eprover"
     },
     {
-      "artifact_digest": "bd1029a0b0820466ca40a03b426b3ce898d40b4a74ff6718c7628772e1d741c6",
+      "artifact_digest": "3b343138f17f4dd8758c0bd8f435c7480890ddb2e2dd16d74f6250074d4e7cb8",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -1574,10 +1574,10 @@
         "timeout_seconds": 15.0
       },
       "matched": true,
-      "output_digest": "21fb8afa81e1b86c3f5e97ac18aafb0373e9a39fa3d7dfd6e90cdf0250033de8",
+      "output_digest": "8767876bfeda28e35edd348c7ab679d21b8f18f46d753a8b3504d055581d2038",
       "proof_bound": true,
       "proof_object_present": true,
-      "raw_szs_output_digest": "21fb8afa81e1b86c3f5e97ac18aafb0373e9a39fa3d7dfd6e90cdf0250033de8",
+      "raw_szs_output_digest": "8767876bfeda28e35edd348c7ab679d21b8f18f46d753a8b3504d055581d2038",
       "raw_szs_output_preview": "# Initializing proof state\n# Scanning for AC axioms\n#\n#cnf(i_0_1, plain, (p)).\n#\n# Proof found!\n# SZS status Theorem\n# SZS output start CNFRefutation\nfof(goal, conjecture, p, file('<host-path-redacted>/eprover_problem.p', goal)).\nfof(ax1, axiom, p, file('<host-path-redacted>/eprover_problem.p', ax1)).\nfof(c_0_2, negated_conjecture, ~p, inference(fof_simplification,[status(thm)],[inference(assu",
       "reason_codes": [
         "szs:Theorem",
@@ -1594,7 +1594,7 @@
       "tool_id": "eprover"
     },
     {
-      "artifact_digest": "884dca35837ded817622ebf860ab04ab2fa8c3cfef5f87e26dfd3b12b3349710",
+      "artifact_digest": "814b628b2cba14f4608343591d8ce3361dc5eeef62ef89a65e414f92a22c5a10",
       "assumptions": [
         "fof(ax1, axiom, p)."
       ],
@@ -1681,7 +1681,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "9d61a33a38790794357539d30e099035a02c9c8c9db36c75e3004ef0ba05ad93",
+        "artifact_digest": "862bb943addf55508fe7cfdbf4a13717bcfd8e8e76edd2292f01f557f0c85881",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -1698,7 +1698,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "5b11164acd875daae93515fe7bc763b111d4f4995bcd5be7805cb40e029af761",
+        "output_digest": "451392623b695066ac4833c641ad0ba89491a33f11332267c912730602c858f3",
         "proof_object_present": true,
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
@@ -1829,7 +1829,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "d2c03feb262a85a905fa4df7ef4bb77b3aab04bee0b66e3f7c967da2bbd763cc",
+        "artifact_digest": "b2f2eaead8d210247d2af17c6aa16117f8b68bb2948541877969416acebd2df0",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -1846,7 +1846,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "1ca95c6b9fcfb38cd9312a49659c9b5c4f52c16c463f20638d168d81a9726c7c",
+        "output_digest": "c35081396a6ccea821b028c863885236199f2ee8b04c0ed2c3e6fe211b790e08",
         "proof_object_present": true,
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
@@ -1866,7 +1866,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "8f0803395e8fed1d3fcee954c4bd87ab3e568f36b4fa9dd5941d7ae793ca5c89",
+        "artifact_digest": "5ff9a0f9846b0bab3ab55e5e2c4e7f8b3b38b8d4ff15ffe227104d35a17aff76",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -1883,7 +1883,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "7c54b4f60cccfa73fb14f253b4bd5ae889af9de61a3d5c4bedac242f17b62d54",
+        "output_digest": "1dc3e9c7087511d0b9fbaf3ececf60a50cc07c5ce427a99590a6ac421581e944",
         "proof_object_present": true,
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
@@ -1982,7 +1982,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "333dc825a2b823275423960b1b3ea95510272727541dc29de10eb7a26dfa854c",
+        "artifact_digest": "f71154457bf4be47ec4de11f76431631bce3f058af5e824371a7231d4416cd66",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -1999,7 +1999,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "848e9d53123bc338f6a9883c4344a5dbf07292e6e9cd158139b04607416c5c83",
+        "output_digest": "89c1ef9abcd3718b24c0bde9089c18fb6a8cadf2d867e4566fae55ee8d5451a6",
         "proof_object_present": true,
         "reconstruction_status": "kernel_receipt_missing",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
@@ -2020,7 +2020,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "22a173f4f2776ab748050ff5492dbc3724d6df41b27d38e4d8a93f3b1baa70dc",
+        "artifact_digest": "1079367ea33668b03fe87ae075bcca5a70c4a94375306a20ffbe7f29c0e8d868",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -2058,7 +2058,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "307220a1aae34b0e684756356a164b97532dbdc35acb24df98cde58a209d971b",
+        "artifact_digest": "63a59c4f4f866037d79ad0de058f8e811f42b81ba43969378e593d8b6adab2d5",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -2075,7 +2075,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "b3eb99ed42cba804409b73f1cec400610adbc3718a5870576e9a3c10a47a1b5d",
+        "output_digest": "caf6072eec1f64da4440d3f3b010781a4e11ec65e65b8b4238ff8175519007e5",
         "proof_object_present": true,
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
@@ -2095,7 +2095,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "2fafc6fdb326e7de2b693286a5114a39034695039f0d0f11af10f1a34ae7d404",
+        "artifact_digest": "7620a45deef872cd0f4cbff82397616f83ba59b0774e332f352ec93c885ad4df",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -2112,7 +2112,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "6b74e05f17e97209de37576a79b31c4bd3df9f9d888984f3b2d43a1649c0fd85",
+        "output_digest": "6029447cffe67456d70c35ef504b7fb7e0c78891523ddb0601d7748347b07e80",
         "proof_object_present": true,
         "reconstruction_status": "unreconstructed",
         "source_digest": "2c871116f413942d4801e86ceebe7213632e52c4fd86795914128db84b32d648",
@@ -2132,7 +2132,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "e6ddaedff394518912ab0bf88654ee586e207bb53c8353af72b246aa58d98804",
+        "artifact_digest": "831b07c1e82411e175b28403517ce29d9b2eab80b9412605a2ff24758bbb5ce9",
         "assumptions": [
           "fof(ax1, axiom, ~p)."
         ],
@@ -2149,7 +2149,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "7ec5a975b99724e57a6d1dfd0846727b392f646c6b050157cc09e6e4643c187c",
+        "output_digest": "36fcd8acc8aabd4df6efcaf526a84ea31c2a05efd1910da513d0c792ec0422cd",
         "proof_object_present": true,
         "reconstruction_status": "unreconstructed",
         "source_digest": "a255406efa939e3d5176feed45a31b032f1bab026e6d093277a907fbc84f4bae",
@@ -2169,7 +2169,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "ed4498ae5a56c5a98c98fdd832c4eecd9d5f39075d336b52172977a4961524e7",
+        "artifact_digest": "fe51cbeaaf5f277003289c2beceacd001fdc3f29159fcbdb74da6c2c0822daf7",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -2186,7 +2186,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "3ce428545027ccb36c3f970ea0e303759d9989b94df82faac07629f95e6c1fa1",
+        "output_digest": "192f6508eee765b2f529dcf9049a1feae05b275b45f117541530a04d9161ffc4",
         "proof_object_present": true,
         "reconstruction_status": "unreconstructed",
         "source_digest": "5ecfb212fc2d627b0cfb0d9b50589fb5af7ac4a4a0c53c67d60d6f5d6bed6b4f",
@@ -2206,7 +2206,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "26ac420f5491faaa186c7104e5470e64507fa44ba2c4aa03592101b5bba73f9b",
+        "artifact_digest": "d7b2b4ede5da94763696443dbeedea4f851c2b902a920c9ede3f76bddfa31930",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -2223,7 +2223,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "1bc0e0a785e8fa5f20a0c3c4bfa958ab776b33a0251ffb273c20fa3726d404e7",
+        "output_digest": "1f9e02952db95acc3842299c7208b1fb5601a86f18b3120c9cbf13ee157eee7e",
         "proof_object_present": true,
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
@@ -2243,7 +2243,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "b67faf53dca1a5c2190a13ecdd575ced26d88facea7d26c1f13344477e8128b2",
+        "artifact_digest": "cdce08f591615579c73132b9dac3612377f009e3ff346588764298dc99cdc4b7",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -2260,7 +2260,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "7822fbb7e9db8875b82ca7cf2803726258d4694759cff0178aaa4be8f0e0d69d",
+        "output_digest": "3f16bc26effb25140e79a20c84810e1cd7c377b9bcf9912c6a7b29d4a5b3acb5",
         "proof_object_present": true,
         "reconstruction_status": "unreconstructed",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
@@ -2280,7 +2280,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "9547fb08f4e47ada06e4c443c95204b53f2f0c3a29342b98cf28eef86b57e6c9",
+        "artifact_digest": "784441c96f740e20d9f20acf983496fb8779157117c501110e6c667a95e60820",
         "assumptions": [],
         "authority": "candidate",
         "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
@@ -2295,7 +2295,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "0d48b7655da06add2f83f370c81fbd7fef9a77eea397fd985d0cdc6d4d714ce2",
+        "output_digest": "b1c55d50d2e879af2b0d1f19c5500fe17ab2abf90136dc87b99a23b8d29bf025",
         "proof_object_present": false,
         "reconstruction_status": "unreconstructed",
         "source_digest": "e7fff66cd7ccacc12ee6b9a19d1ddec2a862e94300ea3af49e5b2ddd22a829d6",
@@ -2359,7 +2359,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "bd1029a0b0820466ca40a03b426b3ce898d40b4a74ff6718c7628772e1d741c6",
+        "artifact_digest": "3b343138f17f4dd8758c0bd8f435c7480890ddb2e2dd16d74f6250074d4e7cb8",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -2376,7 +2376,7 @@
           "network": false,
           "timeout_seconds": 15.0
         },
-        "output_digest": "21fb8afa81e1b86c3f5e97ac18aafb0373e9a39fa3d7dfd6e90cdf0250033de8",
+        "output_digest": "8767876bfeda28e35edd348c7ab679d21b8f18f46d753a8b3504d055581d2038",
         "proof_object_present": true,
         "reconstruction_status": "kernel_receipt_missing",
         "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
@@ -2397,7 +2397,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "884dca35837ded817622ebf860ab04ab2fa8c3cfef5f87e26dfd3b12b3349710",
+        "artifact_digest": "814b628b2cba14f4608343591d8ce3361dc5eeef62ef89a65e414f92a22c5a10",
         "assumptions": [
           "fof(ax1, axiom, p)."
         ],
@@ -2831,7 +2831,7 @@
         "disagreement_quarantined": true,
         "live_cases": [
           {
-            "artifact_digest": "9d61a33a38790794357539d30e099035a02c9c8c9db36c75e3004ef0ba05ad93",
+            "artifact_digest": "862bb943addf55508fe7cfdbf4a13717bcfd8e8e76edd2292f01f557f0c85881",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -2850,8 +2850,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "5b11164acd875daae93515fe7bc763b111d4f4995bcd5be7805cb40e029af761",
-            "raw_szs_output_digest": "5b11164acd875daae93515fe7bc763b111d4f4995bcd5be7805cb40e029af761",
+            "output_digest": "451392623b695066ac4833c641ad0ba89491a33f11332267c912730602c858f3",
+            "raw_szs_output_digest": "451392623b695066ac4833c641ad0ba89491a33f11332267c912730602c858f3",
             "reconstruction_status": "unreconstructed",
             "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
             "status": "theorem_candidate",
@@ -2943,7 +2943,7 @@
             "tool_id": "vampire"
           },
           {
-            "artifact_digest": "d2c03feb262a85a905fa4df7ef4bb77b3aab04bee0b66e3f7c967da2bbd763cc",
+            "artifact_digest": "b2f2eaead8d210247d2af17c6aa16117f8b68bb2948541877969416acebd2df0",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -2962,8 +2962,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "1ca95c6b9fcfb38cd9312a49659c9b5c4f52c16c463f20638d168d81a9726c7c",
-            "raw_szs_output_digest": "1ca95c6b9fcfb38cd9312a49659c9b5c4f52c16c463f20638d168d81a9726c7c",
+            "output_digest": "c35081396a6ccea821b028c863885236199f2ee8b04c0ed2c3e6fe211b790e08",
+            "raw_szs_output_digest": "c35081396a6ccea821b028c863885236199f2ee8b04c0ed2c3e6fe211b790e08",
             "reconstruction_status": "unreconstructed",
             "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
             "status": "theorem_candidate",
@@ -2971,7 +2971,7 @@
             "tool_id": "vampire"
           },
           {
-            "artifact_digest": "8f0803395e8fed1d3fcee954c4bd87ab3e568f36b4fa9dd5941d7ae793ca5c89",
+            "artifact_digest": "5ff9a0f9846b0bab3ab55e5e2c4e7f8b3b38b8d4ff15ffe227104d35a17aff76",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -2990,8 +2990,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "7c54b4f60cccfa73fb14f253b4bd5ae889af9de61a3d5c4bedac242f17b62d54",
-            "raw_szs_output_digest": "7c54b4f60cccfa73fb14f253b4bd5ae889af9de61a3d5c4bedac242f17b62d54",
+            "output_digest": "1dc3e9c7087511d0b9fbaf3ececf60a50cc07c5ce427a99590a6ac421581e944",
+            "raw_szs_output_digest": "1dc3e9c7087511d0b9fbaf3ececf60a50cc07c5ce427a99590a6ac421581e944",
             "reconstruction_status": "unreconstructed",
             "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
             "status": "theorem_candidate",
@@ -3060,7 +3060,7 @@
             "tool_id": "vampire"
           },
           {
-            "artifact_digest": "333dc825a2b823275423960b1b3ea95510272727541dc29de10eb7a26dfa854c",
+            "artifact_digest": "f71154457bf4be47ec4de11f76431631bce3f058af5e824371a7231d4416cd66",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -3079,8 +3079,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "848e9d53123bc338f6a9883c4344a5dbf07292e6e9cd158139b04607416c5c83",
-            "raw_szs_output_digest": "848e9d53123bc338f6a9883c4344a5dbf07292e6e9cd158139b04607416c5c83",
+            "output_digest": "89c1ef9abcd3718b24c0bde9089c18fb6a8cadf2d867e4566fae55ee8d5451a6",
+            "raw_szs_output_digest": "89c1ef9abcd3718b24c0bde9089c18fb6a8cadf2d867e4566fae55ee8d5451a6",
             "reconstruction_status": "kernel_receipt_missing",
             "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
             "status": "theorem_candidate",
@@ -3088,7 +3088,7 @@
             "tool_id": "vampire"
           },
           {
-            "artifact_digest": "22a173f4f2776ab748050ff5492dbc3724d6df41b27d38e4d8a93f3b1baa70dc",
+            "artifact_digest": "1079367ea33668b03fe87ae075bcca5a70c4a94375306a20ffbe7f29c0e8d868",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -3116,7 +3116,7 @@
             "tool_id": "vampire"
           },
           {
-            "artifact_digest": "307220a1aae34b0e684756356a164b97532dbdc35acb24df98cde58a209d971b",
+            "artifact_digest": "63a59c4f4f866037d79ad0de058f8e811f42b81ba43969378e593d8b6adab2d5",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -3135,8 +3135,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "b3eb99ed42cba804409b73f1cec400610adbc3718a5870576e9a3c10a47a1b5d",
-            "raw_szs_output_digest": "b3eb99ed42cba804409b73f1cec400610adbc3718a5870576e9a3c10a47a1b5d",
+            "output_digest": "caf6072eec1f64da4440d3f3b010781a4e11ec65e65b8b4238ff8175519007e5",
+            "raw_szs_output_digest": "caf6072eec1f64da4440d3f3b010781a4e11ec65e65b8b4238ff8175519007e5",
             "reconstruction_status": "unreconstructed",
             "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
             "status": "theorem_candidate",
@@ -3144,7 +3144,7 @@
             "tool_id": "eprover"
           },
           {
-            "artifact_digest": "2fafc6fdb326e7de2b693286a5114a39034695039f0d0f11af10f1a34ae7d404",
+            "artifact_digest": "7620a45deef872cd0f4cbff82397616f83ba59b0774e332f352ec93c885ad4df",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -3163,8 +3163,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "6b74e05f17e97209de37576a79b31c4bd3df9f9d888984f3b2d43a1649c0fd85",
-            "raw_szs_output_digest": "6b74e05f17e97209de37576a79b31c4bd3df9f9d888984f3b2d43a1649c0fd85",
+            "output_digest": "6029447cffe67456d70c35ef504b7fb7e0c78891523ddb0601d7748347b07e80",
+            "raw_szs_output_digest": "6029447cffe67456d70c35ef504b7fb7e0c78891523ddb0601d7748347b07e80",
             "reconstruction_status": "unreconstructed",
             "source_digest": "2c871116f413942d4801e86ceebe7213632e52c4fd86795914128db84b32d648",
             "status": "non_theorem_candidate",
@@ -3172,7 +3172,7 @@
             "tool_id": "eprover"
           },
           {
-            "artifact_digest": "e6ddaedff394518912ab0bf88654ee586e207bb53c8353af72b246aa58d98804",
+            "artifact_digest": "831b07c1e82411e175b28403517ce29d9b2eab80b9412605a2ff24758bbb5ce9",
             "assumptions": [
               "fof(ax1, axiom, ~p)."
             ],
@@ -3191,8 +3191,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "7ec5a975b99724e57a6d1dfd0846727b392f646c6b050157cc09e6e4643c187c",
-            "raw_szs_output_digest": "7ec5a975b99724e57a6d1dfd0846727b392f646c6b050157cc09e6e4643c187c",
+            "output_digest": "36fcd8acc8aabd4df6efcaf526a84ea31c2a05efd1910da513d0c792ec0422cd",
+            "raw_szs_output_digest": "36fcd8acc8aabd4df6efcaf526a84ea31c2a05efd1910da513d0c792ec0422cd",
             "reconstruction_status": "unreconstructed",
             "source_digest": "a255406efa939e3d5176feed45a31b032f1bab026e6d093277a907fbc84f4bae",
             "status": "non_theorem_candidate",
@@ -3200,7 +3200,7 @@
             "tool_id": "eprover"
           },
           {
-            "artifact_digest": "ed4498ae5a56c5a98c98fdd832c4eecd9d5f39075d336b52172977a4961524e7",
+            "artifact_digest": "fe51cbeaaf5f277003289c2beceacd001fdc3f29159fcbdb74da6c2c0822daf7",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -3219,8 +3219,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "3ce428545027ccb36c3f970ea0e303759d9989b94df82faac07629f95e6c1fa1",
-            "raw_szs_output_digest": "3ce428545027ccb36c3f970ea0e303759d9989b94df82faac07629f95e6c1fa1",
+            "output_digest": "192f6508eee765b2f529dcf9049a1feae05b275b45f117541530a04d9161ffc4",
+            "raw_szs_output_digest": "192f6508eee765b2f529dcf9049a1feae05b275b45f117541530a04d9161ffc4",
             "reconstruction_status": "unreconstructed",
             "source_digest": "5ecfb212fc2d627b0cfb0d9b50589fb5af7ac4a4a0c53c67d60d6f5d6bed6b4f",
             "status": "non_theorem_candidate",
@@ -3228,7 +3228,7 @@
             "tool_id": "eprover"
           },
           {
-            "artifact_digest": "26ac420f5491faaa186c7104e5470e64507fa44ba2c4aa03592101b5bba73f9b",
+            "artifact_digest": "d7b2b4ede5da94763696443dbeedea4f851c2b902a920c9ede3f76bddfa31930",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -3247,8 +3247,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "1bc0e0a785e8fa5f20a0c3c4bfa958ab776b33a0251ffb273c20fa3726d404e7",
-            "raw_szs_output_digest": "1bc0e0a785e8fa5f20a0c3c4bfa958ab776b33a0251ffb273c20fa3726d404e7",
+            "output_digest": "1f9e02952db95acc3842299c7208b1fb5601a86f18b3120c9cbf13ee157eee7e",
+            "raw_szs_output_digest": "1f9e02952db95acc3842299c7208b1fb5601a86f18b3120c9cbf13ee157eee7e",
             "reconstruction_status": "unreconstructed",
             "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
             "status": "theorem_candidate",
@@ -3256,7 +3256,7 @@
             "tool_id": "eprover"
           },
           {
-            "artifact_digest": "b67faf53dca1a5c2190a13ecdd575ced26d88facea7d26c1f13344477e8128b2",
+            "artifact_digest": "cdce08f591615579c73132b9dac3612377f009e3ff346588764298dc99cdc4b7",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -3275,8 +3275,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "7822fbb7e9db8875b82ca7cf2803726258d4694759cff0178aaa4be8f0e0d69d",
-            "raw_szs_output_digest": "7822fbb7e9db8875b82ca7cf2803726258d4694759cff0178aaa4be8f0e0d69d",
+            "output_digest": "3f16bc26effb25140e79a20c84810e1cd7c377b9bcf9912c6a7b29d4a5b3acb5",
+            "raw_szs_output_digest": "3f16bc26effb25140e79a20c84810e1cd7c377b9bcf9912c6a7b29d4a5b3acb5",
             "reconstruction_status": "unreconstructed",
             "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
             "status": "theorem_candidate",
@@ -3284,7 +3284,7 @@
             "tool_id": "eprover"
           },
           {
-            "artifact_digest": "9547fb08f4e47ada06e4c443c95204b53f2f0c3a29342b98cf28eef86b57e6c9",
+            "artifact_digest": "784441c96f740e20d9f20acf983496fb8779157117c501110e6c667a95e60820",
             "assumptions": [],
             "authority": "candidate",
             "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
@@ -3301,8 +3301,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "0d48b7655da06add2f83f370c81fbd7fef9a77eea397fd985d0cdc6d4d714ce2",
-            "raw_szs_output_digest": "0d48b7655da06add2f83f370c81fbd7fef9a77eea397fd985d0cdc6d4d714ce2",
+            "output_digest": "b1c55d50d2e879af2b0d1f19c5500fe17ab2abf90136dc87b99a23b8d29bf025",
+            "raw_szs_output_digest": "b1c55d50d2e879af2b0d1f19c5500fe17ab2abf90136dc87b99a23b8d29bf025",
             "reconstruction_status": "unreconstructed",
             "source_digest": "e7fff66cd7ccacc12ee6b9a19d1ddec2a862e94300ea3af49e5b2ddd22a829d6",
             "status": "quarantined",
@@ -3345,7 +3345,7 @@
             "tool_id": "eprover"
           },
           {
-            "artifact_digest": "bd1029a0b0820466ca40a03b426b3ce898d40b4a74ff6718c7628772e1d741c6",
+            "artifact_digest": "3b343138f17f4dd8758c0bd8f435c7480890ddb2e2dd16d74f6250074d4e7cb8",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -3364,8 +3364,8 @@
               "network": false,
               "timeout_seconds": 15.0
             },
-            "output_digest": "21fb8afa81e1b86c3f5e97ac18aafb0373e9a39fa3d7dfd6e90cdf0250033de8",
-            "raw_szs_output_digest": "21fb8afa81e1b86c3f5e97ac18aafb0373e9a39fa3d7dfd6e90cdf0250033de8",
+            "output_digest": "8767876bfeda28e35edd348c7ab679d21b8f18f46d753a8b3504d055581d2038",
+            "raw_szs_output_digest": "8767876bfeda28e35edd348c7ab679d21b8f18f46d753a8b3504d055581d2038",
             "reconstruction_status": "kernel_receipt_missing",
             "source_digest": "b31873bf7c99a88e8e9e148a3dadb37e25d984487e3dcff9801a7773f0a635f8",
             "status": "theorem_candidate",
@@ -3373,7 +3373,7 @@
             "tool_id": "eprover"
           },
           {
-            "artifact_digest": "884dca35837ded817622ebf860ab04ab2fa8c3cfef5f87e26dfd3b12b3349710",
+            "artifact_digest": "814b628b2cba14f4608343591d8ce3361dc5eeef62ef89a65e414f92a22c5a10",
             "assumptions": [
               "fof(ax1, axiom, p)."
             ],
@@ -3406,7 +3406,7 @@
       "detail": "live receipt binds exact binary digests, TPTP source, assumptions, conclusion, limits, raw SZS, reconstruction",
       "expected": "binary_digest,artifact_digest,tptp_source,assumptions,conclusion,limits,raw_szs,reconstruction_status",
       "kind": "binding",
-      "observed": "0ecae0099234f52b",
+      "observed": "acdbd7cb7d9c8487",
       "reason_codes": [],
       "status": "passed"
     },
@@ -3501,7 +3501,7 @@
     "violation_count": 0,
     "violations": []
   },
-  "receipt_digest_sha256": "c497010515ae1b7da576b3e5030d7d4b80098a6b3e899bff22f517e12045259b",
+  "receipt_digest_sha256": "b20900426e257443879c5ea7954aa9e714078769b975db22855102709f674007",
   "results_are_candidates_without_reconstruction": true,
   "schema_version": "atp-live-semantic-certification/v1",
   "task_id": "FVT-054",
