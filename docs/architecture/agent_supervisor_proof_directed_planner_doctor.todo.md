@@ -924,7 +924,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-070 Execute live paired Planner/Doctor benchmarks on hermetic repositories
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1002,7 +1002,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-080 Invoke bounded live self-improvement epochs from supervisor lifecycle
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1028,7 +1028,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-081 Compile benchmark/Doctor residuals into bounded derived goals and tasks
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1080,7 +1080,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-090 Prove live E2E, transport/projection parity, adversarial safety, and chaos recovery
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
