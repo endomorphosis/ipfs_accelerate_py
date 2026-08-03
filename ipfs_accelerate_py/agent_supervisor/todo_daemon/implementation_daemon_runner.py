@@ -48,6 +48,28 @@ def implementation_daemon_result_is_proven_noop(
 ) -> bool:
     """Return whether a coalescible wake proves that it performed no work."""
 
+    raw_merge_reconciliation = result.get("merge_reconciliation")
+    passive_review_hold_reasons = {
+        "reviewer_provider_capacity_backoff",
+        "post_merge_review_nonretryable_failure_latched",
+    }
+    passive_review_holds = bool(raw_merge_reconciliation) and isinstance(
+        raw_merge_reconciliation,
+        (list, tuple),
+    ) and all(
+        isinstance(item, Mapping)
+        and item.get("reason") in passive_review_hold_reasons
+        and item.get("resolved") is False
+        and item.get("merge_integrated") is True
+        and item.get("authoritatively_completed") is False
+        and item.get("acceptance_pending") is True
+        and item.get("provider_call_allowed") is False
+        and item.get("attempt_consumed") is False
+        and item.get("reconciliation_suppressed") is True
+        and item.get("completion_authoritative") is False
+        for item in raw_merge_reconciliation
+    )
+
     write_count = result.get("write_count")
     basic_noop = (
         result.get("unchanged") is True
@@ -65,7 +87,10 @@ def implementation_daemon_result_is_proven_noop(
         or not set(raw_wake_kinds).issubset({"lease", "observation_window"})
         or result.get("blocked") is True
         or bool(result.get("error"))
-        or bool(result.get("merge_reconciliation"))
+        or (
+            bool(raw_merge_reconciliation)
+            and not passive_review_holds
+        )
     ):
         return False
 

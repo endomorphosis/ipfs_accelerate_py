@@ -12289,6 +12289,9 @@ def test_review_capacity_latch_does_not_consume_bounded_merge_slot(
 ) -> None:
     daemon = object.__new__(TodoImplementationDaemon)
     daemon.repo_root = Path(".")
+    daemon.merge_reconciliation_max_age_seconds = 1
+    daemon.merge_reconciliation_max_merges = 1
+    daemon._last_merge_queue_ownership_diagnostics = []
     task_a = PortalTask(
         task_id="REV-A",
         title="Cooling review",
@@ -12376,6 +12379,9 @@ def test_review_capacity_latch_does_not_consume_bounded_merge_slot(
             "implementation_commit": implementation_a,
             "merge_integrated": True,
             "authoritatively_completed": False,
+            "timestamp": (
+                datetime.now(timezone.utc) - timedelta(days=2)
+            ).isoformat(),
         },
         {
             "task_id": task_b.task_id,
@@ -12387,6 +12393,19 @@ def test_review_capacity_latch_does_not_consume_bounded_merge_slot(
             "authoritatively_completed": False,
         },
     ]
+
+    monkeypatch.setattr(
+        daemon,
+        "_failed_merge_candidates",
+        lambda *, skip_task_ids=None: [candidates[0]],
+    )
+    aged_capacity_result = daemon._reconcile_failed_merges()
+    assert len(aged_capacity_result) == 1
+    assert aged_capacity_result[0]["reason"] == (
+        "reviewer_provider_capacity_backoff"
+    )
+    assert aged_capacity_result[0]["retry_at"] == retry_at
+    assert aged_capacity_result[0]["reconciliation_suppressed"] is True
 
     for _pass in range(2):
         eligible, deferred = (
@@ -12402,6 +12421,21 @@ def test_review_capacity_latch_does_not_consume_bounded_merge_slot(
             1,
         )
         assert [item["task_id"] for item in selected] == [task_b.task_id]
+
+    assert (
+        implementation_daemon_runner
+        .implementation_daemon_result_is_proven_noop(
+            {
+                "unchanged": True,
+                "write_count": 0,
+                "state_written": False,
+                "wake_kinds": ["lease"],
+                "merge_reconciliation": deferred,
+                "implementation_result": None,
+            }
+        )
+        is True
+    )
 
     second_review = {
         **candidates[1],
@@ -12467,6 +12501,288 @@ def test_review_capacity_latch_does_not_consume_bounded_merge_slot(
             ],
         )
         assert daemon._post_merge_review_capacity_backoff_schedule() == {}
+
+
+def test_nonretryable_post_merge_review_failure_latches_exact_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = PortalTask(
+        task_id="REV-STRUCTURAL",
+        title="Hold immutable content mismatch",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="review",
+    )
+    identity = SimpleNamespace(
+        canonical_task_key="task/structural",
+        canonical_task_cid="cid:structural",
+        board_namespace="review-board",
+    )
+    implementation_commit = "a" * 40
+    target_commit = "b" * 40
+    target_tree = "c" * 40
+    repository_tree_id = f"git-tree:{target_tree}"
+    failure_event = {
+        "type": "post_merge_independent_review_failed",
+        "event_id": "sha256:" + "d" * 64,
+        "task_id": task.task_id,
+        "task_binding_id": (
+            post_merge_review_module.post_merge_task_binding_id(task)
+        ),
+        "canonical_task_key": identity.canonical_task_key,
+        "canonical_task_cid": identity.canonical_task_cid,
+        "board_namespace": identity.board_namespace,
+        "attempt": 3,
+        "implementation_attempt": 1,
+        "implementation_commit": implementation_commit,
+        "merge_commit": target_commit,
+        "repository_tree_id": repository_tree_id,
+        "reason_code": "merged_content_binding_mismatch",
+        "retryable": False,
+        "acceptance_pending": True,
+        "provider_result_admitted": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    candidate = {
+        "type": "merge_reconciled",
+        "task_id": task.task_id,
+        "attempt": 1,
+        "queue_attempt": 3,
+        "implementation_attempt": 1,
+        "implementation_commit": implementation_commit,
+        "merge_commit": target_commit,
+        "merge_integrated": True,
+        "authoritatively_completed": False,
+        "timestamp": (
+            datetime.now(timezone.utc) - timedelta(days=2)
+        ).isoformat(),
+    }
+
+    def restarted_daemon() -> TodoImplementationDaemon:
+        daemon = object.__new__(TodoImplementationDaemon)
+        daemon.repo_root = Path(".")
+        daemon.merge_reconciliation_max_age_seconds = 1
+        daemon.merge_reconciliation_max_merges = 1
+        daemon._last_merge_queue_ownership_diagnostics = []
+        monkeypatch.setattr(daemon, "_load_tasks", lambda: [task])
+        monkeypatch.setattr(
+            daemon,
+            "_identity_for_task",
+            lambda selected: identity if selected is task else None,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_main_branch_name",
+            lambda: "main",
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_resolve_git_commit_in_repo",
+            lambda *_args, **_kwargs: target_commit,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_candidate_repository_tree",
+            lambda commit: target_tree if commit == target_commit else "",
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_git_ref_is_ancestor",
+            lambda ancestor, descendant: (
+                ancestor == implementation_commit
+                and descendant == target_commit
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_iter_events",
+            lambda: [failure_event],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_failed_merge_candidates",
+            lambda *, skip_task_ids=None: [candidate],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_record_event",
+            lambda *_args, **_kwargs: pytest.fail(
+                "an unchanged structural hold must not append events"
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_run_post_merge_validation_evidence",
+            lambda **_kwargs: pytest.fail(
+                "an unchanged structural hold must not revalidate"
+            ),
+        )
+        return daemon
+
+    first = restarted_daemon()._reconcile_failed_merges()
+    after_restart = restarted_daemon()
+    second = after_restart._reconcile_failed_merges()
+
+    assert first == second
+    assert len(first) == 1
+    hold = first[0]
+    assert hold["reason"] == (
+        "post_merge_review_nonretryable_failure_latched"
+    )
+    assert hold["review_failure_reason_code"] == (
+        "merged_content_binding_mismatch"
+    )
+    assert hold["review_failure_source_event_id"] == (
+        failure_event["event_id"]
+    )
+    assert hold["resolved"] is False
+    assert hold["merge_integrated"] is True
+    assert hold["authoritatively_completed"] is False
+    assert hold["completion_authoritative"] is False
+    assert hold["provider_call_allowed"] is False
+    assert hold["attempt_consumed"] is False
+    assert hold["reconciliation_suppressed"] is True
+    assert (
+        after_restart._provider_review_gate_evidence(
+            task=task,
+            attempt=1,
+            implementation_commit=implementation_commit,
+            merge_commit=target_commit,
+            repository_tree_id=repository_tree_id,
+            validation_result={"passed": True},
+        )
+        == {}
+    )
+    assert (
+        implementation_daemon_runner
+        .implementation_daemon_result_is_proven_noop(
+            {
+                "unchanged": True,
+                "write_count": 0,
+                "state_written": False,
+                "wake_kinds": ["lease"],
+                "merge_reconciliation": second,
+                "implementation_result": None,
+            }
+        )
+        is True
+    )
+
+    non_structural_failure = {
+        **failure_event,
+        "reason_code": "reviewer_execution_receipt_missing",
+    }
+    monkeypatch.setattr(
+        after_restart,
+        "_iter_events",
+        lambda: [non_structural_failure],
+    )
+    eligible, held = (
+        after_restart
+        ._partition_post_merge_review_nonretryable_held_candidates(
+            [candidate]
+        )
+    )
+    assert eligible == [candidate]
+    assert held == []
+
+    monkeypatch.setattr(
+        after_restart,
+        "_iter_events",
+        lambda: [failure_event],
+    )
+    monkeypatch.setattr(
+        after_restart,
+        "_resolve_git_commit_in_repo",
+        lambda *_args, **_kwargs: "e" * 40,
+    )
+    monkeypatch.setattr(
+        after_restart,
+        "_candidate_repository_tree",
+        lambda _commit: "f" * 40,
+    )
+    monkeypatch.setattr(
+        after_restart,
+        "_git_ref_is_ancestor",
+        lambda *_args, **_kwargs: True,
+    )
+    eligible, held = (
+        after_restart
+        ._partition_post_merge_review_nonretryable_held_candidates(
+            [candidate]
+        )
+    )
+    assert eligible == [candidate]
+    assert held == []
+
+    selected_after_binding_change = []
+    recorded_after_binding_change = []
+    monkeypatch.setattr(
+        after_restart,
+        "_repo_merge_lock_path",
+        lambda: Path(".reconciliation.lock"),
+    )
+    monkeypatch.setattr(
+        after_restart,
+        "_build_published_merge_lock_metadata",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        after_restart,
+        "_try_acquire_published_merge_lock",
+        lambda *_args, **_kwargs: (True, "", {}),
+    )
+    monkeypatch.setattr(
+        after_restart,
+        "_preserve_generated_nested_worktree_directories",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        after_restart,
+        "_reconciliation_blocking_dirty_paths",
+        lambda *_args, **_kwargs: ([], []),
+    )
+    monkeypatch.setattr(
+        after_restart,
+        "_release_published_merge_lock",
+        lambda *_args, **_kwargs: True,
+    )
+
+    def capture_reopened_candidates(
+        candidates,
+        _max_merges,
+        **_kwargs,
+    ):
+        selected_after_binding_change.extend(candidates)
+        return []
+
+    monkeypatch.setattr(
+        after_restart,
+        "_select_failed_merge_candidates_for_reconciliation",
+        capture_reopened_candidates,
+    )
+    monkeypatch.setattr(
+        after_restart,
+        "_record_event",
+        lambda event_type, payload, **_kwargs: (
+            recorded_after_binding_change.append(
+                (event_type, dict(payload))
+            )
+            or payload
+        ),
+    )
+    reopened_result = after_restart._reconcile_failed_merges()
+    assert selected_after_binding_change == [candidate]
+    assert all(
+        item.get("reason") != "stale_failed_merge_candidate"
+        for item in reopened_result
+    )
+    assert all(
+        payload.get("reason") != "stale_failed_merge_candidate"
+        for _event_type, payload in recorded_after_binding_change
+    )
 
 
 def test_expired_review_capacity_projection_forces_only_one_full_pass(

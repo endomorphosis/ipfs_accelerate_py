@@ -17169,6 +17169,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         if not validation_result or not validation_result.get("passed"):
             return {}
+        if self._active_post_merge_review_nonretryable_failure_hold(
+            task=task,
+            implementation_attempt=int(attempt),
+            implementation_commit=implementation_commit,
+            merge_commit=merge_commit,
+            repository_tree_id=repository_tree_id,
+        ):
+            return {}
         evidence_context = self._resolve_implementation_evidence_context(
             source_repo_root=self.repo_root,
             source_state_path=(
@@ -17566,8 +17574,213 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "capacity_source_event_id": schedule.get(
                 "source_event_id", ""
             ),
+            "retryable": True,
+            "acceptance_pending": True,
+            "provider_call_allowed": False,
+            "attempt_consumed": False,
+            "reconciliation_suppressed": True,
             "completion_authoritative": False,
         }
+
+    def _active_post_merge_review_nonretryable_failure_hold(
+        self,
+        *,
+        task: PortalTask,
+        implementation_attempt: int,
+        implementation_commit: str,
+        merge_commit: str,
+        repository_tree_id: str,
+    ) -> dict[str, Any]:
+        """Project one exact durable structural-review failure as a hold.
+
+        A non-retryable review failure is already a durable decision that the
+        exact immutable candidate cannot reach the provider-review gate.  It
+        must not be mistaken for permission to rerun uncached validation and
+        append the same failure on every reconciliation pass.  The hold is
+        deliberately bound to the live task, implementation provenance,
+        target commit, and target tree: changing any of those inputs reopens
+        reconciliation, while an unchanged binding remains fail-closed.
+        """
+
+        identity = self._identity_for_task(task)
+        task_binding_id = post_merge_task_binding_id(task)
+        terminal_types = {
+            POST_MERGE_INDEPENDENT_REVIEW_EVENT,
+            POST_MERGE_INDEPENDENT_REVIEW_DENIED_EVENT,
+        }
+        relevant_types = {
+            *terminal_types,
+            POST_MERGE_INDEPENDENT_REVIEW_FAILED_EVENT,
+        }
+        try:
+            events = self._iter_events()
+        except (
+            EventLogIntegrityFailure,
+            EventLogTailRecoveryRequired,
+            OSError,
+            TypeError,
+            ValueError,
+        ):
+            # Existing strict-ledger gates below retain the fail-closed
+            # behavior for an unreadable history.  This optimization must not
+            # turn that durable integrity incident into a new exception path.
+            return {}
+        for event in reversed(events):
+            event_type = str(event.get("type") or "")
+            if event_type not in relevant_types:
+                continue
+            raw_implementation_attempt = event.get(
+                "implementation_attempt"
+            )
+            if (
+                isinstance(raw_implementation_attempt, bool)
+                or not isinstance(raw_implementation_attempt, int)
+            ):
+                continue
+            if (
+                str(event.get("task_id") or "") != task.task_id
+                or str(event.get("task_binding_id") or "")
+                != task_binding_id
+                or str(event.get("canonical_task_key") or "")
+                != identity.canonical_task_key
+                or str(
+                    event.get("canonical_task_cid")
+                    or event.get("canonical_task_id")
+                    or ""
+                )
+                != identity.canonical_task_cid
+                or str(event.get("board_namespace") or "")
+                != identity.board_namespace
+                or raw_implementation_attempt
+                != int(implementation_attempt)
+                or str(event.get("implementation_commit") or "")
+                != implementation_commit
+                or str(event.get("merge_commit") or "")
+                != merge_commit
+                or str(event.get("repository_tree_id") or "")
+                != repository_tree_id
+            ):
+                continue
+            if event_type in terminal_types:
+                return {}
+            reason_code = str(event.get("reason_code") or "").strip()
+            source_event_id = str(event.get("event_id") or "").strip()
+            if (
+                reason_code != "merged_content_binding_mismatch"
+                or event.get("retryable") is not False
+                or event.get("acceptance_pending") is not True
+                or event.get("provider_result_admitted") is not False
+                or event.get("proof_authoritative") is not False
+                or event.get("completion_authoritative") is not False
+                or not reason_code
+                or not source_event_id
+            ):
+                return {}
+            return {
+                "task_id": task.task_id,
+                "task_binding_id": task_binding_id,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "board_namespace": identity.board_namespace,
+                "implementation_attempt": int(implementation_attempt),
+                "implementation_commit": implementation_commit,
+                "merge_commit": merge_commit,
+                "repository_tree_id": repository_tree_id,
+                "reason": (
+                    "post_merge_review_nonretryable_failure_latched"
+                ),
+                "review_failure_reason_code": reason_code,
+                "review_failure_source_event_id": source_event_id,
+                "retryable": False,
+                "acceptance_pending": True,
+                "provider_result_admitted": False,
+                "provider_call_allowed": False,
+                "attempt_consumed": False,
+                "reconciliation_suppressed": True,
+                "completion_authoritative": False,
+            }
+        return {}
+
+    def _partition_post_merge_review_nonretryable_held_candidates(
+        self,
+        candidates: Sequence[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Remove exact non-retryable review holds from the retry slot."""
+
+        if not candidates:
+            return [], []
+        try:
+            tasks_by_id = {
+                task.task_id: task for task in self._load_tasks()
+            }
+        except (OSError, TaskSourceError, ValueError):
+            return list(candidates), []
+        target_commit = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            self._main_branch_name(),
+        )
+        target_tree = self._candidate_repository_tree(target_commit)
+        if not target_commit or not target_tree:
+            return list(candidates), []
+        repository_tree_id = f"git-tree:{target_tree}"
+        eligible: list[dict[str, Any]] = []
+        held: list[dict[str, Any]] = []
+        for event in candidates:
+            task = tasks_by_id.get(str(event.get("task_id") or ""))
+            implementation_commit = str(
+                event.get("implementation_commit") or ""
+            )
+            implementation_attempt = int(
+                event.get("implementation_attempt")
+                or event.get("attempt")
+                or 0
+            )
+            acceptance_pending = bool(
+                event.get("merge_integrated") is True
+                and event.get("authoritatively_completed") is not True
+            )
+            if (
+                task is None
+                or not acceptance_pending
+                or implementation_attempt < 1
+                or not implementation_commit
+                or not self._git_ref_is_ancestor(
+                    implementation_commit,
+                    target_commit,
+                )
+            ):
+                eligible.append(event)
+                continue
+            hold = self._active_post_merge_review_nonretryable_failure_hold(
+                task=task,
+                implementation_attempt=implementation_attempt,
+                implementation_commit=implementation_commit,
+                merge_commit=target_commit,
+                repository_tree_id=repository_tree_id,
+            )
+            if not hold:
+                eligible.append(event)
+                continue
+            held.append(
+                {
+                    **hold,
+                    "attempt": int(
+                        event.get("queue_attempt")
+                        or event.get("attempt")
+                        or 0
+                    ),
+                    "queue_attempt": int(
+                        event.get("queue_attempt")
+                        or event.get("attempt")
+                        or 0
+                    ),
+                    "resolved": False,
+                    "merge_integrated": True,
+                    "authoritatively_completed": False,
+                    "provider_review_evidence_present": False,
+                }
+            )
+        return eligible, held
 
     def _post_merge_review_capacity_backoff_schedule(
         self,
@@ -39949,12 +40162,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     payload,
                 )
             results.append(payload)
-        fresh_candidates, stale_candidates = self._partition_stale_failed_merge_candidates(candidates)
-        for event in stale_candidates:
-            result = self._stale_failed_merge_candidate_result(event)
-            self._record_event("merge_reconciled", result)
-            results.append(result)
-        candidates = fresh_candidates
+        (
+            candidates,
+            post_merge_review_nonretryable_holds,
+        ) = self._partition_post_merge_review_nonretryable_held_candidates(
+            candidates
+        )
+        results.extend(post_merge_review_nonretryable_holds)
         (
             candidates,
             post_merge_review_capacity_deferrals,
@@ -39962,6 +40176,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             candidates
         )
         results.extend(post_merge_review_capacity_deferrals)
+        fresh_candidates, stale_candidates = (
+            self._partition_stale_failed_merge_candidates(candidates)
+        )
+        for event in stale_candidates:
+            result = self._stale_failed_merge_candidate_result(event)
+            self._record_event("merge_reconciled", result)
+            results.append(result)
+        candidates = fresh_candidates
         if candidates:
             preflight_lock = self._repo_merge_lock_path()
             preflight_metadata = self._build_published_merge_lock_metadata(
@@ -41177,7 +41399,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         fresh: list[dict[str, Any]] = []
         stale: list[dict[str, Any]] = []
         for event in candidates:
-            if not str(event.get("timestamp") or ""):
+            if (
+                event.get("merge_integrated") is True
+                and event.get("authoritatively_completed") is not True
+            ):
+                # Age can make an unmerged retry unsafe, but it cannot make an
+                # already-landed candidate's outstanding acceptance disappear.
+                # Capacity windows and exact structural holds may legitimately
+                # outlive the merge retry horizon; once released, their review
+                # must resume instead of being permanently abandoned as stale.
+                fresh.append(event)
+            elif not str(event.get("timestamp") or ""):
                 fresh.append(event)
             elif self._event_age_seconds(event) > max_age_seconds:
                 stale.append(event)
