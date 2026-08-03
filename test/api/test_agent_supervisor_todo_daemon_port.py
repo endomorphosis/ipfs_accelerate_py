@@ -29947,6 +29947,78 @@ def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch
     assert command[1].endswith("grok_cli_runner.py")
     assert command[command.index("--grok-bin") + 1] == "/usr/local/bin/grok"
 
+
+def test_soft_grok_role_prefers_grok_and_falls_back_to_codex_when_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="SCA-169",
+        title="Use the default provider preference",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider-routing",
+        outputs=["src/provider_routing.py"],
+        metadata={"Provider role": "grok, codex-review"},
+    )
+    grok_readiness = {"ready": True}
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: grok_readiness["ready"],
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+
+    assert daemon._task_declared_implementation_provider(task) == ""
+    assert daemon._task_model_assisted_provider_roles(task) == (
+        "grok-implement",
+        "codex-independent-review",
+    )
+
+    grok_command = daemon._build_implementation_command(repo, task=task)
+    assert grok_command[0] == sys.executable
+    assert grok_command[1].endswith("grok_cli_runner.py")
+
+    grok_readiness["ready"] = False
+    codex_command = daemon._build_implementation_command(repo, task=task)
+    assert codex_command[:5] == [
+        "/usr/local/bin/codex",
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        str(repo),
+    ]
+
+
 def test_deterministic_only_task_cannot_dispatch_a_model(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

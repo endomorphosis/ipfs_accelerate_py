@@ -10683,7 +10683,7 @@ def render_task_block(
 - Token class: {finding.token_class or "medium"}
 - Estimated tokens: {max(0, _parse_int(finding.estimated_tokens, 0))}
 - Context budget tokens: 4096
-- Provider role: grok-implement, codex-review
+- Provider role: grok, codex-review
 - Resources: {", ".join(finding.resources or [finding.resource_class or "cpu-medium"])}
 - Merge fate: {finding.merge_fate or finding.merge_family or finding.merge_key}
 - Rejection reasons: {", ".join(finding.rejection_reasons) or "none (accepted)"}
