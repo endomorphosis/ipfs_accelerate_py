@@ -6171,6 +6171,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             {
                 "unchanged": True,
                 "write_count": 0,
+                "state_written": False,
                 "projection_delta": {},
                 "implementation_result": None,
                 "merge_reconciliation": [],
@@ -30607,6 +30608,10 @@ TodoImplementationDaemon = PortalImplementationDaemon
 
 
 def main(argv: list[str] | None = None) -> None:
+    from .implementation_daemon_runner import (
+        log_portal_implementation_daemon_pass_complete,
+    )
+
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -30704,7 +30709,12 @@ def main(argv: list[str] | None = None) -> None:
             return
         while True:
             result = daemon.run_once()
-            logger.info("Portal implementation daemon pass complete: %s", result)
+            log_portal_implementation_daemon_pass_complete(
+                logger,
+                "Portal implementation daemon pass complete: %s",
+                result,
+                once=bool(args.once),
+            )
             if args.once:
                 break
             daemon.wait_for_wake(timeout=args.interval)
