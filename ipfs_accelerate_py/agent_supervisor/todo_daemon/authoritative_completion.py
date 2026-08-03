@@ -1289,6 +1289,7 @@ class AuthoritativeCompletionMixin:
             "repository_tree_id": repository_tree_id,
         }
         evidence = dict(gate_evidence or {})
+        live_provider_review_candidate = evidence.get("provider_review")
         # Structural and validation gates are daemon-derived, never caller-overridden.
         for kind in (
             "merge",
@@ -1406,6 +1407,20 @@ class AuthoritativeCompletionMixin:
                     merge_commit=merge_commit,
                     repository_tree_id=repository_tree_id,
                     evidence=evidence,
+                )
+            if provider_review is None:
+                # Imported lazily to preserve the module boundary:
+                # post_merge_review already uses bound_gate_evidence above.
+                from .post_merge_review import (
+                    _consume_live_post_merge_review_gate,
+                )
+
+                provider_review = _consume_live_post_merge_review_gate(
+                    live_provider_review_candidate,
+                    task=task,
+                    implementation_commit=implementation_commit,
+                    merge_commit=merge_commit,
+                    repository_tree_id=repository_tree_id,
                 )
             if provider_review is not None:
                 evidence["provider_review"] = provider_review

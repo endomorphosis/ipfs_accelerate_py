@@ -20192,6 +20192,343 @@ def test_restart_retains_exact_acceptance_pending_binding_after_review_failure(
     assert len(review_calls) == 2
 
 
+@pytest.mark.parametrize(
+    "generation_tamper",
+    ("none", "event", "event_bool", "completed_row"),
+    ids=(
+        "valid",
+        "mutated-event-generation",
+        "boolean-event-generation",
+        "mutated-completed-row-generation",
+    ),
+)
+def test_restart_recovers_completed_operator_postimage_for_fresh_review(
+    tmp_path,
+    monkeypatch,
+    generation_tamper,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """## REF-049C Review a consumed composite landing
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Provider role: grok-implementation
+- Outputs: artifact.txt
+- Validation: test -f artifact.txt
+- Acceptance: A fresh review inspects the exact operator-approved landing.
+""",
+        encoding="utf-8",
+    )
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", ".gitignore")
+    _git(repo, "commit", "-m", "seed composite review task")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "artifact.txt").write_text(
+        "already integrated\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "artifact.txt")
+    _git(repo, "commit", "-m", "REF-049C implementation")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+    task = daemon._load_tasks()[0]
+    identity = daemon._identity_for_task(task)
+    branch = "implementation/ref-049c-attempt-3"
+    queue_attempt = 1
+    implementation_attempt = 3
+    landed_child = "b" * 40
+    submodule_binding = {
+        "schema": (
+            implementation_daemon_module
+            .TASK_OWNED_SUBMODULE_INTEGRATION_BINDING_SCHEMA
+        ),
+        "root_target_commit": baseline,
+        "targets": [
+            {
+                "path": "libs/child",
+                "integration_branch": "main",
+                "integration_target": "a" * 40,
+                "gitlink_baseline": "c" * 40,
+                "expected_merge_mode": "ff-only",
+                "relation": "equal",
+            }
+        ],
+    }
+    assert daemon.merge_queue is not None
+    request = daemon.merge_queue.enqueue(
+        branch_name=branch,
+        task_id=task.task_id,
+        priority="P0",
+        attempt=queue_attempt,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "implementation_attempt": implementation_attempt,
+            "task_owned_submodule_integration_binding": submodule_binding,
+        },
+        commit_sha=implementation_commit,
+        canonical_task_id=identity.canonical_task_cid,
+        canonical_task_key=identity.canonical_task_key,
+        target_repository_id=daemon.merge_target_repository_id,
+        target_branch=daemon.resolved_merge_target_branch,
+    )
+    initial_claim = daemon.merge_queue.dequeue("composite-review-seed")
+    assert initial_claim is not None
+    daemon.merge_queue.quarantine(
+        initial_claim,
+        reason="operator must approve the combined child postimage",
+    )
+    revived = daemon.merge_queue.revive_quarantined(
+        request,
+        reason="reviewed exact combined child postimage",
+        approved_submodule_integrations={"libs/child": landed_child},
+    )
+    assert revived is not None
+    consumed_claim = daemon.merge_queue.dequeue(
+        "composite-review-consumer"
+    )
+    assert consumed_claim is not None
+    raw_recovery = consumed_claim.metadata[
+        "operator_submodule_integration_recovery"
+    ]
+    assert raw_recovery["claim_generation"] == (
+        consumed_claim.claim_generation
+    )
+    daemon.merge_queue.complete(consumed_claim)
+    if generation_tamper == "completed_row":
+        with daemon.merge_queue._connect() as connection:
+            connection.execute(
+                """UPDATE merge_requests
+                   SET claim_generation=claim_generation + 1
+                   WHERE request_id=?""",
+                (request.request_id,),
+            )
+            connection.commit()
+
+    validation_commands = list(task.validation)
+    expected_changed_paths = list(task.outputs)
+    pending = daemon._record_event(
+        "merge_acceptance_pending",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "attempt": implementation_attempt,
+            "queue_attempt": queue_attempt,
+            "implementation_attempt": implementation_attempt,
+            "implementation_provider": "grok_cli",
+            "implementation_state_path": str(daemon.state_path),
+            "implementation_events_path": str(daemon.events_path),
+            "branch": branch,
+            "merge_request_id": request.request_id,
+            "merge_request_claim_generation": (
+                True
+                if generation_tamper == "event_bool"
+                else consumed_claim.claim_generation
+                + (1 if generation_tamper == "event" else 0)
+            ),
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "implementation_commit": implementation_commit,
+            "merge_commit": implementation_commit,
+            "merge_integrated": True,
+            "authoritatively_completed": False,
+            "model_invocation_observed": True,
+            "validation_commands": validation_commands,
+            "queued_validation_plan_id": (
+                implementation_daemon_module.content_identity(
+                    {"commands": validation_commands}
+                )
+            ),
+            "expected_changed_paths": expected_changed_paths,
+            "expected_changed_paths_id": (
+                implementation_daemon_module.content_identity(
+                    {"changed_paths": expected_changed_paths}
+                )
+            ),
+            "changed_submodule_paths": ["libs/child"],
+            "task_owned_submodule_integration_binding": submodule_binding,
+            "post_merge_review_descendant_gitlinks": {
+                "libs/child": landed_child,
+            },
+            # This diagnostic from an earlier boundary is not review
+            # authority for the composite landing and must not skip the fresh
+            # provider call below.
+            "provider_review_receipt_id": "stale-pre-composite-review",
+        },
+    )
+    assert "operator_submodule_integration_recovery" not in pending
+
+    restarted = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+    fresh_validation = {"passed": True, "source": "fresh-restart"}
+    validation_calls: list[dict[str, object]] = []
+    review_calls: list[dict[str, object]] = []
+    acceptance_calls: list[dict[str, object]] = []
+    fresh_review_gate = {
+        "gate_kind": "provider_review",
+        "source": "fresh-independent-review",
+    }
+
+    def run_fresh_validation(**kwargs):
+        validation_calls.append(dict(kwargs))
+        return fresh_validation
+
+    def run_fresh_review(**kwargs):
+        review_calls.append(dict(kwargs))
+        return fresh_review_gate
+
+    def apply_fresh_acceptance(**kwargs):
+        acceptance_calls.append(dict(kwargs))
+        return {
+            "authoritatively_completed": True,
+            "todo_update_result": {},
+        }
+
+    monkeypatch.setattr(
+        restarted,
+        "_recover_completed_request_scope_adjudication",
+        lambda **_kwargs: ([], "", ""),
+    )
+    monkeypatch.setattr(
+        restarted,
+        "_run_post_merge_validation_evidence",
+        run_fresh_validation,
+    )
+    monkeypatch.setattr(
+        restarted,
+        "_provider_review_gate_evidence",
+        run_fresh_review,
+    )
+    monkeypatch.setattr(
+        restarted,
+        "_apply_post_merge_acceptance_with_target_fence",
+        apply_fresh_acceptance,
+    )
+    monkeypatch.setattr(
+        restarted,
+        "_decision_runtime_completion",
+        lambda *_args, **_kwargs: None,
+    )
+
+    reconciliation = restarted._reconcile_failed_merges()
+
+    assert len(reconciliation) == 1
+    if generation_tamper != "none":
+        assert reconciliation[0]["resolved"] is False
+        assert (
+            reconciliation[0]["reason"]
+            == "reconciliation_submodule_review_binding_invalid"
+        )
+        assert (
+            reconciliation[0]["binding_error"]
+            == "submodule_review_request_generation_mismatch"
+        )
+        assert validation_calls == []
+        assert review_calls == []
+        assert acceptance_calls == []
+        return
+    assert reconciliation[0]["resolved"] is True
+    assert len(validation_calls) == 1
+    assert len(review_calls) == 1
+    assert review_calls[0]["validation_result"] is fresh_validation
+    assert review_calls[0]["approved_descendant_gitlinks"] == {
+        "libs/child": landed_child,
+    }
+    assert "operator_submodule_integration_recovery" not in review_calls[0]
+    assert len(acceptance_calls) == 1
+    assert acceptance_calls[0]["gate_evidence"] == {
+        "provider_review": fresh_review_gate,
+    }
+    reconciled = [
+        event
+        for event in restarted._iter_events()
+        if event.get("type") == "merge_reconciled"
+    ]
+    assert len(reconciled) == 1
+    assert reconciled[0]["post_merge_review_descendant_gitlinks"] == {
+        "libs/child": landed_child,
+    }
+    assert "operator_submodule_integration_recovery" not in reconciled[0]
+
+
+def test_provider_review_rejects_falsey_non_mapping_descendant_grant(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state/task-state.json",
+        strategy_path=repo / "state/strategy.json",
+        events_path=repo / "state/events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "perform_post_merge_independent_review",
+        lambda **_kwargs: pytest.fail(
+            "malformed descendant grant reached structural review"
+        ),
+    )
+
+    gate = daemon._provider_review_gate_evidence(
+        task=PortalTask(
+            task_id="REF-049D",
+            title="Reject malformed review authorization",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+        implementation_commit="a" * 40,
+        merge_commit="b" * 40,
+        repository_tree_id="git-tree:" + "c" * 40,
+        validation_result={"passed": True},
+        approved_descendant_gitlinks=[],
+    )
+
+    assert gate == {}
+
+
 def test_newer_acceptance_pending_supersedes_legacy_resolved_merge(
     tmp_path,
 ):
@@ -20519,16 +20856,17 @@ def test_post_merge_validation_resolves_gitlink_without_parent_commit_object(
         worktree_submodule_paths=["libs/child"],
     )
 
+    task = PortalTask(
+        task_id="REF-044A",
+        title="Validate exact detached gitlink",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        validation=("test -f libs/child/child.txt",),
+    )
     evidence = daemon._run_post_merge_validation_evidence(
-        task=PortalTask(
-            task_id="REF-044A",
-            title="Validate exact detached gitlink",
-            status="todo",
-            completion="manual",
-            priority="P0",
-            track="ops",
-            validation=("test -f libs/child/child.txt",),
-        ),
+        task=task,
         attempt=1,
         merge_commit=merge_commit,
     )
@@ -20537,6 +20875,16 @@ def test_post_merge_validation_resolves_gitlink_without_parent_commit_object(
     assert evidence["reason"] == "post_merge_validation_passed"
     assert evidence["validated_commit"] == merge_commit
     assert evidence.get("submodule_alignment_failures", []) == []
+    assert (
+        post_merge_review_module._verify_validation_evidence(
+            evidence,
+            task_validation=task.validation,
+            task_id=task.task_id,
+            merge_commit=merge_commit,
+            repository_tree_id=str(evidence["repository_tree_id"]),
+        )
+        == evidence["validation_receipt_id"]
+    )
 
 
 def test_post_merge_validation_rejects_validation_workspace_mutation(

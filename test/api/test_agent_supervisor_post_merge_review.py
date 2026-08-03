@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
+from copy import copy, deepcopy
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,17 +19,18 @@ from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     event_log_manifest,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import post_merge_review as review
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.authoritative_completion import (
-    POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
-)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
     TodoImplementationDaemon,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
     LLM_CHILD_ENVELOPE_VERSION,
-    LlmChildResultEnvelope,
     LlmChildProviderCapacityError,
+    LlmChildResultEnvelope,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.post_merge_validation import (
+    POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
+    build_post_merge_validation_evidence,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.scope_adjudication import (
     ScopeAdjudicationReceipt,
@@ -139,10 +141,14 @@ def _validation(
         "validation_status_stderr": "",
         "freshness_authoritative": True,
     }
-    return {
-        **material,
-        "validation_receipt_id": content_identity(material),
-    }
+    canonical = build_post_merge_validation_evidence(
+        task_id=task.task_id,
+        target_commit=merge_commit,
+        repository_tree_id=repository_tree_id,
+        validation_result=material,
+        validated_commit=merge_commit,
+    )
+    return {**material, **canonical}
 
 
 def _response(request: dict[str, Any], decision: str = "approve") -> str:
@@ -432,6 +438,7 @@ def _perform(
     expected_changed_paths: list[str] | None = None,
     scope_authorized_paths: list[str] | None = None,
     scope_adjudication_id: str = "",
+    approved_descendant_gitlinks: dict[str, str] | None = None,
 ) -> review.PostMergeReviewOutcome:
     return review.perform_post_merge_independent_review(
         repo_root=case.root,
@@ -454,6 +461,7 @@ def _perform(
         ),
         scope_authorized_paths=scope_authorized_paths or (),
         scope_adjudication_id=scope_adjudication_id,
+        approved_descendant_gitlinks=approved_descendant_gitlinks,
         implementer_provider="grok_cli",
         implementer_provenance=case.provenance,
         reviewer=reviewer,
@@ -484,6 +492,423 @@ def test_recursive_submodule_binding_uses_explicit_pre_seed_baseline(
     assert binding["task_binding_id"] != review.post_merge_task_binding_id(
         replace(nested_case.task, acceptance="Drifted acceptance criteria.")
     )
+
+
+def _land_composite_child_with_sibling(
+    case: SimpleNamespace,
+    *,
+    overlap_task_leaf: bool = False,
+) -> tuple[str, str]:
+    child = case.root / "external/child"
+    implementation_child = _git(
+        case.root,
+        "rev-parse",
+        f"{case.implementation}:external/child",
+    )
+    _git(child, "checkout", "-b", "landed-sibling", implementation_child)
+    if overlap_task_leaf:
+        (child / "docs/contract.md").write_text(
+            "# Contract\n\nOverwritten by sibling work.\n",
+            encoding="utf-8",
+        )
+    else:
+        (child / "sibling.txt").write_text(
+            "independent landed work\n",
+            encoding="utf-8",
+        )
+    _commit(child, "land sibling child work")
+    _git(child, "checkout", "-b", "landed-composite", implementation_child)
+    _git(child, "merge", "--no-ff", "landed-sibling", "-m", "merge child work")
+    landed_child = _git(child, "rev-parse", "HEAD")
+    landed_root = _commit(case.root, "record composite child")
+    return landed_child, landed_root
+
+
+def test_descendant_gitlink_requires_exact_authorization_and_leaf_bytes(
+    nested_case: SimpleNamespace,
+) -> None:
+    landed_child, landed_root = _land_composite_child_with_sibling(
+        nested_case
+    )
+
+    with pytest.raises(review.PostMergeReviewError) as missing:
+        review._collect_repository_binding(
+            repo_root=nested_case.root,
+            task=nested_case.task,
+            baseline_commit=nested_case.baseline,
+            implementation_commit=nested_case.implementation,
+            merge_commit=landed_root,
+            repository_tree_id=_tree(nested_case.root, landed_root),
+            expected_changed_paths=nested_case.task.outputs,
+        )
+    assert missing.value.reason_code == "merged_content_binding_mismatch"
+
+    binding = review._collect_repository_binding(
+        repo_root=nested_case.root,
+        task=nested_case.task,
+        baseline_commit=nested_case.baseline,
+        implementation_commit=nested_case.implementation,
+        merge_commit=landed_root,
+        repository_tree_id=_tree(nested_case.root, landed_root),
+        expected_changed_paths=nested_case.task.outputs,
+        approved_descendant_gitlinks={"external/child": landed_child},
+    )
+
+    assert binding["changed_paths"] == nested_case.task.outputs
+    assert binding["approved_descendant_gitlinks"] == {
+        "external/child": landed_child,
+    }
+    root_gitlink = binding["gitlink_bindings"][0]
+    assert root_gitlink["landing_relation"] == "approved_descendant"
+    assert root_gitlink["merged"]["git_object_id"] == landed_child
+    assert all(
+        item["implementation"] == item["merged"]
+        for item in binding["content_bindings"]
+    )
+    assert "external/child/sibling.txt" not in binding["changed_paths"]
+
+
+def test_exact_gitlink_rejects_unused_descendant_authorization(
+    nested_case: SimpleNamespace,
+) -> None:
+    implementation_child = _git(
+        nested_case.root,
+        "rev-parse",
+        f"{nested_case.implementation}:external/child",
+    )
+
+    with pytest.raises(review.PostMergeReviewError) as raised:
+        review._collect_repository_binding(
+            repo_root=nested_case.root,
+            task=nested_case.task,
+            baseline_commit=nested_case.baseline,
+            implementation_commit=nested_case.implementation,
+            merge_commit=nested_case.merge_commit,
+            repository_tree_id=nested_case.repository_tree_id,
+            expected_changed_paths=nested_case.task.outputs,
+            approved_descendant_gitlinks={
+                "external/child": implementation_child,
+            },
+        )
+
+    assert (
+        raised.value.reason_code
+        == "descendant_gitlink_authorization_unused"
+    )
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    ([], [("external/child", "a" * 40)], ""),
+)
+def test_descendant_gitlink_rejects_falsey_or_iterable_non_mapping_grant(
+    nested_case: SimpleNamespace,
+    malformed: Any,
+) -> None:
+    with pytest.raises(review.PostMergeReviewError) as raised:
+        review._collect_repository_binding(
+            repo_root=nested_case.root,
+            task=nested_case.task,
+            baseline_commit=nested_case.baseline,
+            implementation_commit=nested_case.implementation,
+            merge_commit=nested_case.merge_commit,
+            repository_tree_id=nested_case.repository_tree_id,
+            expected_changed_paths=nested_case.task.outputs,
+            approved_descendant_gitlinks=malformed,
+        )
+
+    assert (
+        raised.value.reason_code
+        == "descendant_gitlink_authorization_invalid"
+    )
+
+
+def test_descendant_gitlink_rejects_sibling_overlap_with_task_leaf(
+    nested_case: SimpleNamespace,
+) -> None:
+    landed_child, landed_root = _land_composite_child_with_sibling(
+        nested_case,
+        overlap_task_leaf=True,
+    )
+
+    with pytest.raises(review.PostMergeReviewError) as raised:
+        review._collect_repository_binding(
+            repo_root=nested_case.root,
+            task=nested_case.task,
+            baseline_commit=nested_case.baseline,
+            implementation_commit=nested_case.implementation,
+            merge_commit=landed_root,
+            repository_tree_id=_tree(nested_case.root, landed_root),
+            expected_changed_paths=nested_case.task.outputs,
+            approved_descendant_gitlinks={"external/child": landed_child},
+        )
+
+    assert raised.value.reason_code == "merged_content_binding_mismatch"
+
+
+def test_descendant_gitlink_rejects_foreign_same_tree_child(
+    nested_case: SimpleNamespace,
+) -> None:
+    child = nested_case.root / "external/child"
+    implementation_child = _git(
+        nested_case.root,
+        "rev-parse",
+        f"{nested_case.implementation}:external/child",
+    )
+    implementation_tree = _git(
+        child,
+        "rev-parse",
+        f"{implementation_child}^{{tree}}",
+    )
+    foreign_child = _git(
+        child,
+        "commit-tree",
+        implementation_tree,
+        "-m",
+        "foreign same-tree child",
+    )
+    _git(child, "checkout", "--detach", foreign_child)
+    landed_root = _commit(nested_case.root, "record foreign same-tree child")
+
+    with pytest.raises(review.PostMergeReviewError) as raised:
+        review._collect_repository_binding(
+            repo_root=nested_case.root,
+            task=nested_case.task,
+            baseline_commit=nested_case.baseline,
+            implementation_commit=nested_case.implementation,
+            merge_commit=landed_root,
+            repository_tree_id=_tree(nested_case.root, landed_root),
+            expected_changed_paths=nested_case.task.outputs,
+            approved_descendant_gitlinks={"external/child": foreign_child},
+        )
+
+    assert raised.value.reason_code == "submodule_implementation_not_contained"
+
+
+def test_descendant_gitlink_ignores_replace_refs_at_review_boundary(
+    nested_case: SimpleNamespace,
+) -> None:
+    child = nested_case.root / "external/child"
+    implementation_child = _git(
+        nested_case.root,
+        "rev-parse",
+        f"{nested_case.implementation}:external/child",
+    )
+    (child / "docs/contract.md").write_text(
+        "# Contract\n\nMalicious unrelated landing.\n",
+        encoding="utf-8",
+    )
+    _git(child, "add", "docs/contract.md")
+    malicious_tree = _git(child, "write-tree")
+    unrelated_child = _git(
+        child,
+        "commit-tree",
+        malicious_tree,
+        "-m",
+        "unrelated malicious child",
+    )
+    implementation_tree = _git(
+        child,
+        "rev-parse",
+        f"{implementation_child}^{{tree}}",
+    )
+    synthetic_replacement = _git(
+        child,
+        "commit-tree",
+        implementation_tree,
+        "-p",
+        implementation_child,
+        "-m",
+        "forged ancestry and tree",
+    )
+    _git(child, "replace", unrelated_child, synthetic_replacement)
+    _git(child, "checkout", "--detach", unrelated_child)
+    landed_root = _commit(
+        nested_case.root,
+        "record unrelated child hidden by replacement",
+    )
+
+    with pytest.raises(review.PostMergeReviewError) as raised:
+        review._collect_repository_binding(
+            repo_root=nested_case.root,
+            task=nested_case.task,
+            baseline_commit=nested_case.baseline,
+            implementation_commit=nested_case.implementation,
+            merge_commit=landed_root,
+            repository_tree_id=_tree(nested_case.root, landed_root),
+            expected_changed_paths=nested_case.task.outputs,
+            approved_descendant_gitlinks={
+                "external/child": unrelated_child,
+            },
+        )
+
+    assert raised.value.reason_code == "submodule_implementation_not_contained"
+
+
+def test_descendant_gitlink_ignores_legacy_grafts_at_review_boundary(
+    nested_case: SimpleNamespace,
+) -> None:
+    child = nested_case.root / "external/child"
+    implementation_child = _git(
+        nested_case.root,
+        "rev-parse",
+        f"{nested_case.implementation}:external/child",
+    )
+    implementation_tree = _git(
+        child,
+        "rev-parse",
+        f"{implementation_child}^{{tree}}",
+    )
+    unrelated_child = _git(
+        child,
+        "commit-tree",
+        implementation_tree,
+        "-m",
+        "unrelated child with the candidate tree",
+    )
+    raw_git_dir = Path(_git(child, "rev-parse", "--git-dir"))
+    git_dir = raw_git_dir if raw_git_dir.is_absolute() else child / raw_git_dir
+    grafts_path = git_dir / "info/grafts"
+    grafts_path.parent.mkdir(parents=True, exist_ok=True)
+    grafts_path.write_text(
+        f"{unrelated_child} {implementation_child}\n",
+        encoding="ascii",
+    )
+    _git(
+        child,
+        "merge-base",
+        "--is-ancestor",
+        implementation_child,
+        unrelated_child,
+    )
+    _git(child, "checkout", "--detach", unrelated_child)
+    landed_root = _commit(
+        nested_case.root,
+        "record unrelated child hidden by legacy graft",
+    )
+
+    with pytest.raises(review.PostMergeReviewError) as raised:
+        review._collect_repository_binding(
+            repo_root=nested_case.root,
+            task=nested_case.task,
+            baseline_commit=nested_case.baseline,
+            implementation_commit=nested_case.implementation,
+            merge_commit=landed_root,
+            repository_tree_id=_tree(nested_case.root, landed_root),
+            expected_changed_paths=nested_case.task.outputs,
+            approved_descendant_gitlinks={
+                "external/child": unrelated_child,
+            },
+        )
+
+    assert raised.value.reason_code == "submodule_implementation_not_contained"
+
+
+def test_descendant_gitlink_rejects_divergent_implementation_child(
+    nested_case: SimpleNamespace,
+) -> None:
+    child = nested_case.root / "external/child"
+    original_child = _git(
+        nested_case.root,
+        "rev-parse",
+        f"{nested_case.implementation}:external/child",
+    )
+    implementation_tree = _git(
+        child,
+        "rev-parse",
+        f"{original_child}^{{tree}}",
+    )
+    divergent_child = _git(
+        child,
+        "commit-tree",
+        implementation_tree,
+        "-m",
+        "divergent implementation child",
+    )
+    _git(nested_case.root, "checkout", "--detach", nested_case.baseline)
+    _git(child, "checkout", "--detach", divergent_child)
+    divergent_implementation = _commit(
+        nested_case.root,
+        "record divergent implementation child",
+    )
+    landed_child = _git(
+        child,
+        "commit-tree",
+        implementation_tree,
+        "-p",
+        divergent_child,
+        "-m",
+        "advance divergent child",
+    )
+    _git(child, "checkout", "--detach", landed_child)
+    landed_root = _commit(nested_case.root, "record advanced divergent child")
+
+    with pytest.raises(review.PostMergeReviewError) as raised:
+        review._collect_repository_binding(
+            repo_root=nested_case.root,
+            task=nested_case.task,
+            baseline_commit=nested_case.baseline,
+            implementation_commit=divergent_implementation,
+            merge_commit=landed_root,
+            repository_tree_id=_tree(nested_case.root, landed_root),
+            expected_changed_paths=nested_case.task.outputs,
+            approved_descendant_gitlinks={"external/child": landed_child},
+        )
+
+    assert (
+        raised.value.reason_code
+        == "submodule_implementation_diverged_from_baseline"
+    )
+
+
+def test_composite_gitlink_still_requires_fresh_validation_and_review(
+    nested_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    landed_child, landed_root = _land_composite_child_with_sibling(
+        nested_case
+    )
+    landed_tree = _tree(nested_case.root, landed_root)
+    advanced = SimpleNamespace(**vars(nested_case))
+    advanced.merge_commit = landed_root
+    advanced.repository_tree_id = landed_tree
+
+    provider_calls: list[str] = []
+    child = _fake_codex_child("approve")
+
+    def counted_child(prompt: str, invocation: Any):
+        provider_calls.append(str(invocation.request_id))
+        return child(prompt, invocation)
+
+    monkeypatch.setattr(
+        review,
+        "call_llm_router_with_receipt",
+        counted_child,
+    )
+    stale = _perform(
+        advanced,
+        approved_descendant_gitlinks={"external/child": landed_child},
+    )
+    assert stale.admitted is False
+    assert stale.reason_code == "post_merge_validation_unbound"
+    assert provider_calls == []
+
+    advanced.validation = _validation(
+        advanced.task,
+        landed_root,
+        landed_tree,
+    )
+    fresh = _perform(
+        advanced,
+        approved_descendant_gitlinks={"external/child": landed_child},
+    )
+
+    assert fresh.admitted is True
+    assert len(provider_calls) == 1
+    assert fresh.acceptance_pending is True
+    assert fresh.receipt["repository_write_allowed"] is False
+    assert fresh.receipt["proof_authoritative"] is False
+    assert fresh.receipt["completion_authoritative"] is False
 
 
 def test_metadata_declared_proposal_scope_is_consistent_in_post_merge_review(
@@ -1075,6 +1500,25 @@ def test_live_production_review_mints_only_after_durable_head_and_admits(
     assert gate["canonical_task_cid"] == outcome.event["canonical_task_cid"]
     assert gate["board_namespace"] == outcome.event["board_namespace"]
 
+    consume_kwargs = {
+        "task": nested_case.task,
+        "implementation_commit": nested_case.implementation,
+        "merge_commit": nested_case.merge_commit,
+        "repository_tree_id": nested_case.repository_tree_id,
+    }
+    plain_gate = dict(gate)
+    copied_gate = copy(gate)
+    reloaded_gate = json.loads(json.dumps(plain_gate))
+    assert type(copied_gate) is dict
+    for untrusted_gate in (plain_gate, copied_gate, reloaded_gate):
+        assert (
+            review._consume_live_post_merge_review_gate(
+                untrusted_gate,
+                **consume_kwargs,
+            )
+            is None
+        )
+
     daemon = TodoImplementationDaemon(
         todo_path=nested_case.todo_path,
         state_path=nested_case.root / "state/acceptance-state.json",
@@ -1099,6 +1543,29 @@ def test_live_production_review_mints_only_after_durable_head_and_admits(
         model_invocation_observed=True,
     )
     assert result["authoritatively_completed"] is True
+    assert (
+        review._consume_live_post_merge_review_gate(
+            gate,
+            **consume_kwargs,
+        )
+        is None
+    )
+
+    concurrent_gate = review.mint_gate_from_live_outcome(
+        outcome,
+        appended,
+        events_path=nested_case.events_path,
+    )
+
+    def consume_concurrently(_index: int) -> dict[str, Any] | None:
+        return review._consume_live_post_merge_review_gate(
+            concurrent_gate,
+            **consume_kwargs,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        concurrent_results = list(pool.map(consume_concurrently, range(32)))
+    assert sum(result is not None for result in concurrent_results) == 1
 
 
 @pytest.mark.parametrize(

@@ -18,25 +18,24 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any
 
-from ..proof.formal_verification_contracts import content_identity
 from ..merge.merge_queue import (
     POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA,
 )
+from ..proof.formal_verification_contracts import content_identity
 from ..runtime import event_log as _event_log_runtime
 from ..validation.scope_adjudication import (
     verified_scope_adjudication_receipt,
 )
-from .authoritative_completion import (
-    POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
-    bound_gate_evidence,
-)
+from .authoritative_completion import bound_gate_evidence
 from .contract_packet_provider_router import ReviewPresence, redact_provider_data
+from .git_environment import sanitized_git_environment
 from .llm import (
     LLM_CHILD_ENVELOPE_VERSION,
     LLM_CHILD_RESULT_SCHEMA,
@@ -45,6 +44,10 @@ from .llm import (
     call_llm_router_with_receipt,
 )
 from .llm_defaults import DEFAULT_CODEX_MODEL
+from .post_merge_validation import (
+    POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
+    verify_post_merge_validation_evidence,
+)
 
 POST_MERGE_INDEPENDENT_REVIEW_EVENT = "post_merge_independent_review_admitted"
 POST_MERGE_INDEPENDENT_REVIEW_DENIED_EVENT = "post_merge_independent_review_denied"
@@ -195,6 +198,55 @@ def _thaw_canonical_json(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_thaw_canonical_json(child) for child in value]
     return value
+
+
+class _LivePostMergeReviewGateCapability(Mapping[str, Any]):
+    """One-shot, process-local authority to consume a live review gate.
+
+    The mapping surface lets existing daemon plumbing carry the gate without
+    granting equivalent authority to a copied or deserialized dictionary.
+    Only this exact private type, sealed by this module, is consumable.
+    """
+
+    __slots__ = (
+        "_canonical",
+        "_consumed",
+        "_lock",
+        "_material",
+        "_producer_seal",
+    )
+
+    def __init__(self, material: Mapping[str, Any]) -> None:
+        canonical = _canonical_json_bytes(dict(material))
+        frozen = _freeze_canonical_json(json.loads(canonical))
+        if not isinstance(frozen, Mapping):  # pragma: no cover - defensive
+            raise TypeError("live review gate material must be a mapping")
+        self._material = frozen
+        self._canonical = canonical
+        self._producer_seal = _LIVE_PRODUCTION_REVIEW_SEAL
+        self._consumed = False
+        self._lock = threading.Lock()
+
+    def __getitem__(self, key: str) -> Any:
+        return self._material[key]
+
+    def __iter__(self):
+        return iter(self._material)
+
+    def __len__(self) -> int:
+        return len(self._material)
+
+    def __copy__(self) -> dict[str, Any]:
+        return _thaw_canonical_json(self._material)
+
+    def __deepcopy__(self, _memo: dict[int, Any]) -> dict[str, Any]:
+        return _thaw_canonical_json(self._material)
+
+    def __reduce__(self):
+        raise TypeError("live post-merge review gates cannot be serialized")
+
+    def __reduce_ex__(self, _protocol: int):
+        raise TypeError("live post-merge review gates cannot be serialized")
 
 
 @dataclass(frozen=True)
@@ -1276,6 +1328,7 @@ def _git(
     return subprocess.run(
         ["git", *arguments],
         cwd=repo_root,
+        env=sanitized_git_environment(),
         text=text,
         capture_output=True,
         check=False,
@@ -1547,6 +1600,7 @@ def _repository_patch(
         [
             "diff",
             "--no-ext-diff",
+            "--no-textconv",
             "--binary",
             "--full-index",
             "--no-renames",
@@ -3606,10 +3660,19 @@ def _expand_repository_diff(
     base_commit: str,
     implementation_commit: str,
     landed_commit: str,
+    approved_descendant_gitlinks: Mapping[str, str] | None = None,
     repository_prefix: str = "",
     depth: int = 0,
 ) -> dict[str, Any]:
-    """Expand a Git diff through exact initialized submodule gitlinks."""
+    """Expand a Git diff through exact initialized submodule gitlinks.
+
+    A task-owned gitlink normally has to land at the exact implementation
+    child.  One explicitly approved path may instead land at an exact child
+    descendant (including a merge commit).  That exception changes only the
+    review boundary: the candidate child must be contained in the landed
+    child and every leaf changed by the implementation must still have its
+    exact mode, object type, and object ID at the landed revision.
+    """
 
     if depth > 8:
         raise PostMergeReviewError(
@@ -3638,6 +3701,7 @@ def _expand_repository_diff(
             "leaf_statuses": (),
             "content_bindings": (),
             "gitlink_bindings": (),
+            "descendant_gitlink_paths": (),
             "patch_parts": (),
         }
     patch = _repository_patch(
@@ -3655,6 +3719,7 @@ def _expand_repository_diff(
     leaf_statuses: list[tuple[str, str]] = []
     content_bindings: list[dict[str, Any]] = []
     gitlink_bindings: list[dict[str, Any]] = []
+    descendant_gitlink_paths: list[str] = []
     patch_parts: list[bytes] = [patch_part]
     status_by_path = {path: status for status, path in statuses}
     for local_path in local_paths:
@@ -3670,12 +3735,6 @@ def _expand_repository_diff(
             local_path,
         )
         landed_entry = _tree_entry(repository_root, landed, local_path)
-        if implementation_entry != landed_entry:
-            raise PostMergeReviewError(
-                "merged_content_binding_mismatch",
-                f"landed content for {full_path!r} differs from "
-                "implementation_commit",
-            )
         entries = (base_entry, implementation_entry, landed_entry)
         is_gitlink = any(
             entry is not None
@@ -3686,6 +3745,12 @@ def _expand_repository_diff(
             for entry in entries
         )
         if not is_gitlink:
+            if implementation_entry != landed_entry:
+                raise PostMergeReviewError(
+                    "merged_content_binding_mismatch",
+                    f"landed content for {full_path!r} differs from "
+                    "implementation_commit",
+                )
             leaf_statuses.append((status_by_path[local_path], full_path))
             content_bindings.append(
                 {
@@ -3713,16 +3778,37 @@ def _expand_repository_diff(
                 "submodule_gitlink_transition_unsupported",
                 f"added, removed, or malformed submodule gitlink {full_path!r}",
             )
-        gitlink_bindings.append(
-            {
-                "path": full_path,
-                "parent_repository_path": repository_label,
-                "status": status_by_path[local_path],
-                "base": base_entry,
-                "implementation": implementation_entry,
-                "merged": landed_entry,
-            }
+        implementation_child = str(
+            implementation_entry["git_object_id"]
         )
+        landed_child = str(landed_entry["git_object_id"])
+        landing_relation = "exact"
+        if implementation_child != landed_child:
+            approved_child = str(
+                (approved_descendant_gitlinks or {}).get(full_path) or ""
+            )
+            if approved_child != landed_child:
+                raise PostMergeReviewError(
+                    "merged_content_binding_mismatch",
+                    f"landed gitlink for {full_path!r} is not the exact "
+                    "implementation child or its explicitly approved target",
+                )
+            landing_relation = "approved_descendant"
+            descendant_gitlink_paths.append(full_path)
+        gitlink_binding = {
+            "path": full_path,
+            "parent_repository_path": repository_label,
+            "status": status_by_path[local_path],
+            "base": base_entry,
+            "implementation": implementation_entry,
+            "merged": landed_entry,
+        }
+        # Preserve the existing binding shape for ordinary exact landings.
+        # The additional relationship is security material only when an
+        # explicitly authorized composite landing is actually consumed.
+        if landing_relation == "approved_descendant":
+            gitlink_binding["landing_relation"] = landing_relation
+        gitlink_bindings.append(gitlink_binding)
         child_root = (repository_root / local_path).resolve()
         try:
             child_root.relative_to(checkout_root)
@@ -3745,6 +3831,38 @@ def _expand_repository_diff(
                 "submodule_checkout_unavailable",
                 f"exact initialized submodule checkout is required for {full_path!r}",
             )
+        if landing_relation == "approved_descendant":
+            baseline_child = str(base_entry["git_object_id"])
+            baseline_ancestor = _git(
+                child_root,
+                [
+                    "merge-base",
+                    "--is-ancestor",
+                    baseline_child,
+                    implementation_child,
+                ],
+            )
+            if baseline_ancestor.returncode != 0:
+                raise PostMergeReviewError(
+                    "submodule_implementation_diverged_from_baseline",
+                    f"implementation child for {full_path!r} is not based on "
+                    "the baseline child",
+                )
+            implementation_ancestor = _git(
+                child_root,
+                [
+                    "merge-base",
+                    "--is-ancestor",
+                    implementation_child,
+                    landed_child,
+                ],
+            )
+            if implementation_ancestor.returncode != 0:
+                raise PostMergeReviewError(
+                    "submodule_implementation_not_contained",
+                    f"approved landed child for {full_path!r} does not "
+                    "contain the implementation child",
+                )
         nested = _expand_repository_diff(
             checkout_root=checkout_root,
             repository_root=child_root,
@@ -3753,6 +3871,7 @@ def _expand_repository_diff(
                 implementation_entry["git_object_id"]
             ),
             landed_commit=str(landed_entry["git_object_id"]),
+            approved_descendant_gitlinks=approved_descendant_gitlinks,
             repository_prefix=full_path,
             depth=depth + 1,
         )
@@ -3764,11 +3883,15 @@ def _expand_repository_diff(
         leaf_statuses.extend(nested["leaf_statuses"])
         content_bindings.extend(nested["content_bindings"])
         gitlink_bindings.extend(nested["gitlink_bindings"])
+        descendant_gitlink_paths.extend(
+            nested["descendant_gitlink_paths"]
+        )
         patch_parts.extend(nested["patch_parts"])
     return {
         "leaf_statuses": tuple(leaf_statuses),
         "content_bindings": tuple(content_bindings),
         "gitlink_bindings": tuple(gitlink_bindings),
+        "descendant_gitlink_paths": tuple(descendant_gitlink_paths),
         "patch_parts": tuple(patch_parts),
     }
 
@@ -3819,6 +3942,7 @@ def _collect_repository_binding(
     expected_changed_paths: Sequence[str] | None,
     scope_authorized_paths: Sequence[str] = (),
     scope_adjudication_id: str = "",
+    approved_descendant_gitlinks: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     implementation = _exact_commit(
         repo_root,
@@ -3860,6 +3984,39 @@ def _collect_repository_binding(
             "repository_tree_id does not identify merge_commit^{tree}",
         )
 
+    raw_descendant_gitlinks = (
+        {}
+        if approved_descendant_gitlinks is None
+        else approved_descendant_gitlinks
+    )
+    if not isinstance(raw_descendant_gitlinks, Mapping):
+        raise PostMergeReviewError(
+            "descendant_gitlink_authorization_invalid",
+            "approved descendant gitlinks must be a path-to-commit mapping",
+        )
+    if len(raw_descendant_gitlinks) > 8:
+        raise PostMergeReviewError(
+            "descendant_gitlink_authorization_invalid",
+            "approved descendant gitlinks exceed the recursion bound",
+        )
+    normalized_descendant_gitlinks: dict[str, str] = {}
+    for raw_path, raw_commit in raw_descendant_gitlinks.items():
+        path = _normalize_path(raw_path)
+        commit = str(raw_commit or "")
+        if (
+            not isinstance(raw_path, str)
+            or not isinstance(raw_commit, str)
+            or path != raw_path
+            or path in normalized_descendant_gitlinks
+            or not _FULL_OBJECT_ID.fullmatch(commit)
+        ):
+            raise PostMergeReviewError(
+                "descendant_gitlink_authorization_invalid",
+                "approved descendant gitlinks must use canonical unique paths "
+                "and full lowercase commit IDs",
+            )
+        normalized_descendant_gitlinks[path] = commit
+
     base_commit = baseline
     expanded = _expand_repository_diff(
         checkout_root=repo_root,
@@ -3867,7 +4024,17 @@ def _collect_repository_binding(
         base_commit=base_commit,
         implementation_commit=implementation,
         landed_commit=merged,
+        approved_descendant_gitlinks=normalized_descendant_gitlinks,
     )
+    used_descendant_gitlinks = tuple(
+        sorted(set(expanded["descendant_gitlink_paths"]))
+    )
+    if tuple(sorted(normalized_descendant_gitlinks)) != used_descendant_gitlinks:
+        raise PostMergeReviewError(
+            "descendant_gitlink_authorization_unused",
+            "every approved descendant gitlink must bind one non-exact "
+            "implementation-to-landed child transition",
+        )
     statuses = tuple(
         sorted(expanded["leaf_statuses"], key=lambda item: item[1])
     )
@@ -3971,6 +4138,10 @@ def _collect_repository_binding(
         "patch_sha256": hashlib.sha256(patch_bytes).hexdigest(),
         "patch_bytes": len(patch_bytes),
     }
+    if normalized_descendant_gitlinks:
+        diff_material["approved_descendant_gitlinks"] = dict(
+            sorted(normalized_descendant_gitlinks.items())
+        )
     scope_authorization_material = {
         "task_binding_id": post_merge_task_binding_id(task),
         "base_commit": base_commit,
@@ -4005,7 +4176,7 @@ def _verify_validation_evidence(
             "post-merge validation evidence is required",
         )
     evidence = dict(validation_result)
-    receipt_id = str(evidence.pop("validation_receipt_id", "") or "")
+    receipt_id = str(evidence.get("validation_receipt_id") or "")
     expected_tree = repository_tree_id.removeprefix("git-tree:")
     declared_commands = [str(item) for item in task_validation]
     validation_plan_material = {
@@ -4016,6 +4187,43 @@ def _verify_validation_evidence(
         "declared_commands": declared_commands,
     }
     expected_plan_id = content_identity(validation_plan_material)
+    integrity_verified, _integrity_reasons = (
+        verify_post_merge_validation_evidence(
+            evidence,
+        )
+    )
+    if not integrity_verified:
+        raise PostMergeReviewError(
+            "post_merge_validation_receipt_invalid",
+            "validation receipt is missing, malformed, or not "
+            "content-addressed by the canonical validation contract",
+        )
+    diagnostic_result = evidence.get("validation_result")
+    if not isinstance(diagnostic_result, Mapping):
+        raise PostMergeReviewError(
+            "post_merge_validation_receipt_invalid",
+            "canonical validation diagnostics are missing",
+        )
+
+    def diagnostics_exact(value: Mapping[str, Any]) -> bool:
+        status_returncode = value.get("validation_status_returncode")
+        return bool(
+            str(value.get("target_tree") or "") == expected_tree
+            and str(value.get("validated_tree") or "") == expected_tree
+            and list(value.get("declared_commands") or ())
+            == declared_commands
+            and str(value.get("validation_plan_id") or "")
+            == expected_plan_id
+            and value.get("workspace_clean") is True
+            and str(value.get("workspace_status_porcelain") or "") == ""
+            and list(value.get("validation_dirty_paths") or ()) == []
+            and isinstance(status_returncode, int)
+            and not isinstance(status_returncode, bool)
+            and status_returncode == 0
+            and str(value.get("validation_status_stderr") or "") == ""
+            and value.get("freshness_authoritative") is True
+        )
+
     if (
         evidence.get("schema") != POST_MERGE_VALIDATION_EVIDENCE_SCHEMA
         or str(evidence.get("task_id") or "") != task_id
@@ -4023,29 +4231,17 @@ def _verify_validation_evidence(
         or str(evidence.get("repository_tree_id") or "") != repository_tree_id
         or str(evidence.get("target_tree") or "") != expected_tree
         or str(evidence.get("validated_commit") or "") != merge_commit
-        or str(evidence.get("validated_tree") or "") != expected_tree
         or str(evidence.get("validation_scope") or "") != "post_merge"
         or evidence.get("attempted") is not True
         or evidence.get("passed") is not True
-        or evidence.get("stale") is True
-        or evidence.get("freshness_authoritative") is not True
-        or list(evidence.get("declared_commands") or ()) != declared_commands
-        or str(evidence.get("validation_plan_id") or "")
-        != expected_plan_id
-        or evidence.get("workspace_clean") is not True
-        or str(evidence.get("workspace_status_porcelain") or "") != ""
-        or list(evidence.get("validation_dirty_paths") or ()) != []
-        or int(evidence.get("validation_status_returncode") or 0) != 0
-        or str(evidence.get("validation_status_stderr") or "") != ""
+        or evidence.get("returncode") != 0
+        or evidence.get("stale") is not False
+        or not diagnostics_exact(evidence)
+        or not diagnostics_exact(diagnostic_result)
     ):
         raise PostMergeReviewError(
             "post_merge_validation_unbound",
             "validation evidence is not fresh and exactly merge/tree bound",
-        )
-    if not receipt_id or content_identity(evidence) != receipt_id:
-        raise PostMergeReviewError(
-            "post_merge_validation_receipt_invalid",
-            "validation_receipt_id is missing or not content-addressed",
         )
     return receipt_id
 
@@ -4171,6 +4367,13 @@ def _review_request(
         "proof_authoritative": False,
         "completion_authoritative": False,
     }
+    approved_descendant_gitlinks = binding.get(
+        "approved_descendant_gitlinks"
+    )
+    if approved_descendant_gitlinks:
+        request["approved_descendant_gitlinks"] = dict(
+            approved_descendant_gitlinks
+        )
     request["request_id"] = content_identity(request)
     return request
 
@@ -6901,6 +7104,7 @@ def verify_post_merge_review_receipt(
     expected_changed_paths: Sequence[str] | None = None,
     scope_authorized_paths: Sequence[str] = (),
     scope_adjudication_id: str = "",
+    approved_descendant_gitlinks: Mapping[str, str] | None = None,
     implementer_provenance: VerifiedImplementerProvenance | None = None,
 ) -> ReceiptVerification:
     """Recompute every provider-review binding from Git and typed evidence."""
@@ -7022,6 +7226,7 @@ def verify_post_merge_review_receipt(
             expected_changed_paths=expected_changed_paths,
             scope_authorized_paths=scope_authorized_paths,
             scope_adjudication_id=scope_adjudication_id,
+            approved_descendant_gitlinks=approved_descendant_gitlinks,
         )
         validation_receipt_id = _verify_validation_evidence(
             validation_result,
@@ -7199,6 +7404,7 @@ def perform_post_merge_independent_review(
     expected_changed_paths: Sequence[str] | None,
     scope_authorized_paths: Sequence[str] = (),
     scope_adjudication_id: str = "",
+    approved_descendant_gitlinks: Mapping[str, str] | None = None,
     implementer_provider: str,
     implementer_provenance: VerifiedImplementerProvenance,
     reviewer: ReviewerCallable | None = None,
@@ -7263,6 +7469,7 @@ def perform_post_merge_independent_review(
             expected_changed_paths=expected_changed_paths,
             scope_authorized_paths=scope_authorized_paths,
             scope_adjudication_id=scope_adjudication_id,
+            approved_descendant_gitlinks=approved_descendant_gitlinks,
         )
         task_projection = dict(binding["task_projection"])
         validation_receipt_id = _verify_validation_evidence(
@@ -7418,6 +7625,7 @@ def perform_post_merge_independent_review(
             expected_changed_paths=expected_changed_paths,
             scope_authorized_paths=scope_authorized_paths,
             scope_adjudication_id=scope_adjudication_id,
+            approved_descendant_gitlinks=approved_descendant_gitlinks,
             implementer_provenance=implementer_provenance,
         )
         if not verification.valid:
@@ -7547,7 +7755,7 @@ def mint_gate_from_live_outcome(
     appended_event: Mapping[str, Any],
     *,
     events_path: Path,
-) -> dict[str, Any]:
+) -> Mapping[str, Any]:
     """Mint a gate only from a live producer seal after durable event append.
 
     Persisted receipts and dependency-injected reviewer results intentionally
@@ -7660,21 +7868,80 @@ def mint_gate_from_live_outcome(
         or appended_event.get("review_receipt") != receipt_snapshot
     ):
         return {}
-    return bound_gate_evidence(
-        "provider_review",
-        task_id=outcome._bound_task_id,
-        implementation_commit=outcome._bound_implementation_commit,
-        merge_commit=outcome._bound_merge_commit,
-        repository_tree_id=outcome._bound_repository_tree_id,
-        satisfied=True,
-        review_presence="independent",
-        provider_result_admitted=True,
-        review_receipt_id=outcome._bound_review_receipt_id,
-        task_binding_id=outcome._bound_task_binding_id,
-        canonical_task_key=outcome._bound_canonical_task_key,
-        canonical_task_cid=outcome._bound_canonical_task_cid,
-        board_namespace=outcome._bound_board_namespace,
+    return _LivePostMergeReviewGateCapability(
+        bound_gate_evidence(
+            "provider_review",
+            task_id=outcome._bound_task_id,
+            implementation_commit=outcome._bound_implementation_commit,
+            merge_commit=outcome._bound_merge_commit,
+            repository_tree_id=outcome._bound_repository_tree_id,
+            satisfied=True,
+            review_presence="independent",
+            provider_result_admitted=True,
+            review_receipt_id=outcome._bound_review_receipt_id,
+            task_binding_id=outcome._bound_task_binding_id,
+            canonical_task_key=outcome._bound_canonical_task_key,
+            canonical_task_cid=outcome._bound_canonical_task_cid,
+            board_namespace=outcome._bound_board_namespace,
+        )
     )
+
+
+def _consume_live_post_merge_review_gate(
+    candidate: Any,
+    *,
+    task: Any,
+    implementation_commit: str,
+    merge_commit: str,
+    repository_tree_id: str,
+) -> dict[str, Any] | None:
+    """Consume one genuine live-review capability and return plain evidence."""
+
+    if (
+        type(candidate) is not _LivePostMergeReviewGateCapability
+        or candidate._producer_seal is not _LIVE_PRODUCTION_REVIEW_SEAL
+    ):
+        return None
+
+    # Burn before interpreting caller/task bindings so failed attempts cannot
+    # be retried with a different task or commit identity.
+    with candidate._lock:
+        if candidate._consumed:
+            return None
+        candidate._consumed = True
+    try:
+        material = _thaw_canonical_json(candidate._material)
+        if (
+            not isinstance(material, dict)
+            or _canonical_json_bytes(material) != candidate._canonical
+        ):
+            return None
+        projection = _task_projection(task)
+        review_receipt_id = material.get("review_receipt_id")
+        if (
+            not isinstance(review_receipt_id, str)
+            or not review_receipt_id
+            or review_receipt_id != review_receipt_id.strip()
+        ):
+            return None
+        expected = bound_gate_evidence(
+            "provider_review",
+            task_id=projection["task_id"],
+            implementation_commit=implementation_commit,
+            merge_commit=merge_commit,
+            repository_tree_id=repository_tree_id,
+            satisfied=True,
+            review_presence="independent",
+            provider_result_admitted=True,
+            review_receipt_id=review_receipt_id,
+            task_binding_id=post_merge_task_binding_id(task),
+            canonical_task_key=projection["canonical_task_key"],
+            canonical_task_cid=projection["canonical_task_cid"],
+            board_namespace=projection["board_namespace"],
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+    return expected if material == expected else None
 
 
 __all__ = [
