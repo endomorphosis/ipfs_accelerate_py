@@ -1087,7 +1087,14 @@ def release_checkout_mutation_lease(
     *,
     timeout_seconds: float = 1.0,
 ) -> bool:
-    """Release only the exact inode and lease identity acquired by the caller."""
+    """Idempotently release only the exact lease acquired by the caller.
+
+    A missing lock is already released.  Treating that state as failure leaves
+    a daemon's in-memory ``release_pending`` context permanently wedged after
+    another fenced transaction has legitimately reclaimed and removed the
+    durable record.  Existing replacement or malformed records still fail
+    closed and are never removed by this caller.
+    """
 
     try:
         with serialized_lock_update(
@@ -1095,6 +1102,8 @@ def release_checkout_mutation_lease(
             timeout_seconds=timeout_seconds,
         ):
             current, identity = _read_checkout_lock(lease.lock_path)
+            if current is None and not lease.lock_path.exists():
+                return True
             if (
                 current is None
                 or identity != (lease.device, lease.inode)
