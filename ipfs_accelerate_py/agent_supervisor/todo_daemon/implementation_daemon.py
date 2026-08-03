@@ -60,6 +60,8 @@ from ..merge.checkout_lock import (
     PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
     CheckoutMaintenanceLease,
     checkout_lock_metadata,
+    checkout_lock_owner_is_active,
+    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
     checkout_repository_id,
     crash_fence_reconciliation_lock_path,
@@ -12327,12 +12329,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         if not self._owns_merge_lock_token(merge_lock_token):
             lock_path = self._repo_merge_lock_path()
-            lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
-                lock_path,
-                lock_kind="merge",
-                owner_active=self._merge_lock_owner_is_active,
+            lock_metadata = self._build_published_merge_lock_metadata(
+                task_id=primary_task_id,
+                branch="completion-transaction",
+                operation="mark_tasks_completed",
             )
-            if lock_fd is None:
+            acquired_lock, lock_reason, existing_lock = (
+                self._try_acquire_published_merge_lock(
+                    lock_path,
+                    lock_metadata,
+                )
+            )
+            if not acquired_lock:
                 result = {
                     "updated": False,
                     "completion_durable": False,
@@ -12347,22 +12355,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 return result
             owned_token: object | None = None
             try:
-                self._write_lock_metadata(
-                    lock_fd,
-                    checkout_lock_metadata(
-                        kind="merge",
-                        repo_root=self.repo_root,
-                        task_id=primary_task_id,
-                        branch="completion-transaction",
-                        extra={
-                            "operation": "mark_tasks_completed",
-                            "state_dir": str(
-                                self.state_path.parent.resolve()
-                            ),
-                            "state_path": str(self.state_path.resolve()),
-                        },
-                    ),
-                )
                 owned_token = self._activate_owned_merge_lock()
                 return self._mark_tasks_completed_in_todo_unchecked(
                     task_ids,
@@ -12376,13 +12368,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             finally:
                 if owned_token is not None:
                     self._deactivate_owned_merge_lock(owned_token)
-                try:
-                    lock_path.unlink()
-                except FileNotFoundError:
-                    pass
-                except OSError:
+                if not self._release_published_merge_lock(
+                    lock_path,
+                    lock_metadata,
+                ):
                     logger.warning(
-                        "Failed to remove completion transaction lock %s",
+                        "Completion transaction checkout mutation lease "
+                        "was not released: %s",
                         lock_path,
                     )
 
@@ -12839,17 +12831,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         started_at = utc_now()
         lock_path = self._repo_merge_lock_path()
-        lock_fd: int | None = None
+        lock_acquired = False
+        lock_metadata: dict[str, Any] = {}
         lock_reason = "preheld"
         existing_lock: dict[str, Any] | None = None
         lock_is_owned = self._owns_merge_lock_token(merge_lock_token)
         if not lock_is_owned:
-            lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
-                lock_path,
-                lock_kind="merge",
-                owner_active=self._merge_lock_owner_is_active,
+            lock_metadata = self._build_published_merge_lock_metadata(
+                task_id=task_id,
+                branch="generated-file-update",
+                operation="commit_generated_file_update",
+                extra={
+                    "path": str(path),
+                    "started_at": started_at,
+                },
             )
-        if not lock_is_owned and lock_fd is None:
+            lock_acquired, lock_reason, existing_lock = (
+                self._try_acquire_published_merge_lock(
+                    lock_path,
+                    lock_metadata,
+                )
+            )
+        if not lock_is_owned and not lock_acquired:
             result: dict[str, Any] = {
                 "committed": False,
                 "reason": f"checkout_mutation_{lock_reason}",
@@ -12863,23 +12866,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return result
 
         try:
-            if lock_fd is not None:
-                self._write_lock_metadata(
-                    lock_fd,
-                    checkout_lock_metadata(
-                    kind="merge",
-                    repo_root=self.repo_root,
-                    task_id=task_id,
-                    branch="generated-file-update",
-                    extra={
-                        "operation": "commit_generated_file_update",
-                        "path": str(path),
-                        "started_at": started_at,
-                        "state_dir": str(self.state_path.parent.resolve()),
-                        "state_path": str(self.state_path.resolve()),
-                    },
-                    ),
-                )
             repo = self._git_toplevel_for_path(path.parent)
             if repo is None:
                 return {"committed": False, "reason": "not_in_git_repo", "path": str(path)}
@@ -12894,12 +12880,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["parent_gitlink_commits"] = parent_results
             return result
         finally:
-            if not lock_is_owned:
-                try:
-                    if lock_path.exists():
-                        lock_path.unlink()
-                except OSError:
-                    logger.warning("Failed to remove checkout mutation lock %s", lock_path)
+            if (
+                lock_acquired
+                and not self._release_published_merge_lock(
+                    lock_path,
+                    lock_metadata,
+                )
+            ):
+                logger.warning(
+                    "Generated-file checkout mutation lease was not "
+                    "released: %s",
+                    lock_path,
+                )
 
     def _generated_file_commit_is_durable(
         self,
@@ -14765,12 +14757,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """Fence the final target check and durable board mutation together."""
 
         lock_path = self._repo_merge_lock_path()
-        lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
-            lock_path,
-            lock_kind="merge",
-            owner_active=self._merge_lock_owner_is_active,
+        lock_metadata = self._build_published_merge_lock_metadata(
+            task_id=task.task_id,
+            branch="post-merge-acceptance",
+            operation="post_merge_authoritative_acceptance",
+            attempt=int(attempt),
+            extra={"expected_merge_commit": merge_commit},
         )
-        if lock_fd is None:
+        lock_acquired, lock_reason, existing_lock = (
+            self._try_acquire_published_merge_lock(
+                lock_path,
+                lock_metadata,
+            )
+        )
+        if not lock_acquired:
             result: dict[str, Any] = {
                 "updated": False,
                 "authoritatively_completed": False,
@@ -14788,22 +14788,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return result
         owned_token: object | None = None
         try:
-            self._write_lock_metadata(
-                lock_fd,
-                checkout_lock_metadata(
-                    kind="merge",
-                    repo_root=self.repo_root,
-                    task_id=task.task_id,
-                    branch="post-merge-acceptance",
-                    extra={
-                        "operation": "post_merge_authoritative_acceptance",
-                        "attempt": int(attempt),
-                        "expected_merge_commit": merge_commit,
-                        "state_dir": str(self.state_path.parent.resolve()),
-                        "state_path": str(self.state_path.resolve()),
-                    },
-                ),
-            )
             owned_token = self._activate_owned_merge_lock()
             live_target_commit = self._resolve_git_commit_in_repo(
                 self.repo_root,
@@ -14834,13 +14818,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         finally:
             if owned_token is not None:
                 self._deactivate_owned_merge_lock(owned_token)
-            try:
-                lock_path.unlink()
-            except FileNotFoundError:
-                pass
-            except OSError:
+            if not self._release_published_merge_lock(
+                lock_path,
+                lock_metadata,
+            ):
                 logger.warning(
-                    "Failed to remove post-merge acceptance lock %s",
+                    "Post-merge acceptance checkout mutation lease was not "
+                    "released: %s",
                     lock_path,
                 )
 
@@ -27314,27 +27298,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         candidate_branch_namespace = (
             candidate_branch_namespace or branch_name
         )
-        self._preserve_generated_nested_worktree_directories()
-        stale_submodule_worktree_config_repair = self._repair_stale_submodule_worktree_configs(self.repo_root)
         target_branch = self._main_branch_name()
-        # Attempt to rebase stale submodule pointers before merge
-        submodule_rebase = (
-            {
-                "attempted": False,
-                "rebased": False,
-                "reason": "validated_submodule_integration_binding_pinned",
-                "branch": branch_name,
-                "target_branch": target_branch,
-            }
-            if approved_submodule_integration_targets
-            or immutable_candidate_commit
-            else self._rebase_stale_submodule_pointers(
-                branch_name,
-                target_branch,
-            )
-        )
-        if submodule_rebase.get("rebased"):
-            self._record_event("submodule_pointer_rebase", submodule_rebase)
         if baseline_ref and not self._git_ref_is_ancestor(baseline_ref, target_branch):
             result = {
                 "attempted": False,
@@ -27352,18 +27316,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "identical_untracked_paths": [],
                 "submodule_merge_results": [],
             }
-            if stale_submodule_worktree_config_repair.get("repairs"):
-                result["stale_submodule_worktree_config_repair"] = stale_submodule_worktree_config_repair
             self._record_event("merge_finished", result)
             return result
         merge_lock = self._repo_merge_lock_path()
         lock_metadata = self._build_merge_lock_metadata(branch_name, task, attempt, started_at)
-        lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
-            merge_lock,
-            lock_kind="merge",
-            owner_active=self._merge_lock_owner_is_active,
+        lock_acquired, lock_reason, existing_lock = (
+            self._try_acquire_published_merge_lock(
+                merge_lock,
+                lock_metadata,
+            )
         )
-        if lock_fd is None:
+        if not lock_acquired:
             result = {
                 "attempted": False,
                 "merged": False,
@@ -27382,7 +27345,38 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         merge_workspace_ephemeral = False
         removed_untracked: dict[str, bytes] = {}
         try:
-            self._write_lock_metadata(lock_fd, lock_metadata)
+            # These helpers can update worktree metadata, candidate refs, or
+            # generated checkout paths.  Keep them inside the same repository
+            # mutation lease as the target merge so supervisor cleanup and
+            # standalone refinery writers cannot interleave with merge prep.
+            self._preserve_generated_nested_worktree_directories()
+            stale_submodule_worktree_config_repair = (
+                self._repair_stale_submodule_worktree_configs(
+                    self.repo_root
+                )
+            )
+            submodule_rebase = (
+                {
+                    "attempted": False,
+                    "rebased": False,
+                    "reason": (
+                        "validated_submodule_integration_binding_pinned"
+                    ),
+                    "branch": branch_name,
+                    "target_branch": target_branch,
+                }
+                if approved_submodule_integration_targets
+                or immutable_candidate_commit
+                else self._rebase_stale_submodule_pointers(
+                    branch_name,
+                    target_branch,
+                )
+            )
+            if submodule_rebase.get("rebased"):
+                self._record_event(
+                    "submodule_pointer_rebase",
+                    submodule_rebase,
+                )
             if immutable_candidate_commit:
                 locked_branch_commit = self._resolve_git_commit_in_repo(
                     self.repo_root,
@@ -27885,11 +27879,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 if not merge_workspace_cleanup.get("cleaned", False):
                     self._record_event("main_merge_worktree_cleanup_failed", merge_workspace_cleanup)
-            try:
-                if merge_lock.exists():
-                    merge_lock.unlink()
-            except OSError:
-                logger.warning("Failed to remove merge lock %s", merge_lock)
+            if not self._release_published_merge_lock(
+                merge_lock,
+                lock_metadata,
+            ):
+                logger.warning(
+                    "Merge checkout mutation lease was not released: %s",
+                    merge_lock,
+                )
 
     def _scrub_tracked_shared_worktree_paths(self, cwd: Path, *, task: PortalTask) -> dict[str, Any]:
         removed: list[dict[str, Any]] = []
@@ -34716,6 +34713,40 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             },
         )
 
+    def _build_published_merge_lock_metadata(
+        self,
+        *,
+        task_id: str,
+        branch: str,
+        operation: str,
+        attempt: int = 0,
+        extra: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        lease_seed = (
+            f"checkout-mutation:{os.getpid()}:{threading.get_ident()}:"
+            f"{time.time_ns()}:{operation}:{task_id}:{attempt}"
+        )
+        detail = dict(extra or {})
+        detail.update(
+            {
+                "operation": operation,
+                "state_dir": str(self.state_path.parent.resolve()),
+                "state_path": str(self.state_path.resolve()),
+                "state_lifecycle_independent": True,
+                "lease_id": hashlib.sha1(
+                    lease_seed.encode("utf-8")
+                ).hexdigest(),
+            }
+        )
+        return checkout_lock_metadata(
+            kind="merge",
+            repo_root=self.repo_root,
+            task_id=task_id,
+            branch=branch,
+            attempt=attempt,
+            extra=detail,
+        )
+
     def _build_merge_lock_metadata(
         self,
         branch_name: str,
@@ -34724,21 +34755,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         started_at: str,
     ) -> dict[str, Any]:
         identity = self._identity_for_task(task)
-        return {
-            "kind": "merge",
-            "pid": os.getpid(),
-            "owner_script": Path(sys.argv[0]).name,
-            "repo_root": str(self.repo_root.resolve()),
-            "state_dir": str(self.state_path.parent.resolve()),
-            "state_path": str(self.state_path.resolve()),
-            "task_id": task.task_id,
-            "canonical_task_key": identity.canonical_task_key,
-            "canonical_task_cid": identity.canonical_task_cid,
-            "board_namespace": identity.board_namespace,
-            "attempt": attempt,
-            "branch": branch_name,
-            "started_at": started_at,
-        }
+        return self._build_published_merge_lock_metadata(
+            task_id=task.task_id,
+            branch=branch_name,
+            operation="merge_implementation_branch",
+            attempt=attempt,
+            extra={
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "board_namespace": identity.board_namespace,
+                "started_at": started_at,
+            },
+        )
 
     def _implementation_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
         state_dir = str(metadata.get("state_dir") or "")
@@ -34747,14 +34775,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
 
     def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
-        repo_root = str(metadata.get("repo_root") or "")
-        if repo_root:
-            try:
-                if Path(repo_root).resolve() != self.repo_root.resolve():
-                    return False
-            except OSError:
-                return False
-        return self._lock_owner_is_active(metadata, expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
+        return checkout_lock_owner_is_active(
+            metadata,
+            expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+            expected_repo_root=self.repo_root,
+            process_command_line=process_command_line,
+            process_is_running=process_is_running,
+        )
 
     def _external_task_reservations(
         self,
@@ -34843,11 +34870,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         return active_claims
 
     def _merge_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
-        repo_root = str(metadata.get("repo_root") or "")
-        if repo_root and Path(repo_root).resolve() != self.repo_root.resolve():
+        repository_match = checkout_lock_repository_matches(
+            metadata,
+            self.repo_root,
+        )
+        if not checkout_lock_owner_is_active(
+            metadata,
+            expected_kind="merge",
+            expected_repo_root=self.repo_root,
+            process_command_line=process_command_line,
+            process_is_running=process_is_running,
+        ):
             return False
-        if not self._lock_owner_is_active(metadata, expected_kind="merge"):
-            return False
+        if repository_match is None:
+            return True
         if metadata.get("state_lifecycle_independent") is True:
             # Operator migrations deliberately run while implementation state
             # is idle.  Their repository-wide fence remains live for as long

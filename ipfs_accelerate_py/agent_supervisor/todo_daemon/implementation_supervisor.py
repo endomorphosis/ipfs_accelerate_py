@@ -21,6 +21,7 @@ from ..merge.checkout_lock import (
     PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
+    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
     serialized_lock_update,
@@ -1187,10 +1188,19 @@ class PortalImplementationSupervisor:
         )
 
     def _protected_path_maintenance_lease_metadata(self) -> dict[str, Any]:
-        metadata = self._implementation_maintenance_lease_metadata()
-        metadata["kind"] = "implementation-protected-maintenance"
-        metadata["lease_role"] = "shared_protected_path_maintenance"
-        return metadata
+        local_metadata = self._implementation_maintenance_lease_metadata()
+        owner_script = str(local_metadata.pop("owner_script") or "")
+        for field_name in ("kind", "pid", "repo_root"):
+            local_metadata.pop(field_name, None)
+        local_metadata["lease_role"] = (
+            "shared_protected_path_maintenance"
+        )
+        return checkout_lock_metadata(
+            kind="implementation-protected-maintenance",
+            repo_root=self.config.repo_root,
+            owner_script=owner_script,
+            extra=local_metadata,
+        )
 
     def _protected_path_maintenance_owner_is_active(
         self,
@@ -1229,16 +1239,14 @@ class PortalImplementationSupervisor:
                 )
                 continue
             kind = str(metadata.get("kind") or "")
-            repo_root = str(metadata.get("repo_root") or "")
             try:
-                same_repository = (
-                    not repo_root
-                    or Path(repo_root).resolve()
-                    == self.config.repo_root.resolve()
+                repository_match = checkout_lock_repository_matches(
+                    metadata,
+                    self.config.repo_root,
                 )
                 pid = int(metadata.get("pid") or 0)
-            except (OSError, TypeError, ValueError):
-                same_repository = False
+            except (OSError, RuntimeError, TypeError, ValueError):
+                repository_match = None
                 pid = 0
             protected_fence_paths = (
                 implementation_task_claim_protected_fence_paths(metadata)
@@ -1251,8 +1259,12 @@ class PortalImplementationSupervisor:
             # after its process exits.
             if (
                 (not kind or kind == IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
-                and same_repository
-                and (owner_live or protected_fence_paths)
+                and repository_match is not False
+                and (
+                    repository_match is None
+                    or owner_live
+                    or protected_fence_paths
+                )
             ):
                 active.append(
                     {
@@ -1260,6 +1272,9 @@ class PortalImplementationSupervisor:
                         "task_id": str(metadata.get("task_id") or ""),
                         "pid": pid,
                         "owner_live": owner_live,
+                        "repository_identity_uncertain": (
+                            repository_match is None
+                        ),
                         "state_dir": str(metadata.get("state_dir") or ""),
                         "protected_fence_paths": list(
                             protected_fence_paths
@@ -2254,8 +2269,19 @@ class PortalImplementationSupervisor:
             return {"attempted": False, "repaired": False, "reason": "clean", "path": str(repo_root)}
 
         lock_path = self._repo_merge_lock_path()
-        lock_fd, lock_reason, existing_lock = self._try_acquire_checkout_lock(lock_path)
-        if lock_fd is None:
+        lock_metadata = self._build_published_checkout_lock_metadata(
+            task_id=self._active_task_id_for_lock(),
+            branch="supervisor-main-checkout-repair",
+            operation="repair_main_checkout_merge_state",
+            extra={"started_at": utc_now()},
+        )
+        lock_acquired, lock_reason, existing_lock = (
+            self._try_acquire_published_checkout_lock(
+                lock_path,
+                lock_metadata,
+            )
+        )
+        if not lock_acquired:
             result: dict[str, Any] = {
                 "attempted": True,
                 "repaired": False,
@@ -2274,21 +2300,6 @@ class PortalImplementationSupervisor:
             self._record_event("main_checkout_merge_state_repair_deferred", result)
             return result
 
-        self._write_checkout_lock_metadata(
-            lock_fd,
-            checkout_lock_metadata(
-                kind="merge",
-                repo_root=repo_root,
-                task_id=self._active_task_id_for_lock(),
-                branch="supervisor-main-checkout-repair",
-                extra={
-                    "operation": "repair_main_checkout_merge_state",
-                    "started_at": utc_now(),
-                    "state_dir": str(self.config.state_dir.resolve()),
-                    "state_path": str(self.config.state_path.resolve()),
-                },
-            ),
-        )
         try:
             return self._repair_main_checkout_merge_state_locked(
                 repo_root,
@@ -2296,11 +2307,14 @@ class PortalImplementationSupervisor:
                 unmerged_paths=unmerged_paths,
             )
         finally:
-            try:
-                if lock_path.exists():
-                    lock_path.unlink()
-            except OSError:
-                logger.warning("Failed to remove checkout mutation lock %s", lock_path)
+            if not self._release_published_checkout_lock(
+                lock_path,
+                lock_metadata,
+            ):
+                logger.warning(
+                    "Main-checkout repair lease was not released: %s",
+                    lock_path,
+                )
 
     def _repair_main_checkout_merge_state_locked(
         self,
@@ -2545,15 +2559,24 @@ class PortalImplementationSupervisor:
         operation: str = "generated_board_update",
         callback,
     ):
-        """Serialize a committed generated-board update with checkout mutations."""
+        """Serialize generated-board writes and any resulting Git commits."""
 
-        if not commit_outputs:
-            return callback()
         lock_path = self._repo_merge_lock_path()
-        lock_fd, lock_reason, existing_lock = self._try_acquire_checkout_lock(
-            lock_path
+        lock_metadata = self._build_published_checkout_lock_metadata(
+            branch=f"generated-board:{producer}",
+            operation=operation,
+            extra={
+                "producer": producer,
+                "started_at": utc_now(),
+            },
         )
-        if lock_fd is None:
+        lock_acquired, lock_reason, existing_lock = (
+            self._try_acquire_published_checkout_lock(
+                lock_path,
+                lock_metadata,
+            )
+        )
+        if not lock_acquired:
             payload: dict[str, Any] = {
                 "producer": producer,
                 "reason": f"checkout_mutation_{lock_reason}",
@@ -2571,31 +2594,14 @@ class PortalImplementationSupervisor:
             return []
 
         try:
-            self._write_checkout_lock_metadata(
-                lock_fd,
-                checkout_lock_metadata(
-                    kind="merge",
-                    repo_root=self.config.repo_root,
-                    branch=f"generated-board:{producer}",
-                    owner_script=Path(sys.argv[0]).name,
-                    extra={
-                        "operation": operation,
-                        "producer": producer,
-                        "state_dir": str(self.config.state_dir.resolve()),
-                        "state_path": str(self.config.state_path.resolve()),
-                        "started_at": utc_now(),
-                    },
-                ),
-            )
             return callback()
         finally:
-            try:
-                lock_path.unlink()
-            except FileNotFoundError:
-                pass
-            except OSError:
+            if not self._release_published_checkout_lock(
+                lock_path,
+                lock_metadata,
+            ):
                 logger.warning(
-                    "Failed to remove generated-board checkout lock %s",
+                    "Generated-board checkout lease was not released: %s",
                     lock_path,
                 )
 
@@ -2608,6 +2614,8 @@ class PortalImplementationSupervisor:
             process_is_running=process_is_running,
         ):
             return False
+        if metadata.get("state_lifecycle_independent") is True:
+            return True
         if self._checkout_lock_targets_current_supervisor_state(metadata):
             return self._checkout_lock_task_is_active(metadata)
         return True
@@ -2646,25 +2654,128 @@ class PortalImplementationSupervisor:
         branch = str(metadata.get("branch") or "")
         return not branch or not state.active_branch or state.active_branch == branch
 
-    def _try_acquire_checkout_lock(self, lock_path: Path) -> tuple[int | None, str, dict[str, Any] | None]:
+    def _build_published_checkout_lock_metadata(
+        self,
+        *,
+        task_id: str = "",
+        branch: str,
+        operation: str,
+        extra: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        lease_seed = (
+            f"supervisor-checkout:{os.getpid()}:{threading.get_ident()}:"
+            f"{time.time_ns()}:{operation}:{task_id}"
+        )
+        detail = dict(extra or {})
+        detail.update(
+            {
+                "operation": operation,
+                "state_dir": str(self.config.state_dir.resolve()),
+                "state_path": str(self.config.state_path.resolve()),
+                "state_lifecycle_independent": True,
+                "lease_id": sha1(
+                    lease_seed.encode("utf-8")
+                ).hexdigest(),
+            }
+        )
+        return checkout_lock_metadata(
+            kind="merge",
+            repo_root=self.config.repo_root,
+            task_id=task_id,
+            branch=branch,
+            owner_script=Path(sys.argv[0]).name,
+            extra=detail,
+        )
+
+    def _try_acquire_published_checkout_lock(
+        self,
+        lock_path: Path,
+        metadata: dict[str, Any],
+    ) -> tuple[bool, str, dict[str, Any] | None]:
+        """Atomically publish a complete shared checkout-mutation lease."""
+
+        lease_id = str(metadata.get("lease_id") or "")
+        if not lease_id:
+            raise ValueError("published checkout lock requires a lease_id")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        for _ in range(2):
-            try:
-                return os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY), "acquired", None
-            except FileExistsError:
+        temporary_path = lock_path.with_name(
+            f".{lock_path.name}.{lease_id}.tmp"
+        )
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        temporary_fd = os.open(temporary_path, flags, 0o600)
+        try:
+            self._write_checkout_lock_metadata(
+                temporary_fd,
+                metadata,
+            )
+            with serialized_lock_update(lock_path):
+                for _ in range(2):
+                    try:
+                        os.link(temporary_path, lock_path)
+                        return True, "acquired", None
+                    except FileExistsError:
+                        existing = load_json_dict(lock_path)
+                        if existing is None:
+                            if not lock_path.exists():
+                                continue
+                            return False, "lock_malformed", None
+                        if self._checkout_lock_owner_is_active(existing):
+                            return False, "lock_exists", existing
+                        if not self._clear_stale_checkout_lock(
+                            lock_path,
+                            metadata=existing,
+                        ):
+                            return False, "lock_cleanup_failed", existing
                 existing = load_json_dict(lock_path)
-                if existing is not None and self._checkout_lock_owner_is_active(existing):
-                    return None, "lock_exists", existing
-                if not self._clear_stale_checkout_lock(lock_path, metadata=existing):
-                    return None, "lock_cleanup_failed", existing
-        existing = load_json_dict(lock_path)
-        if existing is not None and self._checkout_lock_owner_is_active(existing):
-            return None, "lock_exists", existing
-        return None, "lock_unavailable", existing
+                if (
+                    existing is not None
+                    and self._checkout_lock_owner_is_active(existing)
+                ):
+                    return False, "lock_exists", existing
+                return False, "lock_unavailable", existing
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+    def _release_published_checkout_lock(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        """Release only the exact shared checkout lease we published."""
+
+        lease_id = str(metadata.get("lease_id") or "")
+        if not lease_id:
+            return False
+        with serialized_lock_update(lock_path):
+            existing = load_json_dict(lock_path)
+            if (
+                existing is None
+                or str(existing.get("kind") or "") != "merge"
+                or str(existing.get("lease_id") or "") != lease_id
+            ):
+                return False
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                return False
+            return True
 
     def _write_checkout_lock_metadata(self, lock_fd: int, metadata: dict[str, Any]) -> None:
+        data = json.dumps(metadata, indent=2, sort_keys=True).encode(
+            "utf-8"
+        )
         try:
-            os.write(lock_fd, json.dumps(metadata, indent=2, sort_keys=True).encode("utf-8"))
+            offset = 0
+            while offset < len(data):
+                written = os.write(lock_fd, data[offset:])
+                if written <= 0:
+                    raise OSError(
+                        "short write while publishing checkout lock"
+                    )
+                offset += written
+            os.fsync(lock_fd)
         finally:
             os.close(lock_fd)
 
@@ -4413,10 +4524,19 @@ class PortalImplementationSupervisor:
         """Remove inactive implementation worktrees whose branches are already merged."""
 
         lock_path = self._repo_merge_lock_path()
-        lock_fd, lock_reason, existing_lock = self._try_acquire_checkout_lock(
-            lock_path
+        lock_metadata = self._build_published_checkout_lock_metadata(
+            task_id=self._active_task_id_for_lock(),
+            branch="supervisor-worktree-cleanup",
+            operation="cleanup_backlogged_worktrees",
+            extra={"started_at": utc_now()},
         )
-        if lock_fd is None:
+        lock_acquired, lock_reason, existing_lock = (
+            self._try_acquire_published_checkout_lock(
+                lock_path,
+                lock_metadata,
+            )
+        )
+        if not lock_acquired:
             result: dict[str, Any] = {
                 "attempted": True,
                 "removed_count": 0,
@@ -4435,31 +4555,15 @@ class PortalImplementationSupervisor:
             self._record_event("merged_worktree_cleanup_deferred", result)
             return result
 
-        self._write_checkout_lock_metadata(
-            lock_fd,
-            checkout_lock_metadata(
-                kind="merge",
-                repo_root=self.config.repo_root,
-                task_id=self._active_task_id_for_lock(),
-                branch="supervisor-worktree-cleanup",
-                extra={
-                    "operation": "cleanup_backlogged_worktrees",
-                    "state_dir": str(self.config.state_dir.resolve()),
-                    "state_path": str(self.config.state_path.resolve()),
-                    "started_at": utc_now(),
-                },
-            ),
-        )
         try:
             return self._cleanup_backlogged_worktrees_locked()
         finally:
-            try:
-                lock_path.unlink()
-            except FileNotFoundError:
-                pass
-            except OSError:
+            if not self._release_published_checkout_lock(
+                lock_path,
+                lock_metadata,
+            ):
                 logger.warning(
-                    "Failed to remove worktree cleanup lock %s",
+                    "Worktree-cleanup checkout lease was not released: %s",
                     lock_path,
                 )
 
@@ -6789,27 +6893,50 @@ class PortalImplementationSupervisor:
                 metadata={"current_open": current_open, "task_count": task_count},
             )
 
-        def run_refill() -> RefillScanResult:
-            return record_codebase_scan_findings(
-                todo_path=self.config.todo_path,
-                state_path=self.config.state_path,
-                strategy_path=self.config.strategy_path,
-                discovery_dir=discovery_dir,
-                repo_root=self.config.repo_root,
-                bundle_dir=self.config.objective_bundle_dir
-                or self.config.state_dir.parent / "objective_bundles",
-                task_prefix=task_prefix,
-                depends_on=self.config.codebase_scan_depends_on,
-                min_open_tasks=self.config.codebase_scan_min_open_tasks,
-                max_findings=self.config.codebase_scan_max_findings,
-                cooldown_seconds=self.config.codebase_scan_cooldown_seconds,
-                discovery_output_path=discovery_output_path,
-                skip_prefixes=self.config.codebase_scan_skip_prefixes or CODEBASE_SCAN_SKIP_PREFIXES,
-                objective_path=self.config.objective_path,
-                mission_terms=self.config.objective_task_janitor_mission_terms,
-                allow_unscoped_codebase_refill=self.config.allow_unscoped_codebase_refill,
-                commit_outputs=self.config.codebase_scan_commit_outputs,
-                commit_subject=self.config.codebase_scan_commit_subject,
+        def run_refill() -> RefillScanResult | list[Any]:
+            return self._run_generated_board_producer(
+                producer="codebase-refill",
+                commit_outputs=(
+                    self.config.codebase_scan_commit_outputs
+                ),
+                operation="codebase_refill",
+                callback=lambda: record_codebase_scan_findings(
+                    todo_path=self.config.todo_path,
+                    state_path=self.config.state_path,
+                    strategy_path=self.config.strategy_path,
+                    discovery_dir=discovery_dir,
+                    repo_root=self.config.repo_root,
+                    bundle_dir=self.config.objective_bundle_dir
+                    or self.config.state_dir.parent
+                    / "objective_bundles",
+                    task_prefix=task_prefix,
+                    depends_on=self.config.codebase_scan_depends_on,
+                    min_open_tasks=(
+                        self.config.codebase_scan_min_open_tasks
+                    ),
+                    max_findings=self.config.codebase_scan_max_findings,
+                    cooldown_seconds=(
+                        self.config.codebase_scan_cooldown_seconds
+                    ),
+                    discovery_output_path=discovery_output_path,
+                    skip_prefixes=(
+                        self.config.codebase_scan_skip_prefixes
+                        or CODEBASE_SCAN_SKIP_PREFIXES
+                    ),
+                    objective_path=self.config.objective_path,
+                    mission_terms=(
+                        self.config.objective_task_janitor_mission_terms
+                    ),
+                    allow_unscoped_codebase_refill=(
+                        self.config.allow_unscoped_codebase_refill
+                    ),
+                    commit_outputs=(
+                        self.config.codebase_scan_commit_outputs
+                    ),
+                    commit_subject=(
+                        self.config.codebase_scan_commit_subject
+                    ),
+                ),
             )
 
         try:

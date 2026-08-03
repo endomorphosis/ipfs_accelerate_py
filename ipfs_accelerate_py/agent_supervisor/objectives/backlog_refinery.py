@@ -38,6 +38,9 @@ from ..analysis.analyzer_health import (
 )
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
+    CheckoutMaintenanceLease,
+    checkout_lock_metadata,
+    checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
 )
@@ -82,6 +85,8 @@ from ..task_sources.task_identity import TaskIdentity, canonical_task_identity
 from ..todo_daemon.implementation_daemon import (
     is_retry_budget_repair_task,
     parse_task_file,
+    process_command_line,
+    process_is_running,
     retry_budget_repair_source,
 )
 from ..task_sources.taskboard_store import (
@@ -1985,8 +1990,12 @@ def generated_dirty_commit_blocker(repo: Path) -> dict[str, Any] | None:
             )
         except (TypeError, ValueError):
             lock_pid = 0
-        lock_repo_root = (
-            str(lock_metadata.get("repo_root") or "").strip()
+        lock_worktree_root = (
+            str(
+                lock_metadata.get("worktree_root")
+                or lock_metadata.get("repo_root")
+                or ""
+            ).strip()
             if isinstance(lock_metadata, Mapping)
             else ""
         )
@@ -1996,8 +2005,8 @@ def generated_dirty_commit_blocker(repo: Path) -> dict[str, Any] | None:
             and str(lock_metadata.get("operation") or "")
             == "generated_dirty_repair"
             and lock_pid == os.getpid()
-            and bool(lock_repo_root)
-            and Path(lock_repo_root).resolve() == repo.resolve()
+            and bool(lock_worktree_root)
+            and Path(lock_worktree_root).resolve() == repo.resolve()
         )
         if owned_generated_repair:
             return None
@@ -9014,7 +9023,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
+def _run_backlog_refinery_unlocked(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Run one refinery pass after the caller has fenced checkout mutations."""
+
     repo_root = args.repo_root.resolve()
     state_root = repo_root / "data" / "agent_supervisor"
     strategy_path = (args.strategy_path or state_root / "strategy.json").resolve()
@@ -9156,12 +9169,120 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
+    """Run one standalone refinery pass behind the repository mutation lease.
+
+    Supervisor-embedded refinery callbacks are already fenced by the
+    supervisor.  This public entrypoint also serves the standalone CLI, whose
+    board, strategy, discovery, commit, and parent-gitlink writes must not race
+    an implementation merge or checkout repair.
+    """
+
+    repo_root = args.repo_root.resolve()
+    todo_path = args.todo_path.resolve()
+    state_root = repo_root / "data" / "agent_supervisor"
+    strategy_path = (
+        args.strategy_path or state_root / "strategy.json"
+    ).resolve()
+    if git_toplevel_for_path(repo_root) is None:
+        # Plain-directory consumers have no Git checkout or shared repository
+        # mutation namespace to fence.  Preserve that supported API without
+        # creating a misleading, incomplete ``.git`` directory as a fallback
+        # lock location.
+        payload = _run_backlog_refinery_unlocked(args)
+        payload["checkout_mutation_lease"] = {
+            "required": False,
+            "reason": "not_in_git_repo",
+        }
+        return payload
+    lock_path = checkout_mutation_lock_path(repo_root)
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo_root,
+        branch="backlog-refinery",
+        extra={
+            "operation": "backlog_refinery",
+            "state_dir": str(strategy_path.parent.resolve()),
+            "state_path": str(strategy_path),
+            "todo_path": str(todo_path),
+            "state_lifecycle_independent": True,
+        },
+    )
+    # A refinery pass can include repository analysis, so use the durable
+    # lease directly instead of the maintenance lease's short-section context
+    # manager.  Publication/replacement remains serialized; only the durable
+    # JSON ownership record is held for the pass.
+    lease = CheckoutMaintenanceLease(
+        lock_path,
+        metadata=metadata,
+        max_hold_seconds=24 * 60 * 60,
+    )
+    acquired, guard = lease.try_acquire(
+        owner_is_active=lambda existing: checkout_lock_owner_is_active(
+            dict(existing),
+            expected_kind="merge",
+            expected_repo_root=repo_root,
+            process_command_line=process_command_line,
+            process_is_running=process_is_running,
+        )
+    )
+    if not acquired:
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor.objectives."
+                "backlog_refinery"
+            ),
+            "repo_root": str(repo_root),
+            "todo_path": str(todo_path),
+            "strategy_path": str(strategy_path),
+            "blocked": True,
+            "reason": str(
+                guard.get("reason")
+                or "checkout_mutation_lease_unavailable"
+            ),
+            "checkout_mutation_lease": dict(guard),
+            "objective_generated_count": 0,
+            "codebase_generated_count": 0,
+            "retry_budget_generated_count": 0,
+            "dependency_guardrail_generated_count": 0,
+            "objective_findings": [],
+            "codebase_findings": [],
+            "retry_budget_findings": [],
+            "dependency_guardrail_findings": [],
+        }
+
+    payload: dict[str, Any] | None = None
+    try:
+        payload = _run_backlog_refinery_unlocked(args)
+    finally:
+        release = lease.release()
+        if not release.get("released") or release.get("reason") != (
+            "checkout_maintenance_lease_released"
+        ):
+            logger.error(
+                "Backlog refinery checkout mutation lease was lost: %s",
+                release,
+            )
+    if release.get("reason") != "checkout_maintenance_lease_released":
+        raise RuntimeError(
+            "backlog refinery checkout mutation lease was lost before "
+            "the pass completed"
+        )
+    assert payload is not None
+    payload["checkout_mutation_lease"] = {
+        "lease_id": lease.lease_id,
+        "lock_path": str(lock_path),
+        "released": True,
+    }
+    return payload
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     payload = run_backlog_refinery(args)
     print(json.dumps(payload, indent=2, sort_keys=True))
-    return 0
+    return 75 if payload.get("blocked") else 0
 
 
 if __name__ == "__main__":

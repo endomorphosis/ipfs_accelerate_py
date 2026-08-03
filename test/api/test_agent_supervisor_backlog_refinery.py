@@ -6,6 +6,7 @@ import subprocess
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from ipfs_accelerate_py.agent_supervisor.objectives import backlog_refinery
 from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
@@ -45,7 +46,10 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse
 from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
+    CheckoutMaintenanceLease,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
 )
 from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import agent_supervisor_namespace_paths
 from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
@@ -72,6 +76,123 @@ def _git(cwd: Path, *args: str) -> str:
     )
     assert result.returncode == 0, result.stderr or result.stdout
     return result.stdout.strip()
+
+
+def test_standalone_refinery_defers_behind_shared_checkout_lease(
+    tmp_path: Path,
+) -> None:
+    _git(tmp_path, "init")
+    todo_path = tmp_path / "tasks.todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    args = SimpleNamespace(
+        repo_root=tmp_path,
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+    )
+    lock_path = checkout_mutation_lock_path(tmp_path)
+    blocker = CheckoutMaintenanceLease(
+        lock_path,
+        metadata=checkout_lock_metadata(
+            kind="merge",
+            repo_root=tmp_path,
+            branch="active-merge",
+            extra={
+                "operation": "test_active_merge",
+                "state_lifecycle_independent": True,
+            },
+        ),
+    )
+    acquired, _guard = blocker.try_acquire(owner_is_active=lambda _: True)
+    assert acquired is True
+    try:
+        result = backlog_refinery.run_backlog_refinery(args)
+    finally:
+        blocker.release()
+
+    assert result["blocked"] is True
+    assert result["reason"] == "checkout_maintenance_lease_active"
+    assert result["retry_budget_generated_count"] == 0
+    assert not todo_path.exists()
+
+
+def test_standalone_refinery_publishes_complete_shared_checkout_lease(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _git(tmp_path, "init")
+    todo_path = tmp_path / "tasks.todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    args = SimpleNamespace(
+        repo_root=tmp_path,
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+    )
+    observed: dict[str, object] = {}
+
+    def run_unlocked(_args):
+        lock_path = checkout_mutation_lock_path(tmp_path)
+        observed.update(
+            json.loads(lock_path.read_text(encoding="utf-8"))
+        )
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor.objectives."
+                "backlog_refinery"
+            ),
+            "repo_root": str(tmp_path),
+            "todo_path": str(todo_path),
+            "strategy_path": str(strategy_path),
+        }
+
+    monkeypatch.setattr(
+        backlog_refinery,
+        "_run_backlog_refinery_unlocked",
+        run_unlocked,
+    )
+
+    result = backlog_refinery.run_backlog_refinery(args)
+
+    assert observed["kind"] == "merge"
+    assert observed["operation"] == "backlog_refinery"
+    assert observed["state_lifecycle_independent"] is True
+    assert observed["lease_id"]
+    assert observed["todo_path"] == str(todo_path.resolve())
+    assert result["checkout_mutation_lease"]["released"] is True
+    assert not checkout_mutation_lock_path(tmp_path).exists()
+
+
+def test_standalone_refinery_preserves_plain_directory_api(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    args = SimpleNamespace(
+        repo_root=tmp_path,
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+    )
+    monkeypatch.setattr(
+        backlog_refinery,
+        "_run_backlog_refinery_unlocked",
+        lambda _args: {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor.objectives."
+                "backlog_refinery"
+            ),
+            "repo_root": str(tmp_path),
+            "todo_path": str(todo_path),
+            "strategy_path": str(strategy_path),
+        },
+    )
+
+    result = backlog_refinery.run_backlog_refinery(args)
+
+    assert result["checkout_mutation_lease"] == {
+        "required": False,
+        "reason": "not_in_git_repo",
+    }
+    assert not (tmp_path / ".git").exists()
 
 
 def record_codebase_scan_findings(**kwargs):

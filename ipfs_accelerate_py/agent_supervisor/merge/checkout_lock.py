@@ -592,6 +592,85 @@ def checkout_repository_id(repo_root: Path) -> str:
     )
 
 
+def _verified_checkout_repository_id(repo_root: Path) -> str | None:
+    """Return an identity only when Git proves the common directory.
+
+    The public repository identity retains its historical Git-less fallback.
+    Lease ownership is stricter: a fallback derived from an individual
+    worktree path could make sibling worktrees appear unrelated and let one
+    process steal the other's common-directory lock.
+    """
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except (OSError, ValueError):
+        return None
+    stdout = result.stdout or ""
+    if result.returncode != 0 or not stdout.strip():
+        return None
+    common_dir = Path(stdout.strip())
+    if not common_dir.is_absolute():
+        common_dir = repo_root / common_dir
+    try:
+        identity_source = str(common_dir.resolve(strict=True))
+    except (OSError, RuntimeError):
+        return None
+    return (
+        "repository:"
+        + content_identity(
+            {
+                "kind": "local-git-common-directory",
+                "path": identity_source,
+            }
+        )
+    )
+
+
+def checkout_lock_repository_matches(
+    metadata: Mapping[str, Any],
+    expected_repo_root: Path,
+) -> bool | None:
+    """Compare lease authority by physical Git repository.
+
+    ``None`` means Git could not prove the relationship. Liveness callers
+    preserve the incumbent in that case so uncertainty cannot become lock
+    theft. Legacy records are resolved from their concrete checkout path.
+    """
+
+    expected_repository_id = _verified_checkout_repository_id(
+        expected_repo_root
+    )
+    repository_id = str(metadata.get("repository_id") or "")
+    if expected_repository_id is not None and repository_id:
+        return repository_id == expected_repository_id
+    legacy_root = str(
+        metadata.get("worktree_root")
+        or metadata.get("repo_root")
+        or ""
+    ).strip()
+    if not legacy_root:
+        return None
+    try:
+        if Path(legacy_root).resolve() == expected_repo_root.resolve():
+            return True
+    except (OSError, RuntimeError):
+        return None
+    if expected_repository_id is None:
+        return None
+    observed_repository_id = _verified_checkout_repository_id(
+        Path(legacy_root)
+    )
+    if observed_repository_id is None:
+        return None
+    return observed_repository_id == expected_repository_id
+
+
 def merge_target_queue_dir(
     repo_root: Path,
     target_branch: str,
@@ -632,17 +711,28 @@ def checkout_lock_metadata(
 ) -> dict[str, Any]:
     """Build JSON-serializable metadata for a checkout mutation lock."""
 
+    worktree_root = str(repo_root.resolve())
+    repository_id = _verified_checkout_repository_id(repo_root) or ""
     payload: dict[str, Any] = {
         "kind": kind,
         "pid": os.getpid(),
         "owner_script": owner_script if owner_script is not None else Path(sys.argv[0]).name,
-        "repo_root": str(repo_root.resolve()),
+        # Rolling-upgrade compatibility: older peers compare a non-empty
+        # repo_root by exact worktree path. Leave it blank so they reach the
+        # live-PID check, while upgraded peers use the common Git identity.
+        "repo_root": "",
+        "worktree_root": worktree_root,
+        "repository_id": repository_id,
         "task_id": task_id,
         "attempt": int(attempt or 0),
         "branch": branch,
     }
     if extra:
         payload.update(extra)
+    # Supplemental metadata must not be able to spoof repository authority.
+    payload["repo_root"] = ""
+    payload["worktree_root"] = worktree_root
+    payload["repository_id"] = repository_id
     return payload
 
 
@@ -659,19 +749,29 @@ def checkout_lock_owner_is_active(
     kind = str(metadata.get("kind") or "")
     if kind and kind != expected_kind:
         return False
-    repo_root = str(metadata.get("repo_root") or "")
-    if expected_repo_root is not None and repo_root:
-        try:
-            if Path(repo_root).resolve() != expected_repo_root.resolve():
-                return False
-        except OSError:
+    if expected_repo_root is not None:
+        repository_match = checkout_lock_repository_matches(
+            metadata,
+            expected_repo_root,
+        )
+        if repository_match is False:
             return False
+        if repository_match is None:
+            # Repository identity is authority. Preserve an uncertain record
+            # even when its process cannot be proven live.
+            return True
     try:
         pid = int(metadata.get("pid") or 0)
     except (TypeError, ValueError):
         return False
     if not process_is_running(pid):
         return False
+    if pid == os.getpid():
+        # Sibling components in one supervisor process can publish the shared
+        # checkout lease under different entrypoint names.  The live process
+        # identity is definitive and avoids one component reaping another's
+        # lease because of argv formatting.
+        return True
     owner_script = str(metadata.get("owner_script") or "")
     command_line = process_command_line(pid)
     if owner_script and command_line and owner_script not in command_line:

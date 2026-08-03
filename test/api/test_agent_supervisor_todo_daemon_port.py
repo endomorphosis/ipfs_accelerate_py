@@ -146,7 +146,10 @@ from ipfs_accelerate_py.agent_supervisor import implementation_daemon_runner
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    checkout_lock_metadata,
+    checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
+    checkout_repository_id,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
@@ -706,6 +709,195 @@ def _seed_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
     _git(repo, "add", "objective-heap.md", "todo.md", "src/control_surface.py")
     _git(repo, "commit", "-m", "seed objective heap")
     return repo, objective_path, todo_path
+
+
+def test_shared_checkout_lease_and_task_claim_use_common_git_identity(
+    tmp_path: Path,
+) -> None:
+    primary_root = tmp_path / "primary"
+    primary_root.mkdir()
+    repo, _objective_path, todo_path = _seed_repo(primary_root)
+    sibling = tmp_path / "sibling"
+    _git(repo, "worktree", "add", "-b", "sibling", str(sibling))
+    foreign_root = tmp_path / "foreign"
+    foreign_root.mkdir()
+    foreign, _foreign_objective, foreign_todo = _seed_repo(
+        foreign_root
+    )
+
+    def daemon_for(
+        checkout: Path,
+        checkout_todo: Path,
+        state_name: str,
+    ) -> TodoImplementationDaemon:
+        state_dir = tmp_path / "state" / state_name
+        return TodoImplementationDaemon(
+            todo_path=checkout_todo,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            repo_root=checkout,
+            task_header_prefix="## AUTO-",
+        )
+
+    def supervisor_for(
+        checkout: Path,
+        checkout_todo: Path,
+        state_name: str,
+    ) -> TodoImplementationSupervisor:
+        state_dir = tmp_path / "supervisor-state" / state_name
+        return TodoImplementationSupervisor(
+            TodoSupervisorConfig(
+                todo_path=checkout_todo,
+                state_path=state_dir / "task_state.json",
+                strategy_path=state_dir / "strategy.json",
+                events_path=state_dir / "events.jsonl",
+                state_dir=state_dir,
+                repo_root=checkout,
+            )
+        )
+
+    sibling_todo = sibling / todo_path.relative_to(repo)
+    primary_daemon = daemon_for(repo, todo_path, "primary")
+    sibling_daemon = daemon_for(sibling, sibling_todo, "sibling")
+    foreign_daemon = daemon_for(foreign, foreign_todo, "foreign")
+    sibling_supervisor = supervisor_for(
+        sibling,
+        sibling_todo,
+        "sibling",
+    )
+    foreign_supervisor = supervisor_for(
+        foreign,
+        foreign_todo,
+        "foreign",
+    )
+
+    lock_path = checkout_mutation_lock_path(repo)
+    assert lock_path.resolve() == checkout_mutation_lock_path(
+        sibling
+    ).resolve()
+    assert checkout_repository_id(repo) == checkout_repository_id(sibling)
+
+    metadata = primary_daemon._build_published_merge_lock_metadata(
+        task_id="",
+        branch="main",
+        operation="legacy_high_water_migration",
+    )
+    assert metadata["repo_root"] == ""
+    assert metadata["worktree_root"] == str(repo.resolve())
+    assert metadata["repository_id"] == checkout_repository_id(repo)
+    # Model the exact-path predicate used by a peer that has not yet upgraded.
+    # The blank legacy field must let it reach the live-PID check.
+    assert not str(metadata.get("repo_root") or "")
+    assert int(metadata["pid"]) == os.getpid()
+
+    acquired, reason, incumbent = (
+        primary_daemon._try_acquire_published_merge_lock(
+            lock_path,
+            metadata,
+        )
+    )
+    assert acquired is True
+    assert reason == "acquired"
+    assert incumbent is None
+    assert sibling_daemon._merge_lock_owner_is_active(metadata)
+    assert sibling_supervisor._checkout_lock_owner_is_active(metadata)
+    assert not foreign_daemon._merge_lock_owner_is_active(metadata)
+    assert not foreign_supervisor._checkout_lock_owner_is_active(metadata)
+
+    sibling_metadata = sibling_daemon._build_published_merge_lock_metadata(
+        task_id="",
+        branch="main",
+        operation="sibling_contender",
+    )
+    acquired, reason, incumbent = (
+        sibling_daemon._try_acquire_published_merge_lock(
+            lock_path,
+            sibling_metadata,
+        )
+    )
+    assert acquired is False
+    assert reason == "lock_exists"
+    assert incumbent == metadata
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == metadata
+
+    # Upgraded peers map a concrete legacy worktree path through Git's common
+    # directory, while a conclusively different physical repository is foreign.
+    legacy_metadata = dict(metadata)
+    legacy_metadata.pop("repository_id")
+    legacy_metadata.pop("worktree_root")
+    legacy_metadata["repo_root"] = str(repo.resolve())
+    assert sibling_daemon._merge_lock_owner_is_active(legacy_metadata)
+    assert sibling_supervisor._checkout_lock_owner_is_active(legacy_metadata)
+    assert not foreign_daemon._merge_lock_owner_is_active(legacy_metadata)
+    assert not foreign_supervisor._checkout_lock_owner_is_active(
+        legacy_metadata
+    )
+    uncertain_metadata = {
+        "kind": "merge",
+        "pid": 0,
+        "repo_root": "",
+        "worktree_root": "",
+        "repository_id": "",
+    }
+    assert checkout_lock_owner_is_active(
+        uncertain_metadata,
+        expected_kind="merge",
+        expected_repo_root=sibling,
+        process_command_line=lambda _pid: "",
+        process_is_running=lambda _pid: False,
+    )
+    assert primary_daemon._release_published_merge_lock(lock_path, metadata)
+    assert not lock_path.exists()
+
+    claim_path = primary_daemon._implementation_task_claim_path("AUTO-001")
+    assert claim_path == sibling_daemon._implementation_task_claim_path(
+        "AUTO-001"
+    )
+    claim_metadata = checkout_lock_metadata(
+        kind=implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+        repo_root=repo,
+        task_id="AUTO-001",
+        owner_script="",
+        extra={"lease_id": "primary-common-repository-claim"},
+    )
+    claimed, reason, incumbent = (
+        primary_daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert claimed is True
+    assert reason == "acquired"
+    assert incumbent is None
+    assert sibling_daemon._implementation_task_claim_owner_is_active(
+        claim_metadata
+    )
+    assert not foreign_daemon._implementation_task_claim_owner_is_active(
+        claim_metadata
+    )
+
+    sibling_claim = checkout_lock_metadata(
+        kind=implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+        repo_root=sibling,
+        task_id="AUTO-001",
+        owner_script="",
+        extra={"lease_id": "sibling-common-repository-claim"},
+    )
+    claimed, reason, incumbent = (
+        sibling_daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            sibling_claim,
+        )
+    )
+    assert claimed is False
+    assert reason == "lock_exists"
+    assert incumbent == claim_metadata
+    assert primary_daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+    assert not claim_path.exists()
 
 
 def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
@@ -2193,10 +2385,21 @@ def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
     }
     materializations = []
     contender_observations = []
+    supervisor_contender_observations = []
     published_lease_ids = []
     advance_target_during_first_materialization = {"pending": True}
     replace_lock_during_validation = {"pending": False}
     replacement_lock_metadata = {}
+    checkout_supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=case.daemon.todo_path,
+            state_path=case.daemon.state_path,
+            strategy_path=case.daemon.strategy_path,
+            events_path=case.daemon.events_path,
+            state_dir=case.daemon.state_path.parent,
+            repo_root=case.repo,
+        )
+    )
 
     def materialize(**kwargs):
         merge_lock_path = case.daemon._repo_merge_lock_path()
@@ -2220,6 +2423,28 @@ def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
         assert contender_fd is None
         assert contender_reason == "lock_exists"
         assert contender_owner == published_lock
+        supervisor_contender_metadata = (
+            checkout_supervisor
+            ._build_published_checkout_lock_metadata(
+                branch="supervisor-contender",
+                operation="test_supervisor_contender",
+            )
+        )
+        supervisor_contender_observations.append(
+            checkout_supervisor
+            ._try_acquire_published_checkout_lock(
+                merge_lock_path,
+                supervisor_contender_metadata,
+            )
+        )
+        (
+            supervisor_contender_acquired,
+            supervisor_contender_reason,
+            supervisor_contender_owner,
+        ) = supervisor_contender_observations[-1]
+        assert supervisor_contender_acquired is False
+        assert supervisor_contender_reason == "lock_exists"
+        assert supervisor_contender_owner == published_lock
         materializations.append(kwargs)
         if advance_target_during_first_materialization["pending"]:
             advance_target_during_first_materialization["pending"] = False
@@ -2573,6 +2798,7 @@ def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
     assert repeated == anchor
     assert len(materializations) == 3
     assert len(contender_observations) == 3
+    assert len(supervisor_contender_observations) == 3
     assert len(set(published_lease_ids)) == 3
     assert len(seed_validations) == validations_after_anchor + 1
     assert anchor["record_kind"] == "legacy_high_water_anchored"
@@ -8507,6 +8733,87 @@ def test_merge_rejects_candidate_branch_movement_under_lock(tmp_path):
     assert result["expected_candidate_commit"] == immutable_candidate
     assert result["actual_branch_commit"] == moved_candidate
     assert _git(repo, "rev-parse", "main") != moved_candidate
+
+
+@pytest.mark.parametrize(
+    "stop_at",
+    ("preserve", "repair-config", "rebase"),
+)
+def test_merge_prep_runs_inside_complete_checkout_lease(
+    tmp_path,
+    monkeypatch,
+    stop_at,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    observed = []
+
+    def assert_lease(operation):
+        metadata = json.loads(
+            daemon._repo_merge_lock_path().read_text(encoding="utf-8")
+        )
+        assert metadata["kind"] == "merge"
+        assert metadata["operation"] == "merge_implementation_branch"
+        assert metadata["state_lifecycle_independent"] is True
+        assert metadata["lease_id"]
+        observed.append(operation)
+        if operation == stop_at:
+            raise RuntimeError(f"stop at {operation}")
+
+    def preserve():
+        assert_lease("preserve")
+
+    def repair_config(_repo):
+        assert_lease("repair-config")
+        return {"repairs": []}
+
+    def rebase(_branch, _target):
+        assert_lease("rebase")
+        return {"attempted": True, "rebased": False}
+
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_generated_nested_worktree_directories",
+        preserve,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_repair_stale_submodule_worktree_configs",
+        repair_config,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_rebase_stale_submodule_pointers",
+        rebase,
+    )
+
+    with pytest.raises(RuntimeError, match=f"stop at {stop_at}"):
+        daemon._merge_branch_to_main(
+            "implementation/test-prep-lock",
+            PortalTask(
+                task_id="REF-PREP",
+                title="Fence merge preparation",
+                status="todo",
+                completion="manual",
+                priority="P0",
+                track="ops",
+            ),
+            1,
+        )
+
+    expected = ["preserve", "repair-config", "rebase"]
+    assert observed == expected[: expected.index(stop_at) + 1]
+    assert not daemon._repo_merge_lock_path().exists()
 
 
 @pytest.mark.parametrize(
@@ -31721,9 +32028,9 @@ def test_implementation_supervisor_defers_worktree_cleanup_behind_checkout_lock(
     )
     monkeypatch.setattr(
         supervisor,
-        "_try_acquire_checkout_lock",
-        lambda _path: (
-            None,
+        "_try_acquire_published_checkout_lock",
+        lambda _path, _metadata: (
+            False,
             "lock_exists",
             {
                 "pid": 1234,
@@ -31744,6 +32051,56 @@ def test_implementation_supervisor_defers_worktree_cleanup_behind_checkout_lock(
     assert result["removed_count"] == 0
     assert result["reason"] == "checkout_mutation_lock_exists"
     assert result["lock_owner_task_id"] == "ACCEL-PEER"
+
+
+def test_supervisor_fences_generated_board_write_without_commit(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_try_acquire_published_checkout_lock",
+        lambda _path, _metadata: (
+            False,
+            "lock_exists",
+            {
+                "pid": 1234,
+                "task_id": "ACCEL-PEER",
+                "branch": "implementation/peer",
+            },
+        ),
+    )
+
+    result = supervisor._run_generated_board_producer(
+        producer="test-uncommitted-writer",
+        commit_outputs=False,
+        callback=lambda: pytest.fail(
+            "uncommitted board writer ran without the checkout lease"
+        ),
+    )
+
+    assert result == []
+    event = json.loads(
+        (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[-1]
+    )
+    assert event["type"] == "generated_board_update_deferred"
+    assert event["reason"] == "checkout_mutation_lock_exists"
 
 
 def test_implementation_supervisor_tolerates_worktree_removed_during_cleanup(
