@@ -70,7 +70,7 @@ REQUIRED_CASE_IDS = {
     "malformed_output",
     "timeout_claim",
     "version_mismatch",
-    "kernel_reconstruction_elevates",
+    "kernel_reconstruction_requires_receipt",
 }
 
 
@@ -329,6 +329,11 @@ def test_corpus_schema_and_required_cases(atp_cert) -> None:
     assert manifest["policy"][
         "kernel_reconstruction_required_for_theorem_authority"
     ] is True
+    assert manifest["policy"]["kernel_reconstruction_receipt_validated"] is False
+    assert (
+        manifest["policy"]["boolean_reconstruction_claim_cannot_elevate"]
+        is True
+    )
     assert manifest["policy"]["no_install"] is True
     assert manifest["policy"]["no_network"] is True
     assert manifest["policy"]["szs_status_only"] is True
@@ -363,8 +368,15 @@ def test_theorem_non_theorem_mutations_and_timeout(atp_cert) -> None:
     assert by_id["malformed_output"].status == "quarantined"
     assert by_id["timeout_claim"].status == "timeout"
     assert by_id["version_mismatch"].status == "blocked"
-    assert by_id["kernel_reconstruction_elevates"].status == "theorem_authority"
-    assert by_id["kernel_reconstruction_elevates"].authority == "theorem"
+    reconstruction = by_id["kernel_reconstruction_requires_receipt"]
+    assert reconstruction.status == "theorem_candidate"
+    assert reconstruction.authority == "candidate"
+    assert reconstruction.independent_kernel_reconstruction is False
+    assert reconstruction.kernel_reconstruction_claimed is True
+    assert (
+        "kernel_reconstruction_receipt_required"
+        in reconstruction.reason_codes
+    )
 
 
 def test_proof_output_binding(atp_cert) -> None:
@@ -398,6 +410,25 @@ def test_free_form_proof_found_is_not_theorem(atp_cert) -> None:
     )
     assert outcome["status"] == "quarantined"
     assert outcome["authority"] == "candidate"
+
+
+def test_boolean_reconstruction_claim_never_grants_theorem_authority(
+    atp_cert,
+) -> None:
+    outcome = atp_cert.classify_szs_outcome(
+        "% SZS status Theorem for claimed_reconstruction\n"
+        "% SZS output start Proof for claimed_reconstruction\n"
+        "fof(1, plain, p).\n"
+        "% SZS output end Proof for claimed_reconstruction\n",
+        independent_kernel_reconstruction=True,
+        require_proof_body=True,
+    )
+
+    assert outcome["status"] == "theorem_candidate"
+    assert outcome["authority"] == "candidate"
+    assert outcome["result_status"] == "candidate"
+    assert "kernel_reconstruction_claim_unvalidated" in outcome["reason_codes"]
+    assert "kernel_reconstruction_receipt_required" in outcome["reason_codes"]
 
 
 def test_receipt_binds_sources_bounds_and_binaries(receipt: dict[str, Any]) -> None:
@@ -459,7 +490,20 @@ def test_candidate_until_reconstruction_boundary(atp_cert, receipt: dict[str, An
     assert (
         boundary["sample_without_reconstruction"]["status"] == "theorem_candidate"
     )
-    assert boundary["sample_with_reconstruction"]["status"] == "theorem_authority"
+    assert (
+        boundary["sample_with_reconstruction"]["status"]
+        == "theorem_candidate"
+    )
+    assert (
+        boundary["sample_with_reconstruction"]["authority"]
+        == "candidate"
+    )
+    assert (
+        "kernel_reconstruction_receipt_required"
+        in boundary["sample_with_reconstruction"]["reason_codes"]
+    )
+    assert boundary["kernel_reconstruction_receipt_validated"] is False
+    assert boundary["boolean_reconstruction_claim_cannot_elevate"] is True
 
     check = next(
         c
