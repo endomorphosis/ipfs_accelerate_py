@@ -20,7 +20,6 @@ import json
 import os
 import stat
 import subprocess
-import sys
 import threading
 import time
 from collections.abc import Iterator, Sequence
@@ -32,6 +31,7 @@ from typing import Any, Final
 from ..merge.checkout_lock import (
     CheckoutMaintenanceLease,
     checkout_lock_metadata,
+    checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
 )
 from ..proof.formal_verification_contracts import canonical_json_bytes
@@ -133,6 +133,38 @@ def _thread_lock(path: Path) -> threading.RLock:
     key = str(path.resolve())
     with _BOOTSTRAP_THREAD_LOCKS_GUARD:
         return _BOOTSTRAP_THREAD_LOCKS.setdefault(key, threading.RLock())
+
+
+def _process_is_running(pid: int) -> bool:
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _process_command_line(pid: int) -> str:
+    try:
+        raw = Path(f"/proc/{int(pid)}/cmdline").read_bytes()[:131_072]
+    except (OSError, TypeError, ValueError):
+        return ""
+    return raw.replace(b"\0", b" ").decode("utf-8", errors="replace").strip()
+
+
+def _checkout_owner_is_active(
+    metadata: dict[str, Any], *, repo_root: Path
+) -> bool:
+    return checkout_lock_owner_is_active(
+        metadata,
+        expected_kind="merge",
+        expected_repo_root=repo_root,
+        process_command_line=_process_command_line,
+        process_is_running=_process_is_running,
+    )
 
 
 @contextmanager
@@ -363,12 +395,20 @@ def bootstrap_legacy_landed_review(
                 kind="merge",
                 repo_root=repo,
                 task_id="legacy-landed-review-bootstrap",
-                owner_script=Path(sys.argv[0]).name,
+                # PID liveness is the authority.  This API can be invoked
+                # through ``python -m``, pytest, MCP, or another supervisor,
+                # so argv-derived script names would create false stale-lock
+                # cleanup across entry points.
+                owner_script="",
                 extra={"operation": "legacy_landed_review_policy_bootstrap"},
             ),
             max_hold_seconds=_CHECKOUT_LOCK_MAX_HOLD_SECONDS,
         )
-        with lease.exclusive_section():
+        with lease.exclusive_section(
+            owner_is_active=lambda metadata: _checkout_owner_is_active(
+                metadata, repo_root=repo
+            )
+        ):
             return _bootstrap_legacy_landed_review_locked(
                 repo=repo,
                 authority_dir=authority_dir,

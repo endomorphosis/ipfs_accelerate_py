@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -180,6 +181,51 @@ def test_head_change_after_publication_rolls_back_and_retry_succeeds(
     )
     assert retried.current_head == head_b
     assert retried.policy_created is True
+
+
+def test_bootstrap_recovers_dead_checkout_lock_but_refuses_live_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_policy_runtime(monkeypatch)
+    lock_path = tmp_path / ".git" / "implementation-main-merge.lock"
+    lock_path.parent.mkdir(mode=0o700)
+    stale = {
+        "kind": "merge",
+        "pid": 2_000_000_000,
+        "owner_script": "definitely-not-running",
+        "repo_root": str(tmp_path.resolve()),
+        "task_id": "stale-task",
+        "attempt": 1,
+        "branch": "stale-branch",
+        "lease_id": "stale-lease",
+    }
+    lock_path.write_text(json.dumps(stale), encoding="utf-8")
+
+    result = bootstrap.bootstrap_legacy_landed_review(
+        repo_root=tmp_path,
+        authority_directory=tmp_path / "authorities",
+    )
+    assert result.policy_created is True
+    assert not lock_path.exists()
+
+    live = {
+        **stale,
+        "pid": os.getpid(),
+        "owner_script": "",
+        "task_id": "live-task",
+        "lease_id": "live-lease",
+    }
+    lock_path.write_text(json.dumps(live), encoding="utf-8")
+    assert bootstrap._checkout_owner_is_active(  # noqa: SLF001
+        live, repo_root=tmp_path
+    )
+    with pytest.raises(RuntimeError, match="checkout_maintenance_lease_active"):
+        bootstrap.bootstrap_legacy_landed_review(
+            repo_root=tmp_path,
+            authority_directory=tmp_path / "other-authorities",
+        )
+    assert lock_path.exists()
 
 
 def test_bootstrap_refuses_orphan_policy_before_creating_keys(
