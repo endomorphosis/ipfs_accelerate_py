@@ -29,7 +29,15 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
-from ipfs_datasets_py.utils import cid_utils as _cid_utils
+try:
+    # Preferred shared encoder when the datasets package is present.
+    from ipfs_datasets_py.utils import cid_utils as _cid_utils
+except ImportError:  # pragma: no cover - exercised under hermetic validation
+    # Hermetic validation uses PYTHONNOUSERSITE and worktree submodule
+    # placeholders (empty ``ipfs_datasets_py/`` dirs) that shadow the real
+    # optional package.  Fall back to the in-tree helpers so entrypoint
+    # contracts remain importable without user-site editable installs.
+    from ipfs_accelerate_py.utils import cid_utils as _cid_utils
 
 
 MULTIFORMATS_IDENTITY_SCHEMA: Final = (
