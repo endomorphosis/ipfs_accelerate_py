@@ -2245,6 +2245,129 @@ def test_post_merge_recovery_seed_materializes_one_verified_gitlink(
     assert plan["reason"] == "post_merge_recovery_seed"
 
 
+def test_post_merge_recovery_seed_validator_only_allows_integrated_target_opt_in(
+    tmp_path,
+):
+    repo, child = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "main")
+    (child / "reviewed-recovery.txt").write_text(
+        "reviewed recovery\n",
+        encoding="utf-8",
+    )
+    _git(child, "add", "reviewed-recovery.txt")
+    _git(child, "commit", "-m", "reviewed recovery child")
+    child_commit = _git(child, "rev-parse", "HEAD")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        merge_target_branch="main",
+        worktree_submodule_paths=["libs/child"],
+    )
+    task = PortalTask(
+        task_id="REF-049",
+        title="Retry one integrated recovery seed",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="logic",
+        outputs=["libs/child/reviewed-recovery.txt"],
+    )
+    seed = daemon._materialize_post_merge_recovery_seed(
+        task=task,
+        recovery_seed_submodule_path="libs/child",
+        recovery_seed_submodule_commit=child_commit,
+    )
+    seed_commit = seed["recovery_seed_ref"]
+    seed_tree = _git(repo, "rev-parse", f"{seed_commit}^{{tree}}")
+    merge = subprocess.run(
+        [
+            "git",
+            "commit-tree",
+            seed_tree,
+            "-p",
+            baseline,
+            "-p",
+            seed_commit,
+        ],
+        cwd=repo,
+        input="integrate reviewed recovery seed\n",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert merge.returncode == 0, merge.stderr
+    integrated_target = merge.stdout.strip()
+    _git(
+        repo,
+        "update-ref",
+        "refs/heads/main",
+        integrated_target,
+        baseline,
+    )
+
+    strict, strict_error = daemon._validated_post_merge_recovery_seed_commit(
+        task=task,
+        **seed,
+        expected_target_commit=baseline,
+    )
+    integrated, integrated_error = (
+        daemon._validated_post_merge_recovery_seed_commit(
+            task=task,
+            **seed,
+            expected_target_commit=baseline,
+            allow_already_integrated_target=True,
+        )
+    )
+
+    assert strict == {}
+    assert strict_error == "recovery_seed_target_changed"
+    assert integrated_error == ""
+    assert integrated["recovery_seed_parent_commit"] == baseline
+    assert integrated["recovery_seed_target_already_integrated"] is True
+    assert (
+        integrated["recovery_seed_observed_target_commit"]
+        == integrated_target
+    )
+    assert (
+        integrated["recovery_seed_observed_target_gitlink"]
+        == child_commit
+    )
+
+    baseline_tree = _git(repo, "rev-parse", f"{baseline}^{{tree}}")
+    divergent = subprocess.run(
+        ["git", "commit-tree", baseline_tree, "-p", baseline],
+        cwd=repo,
+        input="divergent target\n",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert divergent.returncode == 0, divergent.stderr
+    divergent_target = divergent.stdout.strip()
+    _git(
+        repo,
+        "update-ref",
+        "refs/heads/main",
+        divergent_target,
+        integrated_target,
+    )
+
+    rejected, rejected_error = (
+        daemon._validated_post_merge_recovery_seed_commit(
+            task=task,
+            **seed,
+            expected_target_commit=baseline,
+            allow_already_integrated_target=True,
+        )
+    )
+
+    assert rejected == {}
+    assert rejected_error == "recovery_seed_integrated_target_mismatch"
+
+
 def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
     post_merge_denial_case_factory,
     monkeypatch,
@@ -9339,6 +9462,11 @@ def test_recovery_seed_merge_callback_normalizes_only_exact_strict_execution(
     verified_seed = {
         **seed_fields,
         "recovery_seed_parent_commit": baseline,
+        "recovery_seed_target_already_integrated": False,
+        "recovery_seed_observed_target_commit": baseline,
+        "recovery_seed_observed_target_gitlink": seed_fields[
+            "recovery_seed_submodule_commit"
+        ],
     }
 
     def validate_seed_authority(**kwargs):
@@ -9346,6 +9474,7 @@ def test_recovery_seed_merge_callback_normalizes_only_exact_strict_execution(
         assert kwargs["attempt"] == 5
         assert kwargs["authority"] == authority
         assert kwargs["expected_target_commit"] == baseline
+        assert kwargs["allow_already_integrated_target"] is True
         return verified_seed, ""
 
     monkeypatch.setattr(
@@ -9461,6 +9590,12 @@ def test_recovery_seed_merge_callback_normalizes_only_exact_strict_execution(
         assert audit["started_event_id"] == started["event_id"]
         assert audit["finished_event_id"] == finished["event_id"]
         assert audit["grant_id"] == "grant-1"
+        assert audit["target_already_integrated"] is False
+        assert audit["observed_target_commit"] == baseline
+        assert (
+            audit["observed_target_gitlink"]
+            == seed_fields["recovery_seed_submodule_commit"]
+        )
         if raw_model_invocation:
             assert audit["validated_revival"][
                 "previous_failure_reason"
@@ -9489,6 +9624,856 @@ def test_recovery_seed_merge_callback_normalizes_only_exact_strict_execution(
             == "recovery_seed_zero_edit_execution_verified"
             for event in daemon._iter_events()
         )
+
+
+def _already_integrated_recovery_callback_case(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    exact_child_binding: bool = True,
+    cleanup_result: dict[str, object] | None = None,
+    recovery_target_already_integrated: bool = True,
+    target_change_during_validation: str = "",
+    target_change_during_provider_review: str = "",
+    consume_via_merge_train: bool = False,
+    real_reclaimed_cleanup: bool = False,
+    cross_lane_evidence: bool = False,
+) -> dict[str, object]:
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Recovery callback test\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", ".gitignore")
+    _git(repo, "commit", "-m", "add recovery callback board")
+    _configure_child_main_in_root_target(repo)
+    state_dir = repo / "state"
+    evidence_state_dir = (
+        repo / "producer-lane-2-state"
+        if cross_lane_evidence
+        else state_dir
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        merge_target_branch="main",
+        worktree_submodule_paths=["libs/child"],
+    )
+    task = replace(
+        _submodule_proposal_task(
+            "libs/child/validated-candidate.txt"
+        ),
+        task_id="REF-049",
+        title="Promote an already integrated recovery seed",
+        validation=[],
+        metadata={"provider role": "grok-implement"},
+    )
+    branch_name = "implementation/ref-049-recovery-attempt-5"
+    (
+        preflight,
+        approved_targets,
+        root_candidate,
+        child_candidate,
+    ) = _create_preflight_bound_child_candidate(
+        repo,
+        submodule,
+        daemon,
+        task,
+        branch_name=branch_name,
+    )
+    baseline = str(preflight["root_target_commit"])
+    approved_child_target = str(
+        approved_targets["libs/child"]["integration_target"]
+    )
+
+    _git(repo, "merge", "--no-ff", "--no-edit", root_candidate)
+    integrated_target = _git(repo, "rev-parse", "main")
+    assert integrated_target != root_candidate
+    assert _git(repo, "rev-list", "--parents", "-n", "1", integrated_target).split() == [
+        integrated_target,
+        baseline,
+        root_candidate,
+    ]
+    assert _git(repo, "rev-parse", f"{integrated_target}^{{tree}}") == _git(
+        repo,
+        "rev-parse",
+        f"{root_candidate}^{{tree}}",
+    )
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+        "libs/child",
+    )
+    _git(
+        submodule,
+        "update-ref",
+        "refs/heads/main",
+        child_candidate,
+        approved_child_target,
+    )
+    _git(submodule, "checkout", "main")
+    if not exact_child_binding:
+        (submodule / "unapproved-descendant.txt").write_text(
+            "not part of the approved recovery\n",
+            encoding="utf-8",
+        )
+        _git(submodule, "add", "unapproved-descendant.txt")
+        _git(submodule, "commit", "-m", "advance child beyond approved recovery")
+    else:
+        assert _git(repo, "status", "--porcelain") == ""
+
+    identity = daemon._identity_for_task(task)
+    proof_calls: list[dict[str, object]] = []
+    recovery_evidence = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "recovery-seed-zero-edit-execution@1"
+        ),
+        "evidence_id": "recovery-evidence-integrated",
+        "effective_model_invocation_observed": False,
+        "model_invocation_observed": False,
+        "target_already_integrated": (
+            recovery_target_already_integrated
+        ),
+        "observed_target_commit": integrated_target,
+        "observed_target_gitlink": child_candidate,
+        "recovery_seed_ref": root_candidate,
+        "recovery_seed_tree_id": (
+            f"git-tree:{_git(repo, 'rev-parse', f'{root_candidate}^{{tree}}')}"
+        ),
+        "recovery_seed_submodule_path": "libs/child",
+        "recovery_seed_submodule_commit": child_candidate,
+    }
+
+    def recover_seed_execution(**kwargs):
+        proof_calls.append(dict(kwargs))
+        return dict(recovery_evidence), ""
+
+    monkeypatch.setattr(daemon, "_load_tasks", lambda: [task])
+    monkeypatch.setattr(
+        daemon,
+        "_recover_verified_implementation_provenance",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verified_recovery_seed_zero_edit_execution",
+        recover_seed_execution,
+    )
+    if recovery_target_already_integrated:
+        monkeypatch.setattr(
+            daemon,
+            "_merge_branch_to_main",
+            lambda *_args, **_kwargs: pytest.fail(
+                "an already integrated recovery retried the root merge"
+            ),
+        )
+    else:
+        monkeypatch.setattr(
+            daemon,
+            "_merge_branch_to_main",
+            lambda *_args, **_kwargs: {
+                "attempted": True,
+                "merged": True,
+                "returncode": 0,
+                "reason": "merged",
+                "merge_commit": integrated_target,
+                "submodule_merge_results": [
+                    {
+                        "path": "libs/child",
+                        "merged": True,
+                        "returncode": 0,
+                        "commit": child_candidate,
+                    }
+                ],
+                "merged_gitlink_recording": {"ok": True},
+            },
+        )
+    monkeypatch.setattr(
+        daemon,
+        "_invoke_llm_merge_resolver_for_failed_merge",
+        lambda **_kwargs: pytest.fail(
+            "an already integrated recovery invoked a merge resolver"
+        ),
+    )
+    post_merge_validation_calls: list[dict[str, object]] = []
+
+    def validate_merged_target(**kwargs):
+        post_merge_validation_calls.append(dict(kwargs))
+        merge_commit = str(kwargs["merge_commit"])
+        validation = {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "target_commit": merge_commit,
+            "repository_tree_id": (
+                f"git-tree:{_git(repo, 'rev-parse', f'{merge_commit}^{{tree}}')}"
+            ),
+        }
+        if target_change_during_validation == "descendant":
+            (repo / "concurrent-target-advance.txt").write_text(
+                "descendant advancement\n",
+                encoding="utf-8",
+            )
+            _git(repo, "add", "concurrent-target-advance.txt")
+            _git(repo, "commit", "-m", "advance target during validation")
+        elif target_change_during_validation == "non_descendant":
+            _git(
+                repo,
+                "update-ref",
+                "refs/heads/main",
+                baseline,
+                integrated_target,
+            )
+        return validation
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_post_merge_validation_evidence",
+        validate_merged_target,
+    )
+    provider_review_calls: list[dict[str, object]] = []
+
+    def provider_review(**kwargs):
+        provider_review_calls.append(dict(kwargs))
+        if target_change_during_provider_review == "non_descendant":
+            _git(
+                repo,
+                "update-ref",
+                "refs/heads/main",
+                baseline,
+                integrated_target,
+            )
+        elif target_change_during_provider_review == "descendant":
+            (repo / "provider-review-target-advance.txt").write_text(
+                "descendant provider-review advance\n",
+                encoding="utf-8",
+            )
+            _git(repo, "add", "provider-review-target-advance.txt")
+            _git(
+                repo,
+                "commit",
+                "-m",
+                "advance target during provider review",
+            )
+        return {}
+
+    monkeypatch.setattr(
+        daemon,
+        "_provider_review_gate_evidence",
+        provider_review,
+    )
+    acceptance_calls: list[dict[str, object]] = []
+
+    def pend_provider_review(**kwargs):
+        acceptance_calls.append(dict(kwargs))
+        return {
+            "authoritatively_completed": False,
+            "pending_gates": ["provider_review"],
+            "reason": "provider_review_pending",
+            "todo_update_result": {},
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_apply_post_merge_acceptance_with_target_fence",
+        pend_provider_review,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_decision_runtime_completion",
+        lambda *_args, **_kwargs: None,
+    )
+    cleanup_calls: list[tuple[Path | None, str]] = []
+    worktree_path = tmp_path / "fenced-recovery-worktree"
+    reclaimed_lifecycle = None
+    effective_cleanup_result = (
+        dict(cleanup_result) if cleanup_result is not None else None
+    )
+    if (
+        effective_cleanup_result is not None
+        and effective_cleanup_result.pop(
+            "_bind_exact_lifecycle_record",
+            False,
+        )
+    ):
+        lifecycle_record_overrides = effective_cleanup_result.pop(
+            "_lifecycle_record_overrides",
+            {},
+        )
+        normalized_workspace = str(worktree_path.resolve())
+        record_id = (
+            implementation_daemon_module.WorkspaceLifecycleRecord
+            .compute_record_id_for(
+                canonical_task_cid=identity.canonical_task_cid,
+                task_id=task.task_id,
+                attempt=5,
+                workspace_path=normalized_workspace,
+            )
+        )
+        lifecycle_record = {
+            "record_id": record_id,
+            "task_id": task.task_id,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "attempt": 5,
+            "state": "settling",
+            "branch": branch_name,
+            "workspace_path": normalized_workspace,
+            "repo_root": str(repo.resolve()),
+            "state_dir": str(evidence_state_dir.resolve()),
+            "merge_target": "main",
+        }
+        if isinstance(lifecycle_record_overrides, dict):
+            lifecycle_record.update(lifecycle_record_overrides)
+        effective_cleanup_result.update(
+            {
+                "branch": branch_name,
+                "worktree_path": normalized_workspace,
+                "submodule_cleanup": [],
+                "lifecycle": {
+                    "allowed": False,
+                    "disposition": "deny",
+                    "reason": "owner_dead_lease_unexpired",
+                    "failure_kind": "lifecycle_race",
+                    "attempt_consumed": False,
+                    "provider_call_allowed": False,
+                    "record": lifecycle_record,
+                },
+            }
+    )
+    if real_reclaimed_cleanup:
+        from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+            ProcessBirthIdentity,
+        )
+
+        _git(repo, "worktree", "add", str(worktree_path), branch_name)
+        lifecycle = daemon.worktree_lifecycle.begin_preparing(
+            task_id=task.task_id,
+            canonical_task_cid=identity.canonical_task_cid,
+            attempt=5,
+            lane_id="dead-recovery-lane",
+            workspace_path=worktree_path,
+            branch=branch_name,
+            merge_target="main",
+            state_dir=str(evidence_state_dir.resolve()),
+            lease_id="dead-recovery-owner",
+            owner=ProcessBirthIdentity(
+                pid=999_999_999,
+                start_time_ticks=1,
+            ),
+        )
+        lifecycle = daemon.worktree_lifecycle.mark_active(
+            worktree_path,
+            lease_id=lifecycle.lease_id,
+            expected_fence=lifecycle.fence,
+        )
+        lifecycle = daemon.worktree_lifecycle.mark_settling(
+            worktree_path,
+            lease_id=lifecycle.lease_id,
+            expected_fence=lifecycle.fence,
+        )
+        assert lifecycle.fence == 3
+        reclaimed_lifecycle = (
+            daemon.worktree_lifecycle
+            .reclaim_dead_owner_for_controlled_restart(
+                worktree_path,
+                expected_state_dir=evidence_state_dir,
+                reason="controlled_restart_dead_owner:test-recovery",
+            )
+        )
+        assert reclaimed_lifecycle is not None
+        assert reclaimed_lifecycle.state.value == "terminal"
+        assert reclaimed_lifecycle.fence == 4
+        original_cleanup = daemon._cleanup_merged_worktree
+
+        def cleanup(path, branch):
+            cleanup_calls.append((path, branch))
+            return original_cleanup(path, branch)
+
+        monkeypatch.setattr(daemon, "_cleanup_merged_worktree", cleanup)
+    elif cleanup_result is not None:
+        def cleanup(path, branch):
+            cleanup_calls.append((path, branch))
+            return dict(effective_cleanup_result or {})
+
+        monkeypatch.setattr(daemon, "_cleanup_merged_worktree", cleanup)
+
+    validation_proof = {
+        "task_id": task.task_id,
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "target_commit": root_candidate,
+        "target_tree": _git(repo, "rev-parse", f"{root_candidate}^{{tree}}"),
+        "repository_tree_id": recovery_evidence["recovery_seed_tree_id"],
+        "selection": {"scope": "pre_merge"},
+        "proposal_gate": {
+            "attempted": True,
+            "accepted": True,
+            "repository_tree_id": baseline,
+            "changed_paths": [
+                "libs/child/validated-candidate.txt"
+            ],
+        },
+    }
+    metadata = {
+        "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+        "target_repository_id": daemon.merge_target_repository_id,
+        "target_branch": daemon.resolved_merge_target_branch,
+        "baseline_ref": baseline,
+        "implementation_commit": root_candidate,
+        "candidate_tree": _git(repo, "rev-parse", f"{root_candidate}^{{tree}}"),
+        "repository_tree_id": recovery_evidence["recovery_seed_tree_id"],
+        "implementation_attempt": 5,
+        "implementation_provider": "",
+        "model_invocation_observed": True,
+        "repo_root": str(repo),
+        "state_path": str(evidence_state_dir / "task_state.json"),
+        "strategy_path": str(daemon.strategy_path),
+        "events_path": str(evidence_state_dir / "events.jsonl"),
+        "todo_path": str(daemon.todo_path),
+        "task_header_prefix": "REF-",
+        "changed_submodule_paths": ["libs/child"],
+        "task_owned_submodule_integration_binding": (
+            daemon._task_owned_submodule_integration_binding_payload(
+                root_target_commit=baseline,
+                approved_targets=approved_targets,
+            )
+        ),
+        "validation_proof": validation_proof,
+        "task": asdict(task),
+    }
+    if cleanup_result is not None or real_reclaimed_cleanup:
+        metadata["worktree_path"] = str(worktree_path)
+    request = SimpleNamespace(
+        request_id="request-integrated-recovery",
+        branch_name=branch_name,
+        commit_sha=root_candidate,
+        task_id=task.task_id,
+        priority=task.priority,
+        attempt=2,
+        failure_count=1,
+        claim_generation=5,
+        canonical_task_id=identity.canonical_task_cid,
+        canonical_task_key=identity.canonical_task_key,
+        metadata=metadata,
+    )
+
+    queued_request = None
+    if consume_via_merge_train:
+        queued_request = daemon.merge_queue.enqueue(
+            branch_name=branch_name,
+            task_id=task.task_id,
+            priority=task.priority,
+            attempt=2,
+            metadata=metadata,
+            commit_sha=root_candidate,
+            canonical_task_id=identity.canonical_task_cid,
+            canonical_task_key=identity.canonical_task_key,
+            target_repository_id=daemon.merge_target_repository_id,
+            target_branch=daemon.resolved_merge_target_branch,
+        )
+        result = daemon._consume_one_merge_candidate()
+        assert result is not None
+    else:
+        result = daemon._merge_train_callback(request)
+    return {
+        "daemon": daemon,
+        "repo": repo,
+        "result": result,
+        "proof_calls": proof_calls,
+        "acceptance_calls": acceptance_calls,
+        "provider_review_calls": provider_review_calls,
+        "post_merge_validation_calls": post_merge_validation_calls,
+        "cleanup_calls": cleanup_calls,
+        "recovery_evidence": recovery_evidence,
+        "root_candidate": root_candidate,
+        "integrated_target": integrated_target,
+        "baseline": baseline,
+        "child_candidate": child_candidate,
+        "effective_cleanup_result": effective_cleanup_result,
+        "live_target": _git(repo, "rev-parse", "main"),
+        "queued_request": queued_request,
+        "stored_request": (
+            daemon.merge_queue.get(queued_request.request_id)
+            if queued_request is not None
+            else None
+        ),
+        "reclaimed_lifecycle": reclaimed_lifecycle,
+        "retained_lifecycle": (
+            daemon.worktree_lifecycle.load_workspace(worktree_path)
+            if real_reclaimed_cleanup
+            else None
+        ),
+        "worktree_path": worktree_path,
+        "branch_name": branch_name,
+        "evidence_state_dir": evidence_state_dir,
+    }
+
+
+@pytest.mark.parametrize(
+    ("exact_child_binding", "expected_merged"),
+    [(True, True), (False, False)],
+)
+def test_integrated_recovery_bypasses_root_merge_only_for_exact_child_binding(
+    tmp_path,
+    monkeypatch,
+    exact_child_binding,
+    expected_merged,
+):
+    case = _already_integrated_recovery_callback_case(
+        tmp_path,
+        monkeypatch,
+        exact_child_binding=exact_child_binding,
+    )
+    result = case["result"]
+
+    assert len(case["proof_calls"]) == 1
+    assert result["merged"] is expected_merged
+    if expected_merged:
+        assert result["already_merged"] is True
+        assert result["reason"] == "recovery_seed_already_integrated"
+        assert result["merge_commit"] == case["integrated_target"]
+        assert len(case["post_merge_validation_calls"]) == 1
+        assert len(case["acceptance_calls"]) == 1
+        # The recovery command itself used no model, but this model-provider
+        # task must retain its independent provider-review requirement.
+        assert case["recovery_evidence"][
+            "effective_model_invocation_observed"
+        ] is False
+        assert case["acceptance_calls"][0][
+            "model_invocation_observed"
+        ] is True
+        assert result["completion_authoritative"] is False
+    else:
+        assert case["post_merge_validation_calls"] == []
+        assert case["acceptance_calls"] == []
+
+
+@pytest.mark.parametrize(
+    ("cleanup_result", "expected_deferred"),
+    [
+        (
+            {
+                "_bind_exact_lifecycle_record": True,
+                "cleaned": False,
+                "reason": "lifecycle_owner_dead_lease_unexpired",
+                "failure_kind": "lifecycle_race",
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+                "removed_worktree": False,
+                "deleted_branch": False,
+            },
+            True,
+        ),
+        (
+            {
+                "cleaned": False,
+                "reason": "dirty_worktree",
+                "failure_kind": "cleanup_failed",
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+                "removed_worktree": False,
+                "deleted_branch": False,
+            },
+            False,
+        ),
+        (
+            {
+                "cleaned": False,
+                "reason": "lifecycle_owner_dead_lease_unexpired",
+                "failure_kind": "lifecycle_race",
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+                "removed_worktree": True,
+                "deleted_branch": False,
+            },
+            False,
+        ),
+        (
+            {
+                "_bind_exact_lifecycle_record": True,
+                "_lifecycle_record_overrides": {
+                    "canonical_task_cid": "baguqeera-wrong-task",
+                },
+                "cleaned": False,
+                "reason": "lifecycle_owner_dead_lease_unexpired",
+                "failure_kind": "lifecycle_race",
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+                "removed_worktree": False,
+                "deleted_branch": False,
+            },
+            False,
+        ),
+    ],
+)
+def test_integrated_recovery_only_defers_exact_nonmutating_lifecycle_cleanup(
+    tmp_path,
+    monkeypatch,
+    cleanup_result,
+    expected_deferred,
+):
+    case = _already_integrated_recovery_callback_case(
+        tmp_path,
+        monkeypatch,
+        cleanup_result=cleanup_result,
+    )
+    result = case["result"]
+
+    assert len(case["cleanup_calls"]) == 1
+    if expected_deferred:
+        assert result["merged"] is True
+        assert result["already_merged"] is True
+        assert result["cleanup_deferred"] is True
+        assert result["cleanup_result"] == case[
+            "effective_cleanup_result"
+        ]
+        assert len(case["post_merge_validation_calls"]) == 1
+        assert case["acceptance_calls"][0][
+            "model_invocation_observed"
+        ] is True
+    else:
+        assert result["merged"] is False
+        assert result["reason"] == "merge_cleanup_failed"
+        assert not result.get("cleanup_deferred", False)
+        assert case["post_merge_validation_calls"] == []
+        assert case["acceptance_calls"] == []
+
+
+def test_fresh_recovery_merge_cannot_defer_dead_owner_cleanup(
+    tmp_path,
+    monkeypatch,
+):
+    cleanup_result = {
+        "_bind_exact_lifecycle_record": True,
+        "cleaned": False,
+        "reason": "lifecycle_owner_dead_lease_unexpired",
+        "failure_kind": "lifecycle_race",
+        "attempt_consumed": False,
+        "provider_call_allowed": False,
+        "removed_worktree": False,
+        "deleted_branch": False,
+    }
+    case = _already_integrated_recovery_callback_case(
+        tmp_path,
+        monkeypatch,
+        cleanup_result=cleanup_result,
+        recovery_target_already_integrated=False,
+    )
+    result = case["result"]
+
+    assert result["merged"] is False
+    assert result["reason"] == "merge_cleanup_failed"
+    assert not result.get("cleanup_deferred", False)
+    assert case["post_merge_validation_calls"] == []
+    assert case["acceptance_calls"] == []
+
+
+def test_merge_train_completes_exact_integrated_recovery_with_deferred_cleanup(
+    tmp_path,
+    monkeypatch,
+):
+    cleanup_result = {
+        "_bind_exact_lifecycle_record": True,
+        "cleaned": False,
+        "reason": "lifecycle_owner_dead_lease_unexpired",
+        "failure_kind": "lifecycle_race",
+        "attempt_consumed": False,
+        "provider_call_allowed": False,
+        "removed_worktree": False,
+        "deleted_branch": False,
+    }
+    case = _already_integrated_recovery_callback_case(
+        tmp_path,
+        monkeypatch,
+        cleanup_result=cleanup_result,
+        consume_via_merge_train=True,
+    )
+    train_result = case["result"]
+    callback_result = train_result["merge_result"]
+    stored = case["stored_request"]
+
+    assert train_result["status"] == "merged"
+    assert train_result["integrated"] is True
+    assert callback_result["merged"] is True
+    assert callback_result["already_merged"] is True
+    assert callback_result["cleanup_deferred"] is True
+    assert callback_result["cleanup_pending"] is True
+    assert callback_result["completion_authoritative"] is False
+    assert stored is not None
+    assert stored.status == "completed"
+    assert stored.attempt == 2
+    assert stored.failure_count == 0
+    assert stored.failure_reason == ""
+    assert case["daemon"].merge_queue.pending_count() == 0
+    assert not case["daemon"]._repo_merge_lock_path().exists()
+
+
+def test_cross_lane_consumer_defers_cleanup_bound_to_producer_state(
+    tmp_path,
+    monkeypatch,
+):
+    cleanup_result = {
+        "_bind_exact_lifecycle_record": True,
+        "cleaned": False,
+        "reason": "lifecycle_owner_dead_lease_unexpired",
+        "failure_kind": "lifecycle_race",
+        "attempt_consumed": False,
+        "provider_call_allowed": False,
+        "removed_worktree": False,
+        "deleted_branch": False,
+    }
+    case = _already_integrated_recovery_callback_case(
+        tmp_path,
+        monkeypatch,
+        cleanup_result=cleanup_result,
+        cross_lane_evidence=True,
+    )
+    result = case["result"]
+    lifecycle_record = result["cleanup_result"]["lifecycle"]["record"]
+
+    assert case["evidence_state_dir"] != case["daemon"].state_path.parent
+    assert lifecycle_record["state_dir"] == str(
+        case["evidence_state_dir"].resolve()
+    )
+    assert result["merged"] is True
+    assert result["cleanup_deferred"] is True
+    assert result["completion_authoritative"] is False
+
+
+def test_reclaimed_dead_owner_recovery_uses_real_cleanup_and_retains_fence(
+    tmp_path,
+    monkeypatch,
+):
+    case = _already_integrated_recovery_callback_case(
+        tmp_path,
+        monkeypatch,
+        real_reclaimed_cleanup=True,
+    )
+    result = case["result"]
+    retained = case["retained_lifecycle"]
+
+    assert result["merged"] is True
+    assert result["already_merged"] is True
+    assert result["cleanup_result"]["cleaned"] is True
+    assert result["cleanup_result"]["lifecycle_finalize"] == {
+        "finalized": True,
+        "reason": "already_terminal",
+        "fence": 4,
+    }
+    assert len(case["cleanup_calls"]) == 1
+    assert not case["worktree_path"].exists()
+    assert (
+        case["daemon"]._resolve_git_commit_in_repo(
+            case["repo"],
+            case["branch_name"],
+        )
+        == ""
+    )
+    assert retained is not None
+    assert retained.state.value == "terminal"
+    assert retained.fence == 4
+    assert retained.terminal_reason == (
+        "controlled_restart_dead_owner:test-recovery"
+    )
+    assert case["post_merge_validation_calls"]
+    assert case["acceptance_calls"]
+
+
+def test_merge_train_retries_non_descendant_move_during_provider_review(
+    tmp_path,
+    monkeypatch,
+):
+    case = _already_integrated_recovery_callback_case(
+        tmp_path,
+        monkeypatch,
+        target_change_during_provider_review="non_descendant",
+        consume_via_merge_train=True,
+    )
+    train_result = case["result"]
+    callback_result = train_result["merge_result"]
+    stored = case["stored_request"]
+
+    assert len(case["provider_review_calls"]) == 1
+    assert len(case["acceptance_calls"]) == 1
+    assert train_result["status"] == "retrying"
+    assert train_result["integrated"] is False
+    assert train_result["reason"] == (
+        "post_merge_candidate_integration_lost"
+    )
+    assert callback_result["merged"] is False
+    assert callback_result["already_merged"] is False
+    assert callback_result["integration_fence"]["stage"] == (
+        "after_provider_review_and_acceptance"
+    )
+    assert callback_result["integration_fence"]["merge_integrated"] is False
+    assert stored is not None
+    assert stored.status == "pending"
+    assert stored.failure_count == 1
+    assert stored.failure_reason == (
+        "post_merge_candidate_integration_lost"
+    )
+    assert case["daemon"].merge_queue.pending_count() == 1
+    assert not case["daemon"]._repo_merge_lock_path().exists()
+
+
+@pytest.mark.parametrize(
+    ("target_change", "expected_merged", "expected_reason"),
+    [
+        ("descendant", True, "recovery_seed_already_integrated"),
+        (
+            "non_descendant",
+            False,
+            "post_merge_candidate_integration_lost",
+        ),
+    ],
+)
+def test_integrated_recovery_refences_target_change_during_validation(
+    tmp_path,
+    monkeypatch,
+    target_change,
+    expected_merged,
+    expected_reason,
+):
+    case = _already_integrated_recovery_callback_case(
+        tmp_path,
+        monkeypatch,
+        target_change_during_validation=target_change,
+    )
+    result = case["result"]
+
+    assert result["merged"] is expected_merged
+    assert result["reason"] == expected_reason
+    assert result["completion_authoritative"] is False
+    assert case["acceptance_calls"] == []
+    assert not case["daemon"]._repo_merge_lock_path().exists()
+    if expected_merged:
+        assert result["already_merged"] is True
+        assert result["candidate_still_integrated"] is True
+        assert result["acceptance_result"]["reason"] == (
+            "post_merge_target_advanced"
+        )
+        assert case["live_target"] != case["integrated_target"]
+        assert _git(
+            case["repo"],
+            "merge-base",
+            "--is-ancestor",
+            case["root_candidate"],
+            case["live_target"],
+        ) == ""
+    else:
+        assert result["already_merged"] is False
+        assert result["candidate_still_integrated"] is False
+        assert case["live_target"] == case["baseline"]
 
 
 def test_recovery_seed_terminal_wait_rechecks_without_real_sleep(
