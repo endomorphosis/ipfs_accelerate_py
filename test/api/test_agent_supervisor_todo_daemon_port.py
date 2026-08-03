@@ -1190,6 +1190,58 @@ def test_build_implementation_daemon_defaults_from_paths(tmp_path):
     ) == apply_portal_implementation_daemon_defaults(["--once"], defaults=defaults)
 
 
+def test_implementation_daemon_defaults_to_grok_before_codex(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.delenv(
+        implementation_daemon_module._GROK_MODEL_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv("GROK_CLI_MODEL", raising=False)
+    monkeypatch.delenv("GROK_MODEL", raising=False)
+    monkeypatch.delenv("ipfs_accelerate_py_GROK_CLI_MODEL", raising=False)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+
+    command = daemon._build_implementation_command(repo)
+
+    assert command[0] == sys.executable
+    assert command[1].endswith("grok_cli_runner.py")
+    assert command[command.index("--grok-bin") + 1] == "/usr/local/bin/grok"
+    assert command[command.index("--model") + 1] == "grok-4.5"
+
+
 def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()

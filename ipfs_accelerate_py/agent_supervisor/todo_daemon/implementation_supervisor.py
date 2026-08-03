@@ -12608,7 +12608,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--implementation-command",
         default="",
-        help="Command used by the daemon for implementation. Defaults to codex exec --full-auto.",
+        help=(
+            "Command used by the daemon for implementation. By default, "
+            "automatic routing selects authenticated Grok first, then "
+            "Codex/Copilot fallback."
+        ),
     )
     parser.add_argument(
         "--implementation-protected-path",

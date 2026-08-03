@@ -75,7 +75,7 @@ Defaults used by multi-lane programs in this repo:
 
 | Role | Variable | Recommended value |
 | --- | --- | --- |
-| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `grok` (Grok Build CLI) |
+| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `auto` (Grok first, then Codex/Copilot) |
 | Grok model | `IPFS_ACCELERATE_AGENT_GROK_MODEL` | `grok-4.5` |
 | Grok binary | `IPFS_ACCELERATE_AGENT_GROK_BIN` | path to `grok` (e.g. `~/.local/bin/grok`) |
 | Grok permissions | `IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE` | `bypassPermissions` for unattended lanes |
@@ -84,7 +84,7 @@ Defaults used by multi-lane programs in this repo:
 Example `implementation.env` for a runtime directory:
 
 ```bash
-export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok
+export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto
 export IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.5
 export IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE=bypassPermissions
 export IPFS_ACCELERATE_AGENT_GROK_BIN=/home/barberb/.local/bin/grok
@@ -93,9 +93,12 @@ export IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra
 
 Notes:
 
-- `provider=grok` forces the Grok Build path when the CLI is available.  
-- Codex is used when the provider is `codex` / `openai`, or as a fallback when
-  Grok is not selected and `codex` is on `PATH`. Always set
+- `provider=auto` selects authenticated Grok first and falls back to
+  Codex/Copilot when Grok is unavailable or in capacity cooldown.
+- `provider=grok` explicitly pins Grok and fails closed instead of changing
+  provider families.
+- Codex is also used when the provider is explicitly `codex` / `openai`.
+  Always set
   `IPFS_ACCELERATE_AGENT_CODEX_MODEL` so fallback does not inherit an unrelated
   interactive Codex default.  
 - Source the env **before** starting multi-supervisor / daemons; children

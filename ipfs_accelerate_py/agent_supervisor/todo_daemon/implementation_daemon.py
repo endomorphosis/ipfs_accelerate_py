@@ -42073,7 +42073,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--implementation-command",
         default="",
-        help="Command used for implementation. Defaults to codex exec with local Copilot CLI fallback when available.",
+        help=(
+            "Command used for implementation. By default, automatic routing "
+            "selects authenticated Grok first, then Codex/Copilot fallback."
+        ),
     )
     parser.add_argument(
         "--implementation-protected-path",
