@@ -1,4 +1,9 @@
-"""Codex/Copilot fallback command for LLM merge-conflict resolution."""
+"""Compatibility entrypoint for LLM merge-conflict resolution.
+
+Default command construction now routes Grok 4.5 first and authorizes only the
+pinned Terra/medium fallback after a typed native Grok quota event.  The legacy
+module CLI remains available only to configurations that invoke it explicitly.
+"""
 
 from __future__ import annotations
 
@@ -39,13 +44,14 @@ def llm_merge_resolver_fallback_command(
     *,
     python_executable: str = "python3",
 ) -> str:
-    """Return a shell-safe command for the packaged fallback resolver."""
+    """Return the canonical shell-safe Grok/quota-only resolver command."""
+
+    from ..grok_cli_runner import build_grok_quota_routed_agent_command
 
     return shlex.join(
-        (
-            python_executable,
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
+        build_grok_quota_routed_agent_command(
+            workspace=".",
+            python_executable=python_executable,
         )
     )
 

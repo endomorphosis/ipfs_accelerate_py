@@ -11,7 +11,7 @@ Protected architecture files are always fenced via
 - docs/architecture/agent_supervisor_module_refactor.todo.md
 - docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md
 
-Implementation provider (Grok 4.6 or successor) is selected at launch via
+Implementation provider (Grok 4.5) is selected at launch via
 ``IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER`` / ``--implementation-provider``.
 Provider bridges remain in integrations/runtime; package moves must not wait on
 provider choice.
@@ -42,6 +42,9 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (  # 
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (  # noqa: E402
     parse_task_file,
+)
+from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (  # noqa: E402
+    llm_merge_resolver_fallback_command,
 )
 
 
@@ -402,7 +405,7 @@ def _common_args(
         "--implementation-log-stall-seconds",
         "1200",
         "--llm-merge-resolver-command",
-        f"{python} -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
+        llm_merge_resolver_fallback_command(python_executable=python),
         "--llm-merge-resolver-timeout-seconds",
         "1800",
         "--worktree-reconciliation-max-merges",
@@ -642,7 +645,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "ASREF multi-lane preflight, objective scan, and implementation "
-            "supervisor launch (Grok 4.6 selectable via provider env/flag)"
+            "supervisor launch (Grok 4.5 selectable via provider env/flag)"
         )
     )
     sub = parser.add_subparsers(dest="command", required=True)
