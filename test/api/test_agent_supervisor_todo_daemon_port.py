@@ -10655,6 +10655,7 @@ def test_model_merge_callback_verifies_populated_provenance_against_exact_reques
         "missing_legacy_revival",
         "fresh_mode_mismatch",
         "queue_evidence_tampered",
+        "malformed_denial_commit",
     ],
 )
 def test_recovery_seed_merge_callback_normalizes_only_exact_strict_execution(
@@ -10698,6 +10699,7 @@ def test_recovery_seed_merge_callback_normalizes_only_exact_strict_execution(
     _git(repo, "add", candidate_path)
     _git(repo, "commit", "-m", "REF-049: materialize recovery seed")
     implementation_commit = _git(repo, "rev-parse", "HEAD")
+    denied_implementation_commit = "0" * 40
     candidate_tree = _git(repo, "rev-parse", "HEAD^{tree}")
     candidate_tree_id = f"git-tree:{candidate_tree}"
     _git(repo, "checkout", "main")
@@ -10957,7 +10959,11 @@ def test_recovery_seed_merge_callback_normalizes_only_exact_strict_execution(
             "board_namespace": identity.board_namespace,
             "task_binding_id": task_binding_id,
             "origin_stream_id": stream_id,
-            "implementation_commit": implementation_commit,
+            "implementation_commit": (
+                "not-a-commit"
+                if case == "malformed_denial_commit"
+                else denied_implementation_commit
+            ),
             "authority_id": "grant-1",
             "authorized_attempt": 5,
             "head_record_id": "consumption-record-1",
@@ -11052,6 +11058,7 @@ def test_recovery_seed_merge_callback_normalizes_only_exact_strict_execution(
             "missing_legacy_revival": "implementation_provenance_missing",
             "fresh_mode_mismatch": "model_invocation_policy_mismatch",
             "queue_evidence_tampered": "implementation_provenance_missing",
+            "malformed_denial_commit": "implementation_provenance_missing",
         }
         assert result["reason"] == expected_reasons[case]
         assert not any(
@@ -26832,6 +26839,7 @@ def test_recovery_seed_merge_provenance_requires_exact_strict_terminal(
     branch_name = "implementation/uir-002-attempt-5"
     baseline_ref = "1" * 40
     implementation_commit = "2" * 40
+    denied_implementation_commit = "0" * 40
     candidate_tree = "3" * 40
     recovery_child = "4" * 40
     recovery_path = "external/ipfs_datasets"
@@ -27092,7 +27100,7 @@ def test_recovery_seed_merge_provenance_requires_exact_strict_terminal(
             "board_namespace": identity.board_namespace,
             "task_binding_id": task_binding_id,
             "origin_stream_id": "stream-recovery-seed",
-            "implementation_commit": implementation_commit,
+            "implementation_commit": denied_implementation_commit,
             "authority_id": "grant-5",
             "authorized_attempt": 5,
             "head_record_id": "consumption-record-1",

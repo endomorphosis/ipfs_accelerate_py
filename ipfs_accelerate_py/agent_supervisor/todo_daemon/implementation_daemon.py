@@ -15126,6 +15126,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if not isinstance(consumption_record, Mapping):
             return {}
         consumption_detail = consumption_record.get("detail")
+        # The authority projection retains the commit that was denied.  That
+        # is intentionally different from the later recovery-seed commit;
+        # the grant, consumption, and seed fields below bind the latter.
+        denied_implementation_commit = str(
+            authority_state.get("implementation_commit") or ""
+        )
         if (
             consumption_record.get("record_kind") != "grant_consumed"
             or str(consumption_record.get("parent_record_id") or "")
@@ -15182,8 +15188,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             != post_merge_task_binding_id(task)
             or str(authority_state.get("origin_stream_id") or "")
             != started_stream_id
-            or str(authority_state.get("implementation_commit") or "")
-            != implementation_commit
+            or not _FULL_GIT_COMMIT_ID.fullmatch(
+                denied_implementation_commit
+            )
             or str(authority_state.get("authority_id") or "")
             != authority_id
             or isinstance(authority_state.get("authorized_attempt"), bool)
