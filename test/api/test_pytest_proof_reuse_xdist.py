@@ -371,7 +371,9 @@ def test_missing_transaction_and_receipt_cache_stays_pending_without_index(
     assert controller.metrics.reasons["cache_unavailable"] == 1
 
 
-def test_retained_public_context_survives_worker_transport_for_controller() -> None:
+def test_retained_public_context_survives_worker_transport_for_controller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     controller = ProofReuseXdistCoordinator.controller()
     worker = _connected_worker(controller)
     receipt = _receipt()
@@ -393,18 +395,43 @@ def test_retained_public_context_survives_worker_transport_for_controller() -> N
     )
     assert controller.accept_worker_output(worker.worker_output()) is True
     issued: list[Any] = []
+    verified: list[Any] = []
+    observed_requests: list[Any] = []
+    observed_outcomes: list[Any] = []
+
+    original_publish = (
+        publication_module.ProofReuseControllerPublicationTransaction.publish_intent
+    )
+
+    def observe_request(self: Any, intent: Any, **kwargs: Any) -> Any:
+        observed_requests.append(kwargs.get("deferred_request"))
+        outcome = original_publish(self, intent, **kwargs)
+        observed_outcomes.append(outcome)
+        return outcome
+
+    monkeypatch.setattr(
+        publication_module.ProofReuseControllerPublicationTransaction,
+        "publish_intent",
+        observe_request,
+    )
 
     class _DeferredIssuer:
         def issue(self, request: Any) -> Any:
             issued.append(request)
             return SimpleNamespace(status="certificate_deferred")
 
+        def verify_certificate_locally(self, *args: Any) -> Any:
+            verified.append(args)
+            return True
+
     store = _CandidateStore()
     published = controller.flush_publications(store, _DeferredIssuer())
 
     assert len(published) == 1
-    assert len(issued) == 1
-    request = issued[0]
+    assert issued == []
+    assert verified == []
+    assert len(observed_requests) == 1
+    request = observed_requests[0]
     statement = getattr(request, "statement", None)
     public_inputs = getattr(statement, "public_inputs", None)
     if public_inputs is not None and hasattr(public_inputs, "to_dict"):
@@ -419,18 +446,25 @@ def test_retained_public_context_survives_worker_transport_for_controller() -> N
         == retained_candidate.hex()
     )
     assert [name for name, _payload in store.calls] == ["put_receipt"]
+    assert len(observed_outcomes) == 1
+    assert (
+        observed_outcomes[0].reason_code
+        == "positive_v4_publication_pending_ptr155"
+    )
 
 
 @pytest.mark.parametrize("attached", [False, True])
-def test_transaction_is_only_positive_candidate_authority(
+def test_ptr152_transaction_denies_positive_candidate_authority(
     attached: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     receipt = _receipt()
     certificate = _certificate(receipt)
     bindings = _ready_bindings()
-    verified: list[tuple[Any, Any, bool, dict[str, Any]]] = []
+    verified: list[Any] = []
     issued: list[Any] = []
+    observed_requests: list[Any] = []
+    observed_outcomes: list[Any] = []
 
     class _TypedRequest:
         def __init__(self, payload: dict[str, Any]) -> None:
@@ -454,38 +488,20 @@ def test_transaction_is_only_positive_candidate_authority(
         ),
     )
 
-    def _cryptographic_verify(
-        certificate_payload: Any,
-        *,
-        bindings: Any,
-        require_cryptographic_verify: bool = False,
-        **kwargs: Any,
-    ) -> tuple[bool, str]:
-        verified.append(
-            (
-                certificate_payload,
-                bindings,
-                require_cryptographic_verify,
-                kwargs,
-            )
-        )
-        assert bindings is not None
-        assert bindings.provenance_ready is True
-        assert bindings.circuit_cid == certificate.circuit_cid
-        assert bindings.verifying_key_cid == certificate.verifying_key_cid
-        assert require_cryptographic_verify is True
-        context = kwargs["verification_context"]
-        assert isinstance(context["deferred_request"], _TypedRequest)
-        assert (
-            TestPassReceipt.from_dict(context["receipt"]).receipt_id
-            == receipt.receipt_id
-        )
-        return True, "cryptographically_verified"
+    original_publish = (
+        publication_module.ProofReuseControllerPublicationTransaction.publish_intent
+    )
+
+    def observe_request(self: Any, intent: Any, **kwargs: Any) -> Any:
+        observed_requests.append(kwargs.get("deferred_request"))
+        outcome = original_publish(self, intent, **kwargs)
+        observed_outcomes.append(outcome)
+        return outcome
 
     monkeypatch.setattr(
-        publication_module,
-        "_local_verify_certificate",
-        _cryptographic_verify,
+        publication_module.ProofReuseControllerPublicationTransaction,
+        "publish_intent",
+        observe_request,
     )
 
     class _Issuer:
@@ -499,6 +515,14 @@ def test_transaction_is_only_positive_candidate_authority(
                 certificate_cid=certificate.certificate_id,
             )
 
+        def verify_certificate_locally(self, *args: Any) -> Any:
+            verified.append(args)
+            return SimpleNamespace(
+                verified=True,
+                authoritative=True,
+                can_authorize_skip=True,
+            )
+
     intent = ProofReusePublicationIntent.from_receipt(
         receipt,
         certificate=certificate.to_dict() if attached else None,
@@ -509,27 +533,40 @@ def test_transaction_is_only_positive_candidate_authority(
     store = _CandidateStore()
 
     assert controller.flush_publications(store, _Issuer()) == (intent.intent_id,)
-    assert [name for name, _payload in store.calls] == ["put_candidate"]
-    assert len(verified) == 1
-    if attached:
-        assert issued == []
-    else:
-        assert len(issued) == 1
-        assert isinstance(issued[0], _TypedRequest)
-        assert issued[0].receipt_cid == receipt.receipt_id
-        assert issued[0].locator_cid == receipt.locator_cid
-        assert "witness" not in json.dumps(issued[0].payload)
-
-
-def test_atomic_publication_failure_fences_all_later_writes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        publication_module,
-        "_local_verify_certificate",
-        lambda _certificate, **_kwargs: (True, "cryptographically_verified"),
+    assert [name for name, _payload in store.calls] == ["put_receipt"]
+    assert issued == []
+    assert verified == []
+    assert len(observed_requests) == 1
+    request = observed_requests[0]
+    assert isinstance(request, _TypedRequest)
+    assert request.receipt_cid == receipt.receipt_id
+    assert request.locator_cid == receipt.locator_cid
+    assert "witness" not in json.dumps(request.payload)
+    assert controller.healthy is True
+    assert controller.pending_publications == 0
+    assert len(observed_outcomes) == 1
+    assert (
+        observed_outcomes[0].reason_code
+        == "positive_v4_publication_pending_ptr155"
     )
-    issuer = SimpleNamespace(last_artifact_bindings=_ready_bindings())
+
+
+def test_pending_positive_v4_does_not_probe_atomic_candidate_failure() -> None:
+    issued: list[Any] = []
+    verified: list[Any] = []
+
+    class _Issuer:
+        last_artifact_bindings = _ready_bindings()
+
+        def issue(self, request: Any) -> Any:
+            issued.append(request)
+            raise AssertionError("PTR-152 must not issue")
+
+        def verify_certificate_locally(self, *args: Any) -> Any:
+            verified.append(args)
+            raise AssertionError("PTR-152 must not verify")
+
+    issuer = _Issuer()
     controller = ProofReuseXdistCoordinator.controller()
     first_receipt = _receipt(nonce="nonce:first")
     first_certificate = _certificate(first_receipt)
@@ -549,13 +586,24 @@ def test_atomic_publication_failure_fences_all_later_writes(
     assert controller.queue_publication(second) is True
     store = _CandidateStore(fail=True)
 
-    assert controller.flush_publications(store, issuer) == ()
-    assert controller.healthy is False
-    assert controller.can_write is False
+    assert controller.flush_publications(store, issuer) == (
+        first.intent_id,
+        second.intent_id,
+    )
+    assert issued == []
+    assert verified == []
+    assert controller.healthy is True
+    assert controller.can_write is True
     assert controller.pending_publications == 0
-    assert [name for name, _payload in store.calls] == ["put_candidate"]
+    assert [name for name, _payload in store.calls] == [
+        "put_receipt",
+        "put_receipt",
+    ]
     assert controller.flush_publications(store, issuer) == ()
-    assert [name for name, _payload in store.calls] == ["put_candidate"]
+    assert [name for name, _payload in store.calls] == [
+        "put_receipt",
+        "put_receipt",
+    ]
 
 
 def test_coordination_failure_removes_proof_skip_and_forces_execution() -> None:
