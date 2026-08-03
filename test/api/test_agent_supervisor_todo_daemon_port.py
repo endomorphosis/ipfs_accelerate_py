@@ -1163,7 +1163,10 @@ def test_build_implementation_daemon_defaults_from_paths(tmp_path):
     ) == apply_portal_implementation_daemon_defaults(["--once"], defaults=defaults)
 
 
-def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, monkeypatch):
+def test_default_route_does_not_predispatch_codex_when_grok_is_unavailable(
+    tmp_path,
+    monkeypatch,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -1198,21 +1201,8 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
     )
     monkeypatch.setattr(implementation_daemon_module, "_copilot_has_auth", lambda: False)
 
-    command = daemon._build_implementation_command(repo)
-
-    assert command[:5] == [
-        "/usr/local/bin/codex",
-        "exec",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "-C",
-        str(repo),
-    ]
-    assert command[-1] == "-"
-    assert ["-c", "model_context_window=200000"] == command[5:7]
-    assert "-c" in command
-    assert 'model_reasoning_effort="high"' in command
-    assert "agents.max_threads=10" in command
-    assert "agents.max_depth=2" in command
+    with pytest.raises(RuntimeError, match="verified Grok quota-exhaustion"):
+        daemon._build_implementation_command(repo)
 
 
 def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch):
@@ -1576,7 +1566,10 @@ def test_git_gc_first_run_establishes_baseline_without_aggressive_repack(
     assert reloaded.needs_aggressive_gc() is False
 
 
-def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
+def test_default_route_does_not_predispatch_authenticated_copilot(
+    tmp_path,
+    monkeypatch,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -1615,12 +1608,8 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
     )
     monkeypatch.setattr(implementation_daemon_module, "_copilot_has_auth", lambda: True)
 
-    command = daemon._build_implementation_command(repo)
-
-    assert command[:2] == ["bash", "-lc"]
-    assert "falling back to copilot" in command[2]
-    assert command[3:7] == ["bash", "/usr/local/bin/codex", "/usr/local/bin/copilot", str(repo)]
-    assert command[7:] == ["", "200000", "high", "10", "2", "", "high", "long_context", "30"]
+    with pytest.raises(RuntimeError, match="verified Grok quota-exhaustion"):
+        daemon._build_implementation_command(repo)
 
 
 def test_implementation_daemon_links_shared_dependencies_only_in_managed_worktrees(tmp_path):
@@ -16549,7 +16538,10 @@ def test_task_llm_context_budget_caps_codex_window_without_widening_operator_lim
     assert resolution.provider_context_window == 6_000
     assert resolution.effective_input_limit == 4_500
     assert result.capsule.budget.max_input_tokens == 4_500
-    assert ["-c", "model_context_window=6000"] == command[5:7]
+    context_index = command.index("model_context_window=6000")
+    assert ["-c", "model_context_window=6000"] == command[
+        context_index - 1 : context_index + 1
+    ]
     assert "model_context_window=200000" not in command
 
 

@@ -1,0 +1,132 @@
+{
+  "acceptance": {
+    "apply_merge_bound_to_review_chain": true,
+    "codex_bounded_slice_only": true,
+    "deterministic_only_no_model": true,
+    "grok_cannot_self_review": true,
+    "no_repository_corpus": true,
+    "pending_receipts_remain_pending": true,
+    "typed_packet_route_only": true
+  },
+  "apply_merge_binding": {
+    "binding": {
+      "completion_authoritative": false,
+      "disposition": "admitted",
+      "implementation_commit": "",
+      "implementation_proposal_digest": "sha256:eed286be09f492a94f721705c849c119c554e4be87176036cf9b9155ee515505",
+      "interface": "ProductionProviderRoute@1",
+      "merge_commit": "",
+      "packet_cid": "baguqeerazua5h3jacaab7peqtvlcwfvbgq43h3bbxywqmzc44lzrmgygg6tq",
+      "packet_id": "packet:production:SCA-615",
+      "proof_authoritative": false,
+      "provider_result_admitted": true,
+      "receipt_id": "baguqeeraiyscybkxrvaby457mxt4gcr2kahtbqrb2qxev6trjv6nja665vuq",
+      "review_chain_digest": "baguqeerae3tpdjup7veyczdghsbaszsgr24goycvtglpn5wke46pes7uz4cq",
+      "review_presence": "independent_review",
+      "review_proposal_digest": "sha256:b20429800f6bddb16a56186ed090a5062d20263aec8f54834180236f34bedfc9",
+      "schema": "ipfs_accelerate_py/agent-supervisor/production-review-chain-binding@1",
+      "selected_proposal_digest": "sha256:eed286be09f492a94f721705c849c119c554e4be87176036cf9b9155ee515505",
+      "snapshot_id": "git-commit:sca-615-fixture",
+      "task_id": "SCA-615",
+      "write_performed": true,
+      "writer_lease_id": "lease:sca-615-evaluation"
+    },
+    "bound": true,
+    "requires_admitted_review_chain": true
+  },
+  "cases": [
+    {
+      "disposition": "admitted",
+      "id": "happy-path-admitted",
+      "write_performed": true
+    },
+    {
+      "disposition": "pending_absent",
+      "id": "absent-review-pending",
+      "write_performed": false
+    },
+    {
+      "disposition": "pending_cross_task",
+      "id": "cross-task-receipt-pending",
+      "write_performed": false
+    },
+    {
+      "disposition": "pending_stale",
+      "id": "stale-receipt-pending",
+      "write_performed": false
+    }
+  ],
+  "corpus_isolation": {
+    "broad_context_keys": [
+      "all_files",
+      "ast_body",
+      "ast_nodes",
+      "file_content",
+      "file_contents",
+      "full_repository",
+      "proof_body",
+      "receipt_body",
+      "repository_body",
+      "repository_content",
+      "repository_corpus",
+      "repository_files",
+      "source_body",
+      "source_code",
+      "source_text",
+      "workspace",
+      "workspace_path"
+    ],
+    "forbidden": true,
+    "provider_receives_repository_corpus": false
+  },
+  "deterministic_only": {
+    "invokes_no_model": true,
+    "model_call_count": 0
+  },
+  "evaluation_id": "baguqeeraoaqhlpv3zvvek2kmkvi6scwntyti4j3fuv6mqekgy7qfs3jeh3oq",
+  "evidence": {
+    "coverage": [
+      "typed-packet-route-only",
+      "grok-cannot-self-review",
+      "codex-bounded-proposal-evidence-slice",
+      "apply-and-merge-bound-to-admitted-review-chain",
+      "absent-degraded-stale-cross-task-receipts-remain-pending",
+      "deterministic-only-invokes-no-model",
+      "no-provider-receives-repository-corpus"
+    ],
+    "goal_id": "SCA-G177",
+    "objective_id": "SCA-615",
+    "requirement_ids": [
+      "SCAEV615ROUTE"
+    ]
+  },
+  "independence": {
+    "codex_receives_only_bounded_proposal_evidence_slice": true,
+    "grok_self_review_forbidden": true,
+    "providers_must_be_distinct_callables": true
+  },
+  "interface": "ProductionProviderRoute@1",
+  "production_route": {
+    "raw_model_command_forbidden": true,
+    "raw_model_command_invoked": false,
+    "route_schema": "ipfs_accelerate_py/agent-supervisor/implementation-provider-route@1",
+    "router_interface": "ImplementationProviderRouter@1",
+    "typed_packet_route_only": true
+  },
+  "receipt_policy": {
+    "absent_degraded_stale_cross_task_remain_pending": true,
+    "completion_authoritative": false,
+    "disposition": "admitted"
+  },
+  "route_result": {
+    "completion_authoritative": false,
+    "proof_authoritative": false,
+    "provider": "grok-implement",
+    "provider_result_admitted": true,
+    "reason_code": "bounded_provider_route",
+    "review_presence": "independent_review",
+    "status": "succeeded",
+    "write_performed": true
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/production-provider-route-evaluation@1"
+}

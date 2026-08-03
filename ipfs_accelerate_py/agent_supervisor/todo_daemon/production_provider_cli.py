@@ -42,8 +42,10 @@ from .contract_packet_provider_router import (
     MAX_PROVIDER_TIMEOUT_SECONDS,
     ProviderRequest,
     ProviderRole,
+    VerifiedGrokQuotaExhaustion,
 )
 from .legacy_landed_provider_cli import (
+    NativeGrokQuotaExhaustionSignal,
     _invoke_native_structured_cli,
 )
 from .llm import (
@@ -53,7 +55,7 @@ from .llm import (
 )
 
 PRODUCTION_CLI_POLICY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/production-cli-provider-policy@1"
+    "ipfs_accelerate_py/agent-supervisor/production-cli-provider-policy@2"
 )
 PRODUCTION_CLI_EXECUTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/production-cli-provider-execution@1"
@@ -64,11 +66,11 @@ PRODUCTION_NATIVE_STRUCTURED_EXECUTION_SCHEMA: Final = (
 PRODUCTION_LANDED_TASK_GUARD_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/production-landed-task-guard@1"
 )
-PRODUCTION_CLI_POLICY_NAME: Final = (
-    "grok-implement-codex-independent-review"
-)
+PRODUCTION_CLI_POLICY_NAME: Final = "grok-implement-codex-independent-review"
 DEFAULT_GROK_MODEL: Final = "grok-4.5"
 DEFAULT_CODEX_MODEL: Final = "gpt-5.6-sol"
+DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_MODEL: Final = "gpt-5.6-terra"
+DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_REASONING_EFFORT: Final = "medium"
 DEFAULT_CONTEXT_BUDGET_TOKENS: Final = MAX_PROVIDER_PROMPT_TOKENS
 DEFAULT_PROVIDER_TIMEOUT_SECONDS: Final = 300.0
 DEFAULT_MAX_NEW_TOKENS: Final = 4_096
@@ -103,9 +105,10 @@ def _request_id(request: ProviderRequest, policy_id: str) -> str:
         "task_id": request.task_id,
         "prompt_digest": hashlib.sha256(request.prompt).hexdigest(),
     }
-    return "provider-request:" + hashlib.sha256(
-        _canonical_json_bytes(material)
-    ).hexdigest()
+    return (
+        "provider-request:"
+        + hashlib.sha256(_canonical_json_bytes(material)).hexdigest()
+    )
 
 
 def _json_object_without_duplicates(value: str) -> dict[str, Any]:
@@ -138,9 +141,8 @@ def _request_write_paths(request: ProviderRequest) -> tuple[str, ...]:
     if not isinstance(raw_paths, (list, tuple)) or not raw_paths:
         raise RuntimeError("production Grok request lacks an exact write scope")
     paths = tuple(str(item) for item in raw_paths)
-    if (
-        any(not item or item != item.strip() for item in paths)
-        or len(paths) != len(set(paths))
+    if any(not item or item != item.strip() for item in paths) or len(paths) != len(
+        set(paths)
     ):
         raise RuntimeError("production Grok write scope is not canonical")
     return paths
@@ -157,7 +159,10 @@ def _production_response_json_schema(
         "task_id": {"type": "string", "enum": [request.task_id]},
     }
     binding_required = ["packet_id", "snapshot_id", "task_id"]
-    if request.role is ProviderRole.GROK_IMPLEMENT:
+    if request.role in {
+        ProviderRole.GROK_IMPLEMENT,
+        ProviderRole.CODEX_QUOTA_IMPLEMENT,
+    }:
         paths = _request_write_paths(request)
         proposal_properties: dict[str, Any] = {
             "declared_paths": {
@@ -283,7 +288,9 @@ def _validate_production_native_response(
             or not declared
             or len(declared) != len(set(declared))
             or not isinstance(allowed, list)
-            or any(not isinstance(item, str) or item not in allowed for item in declared)
+            or any(
+                not isinstance(item, str) or item not in allowed for item in declared
+            )
             or not isinstance(files, list)
             or not isinstance(patch, str)
             or bool(files) == bool(patch)
@@ -303,17 +310,13 @@ def _validate_production_native_response(
                 )
             file_paths.append(str(item["path"]))
         if files and (
-            len(file_paths) != len(set(file_paths))
-            or set(file_paths) != set(declared)
+            len(file_paths) != len(set(file_paths)) or set(file_paths) != set(declared)
         ):
             raise RuntimeError("production Grok response violates its strict schema")
     else:
         decision = response.get("decision")
         findings = response.get("findings")
-        if (
-            decision not in {"approve", "reject"}
-            or findings != []
-        ):
+        if decision not in {"approve", "reject"} or findings != []:
             raise RuntimeError("production Codex response violates its strict schema")
     return response
 
@@ -330,6 +333,13 @@ class ProductionCLIProviderPolicy:
     grok_model: str = DEFAULT_GROK_MODEL
     codex_provider: str = "codex_cli"
     codex_model: str = DEFAULT_CODEX_MODEL
+    codex_implementation_fallback_provider: str = "codex_cli"
+    codex_implementation_fallback_model: str = (
+        DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_MODEL
+    )
+    codex_implementation_fallback_reasoning_effort: str = (
+        DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_REASONING_EFFORT
+    )
 
     def __post_init__(self) -> None:
         if self.name != PRODUCTION_CLI_POLICY_NAME:
@@ -343,8 +353,7 @@ class ProductionCLIProviderPolicy:
             or not 1 <= self.context_budget_tokens <= MAX_PROVIDER_PROMPT_TOKENS
         ):
             raise ValueError(
-                "context_budget_tokens must be in "
-                f"[1, {MAX_PROVIDER_PROMPT_TOKENS}]"
+                "context_budget_tokens must be in " f"[1, {MAX_PROVIDER_PROMPT_TOKENS}]"
             )
         timeout = self.provider_timeout_seconds
         if (
@@ -362,22 +371,52 @@ class ProductionCLIProviderPolicy:
             or not isinstance(self.max_new_tokens, int)
             or not 1 <= self.max_new_tokens <= MAX_PROVIDER_RESPONSE_BYTES
         ):
-            raise ValueError(
-                "max_new_tokens must be a positive bounded integer"
-            )
+            raise ValueError("max_new_tokens must be a positive bounded integer")
         for name, value in (
             ("grok_provider", self.grok_provider),
             ("grok_model", self.grok_model),
             ("codex_provider", self.codex_provider),
             ("codex_model", self.codex_model),
+            (
+                "codex_implementation_fallback_provider",
+                self.codex_implementation_fallback_provider,
+            ),
+            (
+                "codex_implementation_fallback_model",
+                self.codex_implementation_fallback_model,
+            ),
+            (
+                "codex_implementation_fallback_reasoning_effort",
+                self.codex_implementation_fallback_reasoning_effort,
+            ),
         ):
             if not str(value or "").strip():
                 raise ValueError(f"{name} is required")
-        if self.grok_provider != "grok_cli" or self.codex_provider != "codex_cli":
+        if (
+            self.grok_provider != "grok_cli"
+            or self.codex_provider != "codex_cli"
+            or self.codex_implementation_fallback_provider != "codex_cli"
+        ):
             raise ValueError(
                 "production CLI policy requires exact Grok and Codex providers"
             )
-        if self.grok_provider.strip().casefold() == self.codex_provider.strip().casefold():
+        if self.grok_model != DEFAULT_GROK_MODEL:
+            raise ValueError(
+                f"production CLI implementation model must be {DEFAULT_GROK_MODEL}"
+            )
+        if (
+            self.codex_implementation_fallback_model
+            != DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_MODEL
+            or self.codex_implementation_fallback_reasoning_effort
+            != DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_REASONING_EFFORT
+        ):
+            raise ValueError(
+                "production quota fallback must use exact Terra/medium policy"
+            )
+        if (
+            self.grok_provider.strip().casefold()
+            == self.codex_provider.strip().casefold()
+        ):
             raise ValueError("implementation and review providers must be distinct")
 
     @property
@@ -386,9 +425,15 @@ class ProductionCLIProviderPolicy:
 
         return ("grok-implement", "codex-review")
 
-    def to_dict(self) -> dict[str, Any]:
+    @property
+    def predecessor_policy_ids(self) -> tuple[str, ...]:
+        """Return the exact, more-restrictive v1 policy identity for migration."""
+
         body = {
-            "schema": PRODUCTION_CLI_POLICY_SCHEMA,
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "production-cli-provider-policy@1"
+            ),
             "name": self.name,
             "declared_roles": list(self.declared_roles),
             "context_budget_tokens": int(self.context_budget_tokens),
@@ -415,8 +460,67 @@ class ProductionCLIProviderPolicy:
             "landed_task_recovery": {
                 "blind_reimplementation_allowed": False,
                 "review_only_requires_supervisor_observed_grok_provenance": True,
+                "missing_typed_receipt": (
+                    "provider_review_pending_no_reimplementation"
+                ),
+                "legacy_fallback_counts_as_review": False,
+            },
+            "task_metadata_mutated": False,
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+        }
+        return (_policy_id(body),)
+
+    def to_dict(self) -> dict[str, Any]:
+        body = {
+            "schema": PRODUCTION_CLI_POLICY_SCHEMA,
+            "name": self.name,
+            "declared_roles": list(self.declared_roles),
+            "context_budget_tokens": int(self.context_budget_tokens),
+            "provider_timeout_seconds": float(self.provider_timeout_seconds),
+            "max_new_tokens": int(self.max_new_tokens),
+            "implementation": {
+                "role": ProviderRole.GROK_IMPLEMENT.value,
+                "provider": self.grok_provider,
+                "model": self.grok_model,
+                "fallback_provider": self.codex_implementation_fallback_provider,
+                "fallback_model": self.codex_implementation_fallback_model,
+                "fallback_reasoning_effort": (
+                    self.codex_implementation_fallback_reasoning_effort
+                ),
+                "fallback_trigger": "verified_grok_quota_exhaustion_only",
+                "failure_disposition": "provider_review_pending_no_write",
+            },
+            "review": {
+                "role": ProviderRole.CODEX_REVIEW.value,
+                "provider": self.codex_provider,
+                "model": self.codex_model,
+                "independent": True,
+            },
+            "codex_implementation_fallback": {
+                "enabled": True,
+                "role": ProviderRole.CODEX_QUOTA_IMPLEMENT.value,
+                "provider": self.codex_implementation_fallback_provider,
+                "model": self.codex_implementation_fallback_model,
+                "reasoning_effort": (
+                    self.codex_implementation_fallback_reasoning_effort
+                ),
+                "trigger": "verified_grok_quota_exhaustion_only",
+                "self_review_allowed": False,
+                "required_reviewer_family": "non_codex",
+                "without_non_codex_reviewer": ("provider_review_pending_no_write"),
+            },
+            "landed_task_recovery": {
+                "blind_reimplementation_allowed": False,
+                "review_only_requires_supervisor_observed_grok_provenance": True,
                 "missing_typed_receipt": "provider_review_pending_no_reimplementation",
                 "legacy_fallback_counts_as_review": False,
+            },
+            "migration": {
+                "accepted_predecessor_policy_ids": list(
+                    self.predecessor_policy_ids
+                ),
+                "predecessor_was_more_restrictive": True,
             },
             "task_metadata_mutated": False,
             "completion_authoritative": False,
@@ -438,23 +542,31 @@ class BoundProductionCLIProvider:
     provider_name: str
     model_name: str
     invoker: ProviderInvoker | None = None
+    reasoning_effort: str = ""
 
     def __post_init__(self) -> None:
         expected = {
             ProviderRole.GROK_IMPLEMENT: (
                 self.policy.grok_provider,
                 self.policy.grok_model,
+                "",
+            ),
+            ProviderRole.CODEX_QUOTA_IMPLEMENT: (
+                self.policy.codex_implementation_fallback_provider,
+                self.policy.codex_implementation_fallback_model,
+                self.policy.codex_implementation_fallback_reasoning_effort,
             ),
             ProviderRole.CODEX_REVIEW: (
                 self.policy.codex_provider,
                 self.policy.codex_model,
+                "",
             ),
         }.get(self.role)
         if expected is None:
             raise ValueError("production CLI adapter supports only Grok/Codex roles")
-        if (self.provider_name, self.model_name) != expected:
+        if (self.provider_name, self.model_name, self.reasoning_effort) != expected:
             raise ValueError(
-                "provider name/model do not match their policy-bound role"
+                "provider name/model/reasoning do not match their policy-bound role"
             )
 
     def _invoke(
@@ -465,16 +577,23 @@ class BoundProductionCLIProvider:
         *,
         max_response_bytes: int,
     ) -> tuple[str, LlmChildResultEnvelope | None]:
-        if self.invoker is not None:
-            return self.invoker(prompt, config)
-        return _invoke_native_structured_cli(
-            prompt,
-            config,
-            response_schema,
-            response_validator=_validate_production_native_response,
-            execution_schema=PRODUCTION_NATIVE_STRUCTURED_EXECUTION_SCHEMA,
-            max_response_bytes=max_response_bytes,
-        )
+        try:
+            if self.invoker is not None:
+                return self.invoker(prompt, config)
+            return _invoke_native_structured_cli(
+                prompt,
+                config,
+                response_schema,
+                response_validator=_validate_production_native_response,
+                execution_schema=PRODUCTION_NATIVE_STRUCTURED_EXECUTION_SCHEMA,
+                max_response_bytes=max_response_bytes,
+            )
+        except NativeGrokQuotaExhaustionSignal as exc:
+            if self.role is ProviderRole.GROK_IMPLEMENT:
+                raise VerifiedGrokQuotaExhaustion() from exc
+            raise RuntimeError(
+                "non-Grok production provider emitted a Grok quota signal"
+            ) from exc
 
     def __call__(self, request: ProviderRequest) -> Mapping[str, Any]:
         if not isinstance(request, ProviderRequest):
@@ -494,9 +613,7 @@ class BoundProductionCLIProvider:
         # contract. Only the built-in production transport requires the native
         # CLI schema (and therefore the exact operator write scope).
         response_schema = (
-            _production_response_json_schema(request)
-            if self.invoker is None
-            else {}
+            _production_response_json_schema(request) if self.invoker is None else {}
         )
         # The child provider is deliberately started from a fresh empty
         # directory, and the bounded prompt contains no checkout path.  This
@@ -534,6 +651,7 @@ class BoundProductionCLIProvider:
                 idempotency_key=request_id,
                 side_effect_boundary="proposal_only",
                 write_result_envelope=True,
+                model_reasoning_effort=self.reasoning_effort,
             )
             output, child_receipt = self._invoke(
                 prompt,
@@ -594,18 +712,14 @@ class BoundProductionCLIProvider:
             # generic child envelope has no effective-model field, so this
             # supervisor-authored receipt records and enforces that boundary.
             "effective_model": self.model_name,
+            "configured_reasoning_effort": self.reasoning_effort,
+            "effective_reasoning_effort": self.reasoning_effort,
             "child_result_schema": receipt["schema"],
             "child_result_status": receipt["status"],
             "child_exit_code": exit_code,
-            "supervisor_receipt_id": str(
-                receipt.get("supervisor_receipt_id") or ""
-            ),
-            "endpoint_receipt_id": str(
-                receipt.get("endpoint_receipt_id") or ""
-            ),
-            "execution_result_id": str(
-                receipt.get("execution_result_id") or ""
-            ),
+            "supervisor_receipt_id": str(receipt.get("supervisor_receipt_id") or ""),
+            "endpoint_receipt_id": str(receipt.get("endpoint_receipt_id") or ""),
+            "execution_result_id": str(receipt.get("execution_result_id") or ""),
             "native_output_schema_id": (
                 _policy_id(response_schema) if native_structured else ""
             ),
@@ -620,12 +734,16 @@ class BoundProductionCLIProvider:
         return response
 
 
-def build_production_cli_provider_pair(
+def build_production_cli_provider_set(
     policy: ProductionCLIProviderPolicy | None = None,
     *,
     invoker: ProviderInvoker | None = None,
-) -> tuple[BoundProductionCLIProvider, BoundProductionCLIProvider]:
-    """Return distinct Grok implementation and Codex review callables."""
+) -> tuple[
+    BoundProductionCLIProvider,
+    BoundProductionCLIProvider,
+    BoundProductionCLIProvider,
+]:
+    """Return Grok author, Terra quota author, and Codex reviewer callables."""
 
     selected = policy or ProductionCLIProviderPolicy()
     return (
@@ -638,12 +756,34 @@ def build_production_cli_provider_pair(
         ),
         BoundProductionCLIProvider(
             policy=selected,
+            role=ProviderRole.CODEX_QUOTA_IMPLEMENT,
+            provider_name=selected.codex_implementation_fallback_provider,
+            model_name=selected.codex_implementation_fallback_model,
+            reasoning_effort=(selected.codex_implementation_fallback_reasoning_effort),
+            invoker=invoker,
+        ),
+        BoundProductionCLIProvider(
+            policy=selected,
             role=ProviderRole.CODEX_REVIEW,
             provider_name=selected.codex_provider,
             model_name=selected.codex_model,
             invoker=invoker,
         ),
     )
+
+
+def build_production_cli_provider_pair(
+    policy: ProductionCLIProviderPolicy | None = None,
+    *,
+    invoker: ProviderInvoker | None = None,
+) -> tuple[BoundProductionCLIProvider, BoundProductionCLIProvider]:
+    """Compatibility API returning only Grok author and Codex reviewer."""
+
+    grok, _terra, codex_review = build_production_cli_provider_set(
+        policy,
+        invoker=invoker,
+    )
+    return grok, codex_review
 
 
 def production_cli_policy_readiness(
@@ -686,18 +826,29 @@ def production_cli_policy_readiness(
     payload = {
         "policy_id": selected.policy_id,
         "ready": bool(
-            grok_binary
-            and grok_authenticated
-            and codex_binary
-            and codex_authenticated
+            grok_binary and grok_authenticated and codex_binary and codex_authenticated
         ),
         "implementation": {
             "provider": selected.grok_provider,
+            "model": selected.grok_model,
             "binary_available": bool(grok_binary),
             "authenticated": grok_authenticated,
         },
+        "quota_fallback_implementation": {
+            "provider": selected.codex_implementation_fallback_provider,
+            "model": selected.codex_implementation_fallback_model,
+            "reasoning_effort": (
+                selected.codex_implementation_fallback_reasoning_effort
+            ),
+            "binary_available": bool(codex_binary),
+            "authenticated": codex_authenticated,
+            "authentication_check": codex_auth_check,
+            "trigger": "verified_grok_quota_exhaustion_only",
+            "requires_non_codex_review": True,
+        },
         "review": {
             "provider": selected.codex_provider,
+            "model": selected.codex_model,
             "binary_available": bool(codex_binary),
             "authenticated": codex_authenticated,
             "authentication_check": codex_auth_check,
@@ -794,6 +945,8 @@ def production_landed_task_guard(
 
 __all__ = [
     "BoundProductionCLIProvider",
+    "DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_MODEL",
+    "DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_REASONING_EFFORT",
     "DEFAULT_CODEX_MODEL",
     "DEFAULT_CONTEXT_BUDGET_TOKENS",
     "DEFAULT_GROK_MODEL",
@@ -806,6 +959,7 @@ __all__ = [
     "PRODUCTION_NATIVE_STRUCTURED_EXECUTION_SCHEMA",
     "ProductionCLIProviderPolicy",
     "build_production_cli_provider_pair",
+    "build_production_cli_provider_set",
     "production_cli_policy_readiness",
     "production_landed_task_guard",
 ]

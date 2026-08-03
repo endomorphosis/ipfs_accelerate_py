@@ -1054,7 +1054,8 @@ class AuthoritativeCompletionMixin:
         Receipt carriers are intentionally unable to select the policy used
         to verify their own signature.  Deployments that are rotating policy
         identities may pin a bounded allow-list on the daemon; otherwise the
-        active ``ProductionCLIProviderPolicy`` is the sole trust root.
+        active ``ProductionCLIProviderPolicy`` and its exact declared
+        predecessor identities are the trust roots.
         """
 
         configured = getattr(
@@ -1076,7 +1077,22 @@ class AuthoritativeCompletionMixin:
 
         policy = getattr(self, "production_provider_policy", None)
         policy_id = str(getattr(policy, "policy_id", "") or "").strip()
-        return (policy_id,) if policy_id else ()
+        predecessor_policy_ids = getattr(policy, "predecessor_policy_ids", ())
+        if not isinstance(predecessor_policy_ids, tuple):
+            predecessor_policy_ids = ()
+        return tuple(
+            dict.fromkeys(
+                value
+                for value in (
+                    policy_id,
+                    *(
+                        str(item or "").strip()
+                        for item in predecessor_policy_ids
+                    ),
+                )
+                if value
+            )
+        )
 
     @staticmethod
     def _signed_production_provider_snapshot_id(

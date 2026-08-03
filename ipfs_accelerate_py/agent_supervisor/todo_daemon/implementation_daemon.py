@@ -182,7 +182,7 @@ from .production_provider_cli import (
     DEFAULT_PROVIDER_TIMEOUT_SECONDS as DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS,
     PRODUCTION_CLI_POLICY_NAME,
     ProductionCLIProviderPolicy,
-    build_production_cli_provider_pair,
+    build_production_cli_provider_set,
     production_landed_task_guard,
 )
 from .production_context_slice import (
@@ -263,6 +263,12 @@ MODEL_ASSISTED_PROVIDER_ROUTE_EVENT = "model_assisted_provider_route"
 MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "model-assisted-provider-route-integration@1"
+)
+MODEL_ASSISTED_PENDING_PROPOSAL_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/model-assisted-pending-proposal@1"
+)
+MODEL_ASSISTED_PROVIDER_REVIEW_PENDING_EVENT = (
+    "implementation_provider_review_pending"
 )
 PRODUCTION_PROVIDER_ROUTE_EVENT = "production_model_assisted_provider_route"
 PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT = (
@@ -412,6 +418,7 @@ _GROK_BIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_BIN"
 _GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
 _GROK_MAX_TURNS_ENV = "IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS"
 _GROK_CONTEXT_WINDOW_ENV = "IPFS_ACCELERATE_AGENT_GROK_CONTEXT_WINDOW"
+GROK_QUOTA_PRIMARY_MODEL = "grok-4.5"
 IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE"
 )
@@ -1434,10 +1441,10 @@ def _grok_cli_available() -> bool:
     """Return whether Grok is ready for non-interactive implementation work.
 
     Binary discovery alone is insufficient for the daemon: selecting an
-    unauthenticated CLI would fail after dispatch instead of allowing the
-    default route to fall back to Codex.  Keep the probe side-effect free and
-    fail closed when the shared router cannot prove both authentication and
-    provider construction.
+    unauthenticated CLI would fail after dispatch without producing the exact
+    quota evidence required for Terra fallback. Keep the probe side-effect
+    free and fail closed when the shared router cannot prove both
+    authentication and provider construction.
     """
 
     if not _grok_binary():
@@ -1452,7 +1459,11 @@ def _grok_cli_available() -> bool:
         return False
 
 
-def _grok_cli_command(*, workspace_path: Path) -> list[str]:
+def _grok_cli_command(
+    *,
+    workspace_path: Path,
+    model_override: str = "",
+) -> list[str]:
     """Build a Grok CLI agent command through llm_router.grok_cli.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
@@ -1467,11 +1478,12 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         )
 
     model = (
-        os.environ.get(_GROK_MODEL_ENV, "").strip()
+        model_override.strip()
+        or os.environ.get(_GROK_MODEL_ENV, "").strip()
         or os.environ.get("GROK_CLI_MODEL", "").strip()
         or os.environ.get("GROK_MODEL", "").strip()
         or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-        or "grok-4.5"
+        or GROK_QUOTA_PRIMARY_MODEL
     )
     # Prefer an effectively uncapped turn budget; the implementation daemon
     # still enforces implementation_timeout as the hard wall-clock limit.
@@ -2381,6 +2393,9 @@ class PortalTaskState:
     implementation_attempts: dict[str, int] = field(default_factory=dict)
     implementation_attempts_by_cid: dict[str, int] = field(default_factory=dict)
     retry_budget_repair_receipts: dict[str, str] = field(default_factory=dict)
+    pending_provider_reviews: dict[str, dict[str, str]] = field(
+        default_factory=dict
+    )
     last_implementation_task_id: str = ""
     last_implementation_task_key: str = ""
     last_implementation_task_cid: str = ""
@@ -2512,6 +2527,17 @@ class PortalTaskState:
                     str(key): str(value)
                     for key, value in (payload.get("retry_budget_repair_receipts") or {}).items()
                     if str(key).strip() and str(value).strip()
+                },
+                pending_provider_reviews={
+                    str(key): {
+                        str(item_key): str(item_value)
+                        for item_key, item_value in value.items()
+                        if str(item_key).strip() and str(item_value).strip()
+                    }
+                    for key, value in (
+                        payload.get("pending_provider_reviews") or {}
+                    ).items()
+                    if str(key).strip() and isinstance(value, dict)
                 },
                 last_implementation_task_id=str(payload.get("last_implementation_task_id") or ""),
                 last_implementation_task_key=str(payload.get("last_implementation_task_key") or ""),
@@ -2936,6 +2962,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self.production_provider_context_budget_tokens = 0
         self.production_provider_timeout_seconds = 0.0
         self._production_grok_provider: ProviderCallable | None = None
+        self._production_codex_implementation_fallback_provider: (
+            ProviderCallable | None
+        ) = None
         self._production_codex_provider: ProviderCallable | None = None
         self._production_provider_bounds: ProviderBounds | None = None
         self._production_provider_review_authority: (
@@ -2967,8 +2996,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             (
                 self._production_grok_provider,
+                self._production_codex_implementation_fallback_provider,
                 self._production_codex_provider,
-            ) = build_production_cli_provider_pair(policy)
+            ) = build_production_cli_provider_set(policy)
             self._production_provider_bounds = ProviderBounds(
                 max_prompt_tokens=policy.context_budget_tokens,
                 timeout_seconds=policy.provider_timeout_seconds,
@@ -6622,6 +6652,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             for task in tasks
             if self._canonical_ref(task) in completed_cids
         )
+        pending_provider_reviews = self._validated_pending_provider_reviews(
+            previous.pending_provider_reviews,
+            tasks,
+        )
+        pending_provider_review_task_ids = {
+            task.task_id
+            for task in tasks
+            if (
+                task.task_id not in completed_set
+                and self._canonical_ref(task) in pending_provider_reviews
+            )
+        }
         task_policy_blockers = {
             task.task_id: list(blockers)
             for task in tasks
@@ -6694,6 +6736,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 and task.task_id not in dependency_reopened_task_ids
             ):
                 resolved_statuses[task.task_id] = "blocked"
+                continue
+            if task.task_id in pending_provider_review_task_ids:
+                # A Terra-authored candidate has no write or completion
+                # authority until a non-Codex reviewer handles its durable
+                # artifact.  Keep it visible as waiting and never re-invoke
+                # either paid provider while the exact artifact is latched.
+                resolved_statuses[task.task_id] = "waiting"
                 continue
             if task.task_id in shared_active_merge_task_ids:
                 # Pending or processing on the shared merge train remains
@@ -6871,6 +6920,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         state.retry_budget_repair_receipts = dict(
             previous.retry_budget_repair_receipts
         )
+        state.pending_provider_reviews = dict(pending_provider_reviews)
         revision_reset_task_ids: list[str] = []
         for task in tasks:
             previous_identity = previous.task_identities.get(task.task_id, {})
@@ -7018,6 +7068,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
                     "selection_idle_reason": state.selection_idle_reason,
                     "task_policy_blockers": dict(state.task_policy_blockers),
+                    "pending_provider_review_task_ids": sorted(
+                        pending_provider_review_task_ids
+                    ),
                     "max_task_attempts": self.max_task_attempts,
                     "attempt_limited_task_ids": [
                         item["task_id"] for item in attempt_limited_tasks
@@ -7072,6 +7125,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "active_task_id": state.active_task_id,
             "selection_idle_reason": state.selection_idle_reason,
             "task_policy_blockers": dict(state.task_policy_blockers),
+            "pending_provider_review_task_ids": sorted(
+                pending_provider_review_task_ids
+            ),
             "max_task_attempts": self.max_task_attempts,
             "attempt_limited_task_ids": [
                 item["task_id"] for item in attempt_limited_tasks
@@ -7157,6 +7213,76 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return max(10.0, float(raw))
         except ValueError:
             return DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS
+
+    def _validated_pending_provider_reviews(
+        self,
+        records: Mapping[str, Mapping[str, Any]] | None,
+        tasks: Sequence[PortalTask],
+    ) -> dict[str, dict[str, str]]:
+        """Return live, content-bound Terra candidates awaiting non-Codex review.
+
+        The state projection is only an index.  A candidate remains latched
+        when its content-addressed artifact still exists under the daemon's
+        implementation-log directory and binds to the current canonical task
+        identity.  Deleting or replacing that artifact is therefore an
+        explicit operator action; stale task revisions never inherit a latch.
+        """
+
+        if not isinstance(records, Mapping):
+            return {}
+        task_ids_by_cid = {
+            self._canonical_ref(task): task.task_id for task in tasks
+        }
+        log_root = self.implementation_log_dir.resolve()
+        validated: dict[str, dict[str, str]] = {}
+        for canonical_cid, raw_record in records.items():
+            cid = str(canonical_cid or "").strip()
+            if cid not in task_ids_by_cid or not isinstance(raw_record, Mapping):
+                continue
+            raw_path = str(raw_record.get("artifact_path") or "").strip()
+            expected_artifact_id = str(
+                raw_record.get("artifact_id") or ""
+            ).strip()
+            if not raw_path or not expected_artifact_id:
+                continue
+            path = Path(raw_path)
+            try:
+                if path.is_symlink():
+                    continue
+                resolved = path.resolve(strict=True)
+                resolved.relative_to(log_root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            payload = load_json_dict(resolved)
+            if (
+                payload is None
+                or payload.get("schema")
+                != MODEL_ASSISTED_PENDING_PROPOSAL_SCHEMA
+                or str(payload.get("canonical_task_cid") or "") != cid
+                or str(payload.get("task_id") or "") != task_ids_by_cid[cid]
+                or str(payload.get("artifact_id") or "")
+                != expected_artifact_id
+                or payload.get("write_performed") is not False
+                or payload.get("provider_result_admitted") is not False
+                or str(payload.get("required_review_role") or "")
+                != ProviderRole.NON_CODEX_REVIEW.value
+            ):
+                continue
+            identity_payload = dict(payload)
+            identity_payload.pop("artifact_id", None)
+            if content_identity(identity_payload) != expected_artifact_id:
+                continue
+            validated[cid] = {
+                "task_id": task_ids_by_cid[cid],
+                "artifact_path": str(resolved),
+                "artifact_id": expected_artifact_id,
+                "required_review_role": ProviderRole.NON_CODEX_REVIEW.value,
+                "provider_receipt_id": str(
+                    payload.get("provider_receipt_id") or ""
+                ),
+                "packet_id": str(payload.get("packet_id") or ""),
+            }
+        return validated
 
     def _provider_capacity_failure_from_log(self, log_path: Path) -> dict[str, Any]:
         try:
@@ -11264,6 +11390,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         todo_update_result: dict[str, Any] = {}
         exception_result: dict[str, Any] = {}
         provider_failure: dict[str, Any] = {}
+        pending_provider_review: dict[str, str] = {}
         legacy_landed_capacity_signal = False
         timeout_result: dict[str, Any] = {}
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
@@ -11608,6 +11735,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 codex_provider=getattr(
                                     self, "_production_codex_provider", None
                                 ),
+                                codex_implementation_fallback_provider=getattr(
+                                    self,
+                                    "_production_codex_implementation_fallback_provider",
+                                    None,
+                                ),
                                 deterministic_provider=getattr(
                                     self,
                                     "_production_deterministic_provider",
@@ -11634,6 +11766,39 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     route_event = dict(
                         production_route_payload.get("event") or {}
                     )
+                    if (
+                        production_route_payload.get("pending") is True
+                        and str(route_event.get("reason_code") or "")
+                        == ProviderReason.NON_CODEX_REVIEW_REQUIRED.value
+                        and str(route_event.get("required_review_role") or "")
+                        == ProviderRole.NON_CODEX_REVIEW.value
+                        and str(route_event.get("pending_proposal_path") or "")
+                        and str(
+                            route_event.get("pending_proposal_artifact_id") or ""
+                        )
+                        and route_event.get("write_performed") is False
+                        and route_event.get("provider_result_admitted") is False
+                    ):
+                        pending_provider_review = {
+                            "task_id": task.task_id,
+                            "artifact_path": str(
+                                route_event["pending_proposal_path"]
+                            ),
+                            "artifact_id": str(
+                                route_event["pending_proposal_artifact_id"]
+                            ),
+                            "required_review_role": (
+                                ProviderRole.NON_CODEX_REVIEW.value
+                            ),
+                            "provider_receipt_id": str(
+                                route_event.get("receipt_id") or ""
+                            ),
+                            "packet_id": str(
+                                route_event.get("packet", {}).get("packet_id")
+                                if isinstance(route_event.get("packet"), Mapping)
+                                else ""
+                            ),
+                        }
                     log_summary = {
                         "disposition": str(
                             getattr(
@@ -11704,6 +11869,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         ),
                     )
             returncode = completed.returncode
+            if pending_provider_review:
+                validated_pending = self._validated_pending_provider_reviews(
+                    {self._canonical_ref(task): pending_provider_review},
+                    (task,),
+                )
+                clean_status = subprocess.run(
+                    ["git", "status", "--porcelain", "--untracked-files=all"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if (
+                    self._canonical_ref(task) not in validated_pending
+                    or clean_status.returncode != 0
+                    or bool(clean_status.stdout.strip())
+                ):
+                    # Typed Terra is candidate-only.  If either its artifact
+                    # or its no-write promise cannot be proven, do not create
+                    # a review latch and let ordinary failure handling quarantine
+                    # the attempt.
+                    pending_provider_review = {}
             protected_path_violation = (
                 self._implementation_protected_path_violation(
                     task=task,
@@ -12003,8 +12190,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
                         implementation_commit = str(commit_result.get("commit", ""))
                         cleanup_result = dict(failed_preservation_result.get("cleanup_result") or cleanup_result)
-            elif not protected_path_violation and not provider_failure.get(
-                "exhausted", False
+            elif (
+                not protected_path_violation
+                and not provider_failure.get("exhausted", False)
+                and not pending_provider_review
             ):
                 pool_failure_release = self._release_pooled_worktree_lease(
                     worktree_path,
@@ -12406,6 +12595,128 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     **exception_result,
                 },
             )
+        if (
+            pending_provider_review
+            and not exception_result
+            and not timeout_result
+            and not protected_path_violation
+        ):
+            # Terra is an author from the Codex family, so its proposal cannot
+            # be written or passed to the ordinary Codex reviewer.  Release
+            # the clean ephemeral checkout, roll back the charged attempt, and
+            # latch the content-addressed proposal until a non-Codex reviewer
+            # explicitly handles (or an operator removes) that artifact.
+            settling_record = self._mark_worktree_lifecycle_settling(
+                worktree_path
+            )
+            if (
+                settling_record is None
+                or settling_record.state is not WorkspaceLifecycleState.SETTLING
+            ):
+                return self._record_provider_capacity_lifecycle_race(
+                    task=task,
+                    state=state,
+                    attempt=attempt,
+                    started_at=started_at,
+                    returncode=returncode,
+                    log_path=log_path,
+                    reason="provider_review_pending_lifecycle_settling_failed",
+                    worktree_path=worktree_path,
+                    branch_name=branch_name,
+                    cleanup_result=cleanup_result,
+                )
+            try:
+                cleanup_result = self._cleanup_merged_worktree(
+                    worktree_path,
+                    branch_name,
+                    reusable=False,
+                )
+            except Exception:
+                return self._record_provider_capacity_lifecycle_race(
+                    task=task,
+                    state=state,
+                    attempt=attempt,
+                    started_at=started_at,
+                    returncode=returncode,
+                    log_path=log_path,
+                    reason="provider_review_pending_lifecycle_cleanup_failed",
+                    worktree_path=worktree_path,
+                    branch_name=branch_name,
+                    cleanup_result=cleanup_result,
+                )
+            lifecycle_finalize = cleanup_result.get("lifecycle_finalize")
+            remaining_record = self.worktree_lifecycle.load_task_attempt(
+                canonical_task_cid=self._canonical_ref(task),
+                task_id=task.task_id,
+                attempt=attempt,
+            )
+            lifecycle_released = (
+                cleanup_result.get("cleaned") is True
+                and isinstance(lifecycle_finalize, Mapping)
+                and lifecycle_finalize.get("finalized") is True
+                and (
+                    remaining_record is None
+                    or remaining_record.is_terminal
+                )
+            )
+            if not lifecycle_released:
+                return self._record_provider_capacity_lifecycle_race(
+                    task=task,
+                    state=state,
+                    attempt=attempt,
+                    started_at=started_at,
+                    returncode=returncode,
+                    log_path=log_path,
+                    reason="provider_review_pending_lifecycle_cleanup_incomplete",
+                    worktree_path=worktree_path,
+                    branch_name=branch_name,
+                    cleanup_result=cleanup_result,
+                )
+
+            finished_at = utc_now()
+            canonical_task_cid = self._canonical_ref(task)
+            state.pending_provider_reviews = {
+                **state.pending_provider_reviews,
+                canonical_task_cid: dict(pending_provider_review),
+            }
+            self._restore_task_attempt(state, task, max(0, attempt - 1))
+            state.last_implementation_started_at = started_at
+            state.last_implementation_finished_at = finished_at
+            state.last_implementation_returncode = returncode
+            state.last_implementation_log_path = str(log_path)
+            state.last_implementation_worktree_path = str(worktree_path)
+            state.last_implementation_branch = branch_name
+            self._mark_implementation_finished(state, finished_at=finished_at)
+            state.selection_idle_reason = "provider_review_pending"
+            state.save(self.state_path)
+            result = {
+                "task_id": task.task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "attempt": attempt,
+                "returncode": returncode,
+                "log_path": str(log_path),
+                "deferred": True,
+                "pending": True,
+                "reason": "provider_review_pending",
+                "provider_call_allowed": False,
+                "attempt_consumed": False,
+                "required_review_role": (
+                    ProviderRole.NON_CODEX_REVIEW.value
+                ),
+                "pending_proposal_path": pending_provider_review[
+                    "artifact_path"
+                ],
+                "pending_proposal_artifact_id": pending_provider_review[
+                    "artifact_id"
+                ],
+                "cleanup_result": cleanup_result,
+            }
+            self._record_event(
+                MODEL_ASSISTED_PROVIDER_REVIEW_PENDING_EVENT,
+                result,
+            )
+            return result
+
         if (
             provider_failure.get("exhausted", False)
             and not exception_result
@@ -18629,6 +18940,68 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ),
         }
 
+    def _persist_pending_model_assisted_proposal(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        route_result: ImplementationRoutingResult,
+    ) -> tuple[Path, dict[str, Any]] | None:
+        """Persist resumable Terra bytes without granting review/write authority."""
+
+        proposal = route_result.implementation_proposal
+        if (
+            proposal is None
+            or proposal.role is not ProviderRole.CODEX_QUOTA_IMPLEMENT
+            or not proposal.admitted
+            or route_result.provider_result_admitted
+            or route_result.write_performed
+        ):
+            return None
+        body: dict[str, Any] = {
+            "schema": MODEL_ASSISTED_PENDING_PROPOSAL_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
+            "attempt": int(attempt),
+            "packet_id": route_result.packet_id,
+            "provider_receipt_id": route_result.provider_receipt.receipt_id,
+            "reason_code": route_result.reason_code,
+            "required_review_role": ProviderRole.NON_CODEX_REVIEW.value,
+            "proposal": proposal.to_dict(include_payload=True),
+            "write_performed": False,
+            "provider_result_admitted": False,
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+        }
+        body["artifact_id"] = content_identity(body)
+        safe_task_id = re.sub(
+            r"[^a-z0-9._-]+",
+            "-",
+            task.task_id.lower(),
+        ).strip("-") or "task"
+        path = (
+            self.implementation_log_dir
+            / f"{safe_task_id}-attempt-{int(attempt)}-pending-proposal.json"
+        )
+
+        def persist() -> Path:
+            self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
+            _shared_atomic_write_json(path, body)
+            return path
+
+        persisted = self._decision_runtime_mutation(
+            "file_mutation",
+            {
+                "operation": "persist_pending_model_assisted_proposal",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "artifact_id": body["artifact_id"],
+                "path": str(path),
+            },
+            persist,
+        )
+        return persisted, body
+
     def route_model_assisted_contract_packet(
         self,
         packet: Any,
@@ -18638,6 +19011,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         attempt: int = 0,
         grok_provider: ProviderCallable | None = None,
         codex_provider: ProviderCallable | None = None,
+        codex_implementation_fallback_provider: ProviderCallable | None = None,
         deterministic_provider: ProviderCallable | None = None,
         admission_gate: AdmissionCallable | None = None,
         writer: WriterCallable | None = None,
@@ -18647,6 +19021,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         bounds: Any = None,
         grok_quota: Any = None,
         codex_quota: Any = None,
+        codex_implementation_fallback_quota: Any = None,
+        enforce_provider_identity: bool = False,
     ) -> tuple[ImplementationRoutingResult, dict[str, Any], Path]:
         """Route a bounded packet through Grok then independent Codex review.
 
@@ -18659,9 +19035,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         router_kwargs: dict[str, Any] = {
             "grok_provider": grok_provider,
             "codex_provider": codex_provider,
+            "codex_implementation_fallback_provider": (
+                codex_implementation_fallback_provider
+            ),
             "deterministic_provider": deterministic_provider,
             "admission_gate": admission_gate,
             "writer": writer,
+            "enforce_provider_identity": enforce_provider_identity,
         }
         if bounds is not None:
             router_kwargs["bounds"] = bounds
@@ -18669,6 +19049,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             router_kwargs["grok_quota"] = grok_quota
         if codex_quota is not None:
             router_kwargs["codex_quota"] = codex_quota
+        if codex_implementation_fallback_quota is not None:
+            router_kwargs["codex_implementation_fallback_quota"] = (
+                codex_implementation_fallback_quota
+            )
         router = ImplementationProviderRouter(**router_kwargs)
         route_result = router.route(
             packet,
@@ -18689,6 +19073,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             receipt_payload=receipt_payload,
             receipt_path=receipt_path,
         )
+        pending_proposal = self._persist_pending_model_assisted_proposal(
+            task=task,
+            attempt=attempt,
+            route_result=route_result,
+        )
+        if pending_proposal is not None:
+            proposal_path, proposal_payload = pending_proposal
+            event["pending_proposal_path"] = str(proposal_path)
+            event["pending_proposal_artifact_id"] = str(
+                proposal_payload.get("artifact_id") or ""
+            )
+            event["required_review_role"] = ProviderRole.NON_CODEX_REVIEW.value
         self._record_event(MODEL_ASSISTED_PROVIDER_ROUTE_EVENT, event)
         # Independent review is required before any authoritative completion
         # claim for model-assisted work.
@@ -18755,11 +19151,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """Whether this task must use the typed production packet route.
 
         Ordinary prompt tasks do not claim the independent-review guarantees
-        of the production route, so they use the Grok-first CLI route with its
-        bounded Codex fallback.  A task enters the production route only when
-        it declares the complete Grok-implement/Codex-review contract and all
-        packet inputs required to enforce that contract.  Partial or malformed
-        provider contracts fail closed instead of silently losing review.
+        of the production route, so they use a Grok-only raw CLI route.  Terra
+        fallback exists only here, where effective-provider provenance and the
+        non-Codex-review fence are typed supervisor state.  A task enters this
+        route only when it declares the complete Grok-implement/Codex-review
+        contract and all packet inputs required to enforce that contract.
+        Partial or malformed provider contracts fail closed.
 
         SCA-615 still forbids a raw command for a complete production contract.
         The existing explicit ``ALLOW_RAW_MODEL_COMMAND`` operator override is
@@ -19733,6 +20130,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         writer_lease_id: str = "",
         grok_provider: ProviderCallable | None = None,
         codex_provider: ProviderCallable | None = None,
+        codex_implementation_fallback_provider: ProviderCallable | None = None,
         deterministic_provider: ProviderCallable | None = None,
         admission_gate: AdmissionCallable | None = None,
         writer: WriterCallable | None = None,
@@ -19741,6 +20139,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         bounds: Any = None,
         grok_quota: Any = None,
         codex_quota: Any = None,
+        codex_implementation_fallback_quota: Any = None,
     ) -> dict[str, Any]:
         """Production-wire bounded Grok proposal and independent Codex review.
 
@@ -19766,6 +20165,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         operator_policy = getattr(self, "production_provider_policy", None)
         if isinstance(operator_policy, ProductionCLIProviderPolicy):
             expected_grok = getattr(self, "_production_grok_provider", None)
+            expected_codex_implementation_fallback = getattr(
+                self,
+                "_production_codex_implementation_fallback_provider",
+                None,
+            )
             expected_codex = getattr(self, "_production_codex_provider", None)
             expected_bounds = getattr(self, "_production_provider_bounds", None)
             if grok_provider is None:
@@ -19779,6 +20183,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             elif codex_provider is not expected_codex:
                 raise RuntimeError(
                     "configured production policy forbids Codex provider override"
+                )
+            if codex_implementation_fallback_provider is None:
+                codex_implementation_fallback_provider = (
+                    expected_codex_implementation_fallback
+                )
+            elif (
+                codex_implementation_fallback_provider
+                is not expected_codex_implementation_fallback
+            ):
+                raise RuntimeError(
+                    "configured production policy forbids Codex implementation "
+                    "fallback provider override"
                 )
             if deterministic_provider is not None:
                 raise RuntimeError(
@@ -19794,7 +20210,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 raise RuntimeError(
                     "configured production policy forbids provider bounds override"
                 )
-            if grok_quota is not None or codex_quota is not None or local_only:
+            if (
+                grok_quota is not None
+                or codex_quota is not None
+                or codex_implementation_fallback_quota is not None
+                or local_only
+            ):
                 raise RuntimeError(
                     "configured production policy forbids routing-policy overrides"
                 )
@@ -19897,6 +20318,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 attempt=attempt,
                 grok_provider=grok_provider,
                 codex_provider=codex_provider,
+                codex_implementation_fallback_provider=(
+                    codex_implementation_fallback_provider
+                ),
                 deterministic_provider=deterministic_provider,
                 admission_gate=effective_admission,
                 writer=effective_writer,
@@ -19906,6 +20330,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 bounds=bounds,
                 grok_quota=grok_quota,
                 codex_quota=codex_quota,
+                codex_implementation_fallback_quota=(
+                    codex_implementation_fallback_quota
+                ),
+                enforce_provider_identity=isinstance(
+                    operator_policy,
+                    ProductionCLIProviderPolicy,
+                ),
             )
         else:
             route_result, event, receipt_path = self.route_model_assisted_contract_packet(
@@ -19915,6 +20346,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 attempt=attempt,
                 grok_provider=grok_provider,
                 codex_provider=codex_provider,
+                codex_implementation_fallback_provider=(
+                    codex_implementation_fallback_provider
+                ),
                 deterministic_provider=deterministic_provider,
                 admission_gate=effective_admission,
                 writer=effective_writer,
@@ -19924,6 +20358,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 bounds=bounds,
                 grok_quota=grok_quota,
                 codex_quota=codex_quota,
+                codex_implementation_fallback_quota=(
+                    codex_implementation_fallback_quota
+                ),
+                enforce_provider_identity=isinstance(
+                    operator_policy,
+                    ProductionCLIProviderPolicy,
+                ),
             )
 
         receipt = route_result.provider_receipt
@@ -20002,6 +20443,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "raw_model_command_invoked": False,
             "typed_packet_route_only": True,
             "receipt_path": str(receipt_path),
+            "pending_proposal_path": str(
+                event.get("pending_proposal_path") or ""
+            ),
+            "pending_proposal_artifact_id": str(
+                event.get("pending_proposal_artifact_id") or ""
+            ),
+            "required_review_role": str(
+                event.get("required_review_role") or ""
+            ),
             "pending": pending,
         }
         self._record_event(PRODUCTION_PROVIDER_ROUTE_EVENT, production_event)
@@ -27565,8 +28015,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         }
         force_codex = provider in {"codex", "copilot", "openai"}
 
-        # Prefer only when the binary is actually resolvable so an auth-only
-        # readiness signal does not block auto-fallback to codex/copilot.
+        # Raw/legacy routes never dispatch a second provider.  Grok-to-Terra
+        # fallback is intentionally confined to the typed production packet
+        # route, where effective-provider provenance and the independent-review
+        # fence are durable supervisor data.
         if force_grok:
             if not grok_ready:
                 raise RuntimeError(
@@ -27574,7 +28026,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     f"{provider!r} requires the Grok Build CLI (`grok`) with "
                     "login/auth (or XAI_API_KEY)"
                 )
-            return _grok_cli_command(workspace_path=workspace_path)
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                model_override=GROK_QUOTA_PRIMARY_MODEL,
+            )
         if (
             prefer_grok
             and grok_ready
@@ -27582,28 +28037,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and not force_codex
             and not force_goose_meta
         ):
-            command = _grok_cli_command(workspace_path=workspace_path)
-            codex = shutil.which("codex")
-            if codex:
-                codex_context_window = (
-                    self._implementation_provider_context_window_for_task(task)[0]
-                    if task is not None
-                    else None
-                )
-                command.extend(
-                    [
-                        "--codex-fallback-command-json",
-                        json.dumps(
-                            _codex_implementation_command(
-                                codex=codex,
-                                workspace_path=workspace_path,
-                                codex_context_window=codex_context_window,
-                            ),
-                            separators=(",", ":"),
-                        ),
-                    ]
-                )
-            return command
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                model_override=GROK_QUOTA_PRIMARY_MODEL,
+            )
+
+        if provider == "auto":
+            raise RuntimeError(
+                "Default implementation routing requires an installed, "
+                "authenticated Grok CLI. Codex is permitted only after a "
+                "verified Grok quota-exhaustion event."
+            )
 
         if force_goose_meta:
             if not goose_meta_ready:

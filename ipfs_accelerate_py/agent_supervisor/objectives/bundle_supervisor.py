@@ -42,6 +42,8 @@ from ..runtime.provider_capacity_snapshot import (
     DEFAULT_PROVIDER_CAPACITY_MAX_AGE_MS,
     DUAL_REVIEW_PROVIDER_ID,
     DUAL_REVIEW_REQUIRED_CAPABILITIES,
+    GROK_TERRA_CANDIDATE_CAPABILITIES,
+    GROK_TERRA_CANDIDATE_PROVIDER_ID,
     load_provider_capacity_snapshot,
     synthesize_dual_review_provider_capacity,
 )
@@ -55,6 +57,7 @@ from ..runtime.resource_scheduler import (
     ResourceScheduler,
     ResourceScheduleSnapshot,
     normalize_adaptive_stage,
+    normalize_provider_capacities,
     sample_host_resources,
 )
 from ..runtime.scheduler_metrics import (
@@ -4148,7 +4151,40 @@ class DynamicBundleScheduler:
         )
 
     @staticmethod
-    def _lane_resource_requirement(lane: BundleLaneSpec) -> LaneResourceRequirements:
+    def _lane_allows_grok_terra_candidate(lane: BundleLaneSpec) -> bool:
+        """Return whether the child owns the typed quota-only auto route.
+
+        Explicit provider roles, custom implementation commands, and legacy
+        review are intentionally excluded.  Scheduler admission is only a
+        candidate execution reservation; the daemon remains responsible for
+        verifying Grok hard-quota evidence before it may invoke Terra.
+        """
+
+        if lane.llm_provider not in {
+            DUAL_REVIEW_PROVIDER_ID,
+            GROK_TERRA_CANDIDATE_PROVIDER_ID,
+        }:
+            return False
+        command = tuple(str(item) for item in lane.command)
+        if "--production-provider-policy" not in command:
+            return False
+        if "--implementation-command" in command:
+            return False
+        if "--legacy-landed-review-policy-path" in command:
+            return False
+        tasks = _mapping_list((lane.queue_payload or {}).get("tasks"))
+        return bool(tasks) and all(
+            _task_provider_roles(task) in (frozenset(), frozenset({"auto"}))
+            for task in tasks
+        )
+
+    @classmethod
+    def _lane_resource_requirement(
+        cls,
+        lane: BundleLaneSpec,
+        *,
+        providers: Any = (),
+    ) -> LaneResourceRequirements:
         payload = lane.to_dict()
         payload.update(
             {
@@ -4172,7 +4208,24 @@ class DynamicBundleScheduler:
                 "priority": lane.objective_priority,
             }
         )
-        return LaneResourceRequirements.from_mapping(payload)
+        requirement = LaneResourceRequirements.from_mapping(payload)
+        if not cls._lane_allows_grok_terra_candidate(lane):
+            return requirement
+        by_id = {
+            item.provider_id: item
+            for item in normalize_provider_capacities(providers)
+        }
+        candidate = by_id.get(GROK_TERRA_CANDIDATE_PROVIDER_ID)
+        if candidate is None or not candidate.healthy:
+            return requirement
+        capabilities = tuple(
+            f"llm:{item}" for item in GROK_TERRA_CANDIDATE_CAPABILITIES
+        )
+        return replace(
+            requirement,
+            provider_id=GROK_TERRA_CANDIDATE_PROVIDER_ID,
+            required_capabilities=capabilities,
+        )
 
     @staticmethod
     def _resource_stage_for_phase(phase: Any) -> str:
@@ -4230,7 +4283,10 @@ class DynamicBundleScheduler:
             if observed == lease.requirement.stage:
                 continue
             next_spec = replace(running.spec, resource_stage=observed)
-            next_requirement = self._lane_resource_requirement(next_spec)
+            next_requirement = self._lane_resource_requirement(
+                next_spec,
+                providers=providers,
+            )
             decision, next_lease = self.resource_scheduler.transition(
                 lease,
                 next_requirement,
@@ -5483,7 +5539,10 @@ class DynamicBundleScheduler:
                     providers=provider_capacities,
                 )
                 resource_requirements = {
-                    lane.task_cid: self._lane_resource_requirement(lane)
+                    lane.task_cid: self._lane_resource_requirement(
+                        lane,
+                        providers=provider_capacities,
+                    )
                     for lane in resource_candidates
                 }
                 # Evaluate the complete ready set once. Adaptive fairness may

@@ -56,6 +56,29 @@ _CODEX_USAGE_LIMIT_PATTERN: Final = re.compile(
     r"\byou(?:'|\u2019)ve hit your usage limit\b",
     re.IGNORECASE,
 )
+_GROK_BALANCE_EXHAUSTED_MESSAGE: Final = (
+    "API error (status 402 Payment Required): " "Grok Build usage balance exhausted"
+)
+GROK_BUILD_BALANCE_EXHAUSTED_MARKER: Final = "grok_build_balance_exhausted"
+_MAX_GROK_STREAM_EVENT_BYTES: Final = 64 * 1024
+_NATIVE_CLI_SUBREAPER_PATH: Final = Path(__file__).with_name(
+    "native_cli_subreaper.py"
+)
+
+
+class NativeGrokQuotaExhaustionSignal(RuntimeError):
+    """Fixed, secret-free signal from an exact Grok transport event.
+
+    The signal is deliberately transport-specific.  Production policy may
+    translate it into its typed quota exception, while model text and generic
+    provider failures remain ordinary ``RuntimeError`` instances.
+    """
+
+    reason_code: Final = GROK_BUILD_BALANCE_EXHAUSTED_MARKER
+
+    def __init__(self) -> None:
+        super().__init__(self.reason_code)
+
 
 LegacyCLIInvoker = Callable[
     [str, LlmRouterInvocation],
@@ -150,15 +173,81 @@ def _bounded_failure_sample(value: bytearray) -> bytes:
     return bytes(value[:head_bytes]) + b"\n" + bytes(value[-tail_bytes:])
 
 
+def _grok_stream_failure_kind(payload: Mapping[str, Any]) -> str:
+    """Classify only CLI-owned structured failure event shapes."""
+
+    if payload.get("type") == "error":
+        if str(payload.get("message") or "").strip() == (
+            _GROK_BALANCE_EXHAUSTED_MESSAGE
+        ):
+            return "verified_quota"
+        return "other_failure"
+    if payload.get("method") not in {
+        "_x.ai/session/update",
+        "session/update",
+    }:
+        return ""
+    params = payload.get("params")
+    update = params.get("update") if isinstance(params, Mapping) else None
+    if not isinstance(update, Mapping):
+        return ""
+    if update.get("sessionUpdate") != "retry_state" or update.get("type") != "failed":
+        return ""
+    if (
+        str(update.get("error_type") or "").strip().casefold() == "api"
+        and str(update.get("message") or "").strip() == _GROK_BALANCE_EXHAUSTED_MESSAGE
+    ):
+        return "verified_quota"
+    return "other_failure"
+
+
+def _stdout_is_exact_grok_quota_failure(value: bytearray) -> bool:
+    """Require a strict JSONL quota event with no conflicting failure.
+
+    Grok is invoked with ``streaming-json`` output.  Therefore a non-empty
+    non-JSON stdout line is a protocol failure, not evidence that authorizes a
+    provider switch.  Stderr is intentionally never considered.
+    """
+
+    try:
+        output = bytes(value).decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return False
+    verified_quota = False
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if len(line.encode("utf-8")) > _MAX_GROK_STREAM_EVENT_BYTES:
+            return False
+        try:
+            payload = _strict_json_object(line)
+        except RuntimeError:
+            return False
+        failure_kind = _grok_stream_failure_kind(payload)
+        if failure_kind == "verified_quota":
+            verified_quota = True
+        elif failure_kind == "other_failure":
+            return False
+    return verified_quota
+
+
 def _native_cli_failure(
     command: Sequence[str],
     *,
+    return_code: int,
     stdout: bytearray,
     stderr: bytearray,
 ) -> RuntimeError:
-    """Classify a known Codex capacity failure without exposing diagnostics."""
+    """Classify exact capacity failures without exposing diagnostics."""
 
     executable = Path(str(command[0] or "")).name.casefold() if command else ""
+    if (
+        executable == "grok"
+        and return_code == 1
+        and _stdout_is_exact_grok_quota_failure(stdout)
+    ):
+        return NativeGrokQuotaExhaustionSignal()
     if executable == "codex":
         # ``codex exec --json`` versions have emitted the account-limit event
         # on either JSONL stdout or diagnostic stderr. Inspect bounded samples
@@ -179,7 +268,23 @@ def _run_native_cli_process(
     timeout_seconds: int,
     stdin_text: str | None = None,
 ) -> tuple[str, str]:
-    """Run one exact argv with bounded capture and fenced descendant cleanup."""
+    """Run one exact argv with bounded capture and subreaper confinement."""
+
+    if (
+        sys.platform != "linux"
+        or not Path("/proc/self/task").is_dir()
+        or not _NATIVE_CLI_SUBREAPER_PATH.is_file()
+    ):
+        # Native provider execution must never be attempted when the
+        # fork/setsid confinement boundary cannot be established.
+        raise RuntimeError("legacy native provider confinement unavailable")
+    subreaper_command = [
+        sys.executable,
+        "-I",
+        str(_NATIVE_CLI_SUBREAPER_PATH.resolve(strict=True)),
+        "--",
+        *[str(value) for value in command],
+    ]
 
     # Bind every observed descendant PID to its Linux start time so cleanup
     # cannot accidentally signal a PID that was recycled during a long model
@@ -208,9 +313,7 @@ def _run_native_cli_process(
                 continue
             observed_members[process_id] = identity
             try:
-                task_paths = tuple(
-                    Path(f"/proc/{process_id}/task").glob("*/children")
-                )
+                task_paths = tuple(Path(f"/proc/{process_id}/task").glob("*/children"))
             except OSError:
                 task_paths = ()
             for children_path in task_paths:
@@ -266,9 +369,7 @@ def _run_native_cli_process(
                 pass
             time.sleep(0.01)
         remaining_groups = live_observed_groups() | {
-            group_id
-            for group_id in process_groups
-            if process_group_exists(group_id)
+            group_id for group_id in process_groups if process_group_exists(group_id)
         }
         for group_id in remaining_groups:
             try:
@@ -289,7 +390,7 @@ def _run_native_cli_process(
     captures = {"stdout": bytearray(), "stderr": bytearray()}
     try:
         process = subprocess.Popen(
-            [str(value) for value in command],
+            subreaper_command,
             cwd=str(cwd),
             stdin=stdin_handle if stdin_text is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -343,6 +444,7 @@ def _run_native_cli_process(
             terminate_family(process)
             raise _native_cli_failure(
                 command,
+                return_code=return_code,
                 stdout=captures["stdout"],
                 stderr=captures["stderr"],
             )
@@ -350,8 +452,7 @@ def _run_native_cli_process(
         # after closing its pipes. The structured boundary permits no such
         # unobserved execution, so clean it before accepting the result.
         live_descendant = any(
-            process_id != process.pid
-            and process_identity(process_id) == identity
+            process_id != process.pid and process_identity(process_id) == identity
             for process_id, identity in tuple(observed_members.items())
         )
         if process_group_exists(process.pid) or live_descendant:
@@ -383,11 +484,7 @@ def _write_private_text(path: Path, value: str) -> None:
 def _read_bounded_regular_utf8(path: Path, *, max_bytes: int) -> str:
     """Read one no-follow regular file without allocating beyond its bound."""
 
-    if (
-        isinstance(max_bytes, bool)
-        or not isinstance(max_bytes, int)
-        or max_bytes < 1
-    ):
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
         raise RuntimeError("legacy native response byte bound is invalid")
     descriptor = os.open(
         path,
@@ -450,9 +547,7 @@ def _grok_native_structured_output(
         }
     )
     _write_private_text(prompt_path, prompt_file_payload)
-    if prompt_path.read_bytes() != prompt_file_payload.encode(
-        "utf-8", errors="strict"
-    ):
+    if prompt_path.read_bytes() != prompt_file_payload.encode("utf-8", errors="strict"):
         raise RuntimeError("legacy canonical request changed in prompt file")
     command = [
         binary,
@@ -471,6 +566,8 @@ def _grok_native_structured_output(
         "dontAsk",
         "--tools",
         "",
+        "--output-format",
+        "streaming-json",
         "--prompt-file",
         str(prompt_path),
     ]
@@ -525,6 +622,9 @@ def _codex_native_structured_output(
     response_path = cwd / "last-message.json"
     _write_private_text(schema_path, _canonical_json(response_schema))
     _write_private_text(response_path, "")
+    reasoning_effort = str(invocation.model_reasoning_effort or "").strip()
+    if reasoning_effort and reasoning_effort != "medium":
+        raise RuntimeError("native Codex reasoning effort is not policy-admissible")
     command = [
         binary,
         "exec",
@@ -538,13 +638,19 @@ def _codex_native_structured_output(
         "never",
         "--model",
         invocation.model_name,
-        "--output-schema",
-        str(schema_path),
-        "--output-last-message",
-        str(response_path),
-        "--json",
-        "-",
     ]
+    if reasoning_effort:
+        command.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
+    command.extend(
+        [
+            "--output-schema",
+            str(schema_path),
+            "--output-last-message",
+            str(response_path),
+            "--json",
+            "-",
+        ]
+    )
     _stdout, _stderr = _run_native_cli_process(
         command,
         cwd=cwd,
@@ -576,16 +682,13 @@ def _validate_native_response(
     manifest_values = properties.get("manifest_id")
     leaf_values = properties.get("leaf_id")
     expected_manifest = (
-        manifest_values.get("enum")
-        if isinstance(manifest_values, Mapping)
-        else None
+        manifest_values.get("enum") if isinstance(manifest_values, Mapping) else None
     )
     expected_leaf = (
         leaf_values.get("enum") if isinstance(leaf_values, Mapping) else None
     )
     if (
-        set(response)
-        != {"schema", "decision", "manifest_id", "leaf_id", "findings"}
+        set(response) != {"schema", "decision", "manifest_id", "leaf_id", "findings"}
         or response.get("schema") != LEGACY_LANDED_LEAF_DECISION_SCHEMA
         or response.get("decision") not in {"approve", "reject"}
         or expected_manifest != [response.get("manifest_id")]
@@ -645,6 +748,8 @@ def _invoke_native_structured_cli(
         "configured_model": invocation.model_name,
         "effective_provider": expected_provider,
         "effective_model": invocation.model_name,
+        "configured_reasoning_effort": invocation.model_reasoning_effort,
+        "effective_reasoning_effort": invocation.model_reasoning_effort,
         "canonical_prompt_sha256": hashlib.sha256(
             prompt.encode("utf-8", errors="strict")
         ).hexdigest(),
@@ -735,9 +840,7 @@ class BoundLegacyLandedCLIProvider:
             return self.invoker(prompt, invocation)
         return _invoke_native_structured_cli(prompt, invocation, response_schema)
 
-    def __call__(
-        self, request: LegacyLeafReviewRequest
-    ) -> LegacyProviderObservation:
+    def __call__(self, request: LegacyLeafReviewRequest) -> LegacyProviderObservation:
         if not isinstance(request, LegacyLeafReviewRequest):
             raise TypeError("legacy CLI provider requires LegacyLeafReviewRequest")
         expected = self.provider_policy
@@ -752,7 +855,9 @@ class BoundLegacyLandedCLIProvider:
         try:
             prompt = request.canonical_prompt.decode("ascii", errors="strict")
         except UnicodeDecodeError as exc:
-            raise RuntimeError("legacy canonical request must be ASCII DAG-JSON") from exc
+            raise RuntimeError(
+                "legacy canonical request must be ASCII DAG-JSON"
+            ) from exc
         if prompt.encode("ascii") != request.canonical_prompt:
             raise RuntimeError("legacy canonical request changed before invocation")
         response_schema = _leaf_decision_json_schema(request)
@@ -856,7 +961,9 @@ __all__ = [
     "DEFAULT_LEGACY_LANDED_PROVIDER_TIMEOUT_SECONDS",
     "LEGACY_LANDED_CLI_EXECUTION_SCHEMA",
     "LEGACY_LANDED_NATIVE_STRUCTURED_EXECUTION_SCHEMA",
+    "GROK_BUILD_BALANCE_EXHAUSTED_MARKER",
     "BoundLegacyLandedCLIProvider",
     "LegacyCLIInvoker",
+    "NativeGrokQuotaExhaustionSignal",
     "build_legacy_landed_cli_provider_pair",
 ]

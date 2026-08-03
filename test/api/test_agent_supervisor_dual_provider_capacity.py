@@ -22,6 +22,8 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_capacity_snapshot import (
     DUAL_REVIEW_PROVIDER_ID,
     DUAL_REVIEW_PROVIDER_ROLE_CAPABILITIES,
+    GROK_TERRA_CANDIDATE_CAPABILITIES,
+    GROK_TERRA_CANDIDATE_PROVIDER_ID,
     PROVIDER_CAPACITY_BUDGET_SEMANTICS,
     load_provider_capacity_snapshot,
     synthesize_dual_review_provider_capacity,
@@ -68,12 +70,13 @@ def _capacity(
     max_concurrency: int = 4,
     active_requests: int = 0,
     healthy: bool = True,
+    quota_remaining: int = 100,
     capabilities: tuple[str, ...] | None = None,
 ) -> ProviderCapacity:
     return ProviderCapacity(
         provider_id=provider_id,
         healthy=healthy,
-        quota_remaining=100,
+        quota_remaining=quota_remaining,
         latency_ms=25,
         context_window_tokens=100_000,
         token_budget_remaining=100_000,
@@ -368,6 +371,31 @@ def test_pair_free_concurrency_is_minimum_and_requires_role_capabilities() -> No
     assert closed.available_concurrency == 0
 
 
+def test_grok_exhaustion_opens_only_non_authoritative_terra_candidate() -> None:
+    now = 210_000
+    capacities = synthesize_dual_review_provider_capacity(
+        (
+            _capacity(
+                "grok_cli",
+                observed_at_ms=now,
+                healthy=False,
+                quota_remaining=0,
+            ),
+            _capacity("codex_cli", observed_at_ms=now),
+        ),
+        max_age_ms=1_000,
+        now_ms=now,
+    )
+    by_id = {item.provider_id: item for item in capacities}
+
+    assert by_id[DUAL_REVIEW_PROVIDER_ID].healthy is False
+    candidate = by_id[GROK_TERRA_CANDIDATE_PROVIDER_ID]
+    assert candidate.healthy is True
+    assert candidate.capabilities == tuple(sorted(GROK_TERRA_CANDIDATE_CAPABILITIES))
+    assert "codex-review" not in candidate.capabilities
+    assert "independent-review" not in candidate.capabilities
+
+
 def test_production_planning_keeps_typed_local_lane_provider_free(
     tmp_path: Path,
 ) -> None:
@@ -577,6 +605,77 @@ def test_four_model_lanes_are_capped_by_two_free_pair_slots(
                 if item["state"] == "accepted"
             ]
         ) == 2
+
+
+def test_known_grok_exhaustion_launches_auto_lane_as_candidate_only(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "candidate"
+    _write_bundle_index(repo / "index.json", [""])
+    now = int(time.time() * 1000)
+    providers = (
+        _capacity(
+            "grok_cli",
+            observed_at_ms=now,
+            healthy=False,
+            quota_remaining=0,
+        ),
+        _capacity("codex_cli", observed_at_ms=now),
+    )
+    starts: list[object] = []
+    scheduler = _scheduler(
+        repo,
+        provider_capacity_source=lambda: providers,
+        launcher=lambda lane, _grant: (
+            starts.append(lane) or _Process(31_000)
+        ),
+        max_lanes=1,
+    )
+
+    manifest = scheduler.reconcile_once()
+
+    assert len(starts) == 1
+    assert starts[0].llm_provider == GROK_TERRA_CANDIDATE_PROVIDER_ID  # type: ignore[attr-defined]
+    admission = next(
+        item["resource_admission"]
+        for item in manifest["scheduler_decisions"]
+        if item["decision"] == "launched"
+    )
+    assert admission["provider_id"] == GROK_TERRA_CANDIDATE_PROVIDER_ID
+
+
+def test_known_grok_exhaustion_does_not_bypass_explicit_provider_role(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "explicit"
+    _write_bundle_index(repo / "index.json", ["grok-implement, codex-review"])
+    now = int(time.time() * 1000)
+    providers = (
+        _capacity(
+            "grok_cli",
+            observed_at_ms=now,
+            healthy=False,
+            quota_remaining=0,
+        ),
+        _capacity("codex_cli", observed_at_ms=now),
+    )
+    starts: list[object] = []
+    scheduler = _scheduler(
+        repo,
+        provider_capacity_source=lambda: providers,
+        launcher=lambda lane, _grant: starts.append(lane),
+        max_lanes=1,
+    )
+
+    manifest = scheduler.reconcile_once()
+
+    assert starts == []
+    deferred = [
+        item
+        for item in manifest["scheduler_decisions"]
+        if item["decision"] == "deferred"
+    ]
+    assert deferred[0]["reason"] == "provider_unhealthy"
 
 
 @pytest.mark.parametrize(

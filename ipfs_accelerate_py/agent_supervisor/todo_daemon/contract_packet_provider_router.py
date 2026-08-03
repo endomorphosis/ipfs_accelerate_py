@@ -81,7 +81,9 @@ REDACTION_MARKER: Final = "[REDACTED]"
 
 class ProviderRole(str, Enum):
     GROK_IMPLEMENT = "grok-implement"
+    CODEX_QUOTA_IMPLEMENT = "codex-quota-fallback-implement"
     CODEX_REVIEW = "codex-independent-review"
+    NON_CODEX_REVIEW = "non-codex-independent-review"
     DETERMINISTIC_LOCAL = "deterministic-local"
 
 
@@ -107,6 +109,11 @@ class ProviderReason(str, Enum):
     ROUTED = "bounded_provider_route"
     LOCAL_ONLY = "deterministic_local_route"
     GROK_QUOTA_EXHAUSTED = "grok_quota_exhausted"
+    GROK_BUILD_QUOTA_EXHAUSTED = "grok_build_balance_exhausted"
+    CODEX_QUOTA_IMPLEMENTED_REVIEW_PENDING = (
+        "codex_quota_implemented_non_codex_review_pending"
+    )
+    NON_CODEX_REVIEW_REQUIRED = "non_codex_independent_review_required"
     CODEX_QUOTA_EXHAUSTED = "codex_quota_exhausted_grok_fallback"
     GROK_UNAVAILABLE = "grok_unavailable"
     CODEX_UNAVAILABLE = "codex_unavailable_grok_fallback"
@@ -175,6 +182,22 @@ class ProviderQuotaError(RuntimeError):
     ) -> None:
         super().__init__(message)
         self.reason_code = str(reason_code or ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value)
+
+
+class VerifiedGrokQuotaExhaustion(ProviderQuotaError):
+    """Supervisor-observed, exact Grok Build balance-exhaustion signal.
+
+    Only the native transport adapter may construct this signal after checking
+    the CLI exit status and its structured transport event.  Provider/model
+    response text and generic quota exceptions deliberately cannot authorize
+    the Codex Terra implementation fallback.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+            reason_code=ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -879,7 +902,10 @@ def _bounded_evidence_slice(
 def _provider_response_contract(role: ProviderRole) -> dict[str, Any]:
     """Return the exact authority-free JSON shape requested from one role."""
 
-    if role is ProviderRole.GROK_IMPLEMENT:
+    if role in {
+        ProviderRole.GROK_IMPLEMENT,
+        ProviderRole.CODEX_QUOTA_IMPLEMENT,
+    }:
         shape: dict[str, Any] = {
             "proposal": {
                 "declared_paths": ["repo/relative/path"],
@@ -1055,6 +1081,8 @@ class ImplementationRoutingResult:
         if self.reason_code in {
             ProviderReason.CODEX_UNAVAILABLE.value,
             ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
+            ProviderReason.CODEX_QUOTA_IMPLEMENTED_REVIEW_PENDING.value,
+            ProviderReason.NON_CODEX_REVIEW_REQUIRED.value,
             ProviderReason.REVIEW_ABSENT.value,
         }:
             return ReviewPresence.ABSENT.value
@@ -1153,6 +1181,57 @@ class ImplementationRoutingResult:
                 reason_code=default_reason,
                 admitted=False,
             )
+
+        terra_assisted = any(
+            item.role is ProviderRole.CODEX_QUOTA_IMPLEMENT
+            for item in self.attempts
+        ) or (
+            self.implementation_proposal is not None
+            and self.implementation_proposal.role
+            is ProviderRole.CODEX_QUOTA_IMPLEMENT
+        )
+        if terra_assisted:
+            steps.append(
+                _step_from_proposal(
+                    None,
+                    ProviderRole.GROK_IMPLEMENT,
+                    default_status="failed",
+                    default_reason=ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+                )
+            )
+            terra_proposal = (
+                self.implementation_proposal
+                if self.implementation_proposal is not None
+                and self.implementation_proposal.role
+                is ProviderRole.CODEX_QUOTA_IMPLEMENT
+                else None
+            )
+            terra_admitted = bool(terra_proposal and terra_proposal.admitted)
+            steps.append(
+                _step_from_proposal(
+                    terra_proposal,
+                    ProviderRole.CODEX_QUOTA_IMPLEMENT,
+                    default_status="succeeded" if terra_admitted else "failed",
+                    default_reason=(
+                        ProviderReason.CODEX_QUOTA_IMPLEMENTED_REVIEW_PENDING.value
+                        if terra_admitted
+                        else self.reason_code
+                    ),
+                )
+            )
+            steps.append(
+                _step_from_proposal(
+                    None,
+                    ProviderRole.NON_CODEX_REVIEW,
+                    default_status="absent" if terra_admitted else "not_applicable",
+                    default_reason=(
+                        ProviderReason.NON_CODEX_REVIEW_REQUIRED.value
+                        if terra_admitted
+                        else self.reason_code
+                    ),
+                )
+            )
+            return tuple(steps)
 
         if (
             self.implementation_proposal is not None
@@ -1446,6 +1525,11 @@ class ImplementationProviderRouter:
     codex_quota: ProviderQuotaLatch = field(default_factory=ProviderQuotaLatch)
     deterministic_quota: ProviderQuotaLatch = field(default_factory=ProviderQuotaLatch)
     token_counter: TokenCounter = _default_token_count
+    codex_implementation_fallback_provider: ProviderCallable | None = None
+    codex_implementation_fallback_quota: ProviderQuotaLatch = field(
+        default_factory=ProviderQuotaLatch
+    )
+    enforce_provider_identity: bool = False
     _writer_lock: threading.Lock = field(
         default_factory=threading.Lock,
         init=False,
@@ -1457,7 +1541,12 @@ class ImplementationProviderRouter:
             if not isinstance(self.bounds, Mapping):
                 raise TypeError("bounds must be ProviderBounds or a mapping")
             self.bounds = ProviderBounds(**dict(self.bounds))
-        for name in ("grok_quota", "codex_quota", "deterministic_quota"):
+        for name in (
+            "grok_quota",
+            "codex_quota",
+            "deterministic_quota",
+            "codex_implementation_fallback_quota",
+        ):
             value = getattr(self, name)
             if isinstance(value, int) and not isinstance(value, bool):
                 setattr(self, name, ProviderQuotaLatch(remaining_calls=value))
@@ -1465,6 +1554,8 @@ class ImplementationProviderRouter:
                 raise TypeError(f"{name} must be ProviderQuotaLatch or an integer")
         if not callable(self.token_counter):
             raise TypeError("token_counter must be callable")
+        if not isinstance(self.enforce_provider_identity, bool):
+            raise TypeError("enforce_provider_identity must be a boolean")
 
     @property
     def quota_state(self) -> Mapping[str, Mapping[str, Any]]:
@@ -1475,6 +1566,9 @@ class ImplementationProviderRouter:
                 ),
                 ProviderRole.CODEX_REVIEW.value: MappingProxyType(
                     self.codex_quota.to_dict()
+                ),
+                ProviderRole.CODEX_QUOTA_IMPLEMENT.value: MappingProxyType(
+                    self.codex_implementation_fallback_quota.to_dict()
                 ),
                 ProviderRole.DETERMINISTIC_LOCAL.value: MappingProxyType(
                     self.deterministic_quota.to_dict()
@@ -1782,6 +1876,35 @@ class ImplementationProviderRouter:
             prompt_digest=_sha256(request.prompt) if request else "",
         )
 
+    @staticmethod
+    def _bound_provider_identity(provider: ProviderCallable | None) -> str:
+        """Return a normalized supervisor-bound provider-family identity."""
+
+        if provider is None:
+            return ""
+        return str(getattr(provider, "provider_name", "") or "").strip().casefold()
+
+    def _verify_attempt_provider_identity(
+        self,
+        provider: ProviderCallable,
+        attempt: ProviderAttempt,
+    ) -> str:
+        """Fail closed when production execution provenance is absent/aliased."""
+
+        if not self.enforce_provider_identity:
+            return str(
+                attempt.effective_provider or attempt.configured_provider or ""
+            ).strip().casefold()
+        expected = self._bound_provider_identity(provider)
+        configured = str(attempt.configured_provider or "").strip().casefold()
+        effective = str(attempt.effective_provider or "").strip().casefold()
+        if not expected or configured != expected or effective != expected:
+            raise ProviderRoutingError(
+                "production provider execution identity is absent or mismatched",
+                reason_code=ProviderReason.PROVIDERS_NOT_INDEPENDENT,
+            )
+        return effective
+
     def _local_fallback(
         self,
         *,
@@ -1889,6 +2012,103 @@ class ImplementationProviderRouter:
                 packet=packet_identity,
                 attempts=attempts,
             )
+
+    def _codex_quota_implementation_fallback(
+        self,
+        *,
+        packet_id: str,
+        snapshot_id: str,
+        task_id: str,
+        payload: Mapping[str, Any],
+        packet: PacketIdentity,
+        attempts: list[ProviderAttempt],
+    ) -> ImplementationRoutingResult:
+        """Collect a Terra-authored proposal that still needs non-Codex review.
+
+        The fallback shares the ``codex_cli`` provider family with the normal
+        Codex reviewer.  Its output is therefore evidence only: this branch
+        never invokes that reviewer, never calls the writer, and never creates
+        a review-chain binding.
+        """
+
+        provider = self.codex_implementation_fallback_provider
+        if provider is None:
+            return self._result(
+                status=RouteStatus.DEFERRED,
+                reason_code=ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+                packet_id=packet_id,
+                packet=packet,
+                attempts=attempts,
+            )
+        request: ProviderRequest | None = None
+        try:
+            request = self._request(
+                role=ProviderRole.CODEX_QUOTA_IMPLEMENT,
+                packet_id=packet_id,
+                snapshot_id=snapshot_id,
+                task_id=task_id,
+                provider_input=payload,
+            )
+            proposal, attempt = self._invoke(
+                provider,
+                self.codex_implementation_fallback_quota,
+                request,
+            )
+            self._verify_attempt_provider_identity(provider, attempt)
+            attempts.append(attempt)
+            proposal = self._admit(proposal)
+        except ProviderQuotaError as exc:
+            attempts.append(
+                self._error_attempt(
+                    ProviderRole.CODEX_QUOTA_IMPLEMENT,
+                    exc.reason_code,
+                    request,
+                )
+            )
+            return self._result(
+                status=RouteStatus.DEFERRED,
+                reason_code=exc.reason_code,
+                packet_id=packet_id,
+                packet=packet,
+                attempts=attempts,
+            )
+        except ProviderRoutingError as exc:
+            attempts.append(
+                self._error_attempt(
+                    ProviderRole.CODEX_QUOTA_IMPLEMENT,
+                    exc.reason_code,
+                    request,
+                )
+            )
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=exc.reason_code,
+                packet_id=packet_id,
+                packet=packet,
+                attempts=attempts,
+            )
+        if not proposal.admitted:
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=(
+                    proposal.admission_reason
+                    or ProviderReason.PROPOSAL_REJECTED.value
+                ),
+                packet_id=packet_id,
+                packet=packet,
+                implementation_proposal=proposal,
+                attempts=attempts,
+            )
+        return self._result(
+            status=RouteStatus.DEFERRED,
+            reason_code=ProviderReason.NON_CODEX_REVIEW_REQUIRED.value,
+            packet_id=packet_id,
+            packet=packet,
+            implementation_proposal=proposal,
+            attempts=attempts,
+            write_performed=False,
+            writer_lease_id="",
+        )
 
     def _packet_identity(
         self,
@@ -2004,6 +2224,20 @@ class ImplementationProviderRouter:
                 packet_id=packet_id,
                 packet=packet_identity,
             )
+        if self.enforce_provider_identity and self.codex_provider is not None:
+            grok_identity = self._bound_provider_identity(self.grok_provider)
+            codex_identity = self._bound_provider_identity(self.codex_provider)
+            if (
+                not grok_identity
+                or not codex_identity
+                or grok_identity == codex_identity
+            ):
+                return self._result(
+                    status=RouteStatus.REJECTED,
+                    reason_code=ProviderReason.PROVIDERS_NOT_INDEPENDENT.value,
+                    packet_id=packet_id,
+                    packet=packet_identity,
+                )
 
         grok_request: ProviderRequest | None = None
         try:
@@ -2017,8 +2251,38 @@ class ImplementationProviderRouter:
             grok, attempt = self._invoke(
                 self.grok_provider, self.grok_quota, grok_request
             )
+            grok_effective_identity = self._verify_attempt_provider_identity(
+                self.grok_provider,
+                attempt,
+            )
             attempts.append(attempt)
             grok = self._admit(grok)
+        except VerifiedGrokQuotaExhaustion as exc:
+            attempts.append(
+                self._error_attempt(
+                    ProviderRole.GROK_IMPLEMENT, exc.reason_code, grok_request
+                )
+            )
+            if self.codex_implementation_fallback_provider is not None:
+                return self._codex_quota_implementation_fallback(
+                    packet_id=packet_id,
+                    snapshot_id=snapshot_id,
+                    task_id=task_id,
+                    payload=payload,
+                    packet=packet_identity,
+                    attempts=attempts,
+                )
+            return self._local_fallback(
+                packet_id=packet_id,
+                snapshot_id=snapshot_id,
+                task_id=task_id,
+                payload=payload,
+                packet=packet_identity,
+                attempts=attempts,
+                fallback_reason=ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+                apply=apply,
+                writer_lease_id=writer_lease_id,
+            )
         except ProviderQuotaError as exc:
             attempts.append(
                 self._error_attempt(
@@ -2083,6 +2347,18 @@ class ImplementationProviderRouter:
             review, attempt = self._invoke(
                 self.codex_provider, self.codex_quota, codex_request
             )
+            codex_effective_identity = self._verify_attempt_provider_identity(
+                self.codex_provider,
+                attempt,
+            )
+            if (
+                self.enforce_provider_identity
+                and codex_effective_identity == grok_effective_identity
+            ):
+                raise ProviderRoutingError(
+                    "implementation and review effective providers match",
+                    reason_code=ProviderReason.PROVIDERS_NOT_INDEPENDENT,
+                )
             attempts.append(attempt)
             review = self._admit(review)
         except ProviderQuotaError as exc:
@@ -2717,6 +2993,9 @@ def route_contract_packet(
     bounds: ProviderBounds | Mapping[str, Any] | None = None,
     grok_quota: ProviderQuotaLatch | int | None = None,
     codex_quota: ProviderQuotaLatch | int | None = None,
+    codex_implementation_fallback_provider: ProviderCallable | None = None,
+    codex_implementation_fallback_quota: ProviderQuotaLatch | int | None = None,
+    enforce_provider_identity: bool = False,
 ) -> ImplementationRoutingResult:
     """Functional facade for one bounded packet route."""
 
@@ -2733,6 +3012,15 @@ def route_contract_packet(
         codex_quota=(
             codex_quota if codex_quota is not None else ProviderQuotaLatch()
         ),
+        codex_implementation_fallback_provider=(
+            codex_implementation_fallback_provider
+        ),
+        codex_implementation_fallback_quota=(
+            codex_implementation_fallback_quota
+            if codex_implementation_fallback_quota is not None
+            else ProviderQuotaLatch()
+        ),
+        enforce_provider_identity=enforce_provider_identity,
     )
     return router.route(
         packet,
@@ -2795,6 +3083,7 @@ __all__ = [
     "RouteStatus",
     "SCAEV615ROUTE",
     "SCAEV615ROUTE_COVERAGE",
+    "VerifiedGrokQuotaExhaustion",
     "bind_applied_patch_to_review_chain",
     "build_production_contract_packet",
     "build_production_provider_route_evaluation",

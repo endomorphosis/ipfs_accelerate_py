@@ -21,6 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     ProviderReason,
     ProviderRole,
     RouteStatus,
+    VerifiedGrokQuotaExhaustion,
     redact_provider_data,
     route_contract_packet,
 )
@@ -378,6 +379,102 @@ def test_grok_quota_without_fallback_defers_with_typed_reason() -> None:
 
     assert result.status is RouteStatus.DEFERRED
     assert result.deferred
+    assert result.reason_code == ProviderReason.GROK_QUOTA_EXHAUSTED.value
+
+
+def test_verified_grok_balance_exhaustion_routes_to_terra_pending_review() -> None:
+    calls: list[str] = []
+    writes: list[object] = []
+
+    def exhausted_grok(_request):
+        calls.append("grok")
+        raise VerifiedGrokQuotaExhaustion()
+
+    def terra(request):
+        calls.append("terra")
+        assert request.role is ProviderRole.CODEX_QUOTA_IMPLEMENT
+        assert "contract_packet" in request.payload
+        return {
+            "proposal": {
+                "patch": "terra proposal",
+                "declared_paths": [PATH],
+            }
+        }
+
+    result = ImplementationProviderRouter(
+        grok_provider=exhausted_grok,
+        codex_implementation_fallback_provider=terra,
+        codex_provider=lambda _request: calls.append("codex-review"),
+        admission_gate=_accept,
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+    ).route(
+        _Packet(),
+        current_snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:must-not-write",
+    )
+
+    assert calls == ["grok", "terra"]
+    assert writes == []
+    assert result.status is RouteStatus.DEFERRED
+    assert result.reason_code == ProviderReason.NON_CODEX_REVIEW_REQUIRED.value
+    assert result.provider == ProviderRole.CODEX_QUOTA_IMPLEMENT.value
+    assert result.review_presence == "review_absent"
+    assert result.provider_result_admitted is False
+    assert result.selected_proposal is None
+    assert result.implementation_proposal is not None
+    assert result.implementation_proposal.admitted is True
+    assert result.write_performed is False
+    assert [item.role for item in result.attempts] == [
+        ProviderRole.GROK_IMPLEMENT,
+        ProviderRole.CODEX_QUOTA_IMPLEMENT,
+    ]
+    assert [item.role for item in result.review_chain] == [
+        ProviderRole.GROK_IMPLEMENT.value,
+        ProviderRole.CODEX_QUOTA_IMPLEMENT.value,
+        ProviderRole.NON_CODEX_REVIEW.value,
+    ]
+    assert [item.status for item in result.review_chain] == [
+        "failed",
+        "succeeded",
+        "absent",
+    ]
+
+
+@pytest.mark.parametrize(
+    "grok_result",
+    [
+        ProviderQuotaError(
+            "unverified quota text",
+            reason_code=ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+        ),
+        {
+            "status": "quota_exhausted",
+            "reason_code": ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+        },
+    ],
+)
+def test_unverified_or_model_authored_quota_claim_never_routes_to_terra(
+    grok_result: object,
+) -> None:
+    calls: list[str] = []
+
+    def grok(_request):
+        calls.append("grok")
+        if isinstance(grok_result, BaseException):
+            raise grok_result
+        return grok_result
+
+    result = ImplementationProviderRouter(
+        grok_provider=grok,
+        codex_implementation_fallback_provider=lambda _request: calls.append(
+            "terra"
+        ),
+        admission_gate=_accept,
+    ).route(_Packet(), current_snapshot_id=SNAPSHOT)
+
+    assert calls == ["grok"]
+    assert result.status is RouteStatus.DEFERRED
     assert result.reason_code == ProviderReason.GROK_QUOTA_EXHAUSTED.value
 
 

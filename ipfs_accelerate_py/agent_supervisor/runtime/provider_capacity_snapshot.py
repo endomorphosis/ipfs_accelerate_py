@@ -35,6 +35,12 @@ PROVIDER_CAPACITY_BUDGET_SEMANTICS: Final = (
 )
 DUAL_REVIEW_PROVIDER_ID: Final = "grok-codex-review-pair"
 DUAL_REVIEW_PROVIDER_IDS: Final = ("grok_cli", "codex_cli")
+GROK_TERRA_CANDIDATE_PROVIDER_ID: Final = "grok-terra-candidate-route"
+GROK_TERRA_CANDIDATE_CAPABILITIES: Final = (
+    "candidate-only",
+    "codex-cli",
+    "terra-implement",
+)
 DUAL_REVIEW_PROVIDER_ROLE_CAPABILITIES: Final = {
     "grok_cli": frozenset({"grok-cli", "grok-implement"}),
     "codex_cli": frozenset(
@@ -583,7 +589,47 @@ def synthesize_dual_review_provider_capacity(
             observed_at_ms=observed,
             retry_after_ms=retry_after,
         )
-    return tuple(sorted((*normalized, pair), key=lambda item: item.provider_id))
+    # This is deliberately a separate, non-review provider.  It only opens
+    # scheduler admission far enough for the child daemon to obtain its own
+    # typed hard-quota evidence from Grok and, if that evidence verifies, run
+    # the exact Terra implementation fallback.  It must never make the
+    # independent-review pair healthy or advertise review capabilities.
+    grok = by_id.get("grok_cli")
+    codex = by_id.get("codex_cli")
+    candidate_usable = bool(
+        complete
+        and fresh
+        and grok is not None
+        and codex is not None
+        and grok.quota_remaining == 0
+        and codex.healthy
+        and codex.retry_after_ms == 0
+        and codex.quota_remaining > 0
+        and codex.context_window_tokens >= 0
+        and codex.token_budget_remaining >= 0
+        and codex.active_requests <= codex.max_concurrency
+        and "codex-cli" in codex.capabilities
+    )
+    candidate = ProviderCapacity(
+        provider_id=GROK_TERRA_CANDIDATE_PROVIDER_ID,
+        healthy=candidate_usable,
+        quota_remaining=(codex.quota_remaining if candidate_usable else 0),
+        latency_ms=(codex.latency_ms if codex is not None else latency),
+        context_window_tokens=(
+            codex.context_window_tokens if candidate_usable else 0
+        ),
+        token_budget_remaining=(
+            codex.token_budget_remaining if candidate_usable else 0
+        ),
+        max_concurrency=(codex.max_concurrency if candidate_usable else 0),
+        active_requests=(codex.active_requests if candidate_usable else 0),
+        capabilities=GROK_TERRA_CANDIDATE_CAPABILITIES,
+        observed_at_ms=observed,
+        retry_after_ms=(codex.retry_after_ms if codex is not None else retry_after),
+    )
+    return tuple(
+        sorted((*normalized, pair, candidate), key=lambda item: item.provider_id)
+    )
 
 
 __all__ = [
@@ -593,6 +639,8 @@ __all__ = [
     "DUAL_REVIEW_PROVIDER_IDS",
     "DUAL_REVIEW_PROVIDER_ROLE_CAPABILITIES",
     "DUAL_REVIEW_REQUIRED_CAPABILITIES",
+    "GROK_TERRA_CANDIDATE_CAPABILITIES",
+    "GROK_TERRA_CANDIDATE_PROVIDER_ID",
     "PROVIDER_CAPACITY_BUDGET_SEMANTICS",
     "PROVIDER_CAPACITY_SNAPSHOT_SCHEMA",
     "PROVIDER_CAPACITY_TRUST",

@@ -23,10 +23,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
     ImplementationProviderRouter,
     ProviderBounds,
+    ProviderReason,
     ProviderRequest,
     ProviderRole,
     ReviewPresence,
     RouteStatus,
+    VerifiedGrokQuotaExhaustion,
     bind_applied_patch_to_review_chain,
     build_production_contract_packet,
 )
@@ -55,11 +57,14 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_provider_attesta
     verify_production_provider_review_attestation,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_provider_cli import (
+    DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_MODEL,
+    DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_REASONING_EFFORT,
     PRODUCTION_CLI_EXECUTION_SCHEMA,
     PRODUCTION_CLI_POLICY_NAME,
     BoundProductionCLIProvider,
     ProductionCLIProviderPolicy,
     build_production_cli_provider_pair,
+    build_production_cli_provider_set,
     production_cli_policy_readiness,
     production_landed_task_guard,
 )
@@ -105,7 +110,10 @@ def _request(role: ProviderRole) -> ProviderRequest:
 
 def _native_request(role: ProviderRole) -> ProviderRequest:
     payload: dict[str, Any]
-    if role is ProviderRole.GROK_IMPLEMENT:
+    if role in {
+        ProviderRole.GROK_IMPLEMENT,
+        ProviderRole.CODEX_QUOTA_IMPLEMENT,
+    }:
         payload = {
             "contract_packet": {
                 "scope": {"write_paths": ["module.py"]},
@@ -140,20 +148,32 @@ def test_policy_is_fixed_to_grok_implementation_and_independent_codex_review() -
     payload = policy.to_dict()
 
     assert policy.name == PRODUCTION_CLI_POLICY_NAME
+    assert payload["schema"].endswith("production-cli-provider-policy@2")
     assert policy.declared_roles == ("grok-implement", "codex-review")
     assert payload["implementation"]["provider"] == "grok_cli"
     assert payload["implementation"]["model"] == "grok-4.5"
     assert payload["review"]["provider"] == "codex_cli"
     assert payload["review"]["model"] == "gpt-5.6-sol"
     assert payload["review"]["independent"] is True
-    assert payload["implementation"]["fallback_provider"] == ""
+    assert payload["implementation"]["fallback_provider"] == "codex_cli"
+    assert payload["implementation"]["fallback_model"] == "gpt-5.6-terra"
+    assert payload["implementation"]["fallback_reasoning_effort"] == "medium"
+    assert payload["implementation"]["fallback_trigger"] == (
+        "verified_grok_quota_exhaustion_only"
+    )
     assert payload["implementation"]["failure_disposition"] == (
-        "provider_review_pending"
+        "provider_review_pending_no_write"
     )
     assert payload["codex_implementation_fallback"] == {
-        "enabled": False,
-        "reason": "codex_cannot_implement_and_independently_self_review",
-        "without_third_reviewer": "provider_review_pending",
+        "enabled": True,
+        "role": "codex-quota-fallback-implement",
+        "provider": "codex_cli",
+        "model": "gpt-5.6-terra",
+        "reasoning_effort": "medium",
+        "trigger": "verified_grok_quota_exhaustion_only",
+        "self_review_allowed": False,
+        "required_reviewer_family": "non_codex",
+        "without_non_codex_reviewer": "provider_review_pending_no_write",
     }
     assert payload["landed_task_recovery"] == {
         "blind_reimplementation_allowed": False,
@@ -165,9 +185,35 @@ def test_policy_is_fixed_to_grok_implementation_and_independent_codex_review() -
     assert payload["policy_id"].startswith("sha256:")
     assert payload["completion_authoritative"] is False
     assert policy.provider_timeout_seconds == 300.0
+    assert policy.predecessor_policy_ids == (
+        "sha256:e94d23fb180c30f27be7d1bf509decfcf"
+        "f7e7a8abfd0ccddf03f08b360f7e421",
+    )
+    assert payload["migration"] == {
+        "accepted_predecessor_policy_ids": list(policy.predecessor_policy_ids),
+        "predecessor_was_more_restrictive": True,
+    }
 
     changed = ProductionCLIProviderPolicy(context_budget_tokens=2048)
     assert changed.policy_id != policy.policy_id
+
+
+def test_authoritative_policy_trust_includes_only_exact_v1_predecessor() -> None:
+    daemon = object.__new__(TodoImplementationDaemon)
+    policy = ProductionCLIProviderPolicy()
+    daemon.production_provider_policy = policy
+    daemon.production_provider_review_allowed_policy_ids = None
+
+    assert daemon._trusted_production_provider_policy_ids() == (
+        policy.policy_id,
+        *policy.predecessor_policy_ids,
+    )
+
+    explicitly_pinned = "sha256:" + "a" * 64
+    daemon.production_provider_review_allowed_policy_ids = (explicitly_pinned,)
+    assert daemon._trusted_production_provider_policy_ids() == (
+        explicitly_pinned,
+    )
 
 
 def test_exact_landed_binding_stays_pending_without_blind_reimplementation() -> None:
@@ -248,6 +294,10 @@ def test_board_metadata_edit_keeps_task_cid_but_invalidates_source_digest(
         {"provider_timeout_seconds": 601},
         {"max_new_tokens": 0},
         {"codex_provider": "grok_cli"},
+        {"grok_model": "grok-4.6"},
+        {"codex_implementation_fallback_provider": "other_cli"},
+        {"codex_implementation_fallback_model": "gpt-5.6-sol"},
+        {"codex_implementation_fallback_reasoning_effort": "high"},
         {"name": "unreviewed-grok"},
     ],
 )
@@ -256,6 +306,77 @@ def test_policy_rejects_unbounded_or_non_independent_configuration(
 ) -> None:
     with pytest.raises(ValueError):
         ProductionCLIProviderPolicy(**overrides)
+
+
+def test_provider_set_adds_exact_terra_author_and_preserves_pair_api() -> None:
+    observed: dict[str, Any] = {}
+
+    def invoke(_prompt, config):
+        observed.update(
+            provider=config.provider,
+            model=config.model_name,
+            reasoning=config.model_reasoning_effort,
+            local_fallback=config.allow_local_fallback,
+            cross_provider_fallback=config.allow_cross_provider_fallback,
+        )
+        return (
+            json.dumps(
+                {
+                    "proposal": {
+                        "declared_paths": ["module.py"],
+                        "files": [{"path": "module.py", "content": "VALUE = 2\n"}],
+                    }
+                }
+            ),
+            _child_receipt(config),
+        )
+
+    grok, terra, reviewer = build_production_cli_provider_set(invoker=invoke)
+    pair_grok, pair_reviewer = build_production_cli_provider_pair(invoker=invoke)
+
+    assert (grok.role, terra.role, reviewer.role) == (
+        ProviderRole.GROK_IMPLEMENT,
+        ProviderRole.CODEX_QUOTA_IMPLEMENT,
+        ProviderRole.CODEX_REVIEW,
+    )
+    assert (pair_grok.role, pair_reviewer.role) == (
+        ProviderRole.GROK_IMPLEMENT,
+        ProviderRole.CODEX_REVIEW,
+    )
+    response = terra(_request(ProviderRole.CODEX_QUOTA_IMPLEMENT))
+    execution = response["supervisor_provider_execution"]
+    assert observed == {
+        "provider": "codex_cli",
+        "model": DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_MODEL,
+        "reasoning": DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_REASONING_EFFORT,
+        "local_fallback": False,
+        "cross_provider_fallback": False,
+    }
+    assert execution["role"] == ProviderRole.CODEX_QUOTA_IMPLEMENT.value
+    assert execution["configured_provider"] == "codex_cli"
+    assert execution["effective_provider"] == "codex_cli"
+    assert execution["configured_model"] == "gpt-5.6-terra"
+    assert execution["effective_model"] == "gpt-5.6-terra"
+    assert execution["configured_reasoning_effort"] == "medium"
+    assert execution["effective_reasoning_effort"] == "medium"
+
+
+def test_production_adapter_translates_only_native_grok_quota_signal() -> None:
+    def quota(_prompt, _config):
+        raise native_cli.NativeGrokQuotaExhaustionSignal()
+
+    policy = ProductionCLIProviderPolicy()
+    grok = BoundProductionCLIProvider(
+        policy=policy,
+        role=ProviderRole.GROK_IMPLEMENT,
+        provider_name=policy.grok_provider,
+        model_name=policy.grok_model,
+        invoker=quota,
+    )
+
+    with pytest.raises(VerifiedGrokQuotaExhaustion) as raised:
+        grok(_request(ProviderRole.GROK_IMPLEMENT))
+    assert raised.value.reason_code == "grok_build_balance_exhausted"
 
 
 def test_adapter_binds_receipt_and_uses_empty_non_repository_cwd() -> None:
@@ -267,9 +388,7 @@ def test_adapter_binds_receipt_and_uses_empty_non_repository_cwd() -> None:
         observed["children"] = tuple(config.repo_root.iterdir())
         observed["provider"] = config.provider
         observed["required"] = config.required_effective_providers
-        observed["cross_provider_fallback"] = (
-            config.allow_cross_provider_fallback
-        )
+        observed["cross_provider_fallback"] = config.allow_cross_provider_fallback
         return (
             json.dumps(
                 {
@@ -305,6 +424,39 @@ def test_adapter_binds_receipt_and_uses_empty_non_repository_cwd() -> None:
     assert observed["children"] == ()
     assert Path(observed["repo_root"]).exists() is False
     assert observed["prompt"] == _request(ProviderRole.GROK_IMPLEMENT).prompt.decode()
+
+
+def test_adapter_preserves_fifth_positional_invoker_argument() -> None:
+    policy = ProductionCLIProviderPolicy()
+
+    def invoke(_prompt, config):
+        return (
+            json.dumps(
+                {
+                    "proposal": {
+                        "declared_paths": ["module.py"],
+                        "files": [{"path": "module.py", "content": "ok\n"}],
+                    }
+                }
+            ),
+            _child_receipt(config),
+        )
+
+    provider = BoundProductionCLIProvider(
+        policy,
+        ProviderRole.GROK_IMPLEMENT,
+        policy.grok_provider,
+        policy.grok_model,
+        invoke,
+    )
+
+    response = provider(_request(ProviderRole.GROK_IMPLEMENT))
+
+    assert provider.invoker is invoke
+    assert provider.reasoning_effort == ""
+    assert response["supervisor_provider_execution"]["effective_model"] == (
+        "grok-4.5"
+    )
 
 
 def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
@@ -350,15 +502,11 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
                 "task_id": request.task_id,
                 "proposal": {
                     "declared_paths": ["module.py"],
-                    "files": [
-                        {"path": "module.py", "content": "VALUE = 1\n"}
-                    ],
+                    "files": [{"path": "module.py", "content": "VALUE = 1\n"}],
                     "patch": "",
                 },
             }
-            output = json.dumps(
-                {"text": response, "requestId": "exact-grok-request"}
-            )
+            output = json.dumps({"text": response, "requestId": "exact-grok-request"})
             assert stdin_text is None
         else:
             schema_path = Path(cmd[cmd.index("--output-schema") + 1])
@@ -401,29 +549,32 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
         assert record["cwd"].exists() is False
         assert record["timeout_seconds"] == 119
         assert schema["additionalProperties"] is False
-        assert schema["properties"]["packet_id"]["enum"] == [
-            request.packet_id
-        ]
-        assert schema["properties"]["snapshot_id"]["enum"] == [
-            request.snapshot_id
-        ]
+        assert schema["properties"]["packet_id"]["enum"] == [request.packet_id]
+        assert schema["properties"]["snapshot_id"]["enum"] == [request.snapshot_id]
         assert schema["properties"]["task_id"]["enum"] == [request.task_id]
     grok_schema = observed["grok_cli"]["schema"]
     proposal_schema = grok_schema["properties"]["proposal"]
     assert proposal_schema["additionalProperties"] is False
-    assert proposal_schema["properties"]["declared_paths"]["items"][
-        "enum"
-    ] == ["module.py"]
+    assert proposal_schema["properties"]["declared_paths"]["items"]["enum"] == [
+        "module.py"
+    ]
     assert "oneOf" in proposal_schema
-    assert observed["grok_cli"]["command"][
-        observed["grok_cli"]["command"].index("--tools") + 1
-    ] == ""
+    assert (
+        observed["grok_cli"]["command"][
+            observed["grok_cli"]["command"].index("--tools") + 1
+        ]
+        == ""
+    )
+    assert (
+        observed["grok_cli"]["command"][
+            observed["grok_cli"]["command"].index("--output-format") + 1
+        ]
+        == "streaming-json"
+    )
     assert "--verbatim" in observed["grok_cli"]["command"]
     assert "--output-schema" in observed["codex_cli"]["command"]
     assert observed["codex_cli"]["command"][-1] == "-"
-    assert observed["codex_cli"]["schema"]["properties"]["findings"][
-        "maxItems"
-    ] == 0
+    assert observed["codex_cli"]["schema"]["properties"]["findings"]["maxItems"] == 0
 
     for response, expected_provider, expected_model in (
         (grok_response, "grok_cli", "grok-4.5"),
@@ -437,6 +588,58 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
         assert execution["supervisor_receipt_id"]
         assert execution["execution_result_id"]
         assert execution["native_output_schema_id"].startswith("sha256:")
+
+
+def test_native_terra_author_uses_exact_model_medium_and_proposal_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _native_request(ProviderRole.CODEX_QUOTA_IMPLEMENT)
+    observed: dict[str, Any] = {}
+    monkeypatch.setattr(
+        native_cli.shutil,
+        "which",
+        lambda name: f"/trusted/bin/{name}",
+    )
+
+    def run_cli(
+        command: Any,
+        *,
+        cwd: Path,
+        timeout_seconds: int,
+        stdin_text: str | None = None,
+    ) -> tuple[str, str]:
+        del cwd, timeout_seconds
+        cmd = list(command)
+        schema_path = Path(cmd[cmd.index("--output-schema") + 1])
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        response = {
+            "packet_id": request.packet_id,
+            "snapshot_id": request.snapshot_id,
+            "task_id": request.task_id,
+            "proposal": {
+                "declared_paths": ["module.py"],
+                "files": [{"path": "module.py", "content": "VALUE = 2\n"}],
+                "patch": "",
+            },
+        }
+        response_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        response_path.write_text(json.dumps(response), encoding="utf-8")
+        observed.update(command=cmd, schema=schema, prompt=stdin_text)
+        return '{"type":"turn.completed"}\n', ""
+
+    monkeypatch.setattr(native_cli, "_run_native_cli_process", run_cli)
+    _grok, terra, _reviewer = build_production_cli_provider_set()
+    response = terra(request)
+
+    command = observed["command"]
+    assert command[command.index("--model") + 1] == "gpt-5.6-terra"
+    assert command[command.index("-c") + 1] == ('model_reasoning_effort="medium"')
+    assert "proposal" in observed["schema"]["properties"]
+    assert observed["prompt"] == request.prompt.decode("utf-8")
+    execution = response["supervisor_provider_execution"]
+    assert execution["effective_provider"] == "codex_cli"
+    assert execution["effective_model"] == "gpt-5.6-terra"
+    assert execution["effective_reasoning_effort"] == "medium"
 
 
 def test_native_pair_rejects_response_with_wrong_request_binding(
@@ -653,6 +856,146 @@ def test_native_process_timeout_kills_detached_descendant(tmp_path: Path) -> Non
         assert Path(f"/proc/{child_pid}/stat").read_text().split()[2] == "Z"
 
 
+def test_native_grok_exact_stdout_quota_event_emits_fixed_signal(
+    tmp_path: Path,
+) -> None:
+    grok = tmp_path / "grok"
+    grok.symlink_to(sys.executable)
+    secret = "provider-secret-must-not-escape"
+    event = {
+        "method": "_x.ai/session/update",
+        "params": {
+            "update": {
+                "sessionUpdate": "retry_state",
+                "type": "failed",
+                "error_type": "api",
+                "message": (
+                    "API error (status 402 Payment Required): "
+                    "Grok Build usage balance exhausted"
+                ),
+            }
+        },
+    }
+    script = (
+        "import sys;"
+        f"sys.stdout.write({json.dumps(event) + chr(10)!r});"
+        f"sys.stderr.write({secret!r});"
+        "raise SystemExit(1)"
+    )
+
+    with pytest.raises(native_cli.NativeGrokQuotaExhaustionSignal) as raised:
+        native_cli._run_native_cli_process(
+            [str(grok), "-c", script],
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+
+    assert str(raised.value) == "grok_build_balance_exhausted"
+    assert secret not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "exit_code"),
+    [
+        (
+            "",
+            json.dumps(
+                {
+                    "type": "error",
+                    "message": (
+                        "API error (status 402 Payment Required): "
+                        "Grok Build usage balance exhausted"
+                    ),
+                }
+            ),
+            1,
+        ),
+        (
+            json.dumps(
+                {
+                    "type": "error",
+                    "message": (
+                        "API error (status 402 Payment Required): "
+                        "Grok Build usage balance exhausted"
+                    ),
+                }
+            ),
+            "",
+            2,
+        ),
+        (json.dumps({"status": "quota_exhausted"}), "", 1),
+        (
+            json.dumps(
+                {
+                    "text": {
+                        "type": "error",
+                        "message": (
+                            "API error (status 402 Payment Required): "
+                            "Grok Build usage balance exhausted"
+                        ),
+                    }
+                }
+            ),
+            "",
+            1,
+        ),
+        (
+            json.dumps(
+                {
+                    "type": "error",
+                    "message": (
+                        "API error (status 402 Payment Required): "
+                        "Grok Build usage balance exhausted"
+                    ),
+                }
+            )
+            + "\nnot-json",
+            "",
+            1,
+        ),
+        (
+            json.dumps(
+                {
+                    "type": "error",
+                    "message": (
+                        "API error (status 402 Payment Required): "
+                        "Grok Build usage balance exhausted"
+                    ),
+                }
+            )
+            + "\n"
+            + json.dumps({"type": "error", "message": "unauthorized"}),
+            "",
+            1,
+        ),
+    ],
+)
+def test_native_grok_inexact_or_model_authored_signals_never_authorize(
+    tmp_path: Path,
+    stdout: str,
+    stderr: str,
+    exit_code: int,
+) -> None:
+    grok = tmp_path / "grok"
+    grok.symlink_to(sys.executable)
+    script = (
+        "import sys;"
+        f"sys.stdout.write({stdout!r});"
+        f"sys.stderr.write({stderr!r});"
+        f"raise SystemExit({exit_code})"
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        native_cli._run_native_cli_process(
+            [str(grok), "-c", script],
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+
+    assert type(raised.value) is RuntimeError
+    assert str(raised.value) == "legacy native provider command failed"
+
+
 @pytest.mark.parametrize(
     ("codex_status", "expected_ready"),
     [(0, True), (1, False)],
@@ -691,9 +1034,7 @@ def test_policy_readiness_requires_bounded_codex_auth_check(
     assert readiness["ready"] is expected_ready
     assert readiness["review"]["authenticated"] is expected_ready
     assert readiness["review"]["authentication_check"] == (
-        "codex_login_status_ok"
-        if expected_ready
-        else "codex_login_status_failed"
+        "codex_login_status_ok" if expected_ready else "codex_login_status_failed"
     )
     assert observed["command"] == ["/test-bin/codex", "login", "status"]
     assert observed["timeout"] == 5.0
@@ -746,7 +1087,9 @@ def test_adapter_rejects_non_json_or_missing_child_receipt() -> None:
                 bound,
             ),
         )
-        expected = "Expecting value" if output.startswith("```") else "execution receipt"
+        expected = (
+            "Expecting value" if output.startswith("```") else "execution receipt"
+        )
         with pytest.raises((ValueError, RuntimeError), match=expected):
             provider(_request(ProviderRole.GROK_IMPLEMENT))
 
@@ -808,9 +1151,7 @@ def test_pair_routes_grok_then_independent_codex_with_bound_evidence() -> None:
     assert "contract_packet" in calls[0]["provider_input"]
     assert "contract_packet" not in calls[1]["provider_input"]
     assert "admitted_implementation_proposal" in calls[1]["provider_input"]
-    assert calls[0]["response_contract"]["format"] == (
-        "canonical-json-object-only"
-    )
+    assert calls[0]["response_contract"]["format"] == ("canonical-json-object-only")
     assert result.implementation_proposal is not None
     assert result.review_proposal is not None
     assert (
@@ -825,6 +1166,87 @@ def test_pair_routes_grok_then_independent_codex_with_bound_evidence() -> None:
         ]
         == "codex_cli"
     )
+
+
+def test_bound_production_route_records_terra_author_and_never_self_reviews() -> None:
+    calls: list[dict[str, str]] = []
+
+    def invoke(_prompt, config):
+        calls.append(
+            {
+                "provider": str(config.provider or ""),
+                "model": config.model_name,
+                "reasoning": config.model_reasoning_effort,
+            }
+        )
+        if config.model_name == "grok-4.5":
+            raise native_cli.NativeGrokQuotaExhaustionSignal()
+        assert config.model_name == "gpt-5.6-terra"
+        assert config.model_reasoning_effort == "medium"
+        return (
+            json.dumps(
+                {
+                    "proposal": {
+                        "declared_paths": ["module.py"],
+                        "files": [{"path": "module.py", "content": "terra\n"}],
+                    }
+                }
+            ),
+            _child_receipt(config),
+        )
+
+    grok, terra, codex_review = build_production_cli_provider_set(invoker=invoke)
+    packet = build_production_contract_packet(
+        task_id="ASE-005",
+        snapshot_id="git-commit:fixture",
+        write_paths=["module.py"],
+        validation_commands=["python -m pytest test_module.py -q"],
+        acceptance_criteria="module behavior is validated",
+    )
+    writes: list[object] = []
+    result = ImplementationProviderRouter(
+        grok_provider=grok,
+        codex_implementation_fallback_provider=terra,
+        codex_provider=codex_review,
+        admission_gate=lambda proposal: {
+            "accepted": True,
+            "reason_code": f"admitted:{proposal.role.value}",
+        },
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+        enforce_provider_identity=True,
+    ).route(
+        packet,
+        current_snapshot_id="git-commit:fixture",
+        apply=True,
+        writer_lease_id="lease:must-not-write",
+    )
+
+    assert calls == [
+        {"provider": "grok_cli", "model": "grok-4.5", "reasoning": ""},
+        {
+            "provider": "codex_cli",
+            "model": "gpt-5.6-terra",
+            "reasoning": "medium",
+        },
+    ]
+    assert writes == []
+    assert result.status is RouteStatus.DEFERRED
+    assert result.reason_code == ProviderReason.NON_CODEX_REVIEW_REQUIRED.value
+    assert result.review_presence == ReviewPresence.ABSENT.value
+    assert result.provider_result_admitted is False
+    assert result.write_performed is False
+    assert [attempt.effective_provider for attempt in result.attempts] == [
+        "",
+        "codex_cli",
+    ]
+    assert result.implementation_proposal is not None
+    execution = result.implementation_proposal.payload[
+        "supervisor_provider_execution"
+    ]
+    assert execution["configured_model"] == "gpt-5.6-terra"
+    assert execution["effective_model"] == "gpt-5.6-terra"
+    assert execution["configured_reasoning_effort"] == "medium"
+    assert execution["effective_reasoning_effort"] == "medium"
 
 
 def _applied_provider_route():
@@ -938,13 +1360,16 @@ def _apply_real_reviewed_route(
         text=True,
         capture_output=True,
     ).stdout.strip()
-    tree = "git-tree:" + subprocess.run(
-        ["git", "rev-parse", "HEAD^{tree}"],
-        cwd=repo,
-        check=True,
-        text=True,
-        capture_output=True,
-    ).stdout.strip()
+    tree = (
+        "git-tree:"
+        + subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout.strip()
+    )
     finalized = finalize_production_reviewed_effect(
         captured,
         repo_root=repo,
@@ -1308,9 +1733,7 @@ def test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate(
     provider_gate = receipt.gate_evidence["provider_review"]
     assert provider_gate["satisfied"] is True
     assert provider_gate["review_receipt_id"] == attestation.attestation_id
-    assert provider_gate["verification"] == (
-        "ed25519_full_receipt_reconstruction"
-    )
+    assert provider_gate["verification"] == ("ed25519_full_receipt_reconstruction")
     assert os.stat(shared_key_path).st_mode & 0o777 == 0o600
 
     wrong_key_path = repo / "bundle-state" / "lane-c-review.ed25519"
@@ -1407,17 +1830,15 @@ def test_bundle_command_propagates_explicit_policy_without_task_metadata() -> No
     assert command[command.index("--production-provider-policy") + 1] == (
         PRODUCTION_CLI_POLICY_NAME
     )
+    assert (
+        command[command.index("--production-provider-context-budget-tokens") + 1]
+        == "4096"
+    )
+    assert (
+        command[command.index("--production-provider-timeout-seconds") + 1] == "300.0"
+    )
     assert command[
-        command.index("--production-provider-context-budget-tokens") + 1
-    ] == "4096"
-    assert command[
-        command.index("--production-provider-timeout-seconds") + 1
-    ] == "300.0"
-    assert command[
-        command.index(
-            "--production-provider-review-authority-key-path"
-        )
-        + 1
+        command.index("--production-provider-review-authority-key-path") + 1
     ] == str(shared_key_path)
 
 
@@ -1461,17 +1882,12 @@ def test_bundle_lanes_default_to_one_bundle_root_review_authority(
         production_provider_context_budget_tokens=4096,
         optimize_bundles=False,
     )
-    expected = str(
-        state_root / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
-    )
+    expected = str(state_root / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME)
 
     assert len(lanes) == 2
     assert {
         lane.command[
-            lane.command.index(
-                "--production-provider-review-authority-key-path"
-            )
-            + 1
+            lane.command.index("--production-provider-review-authority-key-path") + 1
         ]
         for lane in lanes
     } == {expected}
@@ -1553,14 +1969,9 @@ def test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption(
         is False
     )
     wrong_key = list(command)
-    key_index = wrong_key.index(
-        "--production-provider-review-authority-key-path"
-    )
+    key_index = wrong_key.index("--production-provider-review-authority-key-path")
     wrong_key[key_index + 1] = str(tmp_path / "lane-local.ed25519")
-    assert (
-        supervisor._managed_daemon_matches_command_line(" ".join(wrong_key))
-        is False
-    )
+    assert supervisor._managed_daemon_matches_command_line(" ".join(wrong_key)) is False
 
 
 def test_supervisor_rejects_budget_without_explicit_provider_policy(

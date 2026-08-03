@@ -124,6 +124,10 @@ class LlmRouterInvocation:
     # constructor used by older daemon integrations.
     allow_cross_provider_fallback: Optional[bool] = None
     child_file_prefix: str = "todo-daemon-llm-child-"
+    # Production native adapters pin this directly in their exact CLI argv.
+    # The generic child route intentionally ignores it unless its transport
+    # explicitly implements an equally strict binding.
+    model_reasoning_effort: str = ""
 
 
 @dataclass(frozen=True)

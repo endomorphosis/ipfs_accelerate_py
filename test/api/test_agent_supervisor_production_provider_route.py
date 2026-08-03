@@ -34,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     ProviderRoutingError,
     ReviewPresence,
     RouteStatus,
+    VerifiedGrokQuotaExhaustion,
     bind_applied_patch_to_review_chain,
     build_production_contract_packet,
     build_production_provider_route_evaluation,
@@ -41,11 +42,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     MODEL_ASSISTED_PROVIDER_ROUTE_EVENT,
+    MODEL_ASSISTED_PROVIDER_REVIEW_PENDING_EVENT,
     PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT,
     PRODUCTION_PROVIDER_ROUTE_EVENT,
     PRODUCTION_PROVIDER_ROUTE_PENDING_EVENT,
     ImplementationRetryDeferred,
     PortalTask,
+    PortalTaskState,
     TodoImplementationDaemon,
 )
 
@@ -260,6 +263,143 @@ def test_production_model_assisted_invokes_only_typed_packet_route(
     assert production["packet"]
     assert production["review_chain"]
     assert production["provider_receipt"]
+
+
+def test_verified_grok_quota_persists_terra_candidate_without_write_or_self_review(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    baseline = (daemon.repo_root / PATH).read_bytes()
+    calls: list[str] = []
+
+    def grok(_request):
+        calls.append("grok")
+        raise VerifiedGrokQuotaExhaustion()
+
+    def terra(request):
+        calls.append("terra")
+        assert request.role is ProviderRole.CODEX_QUOTA_IMPLEMENT
+        return {
+            "proposal": {
+                "declared_paths": [PATH],
+                "files": [
+                    {
+                        "path": PATH,
+                        "content": "# terra-pending-non-codex-review\n",
+                    }
+                ],
+            }
+        }
+
+    result = daemon.run_production_model_assisted_route(
+        _task(),
+        attempt=3,
+        workspace_path=daemon.repo_root,
+        snapshot_id=_snapshot(daemon),
+        apply=True,
+        grok_provider=grok,
+        codex_implementation_fallback_provider=terra,
+        codex_provider=lambda _request: calls.append("codex-review"),
+        admission_gate=_accept,
+    )
+
+    route = result["route_result"]
+    assert calls == ["grok", "terra"]
+    assert route.status is RouteStatus.DEFERRED
+    assert route.reason_code == ProviderReason.NON_CODEX_REVIEW_REQUIRED.value
+    assert route.review_presence == ReviewPresence.ABSENT.value
+    assert route.provider_result_admitted is False
+    assert route.write_performed is False
+    assert result["returncode"] == 1
+    assert result["pending"] is True
+    assert result["binding"] is None
+    assert result["reviewed_effect_binding"] is None
+    assert (daemon.repo_root / PATH).read_bytes() == baseline
+
+    event = result["event"]
+    assert event["provider"] == ProviderRole.CODEX_QUOTA_IMPLEMENT.value
+    assert event["required_review_role"] == ProviderRole.NON_CODEX_REVIEW.value
+    proposal_path = Path(event["pending_proposal_path"])
+    assert proposal_path.is_file()
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    assert proposal["artifact_id"] == event["pending_proposal_artifact_id"]
+    assert proposal["provider_result_admitted"] is False
+    assert proposal["write_performed"] is False
+    assert proposal["proposal"]["role"] == ProviderRole.CODEX_QUOTA_IMPLEMENT.value
+    assert proposal["required_review_role"] == ProviderRole.NON_CODEX_REVIEW.value
+
+
+def test_terra_candidate_latches_waiting_without_consuming_or_reinvoking(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    daemon._register_task_identities([task])
+    calls: list[str] = []
+
+    def grok(_request):
+        calls.append("grok")
+        raise VerifiedGrokQuotaExhaustion()
+
+    def terra(_request):
+        calls.append("terra")
+        return {
+            "proposal": {
+                "declared_paths": [PATH],
+                "files": [{"path": PATH, "content": "# pending\n"}],
+            }
+        }
+
+    daemon._production_grok_provider = grok
+    daemon._production_codex_implementation_fallback_provider = terra
+    daemon._production_codex_provider = lambda _request: calls.append(
+        "codex-review"
+    )
+    daemon._production_admission_gate = _accept
+    state = PortalTaskState()
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at="2026-08-03T00:00:00+00:00",
+        log_path=daemon.implementation_log_dir / "terra-latch.log",
+        prompt="implement the bounded packet",
+    )
+
+    assert calls == ["grok", "terra"]
+    assert result["reason"] == "provider_review_pending"
+    assert result["attempt_consumed"] is False
+    assert result["provider_call_allowed"] is False
+    persisted = PortalTaskState.load(daemon.state_path)
+    canonical_cid = daemon._canonical_ref(task)
+    assert persisted.implementation_attempts_by_cid.get(canonical_cid, 0) == 0
+    assert persisted.pending_provider_reviews[canonical_cid]["artifact_id"] == (
+        result["pending_proposal_artifact_id"]
+    )
+
+    monkeypatch.setattr(daemon, "_load_tasks", lambda: [task])
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("latched candidate must not invoke a provider")
+        ),
+    )
+    follow_up = daemon.run_once()
+
+    assert calls == ["grok", "terra"]
+    assert follow_up["implementation_result"] is None
+    assert follow_up["pending_provider_review_task_ids"] == [task.task_id]
+    assert PortalTaskState.load(daemon.state_path).task_statuses[task.task_id] == (
+        "waiting"
+    )
+    assert any(
+        event.get("type") == MODEL_ASSISTED_PROVIDER_REVIEW_PENDING_EVENT
+        for event in _events(daemon)
+    )
 
 
 def _admitted_file_proposal(*entries: tuple[str, str]) -> SimpleNamespace:
