@@ -132,6 +132,7 @@ from ..validation.validation_scheduler import (
     build_declared_validation_plan_graph,
 )
 from .diagnostics import summarize_test_failure
+from .llm_defaults import DEFAULT_CODEX_MODEL
 from .post_merge_validation import build_post_merge_validation_evidence
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
@@ -1527,7 +1528,10 @@ def _codex_implementation_command(
 ) -> list[str]:
     """Build the non-interactive Codex implementation argv."""
 
-    codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+    codex_model = (
+        os.environ.get(_CODEX_MODEL_ENV, "").strip()
+        or DEFAULT_CODEX_MODEL
+    )
     codex_context = (
         str(codex_context_window)
         if codex_context_window is not None
@@ -1576,7 +1580,10 @@ def _copilot_fallback_command(
     - Copilot: model selection, reasoning effort, long context, autopilot with continuation limit
     """
     # Codex configuration
-    codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+    codex_model = (
+        os.environ.get(_CODEX_MODEL_ENV, "").strip()
+        or DEFAULT_CODEX_MODEL
+    )
     codex_context = (
         str(codex_context_window)
         if codex_context_window is not None

@@ -23,6 +23,9 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
     canonical_json_bytes,
     content_identity,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    legacy_landed_provider_cli as legacy_cli,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import legacy_landed_review as legacy
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
@@ -177,6 +180,8 @@ def test_exact_template_pins_all_eight_and_original_ase_023_interval() -> None:
     tasks = {item["task_id"]: item for item in template["tasks"]}
 
     assert tuple(tasks) == legacy.EXACT_LEGACY_LANDED_TASK_IDS
+    assert template["providers"]["grok"]["model"] == "grok-4.5"
+    assert template["providers"]["codex"]["model"] == "gpt-5.6-sol"
     assert tasks["ASE-023"]["baseline_commit"] == (
         "27cc4219f67358d90abd36b08b37950be344009e"
     )
@@ -1017,3 +1022,195 @@ def test_cli_adapter_rejects_child_effective_provider_mismatch(tmp_path: Path) -
     )
     with pytest.raises(RuntimeError, match="not exactly bound"):
         grok(request)
+
+
+def test_cli_adapters_use_native_request_bound_schema_and_verbatim_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _private, issuer = _private_key_file(tmp_path / "key")
+    policy = legacy.parse_legacy_landed_review_policy(
+        _policy_payload(issuer_key_id=issuer)
+    )
+    task = policy.task("ASE-005")
+    manifest = legacy.build_legacy_landed_byte_manifest(policy, _binding(task))
+    leaf = manifest["leaves"][0]
+    requests = {
+        provider.provider: legacy._leaf_review_request(  # noqa: SLF001
+            policy=policy,
+            task=task,
+            manifest=manifest,
+            leaf=leaf,
+            provider=provider,
+        )
+        for provider in (policy.grok, policy.codex)
+    }
+    observed: dict[str, dict[str, Any]] = {}
+
+    monkeypatch.setattr(
+        legacy_cli.shutil,
+        "which",
+        lambda name: f"/trusted/bin/{name}",
+    )
+
+    def run_cli(
+        command: Any,
+        *,
+        cwd: Path,
+        timeout_seconds: int,
+        stdin_text: str | None = None,
+    ) -> tuple[str, str]:
+        cmd = list(command)
+        provider = "grok_cli" if cmd[0].endswith("/grok") else "codex_cli"
+        request = requests[provider]
+        if provider == "grok_cli":
+            schema = json.loads(cmd[cmd.index("--json-schema") + 1])
+            prompt_path = Path(cmd[cmd.index("--prompt-file") + 1])
+            prompt_envelope = json.loads(prompt_path.read_text(encoding="utf-8"))
+            assert prompt_envelope["type"] == "acp"
+            assert len(prompt_envelope["content"]) == 1
+            assert prompt_envelope["content"][0]["type"] == "text"
+            prompt = prompt_envelope["content"][0]["text"]
+            assert stdin_text is None
+        else:
+            schema_path = Path(cmd[cmd.index("--output-schema") + 1])
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            prompt = str(stdin_text)
+        response = {
+            "schema": legacy.LEGACY_LANDED_LEAF_DECISION_SCHEMA,
+            "decision": "approve",
+            "manifest_id": request.payload["manifest_id"],
+            "leaf_id": request.payload["leaf"]["leaf_id"],
+            "findings": [],
+        }
+        observed[provider] = {
+            "command": cmd,
+            "cwd": cwd,
+            "timeout_seconds": timeout_seconds,
+            "prompt": prompt,
+            "schema": schema,
+        }
+        if provider == "grok_cli":
+            return json.dumps(
+                {
+                    "text": json.dumps(response),
+                    "requestId": "grok-endpoint-request",
+                }
+            ), ""
+        response_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        response_path.write_text(json.dumps(response), encoding="utf-8")
+        return '{"type":"turn.completed"}\n', ""
+
+    monkeypatch.setattr(legacy_cli, "_run_native_cli_process", run_cli)
+    grok, codex = build_legacy_landed_cli_provider_pair(policy)
+    grok_observation = grok(requests["grok_cli"])
+    codex_observation = codex(requests["codex_cli"])
+
+    for provider, expected_model in (
+        ("grok_cli", policy.grok.model),
+        ("codex_cli", policy.codex.model),
+    ):
+        record = observed[provider]
+        request = requests[provider]
+        assert record["prompt"].encode("ascii") == request.canonical_prompt
+        assert record["cwd"] != tmp_path
+        assert record["timeout_seconds"] == 300
+        schema = record["schema"]
+        assert schema["additionalProperties"] is False
+        assert schema["properties"]["manifest_id"]["enum"] == [
+            request.payload["manifest_id"]
+        ]
+        assert schema["properties"]["leaf_id"]["enum"] == [
+            request.payload["leaf"]["leaf_id"]
+        ]
+        command = record["command"]
+        model_flag = "--model"
+        assert command[command.index(model_flag) + 1] == expected_model
+        assert request.canonical_prompt.decode("ascii") not in command
+
+    grok_command = observed["grok_cli"]["command"]
+    codex_command = observed["codex_cli"]["command"]
+    assert "--json-schema" in grok_command
+    assert "--verbatim" in grok_command
+    assert grok_command[grok_command.index("--tools") + 1] == ""
+    assert "--output-schema" in codex_command
+    assert codex_command[-1] == "-"
+    assert grok_observation.effective_provider == "grok_cli"
+    assert grok_observation.effective_model == policy.grok.model
+    assert codex_observation.effective_provider == "codex_cli"
+    assert codex_observation.effective_model == policy.codex.model
+
+
+def test_native_schema_boundary_rejects_grok_prose_and_mismatched_codex_json(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _private, issuer = _private_key_file(tmp_path / "key")
+    policy = legacy.parse_legacy_landed_review_policy(
+        _policy_payload(issuer_key_id=issuer)
+    )
+    task = policy.task("ASE-005")
+    manifest = legacy.build_legacy_landed_byte_manifest(policy, _binding(task))
+    leaf = manifest["leaves"][0]
+    grok_request = legacy._leaf_review_request(  # noqa: SLF001
+        policy=policy,
+        task=task,
+        manifest=manifest,
+        leaf=leaf,
+        provider=policy.grok,
+    )
+    codex_request = legacy._leaf_review_request(  # noqa: SLF001
+        policy=policy,
+        task=task,
+        manifest=manifest,
+        leaf=leaf,
+        provider=policy.codex,
+    )
+    monkeypatch.setattr(
+        legacy_cli.shutil,
+        "which",
+        lambda name: f"/trusted/bin/{name}",
+    )
+
+    def prose(
+        command: Any,
+        *,
+        cwd: Path,
+        timeout_seconds: int,
+        stdin_text: str | None = None,
+    ) -> tuple[str, str]:
+        del command, cwd, timeout_seconds, stdin_text
+        return json.dumps({"text": "I approve this leaf."}), ""
+
+    monkeypatch.setattr(legacy_cli, "_run_native_cli_process", prose)
+    grok, codex = build_legacy_landed_cli_provider_pair(policy)
+    with pytest.raises(RuntimeError, match="strict JSON"):
+        grok(grok_request)
+
+    def mismatched(
+        command: Any,
+        *,
+        cwd: Path,
+        timeout_seconds: int,
+        stdin_text: str | None = None,
+    ) -> tuple[str, str]:
+        del cwd, timeout_seconds, stdin_text
+        cmd = list(command)
+        response_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        response_path.write_text(
+            json.dumps(
+                {
+                    "schema": legacy.LEGACY_LANDED_LEAF_DECISION_SCHEMA,
+                    "decision": "approve",
+                    "manifest_id": codex_request.payload["manifest_id"],
+                    "leaf_id": "wrong-leaf",
+                    "findings": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return "", ""
+
+    monkeypatch.setattr(legacy_cli, "_run_native_cli_process", mismatched)
+    with pytest.raises(RuntimeError, match="violates its schema"):
+        codex(codex_request)

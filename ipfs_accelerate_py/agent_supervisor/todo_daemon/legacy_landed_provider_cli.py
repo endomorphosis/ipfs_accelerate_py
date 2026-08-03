@@ -8,34 +8,624 @@ own effective-provider identity or execution receipt.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import selectors
+import shutil
+import signal
+import stat
+import subprocess
 import sys
 import tempfile
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
 from ..proof.formal_verification_contracts import content_identity
 from .legacy_landed_review import (
+    LEGACY_LANDED_LEAF_DECISION_SCHEMA,
     MAX_LEAF_TOKENS,
     LegacyLandedReviewPolicy,
     LegacyLeafReviewRequest,
     LegacyProviderObservation,
     LegacyProviderPolicy,
 )
-from .llm import LLM_USAGE_MODE_ENFORCE, LlmChildResultEnvelope, LlmRouterInvocation
+from .llm import (
+    LLM_USAGE_MODE_ENFORCE,
+    LlmChildResultEnvelope,
+    LlmRouterInvocation,
+)
 
 LEGACY_LANDED_CLI_EXECUTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/legacy-landed-cli-execution@1"
 )
 DEFAULT_LEGACY_LANDED_PROVIDER_TIMEOUT_SECONDS: Final = 300
 DEFAULT_LEGACY_LANDED_MAX_NEW_TOKENS: Final = 1_024
+LEGACY_LANDED_NATIVE_STRUCTURED_EXECUTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/legacy-landed-native-structured-execution@1"
+)
+_MAX_NATIVE_CLI_CAPTURE_BYTES: Final = 1024 * 1024
+_MAX_NATIVE_RESPONSE_BYTES: Final = 64 * 1024
 
 LegacyCLIInvoker = Callable[
     [str, LlmRouterInvocation],
     tuple[str, LlmChildResultEnvelope | None],
 ]
+NativeStructuredResponseValidator = Callable[
+    [str, Mapping[str, Any]],
+    Mapping[str, Any],
+]
+
+
+def _canonical_json(value: Mapping[str, Any]) -> str:
+    return json.dumps(
+        dict(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
+
+
+def _leaf_decision_json_schema(
+    request: LegacyLeafReviewRequest,
+) -> dict[str, Any]:
+    """Return the request-bound schema passed outside the canonical prompt."""
+
+    manifest_id = request.payload.get("manifest_id")
+    leaf = request.payload.get("leaf")
+    leaf_id = leaf.get("leaf_id") if isinstance(leaf, Mapping) else None
+    if not isinstance(manifest_id, str) or not manifest_id:
+        raise RuntimeError("legacy native schema manifest binding is missing")
+    if not isinstance(leaf_id, str) or not leaf_id:
+        raise RuntimeError("legacy native schema leaf binding is missing")
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "schema": {
+                "type": "string",
+                "enum": [LEGACY_LANDED_LEAF_DECISION_SCHEMA],
+            },
+            "decision": {
+                "type": "string",
+                "enum": ["approve", "reject"],
+            },
+            "manifest_id": {"type": "string", "enum": [manifest_id]},
+            "leaf_id": {"type": "string", "enum": [leaf_id]},
+            "findings": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+        },
+        "required": [
+            "schema",
+            "decision",
+            "manifest_id",
+            "leaf_id",
+            "findings",
+        ],
+    }
+
+
+def _last_json_object(value: str) -> dict[str, Any]:
+    """Read one complete JSON object, allowing bounded CLI status lines."""
+
+    raw = str(value or "").strip()
+    candidates = [
+        raw,
+        *reversed([line.strip() for line in raw.splitlines() if line.strip()]),
+    ]
+    for candidate in candidates:
+        if not candidate.startswith("{"):
+            continue
+        try:
+            return _strict_json_object(candidate)
+        except RuntimeError:
+            continue
+    raise RuntimeError("legacy native provider did not return a JSON object")
+
+
+def _run_native_cli_process(
+    command: Sequence[str],
+    *,
+    cwd: Path,
+    timeout_seconds: int,
+    stdin_text: str | None = None,
+) -> tuple[str, str]:
+    """Run one exact argv with bounded capture and fenced descendant cleanup."""
+
+    # Bind every observed descendant PID to its Linux start time so cleanup
+    # cannot accidentally signal a PID that was recycled during a long model
+    # call. Tracking process groups also catches children which call setsid(2)
+    # and escape the direct CLI's initial session.
+    observed_members: dict[int, tuple[int, int]] = {}
+
+    def process_identity(process_id: int) -> tuple[int, int] | None:
+        try:
+            raw = Path(f"/proc/{process_id}/stat").read_text(encoding="ascii")
+            fields = raw[raw.rfind(")") + 2 :].split()
+            return int(fields[2]), int(fields[19])  # pgrp, starttime
+        except (IndexError, OSError, ValueError):
+            return None
+
+    def observe_family(root_process_id: int) -> None:
+        pending = [root_process_id]
+        visited: set[int] = set()
+        while pending and len(visited) < 4_096:
+            process_id = pending.pop()
+            if process_id in visited:
+                continue
+            visited.add(process_id)
+            identity = process_identity(process_id)
+            if identity is None:
+                continue
+            observed_members[process_id] = identity
+            try:
+                task_paths = tuple(
+                    Path(f"/proc/{process_id}/task").glob("*/children")
+                )
+            except OSError:
+                task_paths = ()
+            for children_path in task_paths:
+                try:
+                    children = children_path.read_text(encoding="ascii").split()
+                except OSError:
+                    continue
+                for child in children:
+                    try:
+                        pending.append(int(child))
+                    except ValueError:
+                        continue
+
+    def live_observed_groups() -> set[int]:
+        groups: set[int] = set()
+        for process_id, (recorded_group, recorded_start_time) in tuple(
+            observed_members.items()
+        ):
+            current = process_identity(process_id)
+            if current is not None and current[1] == recorded_start_time:
+                groups.add(current[0] or recorded_group)
+        return groups
+
+    def process_group_exists(process_group_id: int) -> bool:
+        try:
+            os.killpg(process_group_id, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def terminate_family(process: subprocess.Popen[bytes]) -> None:
+        # ``start_new_session`` makes the child's PID its process-group ID.
+        # Signal that stable ID even when the direct CLI already exited: an
+        # inherited stdout descriptor must not let a detached descendant
+        # survive a timeout/non-zero/overflow result.
+        process_group_id = int(process.pid)
+        observe_family(process_group_id)
+        process_groups = live_observed_groups() | {process_group_id}
+        for group_id in process_groups:
+            try:
+                os.killpg(group_id, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline and any(
+            process_group_exists(group_id) for group_id in process_groups
+        ):
+            try:
+                process.wait(timeout=0.02)
+            except subprocess.TimeoutExpired:
+                pass
+            time.sleep(0.01)
+        remaining_groups = live_observed_groups() | {
+            group_id
+            for group_id in process_groups
+            if process_group_exists(group_id)
+        }
+        for group_id in remaining_groups:
+            try:
+                os.killpg(group_id, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            pass
+
+    stdin_handle = tempfile.TemporaryFile(mode="w+b")
+    if stdin_text is not None:
+        stdin_handle.write(stdin_text.encode("utf-8", errors="strict"))
+        stdin_handle.seek(0)
+    process: subprocess.Popen[bytes] | None = None
+    selector = selectors.DefaultSelector()
+    captures = {"stdout": bytearray(), "stderr": bytearray()}
+    try:
+        process = subprocess.Popen(
+            [str(value) for value in command],
+            cwd=str(cwd),
+            stdin=stdin_handle if stdin_text is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+        assert process.stdout is not None
+        assert process.stderr is not None
+        observe_family(process.pid)
+        for label, stream in (
+            ("stdout", process.stdout),
+            ("stderr", process.stderr),
+        ):
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, data=label)
+        deadline = time.monotonic() + int(timeout_seconds)
+        next_family_observation = time.monotonic()
+        total_captured = 0
+        while selector.get_map():
+            now = time.monotonic()
+            if now >= next_family_observation:
+                observe_family(process.pid)
+                next_family_observation = now + 0.25
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                terminate_family(process)
+                raise RuntimeError("legacy native provider timed out")
+            events = selector.select(timeout=min(remaining, 0.1))
+            for key, _mask in events:
+                try:
+                    chunk = os.read(key.fileobj.fileno(), 64 * 1024)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    key.fileobj.close()
+                    continue
+                total_captured += len(chunk)
+                if total_captured > _MAX_NATIVE_CLI_CAPTURE_BYTES:
+                    terminate_family(process)
+                    raise RuntimeError(
+                        "legacy native provider output exceeds capture bound"
+                    )
+                captures[str(key.data)].extend(chunk)
+        try:
+            return_code = process.wait(timeout=max(0.01, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired as exc:
+            terminate_family(process)
+            raise RuntimeError("legacy native provider timed out") from exc
+        if return_code != 0:
+            terminate_family(process)
+            raise RuntimeError("legacy native provider command failed")
+        # A successful direct child may still have daemonized a descendant
+        # after closing its pipes. The structured boundary permits no such
+        # unobserved execution, so clean it before accepting the result.
+        live_descendant = any(
+            process_id != process.pid
+            and process_identity(process_id) == identity
+            for process_id, identity in tuple(observed_members.items())
+        )
+        if process_group_exists(process.pid) or live_descendant:
+            terminate_family(process)
+        try:
+            stdout = bytes(captures["stdout"]).decode("utf-8", errors="strict")
+            stderr = bytes(captures["stderr"]).decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError("legacy native provider output is not UTF-8") from exc
+        return stdout, stderr
+    except BaseException:
+        if process is not None:
+            terminate_family(process)
+        raise
+    finally:
+        selector.close()
+        stdin_handle.close()
+        if process is not None:
+            for stream in (process.stdout, process.stderr):
+                if stream is not None and not stream.closed:
+                    stream.close()
+
+
+def _write_private_text(path: Path, value: str) -> None:
+    path.write_text(value, encoding="utf-8")
+    path.chmod(0o600)
+
+
+def _read_bounded_regular_utf8(path: Path, *, max_bytes: int) -> str:
+    """Read one no-follow regular file without allocating beyond its bound."""
+
+    if (
+        isinstance(max_bytes, bool)
+        or not isinstance(max_bytes, int)
+        or max_bytes < 1
+    ):
+        raise RuntimeError("legacy native response byte bound is invalid")
+    descriptor = os.open(
+        path,
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0),
+    )
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise RuntimeError("legacy native response is not a private regular file")
+        if info.st_size > max_bytes:
+            raise RuntimeError("legacy native structured response exceeds byte bound")
+        chunks: list[bytes] = []
+        remaining = max_bytes + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        response_bytes = b"".join(chunks)
+        if len(response_bytes) > max_bytes:
+            raise RuntimeError("legacy native structured response exceeds byte bound")
+        # Reject a concurrent replace/growth race even if the bounded prefix
+        # happened to parse as JSON.
+        after = os.fstat(descriptor)
+        if (
+            after.st_dev != info.st_dev
+            or after.st_ino != info.st_ino
+            or after.st_size != len(response_bytes)
+        ):
+            raise RuntimeError("legacy native structured response changed while read")
+        return response_bytes.decode("utf-8", errors="strict").strip()
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("legacy Codex CLI structured result is unreadable") from exc
+    finally:
+        os.close(descriptor)
+
+
+def _grok_native_structured_output(
+    prompt: str,
+    invocation: LlmRouterInvocation,
+    response_schema: Mapping[str, Any],
+) -> tuple[str, str]:
+    binary = shutil.which("grok")
+    if not binary:
+        raise RuntimeError("legacy Grok CLI is unavailable")
+    cwd = invocation.repo_root.resolve(strict=True)
+    prompt_path = cwd / "canonical-prompt.json"
+    # Grok's ``--prompt-file`` accepts an ACP content envelope, not a raw text
+    # file.  Keep the canonical supervisor prompt as the one verbatim text
+    # block; the private wrapper is transport metadata and is never part of
+    # the model-visible prompt text.
+    prompt_file_payload = _canonical_json(
+        {
+            "type": "acp",
+            "content": [{"type": "text", "text": prompt}],
+        }
+    )
+    _write_private_text(prompt_path, prompt_file_payload)
+    if prompt_path.read_bytes() != prompt_file_payload.encode(
+        "utf-8", errors="strict"
+    ):
+        raise RuntimeError("legacy canonical request changed in prompt file")
+    command = [
+        binary,
+        "--model",
+        invocation.model_name,
+        "--json-schema",
+        _canonical_json(response_schema),
+        "--no-plan",
+        "--no-subagents",
+        "--disable-web-search",
+        "--no-memory",
+        "--verbatim",
+        "--max-turns",
+        "1",
+        "--permission-mode",
+        "dontAsk",
+        "--tools",
+        "",
+        "--prompt-file",
+        str(prompt_path),
+    ]
+    stdout, _stderr = _run_native_cli_process(
+        command,
+        cwd=cwd,
+        timeout_seconds=invocation.timeout_seconds,
+    )
+    payload = _last_json_object(stdout)
+    if str(payload.get("type") or "").casefold() == "error":
+        raise RuntimeError("legacy Grok CLI returned an error result")
+    if "text" in payload:
+        response_value = payload.get("text")
+        if isinstance(response_value, Mapping):
+            response_text = _canonical_json(response_value)
+        elif isinstance(response_value, str) and response_value.strip():
+            response_text = response_value.strip()
+        else:
+            raise RuntimeError("legacy Grok CLI structured result is missing")
+    else:
+        # Current Grok releases may emit the schema object directly, while
+        # older releases wrap it in ``text``. The caller's strict validator
+        # decides whether the direct object is the requested response shape.
+        response_text = _canonical_json(payload)
+    endpoint_value = payload.get("requestId")
+    endpoint_receipt_id = ""
+    if isinstance(endpoint_value, str) and endpoint_value:
+        endpoint_receipt_id = content_identity(
+            {
+                "provider": invocation.provider,
+                "model": invocation.model_name,
+                "endpoint_request_sha256": hashlib.sha256(
+                    endpoint_value.encode("utf-8")
+                ).hexdigest(),
+            }
+        )
+    return response_text, endpoint_receipt_id
+
+
+def _codex_native_structured_output(
+    prompt: str,
+    invocation: LlmRouterInvocation,
+    response_schema: Mapping[str, Any],
+    *,
+    max_response_bytes: int,
+) -> tuple[str, str]:
+    binary = shutil.which("codex")
+    if not binary:
+        raise RuntimeError("legacy Codex CLI is unavailable")
+    cwd = invocation.repo_root.resolve(strict=True)
+    schema_path = cwd / "response-schema.json"
+    response_path = cwd / "last-message.json"
+    _write_private_text(schema_path, _canonical_json(response_schema))
+    _write_private_text(response_path, "")
+    command = [
+        binary,
+        "exec",
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--sandbox",
+        "read-only",
+        "--color",
+        "never",
+        "--model",
+        invocation.model_name,
+        "--output-schema",
+        str(schema_path),
+        "--output-last-message",
+        str(response_path),
+        "--json",
+        "-",
+    ]
+    _stdout, _stderr = _run_native_cli_process(
+        command,
+        cwd=cwd,
+        timeout_seconds=invocation.timeout_seconds,
+        stdin_text=prompt,
+    )
+    try:
+        response_text = _read_bounded_regular_utf8(
+            response_path,
+            max_bytes=max_response_bytes,
+        )
+    except OSError as exc:
+        raise RuntimeError("legacy Codex CLI structured result is unreadable") from exc
+    if not response_text:
+        raise RuntimeError("legacy Codex CLI structured result is missing")
+    return response_text, ""
+
+
+def _validate_native_response(
+    response_text: str,
+    response_schema: Mapping[str, Any],
+) -> dict[str, Any]:
+    if len(response_text.encode("utf-8")) > _MAX_NATIVE_RESPONSE_BYTES:
+        raise RuntimeError("legacy native structured response exceeds byte bound")
+    response = _strict_json_object(response_text)
+    properties = response_schema.get("properties")
+    if not isinstance(properties, Mapping):
+        raise RuntimeError("legacy native response schema is invalid")
+    manifest_values = properties.get("manifest_id")
+    leaf_values = properties.get("leaf_id")
+    expected_manifest = (
+        manifest_values.get("enum")
+        if isinstance(manifest_values, Mapping)
+        else None
+    )
+    expected_leaf = (
+        leaf_values.get("enum") if isinstance(leaf_values, Mapping) else None
+    )
+    if (
+        set(response)
+        != {"schema", "decision", "manifest_id", "leaf_id", "findings"}
+        or response.get("schema") != LEGACY_LANDED_LEAF_DECISION_SCHEMA
+        or response.get("decision") not in {"approve", "reject"}
+        or expected_manifest != [response.get("manifest_id")]
+        or expected_leaf != [response.get("leaf_id")]
+        or not isinstance(response.get("findings"), list)
+        or len(response["findings"]) > 64
+        or not all(isinstance(item, str) for item in response["findings"])
+    ):
+        raise RuntimeError("legacy native structured response violates its schema")
+    return response
+
+
+def _invoke_native_structured_cli(
+    prompt: str,
+    invocation: LlmRouterInvocation,
+    response_schema: Mapping[str, Any],
+    *,
+    response_validator: NativeStructuredResponseValidator | None = None,
+    execution_schema: str = LEGACY_LANDED_NATIVE_STRUCTURED_EXECUTION_SCHEMA,
+    max_response_bytes: int = _MAX_NATIVE_RESPONSE_BYTES,
+) -> tuple[str, LlmChildResultEnvelope]:
+    if (
+        isinstance(max_response_bytes, bool)
+        or not isinstance(max_response_bytes, int)
+        or max_response_bytes < 1
+        or max_response_bytes > _MAX_NATIVE_CLI_CAPTURE_BYTES
+    ):
+        raise RuntimeError("legacy native response byte bound is invalid")
+    expected_provider = str(invocation.provider or "")
+    if expected_provider == "grok_cli":
+        response_text, endpoint_receipt_id = _grok_native_structured_output(
+            prompt,
+            invocation,
+            response_schema,
+        )
+    elif expected_provider == "codex_cli":
+        response_text, endpoint_receipt_id = _codex_native_structured_output(
+            prompt,
+            invocation,
+            response_schema,
+            max_response_bytes=max_response_bytes,
+        )
+    else:
+        raise RuntimeError("legacy native provider is not policy-admissible")
+    if len(response_text.encode("utf-8")) > max_response_bytes:
+        raise RuntimeError("legacy native structured response exceeds byte bound")
+    validator = response_validator or _validate_native_response
+    response = dict(validator(response_text, response_schema))
+    response_text = _canonical_json(response)
+    if len(response_text.encode("utf-8")) > max_response_bytes:
+        raise RuntimeError("legacy native structured response exceeds byte bound")
+    execution_body = {
+        "schema": str(execution_schema),
+        "request_id": invocation.request_id,
+        "configured_provider": expected_provider,
+        "configured_model": invocation.model_name,
+        "effective_provider": expected_provider,
+        "effective_model": invocation.model_name,
+        "canonical_prompt_sha256": hashlib.sha256(
+            prompt.encode("utf-8", errors="strict")
+        ).hexdigest(),
+        "output_schema_id": content_identity(response_schema),
+        "response_id": content_identity(response),
+        "exit_code": 0,
+    }
+    execution_result_id = content_identity(execution_body)
+    supervisor_receipt_id = content_identity(
+        {
+            "schema": "ipfs_accelerate_py/agent-supervisor/native-cli-receipt@1",
+            "execution_result_id": execution_result_id,
+            "provider": expected_provider,
+            "model": invocation.model_name,
+        }
+    )
+    return response_text, LlmChildResultEnvelope(
+        usage_mode=invocation.usage_mode,
+        request_id=invocation.request_id,
+        attempt=invocation.attempt,
+        idempotency_key=invocation.idempotency_key,
+        status="ok",
+        supervisor_receipt_id=supervisor_receipt_id,
+        endpoint_receipt_id=endpoint_receipt_id,
+        execution_result_id=execution_result_id,
+        effective_provider=expected_provider,
+        text_chars=len(response_text),
+        exit_code=0,
+    )
 
 
 def _strict_json_object(value: str) -> dict[str, Any]:
@@ -88,13 +678,14 @@ class BoundLegacyLandedCLIProvider:
             raise ValueError("legacy CLI response token bound is invalid")
 
     def _invoke(
-        self, prompt: str, invocation: LlmRouterInvocation
+        self,
+        prompt: str,
+        invocation: LlmRouterInvocation,
+        response_schema: Mapping[str, Any],
     ) -> tuple[str, LlmChildResultEnvelope | None]:
         if self.invoker is not None:
             return self.invoker(prompt, invocation)
-        from .llm import call_llm_router_with_receipt
-
-        return call_llm_router_with_receipt(prompt, invocation)
+        return _invoke_native_structured_cli(prompt, invocation, response_schema)
 
     def __call__(
         self, request: LegacyLeafReviewRequest
@@ -116,6 +707,7 @@ class BoundLegacyLandedCLIProvider:
             raise RuntimeError("legacy canonical request must be ASCII DAG-JSON") from exc
         if prompt.encode("ascii") != request.canonical_prompt:
             raise RuntimeError("legacy canonical request changed before invocation")
+        response_schema = _leaf_decision_json_schema(request)
 
         with tempfile.TemporaryDirectory(
             prefix=f"ipfs-accelerate-{expected.role}-"
@@ -125,6 +717,7 @@ class BoundLegacyLandedCLIProvider:
                 model_name=expected.model,
                 provider=expected.provider,
                 allow_local_fallback=False,
+                allow_cross_provider_fallback=False,
                 timeout_seconds=self.timeout_seconds,
                 max_new_tokens=self.max_new_tokens,
                 max_prompt_chars=len(prompt),
@@ -141,7 +734,7 @@ class BoundLegacyLandedCLIProvider:
                 side_effect_boundary="review_only",
                 write_result_envelope=True,
             )
-            output, child = self._invoke(prompt, invocation)
+            output, child = self._invoke(prompt, invocation, response_schema)
 
         if child is None:
             raise RuntimeError("legacy provider child receipt is missing")
@@ -165,6 +758,7 @@ class BoundLegacyLandedCLIProvider:
             "configured_provider": expected.provider,
             "configured_model": expected.model,
             "effective_provider": receipt["effective_provider"],
+            "effective_model": expected.model,
             "child_result_schema": receipt["schema"],
             "child_result_status": receipt["status"],
             "child_exit_code": exit_code,
@@ -172,6 +766,8 @@ class BoundLegacyLandedCLIProvider:
             "endpoint_receipt_id": str(receipt.get("endpoint_receipt_id") or ""),
             "execution_result_id": str(receipt.get("execution_result_id") or ""),
             "response_id": content_identity(response),
+            "native_output_schema_id": content_identity(response_schema),
+            "native_structured_output_enforced": self.invoker is None,
             "full_request_token_upper_bound": request.token_upper_bound,
             "fallback_used": False,
             "repository_checkout_used_as_working_directory": False,
@@ -211,6 +807,7 @@ __all__ = [
     "DEFAULT_LEGACY_LANDED_MAX_NEW_TOKENS",
     "DEFAULT_LEGACY_LANDED_PROVIDER_TIMEOUT_SECONDS",
     "LEGACY_LANDED_CLI_EXECUTION_SCHEMA",
+    "LEGACY_LANDED_NATIVE_STRUCTURED_EXECUTION_SCHEMA",
     "BoundLegacyLandedCLIProvider",
     "LegacyCLIInvoker",
     "build_legacy_landed_cli_provider_pair",

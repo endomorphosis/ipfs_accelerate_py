@@ -104,6 +104,7 @@ def test_default_implementation_provider_prefers_grok(
     fallback_index = command.index("--codex-fallback-command-json")
     fallback_command = json.loads(command[fallback_index + 1])
     assert fallback_command[:2] == ["/opt/providers/codex", "exec"]
+    assert fallback_command[fallback_command.index("-m") + 1] == "gpt-5.6-sol"
     assert fallback_command[-1] == "-"
 
 
@@ -245,7 +246,30 @@ def test_default_implementation_provider_falls_back_to_codex(
         "-C",
         str(tmp_path.resolve()),
     ]
+    assert command[command.index("-m") + 1] == "gpt-5.6-sol"
     assert command[-1] == "-"
+
+
+def test_codex_before_copilot_uses_local_default_model(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv(implementation_daemon._CODEX_MODEL_ENV, raising=False)
+
+    command = implementation_daemon._copilot_fallback_command(
+        codex="/opt/providers/codex",
+        copilot="/opt/providers/copilot",
+        workspace_path=tmp_path,
+    )
+
+    # Positional arguments after the embedded shell program are stable inputs
+    # consumed by that program; the Codex model is its fourth argument.
+    assert command[4:8] == [
+        "/opt/providers/codex",
+        "/opt/providers/copilot",
+        str(tmp_path),
+        "gpt-5.6-sol",
+    ]
 
 
 def test_unauthenticated_grok_binary_falls_back_to_codex_before_dispatch(

@@ -6,6 +6,9 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
+import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +16,9 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     implementation_supervisor_command,
     plan_bundle_lanes,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    legacy_landed_provider_cli as native_cli,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
     ImplementationProviderRouter,
@@ -97,6 +103,38 @@ def _request(role: ProviderRole) -> ProviderRequest:
     )
 
 
+def _native_request(role: ProviderRole) -> ProviderRequest:
+    payload: dict[str, Any]
+    if role is ProviderRole.GROK_IMPLEMENT:
+        payload = {
+            "contract_packet": {
+                "scope": {"write_paths": ["module.py"]},
+            }
+        }
+    else:
+        payload = {"admitted_implementation_proposal": {"bounded": True}}
+    prompt = json.dumps(
+        {
+            "role": role.value,
+            "task_id": "ASE-005",
+            "provider_input": payload,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return ProviderRequest(
+        role=role,
+        packet_id="packet:ase-005",
+        snapshot_id="git-commit:fixture",
+        task_id="ASE-005",
+        payload=payload,
+        bounds=ProviderBounds(),
+        prompt=prompt,
+        prompt_tokens=32,
+    )
+
+
 def test_policy_is_fixed_to_grok_implementation_and_independent_codex_review() -> None:
     policy = ProductionCLIProviderPolicy()
     payload = policy.to_dict()
@@ -104,7 +142,9 @@ def test_policy_is_fixed_to_grok_implementation_and_independent_codex_review() -
     assert policy.name == PRODUCTION_CLI_POLICY_NAME
     assert policy.declared_roles == ("grok-implement", "codex-review")
     assert payload["implementation"]["provider"] == "grok_cli"
+    assert payload["implementation"]["model"] == "grok-4.5"
     assert payload["review"]["provider"] == "codex_cli"
+    assert payload["review"]["model"] == "gpt-5.6-sol"
     assert payload["review"]["independent"] is True
     assert payload["implementation"]["fallback_provider"] == ""
     assert payload["implementation"]["failure_disposition"] == (
@@ -227,6 +267,9 @@ def test_adapter_binds_receipt_and_uses_empty_non_repository_cwd() -> None:
         observed["children"] = tuple(config.repo_root.iterdir())
         observed["provider"] = config.provider
         observed["required"] = config.required_effective_providers
+        observed["cross_provider_fallback"] = (
+            config.allow_cross_provider_fallback
+        )
         return (
             json.dumps(
                 {
@@ -258,9 +301,282 @@ def test_adapter_binds_receipt_and_uses_empty_non_repository_cwd() -> None:
     assert execution["operating_system_filesystem_confinement"] is False
     assert observed["provider"] == "grok_cli"
     assert observed["required"] == ("grok_cli",)
+    assert observed["cross_provider_fallback"] is False
     assert observed["children"] == ()
     assert Path(observed["repo_root"]).exists() is False
     assert observed["prompt"] == _request(ProviderRole.GROK_IMPLEMENT).prompt.decode()
+
+
+def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: dict[str, dict[str, Any]] = {}
+    requests = {
+        role: _native_request(role)
+        for role in (ProviderRole.GROK_IMPLEMENT, ProviderRole.CODEX_REVIEW)
+    }
+    monkeypatch.setattr(
+        native_cli.shutil,
+        "which",
+        lambda name: f"/trusted/bin/{name}",
+    )
+
+    def run_cli(
+        command: Any,
+        *,
+        cwd: Path,
+        timeout_seconds: int,
+        stdin_text: str | None = None,
+    ) -> tuple[str, str]:
+        cmd = list(command)
+        provider = "grok_cli" if cmd[0].endswith("/grok") else "codex_cli"
+        role = (
+            ProviderRole.GROK_IMPLEMENT
+            if provider == "grok_cli"
+            else ProviderRole.CODEX_REVIEW
+        )
+        request = requests[role]
+        if provider == "grok_cli":
+            schema = json.loads(cmd[cmd.index("--json-schema") + 1])
+            prompt_path = Path(cmd[cmd.index("--prompt-file") + 1])
+            prompt_envelope = json.loads(prompt_path.read_text(encoding="utf-8"))
+            assert prompt_envelope["type"] == "acp"
+            assert len(prompt_envelope["content"]) == 1
+            assert prompt_envelope["content"][0]["type"] == "text"
+            prompt = prompt_envelope["content"][0]["text"]
+            response = {
+                "packet_id": request.packet_id,
+                "snapshot_id": request.snapshot_id,
+                "task_id": request.task_id,
+                "proposal": {
+                    "declared_paths": ["module.py"],
+                    "files": [
+                        {"path": "module.py", "content": "VALUE = 1\n"}
+                    ],
+                    "patch": "",
+                },
+            }
+            output = json.dumps(
+                {"text": response, "requestId": "exact-grok-request"}
+            )
+            assert stdin_text is None
+        else:
+            schema_path = Path(cmd[cmd.index("--output-schema") + 1])
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            prompt = str(stdin_text)
+            response = {
+                "packet_id": request.packet_id,
+                "snapshot_id": request.snapshot_id,
+                "task_id": request.task_id,
+                "decision": "approve",
+                "findings": [],
+            }
+            response_path = Path(cmd[cmd.index("--output-last-message") + 1])
+            response_path.write_text(json.dumps(response), encoding="utf-8")
+            output = '{"type":"turn.completed"}\n'
+        observed[provider] = {
+            "command": cmd,
+            "cwd": cwd,
+            "timeout_seconds": timeout_seconds,
+            "prompt": prompt,
+            "schema": schema,
+        }
+        return output, ""
+
+    monkeypatch.setattr(native_cli, "_run_native_cli_process", run_cli)
+    grok, codex = build_production_cli_provider_pair()
+    grok_response = grok(requests[ProviderRole.GROK_IMPLEMENT])
+    codex_response = codex(requests[ProviderRole.CODEX_REVIEW])
+
+    for provider, expected_model, role in (
+        ("grok_cli", "grok-4.5", ProviderRole.GROK_IMPLEMENT),
+        ("codex_cli", "gpt-5.6-sol", ProviderRole.CODEX_REVIEW),
+    ):
+        record = observed[provider]
+        command = record["command"]
+        schema = record["schema"]
+        request = requests[role]
+        assert command[command.index("--model") + 1] == expected_model
+        assert request.prompt.decode("utf-8") == record["prompt"]
+        assert record["cwd"].exists() is False
+        assert record["timeout_seconds"] == 119
+        assert schema["additionalProperties"] is False
+        assert schema["properties"]["packet_id"]["enum"] == [
+            request.packet_id
+        ]
+        assert schema["properties"]["snapshot_id"]["enum"] == [
+            request.snapshot_id
+        ]
+        assert schema["properties"]["task_id"]["enum"] == [request.task_id]
+    grok_schema = observed["grok_cli"]["schema"]
+    proposal_schema = grok_schema["properties"]["proposal"]
+    assert proposal_schema["additionalProperties"] is False
+    assert proposal_schema["properties"]["declared_paths"]["items"][
+        "enum"
+    ] == ["module.py"]
+    assert "oneOf" in proposal_schema
+    assert observed["grok_cli"]["command"][
+        observed["grok_cli"]["command"].index("--tools") + 1
+    ] == ""
+    assert "--verbatim" in observed["grok_cli"]["command"]
+    assert "--output-schema" in observed["codex_cli"]["command"]
+    assert observed["codex_cli"]["command"][-1] == "-"
+
+    for response, expected_provider, expected_model in (
+        (grok_response, "grok_cli", "grok-4.5"),
+        (codex_response, "codex_cli", "gpt-5.6-sol"),
+    ):
+        execution = response["supervisor_provider_execution"]
+        assert execution["effective_provider"] == expected_provider
+        assert execution["effective_model"] == expected_model
+        assert execution["native_structured_output_enforced"] is True
+        assert execution["cross_provider_fallback_allowed"] is False
+        assert execution["supervisor_receipt_id"]
+        assert execution["execution_result_id"]
+        assert execution["native_output_schema_id"].startswith("sha256:")
+
+
+def test_native_pair_rejects_response_with_wrong_request_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _native_request(ProviderRole.CODEX_REVIEW)
+    monkeypatch.setattr(
+        native_cli.shutil,
+        "which",
+        lambda name: f"/trusted/bin/{name}",
+    )
+
+    def mismatched(
+        command: Any,
+        *,
+        cwd: Path,
+        timeout_seconds: int,
+        stdin_text: str | None = None,
+    ) -> tuple[str, str]:
+        del cwd, timeout_seconds, stdin_text
+        cmd = list(command)
+        response_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        response_path.write_text(
+            json.dumps(
+                {
+                    "packet_id": "packet:wrong",
+                    "snapshot_id": request.snapshot_id,
+                    "task_id": request.task_id,
+                    "decision": "approve",
+                    "findings": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return "", ""
+
+    monkeypatch.setattr(native_cli, "_run_native_cli_process", mismatched)
+    _grok, codex = build_production_cli_provider_pair()
+
+    with pytest.raises(RuntimeError, match="request binding"):
+        codex(request)
+
+
+def test_native_codex_response_file_is_limited_before_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = _native_request(ProviderRole.CODEX_REVIEW)
+    request = replace(
+        original,
+        bounds=ProviderBounds(max_response_bytes=128),
+    )
+    monkeypatch.setattr(
+        native_cli.shutil,
+        "which",
+        lambda name: f"/trusted/bin/{name}",
+    )
+
+    def oversized(
+        command: Any,
+        *,
+        cwd: Path,
+        timeout_seconds: int,
+        stdin_text: str | None = None,
+    ) -> tuple[str, str]:
+        del cwd, timeout_seconds, stdin_text
+        cmd = list(command)
+        response_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        response_path.write_bytes(b"x" * 129)
+        return "", ""
+
+    monkeypatch.setattr(native_cli, "_run_native_cli_process", oversized)
+    _grok, codex = build_production_cli_provider_pair()
+
+    with pytest.raises(RuntimeError, match="exceeds byte bound"):
+        codex(request)
+
+
+def test_native_response_reader_rejects_fifo_without_blocking(tmp_path: Path) -> None:
+    response_path = tmp_path / "last-message.json"
+    os.mkfifo(response_path, 0o600)
+
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="private regular file"):
+        native_cli._read_bounded_regular_utf8(response_path, max_bytes=128)
+    assert time.monotonic() - started < 1.0
+
+
+def test_native_process_capture_is_bounded_and_kills_descendants(
+    tmp_path: Path,
+) -> None:
+    child_pid_path = tmp_path / "child.pid"
+    script = (
+        "import os,pathlib,subprocess,sys,time;"
+        "child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'],"
+        "start_new_session=True);"
+        f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid));"
+        "os.write(1,b'x'*(2*1024*1024));time.sleep(60)"
+    )
+
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="capture bound"):
+        native_cli._run_native_cli_process(
+            [sys.executable, "-c", script],
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+    assert time.monotonic() - started < 10
+    child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline and Path(f"/proc/{child_pid}").exists():
+        state = Path(f"/proc/{child_pid}/stat").read_text().split()[2]
+        if state == "Z":
+            break
+        time.sleep(0.02)
+    if Path(f"/proc/{child_pid}/stat").exists():
+        assert Path(f"/proc/{child_pid}/stat").read_text().split()[2] == "Z"
+
+
+def test_native_process_timeout_kills_detached_descendant(tmp_path: Path) -> None:
+    child_pid_path = tmp_path / "timeout-child.pid"
+    script = (
+        "import pathlib,subprocess,sys,time;"
+        "child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'],"
+        "start_new_session=True);"
+        f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid));"
+        "time.sleep(60)"
+    )
+
+    with pytest.raises(RuntimeError, match="timed out"):
+        native_cli._run_native_cli_process(
+            [sys.executable, "-c", script],
+            cwd=tmp_path,
+            timeout_seconds=1,
+        )
+    child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline and Path(f"/proc/{child_pid}").exists():
+        state = Path(f"/proc/{child_pid}/stat").read_text().split()[2]
+        if state == "Z":
+            break
+        time.sleep(0.02)
+    if Path(f"/proc/{child_pid}/stat").exists():
+        assert Path(f"/proc/{child_pid}/stat").read_text().split()[2] == "Z"
 
 
 @pytest.mark.parametrize(

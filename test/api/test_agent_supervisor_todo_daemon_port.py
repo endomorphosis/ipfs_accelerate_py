@@ -4096,9 +4096,11 @@ def test_repo_implementation_multi_supervisor_launcher_uses_packaged_resolver_de
 
 def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
     codex_log = tmp_path / "codex.prompt"
+    codex_argv_log = tmp_path / "codex.argv"
     codex_bin = tmp_path / "codex"
     codex_bin.write_text(
         "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' \"$@\" > {shlex.quote(str(codex_argv_log))}\n"
         "while (($#)); do\n"
         "  if [[ \"$1\" == \"-C\" ]]; then shift; workspace=\"$1\"; fi\n"
         "  shift || true\n"
@@ -4112,6 +4114,7 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
         "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
         "CODEX_BIN": str(codex_bin),
         "COPILOT_BIN": "",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "",
         "AGENT_RESOLVER_LOCK_BYPASS": "1",
     }
 
@@ -4131,6 +4134,8 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
 
     assert completed.returncode == 0, completed.stderr
     assert codex_log.read_text(encoding="utf-8") == "resolve this conflict"
+    codex_argv = codex_argv_log.read_text(encoding="utf-8").splitlines()
+    assert codex_argv[codex_argv.index("-m") + 1] == "gpt-5.6-sol"
 
 
 def test_llm_merge_resolver_provider_defaults_fit_outer_budget(monkeypatch):

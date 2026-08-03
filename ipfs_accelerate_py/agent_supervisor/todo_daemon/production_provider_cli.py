@@ -43,6 +43,9 @@ from .contract_packet_provider_router import (
     ProviderRequest,
     ProviderRole,
 )
+from .legacy_landed_provider_cli import (
+    _invoke_native_structured_cli,
+)
 from .llm import (
     LLM_USAGE_MODE_ENFORCE,
     LlmChildResultEnvelope,
@@ -55,6 +58,9 @@ PRODUCTION_CLI_POLICY_SCHEMA: Final = (
 PRODUCTION_CLI_EXECUTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/production-cli-provider-execution@1"
 )
+PRODUCTION_NATIVE_STRUCTURED_EXECUTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/production-native-structured-execution@1"
+)
 PRODUCTION_LANDED_TASK_GUARD_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/production-landed-task-guard@1"
 )
@@ -62,7 +68,7 @@ PRODUCTION_CLI_POLICY_NAME: Final = (
     "grok-implement-codex-independent-review"
 )
 DEFAULT_GROK_MODEL: Final = "grok-4.5"
-DEFAULT_CODEX_MODEL: Final = "chatgpt-5.6-terra"
+DEFAULT_CODEX_MODEL: Final = "gpt-5.6-sol"
 DEFAULT_CONTEXT_BUDGET_TOKENS: Final = MAX_PROVIDER_PROMPT_TOKENS
 DEFAULT_PROVIDER_TIMEOUT_SECONDS: Final = 300.0
 DEFAULT_MAX_NEW_TOKENS: Final = 4_096
@@ -123,6 +129,199 @@ def _json_object_without_duplicates(value: str) -> dict[str, Any]:
     return parsed
 
 
+def _request_write_paths(request: ProviderRequest) -> tuple[str, ...]:
+    """Return the exact operator-authored write scope for a Grok request."""
+
+    packet = request.payload.get("contract_packet")
+    scope = packet.get("scope") if isinstance(packet, Mapping) else None
+    raw_paths = scope.get("write_paths") if isinstance(scope, Mapping) else None
+    if not isinstance(raw_paths, (list, tuple)) or not raw_paths:
+        raise RuntimeError("production Grok request lacks an exact write scope")
+    paths = tuple(str(item) for item in raw_paths)
+    if (
+        any(not item or item != item.strip() for item in paths)
+        or len(paths) != len(set(paths))
+    ):
+        raise RuntimeError("production Grok write scope is not canonical")
+    return paths
+
+
+def _production_response_json_schema(
+    request: ProviderRequest,
+) -> dict[str, Any]:
+    """Build one strict role- and request-bound native output schema."""
+
+    binding_properties: dict[str, Any] = {
+        "packet_id": {"type": "string", "enum": [request.packet_id]},
+        "snapshot_id": {"type": "string", "enum": [request.snapshot_id]},
+        "task_id": {"type": "string", "enum": [request.task_id]},
+    }
+    binding_required = ["packet_id", "snapshot_id", "task_id"]
+    if request.role is ProviderRole.GROK_IMPLEMENT:
+        paths = _request_write_paths(request)
+        proposal_properties: dict[str, Any] = {
+            "declared_paths": {
+                "type": "array",
+                "items": {"type": "string", "enum": list(paths)},
+                "minItems": 1,
+                "maxItems": len(paths),
+                "uniqueItems": True,
+            },
+            "files": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "path": {"type": "string", "enum": list(paths)},
+                        "content": {
+                            "type": "string",
+                            "maxLength": request.bounds.max_response_bytes,
+                        },
+                    },
+                    "required": ["path", "content"],
+                },
+                "maxItems": len(paths),
+            },
+            "patch": {
+                "type": "string",
+                "maxLength": request.bounds.max_response_bytes,
+            },
+        }
+        properties = {
+            **binding_properties,
+            "proposal": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": proposal_properties,
+                "required": ["declared_paths", "files", "patch"],
+                "oneOf": [
+                    {
+                        "properties": {
+                            "files": {"minItems": 1},
+                            "patch": {"maxLength": 0},
+                        }
+                    },
+                    {
+                        "properties": {
+                            "files": {"maxItems": 0},
+                            "patch": {"minLength": 1},
+                        }
+                    },
+                ],
+            },
+        }
+        required = [*binding_required, "proposal"]
+    elif request.role is ProviderRole.CODEX_REVIEW:
+        properties = {
+            **binding_properties,
+            "decision": {"type": "string", "enum": ["approve", "reject"]},
+            "findings": {
+                "type": "array",
+                "items": {"type": "string", "maxLength": 4_096},
+                "maxItems": 64,
+            },
+        }
+        required = [*binding_required, "decision", "findings"]
+    else:
+        raise RuntimeError("production native role is not policy-admissible")
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": properties,
+        "required": required,
+    }
+
+
+def _validate_production_native_response(
+    response_text: str,
+    response_schema: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Independently enforce the strict schema subset used by this route."""
+
+    response = _json_object_without_duplicates(response_text)
+    properties = response_schema.get("properties")
+    required = response_schema.get("required")
+    if not isinstance(properties, Mapping) or not isinstance(required, list):
+        raise RuntimeError("production native response schema is invalid")
+    if set(response) != set(required):
+        raise RuntimeError("production native response violates its strict schema")
+    for binding in ("packet_id", "snapshot_id", "task_id"):
+        definition = properties.get(binding)
+        expected = definition.get("enum") if isinstance(definition, Mapping) else None
+        if expected != [response.get(binding)]:
+            raise RuntimeError(
+                "production native response violates its request binding"
+            )
+
+    if "proposal" in properties:
+        proposal = response.get("proposal")
+        proposal_schema = properties.get("proposal")
+        proposal_properties = (
+            proposal_schema.get("properties")
+            if isinstance(proposal_schema, Mapping)
+            else None
+        )
+        if not isinstance(proposal, Mapping) or not isinstance(
+            proposal_properties, Mapping
+        ):
+            raise RuntimeError("production Grok response violates its strict schema")
+        if set(proposal) != {"declared_paths", "files", "patch"}:
+            raise RuntimeError("production Grok response violates its strict schema")
+        declared = proposal.get("declared_paths")
+        files = proposal.get("files")
+        patch = proposal.get("patch")
+        declared_schema = proposal_properties.get("declared_paths")
+        item_schema = (
+            declared_schema.get("items")
+            if isinstance(declared_schema, Mapping)
+            else None
+        )
+        allowed = item_schema.get("enum") if isinstance(item_schema, Mapping) else None
+        if (
+            not isinstance(declared, list)
+            or not declared
+            or len(declared) != len(set(declared))
+            or not isinstance(allowed, list)
+            or any(not isinstance(item, str) or item not in allowed for item in declared)
+            or not isinstance(files, list)
+            or not isinstance(patch, str)
+            or bool(files) == bool(patch)
+        ):
+            raise RuntimeError("production Grok response violates its strict schema")
+        file_paths: list[str] = []
+        for item in files:
+            if (
+                not isinstance(item, Mapping)
+                or set(item) != {"path", "content"}
+                or not isinstance(item.get("path"), str)
+                or item.get("path") not in allowed
+                or not isinstance(item.get("content"), str)
+            ):
+                raise RuntimeError(
+                    "production Grok response violates its strict schema"
+                )
+            file_paths.append(str(item["path"]))
+        if files and (
+            len(file_paths) != len(set(file_paths))
+            or set(file_paths) != set(declared)
+        ):
+            raise RuntimeError("production Grok response violates its strict schema")
+    else:
+        decision = response.get("decision")
+        findings = response.get("findings")
+        if (
+            decision not in {"approve", "reject"}
+            or not isinstance(findings, list)
+            or len(findings) > 64
+            or not all(
+                isinstance(item, str) and len(item) <= 4_096 for item in findings
+            )
+        ):
+            raise RuntimeError("production Codex response violates its strict schema")
+    return response
+
+
 @dataclass(frozen=True, slots=True)
 class ProductionCLIProviderPolicy:
     """Operator-selected immutable Grok-implementation/Codex-review policy."""
@@ -178,6 +377,10 @@ class ProductionCLIProviderPolicy:
         ):
             if not str(value or "").strip():
                 raise ValueError(f"{name} is required")
+        if self.grok_provider != "grok_cli" or self.codex_provider != "codex_cli":
+            raise ValueError(
+                "production CLI policy requires exact Grok and Codex providers"
+            )
         if self.grok_provider.strip().casefold() == self.codex_provider.strip().casefold():
             raise ValueError("implementation and review providers must be distinct")
 
@@ -242,24 +445,40 @@ class BoundProductionCLIProvider:
 
     def __post_init__(self) -> None:
         expected = {
-            ProviderRole.GROK_IMPLEMENT: self.policy.grok_provider,
-            ProviderRole.CODEX_REVIEW: self.policy.codex_provider,
+            ProviderRole.GROK_IMPLEMENT: (
+                self.policy.grok_provider,
+                self.policy.grok_model,
+            ),
+            ProviderRole.CODEX_REVIEW: (
+                self.policy.codex_provider,
+                self.policy.codex_model,
+            ),
         }.get(self.role)
         if expected is None:
             raise ValueError("production CLI adapter supports only Grok/Codex roles")
-        if self.provider_name != expected:
-            raise ValueError("provider name does not match its policy-bound role")
+        if (self.provider_name, self.model_name) != expected:
+            raise ValueError(
+                "provider name/model do not match their policy-bound role"
+            )
 
     def _invoke(
         self,
         prompt: str,
         config: LlmRouterInvocation,
+        response_schema: Mapping[str, Any],
+        *,
+        max_response_bytes: int,
     ) -> tuple[str, LlmChildResultEnvelope | None]:
         if self.invoker is not None:
             return self.invoker(prompt, config)
-        from .llm import call_llm_router_with_receipt
-
-        return call_llm_router_with_receipt(prompt, config)
+        return _invoke_native_structured_cli(
+            prompt,
+            config,
+            response_schema,
+            response_validator=_validate_production_native_response,
+            execution_schema=PRODUCTION_NATIVE_STRUCTURED_EXECUTION_SCHEMA,
+            max_response_bytes=max_response_bytes,
+        )
 
     def __call__(self, request: ProviderRequest) -> Mapping[str, Any]:
         if not isinstance(request, ProviderRequest):
@@ -275,6 +494,14 @@ class BoundProductionCLIProvider:
             raise RuntimeError("provider request prompt is not UTF-8") from exc
 
         request_id = _request_id(request, self.policy.policy_id)
+        # Existing test/operator invokers keep their callable API and output
+        # contract. Only the built-in production transport requires the native
+        # CLI schema (and therefore the exact operator write scope).
+        response_schema = (
+            _production_response_json_schema(request)
+            if self.invoker is None
+            else {}
+        )
         # The child provider is deliberately started from a fresh empty
         # directory, and the bounded prompt contains no checkout path.  This
         # avoids making the repository its working directory; it is not an OS
@@ -289,6 +516,7 @@ class BoundProductionCLIProvider:
                 model_name=self.model_name,
                 provider=self.provider_name,
                 allow_local_fallback=False,
+                allow_cross_provider_fallback=False,
                 timeout_seconds=max(
                     1,
                     min(
@@ -311,7 +539,12 @@ class BoundProductionCLIProvider:
                 side_effect_boundary="proposal_only",
                 write_result_envelope=True,
             )
-            output, child_receipt = self._invoke(prompt, invocation)
+            output, child_receipt = self._invoke(
+                prompt,
+                invocation,
+                response_schema,
+                max_response_bytes=request.bounds.max_response_bytes,
+            )
 
         if len(output.encode("utf-8")) > request.bounds.max_response_bytes:
             raise RuntimeError("provider response exceeds its exact byte bound")
@@ -320,6 +553,7 @@ class BoundProductionCLIProvider:
             raise RuntimeError("provider child did not return an execution receipt")
         receipt = child_receipt.to_dict()
         exit_code = receipt.get("exit_code")
+        native_structured = self.invoker is None
         if (
             receipt.get("status") != "ok"
             or isinstance(exit_code, bool)
@@ -328,6 +562,15 @@ class BoundProductionCLIProvider:
             or receipt.get("request_id") != request_id
             or receipt.get("idempotency_key") != request_id
             or receipt.get("effective_provider") != self.provider_name
+            or receipt.get("attempt") != 1
+            or receipt.get("usage_mode") != LLM_USAGE_MODE_ENFORCE
+            or (
+                native_structured
+                and (
+                    not str(receipt.get("supervisor_receipt_id") or "")
+                    or not str(receipt.get("execution_result_id") or "")
+                )
+            )
         ):
             raise RuntimeError("provider child execution receipt is not bound")
         if self.role is ProviderRole.CODEX_REVIEW:
@@ -350,9 +593,27 @@ class BoundProductionCLIProvider:
             "configured_provider": self.provider_name,
             "configured_model": self.model_name,
             "effective_provider": receipt["effective_provider"],
+            # Native execution passes this exact pinned model in argv. The
+            # generic child envelope has no effective-model field, so this
+            # supervisor-authored receipt records and enforces that boundary.
+            "effective_model": self.model_name,
             "child_result_schema": receipt["schema"],
             "child_result_status": receipt["status"],
             "child_exit_code": exit_code,
+            "supervisor_receipt_id": str(
+                receipt.get("supervisor_receipt_id") or ""
+            ),
+            "endpoint_receipt_id": str(
+                receipt.get("endpoint_receipt_id") or ""
+            ),
+            "execution_result_id": str(
+                receipt.get("execution_result_id") or ""
+            ),
+            "native_output_schema_id": (
+                _policy_id(response_schema) if native_structured else ""
+            ),
+            "native_structured_output_enforced": native_structured,
+            "cross_provider_fallback_allowed": False,
             "model_output_authored_receipt": False,
             "repository_checkout_used_as_working_directory": False,
             "operating_system_filesystem_confinement": False,
@@ -545,6 +806,7 @@ __all__ = [
     "PRODUCTION_CLI_POLICY_NAME",
     "PRODUCTION_CLI_POLICY_SCHEMA",
     "PRODUCTION_LANDED_TASK_GUARD_SCHEMA",
+    "PRODUCTION_NATIVE_STRUCTURED_EXECUTION_SCHEMA",
     "ProductionCLIProviderPolicy",
     "build_production_cli_provider_pair",
     "production_cli_policy_readiness",

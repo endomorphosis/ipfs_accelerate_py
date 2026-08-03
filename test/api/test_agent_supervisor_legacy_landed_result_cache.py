@@ -528,6 +528,45 @@ def test_cache_poison_rejects_service_without_cold_fallback(
     assert validations == []
 
 
+def test_provider_failure_is_not_misreported_as_cache_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache, policy, task, _manifest, key_path = _cache_fixture(tmp_path)
+    policy_path = tmp_path / "policy.json"
+    _write_policy(policy_path, _policy_payload(policy.issuer_key_id))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _fake_repo(monkeypatch)
+
+    def failed_provider(_request: legacy.LegacyLeafReviewRequest) -> Any:
+        raise RuntimeError("provider child import failed")
+
+    service = legacy.LegacyLandedReviewService(
+        repo_root=repo,
+        operator_policy_path=policy_path,
+        operator_key_path=key_path,
+        grok_invoker=failed_provider,
+        codex_invoker=failed_provider,
+        leaf_result_cache=cache,
+    )
+
+    result = service.review(task.task_id)
+
+    assert result.status == "rejected"
+    assert result.reason_code == "legacy_provider_invocation_failed"
+    connection = open_duckdb_connection(cache.path)
+    try:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM legacy_landed_leaf_records"
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM legacy_landed_leaf_flights"
+        ).fetchone()[0] == 0
+    finally:
+        connection.close()
+
+
 def test_cache_key_binds_every_review_dimension_and_is_closed(
     tmp_path: Path,
 ) -> None:

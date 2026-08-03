@@ -108,7 +108,7 @@ EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE: Final = {
         "codex": {
             "role": "codex_audit",
             "provider": "codex_cli",
-            "model": "chatgpt-5.6-terra",
+            "model": "gpt-5.6-sol",
             "fallback_allowed": False,
             "self_review_allowed": False,
         },
@@ -2159,6 +2159,12 @@ class LegacyLandedReviewService:
                                 review_run_id=review_run_id,
                             )
                             receipt = dict(cached_review.receipt)
+                        except LegacyLandedReviewError:
+                            # Provider invocation and decision failures already
+                            # carry a closed, secret-safe reason code.  Preserve
+                            # it instead of misreporting every cold-cache
+                            # provider failure as DuckDB corruption.
+                            raise
                         except Exception as exc:
                             raise LegacyLandedReviewError(
                                 "legacy_landed_leaf_cache_failed"
