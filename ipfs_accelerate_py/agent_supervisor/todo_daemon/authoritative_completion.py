@@ -1090,13 +1090,17 @@ class AuthoritativeCompletionMixin:
     def _verified_provider_review_gate_evidence(
         self,
         *,
-        task_id: str,
+        task: Any,
         implementation_commit: str,
         merge_commit: str,
         repository_tree_id: str,
         evidence: Mapping[str, Any],
     ) -> dict[str, Any] | None:
         """Derive, never accept, a provider-review gate from signed evidence."""
+
+        task_id = str(getattr(task, "task_id", "") or "").strip()
+        if not task_id:
+            return None
 
         implementation_tree_id = self._implementation_repository_tree_id(
             implementation_commit
@@ -1120,6 +1124,12 @@ class AuthoritativeCompletionMixin:
                 review_chain_binding=evidence.get(
                     "admitted_review_chain_binding"
                 ),
+                reviewed_effect_binding=evidence.get(
+                    "production_reviewed_effect_binding"
+                ),
+                repo_root=getattr(self, "repo_root", None),
+                task=task,
+                task_identity=self._identity_for_task(task),
                 expected_task_id=task_id,
                 expected_implementation_commit=implementation_commit,
                 expected_implementation_tree_id=implementation_tree_id,
@@ -1279,7 +1289,7 @@ class AuthoritativeCompletionMixin:
             )
         else:
             provider_review = self._verified_provider_review_gate_evidence(
-                task_id=task.task_id,
+                task=task,
                 implementation_commit=implementation_commit,
                 merge_commit=merge_commit,
                 repository_tree_id=repository_tree_id,

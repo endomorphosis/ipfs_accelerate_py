@@ -56,6 +56,10 @@ from .contract_packet_provider_router import (
     _packet_content_id,
     review_chain_content_digest,
 )
+from .production_reviewed_effect import (
+    ProductionReviewedEffectBinding,
+    verify_finalized_production_reviewed_effect,
+)
 
 PRODUCTION_PROVIDER_REVIEW_ATTESTATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/production-provider-review-attestation@1"
@@ -125,6 +129,7 @@ _ATTESTATION_KEYS: Final = frozenset(
         "issuer_key_id",
         "provider_policy_id",
         "provider_receipt_cid",
+        "reviewed_effect_binding_cid",
         "task_id",
         "snapshot_id",
         "packet_id",
@@ -468,10 +473,7 @@ def _receipt_failures(
             failures.append("implementation_proposal_digest_mismatch")
         if review_digest != _text(chain[1].get("response_digest")):
             failures.append("review_proposal_digest_mismatch")
-    if not selected_digest or selected_digest not in {
-        implementation_digest,
-        review_digest,
-    }:
+    if not selected_digest or selected_digest != implementation_digest:
         failures.append("selected_proposal_digest_invalid")
     return payload, tuple(dict.fromkeys(failures))
 
@@ -533,6 +535,66 @@ def _binding_failures(
     return payload, tuple(dict.fromkeys(failures))
 
 
+def _reviewed_effect_failures(
+    value: ProductionReviewedEffectBinding | Mapping[str, Any] | None,
+    *,
+    repo_root: str | Path | None,
+    task: Any,
+    task_identity: Any,
+    receipt: Mapping[str, Any],
+    review_binding: Mapping[str, Any],
+    expected_provider_policy_id: str,
+    expected_implementation_commit: str,
+    expected_implementation_tree_id: str,
+) -> tuple[ProductionReviewedEffectBinding | None, tuple[str, ...]]:
+    """Reconstruct the immutable proposal-to-Git effect, never queue metadata."""
+
+    if value is None:
+        return None, ("provider_reviewed_effect_missing",)
+    if repo_root is None or task is None or task_identity is None:
+        return None, ("provider_reviewed_effect_authoritative_context_missing",)
+    try:
+        effect = (
+            value
+            if isinstance(value, ProductionReviewedEffectBinding)
+            else ProductionReviewedEffectBinding.from_dict(value)
+        )
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None, ("provider_reviewed_effect_invalid",)
+    verification = verify_finalized_production_reviewed_effect(
+        effect,
+        repo_root=repo_root,
+        task=task,
+        task_identity=task_identity,
+        expected_implementation_commit=expected_implementation_commit,
+        expected_implementation_tree_id=expected_implementation_tree_id,
+    )
+    failures = list(verification.reason_codes)
+    expected = {
+        "provider_policy_id": expected_provider_policy_id,
+        "provider_receipt_cid": receipt.get("receipt_id"),
+        "packet_task_id": review_binding.get("task_id"),
+        "snapshot_id": review_binding.get("snapshot_id"),
+        "packet_id": review_binding.get("packet_id"),
+        "packet_cid": review_binding.get("packet_cid"),
+        "review_chain_digest": review_binding.get("review_chain_digest"),
+        "selected_proposal_digest": review_binding.get(
+            "selected_proposal_digest"
+        ),
+        "implementation_proposal_digest": review_binding.get(
+            "implementation_proposal_digest"
+        ),
+        "review_proposal_digest": review_binding.get("review_proposal_digest"),
+        "writer_lease_id": review_binding.get("writer_lease_id"),
+        "implementation_commit": expected_implementation_commit,
+        "implementation_tree_id": expected_implementation_tree_id,
+    }
+    for field_name, expected_value in expected.items():
+        if getattr(effect, field_name) != expected_value:
+            failures.append(f"provider_reviewed_effect_mismatch:{field_name}")
+    return effect, tuple(dict.fromkeys(failures))
+
+
 @dataclass(frozen=True, slots=True)
 class ProductionProviderReviewAttestation:
     """Public, signed binding from provider execution to candidate commit."""
@@ -541,6 +603,7 @@ class ProductionProviderReviewAttestation:
     issuer_key_id: str
     provider_policy_id: str
     provider_receipt_cid: str
+    reviewed_effect_binding_cid: str
     task_id: str
     snapshot_id: str
     packet_id: str
@@ -566,6 +629,7 @@ class ProductionProviderReviewAttestation:
             "issuer_key_id": self.issuer_key_id,
             "provider_policy_id": self.provider_policy_id,
             "provider_receipt_cid": self.provider_receipt_cid,
+            "reviewed_effect_binding_cid": self.reviewed_effect_binding_cid,
             "task_id": self.task_id,
             "snapshot_id": self.snapshot_id,
             "packet_id": self.packet_id,
@@ -620,6 +684,7 @@ class ProductionProviderReviewAttestation:
             "issuer_key_id",
             "provider_policy_id",
             "provider_receipt_cid",
+            "reviewed_effect_binding_cid",
             "task_id",
             "snapshot_id",
             "packet_id",
@@ -643,6 +708,9 @@ class ProductionProviderReviewAttestation:
             issuer_key_id=_text(payload["issuer_key_id"]),
             provider_policy_id=_text(payload["provider_policy_id"]),
             provider_receipt_cid=_text(payload["provider_receipt_cid"]),
+            reviewed_effect_binding_cid=_text(
+                payload["reviewed_effect_binding_cid"]
+            ),
             task_id=_text(payload["task_id"]),
             snapshot_id=_text(payload["snapshot_id"]),
             packet_id=_text(payload["packet_id"]),
@@ -766,6 +834,12 @@ class ProductionProviderReviewAuthority:
         provider_policy_id: str,
         implementation_commit: str,
         implementation_tree_id: str,
+        reviewed_effect_binding: (
+            ProductionReviewedEffectBinding | Mapping[str, Any] | None
+        ) = None,
+        repo_root: str | Path | None = None,
+        task: Any = None,
+        task_identity: Any = None,
         issued_at_ms: int | None = None,
         nonce: str = "",
     ) -> ProductionProviderReviewAttestation:
@@ -784,16 +858,27 @@ class ProductionProviderReviewAuthority:
             receipt=receipt,
             expected_implementation_commit=implementation_commit,
         )
-        failures = (*receipt_failures, *binding_failures)
-        if failures:
-            raise ValueError(
-                "provider route cannot be attested: " + ",".join(failures)
-            )
         policy_id = _text(provider_policy_id)
         commit = _text(implementation_commit)
         tree_id = _text(implementation_tree_id)
         if not policy_id or not commit or not tree_id:
             raise ValueError("provider policy, implementation commit, and tree are required")
+        effect, effect_failures = _reviewed_effect_failures(
+            reviewed_effect_binding,
+            repo_root=repo_root,
+            task=task,
+            task_identity=task_identity,
+            receipt=receipt,
+            review_binding=binding,
+            expected_provider_policy_id=policy_id,
+            expected_implementation_commit=commit,
+            expected_implementation_tree_id=tree_id,
+        )
+        failures = (*receipt_failures, *binding_failures, *effect_failures)
+        if failures or effect is None:
+            raise ValueError(
+                "provider route cannot be attested: " + ",".join(failures)
+            )
         issued = int(time.time() * 1000) if issued_at_ms is None else issued_at_ms
         if isinstance(issued, bool) or not isinstance(issued, int) or issued < 1:
             raise ValueError("issued_at_ms must be a positive integer")
@@ -807,6 +892,7 @@ class ProductionProviderReviewAuthority:
             "issuer_key_id": self.issuer_key_id,
             "provider_policy_id": policy_id,
             "provider_receipt_cid": receipt["receipt_id"],
+            "reviewed_effect_binding_cid": effect.binding_id,
             "task_id": expected_task_id,
             "snapshot_id": expected_snapshot_id,
             "packet_id": binding["packet_id"],
@@ -865,6 +951,12 @@ def verify_production_provider_review_attestation(
     expected_task_id: str,
     expected_implementation_commit: str,
     expected_implementation_tree_id: str,
+    reviewed_effect_binding: (
+        ProductionReviewedEffectBinding | Mapping[str, Any] | None
+    ) = None,
+    repo_root: str | Path | None = None,
+    task: Any = None,
+    task_identity: Any = None,
     expected_snapshot_id: str = "",
     expected_provider_policy_id: str = "",
 ) -> ProductionProviderReviewVerification:
@@ -959,9 +1051,22 @@ def verify_production_provider_review_attestation(
             expected_implementation_commit=implementation_commit,
         )
         failures.extend(binding_failures)
+    effect, effect_failures = _reviewed_effect_failures(
+        reviewed_effect_binding,
+        repo_root=repo_root,
+        task=task,
+        task_identity=task_identity,
+        receipt=receipt,
+        review_binding=binding,
+        expected_provider_policy_id=parsed.provider_policy_id,
+        expected_implementation_commit=implementation_commit,
+        expected_implementation_tree_id=tree_id,
+    )
+    failures.extend(effect_failures)
 
     attestation_binding = {
         "provider_receipt_cid": receipt.get("receipt_id"),
+        "reviewed_effect_binding_cid": effect.binding_id if effect else None,
         "task_id": binding.get("task_id"),
         "snapshot_id": binding.get("snapshot_id"),
         "packet_id": binding.get("packet_id"),

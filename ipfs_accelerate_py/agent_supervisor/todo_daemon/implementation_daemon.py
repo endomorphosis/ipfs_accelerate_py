@@ -179,6 +179,13 @@ from .production_context_slice import (
     derive_production_context_read_paths,
     verify_production_context_slice,
 )
+from .production_reviewed_effect import (
+    ProductionReviewedEffectBinding,
+    capture_production_reviewed_effect,
+    finalize_production_reviewed_effect,
+    production_task_contract,
+    verify_production_reviewed_workspace,
+)
 from .task_execution_policy import (
     MAX_TASK_CONTEXT_BYTES,
     MAX_TASK_CONTEXT_TOKENS,
@@ -8974,6 +8981,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         raw_attestation = value.get("provider_review_attestation")
         if isinstance(raw_attestation, Mapping):
             evidence["provider_review_attestation"] = dict(raw_attestation)
+        raw_effect = value.get("production_reviewed_effect_binding")
+        if isinstance(raw_effect, Mapping):
+            evidence["production_reviewed_effect_binding"] = dict(raw_effect)
         receipt_id = str(value.get("provider_review_receipt_id") or "")
         if receipt_id:
             evidence["provider_review_receipt_id"] = receipt_id
@@ -9692,6 +9702,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ) = None,
         validation_result: dict[str, Any] | None = None,
         worktree_pool_handoff: bool = False,
+        production_reviewed_effect_binding: (
+            ProductionReviewedEffectBinding | Mapping[str, Any] | None
+        ) = None,
     ) -> tuple[Any, dict[str, Any]]:
         """Durably hand a validated implementation to the repo-wide merge train.
 
@@ -9747,6 +9760,26 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 self.implementation_protected_paths
             ),
         }
+        finalized_reviewed_effect: ProductionReviewedEffectBinding | None = None
+        if production_reviewed_effect_binding is not None:
+            try:
+                finalized_reviewed_effect = (
+                    production_reviewed_effect_binding
+                    if isinstance(
+                        production_reviewed_effect_binding,
+                        ProductionReviewedEffectBinding,
+                    )
+                    else ProductionReviewedEffectBinding.from_dict(
+                        production_reviewed_effect_binding
+                    )
+                )
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "merge candidate reviewed effect binding is invalid"
+                ) from exc
+            metadata["production_reviewed_effect_binding"] = (
+                finalized_reviewed_effect.to_dict()
+            )
         # SCA-615: when a production review-chain binding is present on the
         # task/state, attach it so merge consumers bind the applied patch to
         # the admitted independent review chain identity.
@@ -9792,6 +9825,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         provider_policy_id=production_policy.policy_id,
                         implementation_commit=implementation_commit,
                         implementation_tree_id=repository_tree_id,
+                        reviewed_effect_binding=finalized_reviewed_effect,
+                        repo_root=self.repo_root,
+                        task=task,
+                        task_identity=identity,
                     )
                     metadata["provider_execution_receipt"] = (
                         provider_receipt.to_dict()
@@ -10342,6 +10379,42 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         repo_root=self.repo_root,
                         task_header_prefix=str(metadata.get("task_header_prefix") or self.task_header_prefix),
                         implement=False,
+                        production_provider_policy=str(
+                            getattr(self, "production_provider_policy_name", "")
+                            or ""
+                        ),
+                        production_provider_context_budget_tokens=int(
+                            getattr(
+                                self,
+                                "production_provider_context_budget_tokens",
+                                0,
+                            )
+                            or 0
+                        ),
+                        production_provider_timeout_seconds=float(
+                            getattr(
+                                self,
+                                "production_provider_timeout_seconds",
+                                0.0,
+                            )
+                            or 0.0
+                        ),
+                        production_provider_review_authority_key_path=(
+                            getattr(
+                                self,
+                                "production_provider_review_key_path",
+                                None,
+                            )
+                            if str(
+                                getattr(
+                                    self,
+                                    "production_provider_policy_name",
+                                    "",
+                                )
+                                or ""
+                            ).strip()
+                            else None
+                        ),
                         worktree_root=self.worktree_root,
                         merge_target_branch=self.resolved_merge_target_branch,
                         worktree_submodule_paths=self.worktree_submodule_paths,
@@ -10573,6 +10646,67 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             or (isinstance(merge_result, dict) and bool(merge_result.get("merged")))
         )
 
+    def _production_reviewed_effect_required(self, task: PortalTask) -> bool:
+        return bool(
+            isinstance(
+                getattr(self, "production_provider_policy", None),
+                ProductionCLIProviderPolicy,
+            )
+            and not self._task_uses_typed_local_execution(task)
+        )
+
+    def _verify_production_reviewed_effect_after_validation(
+        self,
+        *,
+        task: PortalTask,
+        workspace_path: Path,
+        attempt: int,
+    ) -> dict[str, Any]:
+        """Fail closed if validation changed, lost, or substituted reviewed bytes."""
+
+        if not self._production_reviewed_effect_required(task):
+            return {"admitted": True, "not_applicable": True}
+        raw_binding = getattr(
+            self,
+            "_last_production_reviewed_effect_binding",
+            None,
+        )
+        if raw_binding is None:
+            result = {
+                "admitted": False,
+                "reason_codes": ["reviewed_effect_missing_after_validation"],
+            }
+        else:
+            try:
+                parsed_binding = (
+                    raw_binding
+                    if isinstance(raw_binding, ProductionReviewedEffectBinding)
+                    else ProductionReviewedEffectBinding.from_dict(raw_binding)
+                )
+            except (TypeError, ValueError):
+                parsed_binding = None
+            verification = verify_production_reviewed_workspace(
+                raw_binding,
+                repo_root=workspace_path,
+                task=task,
+                task_identity=self._identity_for_task(task),
+                allowed_head_commit=(
+                    parsed_binding.implementation_commit
+                    if parsed_binding is not None
+                    else ""
+                ),
+            )
+            result = verification.to_dict()
+        self._record_event(
+            "production_reviewed_effect_post_validation",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                **result,
+            },
+        )
+        return result
+
     def _enqueue_validated_worktree(
         self,
         *,
@@ -10590,6 +10724,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ) = None,
     ) -> dict[str, Any]:
         """Hand a validated implementation commit to the durable merge train."""
+
+        finalized_reviewed_effect: ProductionReviewedEffectBinding | None = None
+        requires_reviewed_effect = self._production_reviewed_effect_required(task)
+        raw_reviewed_effect = getattr(
+            self,
+            "_last_production_reviewed_effect_binding",
+            None,
+        )
+        if requires_reviewed_effect:
+            if raw_reviewed_effect is None:
+                raise RuntimeError(
+                    "validated production candidate lacks reviewed effect binding"
+                )
+            try:
+                finalized_reviewed_effect = finalize_production_reviewed_effect(
+                    raw_reviewed_effect,
+                    repo_root=worktree_path,
+                    task=task,
+                    task_identity=self._identity_for_task(task),
+                    implementation_commit=implementation_commit,
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "validated production candidate does not match reviewed effect"
+                ) from exc
+            self._last_production_reviewed_effect_binding = (
+                finalized_reviewed_effect
+            )
 
         protected_rejection = self._reject_protected_merge_candidate(
             task_id=task.task_id,
@@ -10654,6 +10816,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ),
             validation_result=dict(validation_result),
             worktree_pool_handoff=bool(pool_handoff.get("released", False)),
+            production_reviewed_effect_binding=finalized_reviewed_effect,
         )
         if pool_handoff.get("attempted", False):
             merge_result["worktree_pool_handoff"] = pool_handoff
@@ -11273,6 +11436,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             state=state,
                             baseline_ref=baseline_ref,
                         )
+                if validation_result.get("passed", False):
+                    reviewed_effect_verification = (
+                        self._verify_production_reviewed_effect_after_validation(
+                            task=task,
+                            workspace_path=worktree_path,
+                            attempt=attempt,
+                        )
+                    )
+                    if not reviewed_effect_verification.get("admitted", False):
+                        returncode = 1
+                        validation_result = {
+                            **validation_result,
+                            "passed": False,
+                            "returncode": 1,
+                            "reason": "production_reviewed_effect_changed_or_missing",
+                            "production_reviewed_effect_verification": (
+                                reviewed_effect_verification
+                            ),
+                        }
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
                         task=task,
@@ -11538,6 +11720,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         timeout_result["protected_path_violation"] = (
                             protected_path_violation
                         )
+                    elif validation_result.get("passed", False):
+                        reviewed_effect_verification = (
+                            self._verify_production_reviewed_effect_after_validation(
+                                task=task,
+                                workspace_path=worktree_path,
+                                attempt=attempt,
+                            )
+                        )
+                        if not reviewed_effect_verification.get("admitted", False):
+                            returncode = 1
+                            validation_result = {
+                                **validation_result,
+                                "passed": False,
+                                "returncode": 1,
+                                "reason": (
+                                    "production_reviewed_effect_changed_or_missing"
+                                ),
+                                "production_reviewed_effect_verification": (
+                                    reviewed_effect_verification
+                                ),
+                            }
                     can_promote = bool(
                         not protected_path_violation
                         and
@@ -18087,7 +18290,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "provider_execution_receipt",
                 "admitted_review_chain_binding",
                 "provider_review_attestation",
+                "production_reviewed_effect_binding",
             )
+        )
+        self._last_production_reviewed_effect_binding = (
+            dict(evidence["production_reviewed_effect_binding"])
+            if typed_receipt_available
+            else None
         )
         guard = production_landed_task_guard(
             recovered_binding=recovery,
@@ -18168,28 +18377,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """Exact task facts shared by context and reviewed-effect bindings."""
 
         identity = self._identity_for_task(task)
-        return {
-            "task_id": str(task.task_id or "").strip(),
-            "title": str(task.title or ""),
-            "priority": str(task.priority or ""),
-            "track": str(task.track or ""),
-            "depends_on": [str(value) for value in (task.depends_on or ())],
-            "outputs": list(write_paths),
-            "validation": [str(value) for value in (task.validation or ())],
-            "acceptance": str(task.acceptance or ""),
-            "metadata": json.loads(
-                json.dumps(
-                    dict(task.metadata or {}),
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    ensure_ascii=False,
-                    allow_nan=False,
-                )
-            ),
-            "canonical_task_key": identity.canonical_task_key,
-            "canonical_task_cid": identity.canonical_task_cid,
-            "board_namespace": identity.board_namespace or "default",
-        }
+        contract = production_task_contract(task, identity)
+        if contract["outputs"] != list(write_paths):
+            raise ProviderRoutingError(
+                "production task output scope is not canonical",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        return contract
 
     def build_production_contract_packet_for_task(
         self,
@@ -18819,8 +19013,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 return
             if patch_value is not None and not isinstance(patch_value, str):
                 raise RuntimeError("patch must be a string")
-            patch = (patch_value or "").strip()
-            if not patch:
+            patch = patch_value or ""
+            if not patch.strip():
                 raise RuntimeError("admitted proposal has no apply payload")
             if re.search(r"(?m)^(?:old|new) mode 120000$", patch):
                 raise RuntimeError("patch may not create or modify symbolic links")
@@ -19020,6 +19214,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 raise RuntimeError(
                     "configured production policy forbids routing-policy overrides"
                 )
+            if packet is not None:
+                raise RuntimeError(
+                    "configured production policy forbids caller-authored packet override"
+                )
 
         current_snapshot = str(snapshot_id or "").strip() or (
             self._current_production_snapshot_id(
@@ -19152,6 +19350,31 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if isinstance(policy, ProductionCLIProviderPolicy)
             else ""
         )
+        reviewed_effect: ProductionReviewedEffectBinding | None = None
+        self._last_production_reviewed_effect_binding = None
+        if (
+            isinstance(policy, ProductionCLIProviderPolicy)
+            and apply
+            and route_result.write_performed
+        ):
+            if workspace_path is None or not str(baseline_ref or "").strip():
+                raise RuntimeError(
+                    "production reviewed effect requires an exact workspace baseline"
+                )
+            try:
+                reviewed_effect = capture_production_reviewed_effect(
+                    repo_root=workspace_path,
+                    task=task,
+                    task_identity=self._identity_for_task(task),
+                    packet=route_packet,
+                    route_result=route_result,
+                    baseline_ref=baseline_ref,
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "production reviewed effect capture failed"
+                ) from exc
+            self._last_production_reviewed_effect_binding = reviewed_effect
         disposition, disposition_reason = evaluate_production_provider_receipt(
             receipt,
             expected_task_id=task.task_id,
@@ -19187,6 +19410,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 route_result.writer_lease_id if route_result.write_performed else ""
             ),
             "review_chain_binding": binding.to_dict() if binding is not None else None,
+            "reviewed_effect_binding": (
+                reviewed_effect.to_dict() if reviewed_effect is not None else None
+            ),
             "completion_authoritative": False,
             "proof_authoritative": False,
             "raw_model_command_invoked": False,
@@ -19225,6 +19451,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "disposition": disposition,
             "disposition_reason": disposition_reason,
             "binding": binding,
+            "reviewed_effect_binding": reviewed_effect,
             "pending": pending,
             "returncode": (
                 0

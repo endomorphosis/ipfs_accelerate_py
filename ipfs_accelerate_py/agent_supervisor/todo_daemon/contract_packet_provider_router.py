@@ -663,6 +663,15 @@ class ProviderAttempt:
     response_bytes: int = 0
     prompt_digest: str = ""
     response_digest: str = ""
+    execution_schema: str = ""
+    execution_policy_id: str = ""
+    execution_request_id: str = ""
+    configured_provider: str = ""
+    effective_provider: str = ""
+    configured_model: str = ""
+    child_result_schema: str = ""
+    child_result_status: str = ""
+    child_exit_code: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -674,6 +683,15 @@ class ProviderAttempt:
             "response_bytes": self.response_bytes,
             "prompt_digest": self.prompt_digest,
             "response_digest": self.response_digest,
+            "execution_schema": self.execution_schema,
+            "execution_policy_id": self.execution_policy_id,
+            "execution_request_id": self.execution_request_id,
+            "configured_provider": self.configured_provider,
+            "effective_provider": self.effective_provider,
+            "configured_model": self.configured_model,
+            "child_result_schema": self.child_result_schema,
+            "child_result_status": self.child_result_status,
+            "child_exit_code": self.child_exit_code,
             "prompt_embedded": False,
             "response_embedded": False,
         }
@@ -876,9 +894,9 @@ def _provider_response_contract(role: ProviderRole) -> dict[str, Any]:
         }
     elif role is ProviderRole.CODEX_REVIEW:
         shape = {
-            "decision": "approve|repair|replace|reject",
+            "decision": "approve|reject",
             "findings": [],
-            "proposal": "required only for repair or replace",
+            "proposal": "forbidden; Codex is an independent reviewer only",
         }
     else:
         shape = {"proposal": {}}
@@ -1658,6 +1676,8 @@ class ImplementationProviderRouter:
         _check_structure(raw_payload, forbid_broad_context=False)
         _reject_provider_authority(raw_payload)
         payload = redact_provider_data(raw_payload)
+        execution = payload.get("supervisor_provider_execution")
+        execution = dict(execution) if isinstance(execution, Mapping) else {}
         proposal = ProviderProposal(
             role=request.role,
             packet_id=request.packet_id,
@@ -1676,6 +1696,20 @@ class ImplementationProviderRouter:
             response_bytes=len(encoded),
             prompt_digest=_sha256(request.prompt),
             response_digest=proposal.response_digest,
+            execution_schema=str(execution.get("schema") or ""),
+            execution_policy_id=str(execution.get("policy_id") or ""),
+            execution_request_id=str(execution.get("request_id") or ""),
+            configured_provider=str(execution.get("configured_provider") or ""),
+            effective_provider=str(execution.get("effective_provider") or ""),
+            configured_model=str(execution.get("configured_model") or ""),
+            child_result_schema=str(execution.get("child_result_schema") or ""),
+            child_result_status=str(execution.get("child_result_status") or ""),
+            child_exit_code=(
+                execution.get("child_exit_code")
+                if isinstance(execution.get("child_exit_code"), int)
+                and not isinstance(execution.get("child_exit_code"), bool)
+                else None
+            ),
         )
         return proposal, attempt
 

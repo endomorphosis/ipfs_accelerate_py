@@ -58,6 +58,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_provider_cli imp
     production_cli_policy_readiness,
     production_landed_task_guard,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_reviewed_effect import (
+    finalize_production_reviewed_effect,
+)
 
 
 def _child_receipt(config) -> LlmChildResultEnvelope:
@@ -479,19 +482,177 @@ def _applied_provider_route():
     return result, binding
 
 
+def _apply_real_reviewed_route(
+    daemon: TodoImplementationDaemon,
+    task: PortalTask,
+    repo: Path,
+):
+    """Produce exact production route/effect/commit evidence in one real repo."""
+
+    policy = daemon.production_provider_policy
+    assert isinstance(policy, ProductionCLIProviderPolicy)
+
+    def invoke(prompt, config):
+        role = json.loads(prompt)["role"]
+        output = (
+            {
+                "proposal": {
+                    "declared_paths": list(task.outputs),
+                    "files": [
+                        {"path": task.outputs[0], "content": "VALUE = 'reviewed'\n"}
+                    ],
+                }
+            }
+            if role == ProviderRole.GROK_IMPLEMENT.value
+            else {"decision": "approve", "findings": []}
+        )
+        return json.dumps(output), _child_receipt(config)
+
+    grok, codex = build_production_cli_provider_pair(policy, invoker=invoke)
+    daemon._production_grok_provider = grok
+    daemon._production_codex_provider = codex
+    baseline = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    route = daemon.run_production_model_assisted_route(
+        task,
+        attempt=1,
+        workspace_path=repo,
+        baseline_ref=baseline,
+        apply=True,
+    )
+    result = route["route_result"]
+    captured = route["reviewed_effect_binding"]
+    assert captured is not None
+    subprocess.run(
+        ["git", "add", "--", *task.outputs],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "reviewed provider candidate"],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    tree = "git-tree:" + subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    finalized = finalize_production_reviewed_effect(
+        captured,
+        repo_root=repo,
+        task=task,
+        task_identity=daemon._identity_for_task(task),
+        implementation_commit=commit,
+    )
+    binding = bind_applied_patch_to_review_chain(
+        result,
+        implementation_commit=commit,
+    )
+    assert binding is not None
+    return result, binding, finalized, commit, tree
+
+
+def _real_reviewed_fixture(tmp_path: Path):
+    repo = tmp_path / "reviewed-repo"
+    repo.mkdir()
+    for arguments in (
+        ("init",),
+        ("config", "user.name", "Reviewed Provider Test"),
+        ("config", "user.email", "reviewed-provider@example.invalid"),
+    ):
+        subprocess.run(
+            ["git", *arguments],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    todo_path = repo / "tasks.todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "bundle-state/\nworktrees/\nstate/\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["git", "add", "."],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "baseline"],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    state_path = tmp_path / "reviewed-state" / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_path.parent / "strategy.json",
+        events_path=state_path.parent / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ASE-",
+        implement=True,
+        production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
+        production_provider_review_authority_key_path=(
+            tmp_path / "reviewed-state" / "review.ed25519"
+        ),
+    )
+    task = PortalTask(
+        task_id="ASE-005",
+        title="Provider review",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["module.py"],
+        validation=["python -m py_compile module.py"],
+        acceptance="review is independently verified",
+        metadata={"Provider role": "grok-implement, codex-review"},
+    )
+    evidence = _apply_real_reviewed_route(daemon, task, repo)
+    return daemon, task, repo, evidence
+
+
 def test_ed25519_review_attestation_reconstructs_full_receipt_and_binding(
     tmp_path: Path,
 ) -> None:
-    result, binding = _applied_provider_route()
-    binding = replace(binding, implementation_commit="a" * 40)
+    daemon, task, repo, evidence = _real_reviewed_fixture(tmp_path)
+    result, binding, reviewed_effect, commit, tree = evidence
     key_path = tmp_path / "state" / ".provider-review.ed25519"
     authority = ProductionProviderReviewAuthority.load_or_create(key_path)
     attestation = authority.issue(
         provider_receipt=result.provider_receipt,
         review_chain_binding=binding,
         provider_policy_id=ProductionCLIProviderPolicy().policy_id,
-        implementation_commit="a" * 40,
-        implementation_tree_id="git-tree:" + "b" * 40,
+        implementation_commit=commit,
+        implementation_tree_id=tree,
+        reviewed_effect_binding=reviewed_effect,
+        repo_root=repo,
+        task=task,
+        task_identity=daemon._identity_for_task(task),
         issued_at_ms=1_800_000_000_000,
         nonce="fixed-test-nonce-00000001",
     )
@@ -504,11 +665,15 @@ def test_ed25519_review_attestation_reconstructs_full_receipt_and_binding(
         },
         provider_receipt=result.provider_receipt,
         review_chain_binding=binding,
+        reviewed_effect_binding=reviewed_effect,
+        repo_root=repo,
+        task=task,
+        task_identity=daemon._identity_for_task(task),
         expected_task_id="ASE-005",
-        expected_snapshot_id="git-commit:fixture",
+        expected_snapshot_id=reviewed_effect.snapshot_id,
         expected_provider_policy_id=ProductionCLIProviderPolicy().policy_id,
-        expected_implementation_commit="a" * 40,
-        expected_implementation_tree_id="git-tree:" + "b" * 40,
+        expected_implementation_commit=commit,
+        expected_implementation_tree_id=tree,
     )
 
     assert verification.admitted is True
@@ -570,19 +735,25 @@ def test_review_authority_creation_retries_partial_writes(
     assert write_calls == 32
 
 
-def test_forged_fully_current_attestation_from_metadata_signer_is_rejected() -> None:
+def test_forged_fully_current_attestation_from_metadata_signer_is_rejected(
+    tmp_path: Path,
+) -> None:
     """A coherent attacker receipt/key cannot install its own trust root."""
 
-    result, binding = _applied_provider_route()
-    binding = replace(binding, implementation_commit="a" * 40)
+    daemon, task, repo, evidence = _real_reviewed_fixture(tmp_path)
+    result, binding, reviewed_effect, commit, tree = evidence
     trusted = ProductionProviderReviewAuthority.generate()
     attacker = ProductionProviderReviewAuthority.generate()
     forged = attacker.issue(
         provider_receipt=result.provider_receipt,
         review_chain_binding=binding,
         provider_policy_id=ProductionCLIProviderPolicy().policy_id,
-        implementation_commit="a" * 40,
-        implementation_tree_id="git-tree:" + "b" * 40,
+        implementation_commit=commit,
+        implementation_tree_id=tree,
+        reviewed_effect_binding=reviewed_effect,
+        repo_root=repo,
+        task=task,
+        task_identity=daemon._identity_for_task(task),
         issued_at_ms=1_800_000_000_000,
         nonce="forged-current-nonce-0001",
     )
@@ -592,11 +763,15 @@ def test_forged_fully_current_attestation_from_metadata_signer_is_rejected() -> 
         trusted_public_keys={trusted.issuer_key_id: trusted.public_key_bytes},
         provider_receipt=result.provider_receipt,
         review_chain_binding=binding,
+        reviewed_effect_binding=reviewed_effect,
+        repo_root=repo,
+        task=task,
+        task_identity=daemon._identity_for_task(task),
         expected_task_id="ASE-005",
-        expected_snapshot_id="git-commit:fixture",
+        expected_snapshot_id=reviewed_effect.snapshot_id,
         expected_provider_policy_id=ProductionCLIProviderPolicy().policy_id,
-        expected_implementation_commit="a" * 40,
-        expected_implementation_tree_id="git-tree:" + "b" * 40,
+        expected_implementation_commit=commit,
+        expected_implementation_tree_id=tree,
     )
 
     assert verification.admitted is False
@@ -640,6 +815,10 @@ def test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate(
         )
     todo_path = repo / "tasks.todo.md"
     todo_path.write_text("# Tasks\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "bundle-state/\nworktrees/\nstate/\n",
+        encoding="utf-8",
+    )
     subprocess.run(
         ["git", "add", "."],
         cwd=repo,
@@ -654,20 +833,6 @@ def test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate(
         text=True,
         capture_output=True,
     )
-    implementation_commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo,
-        check=True,
-        text=True,
-        capture_output=True,
-    ).stdout.strip()
-    implementation_tree_id = "git-tree:" + subprocess.run(
-        ["git", "rev-parse", "HEAD^{tree}"],
-        cwd=repo,
-        check=True,
-        text=True,
-        capture_output=True,
-    ).stdout.strip()
     shared_key_path = repo / "bundle-state" / "shared-review.ed25519"
     issuer_state_path = repo / "bundle-state" / "lane-a" / "task_state.json"
     issuer = TodoImplementationDaemon(
@@ -707,11 +872,13 @@ def test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate(
             "Context budget tokens": "4096",
         },
     )
-    result, binding = _applied_provider_route()
-    binding = replace(
+    (
+        result,
         binding,
-        implementation_commit=implementation_commit,
-    )
+        reviewed_effect,
+        implementation_commit,
+        implementation_tree_id,
+    ) = _apply_real_reviewed_route(issuer, task, repo)
     authority = issuer._production_provider_review_authority
     assert isinstance(authority, ProductionProviderReviewAuthority)
     attestation = authority.issue(
@@ -720,6 +887,10 @@ def test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate(
         provider_policy_id=ProductionCLIProviderPolicy().policy_id,
         implementation_commit=implementation_commit,
         implementation_tree_id=implementation_tree_id,
+        reviewed_effect_binding=reviewed_effect,
+        repo_root=repo,
+        task=task,
+        task_identity=issuer._identity_for_task(task),
         issued_at_ms=1_800_000_000_000,
         nonce="authoritative-gate-nonce-0001",
     )
@@ -734,6 +905,7 @@ def test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate(
             "provider_execution_receipt": result.provider_receipt.to_dict(),
             "admitted_review_chain_binding": binding.to_dict(),
             "provider_review_attestation": attestation.to_dict(),
+            "production_reviewed_effect_binding": reviewed_effect.to_dict(),
             # Carrier-selected expectations are ignored. The verifier uses
             # its operator-configured policy and the signed receipt snapshot.
             "provider_review_expected_policy_id": "sha256:carrier-choice",
@@ -774,6 +946,7 @@ def test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate(
             "provider_execution_receipt": result.provider_receipt.to_dict(),
             "admitted_review_chain_binding": binding.to_dict(),
             "provider_review_attestation": attestation.to_dict(),
+            "production_reviewed_effect_binding": reviewed_effect.to_dict(),
         },
         model_invocation_observed=True,
     )
@@ -785,86 +958,21 @@ def test_signed_attestation_cannot_choose_its_own_expected_policy(
 ) -> None:
     """A trusted signing key does not make an unconfigured policy admissible."""
 
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    for arguments in (
-        ("init",),
-        ("config", "user.name", "Provider Review Test"),
-        ("config", "user.email", "provider-review@example.invalid"),
-    ):
-        subprocess.run(
-            ["git", *arguments],
-            cwd=repo,
-            check=True,
-            text=True,
-            capture_output=True,
-        )
-    todo_path = repo / "tasks.todo.md"
-    todo_path.write_text("# Tasks\n", encoding="utf-8")
-    subprocess.run(
-        ["git", "add", "."],
-        cwd=repo,
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        ["git", "commit", "-m", "baseline"],
-        cwd=repo,
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo,
-        check=True,
-        text=True,
-        capture_output=True,
-    ).stdout.strip()
-    tree = "git-tree:" + subprocess.run(
-        ["git", "rev-parse", "HEAD^{tree}"],
-        cwd=repo,
-        check=True,
-        text=True,
-        capture_output=True,
-    ).stdout.strip()
-    key_path = repo / "state" / "review.ed25519"
-    state_path = repo / "state" / "task_state.json"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_path,
-        strategy_path=state_path.parent / "strategy.json",
-        events_path=state_path.parent / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## ASE-",
-        implement=True,
-        production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
-        production_provider_review_authority_key_path=key_path,
-    )
-    task = PortalTask(
-        task_id="ASE-005",
-        title="Provider review",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="provider",
-        outputs=["module.py"],
-        validation=["python -m pytest test_module.py -q"],
-        acceptance="review is independently verified",
-        metadata={"Provider role": "grok-implement, codex-review"},
-    )
-    result, binding = _applied_provider_route()
-    binding = replace(binding, implementation_commit=commit)
+    daemon, task, repo, evidence = _real_reviewed_fixture(tmp_path)
+    result, binding, reviewed_effect, commit, tree = evidence
     authority = daemon._production_provider_review_authority
     assert isinstance(authority, ProductionProviderReviewAuthority)
     attacker_policy_id = "sha256:" + "f" * 64
     attestation = authority.issue(
         provider_receipt=result.provider_receipt,
         review_chain_binding=binding,
-        provider_policy_id=attacker_policy_id,
+        provider_policy_id=ProductionCLIProviderPolicy().policy_id,
         implementation_commit=commit,
         implementation_tree_id=tree,
+        reviewed_effect_binding=reviewed_effect,
+        repo_root=repo,
+        task=task,
+        task_identity=daemon._identity_for_task(task),
         issued_at_ms=1_800_000_000_000,
         nonce="policy-confusion-nonce-0001",
     )
@@ -878,12 +986,13 @@ def test_signed_attestation_cannot_choose_its_own_expected_policy(
             "provider_execution_receipt": result.provider_receipt.to_dict(),
             "admitted_review_chain_binding": binding.to_dict(),
             "provider_review_attestation": attestation.to_dict(),
+            "production_reviewed_effect_binding": reviewed_effect.to_dict(),
             "provider_review_expected_policy_id": attacker_policy_id,
         },
         model_invocation_observed=True,
     )
 
-    assert "provider_review" not in receipt.gate_evidence
+    assert receipt.gate_evidence["provider_review"]["satisfied"] is True
 
 
 def test_bundle_command_propagates_explicit_policy_without_task_metadata() -> None:
