@@ -81,6 +81,9 @@ DEFAULT_LEAF_LEASE_SECONDS: Final = 360
 DEFAULT_LEAF_WAIT_SECONDS: Final = 900.0
 DEFAULT_POLL_SECONDS: Final = 0.02
 MAX_SNAPSHOT_RECORDS: Final = 100_000
+MAX_SNAPSHOT_MANIFEST_BYTES: Final = 32 * 1024 * 1024
+MAX_SNAPSHOT_PARQUET_BYTES: Final = 512 * 1024 * 1024
+MAX_SNAPSHOT_ROW_JSON_BYTES: Final = 256 * 1024
 
 _COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 
@@ -695,6 +698,45 @@ class LegacyLandedLeafResultCache:
             timeout_seconds=self._duckdb_timeout_seconds,
         )
 
+    def _require_policy_key(self, key: LegacyLandedLeafCacheKey) -> None:
+        """Refuse lookup, leasing, signing, or import outside pinned policy."""
+
+        if not isinstance(key, LegacyLandedLeafCacheKey):
+            raise TypeError("typed legacy leaf cache key is required")
+        if (
+            key.policy_id != self.policy.policy_id
+            or key.current_head != self.policy.current_head
+            or key.current_tree_id != self.policy.current_tree_id
+        ):
+            raise LegacyLandedLeafCacheError(
+                "legacy leaf cache key is outside the pinned policy fence"
+            )
+        try:
+            task = self.policy.task(key.task_id)
+        except ValueError as exc:
+            raise LegacyLandedLeafCacheError(
+                "legacy leaf cache task is outside the pinned policy"
+            ) from exc
+        if (
+            key.canonical_task_key != task.canonical_task_key
+            or key.canonical_task_cid != task.canonical_task_cid
+        ):
+            raise LegacyLandedLeafCacheError(
+                "legacy leaf cache canonical task binding is invalid"
+            )
+        providers = tuple(
+            item
+            for item in (self.policy.grok, self.policy.codex)
+            if item.role == key.role
+        )
+        if len(providers) != 1 or (
+            key.provider != providers[0].provider
+            or key.model != providers[0].model
+        ):
+            raise LegacyLandedLeafCacheError(
+                "legacy leaf cache provider binding is invalid"
+            )
+
     def _initialize(self) -> None:
         initialize_duckdb_database(
             self.path,
@@ -764,6 +806,7 @@ class LegacyLandedLeafResultCache:
         *,
         expected_key: LegacyLandedLeafCacheKey,
     ) -> LegacyLandedLeafCacheRecord:
+        self._require_policy_key(expected_key)
         try:
             key_payload = _strict_object(str(row["key_json"]))
             record_payload = _strict_object(str(row["record_json"]))
@@ -810,6 +853,7 @@ class LegacyLandedLeafResultCache:
     def lookup(
         self, key: LegacyLandedLeafCacheKey
     ) -> LegacyLandedLeafCacheRecord | None:
+        self._require_policy_key(key)
         connection = self._connect()
         try:
             row = connection.execute(
@@ -827,6 +871,7 @@ class LegacyLandedLeafResultCache:
         owner_id: str | None = None,
         lease_seconds: int = DEFAULT_LEAF_LEASE_SECONDS,
     ) -> LegacyLandedLeafCacheLease:
+        self._require_policy_key(key)
         if isinstance(lease_seconds, bool) or lease_seconds < 1:
             raise ValueError("leaf cache lease_seconds must be positive")
         owner = str(
@@ -962,6 +1007,7 @@ class LegacyLandedLeafResultCache:
     ) -> LegacyLandedLeafCacheRecord:
         """Sign and atomically insert one still-owned exact leaf result."""
 
+        self._require_policy_key(key)
         record = self._authority.issue(
             key, receipt, issued_at_ms=max(1, self._now_ms())
         )
@@ -1255,9 +1301,12 @@ class LegacyLandedLeafResultCache:
         directory: str | Path,
         *,
         backend: VerifiedIPLDBackend,
+        pin: bool = True,
     ) -> LegacyLandedLeafCacheSnapshot:
         """Export one immutable, non-authoritative Parquet/IPLD snapshot."""
 
+        if type(pin) is not bool:
+            raise TypeError("legacy cache snapshot pin must be a boolean")
         root = Path(directory).resolve()
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         temporary = root / f".legacy-leaf-{uuid.uuid4().hex}.parquet.tmp"
@@ -1299,7 +1348,7 @@ class LegacyLandedLeafResultCache:
             with temporary.open("rb") as stream:
                 parquet_bytes = stream.read()
                 os.fsync(stream.fileno())
-            put = backend.put_raw(parquet_bytes, pin=False)
+            put = backend.put_raw(parquet_bytes, pin=pin)
             parquet_cid = admit_cid(put.cid, codecs=("raw",))
             admitted_bytes, _raw_receipt = backend.get_raw(parquet_cid)
             if admitted_bytes != parquet_bytes:
@@ -1335,12 +1384,13 @@ class LegacyLandedLeafResultCache:
                 "parquet_cid": parquet_cid,
                 "parquet_codec": "raw",
                 "parquet_byte_length": len(parquet_bytes),
+                "replication_pin_requested": pin,
                 "signed_records_only": True,
                 "mutable_lock_or_lease_store": False,
                 "completion_authoritative": False,
                 "proof_authoritative": False,
             }
-            manifest_put = backend.put_dag_json(manifest, pin=False)
+            manifest_put = backend.put_dag_json(manifest, pin=pin)
             manifest_cid = admit_cid(manifest_put.cid, codecs=("dag-json",))
             manifest_bytes, _manifest_receipt = backend.get_dag_json(
                 manifest_cid
@@ -1373,6 +1423,7 @@ class LegacyLandedLeafResultCache:
             connection.execute("BEGIN IMMEDIATE")
             for record in records:
                 key = record.key
+                self._require_policy_key(key)
                 existing = connection.execute(
                     "SELECT * FROM legacy_landed_leaf_records WHERE key_id=?",
                     (key.key_id,),
@@ -1433,6 +1484,10 @@ class LegacyLandedLeafResultCache:
         """Rehydrate only exact signed records from a verified IPLD snapshot."""
 
         manifest_bytes, _manifest_receipt = backend.get_dag_json(manifest_cid)
+        if len(manifest_bytes) > MAX_SNAPSHOT_MANIFEST_BYTES:
+            raise LegacyLandedLeafCacheError(
+                "legacy cache snapshot manifest exceeds its byte bound"
+            )
         manifest = _strict_object(manifest_bytes)
         if set(manifest) != {
             "schema",
@@ -1445,6 +1500,7 @@ class LegacyLandedLeafResultCache:
             "parquet_cid",
             "parquet_codec",
             "parquet_byte_length",
+            "replication_pin_requested",
             "signed_records_only",
             "mutable_lock_or_lease_store",
             "completion_authoritative",
@@ -1457,6 +1513,7 @@ class LegacyLandedLeafResultCache:
             or manifest.get("current_head") != self.policy.current_head
             or manifest.get("current_tree_id") != self.policy.current_tree_id
             or manifest.get("parquet_codec") != "raw"
+            or type(manifest.get("replication_pin_requested")) is not bool
             or manifest.get("signed_records_only") is not True
             or manifest.get("mutable_lock_or_lease_store") is not False
             or manifest.get("completion_authoritative") is not False
@@ -1465,9 +1522,34 @@ class LegacyLandedLeafResultCache:
             raise LegacyLandedLeafCacheError(
                 "legacy cache snapshot policy or authority binding is invalid"
             )
+        row_count = manifest.get("row_count")
+        key_ids = manifest.get("ordered_key_ids")
+        record_ids = manifest.get("ordered_record_ids")
+        parquet_byte_length = manifest.get("parquet_byte_length")
+        if (
+            isinstance(row_count, bool)
+            or not isinstance(row_count, int)
+            or not 0 <= row_count <= MAX_SNAPSHOT_RECORDS
+            or not isinstance(key_ids, list)
+            or not isinstance(record_ids, list)
+            or len(key_ids) != row_count
+            or len(record_ids) != row_count
+            or any(
+                not isinstance(item, str) or not 1 <= len(item) <= 256
+                for item in (*key_ids, *record_ids)
+            )
+            or len(set(key_ids)) != row_count
+            or len(set(record_ids)) != row_count
+            or isinstance(parquet_byte_length, bool)
+            or not isinstance(parquet_byte_length, int)
+            or not 1 <= parquet_byte_length <= MAX_SNAPSHOT_PARQUET_BYTES
+        ):
+            raise LegacyLandedLeafCacheError(
+                "legacy cache snapshot inventory bounds are invalid"
+            )
         parquet_cid = admit_cid(manifest.get("parquet_cid"), codecs=("raw",))
         parquet_bytes, _parquet_receipt = backend.get_raw(parquet_cid)
-        if len(parquet_bytes) != manifest.get("parquet_byte_length"):
+        if len(parquet_bytes) != parquet_byte_length:
             raise LegacyLandedLeafCacheError(
                 "legacy cache snapshot Parquet length mismatch"
             )
@@ -1496,15 +1578,8 @@ class LegacyLandedLeafResultCache:
         finally:
             if temporary.exists():
                 temporary.unlink()
-        row_count = manifest.get("row_count")
-        key_ids = manifest.get("ordered_key_ids")
-        record_ids = manifest.get("ordered_record_ids")
         if (
-            isinstance(row_count, bool)
-            or not isinstance(row_count, int)
-            or row_count != len(rows)
-            or not isinstance(key_ids, list)
-            or not isinstance(record_ids, list)
+            row_count != len(rows)
             or [str(row["key_id"]) for row in rows] != key_ids
             or [str(row["record_id"]) for row in rows] != record_ids
         ):
@@ -1513,9 +1588,19 @@ class LegacyLandedLeafResultCache:
             )
         records: list[LegacyLandedLeafCacheRecord] = []
         for row in rows:
+            if (
+                len(str(row["key_json"]).encode("utf-8"))
+                > MAX_SNAPSHOT_ROW_JSON_BYTES
+                or len(str(row["record_json"]).encode("utf-8"))
+                > MAX_SNAPSHOT_ROW_JSON_BYTES
+            ):
+                raise LegacyLandedLeafCacheError(
+                    "legacy cache snapshot row exceeds its JSON bound"
+                )
             key = LegacyLandedLeafCacheKey.from_dict(
                 _strict_object(str(row["key_json"]))
             )
+            self._require_policy_key(key)
             record = LegacyLandedLeafCacheRecord.from_dict(
                 _strict_object(str(row["record_json"]))
             )

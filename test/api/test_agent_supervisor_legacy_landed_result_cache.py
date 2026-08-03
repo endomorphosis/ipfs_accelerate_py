@@ -58,15 +58,20 @@ def _private_key_file(path: Path) -> str:
     return legacy_landed_review_key_id(private.public_key().public_bytes_raw())
 
 
-def _policy_payload(issuer_key_id: str) -> dict[str, Any]:
+def _policy_payload(
+    issuer_key_id: str,
+    *,
+    current_head: str = HEAD,
+    current_tree_id: str = TREE,
+) -> dict[str, Any]:
     template = copy.deepcopy(legacy.EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE)
     body = {
         "schema": legacy.LEGACY_LANDED_REVIEW_POLICY_SCHEMA,
         "interface": legacy.LEGACY_LANDED_REVIEW_POLICY_INTERFACE,
         "enabled": True,
         "issuer_key_id": issuer_key_id,
-        "current_head": HEAD,
-        "current_tree_id": TREE,
+        "current_head": current_head,
+        "current_tree_id": current_tree_id,
         "max_leaf_tokens": template["max_leaf_tokens"],
         "providers": template["providers"],
         "tasks": template["tasks"],
@@ -329,6 +334,18 @@ def test_cache_key_binds_every_review_dimension_and_is_closed(
     with pytest.raises(ValueError, match="shape"):
         LegacyLandedLeafCacheKey.from_dict(missing)
 
+    for foreign in (
+        replace(key, policy_id=key.policy_id + "x"),
+        replace(key, current_head="c" * 40),
+        replace(key, current_tree_id="d" * 40),
+        replace(key, canonical_task_cid=key.canonical_task_cid + "x"),
+        replace(key, provider="another-provider"),
+    ):
+        with pytest.raises(LegacyLandedLeafCacheError, match="policy|binding"):
+            cache.lookup(foreign)
+        with pytest.raises(LegacyLandedLeafCacheError, match="policy|binding"):
+            cache.acquire(foreign)
+
 
 def test_stale_fencing_token_cannot_publish_after_takeover(tmp_path: Path) -> None:
     now = [1.0]
@@ -484,6 +501,8 @@ def test_snapshot_inventory_is_exact_during_concurrent_insert_and_tamper_fails(
     snapshot = cache.export_snapshot(tmp_path / "snapshots", backend=backend)
     assert snapshot.row_count == 1
     assert len(cache.records()) == 2
+    assert snapshot.parquet_cid in storage._pins  # noqa: SLF001
+    assert snapshot.manifest_cid in storage._pins  # noqa: SLF001
 
     imported = LegacyLandedLeafResultCache(
         tmp_path / "imported.duckdb",
@@ -503,6 +522,70 @@ def test_snapshot_inventory_is_exact_during_concurrent_insert_and_tamper_fails(
     with pytest.raises(VerifiedIPLDError):
         empty.import_snapshot(snapshot.manifest_cid, backend=backend)
     assert empty.records() == ()
+
+
+def test_import_rejects_foreign_policy_rows_and_bounded_duplicate_inventory(
+    tmp_path: Path,
+) -> None:
+    cache, old_policy, task, manifest, key_path = _cache_fixture(tmp_path)
+    cache.review_leaf(
+        task=task,
+        manifest=manifest,
+        leaf=manifest["leaves"][0],
+        provider=old_policy.grok,
+        invoker=_ApprovingProvider(),
+        review_run_id="legacy-review:" + "9" * 48,
+    )
+    storage = InMemoryConformantBackend()
+    backend = VerifiedIPLDBackend(backend=storage)
+    snapshot = cache.export_snapshot(tmp_path / "foreign-snapshot", backend=backend)
+
+    current_policy = legacy.parse_legacy_landed_review_policy(
+        _policy_payload(
+            old_policy.issuer_key_id,
+            current_head="c" * 40,
+            current_tree_id="d" * 40,
+        )
+    )
+    current = LegacyLandedLeafResultCache(
+        tmp_path / "current.duckdb",
+        policy=current_policy,
+        operator_key_path=key_path,
+    )
+    relabelled = {
+        **snapshot.manifest,
+        "policy_id": current_policy.policy_id,
+        "current_head": current_policy.current_head,
+        "current_tree_id": current_policy.current_tree_id,
+    }
+    relabelled_cid = backend.put_dag_json(relabelled).cid
+    with pytest.raises(LegacyLandedLeafCacheError, match="pinned policy"):
+        current.import_snapshot(relabelled_cid, backend=backend)
+    assert current.records() == ()
+
+    duplicate = {
+        **snapshot.manifest,
+        "row_count": 2,
+        "ordered_key_ids": [
+            snapshot.manifest["ordered_key_ids"][0],
+            snapshot.manifest["ordered_key_ids"][0],
+        ],
+        "ordered_record_ids": [
+            snapshot.manifest["ordered_record_ids"][0],
+            snapshot.manifest["ordered_record_ids"][0],
+        ],
+    }
+    duplicate_cid = backend.put_dag_json(duplicate).cid
+    with pytest.raises(LegacyLandedLeafCacheError, match="inventory bounds"):
+        cache.import_snapshot(duplicate_cid, backend=backend)
+
+    oversized = {
+        **snapshot.manifest,
+        "parquet_byte_length": cache_module.MAX_SNAPSHOT_PARQUET_BYTES + 1,
+    }
+    oversized_cid = backend.put_dag_json(oversized).cid
+    with pytest.raises(LegacyLandedLeafCacheError, match="inventory bounds"):
+        cache.import_snapshot(oversized_cid, backend=backend)
 
 
 def test_snapshot_bound_fails_explicitly_and_existing_cid_is_never_overwritten(
