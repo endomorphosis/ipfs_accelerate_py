@@ -6,7 +6,7 @@
   "goal_id": "FVT-G213",
   "task_id": "FVT-081",
   "program": "formal-verification-tactician/toolchain-release-candidate",
-  "observed_at": "2026-08-01T18:20:47Z",
+  "observed_at": "2026-08-03T04:11:15Z",
   "description": "Fail-closed production-semantic elevation fan-in. Each required tool is independently reconstructed from its canonical PNMR receipt and exact compact binding before production elevation.",
   "policy": {
     "required_check_kinds": [
@@ -39,10 +39,10 @@
       "tool_id": "lean",
       "lane_id": "kernel",
       "interface": "LeanSemanticCertification@1",
-      "evidence_class": "usable_pending_kernel_live_fanin",
-      "production_elevation_allowed": false,
+      "evidence_class": "live_specialized_semantic_receipt",
+      "production_elevation_allowed": true,
       "lane_status": "ran",
-      "lane_digest_sha256": "6df7551f4ce53d1664e5d86cceffcf2b5cf58f581a827d3249e3ae7b34abb225",
+      "lane_digest_sha256": "397faf8e1e8ea3e1e5b87dc3a4514d2736175ecf20fb5e1b3d8b9db10e697cb5",
       "compact_tool_certified": true,
       "independent_reconstruction": {
         "valid": true,
@@ -51,12 +51,12 @@
         "check_kinds_present": [
           "binding",
           "fail_closed",
-          "identity",
+          "malformed",
           "mutation",
           "negative",
-          "policy",
           "positive",
-          "replay"
+          "replay",
+          "timeout"
         ],
         "required_check_kinds": [
           "positive",
@@ -68,8 +68,8 @@
         "required_kinds_all_passed": true,
         "required_kinds_failed": [],
         "required_kinds_missing": [],
-        "check_set_digest_sha256": "97b2b640845d2f619ecd6f9b20ef4bcec5c6df72c65cb628b7b03424e88b6ffd",
-        "compact_check_set_digest_sha256": "97b2b640845d2f619ecd6f9b20ef4bcec5c6df72c65cb628b7b03424e88b6ffd",
+        "check_set_digest_sha256": "68ed7cbbb5dd2d9f1fe22039c360ea82c8bf1c0218e43da208d9a123e0fd8c66",
+        "compact_check_set_digest_sha256": "68ed7cbbb5dd2d9f1fe22039c360ea82c8bf1c0218e43da208d9a123e0fd8c66",
         "compact_binding_valid": true,
         "checks_total": 14,
         "checks_passed": 14,
@@ -81,30 +81,28 @@
         },
         "raw_checks_embedded": false
       },
-      "semantic_authority_valid": false,
+      "semantic_authority_valid": true,
       "surfaces": {
-        "role_aware": false,
-        "promotion": false,
-        "tool": false,
-        "lane": false,
-        "decision": false
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
       },
       "surfaces_consistent": true,
-      "production_elevation_present": false,
-      "eligible_for_production_elevation": false,
-      "required_elevation_audit_present": false,
-      "block_reasons": [
-        "production_elevation_not_allowed_by_evidence_class"
-      ]
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
     },
     "runtime-mtl": {
       "tool_id": "runtime-mtl",
       "lane_id": "runtime_mtl",
       "interface": "RuntimeMTLSemanticCertification@1",
-      "evidence_class": "usable_pending_external_runtime_mtl",
-      "production_elevation_allowed": false,
+      "evidence_class": "reference_plus_checked_runtime_mtl_vendor",
+      "production_elevation_allowed": true,
       "lane_status": "ran",
-      "lane_digest_sha256": "a1718f9c8895f0160c10082f1cfd5e28216f4f68e967a85d2cf86b16b1827eba",
+      "lane_digest_sha256": "de605de37fb80557ecfa0f9157641e4dea082b358c2b41a63f4d7def5180e641",
       "compact_tool_certified": true,
       "independent_reconstruction": {
         "valid": true,
@@ -142,30 +140,28 @@
         },
         "raw_checks_embedded": false
       },
-      "semantic_authority_valid": false,
+      "semantic_authority_valid": true,
       "surfaces": {
-        "role_aware": false,
-        "promotion": false,
-        "tool": false,
-        "lane": false,
-        "decision": false
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
       },
       "surfaces_consistent": true,
-      "production_elevation_present": false,
-      "eligible_for_production_elevation": false,
-      "required_elevation_audit_present": false,
-      "block_reasons": [
-        "production_elevation_not_allowed_by_evidence_class"
-      ]
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
     },
     "datalog-authorization": {
       "tool_id": "datalog-authorization",
       "lane_id": "datalog_secpal",
       "interface": "AuthorizationSemanticCertification@1",
-      "evidence_class": "usable_pending_authorization_vendor_fanin",
-      "production_elevation_allowed": false,
+      "evidence_class": "reference_plus_checked_souffle_vendor",
+      "production_elevation_allowed": true,
       "lane_status": "ran",
-      "lane_digest_sha256": "038b7017befa1c7d34c0d10c0b0c66a77a08abd3840f15039e3bc781f967edd8",
+      "lane_digest_sha256": "5acd28576f3d5422b5106af9b07f86269f6ba0f2b09c4d2cf3639ee3f9f87218",
       "compact_tool_certified": true,
       "independent_reconstruction": {
         "valid": true,
@@ -202,30 +198,28 @@
         },
         "raw_checks_embedded": false
       },
-      "semantic_authority_valid": false,
+      "semantic_authority_valid": true,
       "surfaces": {
-        "role_aware": false,
-        "promotion": false,
-        "tool": false,
-        "lane": false,
-        "decision": false
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
       },
       "surfaces_consistent": true,
-      "production_elevation_present": false,
-      "eligible_for_production_elevation": false,
-      "required_elevation_audit_present": false,
-      "block_reasons": [
-        "production_elevation_not_allowed_by_evidence_class"
-      ]
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
     },
     "secpal-authorization": {
       "tool_id": "secpal-authorization",
       "lane_id": "datalog_secpal",
       "interface": "AuthorizationSemanticCertification@1",
-      "evidence_class": "usable_pending_authorization_vendor_fanin",
-      "production_elevation_allowed": false,
+      "evidence_class": "reference_plus_checked_souffle_vendor",
+      "production_elevation_allowed": true,
       "lane_status": "ran",
-      "lane_digest_sha256": "038b7017befa1c7d34c0d10c0b0c66a77a08abd3840f15039e3bc781f967edd8",
+      "lane_digest_sha256": "5acd28576f3d5422b5106af9b07f86269f6ba0f2b09c4d2cf3639ee3f9f87218",
       "compact_tool_certified": true,
       "independent_reconstruction": {
         "valid": true,
@@ -262,30 +256,28 @@
         },
         "raw_checks_embedded": false
       },
-      "semantic_authority_valid": false,
+      "semantic_authority_valid": true,
       "surfaces": {
-        "role_aware": false,
-        "promotion": false,
-        "tool": false,
-        "lane": false,
-        "decision": false
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
       },
       "surfaces_consistent": true,
-      "production_elevation_present": false,
-      "eligible_for_production_elevation": false,
-      "required_elevation_audit_present": false,
-      "block_reasons": [
-        "production_elevation_not_allowed_by_evidence_class"
-      ]
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
     },
     "coq": {
       "tool_id": "coq",
       "lane_id": "kernel_rocq",
       "interface": "RocqToolchainCertification@1",
-      "evidence_class": "external_prover_installation_pending",
-      "production_elevation_allowed": false,
+      "evidence_class": "live_specialized_semantic_receipt",
+      "production_elevation_allowed": true,
       "lane_status": "ran",
-      "lane_digest_sha256": "d5ed225b1bf42049f207ad6de1d2b3158465b75935e40b39c4413f9001ed22d7",
+      "lane_digest_sha256": "ab4bb0ab30b820d7a33a28e879dbba34b090bb48adbd0efdc4bbcaa732f2f945",
       "compact_tool_certified": true,
       "independent_reconstruction": {
         "valid": true,
@@ -294,14 +286,12 @@
         "check_kinds_present": [
           "binding",
           "fail_closed",
-          "identity",
           "malformed",
           "mutation",
           "negative",
-          "policy",
           "positive",
           "replay",
-          "version_mismatch"
+          "timeout"
         ],
         "required_check_kinds": [
           "positive",
@@ -313,43 +303,41 @@
         "required_kinds_all_passed": true,
         "required_kinds_failed": [],
         "required_kinds_missing": [],
-        "check_set_digest_sha256": "e674c75ffd96a096fad424fb5d91b11b49136bc5c79b9ade4927063b6500342b",
-        "compact_check_set_digest_sha256": "e674c75ffd96a096fad424fb5d91b11b49136bc5c79b9ade4927063b6500342b",
+        "check_set_digest_sha256": "b950c24df7b7b114fbf506fb1767ad4783425abe1e71965aa4461fdc6cfde54e",
+        "compact_check_set_digest_sha256": "b950c24df7b7b114fbf506fb1767ad4783425abe1e71965aa4461fdc6cfde54e",
         "compact_binding_valid": true,
-        "checks_total": 16,
-        "checks_passed": 16,
+        "checks_total": 14,
+        "checks_passed": 14,
         "check_status_counts": {
-          "passed": 16,
+          "passed": 14,
           "failed": 0,
           "skipped": 0,
           "unavailable": 0
         },
         "raw_checks_embedded": false
       },
-      "semantic_authority_valid": false,
+      "semantic_authority_valid": true,
       "surfaces": {
-        "role_aware": false,
-        "promotion": false,
-        "tool": false,
-        "lane": false,
-        "decision": false
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
       },
       "surfaces_consistent": true,
-      "production_elevation_present": false,
-      "eligible_for_production_elevation": false,
-      "required_elevation_audit_present": false,
-      "block_reasons": [
-        "production_elevation_not_allowed_by_evidence_class"
-      ]
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
     },
     "isabelle": {
       "tool_id": "isabelle",
       "lane_id": "kernel_isabelle",
       "interface": "IsabelleToolchainCertification@1",
-      "evidence_class": "external_prover_installation_pending",
-      "production_elevation_allowed": false,
+      "evidence_class": "live_specialized_semantic_receipt",
+      "production_elevation_allowed": true,
       "lane_status": "ran",
-      "lane_digest_sha256": "bbb19d529311cd0652eddf89635b3a67197937bd1fb6e2cb8a4621f4b1181555",
+      "lane_digest_sha256": "1016906acac8a991a7913e2cda5de2c2df8216483362859b66d36e3532c0bbe5",
       "compact_tool_certified": true,
       "independent_reconstruction": {
         "valid": true,
@@ -358,16 +346,12 @@
         "check_kinds_present": [
           "binding",
           "fail_closed",
-          "identity",
           "malformed",
           "mutation",
           "negative",
-          "policy",
           "positive",
           "replay",
-          "replay_mismatch",
-          "timeout",
-          "version_mismatch"
+          "timeout"
         ],
         "required_check_kinds": [
           "positive",
@@ -379,41 +363,39 @@
         "required_kinds_all_passed": true,
         "required_kinds_failed": [],
         "required_kinds_missing": [],
-        "check_set_digest_sha256": "6572bf98613480bf7cd7760137f51aa78f3ee362ae01143c6a585f7fe8bbba15",
-        "compact_check_set_digest_sha256": "6572bf98613480bf7cd7760137f51aa78f3ee362ae01143c6a585f7fe8bbba15",
+        "check_set_digest_sha256": "55e57f4f39c5dbffaa26b1feb430c373d905e28717b42082d1116098a3f3bb16",
+        "compact_check_set_digest_sha256": "55e57f4f39c5dbffaa26b1feb430c373d905e28717b42082d1116098a3f3bb16",
         "compact_binding_valid": true,
-        "checks_total": 16,
-        "checks_passed": 16,
+        "checks_total": 14,
+        "checks_passed": 14,
         "check_status_counts": {
-          "passed": 16,
+          "passed": 14,
           "failed": 0,
           "skipped": 0,
           "unavailable": 0
         },
         "raw_checks_embedded": false
       },
-      "semantic_authority_valid": false,
+      "semantic_authority_valid": true,
       "surfaces": {
-        "role_aware": false,
-        "promotion": false,
-        "tool": false,
-        "lane": false,
-        "decision": false
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
       },
       "surfaces_consistent": true,
-      "production_elevation_present": false,
-      "eligible_for_production_elevation": false,
-      "required_elevation_audit_present": false,
-      "block_reasons": [
-        "production_elevation_not_allowed_by_evidence_class"
-      ]
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
     }
   },
   "certificate_identity": {
     "valid": true,
     "digest_valid": true,
-    "stored_digest_sha256": "b513ae2652703305d18c2751dd0f929feb20465116ae760c9a11c27daeab65d0",
-    "computed_digest_sha256": "b513ae2652703305d18c2751dd0f929feb20465116ae760c9a11c27daeab65d0",
+    "stored_digest_sha256": "c49ab13354bd83383bbf0d4413a5c04b70f398c263c7ca93db9e41f325a1c960",
+    "computed_digest_sha256": "c49ab13354bd83383bbf0d4413a5c04b70f398c263c7ca93db9e41f325a1c960",
     "interface_valid": true,
     "role_aware_identity_valid": true,
     "public_evidence_valid": true,
@@ -478,8 +460,7 @@
     ],
     "independent_reconstruction_incomplete": [],
     "all_required_reconstructions_valid": true,
-    "production_elevation_present": [],
-    "production_elevation_missing": [
+    "production_elevation_present": [
       "lean",
       "runtime-mtl",
       "datalog-authorization",
@@ -487,10 +468,11 @@
       "coq",
       "isabelle"
     ],
+    "production_elevation_missing": [],
     "elevation_without_reconstruction": [],
     "elevation_with_disallowed_evidence_class": [],
     "structurally_valid": true,
-    "fanin_closed": false,
+    "fanin_closed": true,
     "failures": []
   },
   "required_elevation_audit": {
@@ -503,8 +485,7 @@
       "coq",
       "isabelle"
     ],
-    "present": [],
-    "missing": [
+    "present": [
       "lean",
       "runtime-mtl",
       "datalog-authorization",
@@ -512,13 +493,31 @@
       "coq",
       "isabelle"
     ],
+    "missing": [],
     "expected_global_production_certified_tool_ids": [
-      "z3"
+      "apalache",
+      "autohyper",
+      "coq",
+      "cvc5",
+      "datalog-authorization",
+      "eprover",
+      "hyperltl",
+      "isabelle",
+      "lean",
+      "mchyper",
+      "proverif",
+      "runtime-mtl",
+      "secpal-authorization",
+      "tamarin",
+      "tlc",
+      "vampire",
+      "z3",
+      "zkp-circuit"
     ],
     "failures": []
   },
   "role_aware_certificate": {
-    "digest_sha256": "b513ae2652703305d18c2751dd0f929feb20465116ae760c9a11c27daeab65d0",
+    "digest_sha256": "c49ab13354bd83383bbf0d4413a5c04b70f398c263c7ca93db9e41f325a1c960",
     "interface": "FormalVerificationToolchainCertificate@1",
     "projection_model": "digest_bound_compact_projection/v1",
     "raw_certificate_embedded": false
@@ -535,7 +534,7 @@
     "raw_checks_not_reembedded": true,
     "offline_only": true,
     "structurally_valid": true,
-    "fanin_closed": false,
+    "fanin_closed": true,
     "merge_not_claimed": true,
     "deployment_not_claimed": true,
     "required_elevation_audit_bound": true
@@ -556,7 +555,7 @@
     "self_referential_current_tree": false,
     "max_stage": "release_candidate"
   },
-  "status": "production_semantic_elevation_fanin_structurally_valid",
+  "status": "production_semantic_elevation_fanin_closed",
   "public_evidence_policy": {
     "satisfied": true,
     "safe": true,
@@ -569,5 +568,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_digest_sha256": "sha256:8b2d1b6caedff7be82e3753b2e480c8e1e54b3ed513cae8f1c9247984417c0d8"
+  "receipt_digest_sha256": "sha256:13778290f4611641b7a18ad26c0f7e14e705b813a805e9c2895bb2d4e97e3e2d"
 }
