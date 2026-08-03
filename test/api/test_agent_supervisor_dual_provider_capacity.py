@@ -552,6 +552,7 @@ def test_four_model_lanes_are_capped_by_two_free_pair_slots(
         provider_capacity_source=lambda: providers,
         launcher=launch,
         max_lanes=4,
+        max_age_ms=30_000,
     )
     manifest = scheduler.reconcile_once()
 
