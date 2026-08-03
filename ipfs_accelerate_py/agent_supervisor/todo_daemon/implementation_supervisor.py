@@ -28,6 +28,7 @@ from ..merge.checkout_lock import (
     acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
+    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
     read_checkout_mutation_lease,
@@ -1378,10 +1379,17 @@ class PortalImplementationSupervisor:
         )
 
     def _protected_path_maintenance_lease_metadata(self) -> dict[str, Any]:
-        metadata = self._implementation_maintenance_lease_metadata()
-        metadata["kind"] = "implementation-protected-maintenance"
-        metadata["lease_role"] = "shared_protected_path_maintenance"
-        return metadata
+        local_metadata = self._implementation_maintenance_lease_metadata()
+        owner_script = str(local_metadata.pop("owner_script") or "")
+        for field_name in ("kind", "pid", "repo_root"):
+            local_metadata.pop(field_name, None)
+        local_metadata["lease_role"] = "shared_protected_path_maintenance"
+        return checkout_lock_metadata(
+            kind="implementation-protected-maintenance",
+            repo_root=self.config.repo_root,
+            owner_script=owner_script,
+            extra=local_metadata,
+        )
 
     def _protected_path_maintenance_owner_is_active(
         self,
@@ -1420,16 +1428,14 @@ class PortalImplementationSupervisor:
                 )
                 continue
             kind = str(metadata.get("kind") or "")
-            repo_root = str(metadata.get("repo_root") or "")
             try:
-                same_repository = (
-                    not repo_root
-                    or Path(repo_root).resolve()
-                    == self.config.repo_root.resolve()
+                repository_match = checkout_lock_repository_matches(
+                    metadata,
+                    self.config.repo_root,
                 )
                 pid = int(metadata.get("pid") or 0)
-            except (OSError, TypeError, ValueError):
-                same_repository = False
+            except (OSError, RuntimeError, TypeError, ValueError):
+                repository_match = None
                 pid = 0
             protected_fence_paths = (
                 implementation_task_claim_protected_fence_paths(metadata)
@@ -1442,8 +1448,12 @@ class PortalImplementationSupervisor:
             # after its process exits.
             if (
                 (not kind or kind == IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
-                and same_repository
-                and (owner_live or protected_fence_paths)
+                and repository_match is not False
+                and (
+                    repository_match is None
+                    or owner_live
+                    or protected_fence_paths
+                )
             ):
                 active.append(
                     {
@@ -1451,6 +1461,9 @@ class PortalImplementationSupervisor:
                         "task_id": str(metadata.get("task_id") or ""),
                         "pid": pid,
                         "owner_live": owner_live,
+                        "repository_identity_uncertain": (
+                            repository_match is None
+                        ),
                         "state_dir": str(metadata.get("state_dir") or ""),
                         "protected_fence_paths": list(
                             protected_fence_paths
@@ -10823,9 +10836,16 @@ class PortalImplementationSupervisor:
     ) -> str:
         if str(metadata.get("kind") or "") != "merge":
             return "kind_mismatch"
+        worktree_root = str(
+            metadata.get("worktree_root")
+            or metadata.get("repo_root")
+            or ""
+        )
         try:
-            if Path(str(metadata.get("repo_root") or "")).resolve() != (
-                self.config.repo_root.resolve()
+            if (
+                not worktree_root
+                or Path(worktree_root).resolve()
+                != self.config.repo_root.resolve()
             ):
                 return "repository_mismatch"
         except (OSError, RuntimeError, ValueError):

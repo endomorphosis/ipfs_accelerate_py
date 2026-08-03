@@ -72,6 +72,8 @@ from ..merge.checkout_lock import (
     adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease,
     checkout_lock_metadata,
+    checkout_lock_owner_is_active,
+    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
     checkout_repository_id,
     crash_fence_reconciliation_lock_path,
@@ -36374,9 +36376,12 @@ class PortalImplementationDaemon:
                             "coordination_error": "malformed_maintenance_lease",
                         }
                     return None
-                if self._lock_owner_is_active(
+                if checkout_lock_owner_is_active(
                     metadata,
                     expected_kind="implementation-protected-maintenance",
+                    expected_repo_root=self.repo_root,
+                    process_command_line=process_command_line,
+                    process_is_running=process_is_running,
                 ):
                     return metadata
                 lock_path.unlink(missing_ok=True)
@@ -36551,21 +36556,27 @@ class PortalImplementationDaemon:
         started_at: str,
     ) -> dict[str, Any]:
         identity = self._identity_for_task(task)
-        return {
-            "kind": "merge",
-            "pid": os.getpid(),
-            "owner_script": Path(sys.argv[0]).name,
-            "repo_root": str(self.repo_root.resolve()),
-            "state_dir": str(self.state_path.parent.resolve()),
-            "state_path": str(self.state_path.resolve()),
-            "task_id": task.task_id,
-            "canonical_task_key": identity.canonical_task_key,
-            "canonical_task_cid": identity.canonical_task_cid,
-            "board_namespace": identity.board_namespace,
-            "attempt": attempt,
-            "branch": branch_name,
-            "started_at": started_at,
-        }
+        metadata = checkout_lock_metadata(
+            kind="merge",
+            repo_root=self.repo_root,
+            task_id=task.task_id,
+            attempt=attempt,
+            branch=branch_name,
+            owner_script=Path(sys.argv[0]).name,
+            extra={
+                "state_dir": str(self.state_path.parent.resolve()),
+                "state_path": str(self.state_path.resolve()),
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "board_namespace": identity.board_namespace,
+                "started_at": started_at,
+            },
+        )
+        # This legacy builder is task-state-scoped rather than an atomic
+        # checkout transaction. Preserve that distinction while migrating its
+        # repository identity fields.
+        metadata.pop("lease_id", None)
+        return metadata
 
     def _implementation_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
         state_dir = str(metadata.get("state_dir") or "")
@@ -36574,39 +36585,27 @@ class PortalImplementationDaemon:
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
 
     def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
-        repo_root = str(metadata.get("repo_root") or "")
-        if repo_root:
-            try:
-                if Path(repo_root).resolve() != self.repo_root.resolve():
-                    return False
-            except OSError:
-                return False
-        return self._lock_owner_is_active(metadata, expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
+        return checkout_lock_owner_is_active(
+            metadata,
+            expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+            expected_repo_root=self.repo_root,
+            process_command_line=process_command_line,
+            process_is_running=process_is_running,
+        )
 
     def _implementation_resource_claim_owner_is_active(
         self,
         metadata: dict[str, Any],
     ) -> bool:
-        repository_id = str(metadata.get("repository_id") or "")
-        if repository_id:
-            if repository_id != self.merge_target_repository_id:
-                return False
-        else:
-            repo_root = str(metadata.get("repo_root") or "")
-            try:
-                if (
-                    repo_root
-                    and Path(repo_root).resolve() != self.repo_root.resolve()
-                ):
-                    return False
-            except OSError:
-                return False
         resource_path = str(metadata.get("resource_path") or "")
         if not resource_path:
             return False
-        return self._lock_owner_is_active(
+        return checkout_lock_owner_is_active(
             metadata,
             expected_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
+            expected_repo_root=self.repo_root,
+            process_command_line=process_command_line,
+            process_is_running=process_is_running,
         )
 
     def _external_task_reservations(
@@ -36726,13 +36725,22 @@ class PortalImplementationDaemon:
         return active_claims
 
     def _merge_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
-        repo_root = str(metadata.get("repo_root") or "")
-        if repo_root and Path(repo_root).resolve() != self.repo_root.resolve():
+        repository_match = checkout_lock_repository_matches(
+            metadata,
+            self.repo_root,
+        )
+        if not checkout_lock_owner_is_active(
+            metadata,
+            expected_kind="merge",
+            expected_repo_root=self.repo_root,
+            process_command_line=process_command_line,
+            process_is_running=process_is_running,
+        ):
             return False
+        if repository_match is None:
+            return True
         if metadata.get("protected_recovery_required") is True:
             return True
-        if not self._lock_owner_is_active(metadata, expected_kind="merge"):
-            return False
         # Atomic leases are fenced by a unique lease ID and the owning process.
         # Their operation may be supervisor-wide or nested, so task projection
         # is not an ownership signal for these fully published records.
@@ -37387,9 +37395,16 @@ class PortalImplementationDaemon:
 
         if str(metadata.get("kind") or "") != "merge":
             return "kind_mismatch"
+        worktree_root = str(
+            metadata.get("worktree_root")
+            or metadata.get("repo_root")
+            or ""
+        )
         try:
-            if Path(str(metadata.get("repo_root") or "")).resolve() != (
-                self.repo_root.resolve()
+            if (
+                not worktree_root
+                or Path(worktree_root).resolve()
+                != self.repo_root.resolve()
             ):
                 return "repository_path_mismatch"
         except (OSError, RuntimeError, ValueError):

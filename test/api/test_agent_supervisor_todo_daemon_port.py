@@ -15933,6 +15933,184 @@ def test_daemon_recovery_journal_preserves_legacy_and_repository_fences(
     lock_path.unlink()
 
 
+def test_shared_claim_and_supervisor_liveness_use_common_git_identity(
+    tmp_path,
+) -> None:
+    repo, _objective_path, todo_path = _seed_repo(tmp_path)
+    sibling = tmp_path / "sibling"
+    _git(repo, "worktree", "add", "-b", "sibling", str(sibling))
+    (tmp_path / "foreign").mkdir()
+    foreign, _foreign_objective, foreign_todo = _seed_repo(
+        tmp_path / "foreign"
+    )
+
+    def daemon_for(
+        checkout: Path,
+        checkout_todo: Path,
+        state_name: str,
+    ) -> TodoImplementationDaemon:
+        state_dir = tmp_path / "state" / state_name
+        return TodoImplementationDaemon(
+            todo_path=checkout_todo,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            repo_root=checkout,
+            task_header_prefix="## AUTO-",
+        )
+
+    def supervisor_for(
+        checkout: Path,
+        checkout_todo: Path,
+        state_name: str,
+    ) -> TodoImplementationSupervisor:
+        state_dir = tmp_path / "supervisor-state" / state_name
+        return TodoImplementationSupervisor(
+            TodoSupervisorConfig(
+                todo_path=checkout_todo,
+                state_path=state_dir / "task_state.json",
+                strategy_path=state_dir / "strategy.json",
+                events_path=state_dir / "events.jsonl",
+                state_dir=state_dir,
+                repo_root=checkout,
+            )
+        )
+
+    primary_daemon = daemon_for(repo, todo_path, "primary")
+    sibling_daemon = daemon_for(
+        sibling,
+        sibling / todo_path.relative_to(repo),
+        "sibling",
+    )
+    foreign_daemon = daemon_for(foreign, foreign_todo, "foreign")
+    claim_path = primary_daemon._implementation_task_claim_path("AUTO-001")
+    assert claim_path == sibling_daemon._implementation_task_claim_path(
+        "AUTO-001"
+    )
+    claim_metadata = checkout_lock_metadata(
+        kind=implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+        repo_root=repo,
+        task_id="AUTO-001",
+        owner_script="",
+    )
+    claimed, reason, incumbent = (
+        primary_daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert claimed is True
+    assert reason == "acquired"
+    assert incumbent is None
+    assert sibling_daemon._implementation_task_claim_owner_is_active(
+        claim_metadata
+    )
+    assert not foreign_daemon._implementation_task_claim_owner_is_active(
+        claim_metadata
+    )
+
+    sibling_metadata = checkout_lock_metadata(
+        kind=implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+        repo_root=sibling,
+        task_id="AUTO-001",
+        owner_script="",
+    )
+    claimed, reason, incumbent = (
+        sibling_daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            sibling_metadata,
+        )
+    )
+    assert claimed is False
+    assert reason == "lock_exists"
+    assert incumbent == claim_metadata
+
+    legacy_metadata = dict(claim_metadata)
+    legacy_metadata.pop("repository_id")
+    legacy_metadata.pop("worktree_root")
+    legacy_metadata["repo_root"] = str(repo.resolve())
+    assert sibling_daemon._implementation_task_claim_owner_is_active(
+        legacy_metadata
+    )
+    assert not foreign_daemon._implementation_task_claim_owner_is_active(
+        legacy_metadata
+    )
+    assert primary_daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+
+    primary_supervisor = supervisor_for(repo, todo_path, "primary")
+    sibling_supervisor = supervisor_for(
+        sibling,
+        sibling / todo_path.relative_to(repo),
+        "sibling",
+    )
+    foreign_supervisor = supervisor_for(
+        foreign,
+        foreign_todo,
+        "foreign",
+    )
+    merge_metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        owner_script="",
+        extra={"operation": "generated_dirty_repair"},
+    )
+    assert sibling_supervisor._checkout_lock_owner_is_active(
+        merge_metadata
+    )
+    assert not foreign_supervisor._checkout_lock_owner_is_active(
+        merge_metadata
+    )
+    assert (
+        sibling_daemon._protected_recovery_journal_validation_error(
+            merge_metadata,
+            (sibling / todo_path.relative_to(repo),),
+            {},
+            {},
+        )
+        == "repository_path_mismatch"
+    )
+    assert (
+        sibling_supervisor._supervisor_recovery_journal_error(
+            merge_metadata
+        )
+        == "repository_mismatch"
+    )
+    legacy_sibling_recovery = dict(merge_metadata)
+    legacy_sibling_recovery.pop("repository_id")
+    legacy_sibling_recovery.pop("worktree_root")
+    legacy_sibling_recovery["repo_root"] = str(sibling.resolve())
+    assert (
+        sibling_daemon._protected_recovery_journal_validation_error(
+            legacy_sibling_recovery,
+            (sibling / todo_path.relative_to(repo),),
+            {},
+            {},
+        )
+        == "protected_paths_mismatch"
+    )
+    assert (
+        sibling_supervisor._supervisor_recovery_journal_error(
+            legacy_sibling_recovery
+        )
+        == "protected_paths_mismatch"
+    )
+
+    maintenance_metadata = (
+        primary_supervisor._protected_path_maintenance_lease_metadata()
+    )
+    assert maintenance_metadata["repo_root"] == ""
+    assert maintenance_metadata["worktree_root"] == str(repo.resolve())
+    assert sibling_supervisor._protected_path_maintenance_owner_is_active(
+        maintenance_metadata
+    )
+    assert not foreign_supervisor._protected_path_maintenance_owner_is_active(
+        maintenance_metadata
+    )
+
+
 def test_blocked_protected_recovery_acknowledges_runtime_wake(
     tmp_path,
     monkeypatch,
