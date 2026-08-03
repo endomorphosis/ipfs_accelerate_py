@@ -364,6 +364,29 @@
       "identity_kind": "immutable_release_tag",
       "release_tag": "v3.0_release",
       "artifact_size_bytes": 53064767,
+      "license_components": [
+        "Apache-2.0",
+        "LGPL-2.0"
+      ],
+      "acquisition_conditions": {
+        "requires_explicit_opt_in": true,
+        "checksum_required_before_execute": true,
+        "download_during_certification_forbidden": true,
+        "user_local_only": true,
+        "offline_after_acquisition": true,
+        "atomic_staged_install": true,
+        "relocatable_install_root": true
+      },
+      "entry_point": "runergo",
+      "identity_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false,
+        "expected_identity_substring": "ErgoAI 3.0"
+      },
       "platforms": {
         "linux-x86_64": {
           "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
@@ -380,6 +403,11 @@
         "gcc": ">=4.8",
         "flex": ">=2.6",
         "bison": ">=3.0"
+      },
+      "runtime_dependencies": {
+        "xsb": "bundled_with_official_release_compile_for_host",
+        "runergo": "official_entry_point",
+        "posix_shell": "required_for_launchers"
       }
     },
     "hyperltl": {
@@ -1881,12 +1909,54 @@
           "flex",
           "bison"
         ],
+        "runtime_dependencies": {
+          "xsb": "bundled_with_official_release_compile_for_host",
+          "runergo": "official_entry_point",
+          "posix_shell": "required_for_launchers"
+        },
+        "entry_point": "runergo",
+        "identity_probe": {
+          "method": "bounded_version_argv",
+          "argv": [
+            "--version"
+          ],
+          "timeout_seconds": 5,
+          "network": false,
+          "expected_identity_substring": "ErgoAI 3.0"
+        },
+        "acquisition_conditions": {
+          "requires_explicit_opt_in": true,
+          "checksum_required_before_execute": true,
+          "download_during_certification_forbidden": true,
+          "user_local_only": true,
+          "offline_after_acquisition": true,
+          "atomic_staged_install": true,
+          "relocatable_install_root": true
+        },
+        "lazy_install": {
+          "staged": true,
+          "checksum_verified": true,
+          "atomic": true,
+          "relocatable": true,
+          "offline_after_acquisition": true,
+          "never_on_import": true,
+          "never_during_certification": true
+        },
+        "authority_ceiling": "advisory",
+        "evidence_class": "proposal_or_candidate_until_independent_reconstruction",
         "live_semantic_checks_required": [
-          "positive",
-          "negative",
+          "entailment",
+          "non_entailment",
+          "contradiction",
           "mutation",
-          "replay"
-        ]
+          "replay",
+          "malformed",
+          "timeout",
+          "resource_bound"
+        ],
+        "live_toolchain_contract_interface": "ErgoAILiveToolchainContract@1",
+        "goal_id": "FVT-G218",
+        "task_id": "FVT-085"
       }
     },
     {
