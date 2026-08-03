@@ -48,7 +48,7 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Token class: medium
 - Estimated tokens: 0
 - Context budget tokens: 4096
-- Provider role: grok-implement, codex-review
+- Provider role: grok, codex-review
 - Resources: cpu-proof-solver
 - Merge fate: objective/FVT-G218
 - Rejection reasons: none (accepted)

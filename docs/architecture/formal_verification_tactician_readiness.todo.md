@@ -5587,7 +5587,7 @@ disable objective refill and use only the generated FVT bundle index.
 - Token class: medium
 - Estimated tokens: 0
 - Context budget tokens: 4096
-- Provider role: grok-implement, codex-review
+- Provider role: grok, codex-review
 - Resources: cpu-validation
 - Merge fate: objective/FVT-G215
 - Rejection reasons: none (accepted)
@@ -5656,7 +5656,7 @@ disable objective refill and use only the generated FVT bundle index.
 - Token class: medium
 - Estimated tokens: 0
 - Context budget tokens: 4096
-- Provider role: grok-implement, codex-review
+- Provider role: grok, codex-review
 - Resources: cpu-proof-solver
 - Merge fate: objective/FVT-G218
 - Rejection reasons: none (accepted)
@@ -5725,7 +5725,7 @@ disable objective refill and use only the generated FVT bundle index.
 - Token class: medium
 - Estimated tokens: 0
 - Context budget tokens: 4096
-- Provider role: grok-implement, codex-review
+- Provider role: grok, codex-review
 - Resources: cpu-validation
 - Merge fate: objective/FVT-G217
 - Rejection reasons: none (accepted)
@@ -5794,7 +5794,7 @@ disable objective refill and use only the generated FVT bundle index.
 - Token class: medium
 - Estimated tokens: 0
 - Context budget tokens: 4096
-- Provider role: grok-implement, codex-review
+- Provider role: grok, codex-review
 - Resources: io-artifact
 - Merge fate: objective/FVT-G216
 - Rejection reasons: none (accepted)
@@ -5863,7 +5863,7 @@ disable objective refill and use only the generated FVT bundle index.
 - Token class: medium
 - Estimated tokens: 0
 - Context budget tokens: 4096
-- Provider role: grok-implement, codex-review
+- Provider role: grok, codex-review
 - Resources: cpu-validation
 - Merge fate: objective/FVT-G220
 - Rejection reasons: none (accepted)
@@ -5932,7 +5932,7 @@ disable objective refill and use only the generated FVT bundle index.
 - Token class: medium
 - Estimated tokens: 0
 - Context budget tokens: 4096
-- Provider role: grok-implement, codex-review
+- Provider role: grok, codex-review
 - Resources: cpu-validation
 - Merge fate: objective/FVT-G221
 - Rejection reasons: none (accepted)
