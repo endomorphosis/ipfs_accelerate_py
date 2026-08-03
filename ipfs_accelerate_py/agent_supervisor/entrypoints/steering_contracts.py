@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, ClassVar, Final
 
-from ..multiformats_identity import cid_for_bytes
 from .contracts import (
     MAX_PROMPT_BYTES,
     MAX_QUESTIONS,
@@ -43,6 +42,7 @@ from .contracts import (
     _reject_embedded_prompt,
     _text,
     _text_tuple,
+    cid_for_bytes,
 )
 
 STEERING_CONTRACT_REQUIREMENT_ID: Final = (
