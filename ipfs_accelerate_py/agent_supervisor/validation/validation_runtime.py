@@ -33,6 +33,9 @@ from typing import Any
 VALIDATION_PATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PATH"
 VALIDATION_PYTHON_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"
 VALIDATION_PYTHONPATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
+VALIDATION_PYTHON_MODULES_ENV = (
+    "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON_MODULES"
+)
 VALIDATION_NPM_CACHE_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_NPM_CACHE"
 VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
@@ -95,7 +98,20 @@ _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE = (
 _FORMAL_TOOL_COMMAND_RE = re.compile(
     r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}"
 )
+_PYTHON_MODULE_RE = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"
+)
 _MAX_FORMAL_TOOL_COMMANDS = 64
+_MAX_VALIDATION_PYTHON_MODULES = 64
+_MAX_VALIDATION_PYTHON_PROBE_OUTPUT_BYTES = 64 * 1024
+_VALIDATION_PYTHON_PROBE_MARKER = (
+    "__IPFS_ACCELERATE_VALIDATION_PYTHON_MODULE_PROBE__="
+)
+DEFAULT_VALIDATION_PYTHON_MODULES = ("pytest",)
+VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "validation-python-module-preflight@1"
+)
 
 # These values affect deterministic/offline validation without carrying the
 # provider, wallet, registry, signing, or cloud credentials commonly present
@@ -1104,6 +1120,9 @@ def canonical_validation_environment_contract(
         "inherited_path_ignored": True,
         "writable_toolchain_paths_rejected": True,
         "python_interpreter": child["PYTHON"],
+        "required_python_modules": required_validation_python_modules(
+            environment=source,
+        ),
         "formal_toolchain_contract_sha256": formal_toolchain[
             "manifest_sha256"
         ],
@@ -1351,6 +1370,347 @@ def validation_python_launcher_environment(
                 os.close(fd)
             except OSError:
                 pass
+
+
+def normalize_validation_python_modules(
+    modules: Sequence[str] | str,
+) -> tuple[str, ...]:
+    """Normalize a bounded list of import names used by validation.
+
+    Import names, rather than package-manager requirement strings, keep the
+    probe independent of pip and prevent task metadata from becoming code.
+    """
+
+    raw_modules = (modules,) if isinstance(modules, str) else modules
+    normalized: list[str] = []
+    for raw in raw_modules:
+        for item in str(raw).split(","):
+            module = item.strip()
+            if not module:
+                continue
+            if not _PYTHON_MODULE_RE.fullmatch(module):
+                raise ValidationRuntimeError(
+                    "required validation Python module must be a dotted "
+                    f"import name: {module!r}"
+                )
+            if module not in normalized:
+                normalized.append(module)
+            if len(normalized) > _MAX_VALIDATION_PYTHON_MODULES:
+                raise ValidationRuntimeError(
+                    "too many required validation Python modules"
+                )
+    return tuple(normalized)
+
+
+def required_validation_python_modules(
+    additional_modules: Sequence[str] | str = (),
+    *,
+    environment: Mapping[str, object] | None = None,
+) -> tuple[str, ...]:
+    """Return core, operator-configured, and task-configured import names."""
+
+    source = os.environ if environment is None else environment
+    configured = str(
+        source.get(VALIDATION_PYTHON_MODULES_ENV) or ""
+    ).strip()
+    configured_modules: tuple[str, ...] = (
+        (configured,) if configured else ()
+    )
+    additional: tuple[str, ...] = (
+        (additional_modules,)
+        if isinstance(additional_modules, str)
+        else tuple(additional_modules)
+    )
+    return normalize_validation_python_modules(
+        (
+            *DEFAULT_VALIDATION_PYTHON_MODULES,
+            *configured_modules,
+            *additional,
+        )
+    )
+
+
+@contextmanager
+def private_validation_environment(
+    environment: Mapping[str, str],
+) -> Iterator[dict[str, str]]:
+    """Yield the same fresh profile boundary used by validation commands."""
+
+    with tempfile.TemporaryDirectory(
+        prefix="ipfs-accelerate-validation-home-"
+    ) as temporary_home:
+        home_path = Path(temporary_home)
+        child_environment = {
+            str(key): str(value) for key, value in environment.items()
+        }
+        child_environment.update(
+            {
+                "HOME": str(home_path),
+                "PYTHONNOUSERSITE": "1",
+                "XDG_CACHE_HOME": str(home_path / ".cache"),
+                "XDG_CONFIG_HOME": str(home_path / ".config"),
+                "XDG_DATA_HOME": str(home_path / ".local" / "share"),
+                "XDG_STATE_HOME": str(home_path / ".local" / "state"),
+            }
+        )
+        for key in (
+            "XDG_CACHE_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+        ):
+            Path(child_environment[key]).mkdir(
+                mode=0o700,
+                parents=True,
+                exist_ok=True,
+            )
+        yield child_environment
+
+
+_VALIDATION_PYTHON_MODULE_PROBE_SOURCE = r"""
+import contextlib
+import importlib
+import io
+import json
+import os
+import site
+import sys
+
+required = json.loads(sys.argv[1])
+missing = []
+failures = {}
+for module in required:
+    captured_stdout = io.StringIO()
+    captured_stderr = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(captured_stdout):
+            with contextlib.redirect_stderr(captured_stderr):
+                importlib.import_module(module)
+    except ModuleNotFoundError as exc:
+        missing_name = str(getattr(exc, "name", "") or "")
+        if missing_name == module or module.startswith(missing_name + "."):
+            missing.append(module)
+        else:
+            failures[module] = {
+                "exception_type": type(exc).__name__,
+                "missing_dependency": missing_name,
+            }
+    except BaseException as exc:
+        failures[module] = {"exception_type": type(exc).__name__}
+
+payload = {
+    "missing_modules": missing,
+    "failed_modules": failures,
+    "environment": {
+        "home_is_private": os.path.basename(os.environ.get("HOME", "")).startswith(
+            "ipfs-accelerate-validation-home-"
+        ),
+        "python_no_user_site": os.environ.get("PYTHONNOUSERSITE") == "1",
+        "site_user_enabled": bool(site.ENABLE_USER_SITE),
+    },
+    "python_executable": sys.executable,
+}
+print(
+    "__IPFS_ACCELERATE_VALIDATION_PYTHON_MODULE_PROBE__="
+    + json.dumps(payload, sort_keys=True, separators=(",", ":"))
+)
+raise SystemExit(0 if not missing and not failures else 3)
+"""
+
+
+@sealed_validation_python_runner
+def preflight_validation_python_modules(
+    additional_modules: Sequence[str] | str = (),
+    *,
+    environment: Mapping[str, object] | None = None,
+    timeout_seconds: float = 15.0,
+) -> dict[str, object]:
+    """Probe required imports through the authoritative Python boundary.
+
+    This runs the exact configured interpreter behind the same sealed launcher,
+    approved ``PYTHONPATH``, private ``HOME``/XDG directories, and
+    ``PYTHONNOUSERSITE=1`` policy used by authoritative validation.  Missing or
+    broken imports are returned as infrastructure diagnostics so callers can
+    defer before a task attempt or model invocation is charged.
+    """
+
+    if isinstance(timeout_seconds, bool) or float(timeout_seconds) <= 0:
+        raise ValidationRuntimeError(
+            "validation Python module preflight timeout must be positive"
+        )
+    required_modules = required_validation_python_modules(
+        additional_modules,
+        environment=environment,
+    )
+    child_environment = validation_environment_for_runner(
+        build_validation_environment(environment),
+        preflight_validation_python_modules,
+    )
+    interpreter = str(child_environment.get(_CHILD_PYTHON_ENV) or "")
+    interpreter_sha256 = str(
+        child_environment.get(VALIDATION_PYTHON_INTERPRETER_SHA256_ENV) or ""
+    )
+    base_receipt: dict[str, object] = {
+        "schema": VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA,
+        "passed": False,
+        "reason": "validation_python_module_probe_not_run",
+        "required_modules": list(required_modules),
+        "missing_modules": [],
+        "failed_modules": {},
+        "python_executable": interpreter,
+        "python_interpreter_sha256": interpreter_sha256,
+        "private_home": True,
+        "python_no_user_site": True,
+    }
+    try:
+        with private_validation_environment(
+            child_environment
+        ) as private_environment:
+            with validation_python_launcher_environment(
+                private_environment
+            ) as (launcher_environment, launcher_receipt):
+                completed = subprocess.run(
+                    [
+                        launcher_environment["PYTHON"],
+                        "-c",
+                        _VALIDATION_PYTHON_MODULE_PROBE_SOURCE,
+                        json.dumps(list(required_modules)),
+                    ],
+                    cwd=private_environment["HOME"],
+                    text=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=float(timeout_seconds),
+                    check=False,
+                    env=launcher_environment,
+                )
+    except subprocess.TimeoutExpired:
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_timed_out",
+            "action": (
+                "verify the configured validation interpreter starts without "
+                "profile hooks and imports the required modules promptly"
+            ),
+        }
+    except (OSError, ValidationRuntimeError) as exc:
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_unavailable",
+            "exception_type": type(exc).__name__,
+            "error": str(exc)[-1000:],
+            "action": (
+                "repair IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON and its "
+                "sealed package environment before restarting the supervisor"
+            ),
+        }
+
+    output = completed.stdout or ""
+    if len(output.encode("utf-8", errors="replace")) > (
+        _MAX_VALIDATION_PYTHON_PROBE_OUTPUT_BYTES
+    ):
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_output_too_large",
+            "returncode": int(completed.returncode),
+            "action": (
+                "repair a required module that emits excessive output during "
+                "import before restarting the supervisor"
+            ),
+        }
+    marker_index = output.rfind(_VALIDATION_PYTHON_PROBE_MARKER)
+    if marker_index < 0:
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_receipt_missing",
+            "returncode": int(completed.returncode),
+            "action": (
+                "verify the configured validation interpreter can execute the "
+                "sealed dependency probe"
+            ),
+        }
+    encoded_receipt = output[
+        marker_index + len(_VALIDATION_PYTHON_PROBE_MARKER) :
+    ].splitlines()[0]
+    try:
+        probe = json.loads(encoded_receipt)
+    except (json.JSONDecodeError, TypeError):
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_receipt_invalid",
+            "returncode": int(completed.returncode),
+            "action": (
+                "verify the configured validation interpreter can emit the "
+                "dependency probe receipt"
+            ),
+        }
+    if not isinstance(probe, Mapping):
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_receipt_invalid",
+            "returncode": int(completed.returncode),
+        }
+    missing = [
+        str(item)
+        for item in probe.get("missing_modules", [])
+        if str(item)
+    ]
+    failed_raw = probe.get("failed_modules")
+    failed = (
+        {
+            str(key): value
+            for key, value in failed_raw.items()
+            if str(key)
+        }
+        if isinstance(failed_raw, Mapping)
+        else {}
+    )
+    probe_environment = probe.get("environment")
+    environment_matches = (
+        isinstance(probe_environment, Mapping)
+        and probe_environment.get("home_is_private") is True
+        and probe_environment.get("python_no_user_site") is True
+        and probe_environment.get("site_user_enabled") is False
+    )
+    passed = (
+        completed.returncode == 0
+        and not missing
+        and not failed
+        and environment_matches
+        and str(probe.get("python_executable") or "") == interpreter
+    )
+    reason = (
+        "validation_python_modules_available"
+        if passed
+        else "validation_python_modules_unavailable"
+        if missing or failed
+        else "validation_python_module_probe_environment_mismatch"
+    )
+    result = {
+        **base_receipt,
+        "passed": passed,
+        "reason": reason,
+        "returncode": int(completed.returncode),
+        "missing_modules": missing,
+        "failed_modules": failed,
+        "environment": dict(probe_environment or {}),
+        "validation_python_launcher": {
+            "content_sha256": launcher_receipt.content_sha256,
+            "interpreter_sha256": launcher_receipt.interpreter_sha256,
+            "interpreter_stat": launcher_receipt.interpreter_stat,
+            "mode": launcher_receipt.mode,
+            "policy_sha256": launcher_receipt.policy_sha256,
+            "sealed": launcher_receipt.sealed,
+        },
+    }
+    if not passed:
+        result["action"] = (
+            "install or seal the required import modules into "
+            f"{interpreter!r}, then restart the supervisor; user-site "
+            "packages are intentionally unavailable"
+        )
+    return result
 
 
 def validation_shell_command(command: str) -> list[str]:
