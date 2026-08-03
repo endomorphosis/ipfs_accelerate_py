@@ -53,6 +53,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.deterministic_doctor_fixed_p
     DoctorReplanEvidence,
     DoctorReproveEvidence,
     DoctorStaticCheckEvidence,
+    build_fixture_committed_transaction_report,
     daemon_require_doctor_fixed_point,
     validate_deterministic_doctor_fixed_point,
 )
@@ -170,30 +171,18 @@ def _passing_applicator(request: DoctorStepApplyRequest) -> DoctorStepApplyResul
 
 
 def _committed_report(plan: DeterministicDoctorPlan):
-    txn = DeterministicDoctorTransaction(step_applicator=_passing_applicator)
-    return txn.execute(
+    # Post-PDR-052 execute requires independent effect verification; pure
+    # fixed-point unit tests seal a committed provisional report with complete
+    # effect receipts via the fixture helper.
+    return build_fixture_committed_transaction_report(
         plan,
-        sandbox_policy=_sandbox(),
-        checkout_lock=DoctorCheckoutLock(
-            lock_id="lock:1",
-            holder_id="holder:txn",
-            worktree_root_ref="worktree:candidate-1",
-            base_tree_cid="tree:base",
-            fence_id="fence:lock",
-        ),
-        lease=DoctorWriterLease(
-            lease_id="lease:writer-1",
-            fence_id="fence:1",
-            holder_id="holder:txn",
-            permitted_write_paths=("pkg/caller.py",),
-            permitted_read_paths=("pkg/caller.py",),
-        ),
+        transaction_id="txn:lpr-038-fp",
+        base_tree_cid="tree:base",
+        candidate_tree_cid="tree:candidate",
         path_before_hashes=(
             PathBeforeHash(path="pkg/caller.py", before_hash="sha256:pkg-caller.py"),
         ),
-        base_tree_cid="tree:base",
-        candidate_tree_cid="tree:candidate",
-        transaction_id="txn:lpr-038-fp",
+        lease_id="lease:writer-1",
     )
 
 

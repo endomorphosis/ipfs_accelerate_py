@@ -2543,6 +2543,507 @@ def make_evidence(*artifact_cids: str, **kwargs: Any) -> SecurityEvidence:
 
 
 # ---------------------------------------------------------------------------
+# Fixed-point security (IntentIR / code facts / hyperproperties)
+# ---------------------------------------------------------------------------
+
+
+FIXED_POINT_SECURITY_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/security-fixed-point-receipt@1"
+)
+CODE_SECURITY_FACT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/code-security-fact@1"
+)
+
+
+@dataclass(frozen=True)
+class CodeSecurityFact:
+    """Extracted code-side security fact used at fixed-point recheck."""
+
+    fact_id: str
+    path: str
+    symbol: str
+    kind: str
+    tags: tuple[str, ...] = ()
+    effect_id: str = ""
+    evidence_cid: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "fact_id", _text(self.fact_id, field_name="fact_id"))
+        object.__setattr__(self, "path", _text(self.path, field_name="path"))
+        object.__setattr__(self, "symbol", _text(self.symbol, field_name="symbol"))
+        object.__setattr__(self, "kind", _text(self.kind, field_name="kind"))
+        object.__setattr__(
+            self, "tags", _strings(self.tags, field_name="tags", required=False)
+        )
+        object.__setattr__(
+            self,
+            "effect_id",
+            _text(self.effect_id, field_name="effect_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "evidence_cid",
+            _text(self.evidence_cid, field_name="evidence_cid", required=False),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": CODE_SECURITY_FACT_SCHEMA,
+            "fact_id": self.fact_id,
+            "path": self.path,
+            "symbol": self.symbol,
+            "kind": self.kind,
+            "tags": list(self.tags),
+            "effect_id": self.effect_id,
+            "evidence_cid": self.evidence_cid,
+        }
+
+
+@dataclass(frozen=True)
+class ForbiddenLogicCheckResult:
+    """Dual-stream IntentIR/code forbidden-logic evaluation at fixed point."""
+
+    passed: bool
+    intent_effect_ids: tuple[str, ...]
+    code_effect_ids: tuple[str, ...]
+    forbidden_logic_ids: tuple[str, ...]
+    uncovered_intent_ids: tuple[str, ...]
+    uncovered_code_ids: tuple[str, ...]
+    reason_codes: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "passed": self.passed,
+            "intent_effect_ids": list(self.intent_effect_ids),
+            "code_effect_ids": list(self.code_effect_ids),
+            "forbidden_logic_ids": list(self.forbidden_logic_ids),
+            "uncovered_intent_ids": list(self.uncovered_intent_ids),
+            "uncovered_code_ids": list(self.uncovered_code_ids),
+            "reason_codes": list(self.reason_codes),
+        }
+
+
+@dataclass(frozen=True)
+class FixedPointSecurityReceipt:
+    """Sealed security stage receipt for doctor live fixed-point."""
+
+    candidate_tree_id: str
+    code_facts: tuple[CodeSecurityFact, ...]
+    forbidden: ForbiddenLogicCheckResult
+    analysis_report: SecurityAnalysisReport | None
+    hyperproperty_receipt_ids: tuple[str, ...]
+    failed_hyperproperty_ids: tuple[str, ...]
+    required_hyperproperty_ids: tuple[str, ...]
+    all_passed: bool
+    reason_codes: tuple[str, ...]
+    receipt_id: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "candidate_tree_id",
+            _text(self.candidate_tree_id, field_name="candidate_tree_id"),
+        )
+        if not isinstance(self.code_facts, tuple):
+            object.__setattr__(self, "code_facts", tuple(self.code_facts or ()))
+        if not isinstance(self.forbidden, ForbiddenLogicCheckResult):
+            raise SecurityContractAnalysisError(
+                "forbidden must be ForbiddenLogicCheckResult"
+            )
+        if self.analysis_report is not None and not isinstance(
+            self.analysis_report, SecurityAnalysisReport
+        ):
+            raise SecurityContractAnalysisError(
+                "analysis_report must be SecurityAnalysisReport"
+            )
+        object.__setattr__(
+            self,
+            "hyperproperty_receipt_ids",
+            _strings(
+                self.hyperproperty_receipt_ids,
+                field_name="hyperproperty_receipt_ids",
+                required=False,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "failed_hyperproperty_ids",
+            _strings(
+                self.failed_hyperproperty_ids,
+                field_name="failed_hyperproperty_ids",
+                required=False,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "required_hyperproperty_ids",
+            _strings(
+                self.required_hyperproperty_ids,
+                field_name="required_hyperproperty_ids",
+                required=False,
+            ),
+        )
+        object.__setattr__(self, "all_passed", _boolean(self.all_passed, field_name="all_passed"))
+        object.__setattr__(
+            self,
+            "reason_codes",
+            _strings(self.reason_codes, field_name="reason_codes", required=False),
+        )
+        if self.all_passed and (
+            not self.forbidden.passed
+            or self.failed_hyperproperty_ids
+            or (
+                self.analysis_report is not None
+                and any(f.is_vulnerability for f in self.analysis_report.findings)
+            )
+        ):
+            raise SecurityContractAnalysisError(
+                "all_passed fixed-point security forbids open failures"
+            )
+        rid = self.receipt_id.strip() if isinstance(self.receipt_id, str) else ""
+        object.__setattr__(
+            self,
+            "receipt_id",
+            rid or content_identity(self.to_dict(include_receipt_id=False)),
+        )
+
+    def to_dict(self, *, include_receipt_id: bool = True) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema": FIXED_POINT_SECURITY_RECEIPT_SCHEMA,
+            "candidate_tree_id": self.candidate_tree_id,
+            "code_facts": [fact.to_dict() for fact in self.code_facts],
+            "forbidden": self.forbidden.to_dict(),
+            "analysis_report_id": (
+                self.analysis_report.report_id
+                if self.analysis_report is not None
+                else ""
+            ),
+            "vulnerability_ids": (
+                [f.finding_id for f in self.analysis_report.vulnerabilities]
+                if self.analysis_report is not None
+                else []
+            ),
+            "hyperproperty_receipt_ids": list(self.hyperproperty_receipt_ids),
+            "failed_hyperproperty_ids": list(self.failed_hyperproperty_ids),
+            "required_hyperproperty_ids": list(self.required_hyperproperty_ids),
+            "all_passed": self.all_passed,
+            "reason_codes": list(self.reason_codes),
+        }
+        if include_receipt_id:
+            payload["receipt_id"] = self.receipt_id
+        return payload
+
+
+def extract_code_security_facts(
+    *,
+    paths: Sequence[str],
+    symbols: Sequence[str] = (),
+    tags_by_path: Mapping[str, Sequence[str]] | None = None,
+    effects_by_path: Mapping[str, Sequence[str]] | None = None,
+    kind: str = "code_effect",
+    tree_id: str = "",
+) -> tuple[CodeSecurityFact, ...]:
+    """Extract deterministic code security facts for fixed-point recheck.
+
+    Facts are identity-bound to path/symbol/tags and never include bodies.
+    """
+
+    tags_map = {
+        str(k): tuple(str(t) for t in v)
+        for k, v in (tags_by_path or {}).items()
+    }
+    effects_map = {
+        str(k): tuple(str(e) for e in v)
+        for k, v in (effects_by_path or {}).items()
+    }
+    facts: list[CodeSecurityFact] = []
+    symbol_list = [str(s) for s in symbols]
+    for index, path in enumerate(paths):
+        path_s = _text(path, field_name=f"paths[{index}]")
+        symbol = (
+            symbol_list[index]
+            if index < len(symbol_list) and symbol_list[index]
+            else path_s.replace("/", ".").removesuffix(".py")
+        )
+        tags = tags_map.get(path_s, ())
+        effect_ids = effects_map.get(path_s, ())
+        if not effect_ids:
+            effect_ids = (f"effect:{path_s}",)
+        for effect_id in effect_ids:
+            fact_id = content_identity(
+                {
+                    "schema": CODE_SECURITY_FACT_SCHEMA,
+                    "tree_id": tree_id,
+                    "path": path_s,
+                    "symbol": symbol,
+                    "kind": kind,
+                    "effect_id": effect_id,
+                    "tags": list(tags),
+                }
+            )
+            facts.append(
+                CodeSecurityFact(
+                    fact_id=fact_id,
+                    path=path_s,
+                    symbol=symbol,
+                    kind=kind,
+                    tags=tags,
+                    effect_id=effect_id,
+                    evidence_cid=fact_id,
+                )
+            )
+    facts.sort(key=lambda f: (f.path, f.symbol, f.effect_id, f.fact_id))
+    return tuple(facts)
+
+
+def check_intent_code_forbidden_logic(
+    *,
+    intent_effects: Sequence[str | Mapping[str, Any]],
+    code_effects: Sequence[str | Mapping[str, Any]],
+    forbidden_effect_ids: Sequence[str] = (),
+    covered_effect_ids: Sequence[str] = (),
+) -> ForbiddenLogicCheckResult:
+    """Check forbidden logic against *both* intent and code effect streams.
+
+    Dual-stream coverage is mandatory: a single-stream evaluation cannot pass.
+    Any effect present in either stream that is listed as forbidden fails closed.
+    Every effect must also be covered by a security/authorization name when
+    ``covered_effect_ids`` is supplied; otherwise coverage is treated as
+    identity-of-union (each effect covers itself).
+    """
+
+    def _normalize(items: Sequence[str | Mapping[str, Any]]) -> tuple[str, ...]:
+        out: list[str] = []
+        for item in items:
+            if isinstance(item, Mapping):
+                # Prefer explicit effect identity, else canonical projection.
+                if "effect_id" in item and item["effect_id"]:
+                    out.append(str(item["effect_id"]))
+                else:
+                    out.append(
+                        content_identity(
+                            {str(k): item[k] for k in sorted(item.keys())}
+                        )
+                    )
+            else:
+                text = str(item).strip()
+                if text:
+                    out.append(text)
+        return tuple(sorted(set(out)))
+
+    intent_ids = _normalize(intent_effects)
+    code_ids = _normalize(code_effects)
+    forbidden = tuple(sorted({str(x).strip() for x in forbidden_effect_ids if str(x).strip()}))
+    covered = tuple(sorted({str(x).strip() for x in covered_effect_ids if str(x).strip()}))
+
+    reasons: list[str] = []
+    if not intent_ids or not code_ids:
+        reasons.append("intent_code_stream_gap")
+        return ForbiddenLogicCheckResult(
+            passed=False,
+            intent_effect_ids=intent_ids,
+            code_effect_ids=code_ids,
+            forbidden_logic_ids=(),
+            uncovered_intent_ids=intent_ids,
+            uncovered_code_ids=code_ids,
+            reason_codes=tuple(reasons),
+        )
+
+    matched_forbidden = tuple(
+        sorted(
+            {
+                effect
+                for effect in forbidden
+                if effect in intent_ids or effect in code_ids
+            }
+        )
+    )
+    if matched_forbidden:
+        reasons.append("forbidden_logic_matched")
+
+    # Coverage: if explicit covered set provided, every effect must be named.
+    # Otherwise each stream must be non-empty (already checked) and no
+    # forbidden hits.
+    if covered:
+        uncovered_intent = tuple(sorted(set(intent_ids) - set(covered)))
+        uncovered_code = tuple(sorted(set(code_ids) - set(covered)))
+        if uncovered_intent or uncovered_code:
+            reasons.append("security_stream_gap")
+    else:
+        uncovered_intent = ()
+        uncovered_code = ()
+
+    passed = not reasons and not matched_forbidden
+    return ForbiddenLogicCheckResult(
+        passed=passed,
+        intent_effect_ids=intent_ids,
+        code_effect_ids=code_ids,
+        forbidden_logic_ids=matched_forbidden,
+        uncovered_intent_ids=uncovered_intent,
+        uncovered_code_ids=uncovered_code,
+        reason_codes=tuple(sorted(set(reasons))),
+    )
+
+
+def check_required_security_hyperproperties(
+    *,
+    required_ids: Sequence[str],
+    held_receipt_ids: Sequence[str] = (),
+    failed_ids: Sequence[str] = (),
+    unavailable_ids: Sequence[str] = (),
+) -> tuple[bool, tuple[str, ...], tuple[str, ...]]:
+    """Require every mandatory hyperproperty to hold with a sealed receipt.
+
+    Returns ``(passed, held_receipt_ids, failed_or_missing_ids)``.
+    Unavailable required engines fail closed (listed in failed_or_missing).
+    """
+
+    required = tuple(sorted({str(x).strip() for x in required_ids if str(x).strip()}))
+    held = tuple(sorted({str(x).strip() for x in held_receipt_ids if str(x).strip()}))
+    failed = {str(x).strip() for x in failed_ids if str(x).strip()}
+    unavailable = {str(x).strip() for x in unavailable_ids if str(x).strip()}
+
+    missing: set[str] = set()
+    for req in required:
+        # Receipts may be keyed as hyperproperty:<id> or bare id.
+        held_match = any(
+            h == req or h.endswith(f":{req}") or h == f"hyperproperty:{req}"
+            for h in held
+        )
+        if req in failed or req in unavailable or not held_match:
+            missing.add(req)
+    passed = not missing and not (failed & set(required))
+    return passed, held, tuple(sorted(missing))
+
+
+def evaluate_fixed_point_security(
+    *,
+    candidate_tree_id: str,
+    code_facts: Sequence[CodeSecurityFact] = (),
+    intent_effects: Sequence[str | Mapping[str, Any]] = (),
+    code_effects: Sequence[str | Mapping[str, Any]] = (),
+    forbidden_effect_ids: Sequence[str] = (),
+    covered_effect_ids: Sequence[str] = (),
+    flow_nodes: Sequence[FlowNode | Mapping[str, Any]] = (),
+    flow_edges: Sequence[FlowEdge | Mapping[str, Any]] = (),
+    properties: Sequence[
+        SecurityPropertyDeclaration | Mapping[str, Any]
+    ] = (),
+    evidence_by_family: Mapping[str, SecurityEvidence | Mapping[str, Any]]
+    | None = None,
+    default_evidence: SecurityEvidence | Mapping[str, Any] | None = None,
+    config: SecurityAnalysisConfig | None = None,
+    required_hyperproperty_ids: Sequence[str] = (),
+    held_hyperproperty_receipt_ids: Sequence[str] = (),
+    failed_hyperproperty_ids: Sequence[str] = (),
+    unavailable_hyperproperty_ids: Sequence[str] = (),
+    run_flow_analysis: bool = True,
+) -> FixedPointSecurityReceipt:
+    """Aggregate fixed-point security: facts, forbidden dual-stream, flow, hyperprops.
+
+    Prebuilt boolean/mapping claims are never accepted: callers must supply
+    concrete fact/effect identities and sealed hyperproperty receipts.
+    """
+
+    tree = _text(candidate_tree_id, field_name="candidate_tree_id")
+    facts = tuple(code_facts)
+    if not facts and code_effects:
+        # Derive minimal facts from code effect stream when paths are absent.
+        facts = tuple(
+            CodeSecurityFact(
+                fact_id=content_identity(
+                    {"schema": CODE_SECURITY_FACT_SCHEMA, "effect": effect}
+                ),
+                path=f"effect/{effect}",
+                symbol=str(effect),
+                kind="code_effect",
+                effect_id=str(effect),
+                evidence_cid=content_identity({"effect": effect}),
+            )
+            for effect in (
+                str(e.get("effect_id") if isinstance(e, Mapping) else e)
+                for e in code_effects
+            )
+            if str(e).strip()
+        )
+
+    # Prefer explicit code_effects; fall back to extracted fact effect ids.
+    effective_code_effects: Sequence[str | Mapping[str, Any]] = code_effects or tuple(
+        f.effect_id for f in facts if f.effect_id
+    )
+    effective_intent = intent_effects or effective_code_effects
+
+    covered = covered_effect_ids or tuple(
+        str(e.get("effect_id") if isinstance(e, Mapping) else e)
+        for e in (*effective_intent, *effective_code_effects)
+    )
+
+    forbidden = check_intent_code_forbidden_logic(
+        intent_effects=effective_intent,
+        code_effects=effective_code_effects,
+        forbidden_effect_ids=forbidden_effect_ids,
+        covered_effect_ids=covered,
+    )
+
+    report: SecurityAnalysisReport | None = None
+    if run_flow_analysis and (flow_nodes or flow_edges):
+        cfg = config or SecurityAnalysisConfig(tree_id=tree)
+        if not cfg.tree_id:
+            cfg = SecurityAnalysisConfig(
+                max_hops=cfg.max_hops,
+                max_findings=cfg.max_findings,
+                max_paths_per_rule=cfg.max_paths_per_rule,
+                include_sanitized_as_false_positive=cfg.include_sanitized_as_false_positive,
+                tree_id=tree,
+                policy_revision=cfg.policy_revision,
+            )
+        report = analyze_security_contracts(
+            nodes=flow_nodes,
+            edges=flow_edges,
+            properties=properties,
+            evidence_by_family=evidence_by_family,
+            default_evidence=default_evidence,
+            config=cfg,
+        )
+
+    hyper_ok, held, missing_hyper = check_required_security_hyperproperties(
+        required_ids=required_hyperproperty_ids,
+        held_receipt_ids=held_hyperproperty_receipt_ids,
+        failed_ids=failed_hyperproperty_ids,
+        unavailable_ids=unavailable_hyperproperty_ids,
+    )
+
+    reasons: list[str] = []
+    if not forbidden.passed:
+        reasons.extend(forbidden.reason_codes or ("forbidden_logic_failed",))
+    vulnerabilities: tuple[str, ...] = ()
+    if report is not None:
+        vulnerabilities = tuple(f.finding_id for f in report.vulnerabilities)
+        if vulnerabilities:
+            reasons.append("security_vulnerability_open")
+        if report.truncated:
+            reasons.append("security_analysis_truncated")
+    if not hyper_ok:
+        reasons.append("required_hyperproperty_failed")
+        reasons.extend(f"hyperproperty_missing:{hid}" for hid in missing_hyper)
+
+    all_passed = not reasons
+    return FixedPointSecurityReceipt(
+        candidate_tree_id=tree,
+        code_facts=facts,
+        forbidden=forbidden,
+        analysis_report=report,
+        hyperproperty_receipt_ids=held,
+        failed_hyperproperty_ids=missing_hyper,
+        required_hyperproperty_ids=tuple(
+            sorted({str(x).strip() for x in required_hyperproperty_ids if str(x).strip()})
+        ),
+        all_passed=all_passed,
+        reason_codes=tuple(sorted(set(reasons))),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Public surface
 # ---------------------------------------------------------------------------
 
@@ -2550,16 +3051,21 @@ def make_evidence(*artifact_cids: str, **kwargs: Any) -> SecurityEvidence:
 __all__ = [
     "ANALYZER_VERSION",
     "AnalysisVerdict",
+    "CODE_SECURITY_FACT_SCHEMA",
+    "CodeSecurityFact",
     "DEFAULT_MAX_FINDINGS",
     "DEFAULT_MAX_HOPS",
     "DEFAULT_MAX_PATHS_PER_RULE",
     "EdgeResolution",
+    "FIXED_POINT_SECURITY_RECEIPT_SCHEMA",
     "FindingClassification",
+    "FixedPointSecurityReceipt",
     "FlowEdge",
     "FlowGraph",
     "FlowNode",
     "FlowRole",
     "ForbiddenBodyError",
+    "ForbiddenLogicCheckResult",
     "ForgedSecurityIdentityError",
     "GOAL_ID",
     "MAX_FINDINGS",
@@ -2587,7 +3093,11 @@ __all__ = [
     "analyze_security_contracts",
     "bounded_source_sink_paths",
     "build_security_finding",
+    "check_intent_code_forbidden_logic",
+    "check_required_security_hyperproperties",
     "classify_security_finding",
+    "evaluate_fixed_point_security",
+    "extract_code_security_facts",
     "make_evidence",
     "make_flow_edge",
     "make_flow_node",
