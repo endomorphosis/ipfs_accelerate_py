@@ -98,6 +98,34 @@ def test_heartbeat_fallback_accepts_implementation_retry_deferral() -> None:
     )
 
 
+def test_heartbeat_fallback_accepts_only_valid_empty_backlog_projection() -> None:
+    empty_projection = _idle_heartbeat_projection(
+        selection_idle_reason="no_tasks_found",
+    )
+    assert _projection_is_quiescent_for_heartbeat_fallback(empty_projection)
+
+    for field_name in (
+        "ready_count",
+        "selectable_ready_count",
+        "eligible_ready_count",
+        "blocked_count",
+    ):
+        assert not _projection_is_quiescent_for_heartbeat_fallback(
+            {
+                **empty_projection,
+                field_name: 1,
+            }
+        )
+
+    for unsafe_reason in ("task_source_invalid", "todo_read_failed"):
+        assert not _projection_is_quiescent_for_heartbeat_fallback(
+            {
+                **empty_projection,
+                "selection_idle_reason": unsafe_reason,
+            }
+        )
+
+
 @pytest.mark.parametrize(
     ("idle_reason", "selectable_ready_count", "eligible_ready_count"),
     (

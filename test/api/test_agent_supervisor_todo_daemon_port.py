@@ -159,6 +159,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     ObjectiveCompletionArtifactRefreshError,
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
+    _projection_is_quiescent_for_heartbeat_fallback,
     parse_args as parse_implementation_supervisor_args,
     supervisor_config_from_args,
 )
