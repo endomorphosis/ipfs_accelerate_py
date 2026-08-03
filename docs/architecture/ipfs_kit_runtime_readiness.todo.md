@@ -1389,7 +1389,7 @@ or write authority.
 
 ## KITA-044 Optimize canonical transaction hot paths with bounded backpressure
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
