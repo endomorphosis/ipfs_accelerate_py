@@ -1,21 +1,23 @@
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import os
+import shlex
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import asdict
+from hashlib import sha256
 from pathlib import Path
 
+from ipfs_accelerate_py.agent_supervisor.objectives import objective_graph
 from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     CodebaseScanInventory,
     scan_codebase_findings,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
-from ipfs_accelerate_py.agent_supervisor.objectives import objective_graph
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import scan_objective_gaps
+from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.engine import CommandResult
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
@@ -43,6 +45,12 @@ def _git(cwd: Path, *args: str) -> str:
     )
     assert result.returncode == 0, result.stderr or result.stdout
     return result.stdout.strip()
+
+
+def _python_c(source: str) -> str:
+    """Build a hermetic command for the interpreter running this test."""
+
+    return f"{shlex.quote(sys.executable)} -c {shlex.quote(source)}"
 
 
 def _init_repo(path: Path) -> None:
@@ -1117,9 +1125,9 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(
         repo_root=repo,
         task_header_prefix="## INC-",
         implement=True,
-        implementation_command=(
-            "python -c \"from pathlib import Path; "
-            "Path('feature.py').write_text('VALUE = 1\\\\n')\""
+        implementation_command=_python_c(
+            "from pathlib import Path; "
+            "Path('feature.py').write_text('VALUE = 1\\n')"
         ),
         use_ephemeral_worktree=True,
         worktree_root=worktree_root,
@@ -1191,7 +1199,7 @@ def test_failed_implementation_does_not_pin_pooled_worktree(tmp_path: Path) -> N
         events_path=tmp_path / "events.jsonl",
         repo_root=repo,
         implement=True,
-        implementation_command="python -c \"raise SystemExit(7)\"",
+        implementation_command=_python_c("raise SystemExit(7)"),
         use_ephemeral_worktree=True,
         worktree_root=worktree_root,
     )
@@ -1251,9 +1259,9 @@ def test_pooled_provider_deferral_releases_same_attempt_lifecycle(
         events_path=tmp_path / "events.jsonl",
         repo_root=repo,
         implement=True,
-        implementation_command=(
-            "python -c \"print(\\\"ERROR: You've hit your usage limit.\\\"); "
-            "raise SystemExit(1)\""
+        implementation_command=_python_c(
+            "print(\"ERROR: You've hit your usage limit.\"); "
+            "raise SystemExit(1)"
         ),
         use_ephemeral_worktree=True,
         worktree_root=worktree_root,
@@ -1284,7 +1292,7 @@ def test_pooled_provider_deferral_releases_same_attempt_lifecycle(
     )
 
     daemon._active_provider_capacity_backoff = lambda: {}  # type: ignore[method-assign]
-    daemon.implementation_command = "python -c \"raise SystemExit(7)\""
+    daemon.implementation_command = _python_c("raise SystemExit(7)")
     second = daemon._run_implementation(
         task,
         PortalTaskState.load(daemon.state_path),
@@ -1310,9 +1318,9 @@ def test_nonpooled_provider_exit_finalizes_preserved_worktree_lifecycle(
         events_path=tmp_path / "events.jsonl",
         repo_root=repo,
         implement=True,
-        implementation_command=(
-            "python -c \"print(\\\"ERROR: You've hit your usage limit.\\\"); "
-            "raise SystemExit(1)\""
+        implementation_command=_python_c(
+            "print(\"ERROR: You've hit your usage limit.\"); "
+            "raise SystemExit(1)"
         ),
         use_ephemeral_worktree=True,
         worktree_root=worktree_root,
@@ -1353,7 +1361,7 @@ def test_nonpooled_provider_exit_finalizes_preserved_worktree_lifecycle(
     _git(repo, "worktree", "remove", "--force", str(first_worktree))
     _git(repo, "branch", "-D", first["branch"])
     daemon._active_provider_capacity_backoff = lambda: {}  # type: ignore[method-assign]
-    daemon.implementation_command = "python -c \"raise SystemExit(7)\""
+    daemon.implementation_command = _python_c("raise SystemExit(7)")
 
     second = daemon._run_implementation(
         task,
@@ -1395,7 +1403,7 @@ def test_missing_pooled_workspace_is_discarded_after_setup_race(
         events_path=tmp_path / "events.jsonl",
         repo_root=repo,
         implement=True,
-        implementation_command="python -c \"raise AssertionError('must not run')\"",
+        implementation_command=_python_c("raise AssertionError('must not run')"),
         use_ephemeral_worktree=True,
         worktree_root=worktree_root,
     )
