@@ -182,6 +182,28 @@ def test_host_pressure_applies_backpressure_before_exhaustion(
 
 
 @pytest.mark.parametrize(
+    "resource_class",
+    ("io-small", "io-network", "coordinator"),
+)
+def test_default_cpu_host_admits_prompt_plan_resource_classes(
+    resource_class: str,
+) -> None:
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+    decision = scheduler.evaluate(
+        LaneResourceRequirements(
+            lane_id=f"prompt-{resource_class}",
+            resource_class=resource_class,
+        ),
+        host=_host(
+            resource_classes=(ProofResourceClass.SOLVER.value,),
+        ),
+    )
+
+    assert decision.admitted is True
+    assert "resource_class_mismatch" not in decision.reasons
+
+
+@pytest.mark.parametrize(
     ("provider_overrides", "requirement_overrides", "policy_overrides", "reason"),
     [
         ({"healthy": False}, {}, {}, "provider_unhealthy"),

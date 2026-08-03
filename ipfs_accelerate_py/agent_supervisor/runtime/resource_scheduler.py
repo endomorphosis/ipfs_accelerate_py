@@ -211,6 +211,27 @@ LEGACY_RESOURCE_CLASSES = (
     "cpu-medium",
     "cpu-large",
 )
+# Prompt/objective plans use workload-oriented labels in addition to the
+# proof scheduler's physical worker classes.  These labels still execute on a
+# CPU host; provider, network, disk, and other specialized requirements are
+# enforced independently through capabilities, provider admission, and stage
+# headroom checks.  Without this compatibility set, a default host advertising
+# the canonical proof classes rejects ordinary prompt-plan work even when it
+# has idle CPU capacity.
+GENERIC_BUNDLE_RESOURCE_CLASSES = (
+    "coordinator",
+    "crypto-small",
+    "git-merge",
+    "io-database",
+    "io-medium",
+    "io-network",
+    "io-small",
+    "network",
+    "network-small",
+    "process-control",
+    "provider-io",
+    "provider-llm",
+)
 # Default hosts advertise the architecture's distinct work classes.
 # Generic bundle classes remain interoperable through the compatibility check
 # in ``_host_reasons`` and can still be advertised explicitly by old workers.
@@ -2761,7 +2782,11 @@ class ResourceScheduler:
                 requirement.resource_class in PROOF_RESOURCE_CLASSES
                 and bool(set(host.resource_classes).intersection(LEGACY_RESOURCE_CLASSES))
             )
-            if not legacy_compatible:
+            generic_bundle_compatible = (
+                requirement.resource_class in GENERIC_BUNDLE_RESOURCE_CLASSES
+                and "cpu" in host.capabilities
+            )
+            if not (legacy_compatible or generic_bundle_compatible):
                 reasons.append("resource_class_mismatch")
         if requirement.provider_required:
             host_required = {
