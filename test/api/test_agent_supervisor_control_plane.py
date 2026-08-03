@@ -1902,17 +1902,65 @@ def test_python_surface_executes_every_closed_operation_with_canonical_results(
     results: dict[Operation, OperationResult] = {}
     for operation in Operation:
         if operation in MUTATION_OPERATIONS:
+            parameters = None
+            if operation is Operation.WORKFLOW_MATERIALIZE:
+                parameters = {
+                    "preview_ref": "preview:fixture",
+                    "preview_root": str(repo_root),
+                    "preview_repository_id": "repo:fixture",
+                    "preview_tree_id": "tree:abc",
+                    "preview_objective_id": "ASI-G070",
+                    "preview_objective_revision": "objective:1",
+                    "preview_policy_id": "policy:supervisor",
+                    "preview_policy_revision": "policy:1",
+                }
+            elif operation is Operation.RESCUE:
+                parameters = {
+                    "incident_cid": "incident:fixture",
+                    "incident_root": str(repo_root),
+                    "incident_repository_id": "repo:fixture",
+                    "incident_tree_id": "tree:abc",
+                    "incident_objective_id": "ASI-G070",
+                    "incident_objective_revision": "objective:1",
+                    "incident_policy_id": "policy:supervisor",
+                    "incident_policy_revision": "policy:1",
+                    "rescue_plan_cid": "rescue-plan:fixture",
+                    "rescue_plan_root": str(repo_root),
+                    "rescue_plan_incident_cid": "incident:fixture",
+                    "rescue_plan_tree_id": "tree:abc",
+                }
             request = _mutation_request(
                 repo_root,
                 state_root,
                 operation,
                 key=f"asi-078:{operation.value}",
+                parameters=parameters,
             )
         elif operation in PROPOSAL_OPERATIONS:
+            parameters = {"target_id": "objective:fixture"}
+            if operation is Operation.WORKFLOW_PREVIEW:
+                parameters = {
+                    "directory": "docs",
+                    "prompt_source": {
+                        "kind": "inline",
+                        "inline_text": "Describe the fixture workflow.",
+                    },
+                }
+            elif operation is Operation.RESCUE_PREVIEW:
+                parameters = {
+                    "incident_cid": "incident:fixture",
+                    "incident_root": str(repo_root),
+                    "incident_repository_id": "repo:fixture",
+                    "incident_tree_id": "tree:abc",
+                    "incident_objective_id": "ASI-G070",
+                    "incident_objective_revision": "objective:1",
+                    "incident_policy_id": "policy:supervisor",
+                    "incident_policy_revision": "policy:1",
+                }
             request = OperationRequest(
                 operation=operation,
                 **_binding(repo_root, state_root),
-                parameters={"target_id": "objective:fixture"},
+                parameters=parameters,
                 expected_effects=(
                     ExpectedEffect(
                         effect_id=f"{operation.value}:proposal",

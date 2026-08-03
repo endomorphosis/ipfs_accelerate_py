@@ -9456,6 +9456,13 @@ def test_shared_merge_receipts_do_not_grant_board_completion_across_lanes(tmp_pa
         commit_sha="b" * 40,
     )
     daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
+    reconciliation_call = {}
+
+    def capture_reconciliation(**kwargs):
+        reconciliation_call.update(kwargs)
+        return []
+
+    daemon._reconcile_failed_merges = capture_reconciliation  # type: ignore[method-assign]
 
     result = daemon.run_once()
     state = TodoTaskState.load(daemon.state_path)
@@ -9463,6 +9470,7 @@ def test_shared_merge_receipts_do_not_grant_board_completion_across_lanes(tmp_pa
     assert result["active_task_id"] == "ACCEL-003"
     assert result["shared_completed_task_ids"] == ["ACCEL-001"]
     assert result["shared_active_merge_task_ids"] == ["ACCEL-002"]
+    assert "ACCEL-002" in reconciliation_call["skip_task_ids"]
     assert parse_task_file(todo_path, "## ACCEL-")[0].status == "todo"
     assert state.task_statuses["ACCEL-001"] == "waiting"
     assert state.task_statuses["ACCEL-002"] == "merge-queued"

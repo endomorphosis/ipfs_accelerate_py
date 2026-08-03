@@ -98,6 +98,7 @@ DISTRIBUTED_LANE_ADMISSION_SCHEMA: Final = (
 )
 _DISTRIBUTED_PUBLICATION_METADATA_KEY: Final = "distributed_publication"
 _PARALLEL_ACCEPTANCE_RECEIPT_SEAL: Final = object()
+DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS: Final = 30.0
 
 
 @dataclass(frozen=True)
@@ -761,6 +762,8 @@ class MergeTrain:
             may expose ``resolve`` and, independently, ``acquire``/``release``
             methods compatible with :class:`MergeResolverRegistry`.
         max_attempts: Last failure count at which a request is quarantined.
+        merge_lock_deferral_seconds: Durable cooldown applied when a live
+            repository merge lock prevents the callback from attempting work.
         merge_callback: Optional specialised merger.  It receives the claimed
             request and returns a merge-result mapping.
         state_dir: Train receipts/lease/worktrees directory.  Defaults beneath
@@ -784,6 +787,7 @@ class MergeTrain:
         target_branch: str = "main",
         resolver: Any = None,
         max_attempts: int = 3,
+        merge_lock_deferral_seconds: float = DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS,
         merge_callback: MergeCallback | None = None,
         state_dir: Path | str | None = None,
         git_timeout_seconds: float = 600.0,
@@ -836,6 +840,10 @@ class MergeTrain:
                 )
         self.resolver = resolver
         self.max_attempts = max(1, int(max_attempts))
+        self.merge_lock_deferral_seconds = max(
+            1.0,
+            float(merge_lock_deferral_seconds),
+        )
         self.merge_callback = merge_callback
         self.decision_runtime = decision_runtime
         self.decision_runtime_cancellation = decision_runtime_cancellation
@@ -3122,6 +3130,31 @@ class MergeTrain:
                     preflight_receipt=preflight_receipt,
                 )
             callback_reason = str(callback_result.get("reason") or "merge_callback_failed")
+            try:
+                lock_owner_pid = int(callback_result.get("lock_owner_pid") or 0)
+            except (TypeError, ValueError):
+                lock_owner_pid = 0
+            if (
+                callback_result.get("attempted") is False
+                and callback_reason == "lock_exists"
+                and lock_owner_pid > 0
+            ):
+                return self._finish_deferral(
+                    request,
+                    reason=callback_reason,
+                    details={
+                        "merge_result": callback_result,
+                        **(
+                            {
+                                "proof_gate": proof_gate_receipt,
+                                "repository_tree_id": proof_tree_id,
+                            }
+                            if proof_gate_receipt
+                            else {}
+                        ),
+                    },
+                    started_at=started_at,
+                )
             retryable = callback_reason not in {
                 "invalid_merge_request",
                 "candidate_commit_missing",
@@ -4285,6 +4318,87 @@ class MergeTrain:
             self._write_receipt(
                 f"fenced-{request.request_id}", result
             )
+        return result
+
+    def _finish_deferral(
+        self,
+        request: MergeRequest,
+        *,
+        reason: str,
+        details: Mapping[str, Any],
+        started_at: float,
+    ) -> dict[str, Any]:
+        """Persist non-attempted external contention without burning retries."""
+
+        result: dict[str, Any] = {
+            "status": "deferred",
+            "attempted": False,
+            "merged": False,
+            "integrated": False,
+            "accepted": False,
+            "acceptance_pending": False,
+            "request_id": request.request_id,
+            "task_id": _request_value(request, "task_id"),
+            "canonical_task_id": (
+                str(getattr(request, "canonical_identity", "") or "")
+                or _request_value(request, "canonical_task_id")
+                or _request_value(request, "task_id")
+            ),
+            "commit_sha": _request_value(
+                request,
+                "commit_sha",
+                "implementation_commit",
+                "commit",
+            ),
+            "target_branch": self.target_branch,
+            "reason": reason,
+            "failure_count": int(
+                getattr(request, "failure_count", 0) or 0
+            ),
+            "attempt": int(getattr(request, "attempt", 1) or 1),
+            "retryable": True,
+            "deferred": True,
+            "cooldown_seconds": self.merge_lock_deferral_seconds,
+            "started_at": started_at,
+            "finished_at": time.time(),
+            **dict(details),
+        }
+        merge_details = details.get("merge_result")
+        try:
+            deferred = self.queue.defer(
+                request,
+                reason=reason,
+                delay_seconds=self.merge_lock_deferral_seconds,
+                metadata={
+                    "merge_result": (
+                        dict(merge_details)
+                        if isinstance(merge_details, Mapping)
+                        else {}
+                    )
+                },
+            )
+        except MergeQueueFenceError as exc:
+            result.update(
+                {
+                    "status": "fenced_out",
+                    "deferred": False,
+                    "reason": "merge_queue_claim_fenced",
+                    "fence_error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+        else:
+            if deferred is None:
+                result.update(
+                    {
+                        "status": "fenced_out",
+                        "deferred": False,
+                        "reason": "merge_queue_request_missing",
+                    }
+                )
+            else:
+                result["retry_not_before"] = deferred.retry_not_before
+                result["claim_generation"] = deferred.claim_generation
+        self._write_receipt(f"deferred-{request.request_id}", result)
         return result
 
     def _finish_failure(
