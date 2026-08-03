@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from ipfs_datasets_py.logic.profile_g import validate_profile_g_artifact
 
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     build_arg_parser as build_bundle_arg_parser,
@@ -14,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
 )
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
+    adapt_goal_bundle,
     profile_g_cid,
 )
 from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
@@ -513,6 +515,30 @@ def test_max_task_attempts_defaults_to_unlimited() -> None:
     assert parse_daemon_args([]).max_task_attempts == 0
 
 
+def test_unlimited_attempts_translate_only_at_profile_g_task_spec_boundary() -> None:
+    bundle = {
+        "bundle_key": "objective/runtime",
+        "source_todo": "docs/tasks.todo.md",
+        "tasks": [{"task_id": "TASK-001"}],
+        "max_attempts": 0,
+    }
+
+    adapted = adapt_goal_bundle(bundle, created_at_ms=1_783_872_000_000)
+
+    assert bundle["max_attempts"] == 0
+    assert adapted["task"]["max_attempts"] == 100
+    assert (
+        validate_profile_g_artifact("TaskSpec", adapted["task"])
+        == adapted["task_cid"]
+    )
+
+    finite = adapt_goal_bundle(
+        {**bundle, "max_attempts": 4},
+        created_at_ms=1_783_872_000_000,
+    )
+    assert finite["task"]["max_attempts"] == 4
+
+
 def test_default_planned_lane_is_unlimited_in_worker_and_coordinator(
     tmp_path,
 ) -> None:
@@ -558,7 +584,12 @@ def test_default_planned_lane_is_unlimited_in_worker_and_coordinator(
     worker_flag = lane.command.index("--max-task-attempts")
     assert lane.command[worker_flag + 1] == "0"
     assert lane.queue_payload["max_attempts"] == 0
-    assert lane.queue_payload["profile_g"]["task"]["max_attempts"] == 0
+    profile_g = lane.queue_payload["profile_g"]
+    assert profile_g["task"]["max_attempts"] == 100
+    assert (
+        validate_profile_g_artifact("TaskSpec", profile_g["task"])
+        == profile_g["task_cid"]
+    )
     with LeaseCoordinator(repo / "coordination.duckdb") as coordinator:
         registered = coordinator.register_bundle(lane.queue_payload)
         for expected_attempt in range(1, 5):
