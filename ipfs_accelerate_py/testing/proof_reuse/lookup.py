@@ -1,17 +1,28 @@
 """Bounded candidate lookup and pytest skip application.
 
-The locator index is only a hint.  This module delegates immutable candidate
-admission to :class:`TestProofCache`, which rehashes the retained bytes and
-checks the exact current locator, execution key, policy, revocation state, and
-local proof verifier.  Every optional-boundary failure is converted to an
-explicit ``RUN`` decision.
+The locator index is only a hint.  This module implements two admission paths:
 
+1. **Legacy / certificate-only** (:class:`ProofReuseLookup`): delegates immutable
+   candidate admission to :class:`TestProofCache`, which rehashes retained
+   certificate bytes and checks the exact current locator, execution key,
+   policy, revocation state, and local proof verifier.
+
+2. **Two-stage warm path** (:class:`ProofReuseTwoStageLookup`, PTR-145): begins
+   with locator + current collected item only, loads retained bytes from a
+   dedicated :class:`TestCandidateContextStore`, rehashes every component,
+   resolves the retained runtime frontier against admitted live roots, rebuilds
+   fresh current identity without fixture or test execution, requires the
+   current execution key to match the candidate, and only then hands off to
+   certificate-cache verification.  Revalidation alone can never skip.
+
+Every optional-boundary failure is converted to an explicit ``RUN`` decision.
 No lookup path in this module calls a prover or an issuer handle.
 """
 
 from __future__ import annotations
 
 import inspect
+import json
 import queue
 import threading
 from collections.abc import Callable, Iterable, Mapping
@@ -35,6 +46,7 @@ from ...agent_supervisor.proof.test_proof_cache import (
 )
 
 PROOF_REUSE_LOOKUP_INTERFACE: Final = "ProofReuseLookup@1"
+PROOF_REUSE_TWO_STAGE_LOOKUP_INTERFACE: Final = "ProofReuseTwoStageLookup@1"
 ITEM_DECISION_ATTRIBUTE: Final = "_ipfs_proof_reuse_decision"
 ITEM_LOOKUP_REQUEST_ATTRIBUTE: Final = "_ipfs_proof_reuse_lookup_request"
 SKIP_REASON_PREFIX: Final = "proof-cache-hit:"
@@ -63,6 +75,35 @@ class ProofReuseLookupRequest:
     eligibility: Any = None
     current_policy: Mapping[str, Any] | None = None
     now_ms: int | None = None
+
+
+@dataclass(frozen=True)
+class RevalidatedProofReuseLookupRequest:
+    """Locator-first warm lookup request (execution key optional until revalidated).
+
+    Warm admission begins with the stable locator and the current collected
+    item only.  A final execution key may be absent; when present it is still
+    checked for exact agreement with the retained candidate after fresh
+    current-context rebuild.
+    """
+
+    item: Any
+    locator: Any
+    execution_key: Any = None
+    eligibility: Any = None
+    current_policy: Mapping[str, Any] | None = None
+    now_ms: int | None = None
+    allowed_roots: Mapping[str, Any] | None = None
+
+    def to_lookup_request(self) -> ProofReuseLookupRequest:
+        return ProofReuseLookupRequest(
+            item=self.item,
+            locator=self.locator,
+            execution_key=self.execution_key,
+            eligibility=self.eligibility,
+            current_policy=self.current_policy,
+            now_ms=self.now_ms,
+        )
 
 
 class _CandidateStoreError(RuntimeError):
@@ -441,6 +482,8 @@ class ProofReuseLookup:
 
 
 def _request_from_value(value: Any) -> ProofReuseLookupRequest | None:
+    if isinstance(value, RevalidatedProofReuseLookupRequest):
+        return value.to_lookup_request()
     if isinstance(value, ProofReuseLookupRequest):
         return value
     if isinstance(value, Mapping):
@@ -456,6 +499,18 @@ def _request_from_value(value: Any) -> ProofReuseLookupRequest | None:
         padded = list(value) + [None] * (6 - len(value))
         return ProofReuseLookupRequest(*padded)
     attached = getattr(value, ITEM_LOOKUP_REQUEST_ATTRIBUTE, None)
+    if isinstance(attached, RevalidatedProofReuseLookupRequest):
+        converted = attached.to_lookup_request()
+        if converted.item is None:
+            return ProofReuseLookupRequest(
+                item=value,
+                locator=converted.locator,
+                execution_key=converted.execution_key,
+                eligibility=converted.eligibility,
+                current_policy=converted.current_policy,
+                now_ms=converted.now_ms,
+            )
+        return converted
     if isinstance(attached, ProofReuseLookupRequest):
         if attached.item is None:
             return ProofReuseLookupRequest(
@@ -613,13 +668,23 @@ def batch_lookup_reuse_decisions(
                 diagnostics={"item_type": _bounded_type_name(value)},
             )
         else:
-            decision = service.lookup(
-                request.locator,
-                request.execution_key,
-                eligibility=request.eligibility,
-                current_policy=request.current_policy,
-                now_ms=request.now_ms,
-            )
+            if isinstance(service, ProofReuseTwoStageLookup):
+                decision = service.lookup(
+                    request.locator,
+                    request.execution_key,
+                    eligibility=request.eligibility,
+                    current_policy=request.current_policy,
+                    now_ms=request.now_ms,
+                    item=item,
+                )
+            else:
+                decision = service.lookup(
+                    request.locator,
+                    request.execution_key,
+                    eligibility=request.eligibility,
+                    current_policy=request.current_policy,
+                    now_ms=request.now_ms,
+                )
         if apply_skips:
             apply_verified_skip(item, decision)
             attached = getattr(item, ITEM_DECISION_ATTRIBUTE, decision)
@@ -631,15 +696,588 @@ def batch_lookup_reuse_decisions(
     return tuple(decisions)
 
 
+# ---------------------------------------------------------------------------
+# Two-stage warm lookup (PTR-145)
+# ---------------------------------------------------------------------------
+
+
+def _map_revalidation_to_reuse_reason(reason: Any) -> ReuseReasonCode:
+    """Map RuntimeContextRevalidator reasons onto closed ReuseReasonCode values."""
+
+    try:
+        from .runtime_revalidation import (
+            RevalidationReason,
+            map_revalidation_reason_to_reuse_code,
+        )
+
+        if isinstance(reason, RevalidationReason):
+            code = map_revalidation_reason_to_reuse_code(reason)
+        else:
+            code = map_revalidation_reason_to_reuse_code(str(reason))
+        try:
+            mapped = ReuseReasonCode(code)
+        except ValueError:
+            mapped = ReuseReasonCode.UNKNOWN
+    except Exception:
+        mapped = ReuseReasonCode.UNKNOWN
+    if mapped is ReuseReasonCode.PROOF_CACHE_HIT:
+        return ReuseReasonCode.UNSUPPORTED
+    return mapped
+
+
+def _execution_key_from_component_bytes(
+    component_bytes: Mapping[str, bytes] | None,
+    *,
+    claimed_cid: str = "",
+) -> TestExecutionKey | None:
+    """Decode a retained execution-key component when present and well-formed."""
+
+    if not component_bytes:
+        return None
+    raw = component_bytes.get("execution_key")
+    if not isinstance(raw, (bytes, bytearray)):
+        return None
+    try:
+        payload = json.loads(bytes(raw).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    try:
+        key = TestExecutionKey.from_dict(payload)
+    except Exception:
+        return None
+    if claimed_cid and key.execution_key_id != claimed_cid:
+        return None
+    return key
+
+
+def _execution_key_from_candidate_fields(
+    candidate: Any,
+    locator: TestLocatorKey,
+) -> TestExecutionKey | None:
+    """Synthesize a minimal current execution key from admitted candidate CIDs.
+
+    Used only after revalidation has confirmed exact identity agreement.  The
+    key is the identity surface the certificate cache admits against; it is
+    never skip authority by itself.
+    """
+
+    try:
+        return TestExecutionKey(
+            locator_cid=locator.locator_id,
+            repository_forest_cid=str(
+                getattr(candidate, "repository_forest_cid", "") or ""
+            ),
+            test_ast_cid=str(getattr(candidate, "test_ast_cid", "") or ""),
+            static_trace_root_cid=str(
+                getattr(candidate, "static_trace_root_cid", "") or ""
+            ),
+            runtime_trace_root_cid=str(
+                getattr(candidate, "runtime_trace_root_cid", "") or ""
+            ),
+            runtime_completeness_policy="complete-v1",
+            environment_cid=str(getattr(candidate, "environment_cid", "") or ""),
+            policy_cid=str(getattr(candidate, "policy_cid", "") or ""),
+            dependency_lock_cid=str(
+                getattr(candidate, "dependency_lock_cid", "") or ""
+            ),
+            installed_distributions_cid=str(
+                getattr(candidate, "installed_distributions_cid", "") or ""
+            ),
+            platform_cid=str(getattr(candidate, "platform_cid", "") or ""),
+            hardware_capability_cid=str(
+                getattr(candidate, "capability_root_cid", "") or ""
+            ),
+            external_snapshot_cids=tuple(
+                getattr(candidate, "external_snapshot_cids", ()) or ()
+            ),
+        )
+    except Exception:
+        return None
+
+
+class ProofReuseTwoStageLookup(ProofReuseLookup):
+    """Locator-first warm lookup with fresh revalidation before proof cache.
+
+    Authority sequence:
+
+    1. Accept locator (+ optional collected item) only.
+    2. Load retained candidate bytes from a dedicated
+       ``TestCandidateContextStore`` and rehash every component.
+    3. Resolve the retained runtime frontier against admitted live roots.
+    4. Rebuild current AST/static/fixtures/hooks/parameters/forest/locks/
+       distributions/environment/capabilities/snapshots/policy without
+       fixture or test execution.
+    5. Require the final current execution key to match the candidate.
+    6. Only then admit through the certificate proof cache.
+    7. Revalidation alone never returns ``SKIP``.
+    8. Every miss, mismatch, unknown, timeout, corruption, provider absence,
+       or exception returns ``RUN``.
+    """
+
+    interface = PROOF_REUSE_TWO_STAGE_LOOKUP_INTERFACE
+
+    def __init__(
+        self,
+        candidate_context_store: Any = None,
+        certificate_provider: Any = None,
+        *,
+        proof_cache_store: Any = None,
+        store: Any = None,
+        provider: Any = None,
+        revalidator: Any = None,
+        current_context_provider: Any = None,
+        identity_services: Any = None,
+        live_identity_compiler: Callable[..., Any] | None = None,
+        allowed_roots: Mapping[str, Any] | None = None,
+        environ: Mapping[str, str] | None = None,
+        verifier: Any = None,
+        current_policy: Mapping[str, Any] | None = None,
+        policy_provider: Callable[
+            [TestLocatorKey, TestExecutionKey], Mapping[str, Any]
+        ]
+        | None = None,
+        revocation_checker: Callable[..., Any] | None = None,
+        clock: Callable[[], int] | None = None,
+        max_candidates: int = DEFAULT_MAX_CANDIDATES,
+        max_blob_bytes: int = DEFAULT_MAX_BLOB_BYTES,
+        max_batch_items: int = DEFAULT_MAX_BATCH_ITEMS,
+        timeout_seconds: float = DEFAULT_LOOKUP_TIMEOUT_SECONDS,
+        require_runtime_frontier: bool = True,
+    ) -> None:
+        # Stage-2 certificate candidates use proof_cache_store / store.
+        # The dedicated candidate-context store is stage-1 only.
+        if proof_cache_store is not None and store is not None:
+            raise ValueError("specify proof_cache_store or store, not both")
+        cert_store = proof_cache_store if store is None else store
+        super().__init__(
+            candidate_store=cert_store,
+            certificate_provider=certificate_provider,
+            provider=provider,
+            verifier=verifier,
+            current_policy=current_policy,
+            policy_provider=policy_provider,
+            revocation_checker=revocation_checker,
+            clock=clock,
+            max_candidates=max_candidates,
+            max_blob_bytes=max_blob_bytes,
+            max_batch_items=max_batch_items,
+            timeout_seconds=timeout_seconds,
+        )
+        self._candidate_context_store = candidate_context_store
+        self._current_context_provider = current_context_provider
+        self._identity_services = identity_services
+        self._live_identity_compiler = live_identity_compiler
+        self._allowed_roots = dict(allowed_roots or {})
+        self._environ = environ
+        self._require_runtime_frontier = bool(require_runtime_frontier)
+        self._revalidator = revalidator
+        self._revalidator_lock = threading.RLock()
+
+    @property
+    def may_authorize_skip_from_revalidation_alone(self) -> bool:
+        return False
+
+    @property
+    def candidate_context_store(self) -> Any:
+        return self._candidate_context_store
+
+    @property
+    def current_context_provider(self) -> Any:
+        return self._current_context_provider
+
+    def _ensure_revalidator(self) -> Any:
+        if self._revalidator is not None:
+            return self._revalidator
+        with self._revalidator_lock:
+            if self._revalidator is not None:
+                return self._revalidator
+            from .runtime_revalidation import build_runtime_context_revalidator
+
+            provider = self._current_context_provider
+            if provider is None and (
+                self._identity_services is not None
+                or self._live_identity_compiler is not None
+            ):
+                from .current_context_provider import (
+                    build_default_current_context_provider,
+                )
+
+                provider = build_default_current_context_provider(
+                    identity_services=self._identity_services,
+                    live_identity_compiler=self._live_identity_compiler,
+                    allowed_roots=self._allowed_roots,
+                    environ=self._environ,
+                    clock=self._clock,
+                )
+                self._current_context_provider = provider
+
+            self._revalidator = build_runtime_context_revalidator(
+                candidate_store=self._candidate_context_store,
+                current_context_provider=provider,
+                allowed_roots=self._allowed_roots,
+                environ=self._environ,
+                clock=self._clock,
+                require_runtime_frontier=self._require_runtime_frontier,
+            )
+            return self._revalidator
+
+    def revalidate_only(
+        self,
+        locator: Any,
+        *,
+        item: Any = None,
+        now_ms: int | None = None,
+        max_candidates: int | None = None,
+    ) -> Any:
+        """Run stage-1 revalidation only (never authorizes SKIP)."""
+
+        from .runtime_revalidation import (
+            RevalidationAction,
+            RuntimeRevalidationResult,
+            revalidation_result_to_run_decision,
+        )
+
+        try:
+            revalidator = self._ensure_revalidator()
+            provider = self._current_context_provider
+            if provider is not None and item is not None:
+                bind = getattr(provider, "bind_collected_item", None)
+                if callable(bind):
+                    bind(item)
+            result = revalidator.revalidate(
+                locator,
+                max_candidates=max_candidates or self.max_candidates,
+                now_ms=now_ms,
+            )
+            if not isinstance(result, RuntimeRevalidationResult):
+                return result
+            # Fence: revalidation action must never be treated as skip.
+            assert result.may_authorize_skip is False
+            if result.action is RevalidationAction.PROCEED_TO_CERTIFICATE_VERIFICATION:
+                # Still not a skip — expose the proceed result for stage 2.
+                return result
+            return result
+        except BaseException as exc:
+            return _run_for_exception(exc, stage="revalidate_only")
+
+    def lookup(
+        self,
+        locator: Any,
+        execution_key: Any = None,
+        *,
+        eligibility: Any = None,
+        current_policy: Mapping[str, Any] | None = None,
+        now_ms: int | None = None,
+        item: Any = None,
+    ) -> ReuseDecision:
+        """Two-stage warm lookup: revalidate, then certificate cache.
+
+        ``execution_key`` may be omitted for locator-first warm admission; when
+        supplied it must match the retained candidate after fresh rebuild.
+        """
+
+        try:
+            return _bounded_call(
+                lambda: self._two_stage_lookup_unbounded(
+                    locator,
+                    execution_key,
+                    eligibility=eligibility,
+                    current_policy=current_policy,
+                    now_ms=now_ms,
+                    item=item,
+                ),
+                self.timeout_seconds,
+            )
+        except BaseException as exc:
+            return _run_for_exception(exc, stage="two_stage_lookup")
+
+    def _two_stage_lookup_unbounded(
+        self,
+        locator: Any,
+        execution_key: Any,
+        *,
+        eligibility: Any,
+        current_policy: Mapping[str, Any] | None,
+        now_ms: int | None,
+        item: Any,
+    ) -> ReuseDecision:
+        from .runtime_revalidation import (
+            RevalidationAction,
+            RevalidationReason,
+            RuntimeRevalidationResult,
+        )
+
+        # --- Stage 0: normalize locator (execution key optional) ---
+        current_locator, rejected = _normalise_locator(locator)
+        if rejected is not None:
+            return rejected
+        assert current_locator is not None
+
+        provided_execution_key: TestExecutionKey | None = None
+        if execution_key is not None:
+            provided_execution_key, rejected = _normalise_execution_key(execution_key)
+            if rejected is not None:
+                return rejected
+            assert provided_execution_key is not None
+            if provided_execution_key.locator_cid != current_locator.locator_id:
+                return reuse_run(ReuseReasonCode.EXECUTION_KEY_MISMATCH)
+            rejected = _eligibility_decision(eligibility, provided_execution_key)
+            if rejected is not None:
+                return rejected
+        elif eligibility not in (None, True):
+            # Without an execution key, only hard-false eligibility is checked.
+            if eligibility is False:
+                return reuse_run(ReuseReasonCode.ELIGIBILITY_DENIED)
+            reusable = getattr(eligibility, "reusable", None)
+            if reusable is False:
+                return reuse_run(ReuseReasonCode.ELIGIBILITY_DENIED)
+
+        # --- Stage 1: dedicated candidate-context store + fresh revalidation ---
+        if self._candidate_context_store is None and self._revalidator is None:
+            return reuse_run(
+                ReuseReasonCode.CACHE_UNAVAILABLE,
+                diagnostics={"stage": "candidate_context_store_absent"},
+            )
+
+        revalidator = self._ensure_revalidator()
+        provider = self._current_context_provider
+        if provider is not None and item is not None:
+            bind = getattr(provider, "bind_collected_item", None)
+            if callable(bind):
+                try:
+                    bind(item)
+                except Exception as exc:
+                    return _run_for_exception(exc, stage="bind_item")
+
+        try:
+            revalidation = revalidator.revalidate(
+                current_locator,
+                max_candidates=self.max_candidates,
+                now_ms=now_ms,
+            )
+        except Exception as exc:
+            return _run_for_exception(exc, stage="revalidate")
+
+        if not isinstance(revalidation, RuntimeRevalidationResult):
+            return reuse_run(
+                ReuseReasonCode.INTERNAL_ERROR_FAIL_OPEN_TO_RUN,
+                diagnostics={"stage": "revalidation_type"},
+            )
+
+        # Invariant: revalidation alone never authorizes skip.
+        if revalidation.may_authorize_skip:
+            return reuse_run(
+                ReuseReasonCode.ILLEGAL_AUTHORITY,
+                diagnostics={"stage": "revalidation_claimed_skip"},
+            )
+
+        if revalidation.action is not RevalidationAction.PROCEED_TO_CERTIFICATE_VERIFICATION:
+            return reuse_run(
+                _map_revalidation_to_reuse_reason(revalidation.reason),
+                diagnostics={
+                    "stage": "revalidation",
+                    "revalidation_action": revalidation.action.value,
+                    "revalidation_reason": revalidation.reason.value,
+                    **{
+                        key: value
+                        for key, value in dict(revalidation.diagnostics).items()
+                        if key
+                        not in {
+                            "stage",
+                            "revalidation_action",
+                            "revalidation_reason",
+                        }
+                    },
+                },
+            )
+
+        if revalidation.reason is not RevalidationReason.CONTEXT_UNCHANGED:
+            return reuse_run(
+                ReuseReasonCode.INTERNAL_ERROR_FAIL_OPEN_TO_RUN,
+                diagnostics={
+                    "stage": "proceed_reason",
+                    "revalidation_reason": revalidation.reason.value,
+                },
+            )
+
+        candidate = revalidation.candidate
+        current_context = revalidation.current
+        if candidate is None or current_context is None:
+            return reuse_run(
+                ReuseReasonCode.ABSENCE_FAIL_OPEN_TO_RUN,
+                diagnostics={"stage": "revalidation_missing_contexts"},
+            )
+
+        # Exact current execution key must match the candidate before proof
+        # verification.
+        if (
+            not current_context.execution_key_cid
+            or current_context.execution_key_cid != candidate.execution_key_cid
+        ):
+            return reuse_run(
+                ReuseReasonCode.EXECUTION_KEY_MISMATCH,
+                diagnostics={
+                    "stage": "execution_key_match",
+                    "candidate_execution_key_cid": candidate.execution_key_cid[
+                        :MAX_DIAGNOSTIC_TEXT
+                    ],
+                    "current_execution_key_cid": current_context.execution_key_cid[
+                        :MAX_DIAGNOSTIC_TEXT
+                    ],
+                },
+            )
+
+        # --- Stage 2: resolve the verified execution key for proof cache ---
+        verified_key = provided_execution_key
+        if verified_key is not None:
+            if verified_key.execution_key_id != candidate.execution_key_cid:
+                return reuse_run(
+                    ReuseReasonCode.EXECUTION_KEY_MISMATCH,
+                    diagnostics={
+                        "stage": "provided_execution_key",
+                        "provided": verified_key.execution_key_id[
+                            :MAX_DIAGNOSTIC_TEXT
+                        ],
+                        "candidate": candidate.execution_key_cid[
+                            :MAX_DIAGNOSTIC_TEXT
+                        ],
+                    },
+                )
+        else:
+            verified_key = _execution_key_from_component_bytes(
+                revalidation.component_bytes,
+                claimed_cid=candidate.execution_key_cid,
+            )
+            if verified_key is None:
+                verified_key = _execution_key_from_candidate_fields(
+                    candidate, current_locator
+                )
+            if verified_key is None:
+                return reuse_run(
+                    ReuseReasonCode.ABSENCE_FAIL_OPEN_TO_RUN,
+                    diagnostics={"stage": "execution_key_materialize"},
+                )
+            # When synthesizing from candidate fields, content id may differ
+            # from the retained execution_key_cid unless the full key payload
+            # is present.  Prefer component bytes; if only fields are available
+            # require the synthesized key's id to match when possible, else
+            # still proceed only when the revalidated current key matches.
+            if (
+                verified_key.execution_key_id != candidate.execution_key_cid
+                and "execution_key" not in (revalidation.component_bytes or {})
+            ):
+                # Field-synthesized keys rarely rehash to the retained CID.
+                # Stage-1 already confirmed current.execution_key_cid match;
+                # build a key surface for the proof cache that carries the
+                # verified CIDs and bind via the current context identity.
+                # The proof cache still requires exact receipt/certificate
+                # agreement on execution_key_cid — so without retained key
+                # bytes we cannot invent authority.  Fail open to RUN.
+                return reuse_run(
+                    ReuseReasonCode.ABSENCE_FAIL_OPEN_TO_RUN,
+                    diagnostics={
+                        "stage": "execution_key_bytes_required",
+                        "candidate_execution_key_cid": candidate.execution_key_cid[
+                            :MAX_DIAGNOSTIC_TEXT
+                        ],
+                    },
+                )
+
+        if eligibility is not None and provided_execution_key is None:
+            rejected = _eligibility_decision(eligibility, verified_key)
+            if rejected is not None:
+                return rejected
+
+        # Certificate-cache admission (authoritative stage).
+        # When no proof-cache store/provider is configured, stage-1 success
+        # still cannot skip.
+        if (
+            self._candidate_store is None
+            and self._certificate_provider is None
+            and self._verifier is None
+        ):
+            return reuse_run(
+                ReuseReasonCode.CERTIFICATE_PROVIDER_UNAVAILABLE,
+                diagnostics={
+                    "stage": "certificate_stage",
+                    "revalidation": "proceed",
+                    "may_proceed_to_certificate_verification": True,
+                },
+            )
+
+        return self._lookup_unbounded(
+            current_locator,
+            verified_key,
+            current_policy=current_policy,
+            now_ms=now_ms,
+        )
+
+
+def build_proof_reuse_two_stage_lookup(
+    *,
+    candidate_context_store: Any = None,
+    certificate_provider: Any = None,
+    proof_cache_store: Any = None,
+    revalidator: Any = None,
+    current_context_provider: Any = None,
+    identity_services: Any = None,
+    live_identity_compiler: Callable[..., Any] | None = None,
+    allowed_roots: Mapping[str, Any] | None = None,
+    environ: Mapping[str, str] | None = None,
+    verifier: Any = None,
+    current_policy: Mapping[str, Any] | None = None,
+    policy_provider: Callable[
+        [TestLocatorKey, TestExecutionKey], Mapping[str, Any]
+    ]
+    | None = None,
+    revocation_checker: Callable[..., Any] | None = None,
+    clock: Callable[[], int] | None = None,
+    max_candidates: int = DEFAULT_MAX_CANDIDATES,
+    max_blob_bytes: int = DEFAULT_MAX_BLOB_BYTES,
+    max_batch_items: int = DEFAULT_MAX_BATCH_ITEMS,
+    timeout_seconds: float = DEFAULT_LOOKUP_TIMEOUT_SECONDS,
+    require_runtime_frontier: bool = True,
+) -> ProofReuseTwoStageLookup:
+    """Factory for the production two-stage warm lookup service."""
+
+    return ProofReuseTwoStageLookup(
+        candidate_context_store=candidate_context_store,
+        certificate_provider=certificate_provider,
+        proof_cache_store=proof_cache_store,
+        revalidator=revalidator,
+        current_context_provider=current_context_provider,
+        identity_services=identity_services,
+        live_identity_compiler=live_identity_compiler,
+        allowed_roots=allowed_roots,
+        environ=environ,
+        verifier=verifier,
+        current_policy=current_policy,
+        policy_provider=policy_provider,
+        revocation_checker=revocation_checker,
+        clock=clock,
+        max_candidates=max_candidates,
+        max_blob_bytes=max_blob_bytes,
+        max_batch_items=max_batch_items,
+        timeout_seconds=timeout_seconds,
+        require_runtime_frontier=require_runtime_frontier,
+    )
+
+
 __all__ = [
     "DEFAULT_LOOKUP_TIMEOUT_SECONDS",
     "DEFAULT_MAX_BATCH_ITEMS",
     "ITEM_DECISION_ATTRIBUTE",
     "ITEM_LOOKUP_REQUEST_ATTRIBUTE",
     "PROOF_REUSE_LOOKUP_INTERFACE",
+    "PROOF_REUSE_TWO_STAGE_LOOKUP_INTERFACE",
     "SKIP_REASON_PREFIX",
     "ProofReuseLookup",
     "ProofReuseLookupRequest",
+    "ProofReuseTwoStageLookup",
+    "RevalidatedProofReuseLookupRequest",
     "apply_verified_skip",
     "batch_lookup_reuse_decisions",
+    "build_proof_reuse_two_stage_lookup",
 ]

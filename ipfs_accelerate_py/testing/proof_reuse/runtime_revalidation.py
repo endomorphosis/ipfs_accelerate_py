@@ -1622,6 +1622,107 @@ class StaticCurrentContextProvider:
         return self.current
 
 
+def map_revalidation_reason_to_reuse_code(reason: RevalidationReason | str) -> str:
+    """Map a revalidation reason to a :class:`ReuseReasonCode` value string.
+
+    Revalidation never authorizes SKIP; every mapped code is RUN-oriented.
+    """
+
+    try:
+        from ...agent_supervisor.proof.test_execution_contracts import (
+            ReuseReasonCode,
+        )
+    except Exception:  # pragma: no cover - import layout fallback
+        ReuseReasonCode = None  # type: ignore[assignment]
+
+    token = (
+        reason
+        if isinstance(reason, RevalidationReason)
+        else RevalidationReason(str(reason))
+    )
+    mapping = {
+        RevalidationReason.CONTEXT_UNCHANGED: "proof_cache_hit",  # not used alone
+        RevalidationReason.LOCATOR_MISSING: "candidate_missing",
+        RevalidationReason.LOCATOR_INVALID: "unsupported",
+        RevalidationReason.CANDIDATE_MISSING: "candidate_missing",
+        RevalidationReason.CANDIDATE_INTEGRITY_FAILED: "candidate_integrity_failed",
+        RevalidationReason.CANDIDATE_UNRESOLVABLE: "candidate_missing",
+        RevalidationReason.COMPONENT_MISSING: "candidate_integrity_failed",
+        RevalidationReason.COMPONENT_INTEGRITY_FAILED: "candidate_integrity_failed",
+        RevalidationReason.CURRENT_CONTEXT_UNAVAILABLE: "absence_fail_open_to_run",
+        RevalidationReason.CURRENT_CONTEXT_INCOMPLETE: "incomplete_trace",
+        RevalidationReason.CURRENT_CONTEXT_NOT_FRESH: "invalidation",
+        RevalidationReason.IDENTITY_MISMATCH: "execution_key_mismatch",
+        RevalidationReason.DEPENDENCY_UNRESOLVABLE: "invalidation",
+        RevalidationReason.DEPENDENCY_CHANGED: "invalidation",
+        RevalidationReason.DEPENDENCY_UNCONTROLLED: "invalidation",
+        RevalidationReason.TRACE_INCOMPLETE: "incomplete_trace",
+        RevalidationReason.TRACE_MALFORMED: "malformed_artifact",
+        RevalidationReason.UNKNOWN_FRONTIER: "invalidation",
+        RevalidationReason.STORE_FAULT: "cache_unavailable",
+        RevalidationReason.INTERNAL_ERROR_FAIL_OPEN_TO_RUN: (
+            "internal_error_fail_open_to_run"
+        ),
+    }
+    code = mapping.get(token, "unknown")
+    if ReuseReasonCode is not None:
+        try:
+            return ReuseReasonCode(code).value
+        except ValueError:
+            return ReuseReasonCode.UNKNOWN.value
+    return code
+
+
+def revalidation_result_to_run_decision(
+    result: RuntimeRevalidationResult,
+) -> Any:
+    """Convert a revalidation result into an explicit RUN :class:`ReuseDecision`.
+
+    Even ``PROCEED_TO_CERTIFICATE_VERIFICATION`` maps to RUN here: certificate
+    verification is a separate stage and revalidation alone can never skip.
+    """
+
+    from ...agent_supervisor.proof.test_execution_contracts import (
+        ReuseReasonCode,
+        reuse_run,
+    )
+
+    if not isinstance(result, RuntimeRevalidationResult):
+        return reuse_run(
+            ReuseReasonCode.INTERNAL_ERROR_FAIL_OPEN_TO_RUN,
+            diagnostics={"stage": "revalidation_type"},
+        )
+    # Proceed is still RUN at this boundary — never SKIP from revalidation alone.
+    if result.action is RevalidationAction.PROCEED_TO_CERTIFICATE_VERIFICATION:
+        # Callers that continue to certificate verification should not use this
+        # helper for the proceed path; it exists only to fence skip authority.
+        return reuse_run(
+            ReuseReasonCode.UNSUPPORTED,
+            diagnostics={
+                "stage": "revalidation_alone_never_skips",
+                "revalidation_action": result.action.value,
+                "revalidation_reason": result.reason.value,
+                "may_proceed_to_certificate_verification": True,
+            },
+        )
+    code_value = map_revalidation_reason_to_reuse_code(result.reason)
+    try:
+        reason_code = ReuseReasonCode(code_value)
+    except ValueError:
+        reason_code = ReuseReasonCode.UNKNOWN
+    if reason_code is ReuseReasonCode.PROOF_CACHE_HIT:
+        reason_code = ReuseReasonCode.UNSUPPORTED
+    return reuse_run(
+        reason_code,
+        diagnostics={
+            "stage": "revalidation",
+            "revalidation_action": result.action.value,
+            "revalidation_reason": result.reason.value,
+            **dict(result.diagnostics),
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # RuntimeContextRevalidator@1
 # ---------------------------------------------------------------------------
@@ -1923,11 +2024,22 @@ class RuntimeContextRevalidator:
         current_context = current
         if current_context is None and self._current_provider is not None:
             try:
-                current_context = self._current_provider.compile_current(
-                    locator_cid=locator_cid,
-                    candidate=candidate,
-                    component_bytes=resolved_components,
-                )
+                # Prefer the production provider signature that accepts the
+                # bound collected item; fall back to the protocol signature.
+                compile_fn = self._current_provider.compile_current
+                try:
+                    current_context = compile_fn(
+                        locator_cid=locator_cid,
+                        candidate=candidate,
+                        component_bytes=resolved_components,
+                        item=getattr(self._current_provider, "collected_item", None),
+                    )
+                except TypeError:
+                    current_context = compile_fn(
+                        locator_cid=locator_cid,
+                        candidate=candidate,
+                        component_bytes=resolved_components,
+                    )
             except Exception as exc:  # noqa: BLE001
                 return _run_result(
                     RevalidationReason.CURRENT_CONTEXT_UNAVAILABLE,
@@ -2173,12 +2285,39 @@ def build_runtime_context_revalidator(
     clock: Callable[[], float] | Callable[[], int] | None = None,
     require_runtime_frontier: bool = True,
     require_extended_identities: bool = True,
+    identity_services: Any | None = None,
+    live_identity_compiler: Callable[..., Any] | None = None,
 ) -> RuntimeContextRevalidator:
-    """Factory for the production runtime context revalidator."""
+    """Factory for the production runtime context revalidator.
+
+    When ``current_context_provider`` is omitted and identity services or a
+    live identity compiler are supplied, a
+    :class:`DefaultCurrentContextProvider` is constructed automatically so the
+    warm path rebuilds fresh context without fixture or test execution.
+    """
+
+    provider = current_context_provider
+    if provider is None and (
+        identity_services is not None or live_identity_compiler is not None
+    ):
+        try:
+            from .current_context_provider import (
+                build_default_current_context_provider,
+            )
+
+            provider = build_default_current_context_provider(
+                identity_services=identity_services,
+                live_identity_compiler=live_identity_compiler,
+                allowed_roots=allowed_roots,
+                environ=environ,
+                clock=clock,
+            )
+        except Exception:
+            provider = None
 
     return RuntimeContextRevalidator(
         candidate_store=candidate_store,
-        current_context_provider=current_context_provider,
+        current_context_provider=provider,
         dependency_resolver=dependency_resolver,
         allowed_roots=allowed_roots,
         environ=environ,
@@ -2213,5 +2352,7 @@ __all__ = [
     "StaticCurrentContextProvider",
     "build_runtime_context_revalidator",
     "compare_candidate_to_current",
+    "map_revalidation_reason_to_reuse_code",
     "resolve_retained_runtime_frontier",
+    "revalidation_result_to_run_decision",
 ]
