@@ -1,4 +1,7 @@
-"""Fail-closed role-aware deployment attestation (FVT-053 / FVT-G200)."""
+"""Fail-closed role-aware deployment attestation (FVT-083 / FVT-G200).
+
+FVT-053 is retained only as legacy display context.
+"""
 
 from __future__ import annotations
 
@@ -540,9 +543,10 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
 ) -> None:
     assert receipt["interface"] == "RoleAwareFormalVerificationRelease@1"
     assert receipt["goal_id"] == "FVT-G200"
-    assert receipt["task_id"] == "FVT-053"
-    # FVT-083 objective validation repair re-proves FVT-G200 and binds the
-    # synthetic discovery term ``objective validation repair``.
+    assert receipt["task_id"] == "FVT-083"
+    assert receipt["legacy_display_task_id"] == "FVT-053"
+    # FVT-083 is the trusted successor. FVT-053 remains display-only legacy
+    # context and cannot supply supervisor release authority.
     assert receipt["repair_task_id"] == "FVT-083"
     assert receipt["objective_validation_evidence"] == "objective validation repair"
     assert receipt["objective_validation_repair"] is True
@@ -1079,6 +1083,7 @@ def test_raw_supervisor_files_cannot_replace_trusted_g212_release_evidence(
     snapshot = builder.load_supervisor_evidence_snapshot(
         task_state_path=state_path,
         event_log_path=event_path,
+        task_id="FVT-053",
     )
     binding = builder.derive_supervisor_binding(
         snapshot,

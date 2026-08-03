@@ -31,14 +31,25 @@ COMPLETION_GOAL_ID: Final = "FVT-G090"
 TASK_ID: Final = "FVT-036"
 PROGRAM: Final = "formal-verification-tactician/readiness"
 
-# Role-aware deployment reissue (FVT-G200 / FVT-053).
-# FVT-083 is the objective validation repair that re-proves FVT-G200 and binds
-# the synthetic discovery term ``objective validation repair``.
+# Role-aware deployment reissue (FVT-G200). FVT-083 is the completed
+# validation-gate successor and the only supervisor identity accepted for
+# release evidence. FVT-053 is retained solely as legacy display context.
 ROLE_AWARE_INTERFACE: Final = "RoleAwareFormalVerificationRelease@1"
 ROLE_AWARE_SCHEMA_VERSION: Final = "formal-verification-role-aware-deployment-receipt/v1"
 ROLE_AWARE_GOAL_ID: Final = "FVT-G200"
-ROLE_AWARE_TASK_ID: Final = "FVT-053"
-ROLE_AWARE_REPAIR_TASK_ID: Final = "FVT-083"
+ROLE_AWARE_TASK_ID: Final = "FVT-083"
+ROLE_AWARE_REPAIR_TASK_ID: Final = ROLE_AWARE_TASK_ID
+ROLE_AWARE_LEGACY_DISPLAY_TASK_ID: Final = "FVT-053"
+ROLE_AWARE_CANONICAL_TASK_CID: Final = (
+    "baguqeerajpm5osvlu5g4ljby6tnibgz3oxsnjpnapmtmyxzpcallkkw4viga"
+)
+ROLE_AWARE_CANONICAL_TASK_KEY: Final = (
+    "task/v1/4bd9d74aaba74dc5a438f4da809b3b75e4d4bda07b26cc5f2f1016b52adcaa0c"
+)
+ROLE_AWARE_INTEGRATION_BRANCH: Final = "agent/software-verification-prover-matrix"
+SUPERVISOR_VALIDATION_DAG_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/validation-dag-receipt@3"
+)
 ROLE_AWARE_OBJECTIVE_VALIDATION_EVIDENCE: Final = "objective validation repair"
 ROLE_AWARE_OBJECTIVE_VALIDATION_COMMAND: Final = (
     "python -m pytest "
@@ -1758,6 +1769,41 @@ def load_supervisor_evidence_snapshot(
     }
 
 
+def load_supervisor_release_evidence(path: Path) -> dict[str, Any]:
+    """Load one explicit content-addressed G212 export.
+
+    Raw task-state and event files intentionally use the separate diagnostic
+    loader above and never pass through this API as release authority.
+    """
+
+    payload = load_json(path.resolve())
+    if not isinstance(payload, Mapping):
+        raise ValueError("supervisor release evidence must be one JSON object")
+    return dict(payload)
+
+
+def finalize_supervisor_release_evidence(
+    *,
+    evidence_path: Path,
+    repo_root: Path,
+    integration_branch: str = ROLE_AWARE_INTEGRATION_BRANCH,
+) -> dict[str, Any]:
+    """Recheck a provisional export after its merge is published.
+
+    Callers must fetch ``origin`` before invoking this function. The returned
+    binding becomes final only when the recorded merge is an ancestor of the
+    local ``refs/remotes/origin/main``; no field in the export can self-assert
+    publication.
+    """
+
+    evidence = load_supervisor_release_evidence(evidence_path)
+    return derive_supervisor_binding(
+        evidence,
+        repo_root=repo_root.resolve(),
+        integration_branch=integration_branch,
+    )
+
+
 def _derive_git_commit_binding(
     *,
     repo_root: Path | None,
@@ -1765,23 +1811,38 @@ def _derive_git_commit_binding(
     merge_commit: str,
     target_branch: str,
     integration_proof: Mapping[str, Any],
+    integration_branch: str = ROLE_AWARE_INTEGRATION_BRANCH,
 ) -> dict[str, Any]:
-    """Independently bind supervisor commit claims to the published Git DAG."""
+    """Independently bind supervisor claims to the local and published Git DAG.
+
+    ``provisional_valid`` proves the completed implementation was directly
+    merged, that the merge tree is exactly the implementation tree, and that
+    the recorded target is the configured integration branch (or an
+    ``origin/main`` alias). ``valid`` additionally requires the merge to be an
+    ancestor of ``refs/remotes/origin/main``. This is the deliberate two-phase
+    publication boundary.
+    """
 
     result: dict[str, Any] = {
         "valid": False,
+        "provisional_valid": False,
         "repository_bound": False,
         "implementation_commit_exists": False,
         "merge_commit_exists": False,
         "implementation_is_ancestor": False,
+        "implementation_is_direct_parent": False,
         "source_trees_bound": False,
+        "merge_tree_matches_implementation": False,
+        "integration_proof_bound": False,
         "target_branch_bound": False,
+        "target_ref_contains_merge": False,
         "published_to_origin_main": False,
         "implementation_commit": implementation_commit or None,
         "merge_commit": merge_commit or None,
         "implementation_tree": None,
         "merge_tree": None,
         "publication_ref": "refs/remotes/origin/main",
+        "configured_integration_branch": integration_branch,
         "failures": [],
     }
     failures: list[str] = result["failures"]
@@ -1839,21 +1900,101 @@ def _derive_git_commit_binding(
     if not result["implementation_is_ancestor"]:
         failures.append("implementation_not_ancestor_of_merge")
 
+    parent_line = _git_stdout(root, "rev-list", "--parents", "-n", "1", merge_commit)
+    merge_parents = (
+        parent_line.split()[1:]
+        if isinstance(parent_line, str) and parent_line
+        else []
+    )
+    result["merge_parents"] = merge_parents
+    result["implementation_is_direct_parent"] = (
+        implementation_commit in merge_parents
+    )
+    if not result["implementation_is_direct_parent"]:
+        failures.append("implementation_not_direct_merge_parent")
+
+    claimed_implementation_tree = str(
+        integration_proof.get("implementation_tree") or ""
+    )
+    claimed_merge_tree = str(integration_proof.get("merge_tree") or "")
+    optional_tree_claims_match = bool(
+        (not claimed_implementation_tree or claimed_implementation_tree == implementation_tree)
+        and (not claimed_merge_tree or claimed_merge_tree == merge_tree)
+    )
+    result["merge_tree_matches_implementation"] = bool(
+        implementation_tree and merge_tree == implementation_tree
+    )
     result["source_trees_bound"] = bool(
         COMMIT_RE.fullmatch(str(implementation_tree or ""))
         and COMMIT_RE.fullmatch(str(merge_tree or ""))
-        and integration_proof.get("implementation_tree") == implementation_tree
-        and integration_proof.get("merge_tree") == merge_tree
+        and optional_tree_claims_match
+        and result["merge_tree_matches_implementation"]
     )
     if not result["source_trees_bound"]:
         failures.append("commit_source_trees_not_bound")
 
-    result["target_branch_bound"] = target_branch in {
+    configured_ref = f"refs/heads/{integration_branch}"
+    accepted_targets = {
+        integration_branch,
+        configured_ref,
         "origin/main",
         "refs/remotes/origin/main",
     }
+    result["accepted_target_branches"] = sorted(accepted_targets)
+    result["target_branch_bound"] = target_branch in accepted_targets
     if not result["target_branch_bound"]:
-        failures.append("merge_target_not_origin_main")
+        failures.append("merge_target_not_configured_integration_branch")
+
+    proof_target = str(integration_proof.get("target_branch") or "")
+    proof_ref = str(integration_proof.get("integration_ref") or "")
+    proof_ref_commit = (
+        _git_stdout(root, "rev-parse", "--verify", f"{proof_ref}^{{commit}}")
+        if proof_ref
+        else None
+    )
+    result["integration_proof_bound"] = bool(
+        integration_proof.get("passed") is True
+        and not _safe_list(integration_proof.get("reasons"))
+        and str(integration_proof.get("implementation_commit") or "")
+        == implementation_commit
+        and str(
+            integration_proof.get("integration_commit")
+            or integration_proof.get("merge_commit")
+            or ""
+        )
+        == merge_commit
+        and proof_target == target_branch
+        and proof_target in accepted_targets
+        and (proof_ref == merge_commit or proof_ref_commit == merge_commit)
+    )
+    if not result["integration_proof_bound"]:
+        failures.append("integration_commit_proof_not_bound")
+
+    target_ref = (
+        configured_ref
+        if target_branch in {integration_branch, configured_ref}
+        else "refs/remotes/origin/main"
+    )
+    target_ref_commit = _git_stdout(
+        root,
+        "rev-parse",
+        "--verify",
+        f"{target_ref}^{{commit}}",
+    )
+    target_contains = _git(
+        root,
+        "merge-base",
+        "--is-ancestor",
+        merge_commit,
+        target_ref,
+    )
+    result["target_ref"] = target_ref
+    result["target_ref_commit"] = target_ref_commit
+    result["target_ref_contains_merge"] = bool(
+        target_ref_commit and target_contains and target_contains.returncode == 0
+    )
+    if not result["target_ref_contains_merge"]:
+        failures.append("merge_commit_not_on_configured_target_ref")
 
     published_ref = _git_stdout(
         root,
@@ -1879,7 +2020,13 @@ def _derive_git_commit_binding(
     if not result["published_to_origin_main"]:
         failures.append("merge_commit_not_published_to_origin_main")
 
-    result["valid"] = not failures
+    publication_failure = "merge_commit_not_published_to_origin_main"
+    result["provisional_valid"] = not [
+        failure for failure in failures if failure != publication_failure
+    ]
+    result["valid"] = bool(
+        result["provisional_valid"] and result["published_to_origin_main"]
+    )
     return result
 
 
@@ -1997,12 +2144,172 @@ def _trusted_release_evidence_snapshot(
     return result
 
 
+def _derive_validation_dag_binding(
+    validation: Mapping[str, Any],
+    *,
+    repo_root: Path | None,
+) -> dict[str, Any]:
+    """Validate the completed supervisor validation-DAG schema.
+
+    The validation runner executes against a sealed candidate overlay whose
+    recorded ``target_commit`` is the baseline commit. Candidate identity is
+    carried separately by ``candidate_binding``. Requiring
+    ``target_commit == implementation_commit`` would reject the actual durable
+    schema, so this verifier instead binds the baseline Git object, proposal,
+    candidate fingerprint, complete selected DAG, and successful mandatory
+    nodes.
+    """
+
+    data = _safe_dict(validation)
+    dag = _safe_dict(data.get("validation_dag_receipt"))
+    candidate = _safe_dict(data.get("candidate_binding"))
+    proposal = _safe_dict(data.get("proposal_gate"))
+    nodes = [
+        dict(item)
+        for item in _safe_list(dag.get("nodes"))
+        if isinstance(item, Mapping)
+    ]
+    selected_ids = {
+        str(item) for item in _safe_list(dag.get("selected_node_ids")) if item
+    }
+    selected_nodes = [
+        node for node in nodes if str(node.get("node_id") or "") in selected_ids
+    ]
+    required_validation_ids = {
+        str(item)
+        for item in _safe_list(dag.get("required_validation_ids"))
+        if item
+    }
+    selected_validation_ids = {
+        str(node.get("validation_id") or "")
+        for node in selected_nodes
+        if node.get("validation_id")
+    }
+    current_fingerprint = str(candidate.get("current_fingerprint") or "")
+    expected_fingerprint = str(candidate.get("expected_fingerprint") or "")
+    target_commit = str(data.get("target_commit") or "")
+    target_exists = bool(
+        repo_root is not None
+        and COMMIT_RE.fullmatch(target_commit)
+        and _git_stdout(
+            repo_root.resolve(),
+            "rev-parse",
+            "--verify",
+            f"{target_commit}^{{commit}}",
+        )
+        == target_commit
+    )
+    proposal_receipt_id = str(proposal.get("receipt_id") or "")
+    dag_proposal_receipt_id = str(dag.get("proposal_receipt_id") or "")
+    authority_gates = [
+        item
+        for item in _safe_list(data.get("authority_gates"))
+        if isinstance(item, Mapping)
+    ]
+    dag_authority_gates = [
+        item
+        for item in _safe_list(dag.get("authority_gates"))
+        if isinstance(item, Mapping)
+    ]
+
+    checks = {
+        "validation_passed": bool(
+            data.get("attempted") is True
+            and data.get("passed") is True
+            and data.get("returncode") == 0
+        ),
+        "candidate_binding_bound": bool(
+            candidate.get("verified") is True
+            and current_fingerprint == expected_fingerprint
+            and SHA256_RE.fullmatch(
+                current_fingerprint.removeprefix("sha256:")
+            )
+        ),
+        "proposal_gate_bound": bool(
+            proposal.get("attempted") is True
+            and proposal.get("accepted") is True
+            and proposal_receipt_id
+            and proposal_receipt_id == dag_proposal_receipt_id
+            and not _safe_list(proposal.get("reason_codes"))
+        ),
+        "dag_identity_bound": bool(
+            dag.get("schema") == SUPERVISOR_VALIDATION_DAG_SCHEMA
+            and dag.get("objective_id") == ROLE_AWARE_GOAL_ID
+            and SHA256_RE.fullmatch(str(dag.get("receipt_id") or ""))
+            and SHA256_RE.fullmatch(str(dag.get("graph_id") or ""))
+        ),
+        "dag_coverage_bound": bool(
+            dag.get("passed") is True
+            and dag.get("coverage_complete") is True
+            and dag.get("uncovered_impact") is False
+            and not _safe_list(data.get("coverage_errors"))
+        ),
+        "dag_nodes_bound": bool(
+            nodes
+            and selected_ids
+            and len(selected_nodes) == len(selected_ids)
+            and all(
+                node.get("selected") is True
+                and node.get("mandatory") is True
+                and node.get("disposition") == "succeeded"
+                and node.get("returncode") == 0
+                and SHA256_RE.fullmatch(str(node.get("node_id") or ""))
+                and SHA256_RE.fullmatch(str(node.get("result_digest") or ""))
+                for node in selected_nodes
+            )
+            and required_validation_ids == selected_validation_ids
+        ),
+        "baseline_commit_bound": bool(
+            target_exists
+            and dag.get("repository_tree_id") == target_commit
+            and _safe_dict(dag.get("impact_graph")).get("repository_tree_id")
+            == target_commit
+            and proposal.get("repository_tree_id") == target_commit
+        ),
+        "non_authoritative_ceiling_preserved": bool(
+            data.get("authoritative") is False
+            and data.get("completion_authoritative") is False
+            and data.get("code_proof_authoritative") is False
+            and data.get("proof_authoritative") is False
+            and data.get("freshness_authoritative") is False
+            and dag.get("completion_authoritative") is False
+            and dag.get("code_proof_authoritative") is False
+            and dag.get("proof_authoritative") is False
+            and authority_gates
+            and dag_authority_gates
+            and all(
+                gate.get("disposition") == "pending"
+                and gate.get("reason")
+                == "validation_passed_requires_independent_authority"
+                for gate in [*authority_gates, *dag_authority_gates]
+            )
+        ),
+    }
+    failures = [
+        name for name, satisfied in checks.items() if not satisfied
+    ]
+    return {
+        "valid": not failures,
+        "checks": checks,
+        "failures": failures,
+        "target_commit": target_commit or None,
+        "candidate_fingerprint": current_fingerprint or None,
+        "dag_receipt_id": dag.get("receipt_id"),
+        "dag_graph_id": dag.get("graph_id"),
+        "selected_node_ids": sorted(selected_ids),
+        "required_validation_ids": sorted(required_validation_ids),
+        "supervisor_execution_authoritative": False,
+        "authority_gates": authority_gates,
+    }
+
+
 def derive_supervisor_binding(
     evidence: Mapping[str, Any] | None,
     *,
     repo_root: Path | None = None,
+    integration_branch: str = ROLE_AWARE_INTEGRATION_BRANCH,
 ) -> dict[str, Any]:
-    """Validate a G212 export's task/CID, validation, and merge evidence."""
+    """Validate the exact FVT-083 terminal, merge, and publication evidence."""
 
     trusted_release = _trusted_release_evidence_snapshot(
         evidence,
@@ -2013,6 +2320,12 @@ def derive_supervisor_binding(
     identity = _safe_dict(task_state.get("canonical_identity"))
     expected_cid = str(identity.get("canonical_task_cid") or "")
     expected_key = str(identity.get("canonical_task_key") or "")
+    expected_identity_bound = bool(
+        identity.get("task_id") == ROLE_AWARE_TASK_ID
+        and expected_cid == ROLE_AWARE_CANONICAL_TASK_CID
+        and expected_key == ROLE_AWARE_CANONICAL_TASK_KEY
+        and snapshot.get("task_id") == ROLE_AWARE_TASK_ID
+    )
     source_files_bound = trusted_release.get("bound") is True
     durable_snapshot_matches = trusted_release.get("bound") is True
 
@@ -2028,28 +2341,66 @@ def derive_supervisor_binding(
         and not _safe_list(chain.get("errors"))
     )
     events = [
-        event
+        dict(event)
         for event in _safe_list(snapshot.get("events"))
         if isinstance(event, Mapping)
     ]
     events_have_canonical_identity = bool(events) and all(
-        str(event.get("task_id") or "") == ROLE_AWARE_TASK_ID
-        and str(event.get("canonical_task_cid") or "") == expected_cid
-        and str(event.get("canonical_task_key") or "") == expected_key
+        (
+            not str(event.get("task_id") or "").strip()
+            or (
+                str(event.get("task_id") or "") == ROLE_AWARE_TASK_ID
+                and str(event.get("canonical_task_cid") or "")
+                == ROLE_AWARE_CANONICAL_TASK_CID
+                and str(event.get("canonical_task_key") or "")
+                == ROLE_AWARE_CANONICAL_TASK_KEY
+            )
+        )
         and isinstance(event.get("sequence"), int)
+        and not isinstance(event.get("sequence"), bool)
         and SHA256_RE.fullmatch(
             str(event.get("event_id") or "").removeprefix("sha256:")
         )
         for event in events
     )
+    successful_receipts = [
+        dict(receipt)
+        for receipt in _safe_list(snapshot.get("member_completion_receipts"))
+        if isinstance(receipt, Mapping)
+        and receipt.get("schema") == SUPERVISOR_COMPLETION_SCHEMA
+        and receipt.get("status") == "succeeded"
+        and receipt.get("task_id") == ROLE_AWARE_TASK_ID
+        and receipt.get("canonical_task_cid")
+        == ROLE_AWARE_CANONICAL_TASK_CID
+        and receipt.get("canonical_task_key")
+        == ROLE_AWARE_CANONICAL_TASK_KEY
+    ]
+    receipt_events = [
+        event
+        for event in events
+        if event.get("type") == "todo_status_updated"
+        and event.get("task_id") == ROLE_AWARE_TASK_ID
+        and any(
+            isinstance(receipt, Mapping)
+            and receipt.get("schema") == SUPERVISOR_COMPLETION_SCHEMA
+            and receipt.get("status") == "succeeded"
+            and receipt.get("task_id") == ROLE_AWARE_TASK_ID
+            and receipt.get("canonical_task_cid")
+            == ROLE_AWARE_CANONICAL_TASK_CID
+            and receipt.get("canonical_task_key")
+            == ROLE_AWARE_CANONICAL_TASK_KEY
+            for receipt in _safe_list(event.get("completion_receipts"))
+        )
+    ]
     finished_events = [
         event
         for event in events
         if event.get("type") == "implementation_finished"
+        and event.get("task_id") == ROLE_AWARE_TASK_ID
     ]
     terminal_events: list[Mapping[str, Any]] = []
-    successful_receipts: list[Mapping[str, Any]] = []
     terminal_commit_bindings: list[Mapping[str, Any]] = []
+    terminal_validation_bindings: list[Mapping[str, Any]] = []
     for event in finished_events:
         validation = _safe_dict(event.get("validation"))
         merge = _safe_dict(event.get("merge"))
@@ -2065,38 +2416,70 @@ def derive_supervisor_binding(
             merge_commit=merge_commit,
             target_branch=str(merge.get("target_branch") or ""),
             integration_proof=_safe_dict(merge.get("integration_commit_proof")),
+            integration_branch=integration_branch,
         )
-        receipts = [
-            receipt
-            for receipt in _safe_list(event.get("completion_receipts"))
-            if isinstance(receipt, Mapping)
-            and receipt.get("schema") == SUPERVISOR_COMPLETION_SCHEMA
-            and receipt.get("status") == "succeeded"
-            and str(receipt.get("task_id") or "") == ROLE_AWARE_TASK_ID
-            and str(receipt.get("canonical_task_cid") or "") == expected_cid
-            and str(receipt.get("canonical_task_key") or "") == expected_key
-            and str(receipt.get("implementation_commit") or "")
-            == implementation_commit
-            and str(receipt.get("merge_commit") or "") == merge_commit
+        validation_binding = _derive_validation_dag_binding(
+            validation,
+            repo_root=repo_root,
+        )
+        output_invariant = _safe_dict(
+            merge.get("post_merge_declared_output_invariant")
+        )
+        invariant_checks = [
+            item
+            for item in _safe_list(output_invariant.get("checks"))
+            if isinstance(item, Mapping)
         ]
+        output_invariant_bound = bool(
+            output_invariant.get("passed") is True
+            and output_invariant.get("mode") == "repository_tree"
+            and output_invariant.get("repository_ref") == merge_commit
+            and _safe_list(output_invariant.get("task_ids"))
+            == [ROLE_AWARE_TASK_ID]
+            and not _safe_list(output_invariant.get("missing_outputs"))
+            and not _safe_list(output_invariant.get("unsafe_outputs"))
+            and not _safe_list(output_invariant.get("untracked_outputs"))
+            and invariant_checks
+            and all(
+                check.get("task_id") == ROLE_AWARE_TASK_ID
+                and check.get("repository_ref") == merge_commit
+                and check.get("exists") is True
+                and check.get("tracked") is True
+                for check in invariant_checks
+            )
+        )
+        receipt_terminal_compatible = bool(
+            successful_receipts
+            and all(
+                (
+                    not receipt.get("implementation_commit")
+                    or receipt.get("implementation_commit")
+                    == implementation_commit
+                )
+                and (
+                    not receipt.get("merge_commit")
+                    or receipt.get("merge_commit") == merge_commit
+                )
+                for receipt in successful_receipts
+            )
+        )
         coherent = bool(
-            receipts
-            and validation.get("attempted") is True
-            and validation.get("passed") is True
-            and validation.get("returncode") == 0
-            and str(validation.get("target_commit") or "")
-            == implementation_commit
+            receipt_terminal_compatible
+            and validation_binding["valid"] is True
+            and merge.get("attempted") is True
             and merge.get("merged") is True
+            and merge.get("returncode") == 0
             and COMMIT_RE.fullmatch(implementation_commit)
             and COMMIT_RE.fullmatch(merge_commit)
             and str(merge.get("implementation_commit") or "")
             == implementation_commit
-            and commit_binding["valid"] is True
+            and output_invariant_bound
+            and commit_binding["provisional_valid"] is True
         )
         if coherent:
             terminal_events.append(event)
-            successful_receipts.extend(receipts)
             terminal_commit_bindings.append(commit_binding)
+            terminal_validation_bindings.append(validation_binding)
 
     terminal_event = terminal_events[-1] if terminal_events else {}
     terminal_merge = _safe_dict(terminal_event.get("merge"))
@@ -2106,6 +2489,19 @@ def derive_supervisor_binding(
         or ""
     )
     terminal_merge_commit = str(terminal_merge.get("merge_commit") or "")
+    terminal_sequence = int(terminal_event.get("sequence") or 0)
+    completion_events = [
+        event
+        for event in events
+        if event.get("type") == "task_completed"
+        and event.get("task_id") == ROLE_AWARE_TASK_ID
+        and event.get("canonical_task_cid")
+        == ROLE_AWARE_CANONICAL_TASK_CID
+        and event.get("canonical_task_key")
+        == ROLE_AWARE_CANONICAL_TASK_KEY
+        and isinstance(event.get("sequence"), int)
+        and event.get("sequence") > terminal_sequence
+    ]
     state_terminal_bound = bool(
         task_state.get("implementation_in_progress") is False
         and str(task_state.get("last_implementation_task_id") or "")
@@ -2118,23 +2514,72 @@ def derive_supervisor_binding(
         == terminal_merge_commit
         and str(task_state.get("task_status") or "")
         in {"completed", "succeeded", "merged"}
+        and completion_events
     )
     task_cid_bound = bool(
-        expected_cid
-        and expected_key
+        expected_identity_bound
         and events_have_canonical_identity
-        and str(snapshot.get("task_id") or "") == ROLE_AWARE_TASK_ID
     )
-    bound = bool(
+    provisional_bound = bool(
         task_cid_bound
         and event_chain_bound
         and state_terminal_bound
         and successful_receipts
+        and receipt_events
         and terminal_events
     )
+    publication_bound = bool(
+        provisional_bound
+        and terminal_commit_bindings
+        and terminal_commit_bindings[-1].get("published_to_origin_main") is True
+    )
+    bound = bool(provisional_bound and publication_bound)
+    publication_phase = (
+        "published_final"
+        if bound
+        else "provisional_merge"
+        if provisional_bound
+        else "unbound"
+    )
+    block_reasons = [
+        reason
+        for reason, condition in (
+            ("supervisor_snapshot_missing", bool(snapshot)),
+            (
+                "trusted_g212_release_evidence_not_bound",
+                trusted_release.get("bound") is True,
+            ),
+            ("durable_supervisor_sources_not_bound", source_files_bound),
+            ("supervisor_snapshot_not_durable", durable_snapshot_matches),
+            ("canonical_event_chain_not_bound", event_chain_bound),
+            ("canonical_successor_identity_not_bound", task_cid_bound),
+            ("terminal_task_state_not_bound", state_terminal_bound),
+            (
+                "member_completion_receipt_missing",
+                bool(successful_receipts and receipt_events),
+            ),
+            ("validation_dag_evidence_missing", bool(terminal_events)),
+            (
+                "merge_commit_tree_evidence_missing",
+                bool(terminal_commit_bindings),
+            ),
+            ("merge_commit_not_published_to_origin_main", publication_bound),
+        )
+        if not condition
+    ]
     return {
         "present": bool(evidence),
         "bound": bound,
+        "provisional_bound": provisional_bound,
+        "publication_bound": publication_bound,
+        "publication_phase": publication_phase,
+        "post_push_finalization_required": bool(
+            provisional_bound and not publication_bound
+        ),
+        "configured_integration_branch": integration_branch,
+        "publication_ref": "refs/remotes/origin/main",
+        "legacy_display_task_id": ROLE_AWARE_LEGACY_DISPLAY_TASK_ID,
+        "trusted_successor_task_id": ROLE_AWARE_TASK_ID,
         "trusted_release_evidence_bound": trusted_release.get("bound") is True,
         "trusted_release_evidence": {
             key: value
@@ -2146,7 +2591,9 @@ def derive_supervisor_binding(
         "event_chain_bound": event_chain_bound,
         "state_terminal_bound": state_terminal_bound,
         "task_cid_bound": task_cid_bound,
-        "member_completion_receipt_bound": bool(successful_receipts),
+        "member_completion_receipt_bound": bool(
+            successful_receipts and receipt_events
+        ),
         "validation_bound": bool(terminal_events),
         "merge_commit_tree_bound": bool(terminal_events),
         "canonical_task_cid": expected_cid or None,
@@ -2154,36 +2601,14 @@ def derive_supervisor_binding(
         "successful_completion_receipts": successful_receipts,
         "validation_events": terminal_events,
         "merge_events": terminal_events,
+        "task_completed_events": completion_events,
+        "validation_dag_bindings": terminal_validation_bindings,
         "commit_bindings": terminal_commit_bindings,
         "snapshot_digest_sha256": (
             content_digest(snapshot) if snapshot else None
         ),
         "snapshot": snapshot,
-        "block_reasons": [
-            reason
-            for reason, condition in (
-                ("supervisor_snapshot_missing", bool(snapshot)),
-                (
-                    "trusted_g212_release_evidence_not_bound",
-                    trusted_release.get("bound") is True,
-                ),
-                ("durable_supervisor_sources_not_bound", source_files_bound),
-                ("supervisor_snapshot_not_durable", durable_snapshot_matches),
-                ("canonical_event_chain_not_bound", event_chain_bound),
-                ("canonical_task_cid_not_bound", task_cid_bound),
-                ("terminal_task_state_not_bound", state_terminal_bound),
-                (
-                    "member_completion_receipt_missing",
-                    bool(successful_receipts),
-                ),
-                ("validation_evidence_missing", bool(terminal_events)),
-                (
-                    "merge_commit_tree_evidence_missing",
-                    bool(terminal_commit_bindings),
-                ),
-            )
-            if not condition
-        ],
+        "block_reasons": block_reasons,
     }
 
 
@@ -2194,6 +2619,7 @@ def build_role_aware_deployment_receipt(
     completion_receipt: Mapping[str, Any] | None = None,
     role_aware_certificate: Mapping[str, Any] | None = None,
     supervisor_evidence: Mapping[str, Any] | None = None,
+    supervisor_integration_branch: str = ROLE_AWARE_INTEGRATION_BRANCH,
 ) -> dict[str, Any]:
     """Build a fail-closed, two-phase role-aware deployment attestation."""
 
@@ -2496,6 +2922,7 @@ def build_role_aware_deployment_receipt(
     supervisor = derive_supervisor_binding(
         supervisor_evidence,
         repo_root=repo_root,
+        integration_branch=supervisor_integration_branch,
     )
 
     checked_certificate = load_json(repo_root / TOOLCHAIN_CERT_RELATIVE)
@@ -2741,6 +3168,7 @@ def build_role_aware_deployment_receipt(
         "goal_id": ROLE_AWARE_GOAL_ID,
         "task_id": ROLE_AWARE_TASK_ID,
         "repair_task_id": ROLE_AWARE_REPAIR_TASK_ID,
+        "legacy_display_task_id": ROLE_AWARE_LEGACY_DISPLAY_TASK_ID,
         "program": "formal-verification-tactician/toolchain-release",
         "observed_at": timestamp,
         "binding_mode": "two_phase_source_then_attestation_publication",
@@ -8269,22 +8697,57 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Override observed_at timestamp (ISO-8601 UTC)",
     )
     parser.add_argument(
+        "--supervisor-release-evidence",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit AgentSupervisorReleaseEvidence@1 JSON export for FVT-083. "
+            "After publication, run `git fetch origin` and invoke this command "
+            "again to finalize the origin/main ancestry phase."
+        ),
+    )
+    parser.add_argument(
+        "--supervisor-integration-branch",
+        type=str,
+        default=ROLE_AWARE_INTEGRATION_BRANCH,
+        help=(
+            "Exact local integration branch accepted in supervisor merge "
+            f"evidence (default: {ROLE_AWARE_INTEGRATION_BRANCH})"
+        ),
+    )
+    parser.add_argument(
         "--supervisor-task-state",
         type=Path,
         default=None,
-        help="Read-only FVT-053 supervisor task-state JSON snapshot",
+        help=(
+            "Diagnostic-only raw supervisor task-state JSON; cannot grant "
+            "release authority"
+        ),
     )
     parser.add_argument(
         "--supervisor-event-log",
         type=Path,
         default=None,
-        help="Read-only FVT-053 supervisor durable event JSONL",
+        help=(
+            "Diagnostic-only raw supervisor event JSONL; cannot grant release "
+            "authority"
+        ),
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
     if bool(args.supervisor_task_state) != bool(args.supervisor_event_log):
         parser.error(
             "--supervisor-task-state and --supervisor-event-log must be supplied together"
         )
+    if args.supervisor_task_state or args.supervisor_event_log:
+        parser.error(
+            "raw --supervisor-task-state/--supervisor-event-log inputs are "
+            "diagnostic only and cannot be used by the release builder; export "
+            "AgentSupervisorReleaseEvidence@1 and pass "
+            "--supervisor-release-evidence"
+        )
+    integration_branch = str(args.supervisor_integration_branch or "").strip()
+    if not integration_branch:
+        parser.error("--supervisor-integration-branch must not be empty")
 
     root = (args.repo_root or repo_root_from()).resolve()
     want_release_candidate = bool(
@@ -8296,6 +8759,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         or want_release_candidate
     )
     want_role_aware = bool(args.role_aware or args.role_aware_output is not None)
+    if args.supervisor_release_evidence and not want_role_aware:
+        parser.error(
+            "--supervisor-release-evidence requires --role-aware or "
+            "--role-aware-output"
+        )
+    if want_role_aware and not args.supervisor_release_evidence:
+        parser.error(
+            "role-aware generation requires --supervisor-release-evidence; "
+            "raw supervisor state/events are not release authority"
+        )
     receipt = build_receipt(repo_root=root, observed_at=args.observed_at)
 
     if (
@@ -8357,17 +8830,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     if want_role_aware:
         assert role_certificate is not None
         supervisor_snapshot = None
-        if args.supervisor_task_state and args.supervisor_event_log:
-            supervisor_snapshot = load_supervisor_evidence_snapshot(
-                task_state_path=args.supervisor_task_state.resolve(),
-                event_log_path=args.supervisor_event_log.resolve(),
-            )
+        if args.supervisor_release_evidence:
+            try:
+                supervisor_snapshot = load_supervisor_release_evidence(
+                    args.supervisor_release_evidence
+                )
+            except ValueError as exc:
+                parser.error(str(exc))
         role_aware_receipt = build_role_aware_deployment_receipt(
             repo_root=root,
             observed_at=args.observed_at or receipt.get("observed_at"),
             completion_receipt=receipt,
             role_aware_certificate=role_certificate,
             supervisor_evidence=supervisor_snapshot,
+            supervisor_integration_branch=integration_branch,
         )
         if args.stdout and args.role_aware and args.output is None and not (
             args.release_candidate and args.release_candidate_output is None
