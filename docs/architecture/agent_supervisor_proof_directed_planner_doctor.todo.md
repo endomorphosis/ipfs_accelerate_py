@@ -1080,7 +1080,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-090 Prove live E2E, transport/projection parity, adversarial safety, and chaos recovery
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
