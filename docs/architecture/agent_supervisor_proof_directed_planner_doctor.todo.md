@@ -950,7 +950,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-071 Attribute wall time, tokens, process-tree resources, GPU, I/O, and cost
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
