@@ -13783,7 +13783,7 @@ def test_task_declared_codex_is_exact_and_never_substitutes_copilot(
         daemon._build_implementation_command(repo, task=task)
 
 
-def test_grok_readiness_requires_router_provider_and_headless_auth(
+def test_grok_readiness_requires_resolved_binary_and_headless_auth(
     monkeypatch,
 ):
     from ipfs_accelerate_py import llm_router
@@ -13792,11 +13792,6 @@ def test_grok_readiness_requires_router_provider_and_headless_auth(
         implementation_daemon_module,
         "_grok_binary",
         lambda: "/usr/local/bin/grok",
-    )
-    monkeypatch.setattr(
-        llm_router,
-        "get_llm_provider",
-        lambda _provider: object(),
     )
     monkeypatch.setattr(
         llm_router,
@@ -13812,6 +13807,34 @@ def test_grok_readiness_requires_router_provider_and_headless_auth(
         lambda: True,
     )
     assert implementation_daemon_module._grok_cli_available() is True
+
+
+def test_grok_readiness_accepts_supervisor_binary_override(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py import llm_router
+
+    grok_bin = tmp_path / "custom-grok"
+    grok_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    grok_bin.chmod(0o755)
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_BIN_ENV,
+        str(grok_bin),
+    )
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
+    monkeypatch.setattr(
+        llm_router,
+        "_grok_cli_auth_available",
+        lambda: True,
+    )
+
+    assert implementation_daemon_module._grok_binary() == str(grok_bin)
+    assert implementation_daemon_module._grok_cli_available() is True
+    command = implementation_daemon_module._grok_cli_command(
+        workspace_path=tmp_path,
+    )
+    assert command[command.index("--grok-bin") + 1] == str(grok_bin)
 
 
 @pytest.mark.parametrize(

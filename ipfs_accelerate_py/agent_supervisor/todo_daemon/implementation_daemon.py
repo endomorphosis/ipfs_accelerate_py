@@ -1481,20 +1481,21 @@ def _grok_binary() -> str | None:
 
 
 def _grok_cli_available() -> bool:
-    """True when the Grok CLI binary and headless auth are both available."""
+    """True when the resolved Grok CLI and headless auth are available.
+
+    The implementation runner receives the exact path returned by
+    :func:`_grok_binary`, including the supported
+    ``IPFS_ACCELERATE_AGENT_GROK_BIN`` override.  Do not gate readiness on
+    constructing llm_router's single-shot provider: that provider performs its
+    own command lookup and can reject an otherwise valid supervisor override.
+    """
 
     if not _grok_binary():
         return False
     try:
-        from ...llm_router import (
-            _grok_cli_auth_available,
-            get_llm_provider,
-        )
+        from ...llm_router import _grok_cli_auth_available
 
-        return (
-            get_llm_provider("grok_cli") is not None
-            and bool(_grok_cli_auth_available())
-        )
+        return bool(_grok_cli_auth_available())
     except Exception:
         return False
 
