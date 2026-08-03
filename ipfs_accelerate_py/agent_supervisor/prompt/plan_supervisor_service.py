@@ -10,12 +10,18 @@ Default control-service construction binds live handlers from
 compatibility aliases are no longer reported as ``unavailable``.  Handlers
 import domain services only at execute time so help/import/discovery remain
 provider-free.
+
+Doctor residual refill (PDR-055) enters plan steering only through the
+proposal-only preview path: residuals map to append-only delta items or
+bounded objective work proposals and never grant completion or mutation
+authority.  Derived runtime task-source admission remains gated until
+PDR-081.
 """
 
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -211,6 +217,134 @@ class PlanSupervisorService:
                     except TypeError:
                         pass
         return service.preview_steer(request)
+
+    def preview_steer_from_doctor_residuals(
+        self,
+        request: Any,
+        *,
+        residuals: Sequence[Any] | None = None,
+        fixed_point: Any = None,
+        live_state: Any = None,
+        plan: Any = None,
+        memory: Any = None,
+        policy: Any = None,
+        materials: Any = None,
+    ) -> dict[str, Any]:
+        """Proposal-only steer preview driven by Doctor residuals (PDR-055).
+
+        Successful residual-free fixed points emit no work.  New residuals are
+        deduplicated and mapped to append-only plan successors where possible,
+        otherwise to bounded ``ObjectiveWorkProposal`` records.  This path is
+        always read-only: it never applies revisions, never edits seed boards,
+        and never grants completion or mutation authority.  Derived runtime
+        admission remains gated until PDR-081 enables it on the refill policy.
+        """
+
+        from ..objectives.doctor_plan_refill import (
+            DoctorPlanRefillDisposition,
+            doctor_residuals_for_steer,
+        )
+
+        package = doctor_residuals_for_steer(
+            residuals=residuals,
+            fixed_point=fixed_point,
+            plan=plan,
+            memory=memory,
+            policy=policy,
+            request=request,
+            live_state=live_state,
+        )
+        receipt = package["receipt"]
+        proposed_items = list(package["proposed_delta_items"])
+
+        # Merge caller materials with residual-derived append-only items.
+        merged_materials = materials
+        if package.get("materials") is not None:
+            merged_materials = package["materials"]
+            if materials is not None and isinstance(materials, Mapping):
+                extra = list(materials.get("proposed_delta_items") or ())
+                merged_materials = dict(package["materials"])
+                merged_materials["proposed_delta_items"] = (
+                    list(merged_materials.get("proposed_delta_items") or [])
+                    + extra
+                )
+
+        steer_preview: Any = None
+        if (
+            receipt.disposition
+            is not DoctorPlanRefillDisposition.FIXED_POINT_CLOSED
+            and proposed_items
+            and live_state is not None
+        ):
+            try:
+                steer_preview = self.preview_steer(
+                    request,
+                    materials=merged_materials,
+                    live_state=live_state,
+                )
+            except TypeError:
+                # Older steer services may only accept the request object.
+                steer_preview = self.preview_steer(request)
+        elif (
+            receipt.disposition is DoctorPlanRefillDisposition.FIXED_POINT_CLOSED
+        ):
+            steer_preview = None
+        elif live_state is not None and merged_materials is not None:
+            # Residual-free of successors but materials present (proposals only).
+            try:
+                steer_preview = self.preview_steer(
+                    request,
+                    materials=merged_materials,
+                    live_state=live_state,
+                )
+            except Exception:
+                steer_preview = None
+
+        preview_record = _record(steer_preview) if steer_preview is not None else {}
+        return {
+            "operation": "plan_steer_preview",
+            "status": "proposal",
+            "read_only": True,
+            "wrote_effects": (),
+            "completion_authority": False,
+            "mutation_authority": False,
+            "seed_board_edit": False,
+            "doctor_plan_refill": receipt.to_dict(),
+            "disposition": receipt.disposition.value,
+            "emits_work": receipt.emits_work,
+            "proposed_delta_items": [
+                item.to_dict() if hasattr(item, "to_dict") else item
+                for item in proposed_items
+            ],
+            "work_proposals": [
+                item.to_dict() if hasattr(item, "to_dict") else item
+                for item in receipt.work_proposals
+            ],
+            "steer_preview": preview_record,
+            "derived_runtime_admitted": receipt.derived_runtime_admitted,
+            "derived_runtime_gate": receipt.to_dict().get("derived_runtime_gate"),
+        }
+
+    def refill_doctor_residuals(
+        self,
+        residuals: Sequence[Any] | None = None,
+        *,
+        fixed_point: Any = None,
+        plan: Any = None,
+        memory: Any = None,
+        policy: Any = None,
+    ) -> Any:
+        """Run Doctor residual refill without invoking steer (proposal-only)."""
+
+        from ..objectives.doctor_plan_refill import refill_doctor_plan_residuals
+
+        return refill_doctor_plan_residuals(
+            residuals,
+            fixed_point=fixed_point,
+            plan=plan,
+            memory=memory,
+            policy=policy,
+        )
 
     def apply_revision(
         self,
