@@ -794,7 +794,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-052 Implement real isolated worktree/VFS mutation, ref CAS, and rollback
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
