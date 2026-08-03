@@ -1,7 +1,7 @@
 # Architecture documentation hub
 
 **Status:** Reference
-**Owner:** architecture maintainers / documentation-governance
+**Owner:** architecture maintainers / documentation governance
 **Audience:** developers, operators, integrators, security reviewers, and
 implementation agents choosing a maintained architecture path
 **Scope:** Audience and concern router for architecture documentation;
@@ -12,8 +12,12 @@ editing leaf guides or ADRs; inventing APIs; treating plans as landed behavior.
 **Sources:** maintained guides listed below; [GUIDE_CONVENTIONS.md](GUIDE_CONVENTIONS.md);
 [DOCUMENTATION_LIFECYCLE.md](../development/DOCUMENTATION_LIFECYCLE.md);
 [GLOSSARY.md](GLOSSARY.md); [DOCUMENTATION_MANIFEST.md](../development/DOCUMENTATION_MANIFEST.md).
-**Last-verified:** 2026-08-03; routes checked against landed Current guides and
-Accepted ADRs on this tree.
+**Last-verified:** 2026-08-03 @ `114838662e`; routes checked against landed
+Current guides and Accepted ADRs on this tree.
+**Freshness triggers:** lifecycle reclassification, guide or ADR moves,
+supersession changes, or top-level navigation changes
+**Supersedes:** none declared
+**Superseded-by:** none
 **Interface:** ArchitectureAudienceRouter@1
 
 Use this page to **pick a maintained path**. Code, schemas, and executable help
@@ -37,16 +41,17 @@ remain authoritative when prose and implementation disagree.
 
 | If you need… | Open first | Status |
 | --- | --- | --- |
-| One-screen product map | [overview.md](overview.md) | Current |
 | Actors, trust, two planes | [SYSTEM_CONTEXT.md](SYSTEM_CONTEXT.md) | Current |
+| One-screen product map after the boundary | [overview.md](overview.md) | Current |
 | Shared term definitions | [GLOSSARY.md](GLOSSARY.md) | Reference |
 | Doc status / what is maintained | [DOCUMENTATION_MANIFEST.md](../development/DOCUMENTATION_MANIFEST.md) | Current |
 | How to write architecture guides | [GUIDE_CONVENTIONS.md](GUIDE_CONVENTIONS.md) | Current |
 | Why decisions exist (ADRs) | [decisions/README.md](decisions/README.md) | Reference |
 
-User/operator journeys live under [`docs/guides/`](../guides/) and
-[`docs/api/overview.md`](../api/overview.md) (**Current**). This hub is for
-**architecture** depth.
+Reviewed user/operator journeys are routed through
+[`docs/api/overview.md`](../api/overview.md) and the exact guide pages named
+below (**Current**). The wider [`docs/guides/`](../guides/) tree is not promoted
+as a class. This hub is for **architecture** depth.
 
 ---
 
@@ -54,8 +59,8 @@ User/operator journeys live under [`docs/guides/`](../guides/) and
 
 | Audience | Start | Then |
 | --- | --- | --- |
-| **New developer** | [overview.md](overview.md) | [SYSTEM_CONTEXT.md](SYSTEM_CONTEXT.md) · [INFERENCE_RUNTIME.md](INFERENCE_RUNTIME.md) |
-| **Inference / routing engineer** | [INFERENCE_RUNTIME.md](INFERENCE_RUNTIME.md) | [MODEL_SERVICE_ROUTING.md](MODEL_SERVICE_ROUTING.md) · [AI_SERVICE_CATALOG.md](AI_SERVICE_CATALOG.md) |
+| **New developer** | [SYSTEM_CONTEXT.md](SYSTEM_CONTEXT.md) | [overview.md](overview.md) · [INFERENCE_RUNTIME.md](INFERENCE_RUNTIME.md) |
+| **Inference / routing engineer** | [INFERENCE_RUNTIME.md](INFERENCE_RUNTIME.md) | [MODEL_SERVICE_ROUTING.md](MODEL_SERVICE_ROUTING.md) · [AI_SERVICE_CATALOG.md](AI_SERVICE_CATALOG.md) (**Reference**, metadata revalidation pending) |
 | **MCP integrator** | [MCP_RUNTIME.md](MCP_RUNTIME.md) | [GLOSSARY.md](GLOSSARY.md) (MCP vs MCP++) · package README in `ipfs_accelerate_py/mcp_server/` |
 | **IPFS / P2P / identity** | [DISTRIBUTED_RUNTIME.md](DISTRIBUTED_RUNTIME.md) | [INTEGRATION_BOUNDARIES.md](INTEGRATION_BOUNDARIES.md) · ADR-0005 |
 | **Cross-repo integrator** | [INTEGRATION_BOUNDARIES.md](INTEGRATION_BOUNDARIES.md) | [NESTED_PACKAGES.md](../NESTED_PACKAGES.md) (**Reference** inventory) |
@@ -69,23 +74,26 @@ User/operator journeys live under [`docs/guides/`](../guides/) and
 
 ## By concern (product architecture)
 
-Maintained **Current** product guides from the documentation-refresh wave:
+Reviewed product routes from the documentation-refresh wave:
 
-| Concern | Guide | Primary sources |
-| --- | --- | --- |
-| Runtime layers and public package boundary | [overview.md](overview.md) | `__init__.py`, `ipfs_accelerate.py`, `pyproject.toml` |
-| Actors, planes, trust/failure | [SYSTEM_CONTEXT.md](SYSTEM_CONTEXT.md) | package layout, CLI scripts, supervisor packages |
-| Inference request lifecycle | [INFERENCE_RUNTIME.md](INFERENCE_RUNTIME.md) | routers, backends, workers |
-| Catalog, usage, modality routing | [MODEL_SERVICE_ROUTING.md](MODEL_SERVICE_ROUTING.md) | `model_catalog/`, `endpoint_usage/`, routers |
-| Service catalog identity plane | [AI_SERVICE_CATALOG.md](AI_SERVICE_CATALOG.md) | `model_catalog/` |
-| MCP and MCP++ runtime | [MCP_RUNTIME.md](MCP_RUNTIME.md) | `mcp_server/`, `mcp/`, `mcplusplus_module/` |
-| IPFS, CIDs vs cache keys, P2P | [DISTRIBUTED_RUNTIME.md](DISTRIBUTED_RUNTIME.md) | `ipfs_backend_router.py`, `p2p_tasks/` |
-| Sibling repos and gitlinks | [INTEGRATION_BOUNDARIES.md](INTEGRATION_BOUNDARIES.md) | `.gitmodules`, adapters |
+| Concern | Guide | Lifecycle | Primary sources |
+| --- | --- | --- | --- |
+| Runtime layers and public package boundary | [overview.md](overview.md) | Current | `__init__.py`, `ipfs_accelerate.py`, `pyproject.toml` |
+| Actors, planes, trust/failure | [SYSTEM_CONTEXT.md](SYSTEM_CONTEXT.md) | Current | package layout, CLI scripts, supervisor packages |
+| Inference request lifecycle | [INFERENCE_RUNTIME.md](INFERENCE_RUNTIME.md) | Current | routers, backends, workers |
+| Catalog, usage, modality routing | [MODEL_SERVICE_ROUTING.md](MODEL_SERVICE_ROUTING.md) | Current | `model_catalog/`, `endpoint_usage/`, routers |
+| Service catalog identity plane (metadata revalidation pending) | [AI_SERVICE_CATALOG.md](AI_SERVICE_CATALOG.md) | Reference | `model_catalog/` |
+| MCP and MCP++ runtime | [MCP_RUNTIME.md](MCP_RUNTIME.md) | Current | `mcp_server/`, `mcp/`, `mcplusplus_module/` |
+| IPFS, CIDs vs cache keys, P2P | [DISTRIBUTED_RUNTIME.md](DISTRIBUTED_RUNTIME.md) | Current | `ipfs_backend_router.py`, `p2p_tasks/` |
+| Sibling repos and gitlinks | [INTEGRATION_BOUNDARIES.md](INTEGRATION_BOUNDARIES.md) | Current | `.gitmodules`, adapters |
 
 Related **Current** API/journey pages (outside this directory):
 [api/overview.md](../api/overview.md),
 [guides/MCP_SETUP_GUIDE.md](../guides/MCP_SETUP_GUIDE.md),
-[guides/getting-started/](../guides/getting-started/).
+[guides/getting-started/README.md](../guides/getting-started/README.md), and
+[guides/getting-started/installation.md](../guides/getting-started/installation.md).
+These exact pages were reviewed; this route does not classify their sibling
+directories wholesale.
 
 ---
 
@@ -98,7 +106,7 @@ Start at the **supervisor hub** (audience router for that subsystem):
 | Concern | Document | Status |
 | --- | --- | --- |
 | Design pillars and authority ladder | [AGENT_SUPERVISOR_PHILOSOPHY.md](AGENT_SUPERVISOR_PHILOSOPHY.md) | Reference |
-| Implementation map and contracts | [AGENT_SUPERVISOR_ARCHITECTURE.md](AGENT_SUPERVISOR_ARCHITECTURE.md) | Reference / deep map |
+| Implementation map and contracts (deep map) | [AGENT_SUPERVISOR_ARCHITECTURE.md](AGENT_SUPERVISOR_ARCHITECTURE.md) | Reference |
 | Package DAG and placement | [agent_supervisor/PACKAGE_MAP.md](agent_supervisor/PACKAGE_MAP.md) | Reference |
 | Control operations and transports | [agent_supervisor/CONTROL_PLANE.md](agent_supervisor/CONTROL_PLANE.md) | Current |
 | Lanes, daemons, merge, rescue | [agent_supervisor/EXECUTION_AND_RECOVERY.md](agent_supervisor/EXECUTION_AND_RECOVERY.md) | Current |
@@ -121,14 +129,14 @@ Code-tree entry:
 Accepted ADRs explain **why** a boundary exists. They are **Reference** for
 intent; Current guides and code remain authoritative for *what* the tree does.
 
-| ADR | Topic | Status |
-| --- | --- | --- |
-| [0001](decisions/0001-objectives-and-task-projections.md) | Objectives vs task projections | Accepted |
-| [0002](decisions/0002-model-proposals-and-evidence-admission.md) | Models propose; evidence admits; merge ≠ acceptance | Accepted |
-| [0003](decisions/0003-capabilities-catalogs-and-routing.md) | Capability, catalog, usage, routing planes | Accepted |
-| [0004](decisions/0004-worktrees-leases-and-fencing.md) | Worktrees, leases, fencing | Accepted |
-| [0005](decisions/0005-mutable-coordination-and-immutable-replication.md) | Coordination vs replication | Accepted |
-| [0006](decisions/0006-domain-packages-and-compatibility-boundaries.md) | Domain packages and compatibility | Accepted |
+| ADR | Topic | Lifecycle | ADR status |
+| --- | --- | --- | --- |
+| [0001](decisions/0001-objectives-and-task-projections.md) | Objectives vs task projections | Reference | Accepted |
+| [0002](decisions/0002-model-proposals-and-evidence-admission.md) | Models propose; evidence admits; merge ≠ acceptance | Reference | Accepted |
+| [0003](decisions/0003-capabilities-catalogs-and-routing.md) | Capability, catalog, usage, routing planes | Reference | Accepted |
+| [0004](decisions/0004-worktrees-leases-and-fencing.md) | Worktrees, leases, fencing | Reference | Accepted |
+| [0005](decisions/0005-mutable-coordination-and-immutable-replication.md) | Coordination vs replication | Reference | Accepted |
+| [0006](decisions/0006-domain-packages-and-compatibility-boundaries.md) | Domain packages and compatibility | Reference | Accepted |
 
 Index and template: [decisions/README.md](decisions/README.md).
 
@@ -192,7 +200,7 @@ Details: [SYSTEM_CONTEXT.md](SYSTEM_CONTEXT.md), [GLOSSARY.md](GLOSSARY.md).
 | [GUIDE_CONVENTIONS.md](GUIDE_CONVENTIONS.md) | ArchitectureGuideContract@1 | Current |
 | [DOCUMENTATION_LIFECYCLE.md](../development/DOCUMENTATION_LIFECYCLE.md) | Status and authority policy | Current |
 | [DOCUMENTATION_MAINTENANCE.md](../development/DOCUMENTATION_MAINTENANCE.md) | Review checklist | Current |
-| [DOCUMENTATION_CURRENT_STATE.md](../development/DOCUMENTATION_CURRENT_STATE.md) | Maintained surface snapshot | Current |
+| [DOCUMENTATION_CURRENT_STATE.md](../development/DOCUMENTATION_CURRENT_STATE.md) | Pre-DOC-028 snapshot; refresh pending; revalidate before relying on its inventory | Reference |
 | [DOCUMENTATION_DRIFT_AUDIT_2026_08.md](../development/DOCUMENTATION_DRIFT_AUDIT_2026_08.md) | Wave-0 drift inventory | **Historical** frozen audit (evidence) |
 | [testing.md](../development/testing.md) | Validation command selection | Current |
 

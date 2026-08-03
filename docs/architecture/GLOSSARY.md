@@ -1,7 +1,7 @@
 # Product glossary
 
 **Status:** Reference
-**Owner:** documentation-governance / architecture maintainers
+**Owner:** documentation governance / architecture maintainers
 **Audience:** developers, operators, integrators, implementation agents, and
 readers who need shared product vocabulary before subsystem guides
 **Scope:** Canonical semantic terms for the inference/data plane, MCP surfaces,
@@ -14,8 +14,12 @@ that are frequently collapsed in casual prose.
 maintained architecture guides under this directory; ADRs 0001–0006;
 `ipfs_accelerate_py/model_catalog/`, `endpoint_usage/`, `mcp_server/`,
 `agent_supervisor/`, `ipfs_backend_router.py`, `multiformats_identity.py`.
-**Last-verified:** 2026-08-03; terms checked against landed Current guides and
-Accepted ADRs on the documentation-refresh tree.
+**Last-verified:** 2026-08-03 @ `114838662e`; terms checked against landed
+Current guides and Accepted ADRs on the documentation-refresh tree.
+**Freshness triggers:** changes to the lifecycle vocabulary, the source guides
+or ADRs named below, identity formats, or supervisor authority boundaries
+**Supersedes:** none declared
+**Superseded-by:** none
 **Interface:** ProductGlossary@1
 
 This glossary is **Reference** vocabulary. It does not alone authorize runtime
@@ -91,7 +95,8 @@ endpoint. See [MODEL_SERVICE_ROUTING.md](MODEL_SERVICE_ROUTING.md),
 a full MCP++ profile; the compatibility `mcp` package with the canonical
 `mcp_server` ownership target. See [MCP_RUNTIME.md](MCP_RUNTIME.md)
 (**Status:** Current). Spec gap matrices under `mcpplusplus/` are **Plan** /
-evidence, not Current API docs.
+evidence, not Current API docs. Transport reachability never grants tool or
+effect authority; the applicable policy and authorization checks still decide.
 
 ### Objective · task
 
@@ -102,13 +107,14 @@ evidence, not Current API docs.
 
 **Do not confuse:** board status `done` with goal completion; rewriting a board
 with rewriting protected objectives. See
-[ADR-0001](decisions/0001-objectives-and-task-projections.md).
+[ADR-0001](decisions/0001-objectives-and-task-projections.md). A task
+projection carries no independent mutation or completion authority.
 
 ### Discovery · capability · proof
 
 | Term | Meaning |
 | --- | --- |
-| **Discovery** | Learning what vocabulary, descriptors, peers, or workflows **exist** without installing, reserving, or invoking. Side-effect-free list/resolve and optional probes that report absence honestly. |
+| **Discovery** | Learning what vocabulary, descriptors, peers, or workflows **exist** without installing, reserving, invoking, or claiming that the configured path is usable. Side-effect-free list/resolve only. |
 | **Capability** | Environment-dependent ability to perform work: installed extras, credentials, hardware, network, published snapshots, healthy peers. **Import success is not capability.** |
 | **Proof** | Typed, tiered evidence that a claim holds under policy (kernel proof, attestation, re-derived assurance). Weaker tiers (observation, model prose, cache hit) must not self-promote. |
 
@@ -120,8 +126,8 @@ re-derive. Ladder: discovery → capability → (optional) invocation → proof.
 
 | Term | Meaning |
 | --- | --- |
-| **CID** | Content identifier under the multiformats profile used for coordination-facing IPLD (CIDv1 / base32 / sha2-256 / raw\|dag-json). Admitted only after fail-closed rehash verification on coordination paths. |
-| **Cache key** | Local or synthetic key for API/response caches or HF-cache helpers. Often *looks* like `bafy…` plus truncated hex but is **not** a verified multiformats CID and must not grant coordination authority. |
+| **CID** | Content identifier under the multiformats profile used for coordination-facing IPLD (CIDv1 / base32 / sha2-256 / raw\|dag-json). Admission always requires profile validation; payload equality is rehashed when bytes are supplied, and `VerifiedIPLDBackend` put/get receipts rehash content. |
+| **Cache key** (including a **synthetic cache key**) | Performance identity for API/response caches or cache-role helpers. Some API caches can use a real multiformats CID when the library is available; the historical `bafy…` plus truncated-hex tokens are synthetic and are **not** verified CIDs. Neither kind of cache hit grants proof, lease, or completion authority. |
 
 **Do not confuse:** pin success or a synthetic cache string with a verified
 epoch or lease grant. See [DISTRIBUTED_RUNTIME.md](DISTRIBUTED_RUNTIME.md) and
@@ -142,8 +148,8 @@ See [ADR-0002](decisions/0002-model-proposals-and-evidence-admission.md).
 
 | Term | Meaning |
 | --- | --- |
-| **Coordination** | Single-writer **mutable** active state: claims, leases, fences, heartbeats, queue ownership (DuckDB + flock CAS on the shard owner). Only the current owner authorizes mutations. |
-| **Replication** | **Immutable** distribution of committed history and content (Parquet epochs, IPLD/CAR, IPFS pins). Replicas are read-only; `grants_authority` is always false. |
+| **Coordination** (**mutable coordination**) | Single-writer active state: claims, leases, fences, heartbeats, queue ownership (DuckDB + flock CAS on the shard owner). Only the current owner authorizes mutations. |
+| **Replication** (**immutable replication**) | Distribution of committed history and content (Parquet epochs, IPLD/CAR, IPFS pins). Replicas are read-only; `grants_authority` is always false. |
 
 **Do not confuse:** fetching a replica or resolving an IPNS head with owning a
 lease; multi-writer shared DuckDB files with safe coordination. See
