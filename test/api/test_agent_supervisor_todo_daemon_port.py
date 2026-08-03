@@ -9655,8 +9655,9 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(
     todo_path = repo / "todo.md"
     todo_path.write_text("# Todos\n", encoding="utf-8")
     quota_script = repo / "quota.sh"
+    secret = "provider-account-secret-must-not-reach-events"
     quota_script.write_text(
-        "printf \"ERROR: You've hit your usage limit.\\n\"\n"
+        f"printf \"ERROR: You've hit your usage limit. token={secret}\\n\"\n"
         "printf \"You've reached your additional usage limit.\\n\"\n"
         "exit 1\n",
         encoding="utf-8",
@@ -9693,6 +9694,12 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(
     assert first["reason"] == "provider_capacity_exhausted"
     assert first["providers"] == ["codex", "copilot", "grok"]
     assert first["attempt_consumed"] is False
+    assert first["evidence"] == [
+        "provider_capacity_pattern:codex",
+        "provider_capacity_pattern:copilot",
+        "provider_capacity_pattern:grok",
+    ]
+    assert secret not in json.dumps(first)
     assert persisted.implementation_attempts == {}
     assert daemon._find_live_inflight_implementation() is None
     assert second["skipped"] is True
@@ -9701,6 +9708,7 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(
         json.loads(line)
         for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()
     ]
+    assert secret not in json.dumps(events)
     assert any(event["type"] == "implementation_provider_exhausted" for event in events)
     assert not any(event["type"] == "implementation_finished" for event in events)
 
@@ -9793,7 +9801,9 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
     todo_path = repo / "todo.md"
     todo_path.write_text("# Todos\n", encoding="utf-8")
     (repo / "quota.sh").write_text(
-        "printf \"ERROR: You've hit your usage limit.\\n\"\nexit 1\n",
+        "printf 'partial provider work\\n' > partial.txt\n"
+        "printf \"ERROR: You've hit your usage limit.\\n\"\n"
+        "exit 1\n",
         encoding="utf-8",
     )
     _git(repo, "add", "todo.md", "quota.sh")
@@ -9833,6 +9843,97 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
     assert result["attempt_consumed"] is False
     assert persisted.implementation_attempts == {}
     assert daemon._find_live_inflight_implementation() is None
+    preservation = result["provider_capacity_preservation"]
+    assert preservation["preserved"] is True
+    rescue_branch = preservation["rescue_branch"]
+    assert rescue_branch.startswith("rescue/")
+    assert _git(repo, "show", f"{rescue_branch}:partial.txt") == (
+        "partial provider work"
+    )
+    assert result["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
+
+
+def test_missing_ephemeral_workspace_capacity_signal_finalizes_lifecycle(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed")
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
+    state_path = repo / "state" / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Recover a disappeared provider workspace",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+
+    def remove_workspace(command, *, cwd, stdout, **_kwargs):
+        stdout.write("workspace is not a directory\n")
+        stdout.flush()
+        _git(repo, "worktree", "remove", "--force", str(cwd))
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        remove_workspace,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["deferred"] is True
+    assert result["reason"] == "provider_capacity_exhausted"
+    assert result["providers"] == ["infrastructure"]
+    assert result["attempt_consumed"] is False
+    assert result["cleanup_result"]["cleaned"] is True
+    assert result["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
+    assert daemon.worktree_lifecycle.load_task_attempt(
+        canonical_task_cid=daemon._canonical_ref(task),
+        task_id=task.task_id,
+        attempt=1,
+    ) is None
 
 
 def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(

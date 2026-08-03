@@ -5,7 +5,9 @@ from __future__ import annotations
 import copy
 import json
 import subprocess
+import sys
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +32,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import legacy_landed_review
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
+    PortalTaskState,
+    classify_provider_capacity_failure,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     parse_args as parse_daemon_args,
@@ -876,6 +880,13 @@ def test_guarded_legacy_review_is_reverified_at_authoritative_provider_gate(
         clock_ms=iter(range(1_000, 2_000)).__next__,
     )
     daemon._legacy_landed_review_service = service  # noqa: SLF001
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "grok",
+    )
+    assert {"grok", "codex"}.issubset(
+        daemon._current_implementation_provider_labels()  # noqa: SLF001
+    )
     task_policy = service.policy.task("ASE-005")
     task = PortalTask(
         task_id=task_policy.task_id,
@@ -1185,6 +1196,402 @@ def test_native_response_parser_requires_empty_findings_but_keeps_reject(
     assert legacy_cli._validate_native_response(  # noqa: SLF001
         json.dumps(response), response_schema
     ) == response
+
+
+@pytest.mark.parametrize(
+    ("stream", "quota_text"),
+    (
+        ("stderr", "You've hit your usage limit; try again after the reset."),
+        ("stdout", "YOU\u2019VE HIT YOUR USAGE LIMIT; retry later."),
+    ),
+)
+def test_native_codex_quota_failure_emits_only_fixed_capacity_signal(
+    tmp_path: Path,
+    stream: str,
+    quota_text: str,
+) -> None:
+    codex = tmp_path / "codex"
+    codex.symlink_to(sys.executable)
+    secret = "sk-provider-secret-must-not-escape"
+    script = (
+        "import sys;"
+        f"sys.{stream}.write({f'{quota_text} token={secret}'!r});"
+        "raise SystemExit(1)"
+    )
+
+    with pytest.raises(legacy.LegacyProviderCapacitySignal) as raised:
+        legacy_cli._run_native_cli_process(  # noqa: SLF001
+            [str(codex), "-c", script],
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+
+    diagnostic = str(raised.value)
+    assert diagnostic == legacy.LEGACY_CODEX_USAGE_LIMIT_CAPACITY_MARKER
+    assert secret not in diagnostic
+    assert quota_text not in diagnostic
+    classified = classify_provider_capacity_failure(diagnostic)
+    assert classified["exhausted"] is True
+    assert classified["providers"] == ["codex"]
+
+
+def test_native_codex_unrelated_failure_never_exposes_stderr(
+    tmp_path: Path,
+) -> None:
+    codex = tmp_path / "codex"
+    codex.symlink_to(sys.executable)
+    secret = "oauth-secret-must-not-escape"
+    script = (
+        "import sys;"
+        f"sys.stderr.write({'authentication failed: ' + secret!r});"
+        "raise SystemExit(17)"
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        legacy_cli._run_native_cli_process(  # noqa: SLF001
+            [str(codex), "-c", script],
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+
+    diagnostic = str(raised.value)
+    assert type(raised.value) is RuntimeError
+    assert diagnostic == "legacy native provider command failed"
+    assert secret not in diagnostic
+    assert classify_provider_capacity_failure(diagnostic)["exhausted"] is False
+
+
+def test_native_codex_failure_capture_bound_precedes_quota_classification(
+    tmp_path: Path,
+) -> None:
+    codex = tmp_path / "codex"
+    codex.symlink_to(sys.executable)
+    secret = "capture-bound-secret-must-not-escape"
+    byte_count = legacy_cli._MAX_NATIVE_CLI_CAPTURE_BYTES + 1  # noqa: SLF001
+    script = (
+        "import os;"
+        f"os.write(2, b\"You've hit your usage limit {secret} \" + "
+        f"b'x' * {byte_count});"
+        "raise SystemExit(1)"
+    )
+
+    with pytest.raises(RuntimeError, match="capture bound") as raised:
+        legacy_cli._run_native_cli_process(  # noqa: SLF001
+            [str(codex), "-c", script],
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+
+    assert type(raised.value) is RuntimeError
+    assert secret not in str(raised.value)
+    assert classify_provider_capacity_failure(str(raised.value))["exhausted"] is False
+
+
+def test_codex_capacity_signal_survives_review_as_sanitized_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    key_path = tmp_path / "authority.key"
+    _private, issuer = _private_key_file(key_path)
+    policy_path = tmp_path / "policy.json"
+    _write_policy(policy_path, _policy_payload(issuer_key_id=issuer))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _fake_repo(monkeypatch)
+
+    def codex_at_capacity(
+        _request: legacy.LegacyLeafReviewRequest,
+    ) -> legacy.LegacyProviderObservation:
+        signal = legacy.LegacyProviderCapacitySignal()
+        signal.reason_code = "mutated-provider-secret-must-not-escape"
+        raise signal
+
+    service = legacy.LegacyLandedReviewService(
+        repo_root=repo,
+        operator_policy_path=policy_path,
+        operator_key_path=key_path,
+        grok_invoker=_ApprovingProvider(),
+        codex_invoker=codex_at_capacity,
+    )
+
+    result = service.review("ASE-005")
+
+    assert result.status == "rejected"
+    assert result.reason_code == legacy.LEGACY_CODEX_USAGE_LIMIT_CAPACITY_MARKER
+    assert "mutated-provider-secret" not in json.dumps(result.to_dict())
+    classified = classify_provider_capacity_failure(result.reason_code)
+    assert classified["exhausted"] is True
+    assert classified["providers"] == ["codex"]
+
+    embedded = (
+        "ordinary output "
+        + legacy.LEGACY_CODEX_USAGE_LIMIT_CAPACITY_MARKER
+        + " token=embedded-secret"
+    )
+    assert classify_provider_capacity_failure(embedded)["exhausted"] is False
+
+
+def test_landed_guard_codex_capacity_defers_without_attempt_or_lifecycle_leak(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Capacity Deferral Test")
+    _git(repo, "config", "user.email", "capacity@example.invalid")
+    (repo / "baseline.txt").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "baseline.txt")
+    _git(repo, "commit", "-m", "baseline")
+
+    authority_dir = tmp_path / "authority"
+    authority_dir.mkdir()
+    key_path = authority_dir / "legacy-review.key"
+    _private, issuer = _private_key_file(key_path)
+    policy_path = authority_dir / "legacy-review-policy.json"
+    _write_policy(policy_path, _policy_payload(issuer_key_id=issuer))
+    _fake_repo(monkeypatch)
+
+    todo_path = tmp_path / "runtime.todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task-state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        max_task_attempts=1,
+        merge_queue_dir=tmp_path / "merge-queue",
+        validation_cache_dir=tmp_path / "validation-cache",
+        production_provider_policy="grok-implement-codex-independent-review",
+        production_provider_review_authority_key_path=(
+            authority_dir / "production-review.key"
+        ),
+        legacy_landed_review_policy_path=policy_path,
+        legacy_landed_review_key_path=key_path,
+    )
+
+    codex_calls: list[str] = []
+
+    def codex_at_capacity(
+        _request: legacy.LegacyLeafReviewRequest,
+    ) -> legacy.LegacyProviderObservation:
+        codex_calls.append("codex")
+        raise legacy.LegacyProviderCapacitySignal()
+
+    daemon._legacy_landed_review_service = legacy.LegacyLandedReviewService(  # noqa: SLF001
+        repo_root=repo,
+        operator_policy_path=policy_path,
+        operator_key_path=key_path,
+        grok_invoker=_ApprovingProvider(),
+        codex_invoker=codex_at_capacity,
+    )
+    task_policy = daemon._legacy_landed_review_service.policy.task("ASE-005")  # noqa: SLF001
+    task = PortalTask(
+        task_id=task_policy.task_id,
+        title="Audited legacy task",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="migration",
+        outputs=list(task_policy.paths),
+        validation=["python -m pytest -q"],
+        acceptance="exact landed bytes receive independent review",
+        canonical_task_key=task_policy.canonical_task_key,
+        canonical_task_cid=task_policy.canonical_task_cid,
+    )
+    daemon._register_task_identities([task])  # noqa: SLF001
+    identity = daemon._identity_for_task(task)  # noqa: SLF001
+    queue_entry = daemon.task_queue.register_task(identity)
+
+    def seed(worktree_path: Path, branch: str, *, task: Any = None) -> str:
+        _git(repo, "worktree", "add", "-b", branch, str(worktree_path), "HEAD")
+        return _git(worktree_path, "rev-parse", "HEAD")
+
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE", "1")
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", seed)
+    monkeypatch.setattr(
+        daemon,
+        "_production_landed_task_guard_for_workspace",
+        lambda *_args, **_kwargs: {
+            "guarded": True,
+            "workspace_clean": True,
+            "baseline_ref": HEAD,
+            "repository_tree_id": f"git-tree:{TREE}",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_decision_runtime_mutation",
+        lambda _kind, _payload, action: action(),
+    )
+    deferrals: list[dict[str, Any]] = []
+    real_deferral = daemon._record_provider_capacity_deferral  # noqa: SLF001
+
+    def record_deferral(**kwargs: Any) -> dict[str, Any]:
+        deferrals.append(dict(kwargs["failure"]))
+        return real_deferral(**kwargs)
+
+    queue_outcomes: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(daemon, "_record_provider_capacity_deferral", record_deferral)
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **_kwargs: queue_outcomes.append(args),
+    )
+
+    state = PortalTaskState()
+    result = daemon._run_implementation_in_ephemeral_worktree(  # noqa: SLF001
+        task=task,
+        state=state,
+        attempt=1,
+        started_at=datetime.now(UTC).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="review the exact landed implementation",
+    )
+
+    assert deferrals == [
+        {
+            "exhausted": True,
+            "providers": ["codex"],
+            "reason": "provider_capacity_exhausted",
+        }
+    ]
+    assert result["deferred"] is True
+    assert result["attempt_consumed"] is False
+    assert result["reason"] == "provider_capacity_exhausted"
+    assert result["providers"] == ["codex"]
+    assert result["cleanup_result"]["cleaned"] is True
+    assert result["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
+    assert not Path(result["worktree_path"]).exists()
+    assert daemon.worktree_lifecycle.load_task_attempt(
+        canonical_task_cid=identity.canonical_task_cid,
+        task_id=task.task_id,
+        attempt=1,
+    ) is None
+
+    recovered = PortalTaskState.load(daemon.state_path)
+    assert recovered.implementation_attempts == {}
+    assert recovered.implementation_attempts_by_cid == {}
+    assert daemon._task_attempt(recovered, task) == 1  # noqa: SLF001
+    selectable, limited = daemon._partition_tasks_at_attempt_limit(  # noqa: SLF001
+        [task], {task.task_id: "ready"}, recovered
+    )
+    assert selectable == [task]
+    assert limited == []
+    assert queue_outcomes == []
+    assert queue_entry.consecutive_failures == 0
+    assert queue_entry.selection_penalty == 0
+    assert queue_entry.cooldown_until == 0
+    assert queue_entry.notes == ""
+
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    event_types = [event["type"] for event in events]
+    assert "legacy_landed_review_finished" in event_types
+    assert "implementation_provider_exhausted" in event_types
+    assert "implementation_finished" not in event_types
+
+    # The same logical attempt must be immediately reusable after the normal
+    # capacity backoff expires; no ACTIVE task/attempt index may survive.
+    second_state = PortalTaskState.load(daemon.state_path)
+    second = daemon._run_implementation_in_ephemeral_worktree(  # noqa: SLF001
+        task=task,
+        state=second_state,
+        attempt=1,
+        started_at=datetime.now(UTC).isoformat(),
+        log_path=state_dir / "implementation-second.log",
+        prompt="retry the exact landed implementation review",
+    )
+    assert second["deferred"] is True
+    assert second["reason"] == "provider_capacity_exhausted"
+    assert second["attempt_consumed"] is False
+    assert codex_calls == ["codex", "codex"]
+    assert len(deferrals) == 2
+    assert daemon.worktree_lifecycle.load_task_attempt(
+        canonical_task_cid=identity.canonical_task_cid,
+        task_id=task.task_id,
+        attempt=1,
+    ) is None
+
+    # A lost compare-and-delete CAS must not be reported as a successful
+    # capacity deferral, even when cleanup has already removed the checkout.
+    with monkeypatch.context() as raced:
+        raced.setattr(
+            daemon.worktree_lifecycle,
+            "compare_and_delete",
+            lambda *_args, **_kwargs: False,
+        )
+        lifecycle_race = daemon._run_implementation_in_ephemeral_worktree(  # noqa: SLF001
+            task=task,
+            state=PortalTaskState.load(daemon.state_path),
+            attempt=1,
+            started_at=datetime.now(UTC).isoformat(),
+            log_path=state_dir / "implementation-cas-race.log",
+            prompt="exercise lifecycle CAS failure",
+        )
+    assert lifecycle_race["lifecycle_race"] is True
+    assert lifecycle_race["provider_call_allowed"] is False
+    assert lifecycle_race["attempt_consumed"] is False
+    assert lifecycle_race["reason"] == (
+        "provider_capacity_lifecycle_cleanup_incomplete"
+    )
+    failed_finalize = lifecycle_race["cleanup_result"]["lifecycle_finalize"]
+    assert failed_finalize["finalized"] is False
+    assert failed_finalize["reason"] == "lifecycle_finalize_race"
+    assert failed_finalize["fence"] >= 4
+    assert failed_finalize["failure_kind"] == "lifecycle_race"
+    assert failed_finalize["attempt_consumed"] is False
+    assert failed_finalize["provider_call_allowed"] is False
+    assert len(deferrals) == 2
+
+    # An unrelated failure after typed capacity classification must remain an
+    # ordinary implementation failure instead of being masked as quota.
+    real_record_event = daemon._record_event  # noqa: SLF001
+
+    def fail_after_classification(event_type: str, payload: dict[str, Any]) -> None:
+        if event_type == "production_provider_landed_task_guarded":
+            raise RuntimeError("post-classification fixture failure")
+        real_record_event(event_type, payload)
+
+    with monkeypatch.context() as masked:
+        masked.setattr(daemon, "_record_event", fail_after_classification)
+        unrelated_failure = daemon._run_implementation_in_ephemeral_worktree(  # noqa: SLF001
+            task=task,
+            state=PortalTaskState.load(daemon.state_path),
+            attempt=1,
+            started_at=datetime.now(UTC).isoformat(),
+            log_path=state_dir / "implementation-unrelated-failure.log",
+            prompt="exercise post-classification failure",
+        )
+    assert unrelated_failure.get("deferred") is not True
+    assert unrelated_failure.get("reason") != "provider_capacity_exhausted"
+    assert unrelated_failure["attempt_consumed"] is True
+    assert unrelated_failure["exception_result"]["exception_type"] == (
+        "RuntimeError"
+    )
 
 
 def test_native_schema_boundary_rejects_grok_prose_and_mismatched_codex_json(

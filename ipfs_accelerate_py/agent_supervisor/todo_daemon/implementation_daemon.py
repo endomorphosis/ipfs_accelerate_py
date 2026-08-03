@@ -169,6 +169,7 @@ from .git_environment import sanitized_git_environment
 from .legacy_landed_attestation import LegacyLandedReviewAuthority
 from .legacy_landed_provider_cli import build_legacy_landed_cli_provider_pair
 from .legacy_landed_review import (
+    LEGACY_CODEX_USAGE_LIMIT_CAPACITY_MARKER,
     LegacyLandedReviewPolicy,
     LegacyLandedReviewResult,
     LegacyLandedReviewService,
@@ -2007,6 +2008,17 @@ def parse_timestamp(value: str) -> datetime | None:
 
 def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
     """Classify provider quota/capacity failures without treating them as code failures."""
+
+    # This secret-free token is an internal typed message, not a substring
+    # pattern for arbitrary provider output.  Requiring exact equality keeps
+    # untrusted logs from manufacturing a non-consuming Codex deferral or
+    # appending sensitive text that would later be persisted as evidence.
+    if text == LEGACY_CODEX_USAGE_LIMIT_CAPACITY_MARKER:
+        return {
+            "exhausted": True,
+            "providers": ["codex"],
+            "reason": "provider_capacity_exhausted",
+        }
 
     # Worktree pool races can dispose the workspace between setup and provider
     # launch. That is infrastructure, not an implementation attempt to charge.
@@ -7109,17 +7121,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         classified = classify_provider_capacity_failure(text)
         if not classified["exhausted"]:
             return classified
-        evidence = [
-            line.strip()
-            for line in text.splitlines()
-            if any(pattern.search(line) for _provider, pattern in PROVIDER_CAPACITY_PATTERNS)
+        # Provider output can include credentials or account metadata on the
+        # same line as a capacity diagnostic.  Persist only fixed categories,
+        # never raw matching lines.
+        classified["evidence"] = [
+            f"provider_capacity_pattern:{provider}"
+            for provider in classified["providers"]
         ]
-        classified["evidence"] = evidence[-4:]
         return classified
 
     def _current_implementation_provider_labels(self) -> set[str]:
         """Return coarse provider labels for the active implementation runner."""
 
+        # The configured production route and enabled landed-review migration
+        # route both require exact Grok plus an independent Codex decision,
+        # regardless of the generic implementation-provider default. Either
+        # provider's capacity latch must therefore back off the complete route.
+        review_labels = (
+            {"grok", "xai", "codex"}
+            if isinstance(self.production_provider_policy, ProductionCLIProviderPolicy)
+            or (
+                isinstance(
+                    self.legacy_landed_review_policy,
+                    LegacyLandedReviewPolicy,
+                )
+                and self.legacy_landed_review_policy.enabled
+            )
+            else set()
+        )
         provider = (
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower() or "auto"
         )
@@ -7134,7 +7163,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "muse-spark",
             "spark",
         }:
-            return {"goose", "meta_spark", "meta", "provider"}
+            return {"goose", "meta_spark", "meta", "provider"} | review_labels
         if provider in {
             "grok",
             "grok_cli",
@@ -7144,9 +7173,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "grok_build",
             "grok-build",
         }:
-            return {"grok", "xai", "provider"}
+            return {"grok", "xai", "provider"} | review_labels
         if provider in {"codex", "copilot", "openai"}:
-            return {"codex", "copilot", "provider"}
+            return {"codex", "copilot", "provider"} | review_labels
         labels: set[str] = set()
         if _goose_meta_spark_available():
             labels.update({"goose", "meta_spark", "meta", "provider"})
@@ -7154,7 +7183,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             labels.update({"grok", "xai", "provider"})
         if shutil.which("codex") or (shutil.which("copilot") and _copilot_has_auth()):
             labels.update({"codex", "copilot", "provider"})
-        return labels or {"provider"}
+        return (labels or {"provider"}) | review_labels
 
     def _provider_capacity_backoff_schedule(self) -> dict[str, Any]:
         """Return the latest invocation-bound provider retry schedule, if any.
@@ -7320,6 +7349,48 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if cleanup_result:
             result["cleanup_result"] = cleanup_result
         self._record_event("implementation_provider_exhausted", result)
+        return result
+
+    def _record_provider_capacity_lifecycle_race(
+        self,
+        *,
+        task: PortalTask,
+        state: PortalTaskState,
+        attempt: int,
+        started_at: str,
+        returncode: int,
+        log_path: Path,
+        reason: str,
+        worktree_path: Path,
+        branch_name: str,
+        cleanup_result: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Fail closed when capacity cleanup cannot release its fenced claim."""
+
+        finished_at = utc_now()
+        state.last_implementation_started_at = started_at
+        state.last_implementation_finished_at = finished_at
+        state.last_implementation_returncode = returncode
+        state.last_implementation_log_path = str(log_path)
+        state.last_implementation_worktree_path = str(worktree_path)
+        state.last_implementation_branch = branch_name
+        self._restore_task_attempt(state, task, max(0, attempt - 1))
+        self._mark_implementation_finished(state, finished_at=finished_at)
+        state.selection_idle_reason = "worktree_lifecycle_race"
+        state.save(self.state_path)
+        result = lifecycle_race_result(
+            reason=reason,
+            task_id=task.task_id,
+            attempt=attempt,
+            extra={
+                "returncode": returncode,
+                "log_path": str(log_path),
+                "worktree_path": str(worktree_path),
+                "branch": branch_name,
+                "cleanup_result": dict(cleanup_result or {}),
+            },
+        )
+        self._record_event("implementation_provider_capacity_lifecycle_race", result)
         return result
 
     def _defer_task_owned_submodule_integration(
@@ -11115,6 +11186,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         todo_update_result: dict[str, Any] = {}
         exception_result: dict[str, Any] = {}
         provider_failure: dict[str, Any] = {}
+        legacy_landed_capacity_signal = False
         timeout_result: dict[str, Any] = {}
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
@@ -11364,6 +11436,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         landed_guard=production_landed_guard,
                     )
                     legacy_reviewed = legacy_review.get("status") == "reviewed"
+                    legacy_review_reason_code = str(
+                        legacy_review.get("reason_code") or ""
+                    )
+                    if (
+                        legacy_review_reason_code
+                        == LEGACY_CODEX_USAGE_LIMIT_CAPACITY_MARKER
+                    ):
+                        # The native adapter has already reduced arbitrary
+                        # provider diagnostics to this exact secret-free token.
+                        # Classify it directly so the landed-task guard cannot
+                        # lose capacity semantics merely because it invokes no
+                        # raw implementation command and writes no stderr.
+                        provider_failure = classify_provider_capacity_failure(
+                            legacy_review_reason_code
+                        )
+                        legacy_landed_capacity_signal = True
                     production_route_payload = {
                         "returncode": 0 if guard_clean and legacy_reviewed else 1,
                         "pending": not legacy_reviewed,
@@ -11373,7 +11461,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             else "provider_review_pending"
                         ),
                         "disposition_reason": str(
-                            legacy_review.get("reason_code")
+                            legacy_review_reason_code
                             or production_landed_guard.get("reason")
                             or ""
                         ),
@@ -11407,7 +11495,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 legacy_review.get("status") or ""
                             ),
                             "legacy_landed_review_reason_code": str(
-                                legacy_review.get("reason_code") or ""
+                                legacy_review_reason_code
                             ),
                         },
                     )
@@ -11574,7 +11662,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     failed_preservation_result.get("cleanup_result") or cleanup_result
                 )
             elif returncode != 0:
-                provider_failure = self._provider_capacity_failure_from_log(log_path)
+                if not provider_failure:
+                    provider_failure = self._provider_capacity_failure_from_log(
+                        log_path
+                    )
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
                         task=task,
@@ -11834,7 +11925,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
                         implementation_commit = str(commit_result.get("commit", ""))
                         cleanup_result = dict(failed_preservation_result.get("cleanup_result") or cleanup_result)
-            elif not protected_path_violation:
+            elif not protected_path_violation and not provider_failure.get(
+                "exhausted", False
+            ):
                 pool_failure_release = self._release_pooled_worktree_lease(
                     worktree_path,
                     reason="implementation_command_failed",
@@ -12235,8 +12328,114 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     **exception_result,
                 },
             )
-        if provider_failure.get("exhausted", False):
-            return self._record_provider_capacity_deferral(
+        if (
+            provider_failure.get("exhausted", False)
+            and not exception_result
+            and not timeout_result
+            and not protected_path_violation
+        ):
+            # A retry restores this logical attempt number. Advance and remove
+            # its lifecycle claim first, or the retry will be rejected as a
+            # duplicate. The exact landed-review guard is read-only and bound
+            # to a clean tree. Generic providers may have produced partial
+            # useful work before reporting quota, so preserve it on a rescue
+            # branch rather than force-discarding it.
+            settling_record = self._mark_worktree_lifecycle_settling(
+                worktree_path
+            )
+            if (
+                settling_record is None
+                or settling_record.state is not WorkspaceLifecycleState.SETTLING
+            ):
+                return self._record_provider_capacity_lifecycle_race(
+                    task=task,
+                    state=state,
+                    attempt=attempt,
+                    started_at=started_at,
+                    returncode=returncode,
+                    log_path=log_path,
+                    reason="provider_capacity_lifecycle_settling_failed",
+                    worktree_path=worktree_path,
+                    branch_name=branch_name,
+                    cleanup_result=cleanup_result,
+                )
+
+            provider_capacity_preservation: dict[str, Any] = {}
+            try:
+                if (
+                    legacy_landed_capacity_signal
+                    or provider_failure.get("reason")
+                    == "workspace_missing_before_provider"
+                ):
+                    cleanup_result = self._cleanup_merged_worktree(
+                        worktree_path,
+                        branch_name,
+                        reusable=False,
+                    )
+                else:
+                    provider_capacity_preservation = (
+                        self._preserve_interrupted_worktree(
+                            worktree_path,
+                            branch_name,
+                            task,
+                            attempt,
+                            evidence=provider_failure,
+                            rescue_suffix="provider-capacity",
+                            event_type=(
+                                "provider_capacity_worktree_preserved"
+                            ),
+                            evidence_field="provider_capacity_failure",
+                            baseline_ref=baseline_ref,
+                        )
+                    )
+                    cleanup_result = dict(
+                        provider_capacity_preservation.get("cleanup_result")
+                        or {}
+                    )
+            except Exception:
+                return self._record_provider_capacity_lifecycle_race(
+                    task=task,
+                    state=state,
+                    attempt=attempt,
+                    started_at=started_at,
+                    returncode=returncode,
+                    log_path=log_path,
+                    reason="provider_capacity_lifecycle_cleanup_failed",
+                    worktree_path=worktree_path,
+                    branch_name=branch_name,
+                    cleanup_result=cleanup_result,
+                )
+
+            lifecycle_finalize = cleanup_result.get("lifecycle_finalize")
+            remaining_record = self.worktree_lifecycle.load_task_attempt(
+                canonical_task_cid=self._canonical_ref(task),
+                task_id=task.task_id,
+                attempt=attempt,
+            )
+            lifecycle_released = (
+                cleanup_result.get("cleaned") is True
+                and isinstance(lifecycle_finalize, Mapping)
+                and lifecycle_finalize.get("finalized") is True
+                and (
+                    remaining_record is None
+                    or remaining_record.is_terminal
+                )
+            )
+            if not lifecycle_released:
+                return self._record_provider_capacity_lifecycle_race(
+                    task=task,
+                    state=state,
+                    attempt=attempt,
+                    started_at=started_at,
+                    returncode=returncode,
+                    log_path=log_path,
+                    reason="provider_capacity_lifecycle_cleanup_incomplete",
+                    worktree_path=worktree_path,
+                    branch_name=branch_name,
+                    cleanup_result=cleanup_result,
+                )
+
+            deferral = self._record_provider_capacity_deferral(
                 task=task,
                 state=state,
                 attempt=attempt,
@@ -12248,6 +12447,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 branch_name=branch_name,
                 cleanup_result=cleanup_result,
             )
+            if provider_capacity_preservation:
+                deferral["provider_capacity_preservation"] = (
+                    provider_capacity_preservation
+                )
+            return deferral
 
         finished_at = utc_now()
         protected_mutation_scopes = {
@@ -24156,12 +24360,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 expected_fence=record.fence,
                 reason=reason,
             )
-            self.worktree_lifecycle.compare_and_delete(
+            deleted = self.worktree_lifecycle.compare_and_delete(
                 terminal.workspace_path,
                 expected_fence=terminal.fence,
                 lease_id=terminal.lease_id,
             )
             self._active_worktree_lifecycle = None
+            if not deleted:
+                return {
+                    "finalized": False,
+                    "reason": "lifecycle_finalize_race",
+                    "fence": terminal.fence,
+                    "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                    "attempt_consumed": False,
+                    "provider_call_allowed": False,
+                }
             return {
                 "finalized": True,
                 "reason": reason,

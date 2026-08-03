@@ -277,6 +277,20 @@ class LegacyLandedReviewError(RuntimeError):
         super().__init__(self.reason_code)
 
 
+LEGACY_CODEX_USAGE_LIMIT_CAPACITY_MARKER: Final = (
+    "legacy_codex_usage_capacity_exhausted"
+)
+
+
+class LegacyProviderCapacitySignal(RuntimeError):
+    """A fixed, secret-free signal emitted by an audited native adapter."""
+
+    reason_code: Final = LEGACY_CODEX_USAGE_LIMIT_CAPACITY_MARKER
+
+    def __init__(self) -> None:
+        super().__init__(self.reason_code)
+
+
 def _strict_json_object(raw: bytes) -> dict[str, Any]:
     def pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -1483,6 +1497,14 @@ def _review_one_leaf(
         raise LegacyLandedReviewError("legacy_provider_request_budget_exceeded")
     try:
         observation = invoker(request)
+    except LegacyProviderCapacitySignal:
+        # Preserve only the fixed signal authored by the native boundary.  In
+        # particular, ignore mutable instance/subclass fields and never attach
+        # the provider exception as a cause: either could contain credentials
+        # or account details when a custom invoker crosses this boundary.
+        raise LegacyLandedReviewError(
+            LEGACY_CODEX_USAGE_LIMIT_CAPACITY_MARKER
+        ) from None
     except Exception as exc:
         raise LegacyLandedReviewError("legacy_provider_invocation_failed") from exc
     if not isinstance(observation, LegacyProviderObservation):
@@ -2421,12 +2443,14 @@ __all__ = [
     "LEGACY_LANDED_LEAF_DECISION_SCHEMA",
     "LEGACY_LANDED_REVIEW_POLICY_INTERFACE",
     "LEGACY_LANDED_REVIEW_POLICY_SCHEMA",
+    "LEGACY_CODEX_USAGE_LIMIT_CAPACITY_MARKER",
     "LegacyLandedReviewError",
     "LegacyLandedReviewPolicy",
     "LegacyLandedReviewResult",
     "LegacyLandedReviewService",
     "LegacyLeafReviewRequest",
     "LegacyManifestVerification",
+    "LegacyProviderCapacitySignal",
     "LegacyProviderObservation",
     "LegacyRepositoryBinding",
     "LegacyTaskPolicy",

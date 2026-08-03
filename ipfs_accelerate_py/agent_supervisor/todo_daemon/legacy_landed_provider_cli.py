@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import selectors
 import shutil
 import signal
@@ -30,6 +31,7 @@ from .legacy_landed_review import (
     MAX_LEAF_TOKENS,
     LegacyLandedReviewPolicy,
     LegacyLeafReviewRequest,
+    LegacyProviderCapacitySignal,
     LegacyProviderObservation,
     LegacyProviderPolicy,
 )
@@ -49,6 +51,11 @@ LEGACY_LANDED_NATIVE_STRUCTURED_EXECUTION_SCHEMA: Final = (
 )
 _MAX_NATIVE_CLI_CAPTURE_BYTES: Final = 1024 * 1024
 _MAX_NATIVE_RESPONSE_BYTES: Final = 64 * 1024
+_MAX_NATIVE_FAILURE_CLASSIFICATION_BYTES: Final = 32 * 1024
+_CODEX_USAGE_LIMIT_PATTERN: Final = re.compile(
+    r"\byou(?:'|\u2019)ve hit your usage limit\b",
+    re.IGNORECASE,
+)
 
 LegacyCLIInvoker = Callable[
     [str, LlmRouterInvocation],
@@ -131,6 +138,38 @@ def _last_json_object(value: str) -> dict[str, Any]:
         except RuntimeError:
             continue
     raise RuntimeError("legacy native provider did not return a JSON object")
+
+
+def _bounded_failure_sample(value: bytearray) -> bytes:
+    """Return a bounded head/tail sample without retaining an unbounded copy."""
+
+    if len(value) <= _MAX_NATIVE_FAILURE_CLASSIFICATION_BYTES:
+        return bytes(value)
+    head_bytes = _MAX_NATIVE_FAILURE_CLASSIFICATION_BYTES // 2
+    tail_bytes = _MAX_NATIVE_FAILURE_CLASSIFICATION_BYTES - head_bytes - 1
+    return bytes(value[:head_bytes]) + b"\n" + bytes(value[-tail_bytes:])
+
+
+def _native_cli_failure(
+    command: Sequence[str],
+    *,
+    stdout: bytearray,
+    stderr: bytearray,
+) -> RuntimeError:
+    """Classify a known Codex capacity failure without exposing diagnostics."""
+
+    executable = Path(str(command[0] or "")).name.casefold() if command else ""
+    if executable == "codex":
+        # ``codex exec --json`` versions have emitted the account-limit event
+        # on either JSONL stdout or diagnostic stderr. Inspect bounded samples
+        # of both, but return only a fixed typed token to the caller.
+        for captured in (stdout, stderr):
+            diagnostic = _bounded_failure_sample(captured).decode(
+                "utf-8", errors="replace"
+            )
+            if _CODEX_USAGE_LIMIT_PATTERN.search(diagnostic):
+                return LegacyProviderCapacitySignal()
+    return RuntimeError("legacy native provider command failed")
 
 
 def _run_native_cli_process(
@@ -302,7 +341,11 @@ def _run_native_cli_process(
             raise RuntimeError("legacy native provider timed out") from exc
         if return_code != 0:
             terminate_family(process)
-            raise RuntimeError("legacy native provider command failed")
+            raise _native_cli_failure(
+                command,
+                stdout=captures["stdout"],
+                stderr=captures["stderr"],
+            )
         # A successful direct child may still have daemonized a descendant
         # after closing its pipes. The structured boundary permits no such
         # unobserved execution, so clean it before accepting the result.
