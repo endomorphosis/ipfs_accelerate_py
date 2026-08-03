@@ -64,7 +64,10 @@ from ..runtime.scheduler_metrics import (
     write_scheduler_snapshot,
 )
 from ..todo_daemon.legacy_landed_attestation import LegacyLandedReviewAuthority
-from ..todo_daemon.legacy_landed_review import load_legacy_landed_review_policy
+from ..todo_daemon.legacy_landed_review import (
+    LegacyLandedReviewPolicy,
+    load_legacy_landed_review_policy,
+)
 from ..todo_daemon.production_provider_attestation import (
     DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME,
 )
@@ -400,6 +403,177 @@ def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, A
                 if previous is None or receipt["timestamp"] >= previous["timestamp"]:
                     receipts[canonical_task_cid] = receipt
     return receipts
+
+
+LEGACY_ADOPTION_BARRIER_REASON = "legacy_adoption_incomplete"
+LEGACY_ADOPTION_BARRIER_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.legacy_adoption_barrier@1"
+)
+
+
+def _legacy_adoption_planning_receipts(
+    policy: LegacyLandedReviewPolicy,
+    completion_receipts: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Exclude malformed exact-policy receipts before planner overlay."""
+
+    expected = {
+        task.canonical_task_cid: task.task_id for task in policy.tasks
+    }
+    admitted: dict[str, Any] = {}
+    for receipt_cid, receipt in completion_receipts.items():
+        task_id = expected.get(str(receipt_cid))
+        if task_id is None:
+            admitted[str(receipt_cid)] = receipt
+            continue
+        if not isinstance(receipt, Mapping) or (
+            str(receipt.get("task_id") or "") != task_id
+            or str(receipt.get("canonical_task_cid") or "")
+            != str(receipt_cid)
+            or str(receipt.get("status") or "").strip().casefold()
+            != "succeeded"
+        ):
+            continue
+        admitted[str(receipt_cid)] = receipt
+    return admitted
+
+
+def _legacy_adoption_barrier_payloads(
+    payloads: Sequence[dict[str, Any]],
+    *,
+    policy: LegacyLandedReviewPolicy,
+    completion_receipts: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Constrain every execution slice until all exact policy CIDs complete.
+
+    This runs on the same stable durable-receipt snapshot used to plan bundle
+    lanes.  It therefore precedes coordinator registration, resource/provider
+    admission, lease claims, expected-ID binding, and child process launch.
+    Mutable board status and transient live-lane manifests are never accepted
+    as migration completion authority.
+    """
+
+    expected = {
+        task.task_id: task.canonical_task_cid for task in policy.tasks
+    }
+    if len(expected) != 8 or len(expected) != len(policy.tasks):
+        raise ValueError(
+            "legacy adoption policy must contain eight unique task identities"
+        )
+    inventory: dict[str, list[str]] = {
+        task_id: [] for task_id in expected
+    }
+    for payload in payloads:
+        for task in _mapping_list(payload.get("tasks")):
+            task_id = str(task.get("task_id") or "").strip()
+            if task_id not in expected:
+                continue
+            inventory[task_id].append(
+                str(
+                    task.get("canonical_task_cid")
+                    or task.get("task_cid")
+                    or ""
+                ).strip()
+            )
+    invalid_inventory = [
+        task_id
+        for task_id, expected_cid in expected.items()
+        if inventory[task_id] != [expected_cid]
+    ]
+    if invalid_inventory:
+        raise ValueError(
+            "legacy adoption exact task inventory is invalid: "
+            + ", ".join(invalid_inventory)
+        )
+
+    completed: list[str] = []
+    invalid_receipts: list[str] = []
+    for task_id, task_cid in expected.items():
+        receipt = completion_receipts.get(task_cid)
+        if receipt is None:
+            continue
+        if not isinstance(receipt, Mapping) or (
+            str(receipt.get("task_id") or "") != task_id
+            or str(receipt.get("canonical_task_cid") or "") != task_cid
+            or str(receipt.get("status") or "").strip().casefold()
+            != "succeeded"
+        ):
+            invalid_receipts.append(task_id)
+            continue
+        completed.append(task_id)
+    completed_set = set(completed)
+    remaining = [
+        task_id for task_id in expected if task_id not in completed_set
+    ]
+    remaining_set = set(remaining)
+    barrier = {
+        "schema": LEGACY_ADOPTION_BARRIER_SCHEMA,
+        "active": bool(remaining),
+        "reason": (
+            LEGACY_ADOPTION_BARRIER_REASON
+            if remaining
+            else "legacy_adoption_complete"
+        ),
+        "policy_id": policy.policy_id,
+        "completion_authority": (
+            "durable_exact_member_completion_receipts"
+        ),
+        "policy_task_ids": list(expected),
+        "policy_task_cids": [expected[task_id] for task_id in expected],
+        "completed_task_ids": completed,
+        "remaining_task_ids": remaining,
+        "remaining_task_cids": [expected[task_id] for task_id in remaining],
+        "invalid_receipt_task_ids": invalid_receipts,
+    }
+    projected: list[dict[str, Any]] = []
+    for original in payloads:
+        payload = dict(original)
+        payload["legacy_adoption_barrier"] = dict(barrier)
+        if not remaining:
+            tasks = _mapping_list(payload.get("tasks"))
+            authorized = _execution_slice_members(payload, tasks)
+            has_policy_members = any(
+                str(task.get("task_id") or "") in expected
+                for task in tasks
+            )
+            if has_policy_members and not authorized:
+                # Receipt-drained policy lanes are retained for planning
+                # visibility but can never register as fresh executable work,
+                # including when bundle optimization is explicitly disabled.
+                payload["claimable"] = False
+            projected.append(payload)
+            continue
+        tasks = _mapping_list(payload.get("tasks"))
+        authorized = _execution_slice_members(payload, tasks)
+        pending = [
+            task
+            for task in authorized
+            if (
+                str(task.get("task_id") or "") in remaining_set
+                and expected.get(str(task.get("task_id") or ""))
+                == str(
+                    task.get("canonical_task_cid")
+                    or task.get("task_cid")
+                    or ""
+                )
+            )
+        ]
+        payload["execution_slice_task_ids"] = [
+            str(task.get("task_id") or "") for task in pending
+        ]
+        payload["execution_slice_task_cids"] = [
+            str(
+                task.get("canonical_task_cid")
+                or task.get("task_cid")
+                or ""
+            )
+            for task in pending
+        ]
+        if not pending:
+            payload["claimable"] = False
+            payload["blocked_reason"] = LEGACY_ADOPTION_BARRIER_REASON
+        projected.append(payload)
+    return projected
 
 
 @dataclass(frozen=True)
@@ -2984,6 +3158,7 @@ def plan_bundle_lanes(
         production_provider_review_authority_key_path = (
             state_root / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
         )
+    legacy_review_policy: LegacyLandedReviewPolicy | None = None
     legacy_review_task_ids: frozenset[str] = frozenset()
     legacy_review_context_tokens = 0
     if legacy_landed_review_policy_path is not None:
@@ -2999,15 +3174,27 @@ def plan_bundle_lanes(
             )
     if completion_receipts is None:
         completion_receipts = bundle_member_completion_receipts(state_root)
-    if completion_receipts:
+    planning_completion_receipts: Mapping[str, Any] = completion_receipts
+    if legacy_review_policy is not None and legacy_review_policy.enabled:
+        planning_completion_receipts = _legacy_adoption_planning_receipts(
+            legacy_review_policy,
+            completion_receipts,
+        )
+    if planning_completion_receipts:
         bundle_payloads = build_bundle_task_payloads(
             bundle_index_path,
-            merge_receipts=completion_receipts,
+            merge_receipts=planning_completion_receipts,
         )
     else:
         # Keep the legacy single-argument call path for integrations which
         # inject a planner and have no durable receipt overlay to apply.
         bundle_payloads = build_bundle_task_payloads(bundle_index_path)
+    if legacy_review_policy is not None and legacy_review_policy.enabled:
+        bundle_payloads = _legacy_adoption_barrier_payloads(
+            bundle_payloads,
+            policy=legacy_review_policy,
+            completion_receipts=completion_receipts,
+        )
     globally_completed_task_ids = {
         str(task.get("task_id") or "")
         for payload in bundle_payloads
@@ -3306,6 +3493,21 @@ def _lane_launch_policy_error(lane: BundleLaneSpec) -> str:
         }:
             return f"execution slice contains terminal task status {status}"
     return ""
+
+
+def _legacy_adoption_lane_blocked(lane: BundleLaneSpec) -> bool:
+    payload = lane.queue_payload
+    barrier = (
+        payload.get("legacy_adoption_barrier")
+        if isinstance(payload, Mapping)
+        and isinstance(payload.get("legacy_adoption_barrier"), Mapping)
+        else {}
+    )
+    return bool(
+        barrier.get("active") is True
+        and payload.get("blocked_reason")
+        == LEGACY_ADOPTION_BARRIER_REASON
+    )
 
 
 def _receipt_drained_execution_slice(lane: BundleLaneSpec) -> bool:
@@ -5251,6 +5453,7 @@ class DynamicBundleScheduler:
                     and lane.bundle_key not in running_by_bundle_key
                     and lane.task_cid in snapshot_ready
                     and not dispositions.get(lane.task_cid)
+                    and not _legacy_adoption_lane_blocked(lane)
                     and not any(
                         _lanes_conflict(lane, running.spec)
                         for running in self._running.values()
@@ -5327,6 +5530,21 @@ class DynamicBundleScheduler:
                         })
                         continue
                     if lane.task_cid in reconciled:
+                        continue
+                    if _legacy_adoption_lane_blocked(lane):
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "deferred",
+                            "reason": LEGACY_ADOPTION_BARRIER_REASON,
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                            "legacy_adoption_barrier": dict(
+                                lane.queue_payload.get(
+                                    "legacy_adoption_barrier"
+                                )
+                                or {}
+                            ),
+                        })
                         continue
                     stale_input_binding = stale_input_bindings.get(lane.task_cid)
                     if stale_input_binding is not None:

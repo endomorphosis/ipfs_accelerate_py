@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    LEGACY_ADOPTION_BARRIER_REASON,
     DynamicBundleScheduler,
     build_arg_parser,
     plan_bundle_lanes,
@@ -461,14 +462,20 @@ def test_legacy_capacity_overlay_is_exact_and_default_off(
 ) -> None:
     repo = tmp_path / ("enabled" if enabled else "disabled")
     index_path = repo / "index.json"
-    _write_bundle_index(index_path, ["deterministic-only"] * 2)
+    _write_bundle_index(index_path, ["deterministic-only"] * 9)
     index = json.loads(index_path.read_text(encoding="utf-8"))
     tasks = [
         bundle["tasks"][0]
         for bundle in index["bundles"].values()
     ]
-    tasks[0]["task_id"] = "ASE-005"
-    tasks[1]["task_id"] = "OTHER"
+    template_tasks = copy.deepcopy(
+        legacy_review.EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE["tasks"]
+    )
+    for task, template_task in zip(tasks[:8], template_tasks, strict=True):
+        task["task_id"] = template_task["task_id"]
+        task["canonical_task_key"] = template_task["canonical_task_key"]
+        task["canonical_task_cid"] = template_task["canonical_task_cid"]
+    tasks[8]["task_id"] = "OTHER"
     index_path.write_text(json.dumps(index), encoding="utf-8")
     policy_path = repo / "legacy-policy.json"
     key_path = repo / "legacy-policy.key"
@@ -488,12 +495,22 @@ def test_legacy_capacity_overlay_is_exact_and_default_off(
         legacy_landed_review_key_path=key_path,
         optimize_bundles=False,
     )
-    by_task = {lane.task_ids[0]: lane for lane in lanes}
+    by_task = {
+        str(lane.queue_payload["tasks"][0]["task_id"]): lane
+        for lane in lanes
+    }
 
-    assert by_task["ASE-005"].llm_provider == (
-        DUAL_REVIEW_PROVIDER_ID if enabled else ""
-    )
+    for template_task in template_tasks:
+        assert by_task[template_task["task_id"]].llm_provider == (
+            DUAL_REVIEW_PROVIDER_ID if enabled else ""
+        )
     assert by_task["OTHER"].llm_provider == ""
+    assert by_task["OTHER"].task_ids == ([] if enabled else ["OTHER"])
+    assert by_task["OTHER"].claimable is (not enabled)
+    if enabled:
+        assert by_task["OTHER"].queue_payload["blocked_reason"] == (
+            LEGACY_ADOPTION_BARRIER_REASON
+        )
     for lane in lanes:
         stall_index = lane.command.index("--implementation-log-stall-seconds")
         assert float(lane.command[stall_index + 1]) == 900.0
