@@ -41,6 +41,33 @@ export IPFS_TEST_PROOF_REUSE_DATASETS_SOURCE=/reviewed/ipfs_datasets
 export IPFS_TEST_PROOF_REUSE_PROVISION_DIR="$HOME/.cache/ipfs-proof-reuse"  # optional
 ```
 
+After installing the package, operators may explicitly invoke the same bounded
+lazy installer used by pytest:
+
+```bash
+# Installed console command. With no capability flags it requests both.
+ipfs-accelerate-proof-reuse-provision
+
+# Select one layer, or require a nonzero exit when it remains unavailable.
+ipfs-accelerate-proof-reuse-provision --nltk-data
+ipfs-accelerate-proof-reuse-provision --groth16-native --require-ready
+
+# Equivalent source-checkout setuptools command (explicit only).
+python setup.py proof_reuse_provision
+```
+
+Both commands emit one bounded JSON status document. They do not override the
+four consent gates above: the two general auto-install policies and the
+NLTK/Groth16-specific choice must still permit the requested operation. A
+missing network, Cargo toolchain, reviewed source, cache, key, or circuit is a
+typed `RUN`/`DEFERRED` result; it is nonzero only with `--require-ready`.
+
+`pip install .`, `pip install '.[proof-reuse]'`, wheel/sdist construction and
+package import never run either provisioner. NLTK is an ordinary declared
+Python dependency, while its data is not. Groth16 is a reviewed Cargo-native
+capability, not a package named `groth16` on PyPI. Native compilation never
+runs trusted setup, and these commands never generate proving/verifying keys.
+
 Call the narrow facade only when the capability is actually needed:
 
 ```python

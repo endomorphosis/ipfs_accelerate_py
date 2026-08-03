@@ -7,7 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from setuptools import find_packages, setup
+from setuptools import Command, find_packages, setup
+from setuptools.errors import ExecError
 
 
 def _run(cmd: list[str]) -> int:
@@ -78,7 +79,11 @@ def _maybe_install_torch() -> None:
       - For normal `pip install .` (PEP517/wheel), setuptools install hooks are not reliable.
         Use the provided helper scripts in `scripts/` for deterministic installs.
     """
-    enabled = os.environ.get("IPFS_ACCELERATE_PY_SETUP_AUTO_TORCH", "1").strip() not in {"0", "false", "no"}
+    # Packaging must be inert by default.  This legacy escape hatch is retained
+    # for compatibility, but only an explicit true value may invoke pip.
+    enabled = os.environ.get(
+        "IPFS_ACCELERATE_PY_SETUP_AUTO_TORCH", "0"
+    ).strip().lower() in {"1", "true", "yes", "on"}
     if not enabled:
         return
 
@@ -125,9 +130,58 @@ def _maybe_install_torch() -> None:
     return
 
 
+class ProofReuseProvision(Command):
+    """Explicitly invoke the bounded runtime proof-reuse provisioner.
+
+    This is never run by ``install``, ``develop``, wheel, sdist, or metadata
+    commands.  It delegates to the installed/source-tree CLI so the existing
+    allowlists, consent gates, timeouts, locks, and typed fallbacks remain the
+    single implementation of provisioning policy.
+    """
+
+    description = (
+        "explicitly provision allowlisted NLTK data and/or native Groth16"
+    )
+    user_options = [
+        ("nltk-data", None, "request allowlisted NLTK data resources"),
+        ("groth16-native", None, "request the reviewed native Groth16 binary"),
+        ("require-ready", None, "fail when a requested capability is unavailable"),
+    ]
+    boolean_options = ["nltk-data", "groth16-native", "require-ready"]
+
+    def initialize_options(self) -> None:
+        self.nltk_data = False
+        self.groth16_native = False
+        self.require_ready = False
+
+    def finalize_options(self) -> None:
+        # Boolean options are normalized by setuptools. With no capability
+        # option the delegated CLI intentionally requests both capabilities.
+        return None
+
+    def run(self) -> None:
+        command = [
+            sys.executable,
+            "-m",
+            "ipfs_accelerate_py.testing.proof_reuse.provisioning_cli",
+        ]
+        if self.nltk_data:
+            command.append("--nltk-data")
+        if self.groth16_native:
+            command.append("--groth16-native")
+        if self.require_ready:
+            command.append("--require-ready")
+        returncode = _run(command)
+        if returncode:
+            raise ExecError(
+                "proof-reuse provisioning reported unavailable requested "
+                f"capabilities (exit {returncode})"
+            )
+
+
 def _get_cmdclass():
-    """Attach pip-based torch auto-install to legacy setuptools flows."""
-    cmdclass = {}
+    """Return explicit commands plus compatibility legacy install classes."""
+    cmdclass = {"proof_reuse_provision": ProofReuseProvision}
 
     try:
         from setuptools.command.install import install as _install
@@ -242,6 +296,7 @@ setup(
             "ipfs-accelerate-agent-implementation-supervisor=ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main",
             "ipfs-accelerate-agent-merge-resolver=ipfs_accelerate_py.agent_supervisor.merge.merge_resolver:main",
             "ipfs-accelerate-agent-llm-merge-resolver-fallback=ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main",
+            "ipfs-accelerate-proof-reuse-provision=ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main",
             "ipfs-accelerate-llama-cpp-serve=ipfs_accelerate_py.utils.llama_cpp:main",
         ],
         # Shared proof-reuse plugin (mirrors [project.entry-points.pytest11] in pyproject.toml).
