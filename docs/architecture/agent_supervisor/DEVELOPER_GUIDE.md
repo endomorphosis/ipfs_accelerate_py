@@ -11,7 +11,7 @@ exports; `ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.
 `ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py`; supervisor module
 `--help` output; `test/api/test_agent_supervisor_*.py`
 
-**Last-verified:** 2026-08-03 @ `da2c574c3`; package placement, imports,
+**Last-verified:** 2026-08-03 @ `c9d3b3c3b`; package placement, imports,
 entrypoints, tests, and provider routing rechecked
 
 **Freshness triggers:** package-layout, public-export, daemon/provider,

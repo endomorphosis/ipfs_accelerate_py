@@ -11,7 +11,7 @@
 `ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py`;
 `ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py`
 
-**Last-verified:** 2026-08-03 @ `da2c574c3`; invariants, operations, module
+**Last-verified:** 2026-08-03 @ `c9d3b3c3b`; invariants, operations, module
 paths, and default provider route rechecked
 
 **Freshness triggers:** control authority, task identity, provider routing,
