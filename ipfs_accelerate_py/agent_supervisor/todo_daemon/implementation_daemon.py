@@ -3000,6 +3000,41 @@ COMPLETION_GAP_EDIT_SCOPE_ROLES = frozenset(
 )
 COMPLETION_GAP_MANUAL_REVIEW_ROLE = "completion_gate_gap_manual_review"
 
+SCOPE_EXPANSION_POLICY_METADATA_KEY = "scope expansion policy"
+SCOPE_EXPANSION_POLICY_ADJUDICATED = "adjudicated"
+SCOPE_EXPANSION_POLICY_EXACT = "exact"
+_SCOPE_EXPANSION_ALLOWED_VALUES = frozenset(
+    {
+        "allow",
+        "adjudicated",
+        "dependency-adjudicated",
+        "dependency_adjudicated",
+    }
+)
+
+
+def task_scope_expansion_policy(task: PortalTask) -> tuple[str, bool]:
+    """Return the task-bound scope policy and whether expansion is allowed.
+
+    Scope adjudication is the compatibility default for existing boards.  A
+    task may opt into exact output/predicted-file ownership with the explicit
+    ``Scope expansion policy: exact`` metadata field.  Once the field is
+    present, unknown values fail closed instead of accidentally granting
+    dependency-derived write authority.
+    """
+
+    metadata = {
+        str(key).strip().lower().replace("_", " "): str(value or "").strip()
+        for key, value in task.metadata.items()
+    }
+    configured = metadata.get(SCOPE_EXPANSION_POLICY_METADATA_KEY, "")
+    normalized = configured.lower().replace(" ", "-")
+    if not normalized:
+        return SCOPE_EXPANSION_POLICY_ADJUDICATED, True
+    if normalized in _SCOPE_EXPANSION_ALLOWED_VALUES:
+        return SCOPE_EXPANSION_POLICY_ADJUDICATED, True
+    return SCOPE_EXPANSION_POLICY_EXACT, False
+
 
 def completion_gap_edit_scope(
     task: PortalTask,
@@ -28060,6 +28095,9 @@ class PortalImplementationDaemon:
             workspace_path=workspace_path,
             baseline_ref=baseline_ref,
         )
+        scope_expansion_policy, task_allows_scope_expansion = (
+            task_scope_expansion_policy(task)
+        )
         scope_paths = self._proposal_scope_paths(task)
         # A missing output declaration grants no mutation authority.
         allowed_paths = scope_paths or (".proposal-scope-not-declared",)
@@ -28280,6 +28318,8 @@ class PortalImplementationDaemon:
             },
         }
         policy_version = "strict-proposal-v2+local-envelope-v2"
+        if not task_allows_scope_expansion:
+            policy_version += "+exact-task-scope-v1"
         if local_envelope_limits.get("bounded_size_reduction"):
             policy_version += "+bounded-size-reduction-v1"
         policy_allowed_paths = allowed_paths
@@ -28352,6 +28392,7 @@ class PortalImplementationDaemon:
         )
         if (
             allow_scope_adjudication
+            and task_allows_scope_expansion
             and not result.accepted
             and finding_codes
             == (ProposalFindingCode.PATH_OUTSIDE_SCOPE.value,)
@@ -28457,6 +28498,8 @@ class PortalImplementationDaemon:
                     "submodule_expansion_count": len(
                         submodule_expansions
                     ),
+                    "scope_expansion_policy": scope_expansion_policy,
+                    "scope_expansion_allowed": task_allows_scope_expansion,
                 }
             )
         if record_event:
