@@ -93,8 +93,10 @@ export IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra
 
 Notes:
 
-- `provider=auto` selects authenticated Grok first and falls back to
-  Codex/Copilot when Grok is unavailable or in capacity cooldown.
+- `provider=auto` selects authenticated Grok first. If Grok exits nonzero and
+  Codex is available, the bounded runner gives Codex the identical prompt in
+  the same task attempt. It also routes before dispatch to Codex/Copilot when
+  Grok is unavailable or in capacity cooldown.
 - `provider=grok` explicitly pins Grok and fails closed instead of changing
   provider families.
 - Codex is also used when the provider is explicitly `codex` / `openai`.

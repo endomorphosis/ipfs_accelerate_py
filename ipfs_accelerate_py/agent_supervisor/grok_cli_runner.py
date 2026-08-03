@@ -9,13 +9,14 @@ flags. Command policy lives next to other CLI peers in :mod:`llm_router`.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 if str(_PACKAGE_ROOT) not in sys.path:
@@ -25,6 +26,8 @@ if str(_PACKAGE_ROOT) not in sys.path:
 DEFAULT_GROK_MODEL = "grok-4.5"
 # Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
 DEFAULT_GROK_MAX_TURNS = 4_294_967_295
+MAX_CODEX_FALLBACK_ARGUMENTS = 64
+MAX_CODEX_FALLBACK_ARGUMENT_BYTES = 4_096
 
 
 def _resolve_grok_bin(configured: str = "") -> str:
@@ -77,7 +80,39 @@ def build_grok_agent_command(
     return cmd
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def _parse_codex_fallback_command(raw: str) -> list[str]:
+    """Decode the daemon-authored Codex fallback without invoking a shell."""
+
+    if not raw.strip():
+        return []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Codex fallback command is not valid JSON") from exc
+    if (
+        not isinstance(payload, list)
+        or not 2 <= len(payload) <= MAX_CODEX_FALLBACK_ARGUMENTS
+    ):
+        raise ValueError("Codex fallback command must be a bounded argv array")
+    command: list[str] = []
+    for item in payload:
+        if (
+            not isinstance(item, str)
+            or not item
+            or len(item.encode("utf-8")) > MAX_CODEX_FALLBACK_ARGUMENT_BYTES
+        ):
+            raise ValueError(
+                "Codex fallback command contains an invalid argument"
+            )
+        command.append(item)
+    if Path(command[0]).name.lower() not in {"codex", "codex.exe"}:
+        raise ValueError("Codex fallback executable must be codex")
+    if command[1] != "exec" or command[-1] != "-":
+        raise ValueError("Codex fallback command must use `codex exec ... -`")
+    return command
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Authorized Grok CLI agent entry (llm_router.grok_cli)."
     )
@@ -96,7 +131,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         choices=("agent", "chat"),
         help="agent enables tool approvals for implementation work",
     )
+    parser.add_argument(
+        "--codex-fallback-command-json",
+        default="",
+        help=(
+            "Internal default-route Codex argv. It is run only after Grok "
+            "returns nonzero; forced-Grok routes omit this option."
+        ),
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
+    try:
+        codex_fallback_command = _parse_codex_fallback_command(
+            str(args.codex_fallback_command_json)
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
 
     from ipfs_accelerate_py.llm_router import (
         LLMRouterError,
@@ -175,7 +225,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         os.chdir(workspace)
         completed = subprocess.run(cmd, env=env, check=False)
-        return int(completed.returncode)
+        primary_returncode = int(completed.returncode)
+        if primary_returncode == 0 or not codex_fallback_command:
+            return primary_returncode
+
+        print(
+            "grok CLI failed with exit "
+            f"{primary_returncode}; falling back to codex",
+            file=sys.stderr,
+        )
+        try:
+            fallback = subprocess.run(
+                codex_fallback_command,
+                cwd=workspace,
+                env=os.environ.copy(),
+                input=prompt,
+                text=True,
+                check=False,
+            )
+        except OSError as exc:
+            print(f"unable to launch Codex fallback: {exc}", file=sys.stderr)
+            return 127
+        return int(fallback.returncode)
     finally:
         if prompt_path:
             try:

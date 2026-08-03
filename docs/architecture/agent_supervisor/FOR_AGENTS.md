@@ -44,9 +44,10 @@ When launching or diagnosing lanes (ops may override):
 | Grok-first routing | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto`, model `grok-4.5` |
 | Codex fallback | `IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra` |
 
-Use `auto` for unattended lanes: it selects authenticated Grok first and falls
-back to Codex/Copilot when Grok is unavailable or in capacity cooldown.
-Explicit `grok` is a fail-closed provider pin and does not permit that fallback.
+Use `auto` for unattended lanes: it selects authenticated Grok first, retries
+the identical prompt with Codex when Grok exits nonzero, and routes before
+dispatch to Codex/Copilot when Grok is unavailable or in capacity cooldown.
+Explicit `grok` is a fail-closed provider pin and does not permit fallback.
 
 ## Codebase-proof loop (semantic)
 

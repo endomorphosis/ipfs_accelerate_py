@@ -1481,22 +1481,25 @@ def _grok_binary() -> str | None:
 
 
 def _grok_cli_available() -> bool:
-    """True when llm_router's grok_cli provider can be constructed."""
+    """Return whether Grok is ready for non-interactive implementation work.
 
+    Binary discovery alone is insufficient for the daemon: selecting an
+    unauthenticated CLI would fail after dispatch instead of allowing the
+    default route to fall back to Codex. Keep the probe side-effect free and
+    fail closed when the shared router cannot prove both authentication and
+    provider construction.
+    """
+
+    if not _grok_binary():
+        return False
     try:
-        from ...llm_router import get_llm_provider
+        from ...llm_router import _grok_cli_auth_available, get_llm_provider
 
+        if not _grok_cli_auth_available():
+            return False
         return get_llm_provider("grok_cli") is not None
     except Exception:
-        if not _grok_binary():
-            return False
-        try:
-            from ...llm_router import _grok_cli_auth_available
-
-            return bool(_grok_cli_auth_available())
-        except Exception:
-            auth = Path.home() / ".grok" / "auth.json"
-            return auth.is_file() or bool(os.environ.get("XAI_API_KEY", "").strip())
+        return False
 
 
 def _grok_cli_command(*, workspace_path: Path) -> list[str]:
@@ -1566,6 +1569,49 @@ _COPILOT_MODEL_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MODEL"
 _COPILOT_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_EFFORT"
 _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
 _COPILOT_MAX_CONTINUES_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MAX_CONTINUES"
+
+
+def _codex_implementation_command(
+    *,
+    codex: str,
+    workspace_path: Path,
+    codex_context_window: int | None = None,
+) -> list[str]:
+    """Build the non-interactive Codex implementation argv."""
+
+    codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+    codex_context = (
+        str(codex_context_window)
+        if codex_context_window is not None
+        else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+    )
+    codex_reasoning = os.environ.get(
+        _CODEX_REASONING_EFFORT_ENV, "high"
+    ).strip()
+    codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
+    codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
+
+    command = [
+        codex,
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        str(workspace_path),
+    ]
+    if codex_model:
+        command.extend(["-m", codex_model])
+    if codex_context:
+        command.extend(["-c", f"model_context_window={codex_context}"])
+    if codex_reasoning:
+        command.extend(
+            ["-c", f'model_reasoning_effort="{codex_reasoning}"']
+        )
+    if codex_max_threads:
+        command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
+    if codex_max_depth:
+        command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
+    command.append("-")
+    return command
 
 
 def _copilot_fallback_command(
@@ -20190,15 +20236,38 @@ class PortalImplementationDaemon:
         ).strip()
         prior_branch = str(seed_plan.get("prior_branch") or "").strip()
         reason = str(seed_apply.get("reason") or "prior_seed_apply_failed")
-        guidance = (
-            f"Prior attempt seed apply failed ({reason}). "
-            "Continue from the clean merge-target baseline, then recover "
-            "preserved work from "
-            f"commit {prior_commit or '(unknown)'} "
-            f"{('branch ' + prior_branch) if prior_branch else ''} "
-            "or rewrite compactly inside declared Outputs; do not re-dump "
-            "oversized fixtures."
-        ).strip()
+        proposal_authority_failed = (
+            reason
+            in {
+                "prior_seed_accepted_proposal_missing",
+                "prior_seed_scope_not_declared",
+                "prior_seed_pre_dispatch_validation_failed",
+            }
+            or reason.startswith("prior_seed_proposal_")
+        )
+        if proposal_authority_failed:
+            guidance = (
+                f"Prior attempt seed was not authorized ({reason}). "
+                "Continue from the clean merge-target baseline. Treat "
+                f"commit {prior_commit or '(unknown)'} "
+                f"{('branch ' + prior_branch) if prior_branch else ''} "
+                "as read-only diagnostic evidence only: MUST NOT cherry-pick, "
+                "merge, apply, or replay it. Reimplement compactly only within "
+                "declared Outputs and paths deterministically authorized by "
+                "the failure review, and remove every reported proposal, "
+                "security, and validation finding before retrying; do not "
+                "re-dump oversized fixtures."
+            ).strip()
+        else:
+            guidance = (
+                f"Prior attempt seed apply failed ({reason}). "
+                "Continue from the clean merge-target baseline, then recover "
+                "preserved work from "
+                f"commit {prior_commit or '(unknown)'} "
+                f"{('branch ' + prior_branch) if prior_branch else ''} "
+                "or rewrite compactly inside declared Outputs; do not re-dump "
+                "oversized fixtures."
+            ).strip()
         self._implementation_seed_failure_guidance[key] = guidance
         guide_path = ""
         try:
@@ -39409,7 +39478,30 @@ class PortalImplementationDaemon:
             and not force_codex
             and not force_goose_meta
         ):
-            return _grok_cli_command(workspace_path=workspace_path)
+            command = _grok_cli_command(workspace_path=workspace_path)
+            codex = shutil.which("codex")
+            if codex and automatic_family_allowed("codex"):
+                codex_context_window = (
+                    self._implementation_provider_context_window_for_task(
+                        task
+                    )[0]
+                    if task is not None
+                    else None
+                )
+                command.extend(
+                    [
+                        "--codex-fallback-command-json",
+                        json.dumps(
+                            _codex_implementation_command(
+                                codex=codex,
+                                workspace_path=workspace_path,
+                                codex_context_window=codex_context_window,
+                            ),
+                            separators=(",", ":"),
+                        ),
+                    ]
+                )
+            return command
 
         if force_goose_meta:
             if not goose_meta_ready:
@@ -39443,39 +39535,11 @@ class PortalImplementationDaemon:
                 codex_context_window=codex_context_window,
             )
         if codex_allowed:
-            # Build codex command with full capability flags
-            codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
-            codex_context = (
-                str(codex_context_window)
-                if codex_context_window is not None
-                else os.environ.get(
-                    _CODEX_CONTEXT_WINDOW_ENV,
-                    "200000",
-                ).strip()
+            return _codex_implementation_command(
+                codex=str(codex),
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
             )
-            codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
-            codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
-            codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
-
-            cmd = [
-                codex,
-                "exec",
-                "--dangerously-bypass-approvals-and-sandbox",
-                "-C",
-                str(workspace_path),
-            ]
-            if codex_model:
-                cmd.extend(["-m", codex_model])
-            if codex_context:
-                cmd.extend(["-c", f"model_context_window={codex_context}"])
-            if codex_reasoning:
-                cmd.extend(["-c", f'model_reasoning_effort="{codex_reasoning}"'])
-            if codex_max_threads:
-                cmd.extend(["-c", f"agents.max_threads={codex_max_threads}"])
-            if codex_max_depth:
-                cmd.extend(["-c", f"agents.max_depth={codex_max_depth}"])
-            cmd.append("-")
-            return cmd
         if grok_ready and automatic_family_allowed("grok"):
             return _grok_cli_command(workspace_path=workspace_path)
         if goose_meta_ready and automatic_family_allowed("goose"):
@@ -42075,7 +42139,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help=(
             "Command used for implementation. By default, automatic routing "
-            "selects authenticated Grok first, then Codex/Copilot fallback."
+            "selects authenticated Grok first, immediately retries the same "
+            "prompt with Codex when Grok exits nonzero, and otherwise uses "
+            "available Codex/Copilot fallback routes."
         ),
     )
     parser.add_argument(
