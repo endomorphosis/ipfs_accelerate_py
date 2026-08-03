@@ -1213,7 +1213,13 @@ class MarkdownTaskSource:
         self.board_namespace = _one_line(board_namespace)
         if not self.board_namespace:
             raise MarkdownTaskSourceError("board_namespace must not be empty")
+        # Process-local cache is a hot-path optimization only.  Crash recovery
+        # and multi-process resume reload pending previews from the durable
+        # continuation file (or an external PlanRevisionStore) instead.
         self._pending: dict[str, TaskboardMaterializationPreview] = {}
+        self._continuation_path = Path(self.store.journal_path).with_name(
+            f".{Path(self.store.path).name}.plan-revision-continuation.json"
+        )
 
     @property
     def path(self) -> Path:
@@ -1226,6 +1232,362 @@ class MarkdownTaskSource:
     @property
     def events_path(self) -> Path:
         return self.store.events_path
+
+    def _continuation_key(self, projection_id: str) -> str:
+        return f"markdown:{self.path}:{projection_id}"
+
+    def _load_pending_preview(
+        self,
+        projection: "MarkdownTaskProjection",
+        *,
+        store_continuation: Any | None = None,
+        idempotency_key: str = "",
+    ) -> TaskboardMaterializationPreview | None:
+        cached = self._pending.get(projection.projection_id)
+        if cached is not None:
+            return cached
+        # Prefer the external plan-revision store continuation (CAS-backed).
+        if store_continuation is not None and idempotency_key:
+            loader = getattr(store_continuation, "load_continuation", None)
+            if callable(loader):
+                record = loader(idempotency_key)
+                if isinstance(record, Mapping):
+                    preview_payload = record.get("markdown_preview")
+                    rebuilt = self._preview_from_payload(
+                        preview_payload, projection=projection
+                    )
+                    if rebuilt is not None:
+                        return rebuilt
+        if self._continuation_path.exists():
+            try:
+                payload = json.loads(self._continuation_path.read_bytes())
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                return None
+            return self._preview_from_payload(payload, projection=projection)
+        return None
+
+    def _preview_from_payload(
+        self,
+        payload: Any,
+        *,
+        projection: "MarkdownTaskProjection",
+    ) -> TaskboardMaterializationPreview | None:
+        if not isinstance(payload, Mapping):
+            return None
+        if str(payload.get("projection_id") or "") not in {
+            "",
+            projection.projection_id,
+        }:
+            return None
+        raw_entries = payload.get("entries")
+        entries: list[TaskboardMaterializationEntry] = []
+        if isinstance(raw_entries, Sequence) and not isinstance(
+            raw_entries, (str, bytes, bytearray)
+        ):
+            for item in raw_entries:
+                if not isinstance(item, Mapping):
+                    return None
+                try:
+                    entries.append(
+                        TaskboardMaterializationEntry(
+                            task_id=str(item.get("task_id") or ""),
+                            goal_id=str(item.get("goal_id") or ""),
+                            rendered_block=str(item.get("rendered_block") or ""),
+                        )
+                    )
+                except (TypeError, ValueError):
+                    return None
+        if not entries:
+            # Fall back to full projection when continuation was for create.
+            entries = list(projection.entries)
+        try:
+            return preview_taskboard_materialization(
+                str(payload.get("base_text") or ""),
+                entries,
+                expected_board_revision=str(
+                    payload.get("base_board_revision") or ""
+                ),
+            )
+        except (TypeError, ValueError):
+            return None
+
+    def _persist_pending_preview(
+        self,
+        projection: "MarkdownTaskProjection",
+        preview: TaskboardMaterializationPreview,
+        *,
+        store_continuation: Any | None = None,
+        idempotency_key: str = "",
+    ) -> None:
+        self._pending[projection.projection_id] = preview
+        payload = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "markdown-plan-revision-continuation@1"
+            ),
+            "projection_id": projection.projection_id,
+            "preview_id": preview.preview_id,
+            "base_text": preview.base_text,
+            "candidate_text": preview.candidate_text,
+            "base_board_revision": preview.base_board_revision,
+            "candidate_board_revision": preview.candidate_board_revision,
+            "entries": [entry.to_dict() for entry in preview.entries],
+            "path": str(self.path),
+        }
+        encoded = _canonical_json_bytes(payload) + b"\n"
+        self._continuation_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self._continuation_path.with_name(
+            f".{self._continuation_path.name}.tmp"
+        )
+        temporary.write_bytes(encoded)
+        temporary.replace(self._continuation_path)
+        if store_continuation is not None and idempotency_key:
+            putter = getattr(store_continuation, "put_continuation", None)
+            if callable(putter):
+                existing = {}
+                loader = getattr(store_continuation, "load_continuation", None)
+                if callable(loader):
+                    prior = loader(idempotency_key)
+                    if isinstance(prior, Mapping):
+                        existing = dict(prior)
+                existing.update(
+                    {
+                        "markdown_pending": {
+                            "projection_id": projection.projection_id,
+                            "preview_id": preview.preview_id,
+                        },
+                        "markdown_preview": {
+                            "projection_id": projection.projection_id,
+                            "preview_id": preview.preview_id,
+                            "base_text": preview.base_text,
+                            "candidate_text": preview.candidate_text,
+                            "base_board_revision": preview.base_board_revision,
+                            "candidate_board_revision": (
+                                preview.candidate_board_revision
+                            ),
+                            "entries": [
+                                entry.to_dict() for entry in preview.entries
+                            ],
+                        },
+                    }
+                )
+                putter(idempotency_key, existing)
+
+    def _clear_pending_preview(
+        self,
+        projection_id: str,
+        *,
+        store_continuation: Any | None = None,
+        idempotency_key: str = "",
+    ) -> None:
+        self._pending.pop(projection_id, None)
+        try:
+            self._continuation_path.unlink()
+        except FileNotFoundError:
+            pass
+
+    def plan_revision_projection_cid(self) -> str:
+        """Return the exact content-addressed Markdown board revision."""
+
+        try:
+            raw = self.path.read_bytes()
+        except FileNotFoundError:
+            return taskboard_revision(b"")
+        return taskboard_revision(raw)
+
+    def apply_plan_revision(
+        self,
+        *,
+        revision: Any,
+        admission: Any = None,
+        goal_graph: Any = None,
+        aliases: Mapping[str, str] | None = None,
+        retained_task_cids: Sequence[str] = (),
+        claimed_task_cids: Sequence[str] = (),
+        deferred_item_keys: Sequence[str] = (),
+        origin: str = "create",
+        store_continuation: Any | None = None,
+        idempotency_key: str = "",
+        expected_board_revision: str = "",
+        epoch_id: str = "",
+    ) -> dict[str, Any]:
+        """Apply one create/steer plan revision onto this Markdown projection.
+
+        Create installs an admitted plan on an empty board.  Steer appends only
+        newly admitted tasks and refuses to rewrite claimed/accepted task specs.
+        Pending previews are reloaded from durable continuation storage rather
+        than process-only dictionaries.
+        """
+
+        del goal_graph  # Markdown requires admitted evidence; graph alone is insufficient.
+        if admission is None:
+            raise MarkdownTaskSourceError(
+                "apply_plan_revision requires an admitted plan for Markdown"
+            )
+        semantic_revision = int(getattr(revision, "semantic_revision", 1) or 1)
+        projection = self.project(
+            admission,
+            aliases=aliases,
+            revision=semantic_revision,
+        )
+        claimed = {str(item) for item in claimed_task_cids}
+        retained = {str(item) for item in retained_task_cids}
+
+        try:
+            raw = self.path.read_bytes()
+        except FileNotFoundError:
+            raw = b""
+        text = raw.decode("utf-8") if raw else ""
+        current_revision = taskboard_revision(raw)
+
+        if text.strip():
+            try:
+                existing = parse_markdown_task_source(
+                    text,
+                    path=self.path,
+                    max_tasks=self.store.max_tasks,
+                    board_revision=current_revision,
+                )
+            except MarkdownTaskSourceIntegrityError as exc:
+                raise MarkdownTaskSourceConflict(str(exc)) from exc
+            existing_cids = set(existing.task_cids)
+            # Never edit claimed/accepted specs already present on the board.
+            protected = claimed | retained
+            for task in existing.tasks:
+                if task.task_cid in protected or task.task_cid in claimed:
+                    # Spec-bearing identity fields are frozen in the marker.
+                    if task.task_cid not in set(projection.task_cids):
+                        raise MarkdownTaskSourceConflict(
+                            "claimed/accepted task missing from candidate plan"
+                        )
+            if origin == "create" or str(origin).endswith("create"):
+                if existing_cids and existing_cids != set(projection.task_cids):
+                    raise MarkdownTaskSourceConflict(
+                        "create apply cannot replace an existing task population"
+                    )
+                if existing.projection_id == projection.projection_id:
+                    return {
+                        "projection_cid": current_revision,
+                        "board_revision": current_revision,
+                        "plan_root": projection.plan_root,
+                        "changed": False,
+                        "replayed": True,
+                        "deferred_item_keys": list(deferred_item_keys),
+                    }
+            # Steer / additive path: only brand-new task CIDs may be appended.
+            new_cids = [
+                cid for cid in projection.task_cids if cid not in existing_cids
+            ]
+            if not new_cids and existing_cids == set(projection.task_cids):
+                return {
+                    "projection_cid": current_revision,
+                    "board_revision": current_revision,
+                    "plan_root": projection.plan_root,
+                    "changed": False,
+                    "replayed": True,
+                    "deferred_item_keys": list(deferred_item_keys),
+                }
+            if existing_cids - set(projection.task_cids):
+                # Dropping tasks is forbidden (history preserving).
+                raise MarkdownTaskSourceConflict(
+                    "plan revision would drop existing Markdown tasks"
+                )
+            # Append only the new entries while keeping prior blocks intact.
+            new_entries = [
+                entry
+                for entry in projection.entries
+                if entry.task_cid in set(new_cids)
+            ]
+            if not new_entries:
+                raise MarkdownTaskSourceConflict(
+                    "steer apply produced no appendable Markdown entries"
+                )
+            preview = preview_taskboard_materialization(text, new_entries)
+            self._persist_pending_preview(
+                projection,
+                preview,
+                store_continuation=store_continuation,
+                idempotency_key=idempotency_key,
+            )
+            transaction = commit_taskboard_materialization(
+                self.path,
+                self.journal_path,
+                preview,
+                epoch_id=epoch_id or f"plan-rev:{projection.projection_id}",
+                expected_board_revision=(
+                    expected_board_revision or preview.base_board_revision
+                ),
+            )
+            if transaction.state is TaskboardMaterializationTransactionState.BLOCKED:
+                raise MarkdownTaskSourceConflict(
+                    "Markdown plan revision append blocked: "
+                    + ", ".join(transaction.reason_codes)
+                )
+            if not transaction.committed:
+                raise MarkdownTaskSourceConflict(
+                    "Markdown plan revision append did not commit: "
+                    + ", ".join(transaction.reason_codes)
+                )
+            self._clear_pending_preview(
+                projection.projection_id,
+                store_continuation=store_continuation,
+                idempotency_key=idempotency_key,
+            )
+            board_revision = taskboard_revision(self.path.read_bytes())
+            return {
+                "projection_cid": board_revision,
+                "board_revision": board_revision,
+                "plan_root": projection.plan_root,
+                "changed": bool(transaction.changed),
+                "replayed": bool(transaction.resumed),
+                "deferred_item_keys": list(deferred_item_keys),
+                "appended_task_cids": list(new_cids),
+            }
+
+        # Empty board: create path via existing materialize journal.
+        pending = self._load_pending_preview(
+            projection,
+            store_continuation=store_continuation,
+            idempotency_key=idempotency_key,
+        )
+        if pending is not None:
+            self._pending[projection.projection_id] = pending
+        result = self.materialize(
+            projection,
+            expected_board_revision=expected_board_revision,
+            epoch_id=epoch_id or projection.projection_id,
+        )
+        if result.transaction is not None and result.transaction.committed:
+            self._clear_pending_preview(
+                projection.projection_id,
+                store_continuation=store_continuation,
+                idempotency_key=idempotency_key,
+            )
+        elif result.no_op:
+            self._clear_pending_preview(
+                projection.projection_id,
+                store_continuation=store_continuation,
+                idempotency_key=idempotency_key,
+            )
+        else:
+            preview = self._pending.get(projection.projection_id)
+            if preview is not None:
+                self._persist_pending_preview(
+                    projection,
+                    preview,
+                    store_continuation=store_continuation,
+                    idempotency_key=idempotency_key,
+                )
+        board_revision = self.plan_revision_projection_cid()
+        return {
+            "projection_cid": board_revision,
+            "board_revision": board_revision,
+            "plan_root": projection.plan_root,
+            "changed": not result.no_op,
+            "replayed": result.no_op,
+            "deferred_item_keys": list(deferred_item_keys),
+            "reason_codes": list(result.reason_codes),
+        }
 
     def project(
         self,
@@ -1353,7 +1715,7 @@ class MarkdownTaskSource:
         if expected_board_revision and expected_board_revision != current_revision:
             raise MarkdownTaskSourceConflict("stale taskboard revision")
 
-        preview = self._pending.get(projection.projection_id)
+        preview = self._load_pending_preview(projection)
         if preview is None:
             recovered_preview = self._recover_preview(text, projection)
             if recovered_preview is not None:
@@ -1404,7 +1766,7 @@ class MarkdownTaskSource:
             raise MarkdownTaskSourceConflict(
                 "candidate taskboard exceeds its configured byte bound"
             )
-        self._pending[projection.projection_id] = preview
+        self._persist_pending_preview(projection, preview)
         transaction = commit_taskboard_materialization(
             self.path,
             self.journal_path,
@@ -1442,7 +1804,7 @@ class MarkdownTaskSource:
             raise MarkdownTaskSourceIntegrityError(
                 "committed Markdown task population failed verification"
             )
-        self._pending.pop(projection.projection_id, None)
+        self._clear_pending_preview(projection.projection_id)
         return MarkdownMaterializationResult(
             projection=projection,
             snapshot=snapshot,
