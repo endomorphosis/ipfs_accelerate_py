@@ -411,8 +411,18 @@ PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
 MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
 MAX_PERSISTED_PROPOSAL_REPAIR_PATHS = 8
 MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOLS = 16
-MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOL_BYTES = 256
-MAX_PERSISTED_PROPOSAL_REPAIR_PATH_BYTES = 512
+MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOL_JSON_BYTES = 256
+MAX_PERSISTED_PROPOSAL_REPAIR_PATH_JSON_BYTES = 512
+SECRET_SHAPED_TEST_SYMBOL_RE = re.compile(
+    r"(?ix)(?:"
+    r"(?:^|_)(?:api_key|access_token|auth_token|refresh_token|"
+    r"client_secret|password|passwd|secret|credentials?|private_key)(?:_|$)|"
+    r"(?:^|_)(?:akia|asia)[0-9a-z]{16}(?:_|$)|"
+    r"(?:^|_)aiza[0-9a-z_]{20,}(?:_|$)|"
+    r"(?:^|_)(?:gh[pousr]|sk|sk_live|rk_live|pk_live|xox[baprs]|"
+    r"akia|aiza|xai)[_-][a-z0-9_-]{8,}"
+    r")"
+)
 MAX_PENDING_SCOPE_ADJUDICATIONS = 256
 SECRET_CHANGE_SCOPE_EXAMINATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -467,12 +477,12 @@ def _python_test_symbol_names(source: Any) -> frozenset[str]:
     )
 
 
-def _strict_utf8_size(value: str) -> int | None:
-    """Return the exact UTF-8 size, or None for non-serializable surrogates."""
+def _canonical_json_text_size(value: str) -> int | None:
+    """Return serialized size, including JSON escaping, or None if invalid."""
 
     try:
-        return len(value.encode("utf-8", errors="strict"))
-    except UnicodeEncodeError:
+        return len(canonical_json(value).encode("utf-8", errors="strict"))
+    except (TypeError, UnicodeEncodeError, ValueError):
         return None
 
 
@@ -504,10 +514,10 @@ def _removed_baseline_test_symbol_projection(
     for path in sorted(symbols_by_path):
         if len(records) >= MAX_PERSISTED_PROPOSAL_REPAIR_PATHS:
             break
-        path_size = _strict_utf8_size(path)
+        path_size = _canonical_json_text_size(path)
         if (
             path_size is None
-            or path_size > MAX_PERSISTED_PROPOSAL_REPAIR_PATH_BYTES
+            or path_size > MAX_PERSISTED_PROPOSAL_REPAIR_PATH_JSON_BYTES
         ):
             continue
         removed = tuple(sorted(symbols_by_path[path]))
@@ -515,10 +525,13 @@ def _removed_baseline_test_symbol_projection(
         for symbol in removed:
             if remaining_symbol_budget <= 0:
                 break
-            symbol_size = _strict_utf8_size(symbol)
+            if SECRET_SHAPED_TEST_SYMBOL_RE.search(symbol):
+                continue
+            symbol_size = _canonical_json_text_size(symbol)
             if (
                 symbol_size is None
-                or symbol_size > MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOL_BYTES
+                or symbol_size
+                > MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOL_JSON_BYTES
             ):
                 continue
             included.append(symbol)
@@ -18749,8 +18762,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "completion_authoritative": False,
         }
         if "test_weakening_forbidden" in reason_codes:
+            test_weakening_paths = {
+                str(getattr(finding, "path", "") or "")
+                for finding in findings
+                if str(
+                    getattr(getattr(finding, "code", ""), "value", "")
+                    or ""
+                ).strip()
+                == "test_weakening_forbidden"
+            }
             repair_projection = _removed_baseline_test_symbol_projection(
-                tuple(getattr(proposal, "candidate_diff", ()) or ())
+                tuple(
+                    entry
+                    for entry in tuple(
+                        getattr(proposal, "candidate_diff", ()) or ()
+                    )
+                    if str(getattr(entry, "path", "") or "")
+                    in test_weakening_paths
+                )
             )
             if repair_projection["path_count"]:
                 compact.update(
@@ -32089,12 +32118,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         if not isinstance(raw_symbol, str):
                             continue
                         symbol = raw_symbol.strip()
-                        symbol_size = _strict_utf8_size(symbol)
+                        symbol_size = _canonical_json_text_size(symbol)
                         if (
                             symbol
                             and symbol_size is not None
                             and symbol_size
-                            <= MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOL_BYTES
+                            <= MAX_PERSISTED_PROPOSAL_REPAIR_SYMBOL_JSON_BYTES
                         ):
                             repair_changed_symbols.add(symbol)
         prioritized_repair_symbols = tuple(

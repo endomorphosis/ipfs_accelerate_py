@@ -11722,6 +11722,12 @@ def test_post_merge_correction_bypasses_stale_retry_context_and_addendum(
 
 
 def test_removed_baseline_test_symbols_survive_retry_projection() -> None:
+    secret_symbol = (
+        "test_sk_live_51H8xYzAbCdEfGhIjKlMnOpQrStUvWxY"
+    )
+    unrelated_secret_symbol = (
+        "test_ghp_41H8xYzAbCdEfGhIjKlMnOpQrStUvWxY"
+    )
     finding = SimpleNamespace(
         code=SimpleNamespace(value="test_weakening_forbidden"),
         path="tests/test_identity.py",
@@ -11740,10 +11746,23 @@ def test_removed_baseline_test_symbols_survive_retry_projection() -> None:
                     before_source=(
                         "def test_stable_identity() -> None:\n"
                         "    assert stable_identity()\n"
+                        f"def {secret_symbol}() -> None:\n"
+                        "    assert False\n"
                     ),
                     after_source=(
                         "def test_new_identity() -> None:\n"
                         "    assert new_identity()\n"
+                    ),
+                ),
+                SimpleNamespace(
+                    path="src/unrelated.py",
+                    before_source=(
+                        f"def {unrelated_secret_symbol}() -> None:\n"
+                        "    assert False\n"
+                    ),
+                    after_source=(
+                        "def test_unrelated_replacement() -> None:\n"
+                        "    assert True\n"
                     ),
                 ),
             ),
@@ -11763,8 +11782,8 @@ def test_removed_baseline_test_symbols_survive_retry_projection() -> None:
         {
             "path": "tests/test_identity.py",
             "missing_baseline_test_symbols": ["test_stable_identity"],
-            "missing_baseline_test_symbol_count": 1,
-            "missing_baseline_test_symbols_truncated": False,
+            "missing_baseline_test_symbol_count": 2,
+            "missing_baseline_test_symbols_truncated": True,
         }
     ]
     assert compact["removed_baseline_test_path_count"] == 1
@@ -11774,6 +11793,14 @@ def test_removed_baseline_test_symbols_survive_retry_projection() -> None:
     ] == (
         compact["removed_baseline_test_symbols"]
     )
+    serialized = json.dumps(
+        normalized,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    assert secret_symbol not in serialized
+    assert unrelated_secret_symbol not in serialized
 
 
 def test_removed_baseline_test_symbol_projection_is_exact_and_bounded() -> None:
@@ -11781,23 +11808,48 @@ def test_removed_baseline_test_symbol_projection_is_exact_and_bounded() -> None:
         f"test_removed_{index:02d}" for index in range(17)
     ]
     oversized_symbol = "test_" + ("x" * 300)
+    control_paths = tuple(
+        "tests/" + ("\x01" * 480) + f"-{index}.py"
+        for index in range(8)
+    )
+    control_path_entries = tuple(
+        SimpleNamespace(
+            path=path,
+            before_source=(
+                f"def test_control_path_{index}() -> None:\n"
+                "    assert True\n"
+            ),
+            after_source=(
+                "def test_replacement() -> None:\n"
+                "    assert True\n"
+            ),
+        )
+        for index, path in enumerate(control_paths)
+    )
     before_source = "".join(
         f"def {symbol}() -> None:\n    assert True\n"
         for symbol in (*ordinary_symbols, oversized_symbol)
     )
-    findings = tuple(
+    unrelated_findings = tuple(
         SimpleNamespace(
             code=SimpleNamespace(value=f"unrelated_{index}"),
             path=f"unrelated-{index}.txt",
             message="unrelated finding",
         )
         for index in range(8)
-    ) + (
+    )
+    weakening_paths = (
+        "tests/test_identity.py",
+        "tests/\udcff-invalid.py",
+        *control_paths,
+    )
+    findings = unrelated_findings + tuple(
         SimpleNamespace(
             code=SimpleNamespace(value="test_weakening_forbidden"),
-            path="tests/test_identity.py",
+            path=path,
             message="test assertions or execution were weakened",
-        ),
+        )
+        for path in weakening_paths
     )
     proposal_validation = SimpleNamespace(
         accepted=False,
@@ -11826,6 +11878,7 @@ def test_removed_baseline_test_symbol_projection_is_exact_and_bounded() -> None:
                         "    assert True\n"
                     ),
                 ),
+                *control_path_entries,
             ),
         ),
         policy=SimpleNamespace(policy_id="policy:identity"),
@@ -11843,7 +11896,7 @@ def test_removed_baseline_test_symbol_projection_is_exact_and_bounded() -> None:
     assert record["missing_baseline_test_symbols"] == ordinary_symbols[:16]
     assert record["missing_baseline_test_symbol_count"] == 18
     assert record["missing_baseline_test_symbols_truncated"] is True
-    assert compact["removed_baseline_test_path_count"] == 2
+    assert compact["removed_baseline_test_path_count"] == 10
     assert compact["removed_baseline_test_paths_truncated"] is True
     assert all(
         symbol != oversized_symbol
@@ -11863,6 +11916,9 @@ def test_removed_baseline_test_symbol_projection_is_exact_and_bounded() -> None:
 def test_removed_baseline_test_symbol_reaches_retry_provider_prompt(
     tmp_path: Path,
 ) -> None:
+    secret_symbol = (
+        "test_ghp_31H8xYzAbCdEfGhIjKlMnOpQrStUvWxY"
+    )
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -11922,6 +11978,8 @@ def test_removed_baseline_test_symbol_reaches_retry_provider_prompt(
                     before_source=(
                         "def test_stable_identity() -> None:\n"
                         "    assert stable_identity()\n"
+                        f"def {secret_symbol}() -> None:\n"
+                        "    assert False\n"
                     ),
                     after_source=(
                         "def test_new_identity() -> None:\n"
@@ -11951,8 +12009,10 @@ def test_removed_baseline_test_symbol_reaches_retry_provider_prompt(
     assert diagnostic is not None
     assert len(diagnostic.changed_symbols) == 256
     assert "test_stable_identity" in diagnostic.changed_symbols
+    assert secret_symbol not in diagnostic.changed_symbols
     prompt = daemon._build_implementation_prompt(task, attempt=2)
     assert "test_stable_identity" in prompt
+    assert secret_symbol not in prompt
 
 
 @pytest.mark.parametrize(

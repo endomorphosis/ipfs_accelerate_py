@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -184,13 +185,26 @@ def test_apply_prior_attempt_seed_fast_forward(
 def test_prior_seed_guidance_names_removed_baseline_test_symbol(
     tmp_path: Path,
 ) -> None:
+    secret_symbol = (
+        "test_ghp_51H8xYzAbCdEfGhIjKlMnOpQrStUvWxY"
+    )
+    aws_secret_symbol = "test_AKIAIOSFODNN7EXAMPLE"
+    google_secret_symbol = (
+        "test_AIzasyDUMMYEXAMPLEKEYMATERIAL1234"
+    )
     repo = tmp_path / "repo"
     _init_repo(repo)
     test_path = repo / "tests" / "test_identity.py"
     test_path.parent.mkdir(parents=True)
     test_path.write_text(
         "def test_stable_identity() -> None:\n"
-        "    assert stable_identity()\n",
+        "    assert stable_identity()\n"
+        f"def {secret_symbol}() -> None:\n"
+        "    assert False\n"
+        f"def {aws_secret_symbol}() -> None:\n"
+        "    assert False\n"
+        f"def {google_secret_symbol}() -> None:\n"
+        "    assert False\n",
         encoding="utf-8",
     )
     _git(repo, "add", "tests/test_identity.py")
@@ -235,12 +249,15 @@ def test_prior_seed_guidance_names_removed_baseline_test_symbol(
         {
             "path": "tests/test_identity.py",
             "missing_baseline_test_symbols": ["test_stable_identity"],
-            "missing_baseline_test_symbol_count": 1,
-            "missing_baseline_test_symbols_truncated": False,
+            "missing_baseline_test_symbol_count": 4,
+            "missing_baseline_test_symbols_truncated": True,
         }
     ]
     assert guidance["repair_path_count"] == 1
     assert guidance["repair_paths_truncated"] is False
+    assert secret_symbol not in json.dumps(guidance, sort_keys=True)
+    assert aws_secret_symbol not in json.dumps(guidance, sort_keys=True)
+    assert google_secret_symbol not in json.dumps(guidance, sort_keys=True)
 
 
 def test_prior_root_seed_fast_forwards_clean_task_owned_child_before_proposal(
