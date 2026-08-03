@@ -1355,9 +1355,9 @@ or write authority.
 - Acceptance: Every registry/documented name appears exactly once with canonical name, aliases, schema, factory, capabilities, tier, limitations, evidence CIDs and freshness; all advertised operations pass Python/CLI/MCP/MCP++ parity and required durability/auth/integrity semantics; stale/missing external evidence demotes or blocks rather than silently passes; routing never selects an unsupported capability or hidden fallback.
 - Embedding query: joined backend support matrix capability tier interface certification
 
-## KITA-043 Build the canonical benchmark harness, SLO manifest, and regression gate
+## KITA-043 Build the production-bound benchmark harness, frozen baseline, SLO manifest, and regression gate
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1365,25 +1365,26 @@ or write authority.
 - Track: performance-harness
 - Depends on: KITA-004, KITA-007, KITA-018, KITA-022, KITA-026, KITA-034, KITA-038
 - Goal id: KITA-G110
-- Outputs: ipfs_kit_py/benchmarks/runtime_readiness/run.py, ipfs_kit_py/benchmarks/runtime_readiness/slo.py, ipfs_kit_py/tests/runtime_readiness/release/test_benchmark_harness.py
-- Validation: cd ipfs_kit_py && python -m pytest -q tests/runtime_readiness/release/test_benchmark_harness.py && python benchmarks/runtime_readiness/run.py --profile ci-reference --check-schema
+- Outputs: ipfs_kit_py/benchmarks/runtime_readiness/run.py, ipfs_kit_py/benchmarks/runtime_readiness/production.py, ipfs_kit_py/benchmarks/runtime_readiness/slo.py, ipfs_kit_py/benchmarks/runtime_readiness/bound_revision_results.json
+- Validation: cd ipfs_kit_py && python -m pytest -q tests/runtime_readiness/release/test_benchmark_harness.py tests/runtime_readiness/release/test_production_benchmark_binding.py && python benchmarks/runtime_readiness/run.py --profile ci-reference --check --baseline benchmarks/runtime_readiness/bound_revision_results.json
 - Board namespace: ipfs-kit-runtime-readiness-v1
 - Bundle: ipfs-kit/runtime-readiness/release/benchmark
 - Parallel lane: kita-performance
 - Resource class: cpu-io-large
 - Resource stage: benchmark
-- Estimated tokens: 28000
-- Implementation timeout seconds: 10800
-- Predicted files: ipfs_kit_py/benchmarks/runtime_readiness/run.py, ipfs_kit_py/benchmarks/runtime_readiness/slo.py, ipfs_kit_py/tests/runtime_readiness/release/test_benchmark_harness.py
-- Interfaces: RuntimeBenchmarkManifest@1, RuntimeSLO@1, RegressionDecision@1
+- Estimated tokens: 42000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_kit_py/benchmarks/runtime_readiness/run.py, ipfs_kit_py/benchmarks/runtime_readiness/production.py, ipfs_kit_py/benchmarks/runtime_readiness/slo.py, ipfs_kit_py/benchmarks/runtime_readiness/bound_revision_results.json
+- Interfaces: RuntimeBenchmarkManifest@1, ProductionBenchmarkBinding@1, RuntimeSLO@1, RegressionDecision@1
 - Allow concurrent with:
-- Conflict policy: Own benchmark/SLO/test files; benchmark may observe but never modify production configuration or relax durability.
+- Scope expansion policy: exact
+- Conflict policy: Own only the production adapter, harness entry point, SLO evidence validator/comparator, and frozen result artifact. baseline.py, protected_timer.py, workloads.json, reference_floors.json, the ARC reference oracle, production subsystem code, and all validation test files are immutable validation inputs for this task.
 - Preconditions: Initial baseline and representative canonical subsystem paths exist.
-- Effects: Reproducible workloads measure committed TPS, p50/p95/p99, queues, memory, descriptors, tasks/threads, amplification and recovery across resource profiles.
-- Evidence subset: metadata, small-object, mixed VFS, WAL group commit, ARC, GraphRAG, replica, interface, cold/warm, profile identity
+- Effects: Reproducible workloads execute the named production WAL, VFS, bucket, ARC, GraphRAG, replica, and interface paths and measure committed TPS, p50/p95/p99, queues, memory, descriptors, tasks/threads, amplification and recovery across resource profiles.
+- Evidence subset: operation-level production module and callable binding, protected wall-clock timer, observed target-call receipt, raw samples, complete optimization-envelope source revision/tree digest including missing paths, hardware, OS, Python, declared and installed dependency digests, metadata, small-object, mixed VFS, WAL writer/group commit, ARC hit/put/observed eviction, GraphRAG exact/ANN/ingest, replica plan/repair, router, Python/CLI/MCP++ interfaces, cold/warm/cache, profile identity
 - Symbolic first: true
-- LLM context budget bytes: 28000
-- Acceptance: Harness pins environment/workload/seed/capability/durability and confidence; distinguishes accepted/committed/converged and cold/warm/cache paths; compares against immutable baseline with default 5% throughput and 10% p99 tolerances; absolute floors are reviewed and cannot be lowered in the failing change; benchmark errors/partial samples cannot pass; metrics have bounded cardinality and no secrets.
+- LLM context budget bytes: 64000
+- Acceptance: Every workload/path/operation is isolated and invokes its exact protected callable map, including the public VFS execute contract plus exact handler, bucket catalog creation, WAL coordinator plus durable writer result, successful ARC hit/put and observed eviction, applied replica planning/repair, nonempty GraphRAG exact/ANN plus ingest, the service router, and successful Python/CLI/MCP++ paths; calls are counted only after the real callable returns successfully. No production workload calls MemoryTransactionEngine or baseline.measure_transaction_workload. The adapter and run harness default to the immutable protected_timer.py monotonic wall-clock callback, and the protected test injects its own timer that executes each callback, observes exact target-call deltas/results, and requires raw receipts to match measured duration. Each full callback proves accepted, committed-at-declared-durability, and converged-with-zero-pending stage evidence before its conservative terminal duration is assigned to all three arrays. Raw finite per-sample timings and per-operation/target call counts cover every workload/path and exactly derive all TPS and percentile metrics. The frozen baseline pins an ancestor source revision and a digest of the full KITA-044 optimization envelope, protected tests, benchmark inputs, and ARC oracle (with explicit missing-file state), plus hardware, OS, Python, declared/installed dependency digests, workload digest, seed, durability, samples, confidence, exact bindings, and raw samples; approval is bound to protected-production-binding@1 and the independently recomputed source digest, not a bare self-asserted boolean. Baseline and candidate revisions may differ, but both must be clean measured source revisions; revision and absolute worktree path are excluded from environment equality while the candidate must bind the immutable baseline digest. Default 5% throughput and 10% p99 gates remain fail-closed; missing paths, partial/error samples, failed outcomes, fabricated summaries, unbound code, stale provenance, or secrets fail.
 - Embedding query: benchmark harness committed tps p99 slo regression resource profile
 
 ## KITA-044 Optimize canonical transaction hot paths with bounded backpressure
@@ -1396,25 +1397,26 @@ or write authority.
 - Track: performance-optimization
 - Depends on: KITA-009, KITA-013, KITA-017, KITA-021, KITA-025, KITA-029, KITA-033, KITA-037, KITA-042, KITA-043
 - Goal id: KITA-G110
-- Outputs: ipfs_kit_py/ipfs_kit_py/core/performance.py, ipfs_kit_py/benchmarks/runtime_readiness/optimized_results.json, ipfs_kit_py/tests/runtime_readiness/release/test_backpressure_and_resources.py
-- Validation: cd ipfs_kit_py && python -m pytest -q tests/runtime_readiness/release/test_backpressure_and_resources.py && python benchmarks/runtime_readiness/run.py --profile ci-reference --check
+- Outputs: ipfs_kit_py/ipfs_kit_py/core/performance.py, ipfs_kit_py/ipfs_kit_py/core/wal/writer.py, ipfs_kit_py/ipfs_kit_py/core/wal/coordinator.py, ipfs_kit_py/ipfs_kit_py/core/vfs/service.py, ipfs_kit_py/ipfs_kit_py/core/buckets/service.py, ipfs_kit_py/ipfs_kit_py/cache/arc/cache.py, ipfs_kit_py/ipfs_kit_py/cache/arc/concurrency.py, ipfs_kit_py/ipfs_kit_py/graphrag/service.py, ipfs_kit_py/ipfs_kit_py/graphrag/vector_index.py, ipfs_kit_py/ipfs_kit_py/graphrag.py, ipfs_kit_py/ipfs_kit_py/core/replication/reconciler.py, ipfs_kit_py/ipfs_kit_py/core/service_router.py, ipfs_kit_py/ipfs_kit_py/high_level_api/operation_adapter.py, ipfs_kit_py/ipfs_kit_py/cli/operation_adapter.py, ipfs_kit_py/ipfs_kit_py/mcp_server/tools/operation_adapter.py, ipfs_kit_py/benchmarks/runtime_readiness/optimized_results.json, ipfs_kit_py/tests/runtime_readiness/release/test_backpressure_and_resources.py
+- Validation: cd ipfs_kit_py && python -m pytest -q tests/runtime_readiness/release/test_backpressure_and_resources.py tests/runtime_readiness/release/test_production_benchmark_binding.py tests/runtime_readiness/release/test_production_performance_gate.py tests/runtime_readiness/wal tests/runtime_readiness/vfs tests/runtime_readiness/buckets tests/runtime_readiness/arc tests/runtime_readiness/graphrag tests/runtime_readiness/replication tests/runtime_readiness/interfaces tests/runtime_readiness/mcplusplus && python benchmarks/runtime_readiness/run.py --profile ci-reference --check --baseline benchmarks/runtime_readiness/bound_revision_results.json
 - Board namespace: ipfs-kit-runtime-readiness-v1
 - Bundle: ipfs-kit/runtime-readiness/release/optimization
 - Parallel lane: kita-optimization
 - Resource class: cpu-io-large
 - Resource stage: implementation
-- Estimated tokens: 36000
-- Implementation timeout seconds: 14400
-- Predicted files: ipfs_kit_py/ipfs_kit_py/core/performance.py, ipfs_kit_py/benchmarks/runtime_readiness/optimized_results.json, ipfs_kit_py/tests/runtime_readiness/release/test_backpressure_and_resources.py
+- Estimated tokens: 48000
+- Implementation timeout seconds: 21600
+- Predicted files: ipfs_kit_py/ipfs_kit_py/core/performance.py, ipfs_kit_py/ipfs_kit_py/core/wal/writer.py, ipfs_kit_py/ipfs_kit_py/core/wal/coordinator.py, ipfs_kit_py/ipfs_kit_py/core/vfs/service.py, ipfs_kit_py/ipfs_kit_py/core/buckets/service.py, ipfs_kit_py/ipfs_kit_py/cache/arc/cache.py, ipfs_kit_py/ipfs_kit_py/cache/arc/concurrency.py, ipfs_kit_py/ipfs_kit_py/graphrag/service.py, ipfs_kit_py/ipfs_kit_py/graphrag/vector_index.py, ipfs_kit_py/ipfs_kit_py/graphrag.py, ipfs_kit_py/ipfs_kit_py/core/replication/reconciler.py, ipfs_kit_py/ipfs_kit_py/core/service_router.py, ipfs_kit_py/ipfs_kit_py/high_level_api/operation_adapter.py, ipfs_kit_py/ipfs_kit_py/cli/operation_adapter.py, ipfs_kit_py/ipfs_kit_py/mcp_server/tools/operation_adapter.py, ipfs_kit_py/benchmarks/runtime_readiness/optimized_results.json, ipfs_kit_py/tests/runtime_readiness/release/test_backpressure_and_resources.py
 - Interfaces: BackpressureController@1, RuntimeSLO@1
 - Allow concurrent with:
-- Conflict policy: Cross-cutting hot-file optimization is serialized after all correctness joins; changes outside the new performance module require exact predicted-file amendment and renewed owning-subsystem tests.
+- Scope expansion policy: exact
+- Conflict policy: Cross-cutting hot-file optimization is serialized after all correctness joins and is confined to the exact reviewed production paths above. The KITA-043 baseline, run.py, production.py, slo.py, protected_timer.py, workloads, reference floors, ARC reference oracle, production-binding test, and protected live performance gate are immutable inputs; any further path requires a new sealed task-board revision and renewed owning-subsystem tests.
 - Preconditions: All joined correctness/security/backend/interface gates and benchmark harness pass before optimization.
 - Effects: Measured WAL batching, I/O copies, lock contention, ARC fills, index updates, replica scheduling, connection pooling and adapter overhead improve under bounded queues.
 - Evidence subset: profiles, batching, zero-copy/streaming, locks, async tasks, pools, queue bounds, fairness, cancellation, before/after
 - Symbolic first: true
-- LLM context budget bytes: 24000
-- Acceptance: Committed reference-profile transaction TPS is at least 2x bound-revision baseline or a reviewed evidence-backed ceiling/alternative target exists; no accepted workload regresses beyond policy; queues/memory/descriptors/tasks/threads remain bounded; overload returns explicit backpressure/deadline results; cancellation and fairness pass; fsync/auth/integrity/replication/consistency settings are identical before and after.
+- LLM context budget bytes: 64000
+- Acceptance: The protected gate recomputes aggregate committed TPS from a fresh live production run and from checked-in raw timings produced by the immutable monotonic sample timer; both are at least 2x the KITA-043 baseline digest (unless a separately sealed, independently reviewed ceiling task changes this contract). The live evidence revision is exactly current HEAD; checked evidence names an ancestor whose independently recomputed full optimization-envelope digest equals current HEAD, allowing only evidence-artifact commits afterward. Every result retains the exact production operation bindings, complete raw samples, and current source provenance; the 5% per-series throughput and 10% p99 no-regression gates also pass. Queues/memory/descriptors/tasks/threads remain bounded; overload returns explicit backpressure/deadline/cancellation results with fairness and clean shutdown; WAL fsync ordering, authorization invocation, integrity verification, replica count, and consistency semantics are identical before and after. Asserted-only JSON or a changed benchmark/oracle input fails closed.
 - Embedding query: optimize transaction tps wal batching arc index replica backpressure bounded queues
 
 ## KITA-045 Run soak, chaos, crash, leak, security, and resource-exhaustion qualification
@@ -1572,20 +1574,22 @@ or write authority.
 
 ## KITA-051 Resolve validation retry-budget failure for KITA-044
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
 - Depends on: KITA-009, KITA-013, KITA-017, KITA-021, KITA-025, KITA-029, KITA-033, KITA-037, KITA-042, KITA-043
-- Outputs: ipfs_kit_py/ipfs_kit_py/core/performance.py, ipfs_kit_py/benchmarks/runtime_readiness/optimized_results.json, ipfs_kit_py/tests/runtime_readiness/release/test_backpressure_and_resources.py
-- Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs-kit-runtime-readiness/data/agent_supervisor/ipfs_kit_runtime_readiness/state/discovery/2026-08-03-kita-051-kita-044-retry-budget.md
+- Outputs: ipfs_kit_py/ipfs_kit_py/core/performance.py, ipfs_kit_py/ipfs_kit_py/core/wal/writer.py, ipfs_kit_py/ipfs_kit_py/core/wal/coordinator.py, ipfs_kit_py/ipfs_kit_py/core/vfs/service.py, ipfs_kit_py/ipfs_kit_py/core/buckets/service.py, ipfs_kit_py/ipfs_kit_py/cache/arc/cache.py, ipfs_kit_py/ipfs_kit_py/cache/arc/concurrency.py, ipfs_kit_py/ipfs_kit_py/graphrag/service.py, ipfs_kit_py/ipfs_kit_py/graphrag/vector_index.py, ipfs_kit_py/ipfs_kit_py/graphrag.py, ipfs_kit_py/ipfs_kit_py/core/replication/reconciler.py, ipfs_kit_py/ipfs_kit_py/core/service_router.py, ipfs_kit_py/ipfs_kit_py/high_level_api/operation_adapter.py, ipfs_kit_py/ipfs_kit_py/cli/operation_adapter.py, ipfs_kit_py/ipfs_kit_py/mcp_server/tools/operation_adapter.py, ipfs_kit_py/benchmarks/runtime_readiness/optimized_results.json, ipfs_kit_py/tests/runtime_readiness/release/test_backpressure_and_resources.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_scope_adjudication.py test/api/test_agent_supervisor_validation_scheduler.py
 - Parallel lane: kita-optimization
-- Predicted files: ipfs_kit_py/ipfs_kit_py/core/performance.py, ipfs_kit_py/benchmarks/runtime_readiness/optimized_results.json, ipfs_kit_py/tests/runtime_readiness/release/test_backpressure_and_resources.py
-- Conflict policy: Cross-cutting hot-file optimization is serialized after all correctness joins; changes outside the new performance module require exact predicted-file amendment and renewed owning-subsystem tests.
+- Predicted files: ipfs_kit_py/ipfs_kit_py/core/performance.py, ipfs_kit_py/ipfs_kit_py/core/wal/writer.py, ipfs_kit_py/ipfs_kit_py/core/wal/coordinator.py, ipfs_kit_py/ipfs_kit_py/core/vfs/service.py, ipfs_kit_py/ipfs_kit_py/core/buckets/service.py, ipfs_kit_py/ipfs_kit_py/cache/arc/cache.py, ipfs_kit_py/ipfs_kit_py/cache/arc/concurrency.py, ipfs_kit_py/ipfs_kit_py/graphrag/service.py, ipfs_kit_py/ipfs_kit_py/graphrag/vector_index.py, ipfs_kit_py/ipfs_kit_py/graphrag.py, ipfs_kit_py/ipfs_kit_py/core/replication/reconciler.py, ipfs_kit_py/ipfs_kit_py/core/service_router.py, ipfs_kit_py/ipfs_kit_py/high_level_api/operation_adapter.py, ipfs_kit_py/ipfs_kit_py/cli/operation_adapter.py, ipfs_kit_py/ipfs_kit_py/mcp_server/tools/operation_adapter.py, ipfs_kit_py/benchmarks/runtime_readiness/optimized_results.json, ipfs_kit_py/tests/runtime_readiness/release/test_backpressure_and_resources.py
+- Scope expansion policy: exact
+- Conflict policy: This repair is complete only for the supervisor validation-environment, package-root dependency, and exact task-scope defects; it grants no approval to either preserved KITA-044 performance candidate.
 - Generated by: ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1
 - Retry repair source: KITA-044
 - Retry failure kind: validation
 - Retry repair discovery: /home/barberb/lift_coding/.worktrees/ipfs-kit-runtime-readiness/data/agent_supervisor/ipfs_kit_runtime_readiness/state/discovery/2026-08-03-kita-051-kita-044-retry-budget.md
+- Retry repair resolution: data/agent_supervisor/ipfs_kit_runtime_readiness/state/discovery/2026-08-03-kita-051-kita-044-retry-budget-resolution.md
 - Canonical board task: false
 
-- Acceptance: Retry-budget guardrail filed this from repeated validation failures in KITA-044. Use evidence in /home/barberb/lift_coding/.worktrees/ipfs-kit-runtime-readiness/data/agent_supervisor/ipfs_kit_runtime_readiness/state/discovery/2026-08-03-kita-051-kita-044-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release KITA-044 from strategy blocked_tasks.
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in KITA-044. The resolution receipt proves the supervisor validation blocker is fixed and permits the supervisor to remove KITA-044 from strategy blocked_tasks, but it explicitly rejects both preserved semantic candidates; reopened KITA-043 and the revised exact KITA-044 contract must still pass independently.
