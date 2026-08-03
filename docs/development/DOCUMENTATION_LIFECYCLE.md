@@ -1,11 +1,24 @@
 # Documentation lifecycle, ownership, and freshness policy
 
-This document is the normative policy for classifying documentation in this
-repository, assigning ownership and source authority, deciding where new
-material belongs, and deciding when existing material must be revalidated.
+**Status:** Current
+**Owner:** documentation-governance
+**Audience:** maintainers, parallel documentation authors, implementation agents
+**Scope:** Closed status vocabulary; ownership and source-of-truth authority;
+placement; freshness, audit, and revalidation; archive and supersession;
+handling of code-owned contradictions; and the fail-closed exception policy.
+**Non-goals:** This policy does not reclassify individual files, rewrite shared
+indexes, delete historical records, or authorize prose to resolve contradictions
+that exist in code, package metadata, or executable help. Those actions belong
+to later refresh tasks that cite this policy, or to code/test fix tasks.
+**Last-verified:** `5f572b7391eccc5a1c3975e6c2f9fb4946e0d85e` (2026-08-03);
+sources checked against `docs/INDEX.md`, `docs/README.md`,
+`DOCUMENTATION_CURRENT_STATE.md`, `docs/project/`, `docs/archive/`,
+`docs/development_history/`, and packaging layout in `pyproject.toml`.
 
-It does **not** reclassify individual files or rewrite shared indexes. Those
-actions belong to later refresh tasks that cite this policy.
+This document is the normative **DocumentationLifecyclePolicy@1** for
+classifying documentation in this repository, assigning ownership and source
+authority, deciding where new material belongs, and deciding when existing
+material must be revalidated.
 
 Companion pages:
 
@@ -13,6 +26,8 @@ Companion pages:
   surfaces and audit checklist for the checked-out tree.
 - [Testing](testing.md) — validation commands used as freshness evidence.
 - [Documentation index](../INDEX.md) — audience routing and entrypoints.
+- [Architecture guide conventions](../architecture/GUIDE_CONVENTIONS.md) —
+  writing contract for architecture guides (status labels align with §2).
 
 ## 1. Purpose and non-goals
 
@@ -217,7 +232,7 @@ a banner near the top:
 > code, tests, and Current guides, not by this plan.
 ```
 
-## 6. Freshness triggers and revalidation rules
+## 6. Freshness triggers, audit triggers, and revalidation rules
 
 ### Freshness triggers
 
@@ -236,6 +251,22 @@ relative to its declared Sources or Last-verified commit:
 
 Plan and Historical pages do not require continuous freshness, but they must
 not be relabeled Current without a full revalidation pass.
+
+### Audit triggers (when agents must re-check without a source edit)
+
+Even when Sources appear unchanged, treat the page as requiring an audit pass
+when any of the following fire:
+
+| Audit trigger | Required agent behavior |
+| --- | --- |
+| Task claims the page is Current or cites it as a contract | Run the revalidation procedure in this section |
+| Program refresh or review task lists the page as in-scope | Re-open Sources; refresh Last-verified or demote |
+| Reader report or drift inventory flags a contradiction | Record the inconsistency (§8); do not smooth it in prose |
+| Package install surface or entrypoint inventory is being rewritten | Re-check help and packaging for every claimed command |
+| Status is undeclared and the page sits in a Current-looking path | Apply fail-closed defaults (§2); verify before promoting |
+
+Audit triggers do not by themselves change Status. They force verification
+evidence. After verification, either update Last-verified or demote the page.
 
 ### Deterministic revalidation procedure (agents)
 
@@ -309,7 +340,37 @@ Examples of code-owned blockers:
 - Schema field present in docs but absent from the loaded schema module.
 - Test fixture and implementation disagreeing on default policy.
 
-## 9. Interfaces for automation
+## 9. Exception policy (fail closed)
+
+Exceptions to this policy are rare, explicit, and time-bounded. There is **no**
+implicit exception for convenience, narrative flow, or “obvious” intent.
+
+| Requested exception | Allowed? | Required controls |
+| --- | --- | --- |
+| Treat a Plan or completion summary as Current behavior | **No** | Never. Promote only by writing or updating a Current page with Sources and Last-verified. |
+| Resolve two live sources by choosing one story in prose | **No** | Record both facts as a code-owned blocker (§8). Fix code/tests first. |
+| Skip Last-verified on a new Current page | **No** | Current pages without verification metadata are treated as Reference until verified. |
+| Place the same contract in two Current homes “temporarily” | **No** | Keep one Current home; demote duplicates to Reference/Historical with links. |
+| Leave a Historical page unlabeled when it looks Current | **No** | Add the Historical/Plan banner from §5 before merge. |
+| Rewrite protected operator program inputs | **No** | Operator-owned plan/objectives/todo files are out of scope for ordinary doc tasks. |
+| Delay index/navigation updates | **Yes** | Only when the task does not own those paths; record the navigation debt. |
+| Keep a stale Generated export in-tree | **Yes** | Status must be Generated or Historical; never cite it as Current behavior. |
+| Cite Vendored nested docs | **Yes** | Link only after verifying the cited subset still exists; upstream remains authoritative. |
+| Scope a page as Reference while a code fix is pending | **Yes** | State the known gap, both source sides, and that behavior is not Current-certain. |
+
+### Exception recording
+
+When an allowed exception is used, the page or task evidence MUST state:
+
+1. which rule is deferred;
+2. why the exception applies;
+3. what follow-up task or source change closes it.
+
+Undeclared exceptions are treated as policy violations. Agents must not invent
+new exception classes; expand this table only through a documentation-governance
+change to this file.
+
+## 10. Interfaces for automation
 
 The following logical interfaces are defined for agents and future checkers.
 They are documentation contracts, not Python types.
@@ -340,10 +401,27 @@ on_source_change: revalidate | demote | regenerate
 on_packaging_change: revalidate install/CLI claims
 on_test_contract_change: revalidate or remove claim
 on_supersession: set Superseded-by; demote superseded page
+on_audit_trigger: revalidate without requiring a source edit
 verification: last-verified commit + reproducible commands
 ```
 
-## 10. Agent checklist (single pass)
+### ExceptionPolicy@1
+
+```text
+default: fail_closed
+forbidden: promote_plan_or_summary_to_current;
+           conceal_source_inconsistency_in_prose;
+           skip_last_verified_on_current;
+           dual_current_homes_for_same_contract;
+           rewrite_protected_operator_inputs
+allowed_with_record: delay_unowned_index_updates;
+                     retain_stale_generated_as_non_current;
+                     cite_verified_vendored_subset;
+                     demote_to_reference_while_code_fix_pending
+record_fields: deferred_rule, rationale, follow_up
+```
+
+## 11. Agent checklist (single pass)
 
 Before marking documentation work complete:
 
@@ -352,25 +430,27 @@ Before marking documentation work complete:
 - [ ] Sources are concrete and were opened during the task.
 - [ ] No prose conceals a source inconsistency.
 - [ ] Placement followed §5 (first matching rule).
-- [ ] Freshness triggers and Last-verified updated when status is Current.
+- [ ] Freshness/audit triggers and Last-verified updated when status is Current.
+- [ ] Any exception is listed in §9 and recorded with follow-up.
 - [ ] Validation commands for the owning task were run.
 - [ ] Protected operator files and undeclared paths were not modified.
 
-## 11. Related documents
+## 12. Related documents
 
 | Document | Role |
 | --- | --- |
 | [DOCUMENTATION_CURRENT_STATE.md](DOCUMENTATION_CURRENT_STATE.md) | Inventory of maintained surfaces and review checklist |
 | [testing.md](testing.md) | Deterministic and selective test commands |
+| [GUIDE_CONVENTIONS.md](../architecture/GUIDE_CONVENTIONS.md) | Architecture guide writing contract |
 | [docs/INDEX.md](../INDEX.md) | Audience routing |
 | [docs/README.md](../README.md) | Documentation orientation |
 
 ---
 
-**Status:** Current  
-**Owner:** documentation-governance  
-**Audience:** maintainer, agent  
-**Sources:** `docs/INDEX.md`; `docs/README.md`; `docs/development/DOCUMENTATION_CURRENT_STATE.md`; `docs/project/`; `docs/archive/`; `docs/development_history/`; `pyproject.toml`  
-**Last-verified:** 2026-08-03  
-**Freshness triggers:** changes to documentation index layout; new top-level doc families; packaging entrypoint renames; operator changes to governance programs  
-**Supersedes:** informal ad-hoc treatment of plans and summaries as current contracts  
+**Status:** Current
+**Owner:** documentation-governance
+**Audience:** maintainer, agent
+**Sources:** `docs/INDEX.md`; `docs/README.md`; `docs/development/DOCUMENTATION_CURRENT_STATE.md`; `docs/architecture/GUIDE_CONVENTIONS.md`; `docs/project/`; `docs/archive/`; `docs/development_history/`; `pyproject.toml`
+**Last-verified:** `5f572b7391eccc5a1c3975e6c2f9fb4946e0d85e` (2026-08-03)
+**Freshness triggers:** changes to documentation index layout; new top-level doc families; packaging entrypoint renames; operator changes to governance programs; edits to this policy’s exception table
+**Supersedes:** informal ad-hoc treatment of plans and summaries as current contracts
