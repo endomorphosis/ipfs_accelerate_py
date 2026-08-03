@@ -78,6 +78,11 @@ from .deterministic_doctor_transforms import (
 DETERMINISTIC_DOCTOR_SYNTHESIZER_INTERFACE: Final[str] = (
     "DeterministicDoctorSynthesizer@1"
 )
+# Capability revision for PDR-051 bounded synthesis integration. The frozen
+# LPR-036 interface identity remains ``@1`` (existing tests pin it); receipt
+# schema is already ``@2``. Multi-operator / CEGIS / residual-hybrid
+# orchestration is owned by ``ProgramRepairSynthesizer@1``.
+DETERMINISTIC_DOCTOR_SYNTHESIZER_CAPABILITY_VERSION: Final[int] = 2
 DOCTOR_ANALYTICAL_OVERLAY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/analytical-overlay@1"
 )
@@ -1249,6 +1254,25 @@ class DeterministicDoctorSynthesizer:
             raise DoctorSynthesisError("synthesizer registry is not configured")
         return self._registry
 
+    @property
+    def capability_version(self) -> int:
+        """PDR-051 capability revision (interface identity remains ``@1``)."""
+
+        return DETERMINISTIC_DOCTOR_SYNTHESIZER_CAPABILITY_VERSION
+
+    @staticmethod
+    def prove_zero_model_calls(receipt: DoctorSynthesisReceipt) -> bool:
+        """Return True when a receipt hard-proves zero LLM/provider invocations."""
+
+        if not isinstance(receipt, DoctorSynthesisReceipt):
+            return False
+        return (
+            receipt.llm_invocation_count == 0
+            and receipt.model_provider_call_count == 0
+            and receipt.provider_invoked is False
+            and receipt.source_write_count == 0
+        )
+
     def synthesize(self, request: DoctorSynthesisRequest) -> DoctorSynthesisReceipt:
         """Render a proof-admitted proposal into a candidate analytical overlay."""
 
@@ -1992,6 +2016,7 @@ def materialize_proof_admitted_overlay(
 
 __all__ = (
     "CONTRACT_VERSION",
+    "DETERMINISTIC_DOCTOR_SYNTHESIZER_CAPABILITY_VERSION",
     "DETERMINISTIC_DOCTOR_SYNTHESIZER_INTERFACE",
     "DOCTOR_ANALYTICAL_OVERLAY_SCHEMA",
     "DOCTOR_SIMULATION_RECEIPT_SCHEMA",
