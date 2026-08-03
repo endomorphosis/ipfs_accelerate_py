@@ -225,6 +225,70 @@ def test_leading_cd_does_not_authorize_wrong_root_duplicate() -> None:
     )
 
 
+def test_leading_cd_root_proves_candidate_imports_declared_module() -> None:
+    declared_path = "ipfs_kit_py/ipfs_kit_py/core/performance.py"
+    candidate_path = "ipfs_kit_py/benchmarks/runtime_readiness/run.py"
+    receipt = _adjudicate(
+        (
+            _entry(
+                declared_path,
+                "class PerformanceError(Exception):\n    pass\n",
+                "class PerformanceError(Exception):\n    pass\n"
+                "def check_optimized_results():\n    return {'ok': True}\n",
+            ),
+            _entry(
+                candidate_path,
+                "def main():\n    return 0\n",
+                "def main():\n"
+                "    from ipfs_kit_py.core.performance import "
+                "check_optimized_results\n"
+                "    return 0 if check_optimized_results()['ok'] else 1\n",
+            ),
+        ),
+        scope=(declared_path,),
+        validation_commands=(
+            "cd ipfs_kit_py && python -m pytest -q "
+            "tests/runtime_readiness/release/test_backpressure.py",
+        ),
+    )
+
+    assert receipt.justified_paths == (candidate_path,)
+    assert receipt.decisions[0].reason_codes == (
+        ScopeExpansionReason.CANDIDATE_IMPORTS_DECLARED_PATH,
+    )
+    assert receipt.decisions[0].evidence_paths == (declared_path,)
+
+
+def test_unsafe_cd_does_not_create_module_alias_authority() -> None:
+    declared_path = "ipfs_kit_py/ipfs_kit_py/core/performance.py"
+    candidate_path = "ipfs_kit_py/benchmarks/runtime_readiness/run.py"
+    receipt = _adjudicate(
+        (
+            _entry(
+                declared_path,
+                "VALUE = 1\n",
+                "VALUE = 2\n",
+            ),
+            _entry(
+                candidate_path,
+                "def main():\n    return 0\n",
+                "from ipfs_kit_py.core.performance import VALUE\n"
+                "def main():\n    return VALUE\n",
+            ),
+        ),
+        scope=(declared_path,),
+        validation_commands=(
+            "cd ../ipfs_kit_py && python -m pytest -q tests/test_perf.py",
+        ),
+    )
+
+    assert receipt.justified is False
+    assert receipt.denied_paths == (candidate_path,)
+    assert receipt.decisions[0].reason_codes == (
+        ScopeExpansionReason.NO_DEPENDENCY_EVIDENCE,
+    )
+
+
 @pytest.mark.parametrize(
     "command",
     (
