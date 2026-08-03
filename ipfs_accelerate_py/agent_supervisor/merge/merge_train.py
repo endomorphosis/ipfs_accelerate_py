@@ -3130,12 +3130,17 @@ class MergeTrain:
                     preflight_receipt=preflight_receipt,
                 )
             callback_reason = str(callback_result.get("reason") or "merge_callback_failed")
-            retryable = callback_reason not in {
-                "invalid_merge_request",
-                "candidate_commit_missing",
-                "validation_failed",
-                "branch_has_no_changes",
-            }
+            retryable = bool(
+                callback_result.get("retryable") is not False
+                and callback_reason
+                not in {
+                    "invalid_merge_request",
+                    "candidate_commit_missing",
+                    "validation_failed",
+                    "branch_has_no_changes",
+                    "exact_recovery_integrity_incident",
+                }
+            )
             return self._finish_failure(
                 request,
                 reason=callback_reason,
