@@ -1,18 +1,23 @@
 # MCP and MCP++ runtime architecture
 
-**Status:** Current  
+**Status:** Current
+
 **Audience:** Integrators, operators, and implementation agents selecting an MCP
-runtime, registering tools, or tracing dispatch through validation and policy  
+runtime, registering tools, or tracing dispatch through validation and policy
+
 **Scope:** Canonical MCP server ownership, compatibility and alternate packages,
 tool registry and hierarchical dispatch, transport boundaries, MCP++ primitives
 (IDL, CID artifacts, UCAN, temporal policy, Event DAG, risk/frontier), and
-import side effects that affect process startup  
+import side effects that affect process startup
+
 **Non-goals:** Operator install and journey steps (see `docs/MCP_SERVER.md` and
 setup guides when refreshed under DOC-023); full MCP++ chapter checklists
-(`mcpplusplus/`); sibling-repo ownership maps (DOC-010); model catalog vs
-router plane detail (DOC-007); agent-supervisor control-plane design beyond the
-MCP tool category boundary  
-**Last verified:** `f279353053fe41593d76a95245416933d08e8999` (2026-08-03);
+(`mcpplusplus/`); sibling-repository ownership maps (see
+[Integration boundaries](INTEGRATION_BOUNDARIES.md)); model catalog vs router
+plane detail (see [Model/service routing](MODEL_SERVICE_ROUTING.md));
+agent-supervisor control-plane design beyond the MCP tool category boundary
+
+**Last verified:** `e559ff0046c639ba1dadabe02ea0ea91d9877e20` (2026-08-03);
 paths and symbols checked against `ipfs_accelerate_py/mcp_server/`,
 `ipfs_accelerate_py/mcp/`, `ipfs_accelerate_py/mcplusplus_module/`,
 `mcpplusplus/`, and focused unified-bootstrap / transport test modules
@@ -21,7 +26,7 @@ paths and symbols checked against `ipfs_accelerate_py/mcp_server/`,
 
 | Concern | Path / symbol | Notes |
 | --- | --- | --- |
-| Canonical package | `ipfs_accelerate_py/mcp_server/` | Authoritative runtime |
+| Canonical package | `ipfs_accelerate_py/mcp_server/` | Registry/runtime ownership target; transport gaps are documented below |
 | Package exports | `ipfs_accelerate_py/mcp_server/__init__.py` | Lazy `_EXPORT_MAP` re-exports |
 | Server construct | `mcp_server.server.create_server` | Canonical builder + optional bootstrap |
 | Unified bootstrap | `mcp_server.server._attach_unified_bootstrap` | Meta-tools, services, policy hooks |
@@ -33,7 +38,7 @@ paths and symbols checked against `ipfs_accelerate_py/mcp_server/`,
 | Runtime router | `mcp_server.runtime_router.RuntimeRouter` | fastapi / trio execution routing |
 | MCP++ primitives | `mcp_server/mcplusplus/` | Artifacts, UCAN, policy, Event DAG, risk |
 | FastAPI transport | `mcp_server.fastapi_service` | HTTP JSON-RPC without legacy facade |
-| Standalone process | `mcp_server.standalone_server` | Process entry; `python -m ipfs_accelerate_py.mcp_server` |
+| Standalone lifecycle shell | `mcp_server.standalone_server` | Current module entry serves `/healthz` only; it is not an MCP protocol host |
 | MCP+p2p facade | `mcp_server.mcp_p2p_transport` | Delegates to `p2p_tasks.mcp_p2p` |
 | Compatibility facade | `ipfs_accelerate_py/mcp/` | Legacy import path; bridge to unified |
 | Facade factory | `mcp.server.create_mcp_server` | Default unified bridge; rollback flags |
@@ -42,8 +47,8 @@ paths and symbols checked against `ipfs_accelerate_py/mcp_server/`,
 | Trio alternate package | `ipfs_accelerate_py/mcplusplus_module/` | Trio-native MCP++ surface |
 | Spec / conformance records | `mcpplusplus/` | Checklist and gap matrix (not runtime) |
 | Wave A loaders | `mcp_server.wave_a_loaders.configure_wave_a_loaders` | `ipfs`, `workflow`, `p2p` |
-| Focused tests | `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` | Bootstrap + dispatch contracts |
-| Transport matrix | `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py` | HTTP / p2p parity of policy shape |
+| Focused tests | `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` | Bootstrap + dispatch contracts; currently has known failures listed below |
+| Transport matrix | `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py` | Intended HTTP/p2p policy shape; currently exposes a policy-obligation mismatch |
 
 ## Context and component map
 
@@ -58,8 +63,8 @@ with their owning packages.
                     |
         +-----------+-----------+
         |     Transports        |   (delivery only — not policy authority)
-        |  stdio / FastAPI      |
-        |  Trio / gRPC / p2p    |
+        |  FastAPI / Trio       |
+        |  gRPC / p2p           |
         +-----------+-----------+
                     |
         +-----------v-----------+
@@ -80,31 +85,33 @@ with their owning packages.
 
 | Package / tree | Role | Prefer for |
 | --- | --- | --- |
-| `ipfs_accelerate_py.mcp_server` | **Canonical** runtime: server construct, hierarchical tools, unified dispatch, MCP++ primitives, FastAPI/standalone/p2p facades | New integrations, embedding, operators |
+| `ipfs_accelerate_py.mcp_server` | **Canonical** registry/runtime: server construct, hierarchical tools, guarded dispatch, MCP++ primitives and transport facades; standalone/direct-call gaps remain | New integrations, embedding, operators |
 | `ipfs_accelerate_py.mcp` | **Compatibility facade**: historical import path; `create_mcp_server` bridges to unified by default; some modules auto-install optional deps | Legacy callers mid-migration only |
 | `ipfs_accelerate_py.mcplusplus_module` | **Alternate Trio-first** MCP++ implementation (trio server, p2p helpers); shims often *delegate* to canonical tools | Trio-native hosts already on this package |
 | `mcpplusplus/` | Spec conformance, gap matrix, unification plan | Evidence and chapter status — not importable runtime |
 | `ipfs_accelerate_py.p2p_tasks` | Framed MCP-over-p2p protocol implementation | Transport peer path; still dispatches into server tools |
 
-**Integrator selection rule:** import and start
-`ipfs_accelerate_py.mcp_server` (`create_server`, `fastapi_service`, or
-`standalone_server`). Treat `mcp` as a compatibility entry that may still work
-but is not the ownership target. Treat `mcplusplus_module` as a specialized
-Trio surface that should not fork unique business logic.
+**Integrator selection rule:** use `ipfs_accelerate_py.mcp_server` as the
+canonical registry/runtime package. Use `fastapi_service` for the current
+functional HTTP MCP host, or embed `create_server()` behind a transport you
+mount explicitly. Do not point MCP clients at `standalone_server`: its current
+ASGI app exposes `/healthz` only. Treat `mcp` as a compatibility entry that may
+still work but is not the ownership target. Treat `mcplusplus_module` as a
+specialized Trio surface that should not fork unique business logic.
 
 ## Entrypoints
 
 | Entry | Package | When to use |
 | --- | --- | --- |
-| `from ipfs_accelerate_py.mcp_server import create_server` | canonical | Embed or script the server in-process |
-| `python -m ipfs_accelerate_py.mcp_server` | canonical | Module entry → `standalone_server.main` |
-| `python -m ipfs_accelerate_py.mcp_server.fastapi_service` | canonical | HTTP service using `IPFS_MCP_*` env |
+| `from ipfs_accelerate_py.mcp_server import create_server` | canonical | Build the in-process registry/lifecycle object; mount a functional transport separately |
+| `python -m ipfs_accelerate_py.mcp_server` | incomplete lifecycle shell | Serves `/healthz` only today; not suitable for MCP clients |
+| `python -m ipfs_accelerate_py.mcp_server.fastapi_service` | canonical HTTP host | Functional HTTP service using `IPFS_MCP_*` env |
 | `python -m ipfs_accelerate_py.mcp.cli …` | compatibility CLI surface | Host options for task worker / libp2p; still expected to land on unified runtime when bridge is enabled |
 | `from ipfs_accelerate_py.mcp.server import create_mcp_server` | compatibility | Legacy factory; **defaults to unified bridge** unless rollback flags force legacy |
 | `ipfs_accelerate_py.mcplusplus_module` Trio server | alternate | Trio-native deployments; prefer delegating tools to `mcp_server` |
 
 Optional install extras (see `pyproject.toml`): `mcp` (FastMCP and related),
-`mcp-p2p` (p2p transport deps). Presence of an extra is a install-time
+`mcp-p2p` (p2p transport deps). Presence of an extra is an install-time
 capability, not proof that a peer, GPU, or IPFS node is available.
 
 ## Flows
@@ -135,29 +142,29 @@ MCPServerWrapper base construct
                 +-- optional monitoring / OTEL / Prometheus / secrets vault
 ```
 
-Category loaders are **lazy**: listing or dispatching a category triggers
-registration. Preload is optional via `IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES`
-(`ipfs`, `workflow`, `p2p`, or `all`). Agent-supervisor tools use a dedicated
-lazy loader so merely importing the server does not start a supervisor.
+Category registration/execution loaders are **lazy**: listing or dispatching a
+category triggers registration. Preload is optional via
+`IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES` (`ipfs`, `workflow`, `p2p`, or `all`).
+That does not make server-builder import pure: accessing `create_server`
+imports `mcp_server.server`, which eagerly imports native registrar modules;
+the inference registrar currently reaches the compatibility `mcp` package and
+its `ensure_packages` policy. Agent-supervisor tool construction remains behind
+its dedicated loader, so importing the registrar does not itself start a
+supervisor.
 
-### 2. Tool invocation (authority path)
+### 2. Guarded meta-tool invocation and the direct-call gap
 
-Transport delivers a `tools/call` (or HTTP JSON-RPC equivalent). Authority for
-whether the tool may run is **not** the transport. The canonical control path
-is unified meta-tool dispatch:
+Authority for whether a tool may run is **not** the transport. For calls that
+explicitly target `tools_dispatch`, the unified guarded path is:
 
 ```text
-Client tools/call
+Client calls tools_dispatch(category, tool_name, parameters)
         |
         v
-Transport adapter (stdio | FastAPI | Trio | gRPC facade | MCP+p2p)
+Transport adapter
         |  unwrap framing / HTTP / stream only
         v
-Registered tool handler
-        |
-        +-- discovery meta-tools --> HierarchicalToolManager list/schema APIs
-        |
-        +-- tools_dispatch(category, tool_name, parameters)
+tools_dispatch registered handler
                     |
                     v
             validate_dispatch_inputs   # non-empty strings; normalize params
@@ -192,11 +199,26 @@ Registered tool handler
             structured response {ok, result|error, …}
 ```
 
-**Transport is not authority.** A successful HTTP or p2p delivery only means the
-request reached the server. Admission is validation + optional risk + UCAN +
-temporal policy, then execution. The same `tools_dispatch` path is what
-transport matrix tests use to prove policy decision shape parity across HTTP and
-MCP+p2p.
+This guarded path is not yet universal. FastAPI `_call_mcp_tool` and the
+MCP+p2p adapter can invoke a registered function or `manager.dispatch`
+directly when the client names an ordinary tool:
+
+```text
+ordinary tool call over FastAPI or MCP+p2p
+        |
+        +-- registered function(...) OR manager.dispatch(...)
+        |
+        +-- tool result
+```
+
+Those direct calls do **not** automatically traverse
+`validate_dispatch_inputs`, risk scoring, UCAN, temporal policy, or artifact
+emission in `tools_dispatch`. This is a current security/conformance gap, not
+an alternate authority design. Until transports funnel all protected calls
+through a shared admission function, deployments must protect direct routes
+with transport authentication/allowlists and expose only handlers whose own
+plane-level checks are sufficient. A successful HTTP or p2p delivery means
+only that the request reached the server.
 
 ### 3. Compatibility facade bridge
 
@@ -257,7 +279,7 @@ prove every optional dependency (libp2p, Prometheus, secrets backend) is live.
 
 | Signal | Means | Does not mean |
 | --- | --- | --- |
-| Import of `mcp_server` | Package present | Tools, GPUs, or peers work |
+| Bare import of `mcp_server` | Lazy package facade present | Resolving `create_server` is side-effect free, or tools/peers work |
 | Import of `mcp` | Compatibility package present | Safe for production; may auto-install packages |
 | Meta-tool list succeeds | Bootstrap attached and registry wired | Authorization configured |
 | Capability / profile list | Server *claims* profile support | Peer negotiated that profile |
@@ -270,8 +292,8 @@ Transport is never authorization.**
 
 ### Fail-closed conditions
 
-When the corresponding enforcement flag is on (config default or per-call
-`__enforce_*` control key):
+Inside an explicit `tools_dispatch` call, when the corresponding enforcement
+flag is on (config default or per-call `__enforce_*` control key):
 
 | Condition | Dispatch error | Effect |
 | --- | --- | --- |
@@ -284,7 +306,8 @@ When the corresponding enforcement flag is on (config default or per-call
 
 UCAN and policy evaluation are independent gates: either deny stops the call
 even if the other would allow. Disabled enforcement skips that gate; it does
-not invent an allow decision for audit.
+not invent an allow decision for audit. These guarantees must not be projected
+onto the direct FastAPI/p2p ordinary-tool path described above.
 
 ### Degradation
 
@@ -296,7 +319,7 @@ not invent an allow decision for audit.
 | IPFS kit / audit storage unavailable | Event DAG may still record in-memory; durable audit storage skipped |
 | Unified bootstrap disabled | Base server without meta-tool MCP++ control plane |
 | Unified bridge failure from `mcp` facade | Logs warning and falls back to legacy wrapper |
-| Native category loader exception | Warning log; other categories remain |
+| Native category loader exception during on-demand load | Exception propagates to that list/dispatch call; only configured preload catches and logs loader failures |
 
 ### Recovery
 
@@ -321,8 +344,8 @@ Integrators must know which imports are pure and which mutate the process.
 
 | Import path | Side effects at import time | Notes |
 | --- | --- | --- |
-| `ipfs_accelerate_py.mcp_server` | Lazy export resolution only; no auto-install of FastAPI/FastMCP | Preferred |
-| `ipfs_accelerate_py.mcp_server.server` | Configures root logging via `configure_root_logging()` | Logging only |
+| Bare `import ipfs_accelerate_py.mcp_server` | Lazy package facade; exported server symbols are not resolved yet | Preferred package boundary |
+| Accessing `mcp_server.create_server` or importing `mcp_server.server` | Configures root logging and eagerly imports native registrar modules; the inference registrar currently reaches compatibility `mcp` and its `ensure_packages` path | May trigger compatibility auto-install policy; not a pure discovery import |
 | `ipfs_accelerate_py.mcp` package init | Best-effort `ensure_packages({fastapi, uvicorn, fastmcp})` | **May install packages** when auto-install policy allows |
 | `ipfs_accelerate_py.mcp.server` | Same class of best-effort `ensure_packages` for fastapi/uvicorn/fastmcp | Compatibility surface |
 | Some `mcp` tools (e.g. inference helpers) | May call `ensure_packages` on optional third-party libs | Capability path, not discovery |
@@ -345,16 +368,20 @@ extras (and host deps) explicitly, then verify capabilities.
 
 | Transport | Primary modules | Role |
 | --- | --- | --- |
-| Process / standalone | `standalone_server.run_server` | Local process lifecycle around `create_server` |
+| Process / standalone | `standalone_server.run_server` | Lifecycle/health shell only today; ASGI app exposes `/healthz`, not MCP JSON-RPC/tool routes |
 | FastAPI / HTTP JSON-RPC | `fastapi_service`, `fastapi_config` | Mount at `IPFS_MCP_MOUNT_PATH` (default `/mcp`) |
+| Canonical stdio | No implemented `mcp_server` transport | Not currently available; tests that call `manager.dispatch` directly are simulations, not stdio protocol coverage |
 | Compatibility FastAPI | historical paths under `mcp/` | Prefer canonical `fastapi_service` |
 | Trio adapter | `trio_adapter.TrioMCPServerAdapter` | Optional Trio lifecycle facade over `create_server` |
 | MCP+p2p | `mcp_p2p_transport` → `p2p_tasks.mcp_p2p` + `mcplusplus.p2p_framing` | Framed JSON-RPC over libp2p streams |
 | gRPC | `grpc_transport` | Compatibility facade delegating to source module when present |
 
-Transports **normalize** requests into tool calls. They must not:
+The intended transport invariant is that delivery cannot expand authority.
+Current direct FastAPI/p2p calls do not yet share the full `tools_dispatch`
+gate, so operators and extensions must not:
 
-- skip `validate_dispatch_inputs` / UCAN / policy when enforcement is enabled;
+- assume `validate_dispatch_inputs` / UCAN / policy ran unless the call used
+  `tools_dispatch` or the handler applied equivalent owning-plane checks;
 - treat peer advertisement as catalog or credential authority;
 - invent tool results on framing success.
 
@@ -387,11 +414,13 @@ runtime services and do not replace meta-tool dispatch ownership.
 
 ## Rationale
 
-1. **Single dispatch authority** — One hierarchical manager and `tools_dispatch`
-   path keep validation, UCAN, policy, risk, and artifacts coherent across
-   transports.
-2. **Transport neutrality** — stdio, HTTP, Trio, and p2p are adapters so peer
-   connectivity cannot upgrade privileges by itself.
+1. **Single guarded dispatch target** — The hierarchical manager and
+   `tools_dispatch` keep validation, UCAN, policy, risk, and artifacts coherent
+   for calls that use that path. Direct transport calls must converge on the
+   same admission function; their present bypass is migration debt.
+2. **Transport neutrality** — HTTP, Trio and p2p are intended to be delivery
+   adapters so connectivity cannot upgrade privileges by itself. Canonical
+   stdio is not currently implemented, and direct-call parity is incomplete.
 3. **Lazy categories** — Large tool surfaces load on demand; importing the
    server stays a discovery-safe operation for most categories.
 4. **Optional security features** — UCAN, policy, CID artifacts, and risk are
@@ -414,8 +443,8 @@ runtime services and do not replace meta-tool dispatch ownership.
 **Positive**
 
 - Integrators have one clear import target (`mcp_server`).
-- Dispatch, policy, and artifacts share identity (`intent_cid` and related CIDs).
-- Transports can be added without reimplementing admission.
+- Guarded dispatch, policy, and artifacts share identity (`intent_cid` and related CIDs).
+- New transports have a common admission target instead of inventing policy contracts.
 - Lazy loaders and feature flags keep optional cost off the critical path.
 
 **Negative**
@@ -425,6 +454,10 @@ runtime services and do not replace meta-tool dispatch ownership.
 - Many env flags increase operator configuration surface.
 - Facade fallback to legacy can hide incomplete cutover if telemetry is ignored.
 - Some deferred modules still proxy to external/source packages when present.
+- Ordinary FastAPI/p2p tool calls can bypass the guarded meta-tool path today;
+  transport allowlists and handler-owned authorization remain necessary.
+- The standalone module entry is a health shell, not a functional MCP host,
+  and canonical stdio is absent.
 
 ## Operational signals
 
@@ -463,16 +496,26 @@ rg -n 'def validate_dispatch_inputs' ipfs_accelerate_py/mcp_server/validators.py
 rg -n 'ensure_packages' ipfs_accelerate_py/mcp/__init__.py
 rg -n 'FORCE_LEGACY_ROLLBACK|create_mcp_server' ipfs_accelerate_py/mcp/server.py
 
-# Focused contract tests (optional; deterministic, no live network required)
-# python -m pytest ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py -q
-# python -m pytest ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py -q
+# Focused contract tests (deterministic; no live network required)
+python -m pytest ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py -q
+python -m pytest ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py -q
 ```
 
+Known state at the 2026-08-03 review: unified bootstrap was **201 passed,
+12 failed**, and the transport matrix was **5 passed, 1 failed**. Failure
+clusters include external-policy obligation normalization, IDL preload
+descriptors, Event DAG duplication, compatibility meta-tool flow, storage
+result shape, duplicate Prometheus registration, and transport policy-shape
+parity. These are conformance gaps to fix; do not report this verification
+section green until both commands pass.
+
 Review checklist: status/audience/scope present; source anchors current;
-integrators can pick `mcp_server` as canonical; compatibility auto-install and
-rollback flags disclosed; dispatch flow shows validation/policy before
-execution; transports labelled as non-authoritative; rationale, alternatives,
-consequences, and failure semantics present; no invented public APIs.
+integrators can pick `mcp_server` as canonical and `fastapi_service` as the
+functional HTTP host; compatibility/transitive auto-install and rollback flags
+disclosed; guarded dispatch is distinguished from direct transport calls;
+standalone and stdio gaps are explicit; transports labelled as
+non-authoritative; rationale, alternatives, consequences, and failure
+semantics present; no invented public APIs.
 
 ## Related guides and records
 
@@ -484,5 +527,5 @@ consequences, and failure semantics present; no invented public APIs.
 | [MCP++ workspace records](../../mcpplusplus/README.md) | Conformance checklist and gap matrix (Plan/evidence) |
 | [MCP server unification plan](MCP_SERVER_UNIFICATION_PLAN.md) | Historical / planned migration narrative |
 | [MCP server user doc](../MCP_SERVER.md) | Product-facing tool catalog notes (journeys refreshed under DOC-023) |
-| `docs/architecture/MODEL_SERVICE_ROUTING.md` | Planned sibling: catalog vs usage vs invocation planes |
-| `docs/architecture/DISTRIBUTED_RUNTIME.md` | Planned sibling: IPFS / P2P task execution beyond MCP framing |
+| [Model/service routing](MODEL_SERVICE_ROUTING.md) | Current catalog vs usage vs invocation planes |
+| [Distributed runtime](DISTRIBUTED_RUNTIME.md) | Current IPFS/P2P task execution beyond MCP framing |

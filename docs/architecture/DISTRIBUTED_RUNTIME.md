@@ -1,22 +1,22 @@
 # Distributed runtime: IPFS, content identity, and P2P execution
 
-**Status:** Current  
+**Status:** Current
 **Audience:** Integrators, operators, security reviewers, and implementation
 agents who need accurate backend roles, CID semantics, and optional P2P
-execution boundaries  
+execution boundaries
 **Scope:** IPFS/IPLD backend selection and roles; real multiformats CIDv1 versus
 synthetic cache keys; verified put/get/admission; CAR/pinning/replication
 capability gates; separation of immutable content from mutable coordination;
-P2P TaskQueue discovery, scheduling, trust, and fallback  
-**Non-goals:** Sibling-repository ownership maps (see planned
-`INTEGRATION_BOUNDARIES.md` / DOC-010); operator P2P install journeys (see
+P2P TaskQueue discovery, scheduling, trust, and fallback
+**Non-goals:** Sibling-repository ownership maps (see
+[integration boundaries](INTEGRATION_BOUNDARIES.md) / DOC-010); operator P2P install journeys (see
 planned `docs/guides/p2p/`); ADR formalization of single-writer DuckDB vs
 immutable replicas (planned ADR-0005 / DOC-019); MCP transport policy as a
-whole (see planned `MCP_RUNTIME.md`); inventing new public APIs  
-**Last verified:** `d71cc2df31ec89716d30b153c989a8bbb557c0b2` (2026-08-03);
+whole (see [MCP runtime](MCP_RUNTIME.md)); inventing new public APIs
+**Last verified:** `e559ff0046c639ba1dadabe02ea0ea91d9877e20` (2026-08-03);
 paths and symbols checked against `ipfs_backend_router.py`,
 `multiformats_identity.py`, `verified_ipld_backend.py`, `p2p_tasks/`, and
-related workflow modules on the checked-out tree  
+related workflow modules on the checked-out tree
 
 This guide is the maintained **DistributedRuntime@1** architecture narrative.
 Interfaces called out by the documentation program:
@@ -31,13 +31,13 @@ Interfaces called out by the documentation program:
 | --- | --- | --- |
 | Backend roles and selection | `ipfs_accelerate_py/ipfs_backend_router.py` — `BackendRole`, `select_backend`, `BackendSelectionReceipt`, `describe_backend_capabilities` | Preferred kit → HF cache → Kubo; never silent degradation |
 | IPFS backend protocol | `IPFSBackend` in `ipfs_backend_router.py` | `add_bytes` / `cat` / `pin` / `block_put` / `dag_export` |
-| Synthetic cache keys | `HuggingFaceCacheBackend._generate_cid` | Emits `bafy…` strings that are **not** multiformats CIDs |
+| Synthetic cache keys | `HuggingFaceCacheBackend._generate_cid`; `IPFSKitStorage._generate_cid` | Both emit `bafy…` plus truncated hexadecimal SHA-256 strings that are **not** multiformats CIDs |
 | Lightweight multiformats helper | `ipfs_accelerate_py/ipfs_multiformats.py` — `ipfs_multiformats_py` | CIDv1 raw/sha2-256 for file/bytes helpers |
 | Frozen content-identity profile | `ipfs_accelerate_py/agent_supervisor/multiformats_identity.py` | CIDv1 / base32 / sha2-256 / raw\|dag-json; `IdentityLink` |
 | Fail-closed IPLD adapter | `ipfs_accelerate_py/agent_supervisor/entrypoints/verified_ipld_backend.py` — `VerifiedIPLDBackend` | Rehash admission; refuses cache role by default |
 | API content-addressed cache | `ipfs_accelerate_py/common/base_cache.py` — `BaseAPICache` | Optional multiformats CID keys; IPFS payload pointer when configured |
 | P2P TaskQueue package | `ipfs_accelerate_py/p2p_tasks/` | libp2p service, client, trust, orchestrator |
-| TaskQueue protocol | `ipfs_accelerate_py/p2p_tasks/protocol.py` — `PROTOCOL_V1` | `/ipfs-datasets/task-queue/1.0.0`; MCP++ preference |
+| TaskQueue protocols | `ipfs_accelerate_py/p2p_tasks/protocol.py` — `PROTOCOL_V1`; MCP++ runtime | MCP++ uses `/mcp+p2p/1.0.0`; optional legacy NDJSON uses `/ipfs-datasets/task-queue/1.0.0` |
 | Peer trust tiers | `ipfs_accelerate_py/p2p_tasks/peer_trust.py` — `PeerTrustLevel` | TRUSTED / ELEVATED / BASELINE |
 | Mutable queue state | `ipfs_accelerate_py/p2p_tasks/task_queue.py` — `TaskQueue` | DuckDB-backed leases, heartbeats, claims |
 | Workflow discovery | `ipfs_accelerate_py/p2p_workflow_discovery.py` | Tags workflows for P2P vs GitHub |
@@ -167,12 +167,17 @@ identity digests for DAG-JSON identity material.
 | Supervisor `content_identity` | Already a profile CID; linked via `IdentityLink` | Yes when it validates under the profile |
 | `runtime-artifact:sha256:…` / `sha256:…` | Local/runtime CAS digests | **No** as epoch authority; bridge with `IdentityLink` only |
 | Synthetic HF / cache token | `HuggingFaceCacheBackend._generate_cid`: `bafy` + first 56 hex chars of sha256 | **Never** — not multiformats CIDv1 |
+| Synthetic kit-compatibility token | `IPFSKitStorage._generate_cid`: `bafy` + first 56 hex chars of sha256, including its local fallback | **Never** — not multiformats CIDv1 |
 
-The HF cache intentionally preserves a historical `bafy…` **shape** for
-compatibility. That shape is a **synthetic cache key**, not a multiformats
-object. `VerifiedIPLDBackend` with `require_conformant=True` (default) refuses
-cache/non-conformant backends before put/get, and `admit_cid` /
-`validate_cid` reject non-profile strings even if they begin with `bafy`.
+The HF cache and the current `IPFSKitStorage` compatibility implementation
+preserve a historical `bafy…` **shape**. That shape is a **synthetic cache
+key**, not a multiformats object. The kit adapter reports local fallback via
+`using_fallback`, but callers must not infer conformant identity merely because
+the adapter loaded or the router assigned the `ipfs_kit_py` role.
+`VerifiedIPLDBackend` with `require_conformant=True` (default) refuses known
+cache/non-conformant roles before put/get and rehashes backend results;
+`admit_cid` / `validate_cid` reject non-profile strings even if they begin with
+`bafy`.
 
 Do not present synthetic tokens as “CIDs” in logs, receipts, or docs without
 labeling them cache keys. Do not pin synthetic tokens into coordination
@@ -302,8 +307,8 @@ Submitter (client / orchestrator / workflow discovery)
   optional: discover peers (mDNS / DHT / rendezvous / bootstrap)
         |
   TaskQueue RPC over libp2p
-    preference: MCP++ (/mcp+p2p) then optional legacy NDJSON
-    protocol id: /ipfs-datasets/task-queue/1.0.0
+    preferred MCP++ protocol: /mcp+p2p/1.0.0
+    optional legacy NDJSON PROTOCOL_V1: /ipfs-datasets/task-queue/1.0.0
         |
   auth_ok (shared token / configured auth)
         |
@@ -344,7 +349,8 @@ p2p_workflow_scheduler
 | Module import | Vocabulary exists | IPFS daemon, libp2p, or peer mesh works |
 | Backend selection receipt | A role was chosen and degradation recorded | CIDs are verified |
 | `conformant_cid=true` | Adapter is expected to emit real CIDs | This particular put rehashed |
-| `VerifiedPutReceipt` / admission | Rehash (and policy) passed for that payload | Future reads free of re-check |
+| `VerifiedPutReceipt` | Backend result and re-fetch rehashed to the expected CID for that payload | Future reads free of re-check |
+| `CoordinationCidAdmission` | CID/profile validation passed; payload equality was rehashed only when `payload` was supplied | Backend role policy or payload equality when no payload was supplied |
 | Shared P2P token / UCAN fields | Auth material present per config | Global multi-tenant security model |
 | Peer trust tier | Claim priority envelope | Correct task result |
 | Synthetic `bafy…` cache key | Local cache address | Multiformats CIDv1 or network resolvability |
@@ -424,7 +430,7 @@ liveness alone is not health or proof of correct execution.
 
 | Alternative | Why rejected / what it breaks |
 | --- | --- |
-| Treat any `bafy…` string as a CID | Admits synthetic HF keys into manifests; breaks multiformats validation and cross-peer fetch |
+| Treat any `bafy…` string as a CID | Admits synthetic HF or kit-compatibility keys into manifests; breaks multiformats validation and cross-peer fetch |
 | Always require Kubo for all installs | Breaks local/CPU baseline and CI hermeticity |
 | Silent kit → cache fallback without receipt | Hides non-conformant identity from coordination callers |
 | Use IPNS or mutable paths as lease authority | Mutable naming is not single-writer fencing; stale publishers could steal claims |
@@ -446,7 +452,7 @@ liveness alone is not health or proof of correct execution.
 **Negative / operational cost**
 
 - Two identifier vocabularies (synthetic cache keys vs CIDv1) must be taught
-  and labeled forever for HF compatibility.
+  and labeled while HF and kit compatibility paths retain CID-like keys.
 - Verified put is more expensive (local hash + backend + re-fetch).
 - CAR and dag-json support vary by role; exporters must handle capability
   errors.
@@ -481,7 +487,7 @@ liveness alone is not health or proof of correct execution.
 | `BackendSelectionReceipt.to_dict()` | `get_last_backend_selection()` | See selected role and degradation reasons |
 | `BackendCapabilityReceipt` | `VerifiedIPLDBackend.capabilities()` | conformant_cid, CAR, pin, codec notes |
 | `VerifiedPutReceipt` / `VerifiedGetReceipt` | verified adapter returns | Rehashed CID, digest, backend role |
-| `CoordinationCidAdmission` | `admit_for_manifest` | Explicit purpose-bound admission |
+| `CoordinationCidAdmission` | `admit_for_manifest` | Purpose-labelled profile admission; the receipt does **not** encode whether `payload` was supplied, so the call site must preserve that fact separately |
 | TaskQueue service state | `p2p_tasks.service.get_local_service_state` | peer_id, listen_port, running flag |
 | Peer trust | `resolve_peer_trust_level` | Claim gating diagnostics |
 | Workflow scheduler status | `P2PWorkflowScheduler.get_status` | Queue/heuristic state only |
@@ -515,20 +521,27 @@ rg -q 'class BackendRole' ipfs_accelerate_py/ipfs_backend_router.py
 rg -q 'synthetic' ipfs_accelerate_py/ipfs_backend_router.py
 rg -q 'conformant_cid' ipfs_accelerate_py/ipfs_backend_router.py
 rg -q 'bafy' ipfs_accelerate_py/ipfs_backend_router.py
+rg -q 'bafy' ipfs_accelerate_py/ipfs_kit_integration.py
 rg -q 'CID_VERSION' ipfs_accelerate_py/agent_supervisor/multiformats_identity.py
 rg -q 'require_conformant' ipfs_accelerate_py/agent_supervisor/entrypoints/verified_ipld_backend.py
 rg -q 'PeerTrustLevel' ipfs_accelerate_py/p2p_tasks/peer_trust.py
 ```
 
-Optional focused tests when the environment has project deps:
+Focused offline tests when the environment has project dependencies:
 
 ```bash
-python -m pytest test/ -q -k 'backend_router or verified_ipld or multiformats_identity or p2p_tasks' --collect-only
+python -m pytest -q \
+  test/test_ipfs_backend_router.py \
+  test/api/test_agent_supervisor_verified_ipld_backend.py \
+  test/api/test_agent_supervisor_multiformats_identity.py \
+  test/unit/test_task_p2p_protocol_policy.py \
+  test/api/test_task_p2p_taskqueue_deterministic_claim.py \
+  test/api/test_p2p_workflow_taskqueue_bridge.py
 ```
 
 Review checklist:
 
-- [ ] No prose treats HF `bafy…` cache tokens as verified CIDs.
+- [ ] No prose treats HF or kit-compatibility `bafy…` tokens as verified CIDs.
 - [ ] Immutable content/replication and mutable DuckDB coordination stay separate.
 - [ ] Missing IPFS/P2P either degrades with receipts or fails closed per §6.2.
 - [ ] CIDv1 profile (base32, sha2-256, raw|dag-json) is the only coordination identity.
@@ -542,7 +555,7 @@ Review checklist:
 | [Architecture overview](overview.md) | System layers; optional IPFS/P2P note |
 | [Guide conventions](GUIDE_CONVENTIONS.md) | Required guide contract |
 | [IPFS kit architecture](IPFS_KIT_ARCHITECTURE.md) | Historical kit detail (not Current for synthetic CID policy) |
-| Planned `INTEGRATION_BOUNDARIES.md` | Sibling repos (`ipfs_kit_py`, `ipfs_datasets_py`, MCP++) |
+| [Integration boundaries](INTEGRATION_BOUNDARIES.md) | Sibling repos (`ipfs_kit_py`, `ipfs_datasets_py`, MCP++) |
 | Planned ADR-0005 | Single-writer mutable coordination vs immutable replication |
 | Planned operator P2P guides | Install and troubleshooting journeys |
 | [Agent supervisor architecture](AGENT_SUPERVISOR_ARCHITECTURE.md) | Control plane; uses verified identity at the edge |

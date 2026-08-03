@@ -1,18 +1,18 @@
 # Supervisor intent, control, and authority
 
-**Status:** Current  
+**Status:** Current
 **Audience:** Developers, operators, and implementation agents who must place
-code, admit work, or diagnose why a mutation was denied  
+code, admit work, or diagnose why a mutation was denied
 **Scope:** Durable objective intent, taskboard projections, the transport-neutral
 operation contract, discovery versus capability, and the authority path from
-principal and policy through scope-bound, effect-bound, identity-bound mutation  
-**Non-goals:** Planning and assurance pipelines (see planned
-`PLANNING_AND_ASSURANCE.md` / DOC-012), multi-lane scheduling and rescue
-(execution/recovery guides), prompt-first workflow product design, package DAG
+principal and policy through scope-bound, effect-bound, identity-bound mutation
+**Non-goals:** Planning and assurance pipelines (see
+[PLANNING_AND_ASSURANCE.md](PLANNING_AND_ASSURANCE.md) / DOC-012), multi-lane scheduling and rescue
+([EXECUTION_AND_RECOVERY.md](EXECUTION_AND_RECOVERY.md)), prompt-first workflow product design, package DAG
 placement rules (see [PACKAGE_MAP.md](PACKAGE_MAP.md)), or operator runbooks
 (see [Operator guide](../../guides/AGENT_SUPERVISOR_GUIDE.md)). This guide does
-not invent new operations, grants, or transports.  
-**Last verified:** `d71cc2df31ec89716d30b153c989a8bbb557c0b2` (2026-08-03);
+not invent new operations, grants, or transports.
+**Last verified:** `e559ff0046c639ba1dadabe02ea0ea91d9877e20` (2026-08-03);
 operation vocabulary, `OperationRequest` / `AuthorizationDecision` /
 `ExpectedEffect` fields, authority classes, and denial reasons checked against
 `control_contracts.py`, `authorization_logic.py`, `execution_permit.py`, and
@@ -140,7 +140,11 @@ alternate transport cannot retarget another tree or goal:
 | `expected_effects` | Declared scope of side effects |
 | `idempotency` | Replay key scoped to operation/caller/repo/objective |
 
-Stale `tree_id`, expired lease, or mismatched fencing epoch fails closed.
+These fields make validation possible, but carrying them is not proof by
+itself. Mutations require the configured lease/fence validator by default.
+Current-tree and policy-provenance rejection occur only when the service is
+composed with `identity_validator` and `authorization_validator` respectively;
+both hooks are optional on the base `SupervisorControlService`.
 
 ---
 
@@ -297,9 +301,12 @@ Every live mutation declares an ordered set of `ExpectedEffect` records:
 - `resource` and repository-relative `paths`,
 - optional description.
 
-The backend may apply **only** declared effects. Broadening path scope after
-admission (e.g. in a candidate graph or permit use) is rejected
-(`execution_permit` path-scope checks). Applied effect claims require mutation
+The base service rejects a backend response that *claims* an applied effect not
+declared by the request. Broadening path scope after admission is also rejected
+when the execution-permit path is configured (`execution_permit` path-scope
+checks). This contract check is not a sandbox: an arbitrary handler can still
+perform undeclared side effects before returning unless it runs through the
+permit/runtime isolation layer. Applied effect claims require mutation
 authority and an audit `receipt_id`.
 
 ### 7.4 Leases and fencing
@@ -312,9 +319,12 @@ Isolation defaults:
 - Worktrees and protected paths keep foreign boards, sealed plans, and operator
   inputs outside unauthorized mutation.
 
-Missing lease, lease scope mismatch, missing fencing epoch, or stale fencing
-epoch are hard denials. Stale tree identity is a distinct fail-closed code
-(`stale_tree`).
+With the default `require_lease_validator=True`, a mutation without a configured
+lease/fence validator is denied; an installed validator rejects missing,
+out-of-scope, or stale lease/fence bindings. An installed identity validator
+can reject stale tree identity with the distinct `stale_tree` code. The base
+service does not independently determine whether a `tree_id` is current when
+that optional validator is absent.
 
 ### 7.5 Execution permits
 
@@ -336,9 +346,9 @@ Caller (Python / CLI / MCP)
     ▼
 Decode / validate contract  ──► invalid_request | path_escape | authority_violation
     ▼
-Allowlist roots + current tree  ──► forbidden | stale_tree
+Allowlist roots + optional identity validator  ──► forbidden | stale_tree
     ▼
-Authorization freshness + lease/fence  ──► unauthorized | stale_lease | …
+Decision timestamps + optional policy validator + lease/fence  ──► unauthorized | stale_lease | …
     ▼
 Idempotency table
     ├─ exact replay ──► return prior OperationResult (no re-apply)
@@ -347,7 +357,7 @@ Idempotency table
       dry_run? ──yes──► DryRunPreview (proposal authority; no mutate)
          │ no
          ▼
-      Backend applies only declared effects
+      Permit/runtime-isolated backend applies declared effects
          ▼
       Durable redacted audit receipt + OperationResult
 ```
@@ -369,7 +379,7 @@ status values), including:
 | `unauthorized` / `forbidden` | Missing or non-matching authorization |
 | `authority_violation` | Effect or claim exceeds operation authority |
 | `path_escape` | Path leaves selected root |
-| `stale_tree` | `tree_id` no longer current |
+| `stale_tree` | Installed identity validator reports that `tree_id` is no longer current |
 | `stale_lease` | Lease lost or fence advanced |
 | `idempotency_required` / `idempotency_conflict` | Missing key or conflicting reuse |
 | `bounds_exceeded` | Effects, paths, depth, or text over bounds |
@@ -381,9 +391,12 @@ malformed or over-deep delegation, not-yet-valid / expired / revoked grants,
 task / worktree / path scope mismatch, lease required or mismatched, fencing
 epoch required or stale, and proof/override authority required or mismatched.
 
-**Fail-closed defaults:** missing lease/fence on mutation, failed validation,
-protected-path writes outside declared outputs, undeclared backend mutations,
-and any attempt to promote discovery or capability into proof.
+**Fail-closed defaults across the composed supervisor:** the base service denies
+mutations without its required lease validator and rejects undeclared effect
+*claims*. Validation and protected-path gates reject candidates outside their
+declared outputs; actual handler effects are constrained only when the
+execution-permit/runtime isolation layer is configured. Every layer rejects an
+attempt to promote discovery or capability into proof.
 
 **Degradation:** optional providers and backends drop to catalog-declared
 `local_read_only` or `proposal_only` where configured; mutation and undeclared

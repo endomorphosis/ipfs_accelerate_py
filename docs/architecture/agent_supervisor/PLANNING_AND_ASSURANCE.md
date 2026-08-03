@@ -1,22 +1,23 @@
 # Supervisor planning and assurance pipeline
 
-**Status:** Current  
+**Status:** Current
 **Audience:** Developers, architects, and implementation agents that plan work,
 compile context, analyze repositories, route provers, or interpret evidence for
-merge and completion gates  
+merge and completion gates
 **Scope:** How an objective gap advances through planning, context compilation,
 repository/AST/GraphRAG analysis, expected-versus-observed program contracts,
 obligations, solver and prover routing, trust-aware caching, edit packets, and
-typed completion evidence—while keeping every evidence class distinct  
+typed completion evidence—while keeping every evidence class distinct
 **Non-goals:** Transport-neutral control operations and authorization
-(planned `CONTROL_PLANE.md` / DOC-011); multi-lane execution, merge trains, and
-rescue loops (planned `EXECUTION_AND_RECOVERY.md` / DOC-013); sealed delivery
+([`CONTROL_PLANE.md`](CONTROL_PLANE.md) / DOC-011); multi-lane execution, merge
+trains, and rescue loops
+([`EXECUTION_AND_RECOVERY.md`](EXECUTION_AND_RECOVERY.md) / DOC-013); sealed delivery
 plans and objective heaps as runtime authority; inventing new assurance levels
-beyond the live lattice in `formal_verification_contracts`  
-**Last verified:** `d71cc2df31ec89716d30b153c989a8bbb557c0b2` (2026-08-03);
+beyond the live lattice in `formal_verification_contracts`
+**Last verified:** `e559ff0046c639ba1dadabe02ea0ea91d9877e20` (2026-08-03);
 package layout, claim/evidence tiers, repository forest, program contracts,
 context capsules, plan branches, and proof-cache trust boundary checked against
-the tree  
+the tree
 
 ## Source anchors
 
@@ -74,11 +75,11 @@ policy may use—without collapsing weaker signals into stronger ones.
 
 It answers:
 
-1. What stages exist between “we need work” and “evidence is admissible”?  
-2. Which packages own each stage?  
+1. What stages exist between “we need work” and “evidence is admissible”?
+2. Which packages own each stage?
 3. How are **evidence tiers** and **assurance levels** related—and where may
-   they never promote?  
-4. Why optional analysis/dataset providers cannot certify completion?  
+   they never promote?
+4. Why optional analysis/dataset providers cannot certify completion?
 
 Readers who need control-plane authorization, lease fencing, or merge-train
 mechanics should use sibling guides. This page stops at **evidence production
@@ -295,11 +296,11 @@ validation oracle.
 
 Expectation source precedence (closed, ordered):
 
-1. Reviewed MCP++/MCP IDL, JSON Schema, typed interfaces, protocol specs  
-2. Public signatures, type annotations, stable exports  
-3. Executable contract and conformance tests  
-4. Normative documentation  
-5. Compatibility manifests and generated SDKs  
+1. Reviewed MCP++/MCP IDL, JSON Schema, typed interfaces, protocol specs
+2. Public signatures, type annotations, stable exports
+3. Executable contract and conformance tests
+4. Normative documentation
+5. Compatibility manifests and generated SDKs
 
 Implementation observations may only populate **observed** contracts.
 Conflicting expectations are reported, not silently merged toward code.
@@ -357,10 +358,10 @@ patch is accepted. Model prose is never a substitute for validation commands.
 
 **Completion receipts** are a separate evidence class from:
 
-- analysis hits,  
-- solver candidates,  
-- kernel proofs,  
-- merge landings, and  
+- analysis hits,
+- solver candidates,
+- kernel proofs,
+- merge landings, and
 - external operational completion authorities (`core/external_completion`).
 
 Authoritative task completion (merge ≠ acceptance) is owned by execution
@@ -521,10 +522,10 @@ references rather than inline duplication in IR records.
 
 ### 9.2 Fail-closed defaults
 
-- Unknown operational state does not satisfy a true constraint.  
-- Optional extras absent → capability miss, not free proof.  
-- Conflicting expectations → conflict report, not silent code-wins.  
-- Stale forest or selectors → re-bind and re-prove.  
+- Unknown operational state does not satisfy a true constraint.
+- Optional extras absent → capability miss, not free proof.
+- Conflicting expectations → conflict report, not silent code-wins.
+- Stale forest or selectors → re-bind and re-prove.
 - Natural-language claims without reviewed property/obligation → reject.
 
 ### 9.3 Degradation
@@ -574,18 +575,18 @@ posture.
 
 **Positive**
 
-- Operators and agents share one vocabulary for evidence class and assurance.  
+- Operators and agents share one vocabulary for evidence class and assurance.
 - Parallel documentation and implementation lanes can extend analysis or
-  provers without rewriting trust rules.  
+  provers without rewriting trust rules.
 - Cache and GraphRAG can improve latency and recall without becoming trust
-  roots.  
+  roots.
 - Optional providers stay useful without owning completion.
 
 **Negative / costs**
 
-- More types and stages than a chat-only agent loop.  
-- Capability probes and forest binding add setup surface.  
-- Re-proof after invalidation costs wall time (accepted for soundness).  
+- More types and stages than a chat-only agent loop.
+- Capability probes and forest binding add setup surface.
+- Re-proof after invalidation costs wall time (accepted for soundness).
 - Writers must not cite plans or boards as live assurance APIs.
 
 ---
@@ -657,12 +658,12 @@ Reviewer checklist:
 
 - [ ] Lexical/AST/GraphRAG, LLM proposals, tests, solver candidates, kernel
       proofs, ZK attestations, and completion receipts are described as
-      **distinct** classes.  
+      **distinct** classes.
 - [ ] Optional datasets providers are documented as **unable to self-certify**
-      success.  
-- [ ] Evidence tier table matches `EvidenceTier` and ceilings.  
-- [ ] Cache hits re-derive assurance; miss ≠ refutation.  
-- [ ] Forest authority rules reject co-location as shared Git authority.  
+      success.
+- [ ] Evidence tier table matches `EvidenceTier` and ceilings.
+- [ ] Cache hits re-derive assurance; miss ≠ refutation.
+- [ ] Forest authority rules reject co-location as shared Git authority.
 - [ ] No protected refresh plan/todo/objectives files were edited for this task.
 
 ---
@@ -677,13 +678,13 @@ Reviewer checklist:
 | [PACKAGE_MAP.md](PACKAGE_MAP.md) | Domain package DAG |
 | [packages/planning.md](packages/planning.md), [packages/context.md](packages/context.md), [packages/analysis.md](packages/analysis.md), [packages/proof.md](packages/proof.md), [packages/validation.md](packages/validation.md) | Per-package semantic maps |
 | [GUIDE_CONVENTIONS.md](../GUIDE_CONVENTIONS.md) | Architecture guide contract |
-| Planned CONTROL_PLANE.md (DOC-011) | Intent, operations, authorization |
-| Planned EXECUTION_AND_RECOVERY.md (DOC-013) | Daemons, merge, rescue, authoritative completion |
+| [CONTROL_PLANE.md](CONTROL_PLANE.md) (DOC-011) | Intent, operations, authorization |
+| [EXECUTION_AND_RECOVERY.md](EXECUTION_AND_RECOVERY.md) (DOC-013) | Daemons, merge, rescue, authoritative completion |
 | Codebase-proof / formal planning **plans** under `docs/architecture/` | Intent/history only—not Current runtime contracts |
 
 ---
 
-## Appendix A — Authority ladder (planning/assurance slice)
+## Appendix A — Authority classes and possible strengthening
 
 ```text
 1. Intent         objective / obligation identity
@@ -697,7 +698,12 @@ Reviewer checklist:
 9. Completion     typed completion receipts (distinct class)
 ```
 
-Skipping a rung is a bug. Caching or renaming a rung is also a bug.
+This is a vocabulary of distinct classes, not a mandatory sequential pipeline.
+Policy chooses the required assurance level: a path may have no GraphRAG
+artifact, a solver candidate may be checked directly, and kernel or attestation
+work is required only when its gate demands that level. What is forbidden is a
+silent promotion—skipping a *required* gate, renaming weaker evidence, or using
+a cache hit to claim a stronger class than re-derivation permits.
 
 ---
 

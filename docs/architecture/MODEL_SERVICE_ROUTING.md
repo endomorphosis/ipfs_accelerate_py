@@ -1,19 +1,23 @@
 # Model, service, and endpoint-usage routing
 
-**Status:** Current  
+**Status:** Current
+
 **Audience:** Developers, operators, and agents that discover models, plan
-provider capacity, or invoke modality routers  
+provider capacity, or invoke modality routers
+
 **Scope:** How `model_catalog`, `endpoint_usage`, `ModelManager`, and the four
 modality routers separate *what exists*, *what is currently usable*, *what
-capacity is reserved*, and *how invocation/fallback occurs*  
-**Non-goals:** MCP/MCP++ transport and UCAN policy (see planned
-`MCP_RUNTIME.md`); agent-supervisor admission/leases (see
+capacity is reserved*, and *how invocation/fallback occurs*
+
+**Non-goals:** MCP/MCP++ transport and UCAN policy (see
+[MCP runtime](MCP_RUNTIME.md)); agent-supervisor admission/leases (see
 [Agent Supervisor Architecture](AGENT_SUPERVISOR_ARCHITECTURE.md)); package
 install or hardware capability probes; rewriting the sealed delivery plans
-for catalog or endpoint usage  
-**Last verified:** `f279353053fe41593d76a95245416933d08e8999` (2026-08-03);
+for catalog or endpoint usage
+
+**Last verified:** `e559ff0046c639ba1dadabe02ea0ea91d9877e20` (2026-08-03);
 package layout, `ModelManager` usage facade methods, and endpoint-usage
-coordinator/routing contracts checked against the tree  
+coordinator/routing contracts checked against the tree
 
 ## Source anchors
 
@@ -24,13 +28,13 @@ coordinator/routing contracts checked against the tree
 | Usage package | `ipfs_accelerate_py/endpoint_usage/` | Scope identity, ledger, coordinator, routing |
 | Planning facade | `ipfs_accelerate_py/model_manager.py` | `list_services`, `resolve`, `usage_snapshot`, `resolve_for_routing` |
 | Atomic reserve | `endpoint_usage.coordinator.UsageCoordinator.reserve` | Closes the selection race before invoke |
-| Route admission | `endpoint_usage.routing` | Hard filter, rank, reserve, fallback classes; does not invoke |
+| Route admission | `endpoint_usage.routing.UsageRouteAdmission` | Hard filter, rank and reserve; optionally invokes a router-owned callback and settles through the coordinator |
 | Usage-aware plan | `endpoint_usage.resolution.resolve_usage_aware` | Pure planning over one catalog + usage revision |
 | LLM invocation | `ipfs_accelerate_py/llm_router.py` | Provider construct, request, stream, fallback |
 | Embeddings invocation | `ipfs_accelerate_py/embeddings_router.py` | Same plane; batch-aware reservation |
 | Multimodal invocation | `ipfs_accelerate_py/multimodal_router.py` | Media-preserving fallback rules |
 | Voice invocation | `ipfs_accelerate_py/voice_router.py`, `voice_jobs/`, `voice_providers/` | Jobs and provider adapters under router ownership |
-| Local/HF serve path | `ipfs_accelerate_py/hf_model_server/` | Deployment source for catalog; not a second catalog |
+| Local/HF serve path | `ipfs_accelerate_py/hf_model_server/` | Launchable serve path; requires explicit catalog and usage projections before it is routable |
 | CLI providers | `ipfs_accelerate_py/cli_runtime/` | Process-backed providers; usage via adapters when structured |
 | Catalog detail guide | [AI_SERVICE_CATALOG.md](AI_SERVICE_CATALOG.md) | Schema, sources, security, migration |
 | Usage delivery plan | [ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md](ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md) | **Plan** status; rollout modes and windows |
@@ -142,10 +146,14 @@ Routers own:
 - explicit `FallbackClass` policy (`none`, `same_deployment`,
   `same_provider`, `same_model`, `equivalent_model`, `cross_provider`).
 
-Exact pins default to `none`. Each retry or fallback is a **new** attempt
-with a **new** reservation linked by receipt chain—never reuse of a spent
-reservation. Semantic/client errors and unsafe side-effecting failures do not
-cross fallback boundaries unless policy classifies them as safe. Wait versus
+Exact pins default to `none`. Each admission-level candidate fallback is a
+new attempt with a new reservation linked by receipt chain; a spent
+reservation is not reused for another candidate. Provider-internal model
+retries can occur inside one router callback and therefore inside one
+admission reservation; the router trace records that internal route when the
+provider exposes its internal model selection. Semantic
+or client errors and unsafe side-effecting failures do not cross admission
+fallback boundaries unless policy classifies them as safe. Wait versus
 reroute shares one deadline and max-attempt bound.
 
 Voice work uses `voice_router` plus `voice_jobs/` and `voice_providers/` under
@@ -153,8 +161,12 @@ the same plane rules (audio-second/character dimensions, stream partial
 settlements). CLI-backed providers under `cli_runtime/` participate when
 structured usage or reset metadata is available through adapters; process
 spawn remains router/CLI ownership, not catalog ownership. Local Hugging Face
-serve paths under `hf_model_server/` appear as deployment sources and local
-concurrency limits, not as a parallel identity system.
+serve paths under `hf_model_server/` are launchable services, not automatic
+catalog sources. They become routing candidates only when explicitly
+projected through `DeploymentCatalogSource`,
+`ServedEndpointDeploymentSource`, or `BackendDeploymentSource` and paired
+with the appropriate usage adapter/limits; they are not a parallel identity
+system.
 
 ## Primary request flow
 
@@ -167,17 +179,20 @@ Caller (API / CLI / MCP tool / supervisor adapter)
     |   catalog revision N  +  usage revision U
     |   hard gates then soft rank
         |
- 3. Owning modality router
-    |   atomic UsageCoordinator.reserve(candidate)
+ 3. Owning modality router calls UsageRouteAdmission
+    |   admission atomically reserves through UsageCoordinator
     |   on CAS fail / capacity deny → next candidate or wait
         |
- 4. Invoke exact reserved binding (network/process)
+ 4. Admission invokes the router-owned callback for the reserved binding
+    |   (or returns the reservation when no callback was supplied)
         |
- 5. Adapter: parse usage, limits, Retry-After, 429/503
+ 5. Router/provider adapter performs network/process work and parses usage,
+    |   limits, Retry-After and typed errors
         |
- 6. Commit / correct / release; emit UsageRoutingReceipt
+ 6. Admission settles/cancels through UsageCoordinator from callback outcome;
+    |   emit UsageRoutingReceipt
         |
- 7. If fallback permitted and typed denial → new attempt
+ 7. If admission fallback is permitted and safe → new reservation/attempt
         |
  8. Return result + bounded receipt (no prompt/media/secrets)
 ```
@@ -186,6 +201,14 @@ Planning methods (`resolve`, `resolve_for_routing`) never reserve. Preview
 and MCP `model_catalog_*` read tools never invoke. Invocation authority
 (`ai.catalog/invoke` and router entrypoints) is separate from catalog read
 and catalog refresh.
+
+Catalog-first planning is the preferred integration path, but it is not the
+only compatibility path in the current routers. When callers omit
+`usage_candidates`, LLM and embeddings routing can construct a direct provider
+candidate and synthesize the binding, scope and catalog-revision identities
+needed by admission. That path preserves existing direct-router APIs; it does
+not prove that the provider was published by `ModelManager` or a catalog
+source.
 
 ### Catalog resolution (exists)
 
@@ -215,10 +238,14 @@ plan = manager.resolve_for_routing(
 
 The router (not `ModelManager`) calls the shared admission protocol in
 `endpoint_usage.routing`: hard-filter remaining candidates, soft-rank, then
-`UsageCoordinator.reserve`. Only `DenialKind` values such as capacity,
+reserve through `UsageCoordinator`. Only typed denials such as capacity,
 reservation conflict, stale snapshot, circuit open, pin, or fallback boundary
-advance the candidate cursor. Success hands the reserved binding to the
-router’s invoke path; the router’s settle path closes the ledger event.
+advance the candidate cursor. With `invoke=` supplied, `UsageRouteAdmission`
+calls the router-owned callback only after reservation and then commits or
+cancels through the coordinator from its `InvokeOutcome`. Without a callback,
+admission returns the granted reservation before dispatch and the caller owns
+the later invocation and settlement. Provider construction, request shaping
+and wire execution remain in the modality router or adapter in both forms.
 
 ## State and identity
 
@@ -235,9 +262,15 @@ Static capabilities and dynamic usage **never share a revision**. A changing
 request counter must not rewrite a catalog CID. Federated catalog ads carry
 compact revision digests, not live quota.
 
-Durable records and receipts omit prompts, input media, model output,
-credentials, bearer URLs, and raw private endpoints. Credential fingerprints
-are keyed local pseudonyms, not stored secrets.
+Usage events, routing receipts and public diagnostics omit prompts, input
+media, model output, credentials, bearer URLs and raw private endpoints.
+Credential fingerprints are keyed local pseudonyms, not stored secrets.
+Catalog records have a different trust boundary: `DeploymentDescriptor`
+intentionally stores a normalized `endpoint_uri` as part of deployment
+identity. Local catalog storage and catalog-read authority must therefore be
+access-controlled, and exports must redact or transform private endpoints;
+the peer source replaces an endpoint with a federated URI and a non-secret
+fingerprint before re-export.
 
 ## Routing modes and rollout posture
 
@@ -376,7 +409,10 @@ Legacy inventories and MCP discovery tools remain projections. Canonical IDs
 and catalog revision are authoritative. See
 [AI_SERVICE_CATALOG.md](AI_SERVICE_CATALOG.md) migration table. Usage methods
 on `ModelManager` are no-ops or fail closed depending on mode when the service
-is absent; they never write dynamic fields into static catalog records.
+is absent; they never write dynamic fields into static catalog records. The
+direct-router compatibility path described above can synthesize admission
+identity when no catalog candidate list is supplied, but should not be
+presented as catalog-backed discovery.
 
 ## Operational signals
 
@@ -428,7 +464,8 @@ Review checks for this guide:
 - `model_catalog` and `endpoint_usage` are both present and role-separated.
 - Rationale includes why one global mutable registry is rejected.
 - Live paths in Source anchors exist in the tree.
-- Planned MCP runtime detail is deferred, not invented here.
+- MCP transport and UCAN details remain owned by [MCP runtime](MCP_RUNTIME.md),
+  not duplicated here.
 
 ## Related guides
 
