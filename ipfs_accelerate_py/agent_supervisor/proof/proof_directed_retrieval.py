@@ -1567,6 +1567,228 @@ build_proof_directed_retrieval_receipt = retrieve_proof_directed
 build_retrieval_closure_receipt = retrieve_proof_directed
 
 
+RETRIEVAL_CONTEXT_SLICE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/retrieval-context-slice@1"
+)
+
+
+@dataclass(frozen=True)
+class RetrievalContextSlice:
+    """Body-free proof-directed retrieval projection for Planner/Doctor context.
+
+    Satisfied mandatory closure and optional nominations are represented only
+    as compact node identifiers and expansion CIDs/handles.  No source bodies,
+    proof transcripts, embeddings, or secrets are embedded.
+    """
+
+    receipt_id: str
+    closure_id: str
+    decision_request_id: str
+    mandatory_node_ids: tuple[str, ...]
+    optional_node_ids: tuple[str, ...]
+    omitted_node_ids: tuple[str, ...]
+    seed_ids: tuple[str, ...]
+    expansion_cids: tuple[str, ...]
+    paths: Mapping[str, tuple[str, ...]]
+    closure_complete: bool
+    closure_fixed_point: bool
+    schema: str = RETRIEVAL_CONTEXT_SLICE_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "receipt_id", _text(self.receipt_id, "receipt_id")
+        )
+        object.__setattr__(
+            self, "closure_id", _text(self.closure_id, "closure_id")
+        )
+        object.__setattr__(
+            self,
+            "decision_request_id",
+            _text(self.decision_request_id, "decision_request_id"),
+        )
+        for name in (
+            "mandatory_node_ids",
+            "optional_node_ids",
+            "omitted_node_ids",
+            "seed_ids",
+            "expansion_cids",
+        ):
+            object.__setattr__(self, name, _strings(getattr(self, name)))
+        object.__setattr__(
+            self,
+            "paths",
+            MappingProxyType(
+                {
+                    str(key): tuple(str(item) for item in value)
+                    for key, value in sorted(self.paths.items())
+                }
+            ),
+        )
+        if not isinstance(self.closure_complete, bool):
+            raise ProofDirectedRetrievalError("closure_complete must be boolean")
+        if not isinstance(self.closure_fixed_point, bool):
+            raise ProofDirectedRetrievalError(
+                "closure_fixed_point must be boolean"
+            )
+        if self.schema != RETRIEVAL_CONTEXT_SLICE_SCHEMA:
+            raise ProofDirectedRetrievalError(
+                "unsupported retrieval context slice schema"
+            )
+
+    @property
+    def slice_id(self) -> str:
+        return _identity(
+            "retrieval-context-slice",
+            self.to_dict(include_identity=False),
+        )
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": self.schema,
+            "receipt_id": self.receipt_id,
+            "closure_id": self.closure_id,
+            "decision_request_id": self.decision_request_id,
+            "mandatory_node_ids": list(self.mandatory_node_ids),
+            "optional_node_ids": list(self.optional_node_ids),
+            "omitted_node_ids": list(self.omitted_node_ids),
+            "seed_ids": list(self.seed_ids),
+            "expansion_cids": list(self.expansion_cids),
+            "paths": {
+                key: list(value) for key, value in self.paths.items()
+            },
+            "closure_complete": self.closure_complete,
+            "closure_fixed_point": self.closure_fixed_point,
+            "body_embedded": False,
+            "proof_body_embedded": False,
+            "source_body_embedded": False,
+            "completion_authority": False,
+            "proof_authority": False,
+        }
+        if include_identity:
+            payload["slice_id"] = self.slice_id
+        return payload
+
+    def to_causal_ast_slice(self) -> dict[str, Any]:
+        """Compact causal/AST slice handles for PlannerDoctor context cores."""
+
+        return {
+            "closure_id": self.closure_id,
+            "receipt_id": self.receipt_id,
+            "closure_node_ids": list(self.mandatory_node_ids),
+            "optional_node_ids": list(self.optional_node_ids),
+            "omitted_node_ids": list(self.omitted_node_ids),
+            "seed_ids": list(self.seed_ids),
+            "expansion_cids": list(self.expansion_cids),
+            "paths": {key: list(value) for key, value in self.paths.items()},
+            "closure_complete": self.closure_complete,
+            "closure_fixed_point": self.closure_fixed_point,
+            "digest_handles_only": True,
+        }
+
+
+def project_retrieval_context_slice(
+    receipt: ProofDirectedRetrievalReceipt | Mapping[str, Any],
+) -> RetrievalContextSlice:
+    """Project a retrieval receipt into a body-free context slice.
+
+    Approximate optional nominations become expansion CIDs/handles.  The
+    mandatory authority/proof closure remains independently named and never
+    depends on optional ranking for completeness.
+    """
+
+    if isinstance(receipt, ProofDirectedRetrievalReceipt):
+        payload = receipt.to_dict()
+        receipt_id = receipt.receipt_id
+        seeds = receipt.seeds
+        paths = dict(receipt.paths)
+        mandatory = receipt.closure_node_ids
+        optional = receipt.optional_node_ids
+        omitted = receipt.omitted_node_ids
+        closure_id = receipt.closure_id
+        decision_request_id = receipt.decision_request_id
+        closure_complete = receipt.closure_complete
+        closure_fixed_point = receipt.closure_fixed_point
+    elif isinstance(receipt, Mapping):
+        payload = dict(receipt)
+        receipt_id = str(
+            payload.get("receipt_id") or payload.get("content_id") or ""
+        )
+        if not receipt_id:
+            receipt_id = _identity("retrieval-receipt", payload)
+        seeds = tuple(payload.get("seeds") or ())
+        paths = dict(payload.get("paths") or {})
+        mandatory = tuple(payload.get("closure_node_ids") or ())
+        optional = tuple(payload.get("optional_node_ids") or ())
+        omitted = tuple(payload.get("omitted_node_ids") or ())
+        closure_id = str(payload.get("closure_id") or "")
+        decision_request_id = str(payload.get("decision_request_id") or "")
+        closure_complete = bool(payload.get("closure_complete", True))
+        closure_fixed_point = bool(payload.get("closure_fixed_point", True))
+    else:
+        raise ProofDirectedRetrievalError(
+            "receipt must be a ProofDirectedRetrievalReceipt or mapping"
+        )
+
+    seed_ids: list[str] = []
+    for item in seeds:
+        if isinstance(item, RetrievalSeed):
+            seed_ids.append(item.seed_id)
+        elif isinstance(item, Mapping):
+            seed_id = str(item.get("seed_id") or "")
+            if seed_id:
+                seed_ids.append(seed_id)
+            else:
+                seed_ids.append(_identity("retrieval-seed", item))
+        else:
+            seed_ids.append(_text(str(item), "seed_id"))
+
+    # Expansion CIDs are content digests over optional/omitted node handles —
+    # never source or proof bodies.
+    expansion_cids = tuple(
+        sorted(
+            {
+                _identity("expansion-node", {"node_id": node_id, "kind": "optional"})
+                for node_id in optional
+            }
+            | {
+                _identity("expansion-node", {"node_id": node_id, "kind": "omitted"})
+                for node_id in omitted
+            }
+            | ({_identity("expansion-receipt", receipt_id)} if receipt_id else set())
+        )
+    )
+
+    return RetrievalContextSlice(
+        receipt_id=receipt_id,
+        closure_id=closure_id or _identity("closure", mandatory),
+        decision_request_id=decision_request_id or "decision:unknown",
+        mandatory_node_ids=tuple(mandatory),
+        optional_node_ids=tuple(optional),
+        omitted_node_ids=tuple(omitted),
+        seed_ids=tuple(seed_ids),
+        expansion_cids=expansion_cids,
+        paths=paths,
+        closure_complete=closure_complete,
+        closure_fixed_point=closure_fixed_point,
+    )
+
+
+def retrieval_slice_for_planner_doctor_context(
+    receipt: ProofDirectedRetrievalReceipt | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Convenience projection consumed by PlannerDoctorContextRequest builders."""
+
+    slice_ = project_retrieval_context_slice(receipt)
+    return {
+        "retrieval_receipt_id": slice_.receipt_id,
+        "retrieval_closure_id": slice_.closure_id,
+        "retrieval_slice_node_ids": list(slice_.mandatory_node_ids),
+        "expansion_cids": list(slice_.expansion_cids),
+        "causal_ast_slice": slice_.to_causal_ast_slice(),
+        "slice": slice_.to_dict(),
+    }
+
+
 __all__ = [
     "APPROXIMATE_SOURCES",
     "CandidateAudit",
@@ -1579,10 +1801,12 @@ __all__ = [
     "ProofDirectedRetrievalResult",
     "ProofRetrievalBudget",
     "RETRIEVAL_CLOSURE_REQUIREMENT_ID",
+    "RETRIEVAL_CONTEXT_SLICE_SCHEMA",
     "RetrievalBackendState",
     "RetrievalCandidate",
     "RetrievalCandidateBinding",
     "RetrievalClosureReceipt",
+    "RetrievalContextSlice",
     "RetrievalSeed",
     "StaleRetrievalRootError",
     "build_proof_directed_retrieval_receipt",
@@ -1590,7 +1814,9 @@ __all__ = [
     "derive_exact_retrieval_seeds",
     "derive_retrieval_seeds",
     "embedding_fingerprint",
+    "project_retrieval_context_slice",
     "proof_directed_retrieve",
+    "retrieval_slice_for_planner_doctor_context",
     "retrieve_authoritative_closure",
     "retrieve_proof_directed",
     "retrieve_proof_directed_evidence",
