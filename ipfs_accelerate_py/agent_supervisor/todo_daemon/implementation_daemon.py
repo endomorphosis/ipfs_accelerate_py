@@ -31696,12 +31696,12 @@ class PortalImplementationDaemon:
             if operator_end is None:
                 return command, ""
             return (
-                f"{command[:operator_end]} PYTHONPATH={pythonpath} "
+                f"{command[:operator_end]} export PYTHONPATH={pythonpath} && "
                 f"{command[operator_end:].lstrip()}",
                 "added configured worktree package roots to PYTHONPATH",
             )
         return (
-            f"PYTHONPATH={pythonpath} {command}",
+            f"export PYTHONPATH={pythonpath} && {command}",
             "added configured worktree package roots to PYTHONPATH",
         )
 
@@ -31712,8 +31712,8 @@ class PortalImplementationDaemon:
         ``validation_command_repository_root`` has already proved that the
         command contains one exact, safe leading ``cd`` clause.  This scanner
         preserves the original quoting and command text while locating the
-        operator after that clause so an environment assignment applies to the
-        Python process after ``cd``, rather than only to the shell builtin.
+        operator after that clause so the bounded validation-process export is
+        evaluated after ``cd`` and uses package-root-relative paths.
         """
 
         quote = ""
