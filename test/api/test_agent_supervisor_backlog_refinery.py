@@ -927,7 +927,7 @@ def test_codebase_scan_receipt_accounts_inventory_candidates_and_durable_details
     assert limited.details_artifact is not None
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "- Context budget tokens: 2048" in todo_text
-    assert "- Provider role: grok-implement, codex-review" in todo_text
+    assert "- Provider role: grok, codex-review" in todo_text
     summaries = {
         summary.reason_code.value: summary
         for summary in limited.reason_summaries["exclusions"]
