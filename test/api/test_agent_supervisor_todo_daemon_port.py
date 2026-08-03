@@ -30676,9 +30676,15 @@ def test_implementation_daemon_defers_failed_submodule_setup_before_provider_wit
     assert retry_event["attempt_consumed"] is False
 
 
+@pytest.mark.parametrize(
+    "preflight_raises",
+    [False, True],
+    ids=("drift-receipt", "preflight-exception"),
+)
 def test_implementation_daemon_defers_dependency_drift_before_provider_without_attempt_charge(
     tmp_path,
     monkeypatch,
+    preflight_raises,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -30730,8 +30736,8 @@ def test_implementation_daemon_defers_dependency_drift_before_provider_without_a
                 "requirement": "hypercorn>=0.16.0",
             }
         ],
-        "install_attempted": False,
-        "network_accessed": False,
+        "automatic_install_attempted": False,
+        "probe_scope": "installed_distribution_metadata",
     }
     monkeypatch.setattr(
         daemon,
@@ -30743,10 +30749,20 @@ def test_implementation_daemon_defers_dependency_drift_before_provider_without_a
         "_persist_implementation_context_receipt",
         lambda *_args, **_kwargs: state_dir / "context.json",
     )
+    if preflight_raises:
+
+        def dependency_preflight(*_args, **_kwargs):
+            raise RuntimeError("private-preflight-error-must-not-persist")
+
+    else:
+
+        def dependency_preflight(*_args, **_kwargs):
+            return dependency_receipt
+
     monkeypatch.setattr(
         implementation_daemon_module,
         "preflight_validation_project_dependencies",
-        lambda *_args, **_kwargs: dependency_receipt,
+        dependency_preflight,
     )
     monkeypatch.setattr(
         daemon,
@@ -30776,7 +30792,17 @@ def test_implementation_daemon_defers_dependency_drift_before_provider_without_a
     assert result["provider_call_allowed"] is False
     assert result["provider_dispatched"] is False
     assert result["attempt_consumed"] is False
-    assert result["dependency_preflight"] == dependency_receipt
+    actual_dependency_receipt = result["dependency_preflight"]
+    if preflight_raises:
+        assert actual_dependency_receipt["reason"] == (
+            "project_dependency_preflight_infrastructure_error"
+        )
+        assert actual_dependency_receipt["error_type"] == "RuntimeError"
+        assert "private-preflight-error" not in json.dumps(
+            actual_dependency_receipt
+        )
+    else:
+        assert actual_dependency_receipt == dependency_receipt
     assert result["cleanup_result"]["cleaned"] is True
     assert not Path(result["worktree_path"]).exists()
     assert persisted.implementation_attempts == {}
@@ -30794,7 +30820,9 @@ def test_implementation_daemon_defers_dependency_drift_before_provider_without_a
         if event["type"]
         == "validation_project_dependency_preflight_failed"
     )
-    assert failure_event["dependency_preflight"] == dependency_receipt
+    assert failure_event["dependency_preflight"] == (
+        actual_dependency_receipt
+    )
     retry_event = next(
         event
         for event in events
@@ -30851,8 +30879,8 @@ def test_implementation_daemon_dispatches_provider_after_dependency_preflight_pa
         "reason": (
             "approved_validation_environment_satisfies_project_dependencies"
         ),
-        "install_attempted": False,
-        "network_accessed": False,
+        "automatic_install_attempted": False,
+        "probe_scope": "installed_distribution_metadata",
     }
     provider_calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(

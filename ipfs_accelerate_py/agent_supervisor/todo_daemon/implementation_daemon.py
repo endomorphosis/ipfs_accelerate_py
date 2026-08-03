@@ -150,6 +150,8 @@ from ..merge.merge_checkpoint import MergeCheckpoint
 from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
 from ..validation.project_dependency_preflight import (
     PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS,
+    project_dependency_preflight_backoff_seconds,
+    project_dependency_preflight_error_receipt,
     preflight_validation_project_dependencies,
 )
 from ..validation.validation_commands import (
@@ -2456,10 +2458,17 @@ class ValidationProjectDependencyPreflightDeferred(
 ):
     """Fail closed when validation dependencies drift before dispatch."""
 
-    def __init__(self, receipt: Mapping[str, Any]) -> None:
+    def __init__(
+        self,
+        receipt: Mapping[str, Any],
+        *,
+        backoff_seconds: int = (
+            PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS
+        ),
+    ) -> None:
         super().__init__(
             "approved validation environment dependency drift",
-            backoff_seconds=PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS,
+            backoff_seconds=backoff_seconds,
         )
         self.receipt = dict(receipt)
 
@@ -17275,6 +17284,47 @@ class PortalImplementationDaemon:
             self._record_event(reconciliation_event_type(), result)
         return result
 
+    def _validation_project_dependency_preflight_backoff(
+        self,
+        *,
+        task_id: str,
+        receipt: Mapping[str, Any],
+    ) -> int:
+        """Back off repeated identical environment drift, reset on change."""
+
+        prior_fingerprints: list[str] = []
+        for event in reversed(self._iter_events()):
+            if str(event.get("task_id") or "") != task_id:
+                continue
+            event_type = str(event.get("type") or "")
+            if event_type == "implementation_started":
+                break
+            if (
+                event_type
+                != "validation_project_dependency_preflight_failed"
+            ):
+                continue
+            prior_receipt = event.get("dependency_preflight")
+            if not isinstance(prior_receipt, Mapping):
+                break
+            prior_fingerprints.append(
+                str(
+                    prior_receipt.get("retry_fingerprint")
+                    or prior_receipt.get("receipt_id")
+                    or ""
+                )
+            )
+            if len(prior_fingerprints) >= 8:
+                break
+        return project_dependency_preflight_backoff_seconds(
+            str(
+                receipt.get("retry_fingerprint")
+                or receipt.get("receipt_id")
+                or ""
+            ),
+            prior_fingerprints,
+        )
+
     def _run_implementation_in_ephemeral_worktree(
         self,
         *,
@@ -17420,16 +17470,36 @@ class PortalImplementationDaemon:
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
             workspace_setup["prior_attempt_seed"] = dict(seed_apply)
-            dependency_preflight = (
-                preflight_validation_project_dependencies(
-                    worktree_path,
-                    task.validation,
+            try:
+                raw_dependency_preflight = (
+                    preflight_validation_project_dependencies(
+                        worktree_path,
+                        task.validation,
+                    )
                 )
-            )
+                if not isinstance(raw_dependency_preflight, Mapping):
+                    raise TypeError(
+                        "dependency preflight receipt must be a mapping"
+                    )
+                dependency_preflight = dict(raw_dependency_preflight)
+            except Exception as exc:
+                dependency_preflight = (
+                    project_dependency_preflight_error_receipt(
+                        worktree_path,
+                        task.validation,
+                        exc,
+                    )
+                )
             workspace_setup["validation_project_dependency_preflight"] = (
                 dependency_preflight
             )
             if dependency_preflight.get("passed") is not True:
+                dependency_backoff_seconds = (
+                    self._validation_project_dependency_preflight_backoff(
+                        task_id=task.task_id,
+                        receipt=dependency_preflight,
+                    )
+                )
                 self._record_event(
                     "validation_project_dependency_preflight_failed",
                     {
@@ -17438,10 +17508,14 @@ class PortalImplementationDaemon:
                         "worktree_path": str(worktree_path),
                         "branch": branch_name,
                         "dependency_preflight": dependency_preflight,
+                        "backoff_seconds": (
+                            dependency_backoff_seconds
+                        ),
                     },
                 )
                 raise ValidationProjectDependencyPreflightDeferred(
-                    dependency_preflight
+                    dependency_preflight,
+                    backoff_seconds=dependency_backoff_seconds,
                 )
             command = (
                 []
