@@ -4319,28 +4319,38 @@ class MergeQueue:
                 request_id=request.request_id,
             )
             if str(row["status"]) == "completed":
-                connection.commit()
-                return
-            self._require_claim(row, request, operation="complete")
-            request_metadata = json.loads(row["metadata_json"] or "{}")
-            if metadata:
-                request_metadata["completion"] = dict(metadata)
-            connection.execute(
-                """UPDATE merge_requests SET status='completed', metadata_json=?,
-                   failure_reason='', finished_at=?, updated_at=?, consumer_id='', claimed_at=0,
-                   claim_token='', claim_generation=claim_generation + 1
-                   WHERE request_id=? AND status='processing'
-                     AND claim_token=? AND claim_generation=? AND consumer_id=?""",
-                (
-                    json.dumps(request_metadata, sort_keys=True, separators=(",", ":")),
-                    now,
-                    now,
-                    request.request_id,
-                    request.claim_token,
-                    request.claim_generation,
-                    request.consumer_id,
-                ),
-            )
+                if not str(row["failure_reason"] or ""):
+                    connection.commit()
+                    return
+                # Older queue versions could leave the last retry reason on a
+                # successfully completed row.  Preserve idempotent completion
+                # while normalizing both the canonical row and its receipt.
+                connection.execute(
+                    """UPDATE merge_requests SET failure_reason='', updated_at=?
+                       WHERE request_id=? AND status='completed'""",
+                    (now, request.request_id),
+                )
+            else:
+                self._require_claim(row, request, operation="complete")
+                request_metadata = json.loads(row["metadata_json"] or "{}")
+                if metadata:
+                    request_metadata["completion"] = dict(metadata)
+                connection.execute(
+                    """UPDATE merge_requests SET status='completed', metadata_json=?,
+                       failure_reason='', finished_at=?, updated_at=?, consumer_id='', claimed_at=0,
+                       claim_token='', claim_generation=claim_generation + 1
+                       WHERE request_id=? AND status='processing'
+                         AND claim_token=? AND claim_generation=? AND consumer_id=?""",
+                    (
+                        json.dumps(request_metadata, sort_keys=True, separators=(",", ":")),
+                        now,
+                        now,
+                        request.request_id,
+                        request.claim_token,
+                        request.claim_generation,
+                        request.consumer_id,
+                    ),
+                )
             row = connection.execute(
                 "SELECT * FROM merge_requests WHERE request_id=?", (request.request_id,)
             ).fetchone()

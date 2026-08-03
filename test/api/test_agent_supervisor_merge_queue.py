@@ -1436,6 +1436,37 @@ def test_successful_retry_clears_failure_reason_but_retains_retry_history(
     ]
 
 
+def test_idempotent_completion_normalizes_legacy_retry_reason(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:owner")
+    assert claimed is not None
+    queue.complete(claimed)
+
+    with queue._connect() as connection:
+        connection.execute(
+            "UPDATE merge_requests SET failure_reason=? WHERE request_id=?",
+            ("merge_cleanup_failed", pending.request_id),
+        )
+    legacy_completed = queue.get(pending.request_id)
+    assert legacy_completed is not None
+    assert legacy_completed.status == "completed"
+    assert legacy_completed.failure_reason == "merge_cleanup_failed"
+    queue._write_stage_receipt(legacy_completed)
+
+    queue.complete(claimed)
+
+    normalized = queue.get(pending.request_id)
+    assert normalized is not None
+    assert normalized.status == "completed"
+    assert normalized.failure_reason == ""
+    assert json.loads(normalized.file_path.read_text(encoding="utf-8"))[
+        "failure_reason"
+    ] == ""
+
+
 def test_recovered_claim_increments_generation_and_fences_crashed_worker(
     tmp_path: Path,
 ) -> None:
