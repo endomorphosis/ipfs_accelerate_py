@@ -1,6 +1,7 @@
 # Frequently Asked Questions
 
 **Status:** Current
+**Owner:** package maintainers
 **Audience:** Operators and developers diagnosing install, inference, hardware,
 MCP, IPFS/P2P, and CLI failures
 **Scope:** FailureSymptomMap@1 — common symptoms mapped to bounded diagnostics,
@@ -8,13 +9,18 @@ capability-first expectations, and links to maintained guides
 **Non-goals:** Exhaustive vendor error catalogs; rewriting historical
 installation fix blogs; promising GPU, browser, IPFS, P2P, or remote providers
 on every host
-**Last verified:** `73fd7229111c0553a42d0f11d2370ba1e6e95a45` (2026-08-03);
-aligned with installation, deployment, hardware, and P2P landing guides
-**Source anchors:** `pyproject.toml`, `ipfs_accelerate_py/__init__.py`,
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; Python metadata/runtime mismatch,
+base dependencies, core constructor behavior, and MCP/P2P CLI gates checked
+against maintained landing guides and live sources
+**Sources:** `requirements.txt`; `pyproject.toml`;
+`ipfs_accelerate_py/__init__.py`,
 `ipfs_accelerate_py/ipfs_accelerate.py` (`get_capabilities`, `run_model`),
-`ipfs_accelerate_py/cli_entry.py`, `ipfs_accelerate_py/p2p_tasks/`,
+`ipfs_accelerate_py/cli.py`, `ipfs_accelerate_py/cli_entry.py`,
+`ipfs_accelerate_py/p2p_tasks/`,
 `docs/architecture/DISTRIBUTED_RUNTIME.md`,
 `docs/architecture/INFERENCE_RUNTIME.md`
+**Freshness triggers:** packaging/Python metadata, core constructor,
+capability-report, MCP/P2P CLI, provider, hardware, or maintained-guide changes
 
 This page answers current setup and runtime questions. For a complete
 installation sequence, see [Getting started](../getting-started/README.md) and
@@ -35,13 +41,13 @@ the [installation guide](../getting-started/installation.md).
 
 | Symptom | First checks | Not a fix |
 | --- | --- | --- |
-| Package will not import | Python version ≥ 3.8; venv; `pip show`; extras only as needed | Installing every optional extra |
+| Package will not import | Exact Python; metadata says ≥3.8 but core compatibility below 3.10 is unproven; venv; `pip show` | Installing every optional extra |
 | “Works in shell, fails as service” | Same Python, env vars, working directory, secrets | Assuming PID restart healed config |
 | Inference slow | Capability report; model already local; batch/precision; first-run download | Enabling P2P or supervisor lanes blindly |
 | GPU missing | `nvidia-smi` / vendor tools **and** framework `is_available()`; then package report | Trusting `hwtest` alone |
-| MCP will not start | `mcp` extra; port free; `mcp start --help`; bind host | Assuming public bind is required |
+| MCP will not start | Base/MCP dependency mismatch below; FastAPI/Uvicorn import; port; `mcp start --help`; bind host | Assuming public bind is required |
 | IPFS / CID errors | Backend role + verified admission; offline path without IPFS | Treating synthetic cache keys as CIDs |
-| P2P “up” but no work | Auth token; queue state; peer trust; `--no-p2p` baseline | Peer process liveness only |
+| P2P “up” but no work | Auth token; queue state; peer trust; `IPFS_ACCELERATE_PY_MCP_P2P_SERVICE` gate | Peer process liveness only |
 | Provider / auth failures | Credential scope; explicit provider pin; network | Claiming universal provider availability |
 | Offline mode fails | Local models and wheels present; remote extras disabled | Expecting downloads without network |
 | Tests flake | Focused offline tests first; skip optional hardware/network | Hiding failures by installing unrelated extras |
@@ -52,9 +58,21 @@ the [installation guide](../getting-started/installation.md).
 
 ### What are the minimum requirements?
 
-Use **Python 3.8 or newer**. The base package targets **CPU/local** operation.
-GPU frameworks, browser stacks, IPFS, MCP, P2P, and analysis features are
-optional extras or host environments. Install only what the deployment needs:
+Packaging metadata in `pyproject.toml` and `setup.py` declares **Python 3.8 or
+newer**, but that is not a proven runtime floor for the current core. For
+example, `ipfs_accelerate_py/ipfs_accelerate.py` evaluates PEP 604 annotations
+such as `object | None` without postponed annotations; those runtime semantics
+arrived in Python 3.10. Treat Python 3.8/3.9 core compatibility as a code-owned
+metadata/runtime mismatch. Use Python 3.10+ for the current core unless you have
+independently validated an older interpreter.
+
+The baseline deployment target is **CPU/local** operation. GPU frameworks,
+browser stacks, IPFS, running MCP/P2P services, and analysis features are
+capability-gated, but current dependency metadata does not perfectly isolate
+them. In particular, base `requirements.txt` already includes FastMCP and the
+Flask/PyGithub stack. Extras are additive: `[minimal]` does not remove base
+dependencies, and `[mcp]` repeats those MCP dependencies plus `async-timeout`.
+Install the profile the deployment needs while recording that packaging gap:
 
 ```bash
 python -m pip install "ipfs-accelerate-py[minimal]"
@@ -88,10 +106,15 @@ in prose. See
 
 ### Can I run it offline?
 
-Yes, when models and dependencies are already available locally. Model
-downloads, IPFS, remote providers, and P2P services need network access; they
-are optional and should be disabled or configured explicitly for offline
-deployments.
+Core workloads can run offline when models and dependencies are already
+available locally. Model downloads, IPFS, remote providers, and P2P services
+need network access and should be disabled or configured explicitly.
+
+However, `get_instance()` is not a safe proof that the process is offline: it
+constructs the core and initializes storage/API adapters, which can touch files,
+contact configured storage/IPFS endpoints, or attempt optional daemon
+initialization. Enforce network isolation at the deployment boundary and run a
+known local workload; do not infer offline behavior from the capability call.
 
 ---
 
@@ -108,6 +131,13 @@ from ipfs_accelerate_py import get_instance
 accelerator = get_instance()
 print(accelerator.get_capabilities(detail=True))
 ```
+
+That example intentionally constructs the full runtime. It is not a
+side-effect-free discovery call: depending on installed integrations and
+configuration it may initialize storage/API adapters, write cache/configuration
+state, contact storage/IPFS endpoints, or attempt optional daemon setup. For a
+bounded hardware-only check, use the heavy-core-skipped direct detector in the
+[hardware guide](../hardware/overview.md#1-discover-capabilities).
 
 The runtime also exposes `run_model` and modality routers for common inference
 paths. Do not use the retired `IPFSAccelerator` class name from older examples;
@@ -126,7 +156,9 @@ boundaries without policy.
 
 Check in order:
 
-1. Confirm the intended backend with `get_capabilities(detail=True)`.
+1. Confirm the intended backend with the direct hardware/framework checks; use
+   `get_capabilities(detail=True)` only where full-runtime constructor effects
+   are allowed.
 2. Confirm the model is already cached or locally available.
 3. Use batching, an appropriate model size, and a supported precision.
 4. Measure first-run download time separately from steady-state inference.
@@ -148,11 +180,11 @@ if torch.cuda.is_available():
     print("device:", torch.cuda.get_device_name(0))
 PY
 
-python - <<'PY'
-from ipfs_accelerate_py import get_instance
-r = get_instance().get_capabilities(detail=True)
-print("hardware:", r.get("hardware"))
-print("hwtest (may be optimistic):", r.get("hwtest"))
+IPFS_ACCEL_SKIP_CORE=1 python - <<'PY'
+from ipfs_accelerate_py.hf_model_server.hardware.detector import HardwareDetector
+d = HardwareDetector()
+print("available:", d.get_available_hardware())
+print("details:", d.capabilities)
 PY
 ```
 
@@ -182,7 +214,12 @@ treat synthetic keys as network durability or proof. See
 
 ### How do I start MCP?
 
-Install the MCP extra and use the product CLI:
+Running MCP is optional, but the base dependency set already contains FastMCP
+and the Flask/PyGithub stack. The `mcp` extra repeats that set and adds
+`async-timeout`; it is not the boundary that first installs MCP. The canonical
+FastAPI host imports FastAPI/Uvicorn even though they are not direct entries in
+that extra, so verify or pin those imports in locked environments. Then use the
+product CLI:
 
 ```bash
 python -m pip install "ipfs-accelerate-py[mcp]"
@@ -191,7 +228,9 @@ ipfs-accelerate mcp status --host 127.0.0.1 --port 9000
 ```
 
 See [MCP setup](../MCP_SETUP_GUIDE.md) for direct module entry points,
-capability inspection, and P2P notes (`--no-p2p`).
+capability inspection, and exact TaskQueue P2P enablement. `--no-p2p` disables
+only GitHub autoscaler P2P workflow monitoring; it does not override
+`IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1`.
 
 ### MCP (or a container) is “healthy” but tools fail
 
@@ -207,7 +246,8 @@ liveness**, not tool registration or model readiness. See
 
 ### Peers are online but tasks never complete
 
-1. Re-run baseline with P2P disabled to confirm local execution.
+1. Re-run the baseline with `IPFS_ACCELERATE_PY_MCP_P2P_SERVICE` unset or `0`
+   to confirm local execution; `--no-p2p` alone does not disable TaskQueue P2P.
 2. Verify shared token / auth configuration.
 3. Inspect queue lease/claim/heartbeat state (mutable DuckDB coordination), not
    only peer connectivity.
@@ -218,9 +258,12 @@ Process liveness alone is not queue health or proof of correct execution.
 
 ### Is my data sent to a remote service?
 
-Local execution stays local unless a remote model/provider, IPFS, P2P, or other
-network integration is enabled. Review provider and deployment configuration
-before processing sensitive material.
+Model execution can stay local when the selected provider and artifacts are
+local, but do not assume core construction is network-silent. The current
+singleton can initialize installed storage/API integrations before a workload
+runs. Review configuration, remove remote credentials/endpoints, disable the
+TaskQueue gate, and enforce network policy before processing sensitive
+material.
 
 ---
 
@@ -269,14 +312,17 @@ When a command fails, capture:
 1. First traceback
 2. Python executable (`sys.executable`)
 3. Installed package identity (`pip show` and/or runtime `__version__`)
-4. `get_capabilities(detail=True)` output
+4. direct hardware output and, only if constructor effects are permitted,
+   `get_capabilities(detail=True)` output
 
 That set is more useful than retrying with unrelated optional extras.
 
 ### Recovery sequence (bounded)
 
-1. Reduce to CPU/local extras and disable P2P/IPFS/remote providers.
-2. Re-verify import + capability report.
+1. Reduce to CPU/local configuration and leave the TaskQueue P2P gate off;
+   remember that extras are additive and do not subtract base dependencies.
+2. Re-verify the heavy-core-skipped import + direct hardware report; run the
+   full capability report only inside an allowed network/filesystem boundary.
 3. Re-enable one optional plane at a time with an explicit probe.
 4. For coordination failures, prefer fail-closed CID/auth errors over silent
    synthetic success.

@@ -1,5 +1,21 @@
 # Agent Supervisor documentation hub
 
+**Status:** Current
+
+**Owner:** agent-supervisor maintainers
+
+**Audience:** Developers, operators, architects, contributors, and agents
+
+**Sources:** `ipfs_accelerate_py/agent_supervisor/`; the maintained guides in
+this directory; `docs/guides/AGENT_SUPERVISOR_GUIDE.md`;
+`scripts/docs/check_agent_supervisor_docs.py`
+
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; navigation, package map,
+operation count, and primary-document vocabulary rechecked
+
+**Freshness triggers:** maintained guide moves, package-layout or operation
+catalog changes, and documentation-guard policy changes
+
 Product documentation for `ipfs_accelerate_py.agent_supervisor` — the control
 plane for **objective-driven, evidence-bounded software work**.
 

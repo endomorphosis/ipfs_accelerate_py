@@ -13,8 +13,8 @@ third-party providers are available on every machine.
 `tests/` (nearly empty legacy path); focused suites under `test/api/` and
 root `test/test_*.py`; console scripts in `pyproject.toml` /
 `setup.py`.
-**Last-verified:** `efb030db743bff50afb939e89fcaa2c650d1c055` (2026-08-03);
-paths checked against live modules and `pytest.ini` `testpaths`.
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; paths checked against live modules,
+the test tree, and `pytest.ini` `testpaths`.
 **Freshness triggers:** changes to `pytest.ini` discovery; relocation of
 unified-CLI or agent-supervisor modules/tests; new hardware/provider markers
 or skip policy in `test/conftest.py`.
@@ -70,7 +70,7 @@ Implications:
 | `test/test_*.py` (repo root of `test/`) | Focused integration and CLI modules; **path must be named** (e.g. `test/test_unified_cli_integration.py`). |
 | `test/integration/` | Cross-component integration; name paths explicitly. |
 | `test/hardware/`, `test/hardware_detection/` | Hardware discovery and backend behavior; capability-gated. |
-| `test/browser/`, `test/fixed_web_tests/`, WebNN/WebGPU fixtures | Browser and web accelerator behavior; capability-gated. |
+| `test/integration/browser/`, `test/fixed_web_tests/`, `test/web_platform_tests/` | Browser and web accelerator behavior; capability-gated. |
 | `test/ipfs_accelerate_py/` | Package-specific regression tests. |
 | `examples/` | Executable examples and smoke demonstrations (not pytest discovery). |
 

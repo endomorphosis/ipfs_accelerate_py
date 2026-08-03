@@ -1,5 +1,21 @@
 # MCP Quick Start
 
+**Status:** Current
+
+**Owner:** MCP maintainers
+
+**Audience:** Operators and developers starting the canonical local HTTP host
+
+**Sources:** `requirements.txt`; `pyproject.toml`;
+`ipfs_accelerate_py/mcp_server/fastapi_service.py`;
+`ipfs_accelerate_py/mcp_server/server.py`; `ipfs_accelerate_py/cli.py`
+
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; install metadata, startup routes,
+and compatibility behavior rechecked
+
+**Freshness triggers:** MCP dependency, route, entrypoint, transport,
+compatibility, or auto-install changes
+
 This is the short path for starting the optional MCP server from the
 **canonical** package `ipfs_accelerate_py.mcp_server`. MCP is an integration
 boundary; it is not required for direct Python inference or the unified CLI.
@@ -8,6 +24,14 @@ For full configuration, compatibility labels, and auto-install policy, see the
 [setup guide](MCP_SETUP_GUIDE.md) and [server reference](../MCP_SERVER.md).
 
 ## Install
+
+Starting MCP is optional, but current base metadata already installs the
+server code and names FastMCP plus the Flask/PyGithub stack in
+`requirements.txt`. The `mcp` extra repeats that set and adds `async-timeout`;
+it records explicit feature intent rather than isolating MCP from the base
+wheel. The preferred FastAPI host also imports FastAPI and Uvicorn, which are
+not direct members of that extra, so verify or pin those imports in locked
+environments.
 
 ```bash
 python -m pip install -e ".[mcp]"
@@ -75,10 +99,8 @@ Use `ipfs-accelerate mcp …` when that console script is installed.
 
 ## Inspect tools
 
-```python
-from ipfs_accelerate_py import get_instance
-
-print(get_instance().get_capabilities(detail=True).get("mcp", {}))
+```bash
+curl -sS "http://127.0.0.1:8000/mcp/tools/list"
 ```
 
 Do not assume a tool exists merely because an older guide listed it.
