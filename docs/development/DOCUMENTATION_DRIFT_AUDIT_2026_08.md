@@ -4,9 +4,11 @@
 **Program:** `ipfs-accelerate-documentation-refresh-v1`
 **Task:** `DOC-001` / goal `DOC-G011`
 **Audit date (UTC):** 2026-08-03
-**Tree under audit (HEAD):** `df284b01dc66e448aaef3fae66930681ddd8e689`
+**Tree under audit (HEAD):** `a9efbc9355174a6f23feb78715355f66b8fce9e3`
 **Plan baseline commit:** `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15`
   (`Fix scoped bundle retry and receipt draining`, 2026-08-03)
+**Prior freeze HEADs (superseded by this pin):** `df284b01dc66e448aaef3fae66930681ddd8e689`
+  (first DOC-001 merge into the refresh branch)
 **Published documentation baselines named in navigation:**
 
 | Marker | Source |
@@ -18,7 +20,8 @@ This file is the reproducible drift inventory for the documentation refresh.
 It records what the checked-out tree *actually contains*, which maintained
 pages disagree with that tree, and which later `DOC-*` tasks own the fix.
 It is **not** an architecture guide and does **not** mark any subsystem
-“done.”
+“done.” Findings were re-verified against the HEAD pin above before this
+freeze; prior freeze HEADs are historical only.
 
 **Required coverage (acceptance map):** prompt-entrypoint primitives; contract
 assurance; **merge-versus-acceptance**; model catalog; endpoint usage;
@@ -81,12 +84,13 @@ git diff --check
 
 Between `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15` and this HEAD the
 documentation-program commits include the refresh plan/objectives/board
-(`c30aa28fc`), Wave 0 guide conventions (`DOC-003`), lifecycle policy
-(`DOC-002`), and the first freeze of this audit (`DOC-001`). Those peer
-Wave 0 files are **not** behavior authority for product runtime claims.
-The behavioral drift described below is against the **July published
-baselines** and the **current source tree**, not against a fictional clean
-pre-supervisor tree and not against ASE/AICAT board status rows.
+(`c30aa28fc`), Wave 0 guide conventions (`DOC-003` / `GUIDE_CONVENTIONS.md`),
+lifecycle policy (`DOC-002` / `DOCUMENTATION_LIFECYCLE.md`), and successive
+freezes of this audit (`DOC-001`). Peer Wave 0 files are **not** behavior
+authority for product runtime claims. The behavioral drift described below is
+against the **July published baselines** and the **current source tree**, not
+against a fictional clean pre-supervisor tree and not against ASE/AICAT board
+status rows.
 
 ## Tree shape at audit time (inventory)
 
@@ -183,7 +187,13 @@ test -f test/test_unified_cli_integration.py
 
 `docs/architecture/overview.md` and `docs/agent_supervisor_objective_graph.md`
 still present flat basenames that used to live at the package root. After the
-layout refactor they live under domain packages:
+layout refactor they live under domain packages. Concrete overview basenames
+still used as if they were package-root modules (examples from the Intent /
+Projection / Execution tables):
+
+- `objective_graph.py`, `objective_tracker.py`
+- `objective_daemon.py`, `backlog_refinery.py`, `taskboard_store.py`
+- `bundle_supervisor.py` (alongside correct `todo_daemon/implementation_daemon.py`)
 
 | Documented / implied path | Actual path on this tree |
 | --- | --- |
@@ -198,6 +208,14 @@ layout refactor they live under domain packages:
 | `conflict_graph.py` | `core/conflict_graph.py` |
 | `prover_conformance.py` / multi-prover | `proof/…` |
 | `formal_plan_*` (flat) | `planning/formal_plan_*.py` (no `formal_plan_parser.py`) |
+
+Objective-graph notes still cite absolute-style anchors under the **old** flat
+layout, for example
+`ipfs_accelerate_py/agent_supervisor/objective_graph.py` and
+`…/bundle_supervisor.py`. Those files are not at package root on this tree;
+use `objectives/` as above. The matching test
+`test/api/test_agent_supervisor_objective_graph.py` **does** exist (do not
+confuse with the unified-CLI path bug in §2.1).
 
 ### 2.3 Board-predicted entrypoint and test paths that are not on disk
 
@@ -298,6 +316,11 @@ program’s edit scope unless a later task explicitly owns it.
 - `objectives/contract_mismatch_refinery.py` and runtime variants
 - Analysis contracts under `agent_supervisor/analysis/`
 - MCP contract edit packets under `proof/`
+- Related **persistence** surfaces (not acceptance authority):
+  `entrypoints/run_registry.py`, `entrypoints/state_resolver.py`,
+  `test/api/test_agent_supervisor_bounded_persistence.py`, and merge/lease
+  stores under `merge/` — durable run/state/evidence retention is present in
+  code but lacks a single maintained “what is authoritative state” guide
 
 **Doc drift:**
 
@@ -307,9 +330,13 @@ program’s edit scope unless a later task explicitly owns it.
   proof boards) mix completed markers with predicted modules such as
   `proof_attestation.py` at wrong paths (actual:
   `proof/proof_attestation.py`).
+- Persistence and registry semantics are scattered across operator fragments
+  and package READMEs; integrators cannot see which stores are cold-import
+  safe, which are CID-backed, and which are ephemeral without reading code.
 
 **Owner:** `DOC-011` / `DOC-012` (planning and assurance architecture), with
-lifecycle rules in `DOC-002`.
+lifecycle rules in `DOC-002`; persistence narrative also feeds `DOC-013` and
+`DOC-019`/`DOC-020` when ADRs land.
 
 ---
 
@@ -532,7 +559,8 @@ after architecture and journey tasks land. Until then, treat July dates as
 | MCP facade | `mcp/` | Too many guides treat as primary | `DOC-008`/`DOC-022` |
 | Nested / sibling repos | `.gitmodules`, empty nested dirs | `NESTED_PACKAGES.md` | `DOC-010` |
 | Lifecycle / authority | (policy) | `DOCUMENTATION_CURRENT_STATE.md` (short) | `DOC-002` |
-| Drift inventory | (this file) | **this file** | `DOC-001` (done when merged) |
+| Persistence / run-state registries | `entrypoints/run_registry.py`, `state_resolver.py`, merge stores | Package README fragments | `DOC-013` / `DOC-019` |
+| Drift inventory | (this file) | **this file** | `DOC-001` (freeze re-verified; board status is not authority) |
 
 ---
 
@@ -619,4 +647,6 @@ rewrite history without a new baseline commit marker.
 | Allowed edit path for producing task | `docs/development/DOCUMENTATION_DRIFT_AUDIT_2026_08.md` only |
 | Protected inputs (do not modify in implementation) | `DOCUMENTATION_REFRESH_PLAN_2026_08.md`, `documentation_refresh.objectives.md`, `documentation_refresh.todo.md` |
 | Baseline commit pin | `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15` |
+| Tree under audit (HEAD) | `a9efbc9355174a6f23feb78715355f66b8fce9e3` |
+| Evidence sources used | Git history and current tree under `ipfs_accelerate_py/`, `docs/`, `test/`, `pyproject.toml`, `setup.py`, `.gitmodules`; executable path existence checks only (no board status as authority) |
 | Next consumers | `DOC-002` lifecycle policy; Wave 1 architecture tasks `DOC-005`–`DOC-014` |
