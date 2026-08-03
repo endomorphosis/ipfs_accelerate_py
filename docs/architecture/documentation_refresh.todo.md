@@ -11,7 +11,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-001 Freeze the current-tree documentation drift audit
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -36,7 +36,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-002 Define documentation lifecycle, ownership and freshness policy
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -61,7 +61,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-003 Publish architecture guide conventions
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -86,7 +86,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-004 Establish the ADR index and template
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -748,4 +748,3 @@ paths; dependency fan-in, not a shared file, controls ordering.
 - Protected paths: this board, its objective heap and the architecture plan
 - Refill/migration/janitor: disabled for the sealed tranche
 - External network/provider/hardware validation: not required
-
