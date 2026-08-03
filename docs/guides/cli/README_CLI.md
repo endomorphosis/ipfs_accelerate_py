@@ -1,5 +1,14 @@
 # CLI
 
+**Status:** Current
+**Owner:** CLI and package maintainers
+**Audience:** Users, operators, integrators, and maintainer agents
+**Sources:** `pyproject.toml`; `ipfs_accelerate_py/cli_entry.py`;
+`ipfs_accelerate_py/cli.py`;
+`ipfs_accelerate_py/agent_supervisor/control/control_cli.py`; CLI contract tests
+under `test/`
+**Last-verified:** 2026-08-03 @ b128cceef
+
 The supported product entry point is `ipfs-accelerate`. The module form is
 useful when testing the checkout directly or when the console script is not on
 `PATH`:
@@ -49,9 +58,11 @@ The parser epilog may still show obsolete sample lines for `inference`,
 ## Agent supervisor commands
 
 The `agent` group is the preferred operator surface for the supervisor. All
-commands share the `OperationRequest` / `OperationResult` contract. Real
-mutations require a complete request or direct authorization, idempotency,
-lease, fencing, and effects.
+commands share the `OperationRequest` / `OperationResult` contract. A submitted
+operation, including read-oriented discovery, requires complete target
+bindings: repository root/state root, repository/tree/objective/policy IDs and
+revisions, and caller. Mutations additionally require direct authorization,
+idempotency, lease, fencing, and effects.
 
 ```bash
 ipfs-accelerate agent --help
@@ -62,14 +73,17 @@ ipfs-accelerate agent goals --help
 ipfs-accelerate agent tasks --help
 ```
 
-Typical discovery-style invocations (read-oriented when authorization and
-mutation fields are omitted):
+Use `--help` for cold command discovery. Submit actual operations with a
+complete request file (or every required binding flag):
 
 ```bash
-ipfs-accelerate agent capabilities --output-json
-ipfs-accelerate agent status --request-file request.json --watch-count 5
+ipfs-accelerate agent capabilities --help
+ipfs-accelerate agent status --request-file complete-status-request.json --watch-count 5
 ipfs-accelerate agent pause --request-file authorized-pause.json --output-json
 ```
+
+The bare command `ipfs-accelerate agent capabilities --output-json` is invalid:
+omitting the target bindings yields a typed `invalid_request` result.
 
 Low-level `ipfs-accelerate-agent-*` console scripts remain available for
 daemons and recovery engines. They are not substitutes for the typed
@@ -93,8 +107,8 @@ and process supervision belong to the deployment environment. See the
 
 ```bash
 ipfs-accelerate models --help
-ipfs-accelerate models list
-ipfs-accelerate models search "embedding"
+ipfs-accelerate --output-json models list
+ipfs-accelerate --output-json models search "embedding"
 ipfs-accelerate models details --help
 ipfs-accelerate models ipld-document --help
 ipfs-accelerate models ipld-cid --help
@@ -102,9 +116,14 @@ ipfs-accelerate models ipld-publish --help
 ipfs-accelerate models ipld-load --help
 ```
 
-IPLD publish/load operations require the relevant IPFS dependencies and
-service. A model being listed does not mean that its provider or weights are
-installed locally.
+`--output-json` is a global flag and must appear before `models`. Listing and
+search are runtime operations, not cold discovery: they can initialize
+`SharedCore` and IPFS storage, contact configured endpoints, attempt optional
+provider/package setup or auto-install flows, and write configuration or cache
+state. Use `models --help` when those effects are not acceptable. IPLD
+publish/load operations require the relevant IPFS dependencies and service. A
+listed or matched model does not mean that its provider, credentials, service,
+or weights are available locally.
 
 ## AI processing commands
 
@@ -119,9 +138,10 @@ ipfs-accelerate multimodal --help
 ipfs-accelerate specialized --help
 ```
 
-The command may report an unavailable optional provider rather than installing
-one implicitly. Use `get_capabilities(detail=True)` to inspect the same runtime
-boundary from Python. See the [API overview](../../api/overview.md).
+The command may report an unavailable optional provider. The Python
+`get_instance().get_capabilities(detail=True)` path inspects the same runtime
+boundary but constructs a side-effecting coordinator; it is not a cold probe.
+See the [API overview](../../api/overview.md).
 
 ## GitHub and Copilot groups
 

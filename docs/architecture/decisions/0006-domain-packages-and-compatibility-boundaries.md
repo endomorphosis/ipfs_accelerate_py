@@ -1,8 +1,9 @@
-# ADR-0006: Domain packages own code; compatibility preserves exact behavior without a second implementation
+# ADR-0006: Domain packages own code; compatibility must converge on exact delegation
 
 - **Status:** Accepted
 - **Date:** 2026-08-03
-- **Last verified:** 2026-08-03
+- **Last verified:** 2026-08-03 @ b128cceef
+- **Owner:** architecture maintainers
 - **Deciders:** architecture maintainers; agent-supervisor package owners; MCP runtime maintainers
 - **Scope:** How production code is owned and laid out under semantic domain packages
   (primarily `ipfs_accelerate_py.agent_supervisor`), how delivery **programs**
@@ -11,10 +12,12 @@
   across co-located products, and how **compatibility** surfaces (package-root
   aliases, stable export manifests, MCP/MCP++ facades and shims) must preserve
   exact object identity, behavior, and mutable-state ownership without becoming
-  a second implementation or a second authority plane.
+  a second implementation or a second authority plane. This Accepted record
+  also identifies the remaining cross-tier import and legacy MCP exceptions;
+  it does not certify that the full target DAG or MCP cutover is complete.
 - **Non-goals:** Individual control-operation semantics (see `CONTROL_PLANE.md`);
   worktree/lease fencing protocol (ADR-0004); mutable coordination store versus
-  immutable replication (ADR-0005 when published); objective-versus-taskboard
+  immutable replication (ADR-0005); objective-versus-taskboard
   projection design (ADR-0001); catalog/usage/routing plane separation
   (ADR-0003); sealing delivery boards or marking program tasks complete.
 - **Supersedes:** none
@@ -45,10 +48,15 @@
   - `ipfs_accelerate_py/mcp/` (compatibility facade),
     `ipfs_accelerate_py/mcp_server/` (canonical runtime),
     `ipfs_accelerate_py/mcp_server/compatibility.py` (shared shim helpers),
+    `ipfs_accelerate_py/mcp/unified_registry.py` (legacy mutable registry debt),
+    `ipfs_accelerate_py/mcp/server.py` (unified-default bridge and legacy
+    rollback/error fallback),
     `ipfs_accelerate_py/mcplusplus_module/` (Trio-first surface that must
     delegate, not fork, tool authority)
   - `test/api/test_agent_supervisor_v2_public_api.py` (manifest exactness and
     object-identity checks)
+  - `test/api/test_agent_supervisor_entrypoint_package.py` (cold import,
+    contract identity, and no lower-package import of `entrypoints`)
   - Integration boundary tests under `test/api/test_agent_supervisor_repository_forest*.py`
     and kit/datasets integration tests cited by `INTEGRATION_BOUNDARIES.md`
 
@@ -114,16 +122,17 @@ siblings inherit write rights they do not own.
 ## Decision
 
 **Semantic domain packages define code ownership. Delivery programs define
-scheduled work, not the package tree. Compatibility surfaces preserve exact
-behavior, object identity, and single-writer state by delegating to the
-canonical owner—they must not become a second implementation or authority plane.**
+scheduled work, not the package tree. Compatibility surfaces must preserve
+exact behavior, object identity, and single-writer state by delegating to the
+canonical owner; existing exceptions are migration debt, not an alternate
+architecture or evidence that the cutover is complete.**
 
-### 1. Domain packages encode ownership (acyclic semantic layout)
+### 1. Domain packages encode ownership; the complete tier DAG is a target
 
 Production modules under `ipfs_accelerate_py.agent_supervisor` live in
 **semantic domain packages** named by product role, not by taskboard prefix:
 
-| Layer (allowed import direction: upward only) | Packages |
+| Target layer (dependencies flow toward lower layers) | Packages |
 | --- | --- |
 | Foundation | `core`, `control`, `task_sources`, `context`, `analysis`, `proof` |
 | Mid | `objectives`, `planning`, `validation`, `prompt` |
@@ -131,10 +140,16 @@ Production modules under `ipfs_accelerate_py.agent_supervisor` live in
 | Edge | `todo_daemon`, `integrations` |
 | Facade (highest composition) | `entrypoints` |
 
-Normative layout rules:
+The package inventory, landed-module map, semantic names, package directories,
+and ownership READMEs are current. The table's complete cross-package import
+direction is the accepted convergence target, not a claim that every current
+module already obeys it.
 
-1. **Acyclic DAG.** No package cycles. Higher layers may import lower; the
-   reverse is forbidden.
+Normative layout and convergence rules:
+
+1. **Target acyclic DAG.** New and migrated code must not introduce package
+   cycles. Higher layers may import lower; lower-to-higher imports must be
+   removed rather than treated as precedent.
 2. **Semantic names are public inventory.**
    `AGENT_SUPERVISOR_DOMAIN_PACKAGES`,
    `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE`,
@@ -151,9 +166,26 @@ Normative layout rules:
    `from ipfs_accelerate_py.agent_supervisor.<pkg>.<mod> import …`. Do not
    reintroduce long-lived flat root production modules or root-level re-export
    stubs as the primary home of behavior.
-5. **No daemon / runtime upward into foundation.** `core` must not import
-   `todo_daemon`, `runtime`, `merge`, or `rescue`. Lower packages must not
-   import `entrypoints`.
+5. **No new daemon / runtime dependencies in foundation.** `core` must not
+   import `todo_daemon`, `runtime`, `merge`, or `rescue`. Lower packages must
+   not import `entrypoints`.
+
+The highest-layer `entrypoints` boundary is landed and tested: its initializer
+imports contracts only, its eager exports preserve contract object identity,
+and the lower domain packages are AST-scanned to reject imports of
+`entrypoints`. The broader tier ordering is not yet fully enforced. Current
+cross-tier debt includes:
+
+- `analysis/cache_coordinator.py` importing `merge` and `runtime`;
+- `objectives/objective_daemon.py` importing `runtime`;
+- `objectives/bundle_supervisor.py` importing `merge`, `runtime`, and
+  `todo_daemon`; and
+- `task_sources/task_source.py` importing `runtime` and `prompt`.
+
+These exceptions do not change which semantic package owns each module. They
+do mean that “full acyclic tier DAG implemented” is not valid completion
+evidence until a source-level dependency check passes for the entire package
+tree.
 
 ### 2. Delivery programs do not define code ownership
 
@@ -206,10 +238,11 @@ inherit mutation rights from sharing a parent directory. Optional integrations
 nominate evidence; they are not completion-authoritative for another product’s
 tree. See `INTEGRATION_BOUNDARIES.md`.
 
-### 5. Compatibility must preserve exact behavior and state—without a second implementation
+### 5. Compatibility must preserve exact behavior and state—without a permanent second implementation
 
-Compatibility exists so callers can migrate without dual ownership. It is
-bounded by exactness:
+Compatibility exists so callers can migrate without dual ownership. The
+accepted end state is bounded by exactness; the legacy exceptions below remain
+explicit migration debt:
 
 1. **Single canonical owner per concern.** Behavior, validation, registries,
    and mutable state live in one authoritative package/module. Facades, shims,
@@ -221,9 +254,9 @@ bounded by exactness:
    (`AGENT_SUPERVISOR_PUBLIC_API_EXPORTS` / v2 stable manifests;
    `ENTRYPOINT_CONTRACT_EXPORTS`; discovery publications that bind the same
    catalog and dispatcher identity).
-3. **No second mutable registry or lifecycle.** Compatibility layers must not
-   maintain a parallel tool registry, lease table, objective heap, or
-   completion authority. Shared helpers (for example
+3. **No permanent second mutable registry or lifecycle.** Compatibility layers
+   must converge away from parallel tool registries, lease tables, objective
+   heaps, or completion authorities. Shared helpers (for example
    `mcp_server.compatibility` resolvers and stubs) are utilities, not a second
    registry.
 4. **MCP / MCP++ facade rule.** `ipfs_accelerate_py.mcp` is a **compatibility
@@ -231,8 +264,8 @@ bounded by exactness:
    `mcplusplus_module` may host Trio-first transport surfaces but must
    **delegate** tool registration and business logic to canonical
    `mcp_server` paths rather than grow unique scheduler or policy behavior.
-   Deferred modules may exist as thin adapters; they are not alternate
-   authority planes (`MCP_RUNTIME.md`).
+   Deferred modules may exist as thin adapters; they are not the target
+   authority plane (`MCP_RUNTIME.md`).
 5. **Historical path aliases are temporary and exact.** Flat stem resolution
    via package-root aliasing may preserve import spells for landed modules
    mapped in `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE`. New callers must use
@@ -246,6 +279,15 @@ bounded by exactness:
 7. **Business logic stays out of shims.** Extension adds tools and behavior in
    canonical packages; shims only adapt import paths and transport.
 
+The MCP cutover is incomplete at this verification point. The `mcp` facade
+selects `mcp_server` by default, but `mcp/unified_registry.py` still owns a
+module-global mutable legacy tool registry and call path. In addition,
+`mcp/server.py` can construct the legacy `MCPServerWrapper` after a unified
+bridge error, during cutover dry-run, or under explicit rollback. Those paths
+are compatibility escape hatches, not evidence that duplicate mutable state
+has already been eliminated. New behavior belongs in `mcp_server`; the legacy
+registry and fallback must not acquire new authority while callers migrate.
+
 ### Ownership summary
 
 | Concern | Authoritative home | Compatibility form allowed |
@@ -253,7 +295,7 @@ bounded by exactness:
 | Domain module behavior | Owning domain package | Package-root / historical stem alias to same module |
 | Control ops, catalogs, discovery | `control/` + reviewed public manifests | Transport adapters bind same identities |
 | Prompt-first contracts | `entrypoints.contracts` | Package re-export with object identity |
-| MCP tool registry / dispatch | `mcp_server` | `mcp` facade bridge; Trio shims delegate |
+| MCP tool registry / dispatch | `mcp_server` (target and unified default) | `mcp` bridge; legacy mutable registry/wrapper remain bounded migration exceptions |
 | Shared MCP shim helpers | `mcp_server.compatibility` | Thin aliases from historical modules |
 | Git mutation authority | Explicit `RepositoryAuthority` / sole-write alias | Observation and evidence nomination only |
 | Delivery schedule | Program boards + objectives | Never a package ownership signal |
@@ -342,12 +384,11 @@ bounded by exactness:
 
 - Code ownership is stable across program lifecycles; boards can regenerate
   without renaming packages.
-- Acyclic semantic layout makes dependency and cold-import review enforceable;
-  agents have a deterministic “where new work goes” map.
+- Semantic ownership gives agents a deterministic “where new work goes” map;
+  the target tier DAG gives dependency cleanup an auditable end state.
 - Highest-layer `entrypoints` composition stays one-way and import-safe.
-- Compatibility preserves exact public contracts (object identity, single
-  registry, delegated shims) so multi-transport Python/CLI/MCP parity remains
-  testable.
+- Compatibility has an exact, testable convergence contract for public object
+  identity and delegated state across Python/CLI/MCP surfaces.
 - Independent repository authority prevents co-location from becoming false
   write rights or false completion evidence.
 - Rejecting board-ID package naming keeps public APIs product-shaped rather
@@ -369,8 +410,14 @@ bounded by exactness:
 
 ### Neutral / residual risks
 
+- The complete package tier DAG is not yet landed. The cross-tier imports named
+  in Decision §1 must be removed or explicitly redesigned before a full-DAG
+  completion claim is valid.
+- `mcp/unified_registry.py` and the fallback `MCPServerWrapper` remain mutable
+  legacy runtime debt. The unified bridge is the default, but error/dry-run/
+  rollback paths can still select the legacy implementation.
 - Some Trio-first or deferred MCP modules may still exist as migration debt;
-  they remain non-authoritative and must continue to shrink toward delegation.
+  they must continue to shrink toward delegation.
 - Planned entrypoint facades (`ENTRYPOINT_LAZY_FACADE_EXPORTS`) are empty today;
   future facades must obey the same cold-import and non-ownership rules.
 - Board-prefix aliases remain for scanners; documentation and new code must
@@ -385,10 +432,11 @@ bounded by exactness:
 | Semantic domain package inventory | `AGENT_SUPERVISOR_DOMAIN_PACKAGES` in `agent_supervisor/__init__.py`; package dirs + READMEs | Product-role names |
 | Landed stem → package map | `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE`; deprecated `LANDED_MODULE_OWNERS` alias | Board spellings are aliases |
 | Programs ≠ packages | `PROGRAMS.md`; philosophy §6–7; `PACKAGE_MAP.md` “new *program*” row | Code still in domain packages |
-| Acyclic DAG + no upward entrypoints | `PACKAGE_MAP.md` rules; `ENTRYPOINT_LOWER_DOMAIN_PACKAGES` | One-way composition |
-| Entrypoint contract object identity | `entrypoints/__init__.py` assigns `getattr(_contracts, name)`; `packages/entrypoints.md` | Eager contracts only |
+| Target tier DAG | `PACKAGE_MAP.md` rules plus the current exceptions listed in Decision §1 | Accepted direction; not yet a full-tree pass |
+| No upward import of `entrypoints` | `ENTRYPOINT_LOWER_DOMAIN_PACKAGES`; `test/api/test_agent_supervisor_entrypoint_package.py` | Landed one-way composition boundary |
+| Entrypoint contract object identity | `entrypoints/__init__.py` assigns `getattr(_contracts, name)`; `test/api/test_agent_supervisor_entrypoint_package.py` | Landed eager contracts only |
 | v2 public API exact identity | `test/api/test_agent_supervisor_v2_public_api.py` (`is` checks across owner, package, CLI, MCP) | Manifest immutable |
-| MCP compatibility without dual ownership | `MCP_RUNTIME.md` § compatibility boundary and rationale; `mcp_server/compatibility.py` | Facades delegate |
+| MCP unified-default compatibility and remaining dual-state debt | `mcp/server.py`; `mcp/unified_registry.py`; `MCP_RUNTIME.md` compatibility rationale | Default delegates; legacy registry/fallback still exist |
 | Independent repository authority | `repository_forest.py` (`RepositoryAuthority`, `sole_write_alias`); `INTEGRATION_BOUNDARIES.md` | Co-location ≠ authority |
 | Domain layout architecture narrative | `AGENT_SUPERVISOR_ARCHITECTURE.md` domain package layout section | Matches package map |
 
@@ -406,16 +454,19 @@ rg -qi 'compatib' docs/architecture/decisions/0006-domain-packages-and-compatibi
 rg -n 'AGENT_SUPERVISOR_DOMAIN_PACKAGES|AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE' \
   ipfs_accelerate_py/agent_supervisor/__init__.py
 
-# Entrypoint one-way boundary and identity-preserving exports
+# Entrypoint one-way boundary, cold import and identity-preserving exports
 rg -n 'ENTRYPOINT_CONTRACT_EXPORTS|ENTRYPOINT_LOWER_DOMAIN_PACKAGES' \
   ipfs_accelerate_py/agent_supervisor/entrypoints
+python -m pytest test/api/test_agent_supervisor_entrypoint_package.py -q
 
 # Public API identity tests
 python -m pytest test/api/test_agent_supervisor_v2_public_api.py -q
 
-# Compatibility helpers remain shared (not a second registry)
-rg -n 'Shared compatibility helpers|def _resolve_' \
-  ipfs_accelerate_py/mcp_server/compatibility.py
+# Unified MCP is the default; legacy mutable registry/fallback debt is visible
+rg -n 'create_unified_server|bridge_error_fallback|MCPServerWrapper' \
+  ipfs_accelerate_py/mcp/server.py
+rg -n '_global_registry|def get_global_registry|def call_tool' \
+  ipfs_accelerate_py/mcp/unified_registry.py
 
 # Forest authority symbols
 rg -n 'class RepositoryAuthority|sole_write_alias' \
@@ -423,14 +474,17 @@ rg -n 'class RepositoryAuthority|sole_write_alias' \
 ```
 
 Pass signals: domain packages remain the ownership map; board-prefix names stay
-aliases/values only; public export and entrypoint contract identities hold;
-MCP facades still described and implemented as bridges/delegates; forest
-authority remains per-root.
+aliases/values only; the tested `entrypoints` boundary remains cold and one-way;
+reviewed public identities hold; unified MCP remains the default while the
+named legacy exceptions remain bounded and visible; forest authority remains
+per-root.
 
 Fail signals (ADR stale): new primary packages named only after board prefixes;
-compatibility modules reimplement registries or mutable state; public export
-`is` identity broken; lower packages import `entrypoints`; co-located siblings
-treated as shared write authority without explicit sole-write binding.
+new compatibility business logic or mutable authority expands beyond the
+disclosed legacy exceptions; public export `is` identity breaks; lower packages
+import `entrypoints`; the tier-DAG debt is claimed complete without a full-tree
+check; co-located siblings are treated as shared write authority without
+explicit sole-write binding.
 
 ## Review triggers
 
