@@ -111,7 +111,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-005 Refresh the system context and maintained architecture overview
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -136,7 +136,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-006 Document the inference runtime and router lifecycle
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -161,7 +161,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-007 Document model, service and endpoint-usage routing
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -186,7 +186,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-008 Document current MCP and MCP++ runtime architecture
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -211,7 +211,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-009 Document IPFS, content identity and P2P execution
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -236,7 +236,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-010 Document cross-repository and nested-package boundaries
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -261,7 +261,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-011 Document supervisor intent, control and authority
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -286,7 +286,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-012 Document supervisor planning and assurance pipeline
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -311,7 +311,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-013 Document supervisor execution, landing and recovery
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -336,7 +336,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-014 Document prompt-first runtime, persistence and steering status
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
