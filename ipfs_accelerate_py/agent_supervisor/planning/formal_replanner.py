@@ -29,12 +29,14 @@ from enum import Enum
 from typing import Any, ClassVar, Final
 
 from ..proof.formal_counterexamples import (
+    CounterexampleKind,
     CounterexampleContextCapsule,
     CounterexampleLimits,
     CounterexampleValidationError,
     FormalCounterexample,
     RepairClass,
     build_counterexample_context_capsule,
+    normalize_counterexample,
 )
 from .formal_plan_compiler import (
     CompilationStatus,
@@ -117,6 +119,33 @@ RESPONSIVE_REPLAN_SIGNAL_KINDS: Final[frozenset[str]] = frozenset(
         "scope_conflict",
         "resource_change",
         "resource_infeasible",
+        "plan_critique",
+    }
+)
+
+_IMMUTABLE_PLAN_LIFECYCLES: Final[frozenset[str]] = frozenset(
+    {
+        "accepted",
+        "claimed",
+        "completed",
+        "historical",
+        "running",
+        "settling",
+        "succeeded",
+    }
+)
+_CRITIQUE_SOURCE_IDENTITY_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "candidate_id",
+        "content_id",
+        "graph_id",
+        "identity",
+        "plan_id",
+        "portfolio_id",
+        "record_id",
+        "revision_id",
+        "semantic_id",
+        "snapshot_id",
     }
 )
 
@@ -1790,6 +1819,7 @@ class DeltaReplanStopReason(str, Enum):
     REPLAN_REQUIRED = "replan_required"
     UNCHANGED_FAILURE_BACKOFF = "unchanged_failure_backoff"
     IDENTICAL_FAILURE_EXHAUSTED = "identical_failure_exhausted"
+    RETRY_BUDGET_EXHAUSTED = "retry_budget_exhausted"
     FAILURE_MEMORY_BOUND_REACHED = "failure_memory_bound_reached"
     UNBOUND_FAILURE = "unbound_failure"
     REPAIR_BOUND_EXCEEDED = "repair_bound_exceeded"
@@ -2282,6 +2312,150 @@ def _counterexample(
     return FormalCounterexample.from_dict(value)
 
 
+def _contract_mapping(value: Any, name: str) -> dict[str, Any]:
+    """Copy one typed contract without importing its producer module.
+
+    ``plan_critic`` is intentionally allowed to depend on formal proof
+    contracts.  Keeping this adapter structural avoids reversing that package
+    edge while still requiring a canonical JSON object at the boundary.
+    """
+
+    if isinstance(value, Mapping):
+        payload = dict(value)
+    else:
+        converter = getattr(value, "to_dict", None)
+        if not callable(converter):
+            raise ReplannerValidationError(
+                f"{name} must be a typed contract or canonical object"
+            )
+        payload = converter()
+        if not isinstance(payload, Mapping):
+            raise ReplannerValidationError(f"{name}.to_dict() must return an object")
+        payload = dict(payload)
+    try:
+        canonical_json(payload)
+    except (TypeError, ValueError) as exc:
+        raise ReplannerValidationError(
+            f"{name} is not canonical JSON: {exc}"
+        ) from exc
+    return copy.deepcopy(payload)
+
+
+def _critique_records(value: Any, name: str) -> tuple[dict[str, Any], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, Sequence) or isinstance(
+        value, (str, bytes, bytearray, memoryview)
+    ):
+        raise ReplannerValidationError(f"{name} must be a sequence")
+    records = tuple(
+        _contract_mapping(item, f"{name} item") for item in value
+    )
+    return tuple(
+        sorted(
+            records,
+            key=lambda item: (
+                str(
+                    item.get("counterexample_id")
+                    or item.get("finding_id")
+                    or item.get("content_id")
+                    or ""
+                ),
+                canonical_json(item),
+            ),
+        )
+    )
+
+
+def _history_locked(record: Mapping[str, Any]) -> bool:
+    if record.get("accepted") is True or record.get("completed") is True:
+        return True
+    values = {
+        str(record.get(name) or "").strip().lower().replace("-", "_")
+        for name in ("status", "state", "lifecycle", "lifecycle_state")
+    }
+    return bool(values.intersection(_IMMUTABLE_PLAN_LIFECYCLES))
+
+
+def _accepted_history(source: Mapping[str, Any]) -> dict[str, str]:
+    """Return immutable task bytes keyed by their canonical source identity."""
+
+    return {
+        _identity(record, "task"): canonical_json(record)
+        for record in source.get("tasks", ())
+        if isinstance(record, Mapping) and _history_locked(record)
+    }
+
+
+def _critique_source_identity(source: Mapping[str, Any]) -> str:
+    """Recompute the source coordinate used by ``PlanCritic``.
+
+    A critique plan id names its input record, whereas ``FormalPlanCompiler``
+    emits separate source and compiled-plan identities.  Validate the former
+    here and leave the normalized formal counterexample unbound to an
+    inapplicable identity namespace.
+    """
+
+    for name in (
+        "plan_id",
+        "candidate_id",
+        "portfolio_id",
+        "revision_id",
+        "content_id",
+    ):
+        value = source.get(name)
+        if value not in (None, ""):
+            return str(value).strip()
+    return content_identity(
+        {
+            key: value
+            for key, value in source.items()
+            if key not in _CRITIQUE_SOURCE_IDENTITY_KEYS
+        }
+    )
+
+
+_CRITIQUE_REPAIR_CLASSES: Final[Mapping[str, tuple[RepairClass, ...]]] = {
+    "contradiction": (RepairClass.ADD_PREMISE,),
+    "unsatisfied_assumption": (RepairClass.ADD_PREMISE,),
+    "uncovered_goal": (RepairClass.ADD_OBLIGATION,),
+    "missing_consumer": (RepairClass.ADD_DEPENDENCY, RepairClass.ADD_OBLIGATION),
+    "cycle": (RepairClass.ADD_DEPENDENCY, RepairClass.HUMAN_REVIEW),
+    "orphan": (RepairClass.ADD_DEPENDENCY, RepairClass.ADD_OBLIGATION),
+    "invalid_effect": (RepairClass.SPLIT_TASK, RepairClass.HUMAN_REVIEW),
+    "policy_failure": (RepairClass.CONSTRAIN_SCOPE, RepairClass.HUMAN_REVIEW),
+    "ir_failure": (RepairClass.CONSTRAIN_SCOPE, RepairClass.HUMAN_REVIEW),
+    "security_failure": (RepairClass.CONSTRAIN_SCOPE, RepairClass.HUMAN_REVIEW),
+    "proof_failure": (RepairClass.ADD_OBLIGATION, RepairClass.HUMAN_REVIEW),
+    "false_parallelism": (RepairClass.ADD_DEPENDENCY,),
+    "conflict": (RepairClass.ADD_DEPENDENCY, RepairClass.SPLIT_TASK),
+    "resource_infeasible": (RepairClass.ADJUST_RESOURCES,),
+}
+
+
+def _critique_repair_classes(kind: str) -> tuple[RepairClass, ...]:
+    normalized = kind.strip().lower().replace("-", "_")
+    for token, classes in _CRITIQUE_REPAIR_CLASSES.items():
+        if token in normalized:
+            return classes
+    return (RepairClass.HUMAN_REVIEW,)
+
+
+def _critique_counterexample_kind(kind: str) -> CounterexampleKind:
+    normalized = kind.strip().lower().replace("-", "_")
+    if "unsat" in normalized:
+        return CounterexampleKind.SMT_UNSAT_CORE
+    if "contradiction" in normalized:
+        return CounterexampleKind.TDFOL_CONTRADICTION
+    if "trace" in normalized or "parallel" in normalized:
+        return CounterexampleKind.TLA_TRACE
+    if "security" in normalized or "attack" in normalized:
+        return CounterexampleKind.PROTOCOL_ATTACK
+    if "proof" in normalized or "kernel" in normalized:
+        return CounterexampleKind.KERNEL_ERROR
+    return CounterexampleKind.GENERIC_FAILURE
+
+
 class FormalReplanner:
     """Generate, compile, check, rank, and admit one bounded repair transition.
 
@@ -2582,6 +2756,257 @@ class FormalReplanner:
             previous_trigger_evidence_id=previous_signal_id,
             trigger_signal_kind=signal.kind.value,
             prior_decision_id=prior_decision_id,
+            repository_tree_id=repository_tree_id,
+            previous_diagnostic_receipt_id=previous_diagnostic_receipt_id,
+            max_identical_failures=max_identical_failures,
+            cancelled=cancelled,
+        )
+
+    def replan_critique(
+        self,
+        source: Mapping[str, Any],
+        critique: Any,
+        *,
+        previous_critique_id: str | None = None,
+        consumed_evidence_ids: Iterable[str] = (),
+        previous_evidence_ids: Iterable[str] = (),
+        previous_counterexample_id: str | None = None,
+        candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]]
+        | None = None,
+        prior_semantic_ids: Iterable[str] = (),
+        retry_attempt: int | None = None,
+        refinement_depth: int = 0,
+        backoff_attempt: int = 0,
+        base_backoff_seconds: int = 1,
+        max_backoff_seconds: int = 300,
+        prior_decision_id: str | None = None,
+        repository_tree_id: str | None = None,
+        previous_diagnostic_receipt_id: str | None = None,
+        max_identical_failures: int = 8,
+        cancelled: Any = None,
+    ) -> ResponsiveReplanDecision:
+        """Translate one typed critique witness into a bounded formal repair.
+
+        Selection is deterministic and restricted to records the independent
+        critic marked repairable.  Only critique evidence not named in
+        ``consumed_evidence_ids`` can trigger another compiler/validator pass;
+        transport redelivery or a changed wrapper identity therefore backs off
+        and eventually terminates through ``max_identical_failures``.
+
+        The adapter deliberately consumes only the selected minimized
+        counterexample.  Findings, unsat cores, scanner traces, and unrelated
+        source context are never forwarded to the model-facing repair packet.
+        """
+
+        payload = _contract_mapping(critique, "critique")
+        # Recompute the complete typed critique graph before consuming any
+        # repair coordinates.  A merely canonical JSON object can still carry
+        # a forged finding, authority projection, or nested counterexample.
+        try:
+            from .plan_critic import PlanCriticError, PlanCritique
+
+            payload = PlanCritique.from_dict(payload).to_dict()
+        except (PlanCriticError, TypeError, ValueError) as exc:
+            raise ReplannerValidationError(
+                f"critique contract validation failed: {exc}"
+            ) from exc
+        critique_id = str(
+            payload.get("critique_id")
+            or payload.get("content_id")
+            or getattr(critique, "critique_id", "")
+            or ""
+        ).strip()
+        if not critique_id:
+            raise ReplannerValidationError("critique_id is required")
+        source_plan_id = str(
+            payload.get("source_plan_id")
+            or payload.get("plan_id")
+            or ""
+        ).strip()
+        if not source_plan_id or source_plan_id != _critique_source_identity(source):
+            raise ReplannerValidationError(
+                "critique source_plan_id does not match the supplied source"
+            )
+        decision = str(payload.get("decision") or "").strip().lower()
+        if payload.get("accepted") is True or decision in {
+            "accept",
+            "accepted",
+            "admit",
+            "admitted",
+        }:
+            raise ReplannerValidationError(
+                "an accepted critique has no rejected record to repair"
+            )
+
+        bundle = _source_bundle(source)
+        repairable = set(_strings(payload.get("repairable_record_ids")))
+        findings = _critique_records(payload.get("findings"), "findings")
+        counterexamples = _critique_records(
+            payload.get("counterexamples"), "counterexamples"
+        )
+        evidence_ids = set(_strings(payload.get("evidence_ids")))
+        for record in (*findings, *counterexamples):
+            evidence_ids.update(_strings(record.get("evidence_ids")))
+
+        selected: dict[str, Any] | None = None
+        selected_task_ids: tuple[str, ...] = ()
+        for record in counterexamples:
+            record_ids = set(
+                _strings(record.get("record_ids"))
+            ) | set(_strings(record.get("repairable_record_ids")))
+            allowed = record_ids & repairable if repairable else record_ids
+            task_ids = tuple(
+                sorted(item for item in allowed if _task(bundle, item) is not None)
+            )
+            if task_ids:
+                selected = record
+                selected_task_ids = task_ids
+                break
+        if selected is None:
+            raise ReplannerValidationError(
+                "critique contains no task-bound repairable counterexample"
+            )
+
+        typed_counterexample_id = str(
+            selected.get("counterexample_id")
+            or selected.get("content_id")
+            or content_identity(selected)
+        ).strip()
+        evidence_ids.update(_strings(selected.get("evidence_ids")))
+        # The minimized typed witness itself is evidence on the first pass.
+        evidence_ids.add(typed_counterexample_id)
+        consumed_values = (
+            (consumed_evidence_ids,)
+            if isinstance(consumed_evidence_ids, str)
+            else tuple(consumed_evidence_ids)
+        )
+        previous_values = (
+            (previous_evidence_ids,)
+            if isinstance(previous_evidence_ids, str)
+            else tuple(previous_evidence_ids)
+        )
+        already_consumed = set(
+            _strings((*consumed_values, *previous_values))
+        )
+        repeated_critique = bool(
+            previous_critique_id
+            and str(previous_critique_id).strip() == critique_id
+        )
+        new_evidence_ids = tuple(
+            sorted(evidence_ids.difference(already_consumed))
+        )
+        if repeated_critique and not already_consumed:
+            new_evidence_ids = ()
+
+        kind = str(selected.get("kind") or "generic_failure")
+        reason = str(
+            selected.get("reason")
+            or selected.get("violated_property")
+            or kind
+        ).strip()
+        witness = (
+            dict(selected.get("witness") or {})
+            if isinstance(selected.get("witness"), Mapping)
+            else {}
+        )
+        failure_payload: dict[str, Any] = {
+            "code": kind,
+            "record_ids": list(selected_task_ids),
+        }
+        if "resource" in kind.lower():
+            resource = str(witness.get("resource") or "").strip()
+            required = witness.get("required")
+            available = witness.get("available")
+            repaired_bound = (
+                available
+                if isinstance(available, int)
+                and not isinstance(available, bool)
+                and available >= 0
+                else required
+            )
+            if (
+                resource
+                and isinstance(repaired_bound, int)
+                and not isinstance(repaired_bound, bool)
+                and repaired_bound >= 0
+            ):
+                failure_payload["resource_bounds"] = {
+                    resource: repaired_bound
+                }
+        selected_bounds = (
+            dict(selected.get("finite_bounds") or {})
+            if isinstance(selected.get("finite_bounds"), Mapping)
+            else {}
+        )
+        resource_bounds = failure_payload.get("resource_bounds")
+        if isinstance(resource_bounds, Mapping):
+            selected_bounds.update(resource_bounds)
+        raw_counterexample = {
+            "kind": _critique_counterexample_kind(kind).value,
+            "failure": failure_payload,
+        }
+        normalized = normalize_counterexample(
+            raw_counterexample,
+            kind=_critique_counterexample_kind(kind),
+            violated_property=reason or "plan critique rejected a record",
+            bindings={
+                "task_ids": list(selected_task_ids),
+                "assumption_ids": list(
+                    _strings(selected.get("assumption_ids"))
+                ),
+                "invalidated_evidence_ids": list(new_evidence_ids),
+            },
+            assumption_ids=_strings(selected.get("assumption_ids")),
+            finite_bounds=selected_bounds,
+            repair_classes=_critique_repair_classes(kind),
+        )
+        repeated_counterexample = str(
+            previous_counterexample_id or ""
+        ).strip() in {
+            typed_counterexample_id,
+            normalized.semantic_id,
+        }
+        if repeated_counterexample and not already_consumed:
+            new_evidence_ids = ()
+
+        if new_evidence_ids:
+            trigger = content_identity(
+                {
+                    "counterexample_id": typed_counterexample_id,
+                    "new_evidence_ids": list(new_evidence_ids),
+                }
+            )
+            previous_trigger = str(previous_critique_id or "").strip()
+            previous_counterexample = str(
+                previous_counterexample_id or ""
+            ).strip()
+        else:
+            trigger = content_identity(
+                {
+                    "counterexample_id": typed_counterexample_id,
+                    "evidence_ids": sorted(evidence_ids),
+                }
+            )
+            previous_trigger = trigger
+            previous_counterexample = normalized.semantic_id
+
+        return self.replan_if_changed(
+            bundle,
+            normalized,
+            previous_counterexample_id=previous_counterexample,
+            candidate_repairs=candidate_repairs,
+            prior_semantic_ids=prior_semantic_ids,
+            retry_attempt=retry_attempt,
+            refinement_depth=refinement_depth,
+            backoff_attempt=backoff_attempt,
+            base_backoff_seconds=base_backoff_seconds,
+            max_backoff_seconds=max_backoff_seconds,
+            trigger_evidence_id=trigger,
+            previous_trigger_evidence_id=previous_trigger,
+            trigger_signal_kind="plan_critique",
+            # Diagnostic reuse follows the minimized failure, not a transport
+            # or wrapper revision of the surrounding critique.
+            prior_decision_id=prior_decision_id or typed_counterexample_id,
             repository_tree_id=repository_tree_id,
             previous_diagnostic_receipt_id=previous_diagnostic_receipt_id,
             max_identical_failures=max_identical_failures,
@@ -3026,6 +3451,15 @@ class FormalReplanner:
             return RepairCandidate(
                 operation, RepairCandidateStatus.COUNTEREXAMPLE_REJECTED,
                 rejection_reasons=(str(exc),),
+            )
+        immutable_history = _accepted_history(bundle)
+        if immutable_history and _accepted_history(repaired) != immutable_history:
+            return RepairCandidate(
+                operation,
+                RepairCandidateStatus.COUNTEREXAMPLE_REJECTED,
+                rejection_reasons=(
+                    "repair would alter accepted or active plan history",
+                ),
             )
         if changed > self.limits.max_changed_records or generated > self.limits.max_generated_tasks:
             return RepairCandidate(
@@ -3747,6 +4181,9 @@ class FormalDeltaReplanner:
             FailureMemoryDisposition.IDENTICAL_FAILURE_EXHAUSTED: (
                 DeltaReplanStopReason.IDENTICAL_FAILURE_EXHAUSTED
             ),
+            FailureMemoryDisposition.RETRY_BUDGET_EXHAUSTED: (
+                DeltaReplanStopReason.RETRY_BUDGET_EXHAUSTED
+            ),
             FailureMemoryDisposition.MEMORY_BOUND_REACHED: (
                 DeltaReplanStopReason.FAILURE_MEMORY_BOUND_REACHED
             ),
@@ -3969,6 +4406,57 @@ def replan_for_signal(
     )
 
 
+def replan_critique(
+    source: Mapping[str, Any],
+    critique: Any,
+    *,
+    previous_critique_id: str | None = None,
+    consumed_evidence_ids: Iterable[str] = (),
+    previous_evidence_ids: Iterable[str] = (),
+    previous_counterexample_id: str | None = None,
+    limits: ReplanLimits | Mapping[str, Any] | None = None,
+    admission_callback: Callable[[RepairTransition], bool | None] | None = None,
+    candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]]
+    | None = None,
+    prior_semantic_ids: Iterable[str] = (),
+    retry_attempt: int | None = None,
+    refinement_depth: int = 0,
+    backoff_attempt: int = 0,
+    base_backoff_seconds: int = 1,
+    max_backoff_seconds: int = 300,
+    prior_decision_id: str | None = None,
+    repository_tree_id: str | None = None,
+    previous_diagnostic_receipt_id: str | None = None,
+    max_identical_failures: int = 8,
+    cancelled: Any = None,
+) -> ResponsiveReplanDecision:
+    """Stateless entry point for deterministic critique-guided repair."""
+
+    return FormalReplanner(
+        limits=limits,
+        admission_callback=admission_callback,
+    ).replan_critique(
+        source,
+        critique,
+        previous_critique_id=previous_critique_id,
+        consumed_evidence_ids=consumed_evidence_ids,
+        previous_evidence_ids=previous_evidence_ids,
+        previous_counterexample_id=previous_counterexample_id,
+        candidate_repairs=candidate_repairs,
+        prior_semantic_ids=prior_semantic_ids,
+        retry_attempt=retry_attempt,
+        refinement_depth=refinement_depth,
+        backoff_attempt=backoff_attempt,
+        base_backoff_seconds=base_backoff_seconds,
+        max_backoff_seconds=max_backoff_seconds,
+        prior_decision_id=prior_decision_id,
+        repository_tree_id=repository_tree_id,
+        previous_diagnostic_receipt_id=previous_diagnostic_receipt_id,
+        max_identical_failures=max_identical_failures,
+        cancelled=cancelled,
+    )
+
+
 __all__ = [
     "BOUNDED_REFINEMENT_EVIDENCE_ID",
     "UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID",
@@ -4025,6 +4513,7 @@ __all__ = [
     "generate_plan_repairs",
     "replan_plan_delta",
     "replan_if_changed",
+    "replan_critique",
     "replan_for_signal",
     "replan_from_counterexample",
 ]

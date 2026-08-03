@@ -14,6 +14,11 @@ Two identities are kept separate:
   semantic trigger for reopening a branch.
 
 Delivery identifiers and timestamps are excluded from both identities.
+
+Each durable record also retains a bounded, append-only set of evidence
+identities.  Comparing only with the most recent identity is unsafe: replaying
+``v1`` after accepting ``v2`` would otherwise look novel and could keep a
+replanner alive forever by alternating the two values.
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ BRANCH_FAILURE_RECORD_SCHEMA: Final[str] = (
 DELTA_REPLAN_REQUIREMENT_ID: Final[str] = (
     "285414268422632231306428376746151397491"
 )
+MAX_FAILURE_BINDING_IDS: Final[int] = 256
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@=-]{0,255}$")
 
@@ -70,6 +76,10 @@ def _identifiers(
     result = tuple(
         sorted({_identifier(value, name) for value in values})
     )
+    if len(result) > MAX_FAILURE_BINDING_IDS:
+        raise PlanFailureMemoryError(
+            f"{name} exceeds the {MAX_FAILURE_BINDING_IDS}-identifier bound"
+        )
     if not result and not allow_empty:
         raise PlanFailureMemoryError(f"{name} must not be empty")
     return result
@@ -214,6 +224,12 @@ class TypedBranchFailure:
     def feature_id(self) -> str:
         return self.diagnostic_id
 
+    @property
+    def failure_signature_id(self) -> str:
+        """Stable exact identity used by repair and retry records."""
+
+        return self.diagnostic_id
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "scope": self.scope.to_dict(),
@@ -316,6 +332,9 @@ class FailureBackoffPolicy:
     max_identical_failures: int = 8
     max_records: int = 4_096
     max_records_per_branch: int = 64
+    # Kept last so the original five positional parameters retain their
+    # meaning for existing callers.
+    max_replan_attempts_per_diagnostic: int = 8
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
@@ -332,6 +351,10 @@ class FailureBackoffPolicy:
             raise PlanFailureMemoryError(
                 "per-branch record bound cannot exceed total record bound"
             )
+        if self.max_replan_attempts_per_diagnostic > MAX_FAILURE_BINDING_IDS:
+            raise PlanFailureMemoryError(
+                "per-diagnostic replan bound exceeds evidence-history capacity"
+            )
 
     def to_dict(self) -> dict[str, int]:
         return {
@@ -341,10 +364,16 @@ class FailureBackoffPolicy:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "FailureBackoffPolicy":
-        if not isinstance(payload, Mapping) or set(payload) != set(
-            cls.__dataclass_fields__
-        ):
-            raise PlanFailureMemoryError("backoff policy must use the closed schema")
+        if not isinstance(payload, Mapping):
+            raise PlanFailureMemoryError(
+                "backoff policy must use the closed schema"
+            )
+        current_fields = set(cls.__dataclass_fields__)
+        legacy_fields = current_fields - {"max_replan_attempts_per_diagnostic"}
+        if set(payload) not in (current_fields, legacy_fields):
+            raise PlanFailureMemoryError(
+                "backoff policy must use the closed schema"
+            )
         return cls(**dict(payload))
 
 
@@ -353,6 +382,7 @@ class FailureMemoryDisposition(str, Enum):
     CHANGED_EVIDENCE = "changed_evidence"
     UNCHANGED_BACKOFF = "unchanged_backoff"
     IDENTICAL_FAILURE_EXHAUSTED = "identical_failure_exhausted"
+    RETRY_BUDGET_EXHAUSTED = "retry_budget_exhausted"
     MEMORY_BOUND_REACHED = "memory_bound_reached"
 
 
@@ -366,6 +396,8 @@ class BranchFailureRecord:
     identical_attempts: int
     first_observed_at_milliseconds: int
     last_observed_at_milliseconds: int
+    evidence_history_ids: tuple[str, ...] = ()
+    replan_attempts: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.features, TypedBranchFailure):
@@ -379,6 +411,16 @@ class BranchFailureRecord:
             "last_evidence_id",
             _identifier(self.last_evidence_id, "last_evidence_id"),
         )
+        history = _identifiers(
+            self.evidence_history_ids or (self.last_evidence_id,),
+            "evidence_history_ids",
+            allow_empty=False,
+        )
+        if self.last_evidence_id not in history:
+            raise PlanFailureMemoryError(
+                "last_evidence_id must be retained in evidence history"
+            )
+        object.__setattr__(self, "evidence_history_ids", history)
         for name in (
             "occurrence_count",
             "first_observed_at_milliseconds",
@@ -396,6 +438,19 @@ class BranchFailureRecord:
             "identical_attempts",
             _integer(self.identical_attempts, "identical_attempts"),
         )
+        object.__setattr__(
+            self,
+            "replan_attempts",
+            _integer(self.replan_attempts, "replan_attempts"),
+        )
+        if self.identical_attempts >= self.occurrence_count:
+            raise PlanFailureMemoryError(
+                "identical attempts must be fewer than failure occurrences"
+            )
+        if self.replan_attempts > self.occurrence_count:
+            raise PlanFailureMemoryError(
+                "replan attempts cannot exceed failure occurrences"
+            )
         if (
             self.last_observed_at_milliseconds
             < self.first_observed_at_milliseconds
@@ -407,6 +462,32 @@ class BranchFailureRecord:
     @property
     def diagnostic_id(self) -> str:
         return self.features.diagnostic_id
+
+    @property
+    def record_id(self) -> str:
+        """Exact stable record key, independent of counters and timestamps."""
+
+        return self.diagnostic_id
+
+    @property
+    def failure_signature_id(self) -> str:
+        return self.features.failure_signature_id
+
+    @property
+    def evidence_event_ids(self) -> tuple[str, ...]:
+        """All semantic observation identities accepted into this record."""
+
+        return tuple(
+            sorted(
+                content_identity(
+                    {
+                        "features": self.features.to_dict(),
+                        "evidence_id": evidence_id,
+                    }
+                )
+                for evidence_id in self.evidence_history_ids
+            )
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -421,6 +502,8 @@ class BranchFailureRecord:
                 self.first_observed_at_milliseconds
             ),
             "last_observed_at_milliseconds": self.last_observed_at_milliseconds,
+            "evidence_history_ids": list(self.evidence_history_ids),
+            "replan_attempts": self.replan_attempts,
         }
 
     @classmethod
@@ -435,8 +518,14 @@ class BranchFailureRecord:
             "identical_attempts",
             "first_observed_at_milliseconds",
             "last_observed_at_milliseconds",
+            "evidence_history_ids",
+            "replan_attempts",
         }
-        if not isinstance(payload, Mapping) or set(payload) != expected:
+        legacy = expected - {"evidence_history_ids", "replan_attempts"}
+        if not isinstance(payload, Mapping) or set(payload) not in (
+            expected,
+            legacy,
+        ):
             raise PlanFailureMemoryError(
                 "branch failure record must use the closed schema"
             )
@@ -447,16 +536,39 @@ class BranchFailureRecord:
             raise PlanFailureMemoryError(
                 "branch failure record version is unsupported"
             )
+        occurrence_count = _integer(
+            payload.get("occurrence_count", 0),
+            "occurrence_count",
+            minimum=1,
+        )
+        identical_attempts = _integer(
+            payload.get("identical_attempts", 0),
+            "identical_attempts",
+        )
+        # A legacy aggregate cannot reveal overwritten evidence revisions.
+        # Conservatively discount only its current identical-delivery tail.
+        legacy_replan_attempts = max(
+            1,
+            occurrence_count - identical_attempts,
+        )
         result = cls(
             features=payload.get("features") or {},
             last_evidence_id=payload.get("last_evidence_id", ""),
-            occurrence_count=payload.get("occurrence_count", 0),
-            identical_attempts=payload.get("identical_attempts", 0),
+            occurrence_count=occurrence_count,
+            identical_attempts=identical_attempts,
             first_observed_at_milliseconds=payload.get(
                 "first_observed_at_milliseconds", 0
             ),
             last_observed_at_milliseconds=payload.get(
                 "last_observed_at_milliseconds", 0
+            ),
+            evidence_history_ids=tuple(
+                payload.get("evidence_history_ids")
+                or (payload.get("last_evidence_id", ""),)
+            ),
+            replan_attempts=payload.get(
+                "replan_attempts",
+                legacy_replan_attempts,
             ),
         )
         if payload.get("diagnostic_id") != result.diagnostic_id:
@@ -486,10 +598,18 @@ class FailureMemoryDecision:
 
     @property
     def exhausted(self) -> bool:
-        return (
-            self.disposition
-            is FailureMemoryDisposition.IDENTICAL_FAILURE_EXHAUSTED
-        )
+        return self.disposition in {
+            FailureMemoryDisposition.IDENTICAL_FAILURE_EXHAUSTED,
+            FailureMemoryDisposition.RETRY_BUDGET_EXHAUSTED,
+        }
+
+    @property
+    def record_id(self) -> str:
+        return self.diagnostic_id
+
+    @property
+    def failure_signature_id(self) -> str:
+        return self.diagnostic_id
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -583,6 +703,18 @@ class PlanFailureMemorySnapshot:
             raise PlanFailureMemoryError(
                 "failure memory snapshot version is unsupported"
             )
+        # Version 1 snapshots written before evidence history was introduced
+        # remain loadable.  Their original identity is checked before the
+        # in-memory representation is upgraded, so migration cannot mask
+        # tampering.
+        original_without_identity = dict(payload)
+        original_without_identity.pop("state_id", None)
+        if payload.get("state_id") != content_identity(
+            original_without_identity
+        ):
+            raise PlanFailureMemoryError(
+                "failure memory state identity does not match content"
+            )
         result = cls(
             policy=FailureBackoffPolicy.from_dict(payload.get("policy") or {}),
             records=tuple(
@@ -590,10 +722,6 @@ class PlanFailureMemorySnapshot:
                 for item in payload.get("records") or ()
             ),
         )
-        if payload.get("state_id") != result.state_id:
-            raise PlanFailureMemoryError(
-                "failure memory state identity does not match content"
-            )
         return result
 
 
@@ -711,13 +839,35 @@ class PlanFailureMemory:
                 identical_attempts=0,
                 first_observed_at_milliseconds=now,
                 last_observed_at_milliseconds=now,
+                evidence_history_ids=(value.evidence_id,),
+                replan_attempts=1,
             )
             disposition = FailureMemoryDisposition.NEW_FAILURE
             should_replan = True
             backoff_attempt = 0
             backoff = 0
             reused = False
-        elif existing.last_evidence_id != value.evidence_id:
+        elif (
+            existing.replan_attempts
+            >= self.policy.max_replan_attempts_per_diagnostic
+        ):
+            # Once terminal, retain the exact evidence that consumed the
+            # budget but do not let an unbounded stream grow durable state.
+            record = replace(
+                existing,
+                occurrence_count=min(
+                    1_000_000, existing.occurrence_count + 1
+                ),
+                last_observed_at_milliseconds=max(
+                    now, existing.last_observed_at_milliseconds
+                ),
+            )
+            disposition = FailureMemoryDisposition.RETRY_BUDGET_EXHAUSTED
+            should_replan = False
+            backoff_attempt = existing.replan_attempts
+            backoff = 0
+            reused = True
+        elif value.evidence_id not in existing.evidence_history_ids:
             record = replace(
                 existing,
                 last_evidence_id=value.evidence_id,
@@ -728,6 +878,12 @@ class PlanFailureMemory:
                 last_observed_at_milliseconds=max(
                     now, existing.last_observed_at_milliseconds
                 ),
+                evidence_history_ids=tuple(
+                    sorted(
+                        (*existing.evidence_history_ids, value.evidence_id)
+                    )
+                ),
+                replan_attempts=existing.replan_attempts + 1,
             )
             disposition = FailureMemoryDisposition.CHANGED_EVIDENCE
             should_replan = True
@@ -868,6 +1024,7 @@ BranchFailureMemory = PlanFailureMemory
 __all__ = [
     "BRANCH_FAILURE_RECORD_SCHEMA",
     "DELTA_REPLAN_REQUIREMENT_ID",
+    "MAX_FAILURE_BINDING_IDS",
     "PLAN_FAILURE_MEMORY_SCHEMA",
     "PLAN_FAILURE_MEMORY_VERSION",
     "BranchFailureFeatures",
