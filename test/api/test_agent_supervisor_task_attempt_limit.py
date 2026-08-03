@@ -26,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
+    _projection_is_quiescent_for_heartbeat_fallback,
     parse_args as parse_supervisor_args,
     supervisor_config_from_args,
 )
@@ -107,6 +108,19 @@ def test_canonical_attempt_limit_blocks_cooldown_fallback_retry(
         "all_selectable_ready_tasks_reached_max_task_attempts"
     )
     assert second_state.implementation_attempts_by_cid[canonical_task_cid] == 1
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        {
+            "active_task_id": second["active_task_id"],
+            "implementation_in_progress": (
+                second_state.implementation_in_progress
+            ),
+            "ready_count": second["ready_count"],
+            "selectable_ready_count": second["selectable_ready_count"],
+            "eligible_ready_count": second["eligible_ready_count"],
+            "blocked_count": second["blocked_count"],
+            "selection_idle_reason": second["selection_idle_reason"],
+        }
+    )
 
     events = [
         json.loads(line)

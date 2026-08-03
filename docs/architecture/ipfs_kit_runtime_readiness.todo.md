@@ -1512,13 +1512,13 @@ or write authority.
 
 ## KITA-048 Resolve validation retry-budget failure for KITA-030
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
 - Depends on: KITA-001, KITA-002
-- Outputs: ipfs_kit_py/ipfs_kit_py/mcp_server/server.py, ipfs_kit_py/ipfs_kit_py/mcp_server/__init__.py, ipfs_kit_py/ipfs_kit_py/mcp_server/tools/__init__.py, ipfs_kit_py/tests/runtime_readiness/mcplusplus/test_server_bootstrap.py, data/agent_supervisor/ipfs_kit_runtime_readiness/state/discovery
-- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py cd ipfs_kit_py && python -m pytest -q tests/runtime_readiness/mcplusplus/test_server_bootstrap.py ipfs_kit_py/mcp_server/tests_e2e_interop.py -k 'profile_c or profile_d or all_five_profiles_smoke or mcppp_envelope'
+- Outputs: ipfs_kit_py/ipfs_kit_py/mcp_server/server.py, ipfs_kit_py/ipfs_kit_py/mcp_server/__init__.py, ipfs_kit_py/ipfs_kit_py/mcp_server/tools/__init__.py, ipfs_kit_py/tests/runtime_readiness/mcplusplus/test_server_bootstrap.py
+- Validation: cd ipfs_kit_py && PYTHONPATH=.:../ipfs_datasets_py python -m pytest -q tests/runtime_readiness/mcplusplus/test_server_bootstrap.py ipfs_kit_py/mcp_server/tests_e2e_interop.py -k 'profile_c or profile_d or all_five_profiles_smoke or mcppp_envelope'
 - Parallel lane: kita-mcplusplus-bootstrap
 - Predicted files: ipfs_kit_py/ipfs_kit_py/mcp_server/server.py, ipfs_kit_py/ipfs_kit_py/mcp_server/__init__.py, ipfs_kit_py/ipfs_kit_py/mcp_server/tools/__init__.py, ipfs_kit_py/tests/runtime_readiness/mcplusplus/test_server_bootstrap.py
 - Allow concurrent with: KITA-005, KITA-006, KITA-010, KITA-014, KITA-018, KITA-022, KITA-026, KITA-034, KITA-038

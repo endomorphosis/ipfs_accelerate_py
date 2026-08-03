@@ -175,20 +175,27 @@ def _projection_is_quiescent_for_heartbeat_fallback(
         return False
     if status["implementation_in_progress"] is not False:
         return False
-    if status["selection_idle_reason"] != (
-        "no_shard_selectable_ready_tasks"
-    ):
+    idle_reason = status["selection_idle_reason"]
+    if idle_reason not in {
+        "no_shard_selectable_ready_tasks",
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+    }:
         return False
-    for field_name in (
-        "ready_count",
-        "selectable_ready_count",
-        "eligible_ready_count",
-        "blocked_count",
+    counts: dict[str, int] = {}
+    for field_name in required_fields.difference(
+        {"active_task_id", "implementation_in_progress", "selection_idle_reason"}
     ):
         value = status[field_name]
-        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             return False
-    return True
+        counts[field_name] = value
+    if idle_reason == "no_shard_selectable_ready_tasks":
+        return all(value == 0 for value in counts.values())
+    return (
+        counts["ready_count"] > 0
+        and counts["selectable_ready_count"] == 0
+        and counts["eligible_ready_count"] == 0
+    )
 
 
 class ObjectiveRefillTimeoutError(TimeoutError):

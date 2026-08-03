@@ -6442,8 +6442,12 @@ def validation_retry_task_block(
     launch_playwright_validation_gate: bool = False,
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
-    if discovery_output_path not in outputs:
-        outputs.append(discovery_output_path)
+    # Retry discovery is supervisor-written evidence that already exists
+    # before this task is dispatched.  It is an input to the repair, not a
+    # candidate artifact.  Declaring an ignored runtime discovery directory as
+    # an output makes the proposal gate require an impossible staged change
+    # and exhausts every retry before validation can run.
+    _ = discovery_output_path
     exact_failure_paths = _bounded_validation_failure_paths(
         failed_test_paths
     )
@@ -6629,8 +6633,10 @@ def implementation_retry_task_block(
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
-    if discovery_output_path not in outputs:
-        outputs.append(discovery_output_path)
+    # As with validation repairs, discovery is pre-dispatch evidence rather
+    # than an implementation output.  Keep the argument for configured-runner
+    # API compatibility, but never grant or require write authority to it.
+    _ = discovery_output_path
     validation_command = f"test -f {shlex.quote(str(discovery_path))}"
     execution_metadata = retry_task_execution_metadata(source_task)
     provenance_metadata = retry_budget_repair_provenance_metadata(

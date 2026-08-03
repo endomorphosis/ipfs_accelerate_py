@@ -1711,6 +1711,55 @@ def test_daemon_python_validation_imports_configured_worktree_packages(
     )
 
 
+def test_daemon_python_validation_after_cd_keeps_worktree_packages_importable(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _repo(repo)
+    package_root = repo / "package"
+    package_root.mkdir()
+    provider_root = repo / "external" / "provider"
+    provider_root.mkdir(parents=True)
+    (provider_root / "sibling_provider.py").write_text(
+        "VALUE = 11\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=("external/provider",),
+        worktree_pool_enabled=False,
+        validation_cache_dir=repo / "validation-cache",
+        merge_queue_dir=repo / "merge-queue",
+    )
+    task = PortalTask(
+        task_id="REF-044-CD",
+        title="package-local worktree validation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="validation",
+        validation=[
+            "cd package && python3 -c 'import sibling_provider; "
+            "assert sibling_provider.VALUE == 11'"
+        ],
+    )
+
+    report = daemon._run_validation_commands(
+        repo,
+        task,
+        repo / "validation.log",
+    )
+
+    assert report["passed"] is True
+    assert report["results"][0]["command"].startswith(
+        "cd package && PYTHONPATH=../external/provider python3 "
+    )
+
+
 def test_daemon_preserves_explicit_validation_pythonpath(
     tmp_path: Path,
 ) -> None:

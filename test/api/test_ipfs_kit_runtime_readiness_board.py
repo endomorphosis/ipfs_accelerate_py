@@ -48,8 +48,23 @@ def _with_task_status(text: str, task_id: str, status: str) -> str:
     raise AssertionError(f"missing status for {task_id}")
 
 
+def _task_populations():
+    parsed = parse_task_file(TODO_PATH, task_header_prefix="## KITA-")
+    canonical = [
+        task
+        for task in parsed
+        if task.metadata.get("canonical board task") != "false"
+    ]
+    operational = [
+        task
+        for task in parsed
+        if task.metadata.get("canonical board task") == "false"
+    ]
+    return canonical, operational
+
+
 def test_production_parsers_consume_exact_task_and_goal_populations() -> None:
-    tasks = parse_task_file(TODO_PATH, task_header_prefix="## KITA-")
+    tasks, operational = _task_populations()
     goals = parse_goal_heap(OBJECTIVE_PATH.read_text(encoding="utf-8"))
 
     assert [task.task_id for task in tasks] == [
@@ -87,10 +102,16 @@ def test_production_parsers_consume_exact_task_and_goal_populations() -> None:
         int(task.metadata["llm context budget bytes"]) > 0
         for task in tasks
     )
+    assert [task.task_id for task in operational] == ["KITA-048"]
+    assert operational[0].metadata["retry repair source"] == "KITA-030"
+    assert all(
+        not output.startswith("data/agent_supervisor/")
+        for output in operational[0].outputs
+    )
 
 
 def test_every_task_has_a_production_admissible_context_budget(tmp_path) -> None:
-    tasks = parse_task_file(TODO_PATH, task_header_prefix="## KITA-")
+    tasks, _operational = _task_populations()
     daemon = PortalImplementationDaemon(
         todo_path=TODO_PATH,
         state_path=tmp_path / "task_state.json",
@@ -144,7 +165,7 @@ def test_taskboard_seal_excludes_only_monotonic_status_progress() -> None:
 
 def test_scheduler_seals_launch_projection_and_validator_reports_progress() -> None:
     scheduler = json.loads(SCHEDULER_PATH.read_text(encoding="utf-8"))
-    tasks = parse_task_file(TODO_PATH, task_header_prefix="## KITA-")
+    tasks, operational = _task_populations()
     completed = {
         task.task_id for task in tasks if task.status == "completed"
     }
@@ -185,6 +206,8 @@ def test_scheduler_seals_launch_projection_and_validator_reports_progress() -> N
     report = json.loads(result.stdout)
     assert report["valid"] is True
     assert report["task_count"] == 48
+    assert report["operational_task_count"] == len(operational)
+    assert report["operational_task_ids"] == ["KITA-048"]
     assert report["goal_count"] == 12
     assert report["completed_task_ids"] == sorted(completed)
     assert report["ready_task_ids"] == ready

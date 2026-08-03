@@ -31891,6 +31891,8 @@ def test_retry_budget_repair_provenance_is_explicit_and_tamper_evident(
     assert repair.metadata["retry failure kind"] == "validation"
     assert repair.metadata["canonical board task"] == "false"
     assert retry_budget_repair_source(repair) == ("ACCEL-001", "validation")
+    assert repair.outputs == ["src/runtime.py"]
+    assert str(discovery_path.parent) not in repair.outputs
 
     forged = replace(
         repair,

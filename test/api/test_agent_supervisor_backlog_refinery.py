@@ -4253,7 +4253,6 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
     )
     assert (
         "- Outputs: wallet_interface/ui/src/WorldIdPanel.tsx, "
-        "data/agent_supervisor/discovery, "
         "wallet_interface/ui/tests/world-id-ux.spec.ts"
         in todo_text
     )
@@ -4275,6 +4274,7 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
     assert repair_task.outputs[-1] == (
         "wallet_interface/ui/tests/world-id-ux.spec.ts"
     )
+    assert "data/agent_supervisor/discovery" not in repair_task.outputs
     discovery_text = Path(findings[0]["discovery_path"]).read_text(
         encoding="utf-8"
     )
