@@ -43,6 +43,10 @@ from ..analysis.deterministic_doctor_contracts import (
     DoctorOperatorKind,
     DoctorRepairDisposition,
 )
+from ..proof.deterministic_doctor_hammer import (
+    DoctorAuthoritativeProofReceipt,
+    DoctorProofAuthorityDisposition,
+)
 from ..proof.formal_verification_contracts import (
     CanonicalContract,
     ContractValidationError,
@@ -67,7 +71,6 @@ from .deterministic_doctor_transforms import (
     build_default_doctor_operator_registry,
 )
 
-
 # ---------------------------------------------------------------------------
 # Schema / interface constants
 # ---------------------------------------------------------------------------
@@ -79,8 +82,9 @@ DOCTOR_ANALYTICAL_OVERLAY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/analytical-overlay@1"
 )
 DOCTOR_SYNTHESIS_RECEIPT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/synthesis-receipt@1"
+    "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/synthesis-receipt@2"
 )
+DOCTOR_SYNTHESIS_RECEIPT_INTERFACE: Final[str] = "DoctorSynthesisReceipt@2"
 DOCTOR_SYNTHESIS_REQUEST_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/synthesis-request@1"
 )
@@ -867,11 +871,18 @@ class DoctorSynthesisReceipt(CanonicalContract):
     after_hash: str = ""
     patch_cid: str = ""
     selected_consequence_ref: str = ""
+    property_id: str = ""
+    toolchain_id: str = ""
+    policy_id: str = ""
     value_ref: str = ""
     placement_ref: str = ""
     finding_id: str = ""
     plan_receipt_id: str = ""
     proof_receipt_id: str = ""
+    proof_receipt_cid: str = ""
+    proof_native_entry_id: str = ""
+    proof_kernel_entry_id: str = ""
+    proof_authority_entry_id: str = ""
     operator_receipt_id: str = ""
     render_receipt_id: str = ""
     overlay: DoctorAnalyticalOverlay | None = None
@@ -879,6 +890,13 @@ class DoctorSynthesisReceipt(CanonicalContract):
     input_identities: Mapping[str, str] = field(default_factory=dict)
     replay_identity: str = ""
     byte_equivalent_replay: bool = False
+    uniqueness_satisfied: bool = False
+    authoritative_proof: bool = False
+    proof_authority: DoctorAuthoritativeProofReceipt | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
     write_performed: bool = False
     write_authority: bool = False
     semantic_authority: bool = False
@@ -908,11 +926,18 @@ class DoctorSynthesisReceipt(CanonicalContract):
             "after_hash",
             "patch_cid",
             "selected_consequence_ref",
+            "property_id",
+            "toolchain_id",
+            "policy_id",
             "value_ref",
             "placement_ref",
             "finding_id",
             "plan_receipt_id",
             "proof_receipt_id",
+            "proof_receipt_cid",
+            "proof_native_entry_id",
+            "proof_kernel_entry_id",
+            "proof_authority_entry_id",
             "operator_receipt_id",
             "render_receipt_id",
             "replay_identity",
@@ -929,6 +954,17 @@ class DoctorSynthesisReceipt(CanonicalContract):
             self.simulation, DoctorSimulationReceipt
         ):
             raise DoctorSynthesisError("simulation must be DoctorSimulationReceipt")
+        if (
+            self.proof_authority is not None
+            and type(self.proof_authority) is not DoctorAuthoritativeProofReceipt
+        ):
+            raise DoctorSynthesisAuthorityError(
+                "proof_authority must be a typed authoritative proof"
+            )
+        if self.proof_authority is not None and not self.authoritative_proof:
+            raise DoctorSynthesisAuthorityError(
+                "proof_authority requires the authoritative_proof binding"
+            )
         object.__setattr__(
             self,
             "input_identities",
@@ -941,6 +977,8 @@ class DoctorSynthesisReceipt(CanonicalContract):
         )
         for name in (
             "byte_equivalent_replay",
+            "uniqueness_satisfied",
+            "authoritative_proof",
             "write_performed",
             "write_authority",
             "semantic_authority",
@@ -1006,6 +1044,63 @@ class DoctorSynthesisReceipt(CanonicalContract):
                     raise DoctorSynthesisError(
                         "supported receipts require byte-equivalent replay"
                     )
+                if not self.selected_consequence_ref:
+                    raise DoctorSynthesisError(
+                        "supported receipts require a selected consequence"
+                    )
+                if not self.property_id:
+                    raise DoctorSynthesisError(
+                        "supported receipts require a bound property"
+                    )
+                if not self.toolchain_id or not self.policy_id:
+                    raise DoctorSynthesisError(
+                        "supported receipts require toolchain and policy bindings"
+                    )
+                if not self.uniqueness_satisfied:
+                    raise DoctorSynthesisError(
+                        "supported receipts require a unique consequence"
+                    )
+                if self.toolchain_id != self.roots.toolchain_id:
+                    raise DoctorSynthesisAuthorityError(
+                        "synthesis toolchain binding does not match current roots"
+                    )
+                if self.policy_id != self.roots.policy_id:
+                    raise DoctorSynthesisAuthorityError(
+                        "synthesis policy binding does not match current roots"
+                    )
+                if self.authoritative_proof and not (
+                    self.proof_receipt_cid
+                    and self.proof_native_entry_id
+                    and self.proof_kernel_entry_id
+                    and self.proof_authority_entry_id
+                ):
+                    raise DoctorSynthesisAuthorityError(
+                        "authoritative synthesis requires sealed proof lineage"
+                    )
+                if self.authoritative_proof:
+                    proof = self.proof_authority
+                    if (
+                        type(proof) is not DoctorAuthoritativeProofReceipt
+                        or not proof.mutation_capable
+                        or proof.content_id != self.proof_receipt_cid
+                        or proof.selected_consequence_ref
+                        != self.selected_consequence_ref
+                        or proof.property_id != self.property_id
+                        or proof.toolchain_id != self.toolchain_id
+                        or proof.policy_id != self.policy_id
+                        or proof.native_store_ref is None
+                        or proof.native_store_ref.entry_id
+                        != self.proof_native_entry_id
+                        or proof.kernel_store_ref is None
+                        or proof.kernel_store_ref.entry_id
+                        != self.proof_kernel_entry_id
+                        or proof.authority_store_ref is None
+                        or proof.authority_store_ref.entry_id
+                        != self.proof_authority_entry_id
+                    ):
+                        raise DoctorSynthesisAuthorityError(
+                            "authoritative synthesis proof bindings are not sealed"
+                        )
             else:
                 # Fail-closed: abstention / approval never carries a partial overlay.
                 if self.overlay is not None:
@@ -1031,8 +1126,8 @@ class DoctorSynthesisReceipt(CanonicalContract):
 
     def _payload_without_replay(self) -> dict[str, Any]:
         return {
-            "contract_version": CONTRACT_VERSION,
-            "interface": DETERMINISTIC_DOCTOR_SYNTHESIZER_INTERFACE,
+            "contract_version": 2,
+            "interface": DOCTOR_SYNTHESIS_RECEIPT_INTERFACE,
             "disposition": (
                 self.disposition.value
                 if isinstance(self.disposition, DoctorSynthesisDisposition)
@@ -1048,11 +1143,18 @@ class DoctorSynthesisReceipt(CanonicalContract):
             "after_hash": self.after_hash,
             "patch_cid": self.patch_cid,
             "selected_consequence_ref": self.selected_consequence_ref,
+            "property_id": self.property_id,
+            "toolchain_id": self.toolchain_id,
+            "policy_id": self.policy_id,
             "value_ref": self.value_ref,
             "placement_ref": self.placement_ref,
             "finding_id": self.finding_id,
             "plan_receipt_id": self.plan_receipt_id,
             "proof_receipt_id": self.proof_receipt_id,
+            "proof_receipt_cid": self.proof_receipt_cid,
+            "proof_native_entry_id": self.proof_native_entry_id,
+            "proof_kernel_entry_id": self.proof_kernel_entry_id,
+            "proof_authority_entry_id": self.proof_authority_entry_id,
             "operator_receipt_id": self.operator_receipt_id,
             "render_receipt_id": self.render_receipt_id,
             "overlay_id": self.overlay.overlay_id if self.overlay is not None else "",
@@ -1064,6 +1166,8 @@ class DoctorSynthesisReceipt(CanonicalContract):
             ),
             "input_identities": dict(self.input_identities),
             "byte_equivalent_replay": self.byte_equivalent_replay,
+            "uniqueness_satisfied": self.uniqueness_satisfied,
+            "authoritative_proof": self.authoritative_proof,
             "write_performed": False,
             "write_authority": False,
             "semantic_authority": False,
@@ -1084,6 +1188,23 @@ class DoctorSynthesisReceipt(CanonicalContract):
         return (
             self.disposition is DoctorSynthesisDisposition.SUPPORTED
             and self.overlay is not None
+        )
+
+    @property
+    def mutation_capable(self) -> bool:
+        """Whether proof authority may be forwarded to a separate mutation gate."""
+
+        return (
+            self.admitted
+            and self.authoritative_proof
+            and self.uniqueness_satisfied
+            and bool(self.proof_receipt_cid)
+            and bool(self.proof_native_entry_id)
+            and bool(self.proof_kernel_entry_id)
+            and bool(self.proof_authority_entry_id)
+            and type(self.proof_authority) is DoctorAuthoritativeProofReceipt
+            and self.proof_authority.mutation_capable
+            and self.proof_authority.content_id == self.proof_receipt_cid
         )
 
     @property
@@ -1286,6 +1407,41 @@ class DeterministicDoctorSynthesizer:
         proof_receipt_id = request.proof_receipt_id or str(
             _mapping_get(request.proof_receipt, "receipt_id", default="") or ""
         )
+        authoritative = (
+            request.proof_receipt
+            if type(request.proof_receipt) is DoctorAuthoritativeProofReceipt
+            else None
+        )
+        property_id = (
+            authoritative.property_id
+            if authoritative is not None
+            else (
+                request.proposal.obligation_refs[0]
+                if request.proposal.obligation_refs
+                else f"property:{consequence}"
+            )
+        )
+        proof_receipt_cid = (
+            authoritative.content_id if authoritative is not None else ""
+        )
+        native_entry_id = (
+            authoritative.native_store_ref.entry_id
+            if authoritative is not None
+            and authoritative.native_store_ref is not None
+            else ""
+        )
+        kernel_entry_id = (
+            authoritative.kernel_store_ref.entry_id
+            if authoritative is not None
+            and authoritative.kernel_store_ref is not None
+            else ""
+        )
+        authority_entry_id = (
+            authoritative.authority_store_ref.entry_id
+            if authoritative is not None
+            and authoritative.authority_store_ref is not None
+            else ""
+        )
 
         overlay_id = content_identity(
             {
@@ -1356,17 +1512,27 @@ class DeterministicDoctorSynthesizer:
             after_hash=edit.expected_after_hash,
             patch_cid=patch_cid,
             selected_consequence_ref=consequence,
+            property_id=property_id,
+            toolchain_id=request.roots.toolchain_id,
+            policy_id=request.roots.policy_id,
             value_ref=value_ref,
             placement_ref=placement_ref,
             finding_id=finding_id,
             plan_receipt_id=plan_receipt_id,
             proof_receipt_id=proof_receipt_id,
+            proof_receipt_cid=proof_receipt_cid,
+            proof_native_entry_id=native_entry_id,
+            proof_kernel_entry_id=kernel_entry_id,
+            proof_authority_entry_id=authority_entry_id,
             operator_receipt_id=operator_receipt.replay_identity,
             render_receipt_id=render_receipt.replay_identity,
             overlay=overlay,
             simulation=simulation,
             input_identities=identities,
             byte_equivalent_replay=replay_ok,
+            uniqueness_satisfied=True,
+            authoritative_proof=authoritative is not None,
+            proof_authority=authoritative,
         )
 
     # -- internal ------------------------------------------------------------
@@ -1494,6 +1660,43 @@ class DeterministicDoctorSynthesizer:
                 reasons.append(DoctorSynthesisReason.PROVIDER_OR_MODEL_CALL)
             if bool(_mapping_get(proof, "write_authority", default=False)):
                 reasons.append(DoctorSynthesisReason.WRITE_ATTEMPTED)
+            if type(proof) is DoctorAuthoritativeProofReceipt:
+                authoritative = proof
+                if (
+                    authoritative.disposition
+                    is not DoctorProofAuthorityDisposition.VERIFIED
+                    or not authoritative.mutation_capable
+                ):
+                    reasons.append(DoctorSynthesisReason.PROOF_NOT_ADMITTED)
+                shared_root_fields = (
+                    "repository_id",
+                    "forest_id",
+                    "tree_id",
+                    "overlay_id",
+                    "graph_id",
+                    "corpus_id",
+                    "index_id",
+                    "model_id",
+                    "translator_id",
+                    "toolchain_id",
+                    "policy_id",
+                    "environment_id",
+                )
+                if any(
+                    getattr(authoritative.roots, name)
+                    != getattr(request.roots, name)
+                    for name in shared_root_fields
+                ):
+                    reasons.append(DoctorSynthesisReason.ROOT_MISMATCH)
+                if authoritative.eligible_consequence_refs != (
+                    authoritative.selected_consequence_ref,
+                ):
+                    reasons.append(DoctorSynthesisReason.PROOF_NOT_UNIQUE)
+                if (
+                    request.proof_receipt_id
+                    and request.proof_receipt_id != authoritative.receipt_id
+                ):
+                    reasons.append(DoctorSynthesisReason.IDENTITY_MISMATCH)
 
         # Unique value source.
         if proposal.value_source_refs and len(set(proposal.value_source_refs)) != len(
@@ -1793,6 +1996,7 @@ __all__ = (
     "DOCTOR_ANALYTICAL_OVERLAY_SCHEMA",
     "DOCTOR_SIMULATION_RECEIPT_SCHEMA",
     "DOCTOR_SYNTHESIS_RECEIPT_SCHEMA",
+    "DOCTOR_SYNTHESIS_RECEIPT_INTERFACE",
     "DOCTOR_SYNTHESIS_REQUEST_SCHEMA",
     "DOCTOR_REPAIR_OPERATOR_REGISTRY_INTERFACE",
     "PRODUCER_ID",

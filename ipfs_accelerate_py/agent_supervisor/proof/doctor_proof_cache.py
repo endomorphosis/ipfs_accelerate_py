@@ -17,7 +17,11 @@ equivocal entries are quarantined.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
+import os
+import secrets
+import sqlite3
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -42,19 +46,24 @@ from .formal_verification_cache import (
     CacheLookupStatus,
     CacheRejectionReason,
     FormalVerificationCache,
+)
+from .formal_verification_cache import (
     ProofCacheKey as FormalProofCacheKey,
+)
+from .formal_verification_cache import (
     build_proof_cache_key as build_formal_proof_cache_key,
 )
 from .formal_verification_contracts import (
     AssuranceLevel,
+    CanonicalContract,
     EvidenceFreshness,
     ProofReceipt,
     ProofVerdict,
     ResourceBudget,
     assurance_satisfies,
     canonical_json,
+    content_identity,
 )
-
 
 DOCTOR_PROOF_CACHE_INTERFACE: Final = "DoctorProofCacheGate@1"
 DOCTOR_PROOF_CACHE_KEY_SCHEMA: Final = (
@@ -69,6 +78,10 @@ DOCTOR_CACHE_AUDIT_RECEIPT_SCHEMA: Final = (
 DOCTOR_CACHE_TOMBSTONE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/doctor-cache-tombstone@1"
 )
+DOCTOR_SEALED_RECEIPT_REF_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/doctor-sealed-receipt-ref@1"
+)
+DOCTOR_SEALED_RECEIPT_STORE_INTERFACE: Final = "DoctorSealedReceiptStore@1"
 DEFAULT_POSITIVE_TTL_SECONDS: Final = 24 * 60 * 60
 DEFAULT_NEGATIVE_TTL_SECONDS: Final = 60
 MAX_NEGATIVE_TTL_SECONDS: Final = 5 * 60
@@ -158,6 +171,10 @@ class DoctorCacheValidationError(ValueError):
     def __init__(self, message: str, *, reason_code: str) -> None:
         super().__init__(message)
         self.reason_code = reason_code
+
+
+class DoctorSealedReceiptError(ValueError):
+    """A durable receipt-store record failed seal, lineage, or type checking."""
 
 
 _PRIVATE_FIELDS: Final = frozenset(
@@ -906,6 +923,396 @@ class DoctorCacheTombstone:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class DoctorSealedReceiptRef:
+    """Store-owned reference to one typed canonical receipt preimage.
+
+    The seal authenticates the entry preimage and its predecessor.  It is not
+    a caller assertion: :class:`DoctorSealedReceiptStore` always reloads the
+    stored bytes and recomputes the receipt CID, entry CID, HMAC, and complete
+    predecessor chain before returning a typed receipt.
+    """
+
+    store_id: str
+    authority_id: str
+    entry_id: str
+    sequence: int
+    previous_entry_id: str
+    receipt_schema: str
+    receipt_cid: str
+    entry_cid: str
+    seal: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "store_id",
+            "authority_id",
+            "entry_id",
+            "receipt_schema",
+            "receipt_cid",
+            "entry_cid",
+            "seal",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise DoctorSealedReceiptError(f"{name} is required")
+            object.__setattr__(self, name, value.strip())
+        if not isinstance(self.previous_entry_id, str):
+            raise DoctorSealedReceiptError("previous_entry_id must be a string")
+        if isinstance(self.sequence, bool) or not isinstance(self.sequence, int):
+            raise DoctorSealedReceiptError("sequence must be an integer")
+        if self.sequence <= 0:
+            raise DoctorSealedReceiptError("sequence must be positive")
+        if self.sequence == 1 and self.previous_entry_id:
+            raise DoctorSealedReceiptError("genesis receipt cannot have a predecessor")
+        if self.sequence > 1 and not self.previous_entry_id:
+            raise DoctorSealedReceiptError("non-genesis receipt requires a predecessor")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": DOCTOR_SEALED_RECEIPT_REF_SCHEMA,
+            "interface": DOCTOR_SEALED_RECEIPT_STORE_INTERFACE,
+            "store_id": self.store_id,
+            "authority_id": self.authority_id,
+            "entry_id": self.entry_id,
+            "sequence": self.sequence,
+            "previous_entry_id": self.previous_entry_id,
+            "receipt_schema": self.receipt_schema,
+            "receipt_cid": self.receipt_cid,
+            "entry_cid": self.entry_cid,
+            "seal": self.seal,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "DoctorSealedReceiptRef":
+        if not isinstance(value, Mapping):
+            raise DoctorSealedReceiptError("sealed receipt reference must be an object")
+        allowed = {
+            "schema",
+            "interface",
+            "store_id",
+            "authority_id",
+            "entry_id",
+            "sequence",
+            "previous_entry_id",
+            "receipt_schema",
+            "receipt_cid",
+            "entry_cid",
+            "seal",
+        }
+        if set(value).difference(allowed):
+            raise DoctorSealedReceiptError(
+                "sealed receipt reference contains unsupported fields"
+            )
+        if value.get("schema") not in {None, DOCTOR_SEALED_RECEIPT_REF_SCHEMA}:
+            raise DoctorSealedReceiptError("sealed receipt reference schema mismatch")
+        if value.get("interface") not in {
+            None,
+            DOCTOR_SEALED_RECEIPT_STORE_INTERFACE,
+        }:
+            raise DoctorSealedReceiptError("sealed receipt interface mismatch")
+        sequence = value.get("sequence")
+        if isinstance(sequence, bool) or not isinstance(sequence, int):
+            raise DoctorSealedReceiptError("sequence must be an integer")
+        return cls(
+            store_id=str(value.get("store_id") or ""),
+            authority_id=str(value.get("authority_id") or ""),
+            entry_id=str(value.get("entry_id") or ""),
+            sequence=sequence,
+            previous_entry_id=str(value.get("previous_entry_id") or ""),
+            receipt_schema=str(value.get("receipt_schema") or ""),
+            receipt_cid=str(value.get("receipt_cid") or ""),
+            entry_cid=str(value.get("entry_cid") or ""),
+            seal=str(value.get("seal") or ""),
+        )
+
+
+class DoctorSealedReceiptStore:
+    """Append-only HMAC-sealed durable store for typed doctor receipts.
+
+    The database and its private key are separate files.  The key is created
+    with owner-only permissions and is never serialized into a receipt.  A
+    provider-local object, cache entry, or caller mapping cannot be promoted
+    by this store: ``reload`` requires an exact concrete receipt class and
+    reconstructs it only after validating the durable bytes and full chain.
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        authority_id: str,
+    ) -> None:
+        self.path = Path(path).expanduser().resolve()
+        if not isinstance(authority_id, str) or not authority_id.strip():
+            raise DoctorSealedReceiptError("authority_id is required")
+        self.authority_id = authority_id.strip()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._key_path = self.path.with_name(self.path.name + ".seal-key")
+        self._lock = threading.RLock()
+        self._seal_key = self._load_or_create_key()
+        self.store_id = content_identity(
+            {
+                "interface": DOCTOR_SEALED_RECEIPT_STORE_INTERFACE,
+                "authority_id": self.authority_id,
+                "path_name": self.path.name,
+                "key_fingerprint": hashlib.sha256(self._seal_key).hexdigest(),
+            }
+        )
+        self._initialize()
+
+    def _load_or_create_key(self) -> bytes:
+        try:
+            key = self._key_path.read_bytes()
+        except FileNotFoundError:
+            key = secrets.token_bytes(32)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            descriptor = os.open(self._key_path, flags, 0o600)
+            try:
+                os.write(descriptor, key)
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        if len(key) != 32:
+            raise DoctorSealedReceiptError("sealed receipt key is corrupt")
+        mode = self._key_path.stat().st_mode & 0o777
+        if mode & 0o077:
+            raise DoctorSealedReceiptError(
+                "sealed receipt key must not be group/world accessible"
+            )
+        return key
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(str(self.path), timeout=30.0)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def _initialize(self) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS doctor_sealed_receipts (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    entry_id TEXT NOT NULL UNIQUE,
+                    previous_entry_id TEXT NOT NULL,
+                    receipt_schema TEXT NOT NULL,
+                    receipt_cid TEXT NOT NULL,
+                    receipt_json TEXT NOT NULL,
+                    entry_cid TEXT NOT NULL,
+                    seal TEXT NOT NULL
+                )
+                """
+            )
+
+    def _entry_preimage(
+        self,
+        *,
+        sequence: int,
+        previous_entry_id: str,
+        receipt_schema: str,
+        receipt_cid: str,
+    ) -> dict[str, Any]:
+        return {
+            "interface": DOCTOR_SEALED_RECEIPT_STORE_INTERFACE,
+            "store_id": self.store_id,
+            "authority_id": self.authority_id,
+            "sequence": sequence,
+            "previous_entry_id": previous_entry_id,
+            "receipt_schema": receipt_schema,
+            "receipt_cid": receipt_cid,
+        }
+
+    def _seal(self, preimage: Mapping[str, Any]) -> str:
+        digest = hmac.new(
+            self._seal_key,
+            canonical_json(dict(preimage)).encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return "hmac-sha256:" + digest
+
+    @staticmethod
+    def _typed_payload(receipt: Any) -> tuple[dict[str, Any], str]:
+        if isinstance(receipt, Mapping):
+            raise DoctorSealedReceiptError(
+                "raw mappings cannot be written as typed sealed receipts"
+            )
+        if not isinstance(receipt, CanonicalContract):
+            raise DoctorSealedReceiptError(
+                "duck-typed objects cannot be written as sealed receipts"
+            )
+        to_dict = getattr(receipt, "to_dict", None)
+        if not callable(to_dict):
+            raise DoctorSealedReceiptError("receipt must be a typed canonical contract")
+        payload = to_dict()
+        if not isinstance(payload, dict):
+            raise DoctorSealedReceiptError("receipt canonical payload must be an object")
+        schema = payload.get("schema")
+        if not isinstance(schema, str) or not schema:
+            raise DoctorSealedReceiptError("typed receipt schema is required")
+        return payload, schema
+
+    def append(self, receipt: Any) -> DoctorSealedReceiptRef:
+        """Append one typed receipt and return its store-owned sealed reference."""
+
+        payload, schema = self._typed_payload(receipt)
+        receipt_cid = content_identity(payload)
+        receipt_json = canonical_json(payload)
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT sequence, entry_id
+                FROM doctor_sealed_receipts
+                ORDER BY sequence DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            sequence = 1 if row is None else int(row["sequence"]) + 1
+            previous = "" if row is None else str(row["entry_id"])
+            preimage = self._entry_preimage(
+                sequence=sequence,
+                previous_entry_id=previous,
+                receipt_schema=schema,
+                receipt_cid=receipt_cid,
+            )
+            entry_cid = content_identity(preimage)
+            entry_id = f"sealed-entry:{entry_cid}"
+            seal = self._seal(preimage)
+            connection.execute(
+                """
+                INSERT INTO doctor_sealed_receipts (
+                    sequence, entry_id, previous_entry_id, receipt_schema,
+                    receipt_cid, receipt_json, entry_cid, seal
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    sequence,
+                    entry_id,
+                    previous,
+                    schema,
+                    receipt_cid,
+                    receipt_json,
+                    entry_cid,
+                    seal,
+                ),
+            )
+        return DoctorSealedReceiptRef(
+            store_id=self.store_id,
+            authority_id=self.authority_id,
+            entry_id=entry_id,
+            sequence=sequence,
+            previous_entry_id=previous,
+            receipt_schema=schema,
+            receipt_cid=receipt_cid,
+            entry_cid=entry_cid,
+            seal=seal,
+        )
+
+    def _verified_rows_through(
+        self, sequence: int
+    ) -> tuple[sqlite3.Row, ...]:
+        with self._connect() as connection:
+            rows = tuple(
+                connection.execute(
+                    """
+                    SELECT sequence, entry_id, previous_entry_id, receipt_schema,
+                           receipt_cid, receipt_json, entry_cid, seal
+                    FROM doctor_sealed_receipts
+                    WHERE sequence <= ?
+                    ORDER BY sequence
+                    """,
+                    (sequence,),
+                ).fetchall()
+            )
+        if len(rows) != sequence:
+            raise DoctorSealedReceiptError("sealed receipt lineage is incomplete")
+        previous = ""
+        for expected_sequence, row in enumerate(rows, 1):
+            actual_sequence = int(row["sequence"])
+            if actual_sequence != expected_sequence:
+                raise DoctorSealedReceiptError("sealed receipt sequence is not contiguous")
+            if str(row["previous_entry_id"]) != previous:
+                raise DoctorSealedReceiptError("sealed receipt predecessor mismatch")
+            try:
+                payload = json.loads(str(row["receipt_json"]))
+            except (TypeError, ValueError) as exc:
+                raise DoctorSealedReceiptError(
+                    "sealed receipt payload is not canonical JSON"
+                ) from exc
+            canonical = canonical_json(payload)
+            if canonical != str(row["receipt_json"]):
+                raise DoctorSealedReceiptError(
+                    "sealed receipt payload is not in canonical form"
+                )
+            receipt_cid = content_identity(payload)
+            if receipt_cid != str(row["receipt_cid"]):
+                raise DoctorSealedReceiptError("sealed receipt CID/preimage mismatch")
+            preimage = self._entry_preimage(
+                sequence=actual_sequence,
+                previous_entry_id=previous,
+                receipt_schema=str(row["receipt_schema"]),
+                receipt_cid=receipt_cid,
+            )
+            if content_identity(preimage) != str(row["entry_cid"]):
+                raise DoctorSealedReceiptError("sealed entry CID/preimage mismatch")
+            if not hmac.compare_digest(self._seal(preimage), str(row["seal"])):
+                raise DoctorSealedReceiptError("sealed receipt HMAC mismatch")
+            expected_id = f"sealed-entry:{row['entry_cid']}"
+            if str(row["entry_id"]) != expected_id:
+                raise DoctorSealedReceiptError("sealed entry identity mismatch")
+            previous = str(row["entry_id"])
+        return rows
+
+    def reload(
+        self,
+        reference: DoctorSealedReceiptRef,
+        receipt_type: type[Any],
+    ) -> Any:
+        """Reload and strict-decode one receipt after complete lineage replay."""
+
+        if type(reference) is not DoctorSealedReceiptRef:
+            raise DoctorSealedReceiptError(
+                "reload requires DoctorSealedReceiptRef, not a mapping"
+            )
+        if reference.store_id != self.store_id:
+            raise DoctorSealedReceiptError("sealed receipt belongs to another store")
+        if reference.authority_id != self.authority_id:
+            raise DoctorSealedReceiptError("sealed receipt authority mismatch")
+        rows = self._verified_rows_through(reference.sequence)
+        row = rows[-1]
+        stored_ref = DoctorSealedReceiptRef(
+            store_id=self.store_id,
+            authority_id=self.authority_id,
+            entry_id=str(row["entry_id"]),
+            sequence=int(row["sequence"]),
+            previous_entry_id=str(row["previous_entry_id"]),
+            receipt_schema=str(row["receipt_schema"]),
+            receipt_cid=str(row["receipt_cid"]),
+            entry_cid=str(row["entry_cid"]),
+            seal=str(row["seal"]),
+        )
+        if stored_ref != reference:
+            raise DoctorSealedReceiptError("sealed receipt reference was forged")
+        expected_schema = getattr(receipt_type, "SCHEMA", "")
+        if not expected_schema or expected_schema != reference.receipt_schema:
+            raise DoctorSealedReceiptError("sealed receipt concrete type mismatch")
+        decoder = getattr(receipt_type, "from_dict", None)
+        if not callable(decoder):
+            raise DoctorSealedReceiptError("receipt type has no strict decoder")
+        payload = json.loads(str(row["receipt_json"]))
+        typed = decoder(payload)
+        if type(typed) is not receipt_type:
+            raise DoctorSealedReceiptError("receipt decoder returned the wrong type")
+        typed_payload = typed.to_dict()
+        if content_identity(typed_payload) != reference.receipt_cid:
+            raise DoctorSealedReceiptError("typed receipt CID changed after reload")
+        if canonical_json(typed_payload) != str(row["receipt_json"]):
+            raise DoctorSealedReceiptError(
+                "typed receipt preimage changed after reload"
+            )
+        return typed
+
+
 class DoctorProofCacheGate:
     """Thin federation gate over the authoritative formal-verification cache.
 
@@ -1628,6 +2035,8 @@ __all__ = [
     "DOCTOR_PROOF_CACHE_BINDING_SCHEMA",
     "DOCTOR_PROOF_CACHE_INTERFACE",
     "DOCTOR_PROOF_CACHE_KEY_SCHEMA",
+    "DOCTOR_SEALED_RECEIPT_REF_SCHEMA",
+    "DOCTOR_SEALED_RECEIPT_STORE_INTERFACE",
     "DoctorCacheAuditReceipt",
     "DoctorCacheDisposition",
     "DoctorCacheLookupResult",
@@ -1641,6 +2050,9 @@ __all__ = [
     "DoctorProofCacheBinding",
     "DoctorProofCacheGate",
     "DoctorProofCacheKey",
+    "DoctorSealedReceiptError",
+    "DoctorSealedReceiptRef",
+    "DoctorSealedReceiptStore",
     "IdentityBinding",
     "MAX_NEGATIVE_TTL_SECONDS",
     "build_doctor_proof_cache_key",
