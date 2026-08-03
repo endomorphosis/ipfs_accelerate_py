@@ -18,8 +18,8 @@ resolving packaging or CLI contradictions.
 `ipfs_accelerate_py/__init__.py`; CLI and supervisor module help;
 `test/test_unified_cli_integration.py`; agent-supervisor public-surface tests;
 live docs and package paths listed below.
-**Last verified:** 2026-08-03 at integrated candidate
-`01fe524abe3ec1bdeebb2bda7ed372a9e2f47023`; §2 records the exact commands and
+**Last verified:** 2026-08-03 at corrected validation baseline
+`b334e0bf7ba6554be0c527576be56637d9357014`; §2 records the exact commands and
 §3 records their observed return codes, counts, and warnings.
 **Interface:** DocumentationValidationReceipt@1
 **Program:** `ipfs-accelerate-documentation-refresh-v1`
@@ -39,19 +39,26 @@ changes; publish a successor receipt rather than editing history silently.
 | Program baseline commit (plan pin) | `d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15` |
 | Accepted DOC-027 dependency | `014b063e3d8a79c5814f98c2ca055e762694037b` |
 | DOC-028 implementation commit | `7bef572af222d90714d8e2156c734d07f68c64c2` |
-| Integrated validation candidate | `01fe524abe3ec1bdeebb2bda7ed372a9e2f47023` |
-| Candidate state | Clean worktree; merge parent `014b063e3d8a79c5814f98c2ca055e762694037b`; exactly four owned paths differ |
+| Supervisor integration commit | `01fe524abe3ec1bdeebb2bda7ed372a9e2f47023` |
+| Corrected validation baseline | `b334e0bf7ba6554be0c527576be56637d9357014` |
+| Baseline state | Clean worktree; parent `01fe524abe3ec1bdeebb2bda7ed372a9e2f47023`; exactly four DOC-028 owned paths differ from accepted DOC-027 |
 | Owned outputs | `docs/README.md`, `docs/INDEX.md`, `docs/development/DOCUMENTATION_CURRENT_STATE.md`, this file |
 | Depends on (evidence) | DOC-021–DOC-027 leaf guides, manifest, glossary, architecture hub |
 
 Reproduce identity:
 
 ```bash
+git show -s --format='%H %P %ci %s' b334e0bf7ba6554be0c527576be56637d9357014
 git show -s --format='%H %P %ci %s' 01fe524abe3ec1bdeebb2bda7ed372a9e2f47023
 git show -s --format='%H %ci %s' 7bef572af222d90714d8e2156c734d07f68c64c2
-git diff --name-status 014b063e3d8a79c5814f98c2ca055e762694037b..01fe524abe3ec1bdeebb2bda7ed372a9e2f47023
+git diff --name-status 014b063e3d8a79c5814f98c2ca055e762694037b..b334e0bf7ba6554be0c527576be56637d9357014
 git show -s --format='%H %ci %s' d7da3d6bf8ca2f7ec870d03742b09f26e3e16d15
 ```
+
+The receipt-publication commit follows the validated baseline because a commit
+cannot embed its own content hash. Its only documentation change is this
+identity binding; the literal gate and local-link scans are rerun after
+publication.
 
 ---
 
@@ -354,7 +361,7 @@ expected nonzero probe is identified explicitly.
 | A2 Documentation baseline marker | **pass**, `rc=0` | `docs/INDEX.md` contains `Documentation baseline:` dated `2026-08-03` |
 | A3 Last verified marker | **pass**, `rc=0` | `DOCUMENTATION_CURRENT_STATE.md` contains `Last verified` |
 | A4 validation receipt file | **pass**, `rc=0` | This file exists |
-| A5 worktree and candidate-range `git diff --check` | **pass**, both `rc=0` | Clean worktree check plus `014b063e3d8a79c5814f98c2ca055e762694037b..01fe524abe3ec1bdeebb2bda7ed372a9e2f47023` |
+| A5 worktree and candidate-range `git diff --check` | **pass**, both `rc=0` | Clean worktree check plus `014b063e3d8a79c5814f98c2ca055e762694037b..b334e0bf7ba6554be0c527576be56637d9357014` |
 | Candidate scope | **pass**, `rc=0` | Exactly the four DOC-028 owned outputs differ from the accepted DOC-027 dependency |
 | Current/Reference path inventory (§2.2) | **pass**, `rc=0` | 50 files checked; 0 missing |
 | Status-aware local links (§2.6) | **pass**, `rc=0` | 38 files; 931 local target occurrences; 0 missing |
