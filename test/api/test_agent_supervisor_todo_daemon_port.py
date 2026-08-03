@@ -2952,7 +2952,9 @@ def test_exact_recovery_seed_enqueue_preserves_child_integration_target(
     monkeypatch.setattr(
         daemon,
         "_consume_one_merge_candidate",
-        lambda: None,
+        lambda: pytest.fail(
+            "recovery candidate consumed before its strict terminal"
+        ),
     )
 
     result = daemon._enqueue_validated_worktree(
@@ -2984,6 +2986,8 @@ def test_exact_recovery_seed_enqueue_preserves_child_integration_target(
     )
 
     assert result["queued"] is True
+    assert result["producer_terminal_pending"] is True
+    assert "train_result" not in result
     assert captured[0]["changed_submodule_paths"] == [recovery_path]
     approved = captured[0]["approved_submodule_integration_targets"]
     assert approved[recovery_path]["integration_target"] == preflight_child
@@ -6215,7 +6219,7 @@ def test_validated_submodule_target_binding_is_durable_merge_metadata(
         baseline_ref=str(preflight["root_target_commit"]),
         worktree_path=None,
         task=task,
-        attempt=1,
+        attempt=5,
         changed_submodule_paths=["libs/child"],
         approved_submodule_integration_targets=approved_targets,
         validation_result={
@@ -6229,6 +6233,8 @@ def test_validated_submodule_target_binding_is_durable_merge_metadata(
     binding = request.metadata[
         "task_owned_submodule_integration_binding"
     ]
+    assert request.attempt == 1
+    assert request.metadata["implementation_attempt"] == 5
     parsed, error = (
         daemon._parse_task_owned_submodule_integration_binding(
             binding,
@@ -9111,6 +9117,446 @@ def test_model_merge_callback_verifies_populated_provenance_against_exact_reques
     assert result["attempted"] is False
     assert result["merged"] is False
     assert result["reason"] == expected_reason
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "legacy_revival",
+        "fresh_envelope",
+        "boolean_finish_returncode",
+        "noncanonical_noop",
+        "missing_legacy_revival",
+        "fresh_mode_mismatch",
+        "queue_evidence_tampered",
+    ],
+)
+def test_recovery_seed_merge_callback_normalizes_only_exact_strict_execution(
+    tmp_path,
+    monkeypatch,
+    case,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """## REF-049 Promote one reviewed recovery seed
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: logic
+- Provider role: grok-implementation
+- Outputs: verified.txt
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", ".gitignore")
+    _git(repo, "commit", "-m", "seed recovery task")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-049-attempt-5"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "verified.txt").write_text(
+        "reviewed recovery seed\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "verified.txt")
+    _git(repo, "commit", "-m", "REF-049: materialize recovery seed")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    candidate_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+    candidate_tree_id = f"git-tree:{candidate_tree}"
+    _git(repo, "checkout", "main")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    identity = daemon._identity_for_task(task)
+    task_binding_id = post_merge_review_module.post_merge_task_binding_id(
+        task
+    )
+    stream_seed = event_log_module.append_jsonl_event(
+        daemon.events_path,
+        "recovery_test_stream_seed",
+        {},
+    )
+    stream_id = stream_seed["stream_id"]
+    raw_model_invocation = case not in {
+        "fresh_envelope",
+        "fresh_mode_mismatch",
+    }
+    execution_mode = (
+        implementation_daemon_module.RECOVERY_SEED_EXECUTION_MODE
+        if case == "fresh_envelope"
+        else "model-assisted"
+    )
+    command = (
+        ["/bin/true"]
+        if case == "noncanonical_noop"
+        else ["/usr/bin/true"]
+    )
+    seed_fields = {
+        "recovery_seed_ref": implementation_commit,
+        "recovery_seed_tree_id": candidate_tree_id,
+        "recovery_seed_submodule_path": "external/reviewed-child",
+        "recovery_seed_submodule_commit": "3" * 40,
+    }
+    authority = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "post-merge-correction-dispatch-authority@1"
+        ),
+        "authority_binding_id": "authority-binding-1",
+        "authority_id": "grant-1",
+        "authority_event_sequence": 7,
+        "authority_kind": "repair_grant",
+        "authorized_attempt": 5,
+        "target_repository_id": daemon.merge_target_repository_id,
+        "target_branch": daemon.resolved_merge_target_branch,
+        "task_id": task.task_id,
+        "canonical_task_key": identity.canonical_task_key,
+        "canonical_task_cid": identity.canonical_task_cid,
+        "board_namespace": identity.board_namespace,
+        "task_binding_id": task_binding_id,
+        "denial_id": "denial-1",
+        "repair_task_id": "REF-050",
+        "repair_binding_id": "repair-binding-1",
+        "origin_stream_id": stream_id,
+        **seed_fields,
+    }
+    log_path = str(state_dir / "implementation-attempt-5.log")
+    started = event_log_module.append_jsonl_event(
+        daemon.events_path,
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "attempt": 5,
+            "branch": branch_name,
+            "baseline_ref": baseline,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "task_binding_id": task_binding_id,
+            "execution_mode": execution_mode,
+            "command": command,
+            "log_path": log_path,
+            "post_merge_correction_authority": authority,
+        },
+    )
+    proposal_gate = {
+        "attempted": True,
+        "accepted": True,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+        "repository_tree_id": baseline,
+        "changed_paths": ["verified.txt"],
+    }
+    fingerprint = "sha256:" + ("4" * 64)
+    validation_result = {
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "proposal_gate": proposal_gate,
+        "candidate_binding": {
+            "verified": True,
+            "expected_fingerprint": fingerprint,
+            "current_fingerprint": fingerprint,
+        },
+    }
+    request_id = "recovery-request-1"
+    finished_returncode = (
+        False if case == "boolean_finish_returncode" else 0
+    )
+    finished = event_log_module.append_jsonl_event(
+        daemon.events_path,
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "attempt": 5,
+            "branch": branch_name,
+            "baseline_ref": baseline,
+            "implementation_commit": implementation_commit,
+            "returncode": finished_returncode,
+            "attempt_consumed": True,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "task_binding_id": task_binding_id,
+            "log_path": log_path,
+            "implementation_started_event_id": started["event_id"],
+            "implementation_started_event_sequence": started["sequence"],
+            "validation_result": validation_result,
+            "commit_result": {
+                "committed": True,
+                "reason": "existing_commit",
+                "baseline_ref": baseline,
+                "commit": implementation_commit,
+                "recovery_seed_zero_edit_promotion_guard": {
+                    "applicable": True,
+                    "allowed": True,
+                    "durable_consumption_verified": True,
+                    "reasons": [],
+                    "baseline_ref": baseline,
+                    "expected_branch": branch_name,
+                    "current_branch": branch_name,
+                    "implementation_started_event_id": started["event_id"],
+                    "implementation_started_event_sequence": started[
+                        "sequence"
+                    ],
+                    "validation_changed_paths": ["verified.txt"],
+                    **seed_fields,
+                },
+            },
+            "merge_result": {
+                "attempted": False,
+                "merged": False,
+                "queued": True,
+                "reason": "merge_queued",
+                "request_id": request_id,
+                "implementation_commit": implementation_commit,
+                "branch": branch_name,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "target_repository_id": daemon.merge_target_repository_id,
+                "target_branch": daemon.resolved_merge_target_branch,
+            },
+        },
+    )
+    verified_seed = {
+        **seed_fields,
+        "recovery_seed_parent_commit": baseline,
+    }
+
+    def validate_seed_authority(**kwargs):
+        assert kwargs["task"] == task
+        assert kwargs["attempt"] == 5
+        assert kwargs["authority"] == authority
+        assert kwargs["expected_target_commit"] == baseline
+        return verified_seed, ""
+
+    monkeypatch.setattr(
+        daemon,
+        "_validated_post_merge_recovery_seed_authority",
+        validate_seed_authority,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verified_post_merge_correction_repair_grants",
+        lambda: (
+            {
+                "grant_id": "grant-1",
+                "grant_event_id": "sha256:" + ("5" * 64),
+                "grant_event_sequence": 7,
+                "authorized_attempt": 5,
+                "authorized_attempt_consumed": True,
+                "consuming_attempt": 5,
+                "consuming_event_id": started["event_id"],
+                "consuming_event_sequence": started["sequence"],
+                "consuming_event_type": "implementation_started",
+                "source_task_id": task.task_id,
+                "source_canonical_task_key": identity.canonical_task_key,
+                "source_canonical_task_cid": identity.canonical_task_cid,
+                "source_task_binding_id": task_binding_id,
+                "denial_id": "denial-1",
+                "repair_task_id": "REF-050",
+                "repair_binding_id": "repair-binding-1",
+                "origin_stream_id": stream_id,
+                **seed_fields,
+            },
+        ),
+    )
+    queued_validation = {
+        "task_id": task.task_id,
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "target_commit": implementation_commit,
+        "target_tree": candidate_tree,
+        "repository_tree_id": candidate_tree_id,
+        "proposal_gate": dict(proposal_gate),
+        "runtime": {"elapsed_seconds": 1.25},
+    }
+    if case == "queue_evidence_tampered":
+        queued_validation["target_tree"] = "0" * 40
+    revivals = []
+    if case != "missing_legacy_revival" and raw_model_invocation:
+        revivals.append(
+            {
+                "at": 20.0,
+                "reason": "operator verified provenance false positive",
+                "previous_enqueued_at": 10.0,
+                "previous_failure_count": 1,
+                "previous_failure_reason": (
+                    "implementation_provenance_missing"
+                ),
+            }
+        )
+    metadata = {
+        "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+        "target_repository_id": daemon.merge_target_repository_id,
+        "target_branch": daemon.resolved_merge_target_branch,
+        "baseline_ref": baseline,
+        "implementation_commit": implementation_commit,
+        "candidate_tree": candidate_tree,
+        "repository_tree_id": candidate_tree_id,
+        "model_invocation_observed": raw_model_invocation,
+        "repo_root": str(repo),
+        "state_path": "state/task_state.json",
+        "events_path": "state/events.jsonl",
+        "implementation_attempt": 5,
+        "implementation_provider": "",
+        "validation_proof": queued_validation,
+        "revivals": revivals,
+        "task": asdict(task),
+    }
+    request = SimpleNamespace(
+        request_id=request_id,
+        branch_name=branch_name,
+        commit_sha=implementation_commit,
+        task_id=task.task_id,
+        priority=task.priority,
+        attempt=2,
+        failure_count=1,
+        claim_generation=4,
+        canonical_task_id=identity.canonical_task_cid,
+        canonical_task_key=identity.canonical_task_key,
+        metadata=metadata,
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    admitted = case in {"legacy_revival", "fresh_envelope"}
+    if admitted:
+        assert result["reason"] == "validation_failed"
+        audits = [
+            event
+            for event in daemon._iter_events()
+            if event.get("type")
+            == "recovery_seed_zero_edit_execution_verified"
+        ]
+        assert len(audits) == 1
+        audit = audits[0]
+        assert audit["raw_model_invocation_observed"] is (
+            raw_model_invocation
+        )
+        assert audit["effective_model_invocation_observed"] is False
+        assert audit["queue_attempt"] == 2
+        assert audit["queue_failure_count"] == 1
+        assert audit["request_claim_generation"] == 4
+        assert audit["candidate_tree_id"] == candidate_tree_id
+        assert audit["started_event_id"] == started["event_id"]
+        assert audit["finished_event_id"] == finished["event_id"]
+        assert audit["grant_id"] == "grant-1"
+        if raw_model_invocation:
+            assert audit["validated_revival"][
+                "previous_failure_reason"
+            ] == "implementation_provenance_missing"
+            assert audit["validated_revival"]["revival_evidence_id"]
+        else:
+            assert audit["validated_revival"] == {}
+    else:
+        expected_errors = {
+            "boolean_finish_returncode": (
+                "recovery_seed_terminal_binding_invalid"
+            ),
+            "noncanonical_noop": "recovery_seed_start_binding_invalid",
+            "missing_legacy_revival": (
+                "recovery_seed_legacy_revival_missing"
+            ),
+            "fresh_mode_mismatch": "recovery_seed_start_binding_invalid",
+            "queue_evidence_tampered": (
+                "recovery_seed_queue_evidence_invalid"
+            ),
+        }
+        assert result["reason"] == "implementation_provenance_missing"
+        assert result["recovery_evidence_reason"] == expected_errors[case]
+        assert not any(
+            event.get("type")
+            == "recovery_seed_zero_edit_execution_verified"
+            for event in daemon._iter_events()
+        )
+
+
+def test_recovery_seed_terminal_wait_rechecks_without_real_sleep(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="REF-050",
+        title="Wait for the producer terminal",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="logic",
+    )
+    expected = {"evidence_id": "recovery-evidence-1"}
+    sleeps: list[float] = []
+    calls: list[dict[str, object]] = []
+
+    def recover(**kwargs):
+        calls.append(dict(kwargs))
+        return expected, ""
+
+    monkeypatch.setattr(
+        daemon,
+        "_verified_recovery_seed_zero_edit_execution",
+        recover,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.time,
+        "monotonic",
+        lambda: 10.0,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.time,
+        "sleep",
+        lambda seconds: sleeps.append(seconds),
+    )
+
+    evidence, error = (
+        daemon._await_verified_recovery_seed_zero_edit_execution(
+            task=task,
+            branch_name="implementation/ref-050-attempt-1",
+            baseline_ref="1" * 40,
+            implementation_commit="2" * 40,
+            implementation_attempt=1,
+            implementation_events_path=daemon.events_path,
+            request=SimpleNamespace(request_id="request-1"),
+            metadata={"model_invocation_observed": False},
+            require_legacy_revival=False,
+            initial_error="recovery_seed_terminal_missing",
+        )
+    )
+
+    assert evidence == expected
+    assert error == ""
+    assert sleeps == [
+        implementation_daemon_module.RECOVERY_SEED_TERMINAL_POLL_SECONDS
+    ]
+    assert len(calls) == 1
 
 
 def test_cross_lane_model_merge_callback_uses_source_evidence_and_pends_review(

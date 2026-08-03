@@ -291,6 +291,9 @@ MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "model-assisted-provider-route-integration@1"
 )
+RECOVERY_SEED_EXECUTION_MODE = "recovery-seed-validation"
+RECOVERY_SEED_TERMINAL_WAIT_SECONDS = 5.0
+RECOVERY_SEED_TERMINAL_POLL_SECONDS = 0.05
 MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
@@ -13407,6 +13410,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             attempt=attempt,
             branch_name=branch_name,
         )
+        model_invocation_observed = (
+            self._observed_model_invocation_for_implementation(
+                task=task,
+                attempt=attempt,
+                branch_name=branch_name,
+            )
+        )
         metadata = {
             "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@2",
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
@@ -13432,7 +13442,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "task": asdict(task),
             "implementation_attempt": int(attempt),
             "implementation_provider": observed_provider,
-            "model_invocation_observed": not self._task_uses_typed_local_execution(task),
+            "model_invocation_observed": model_invocation_observed,
             "implementation_protected_paths": list(
                 self.implementation_protected_paths
             ),
@@ -13558,7 +13568,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             task_id=task.task_id,
             priority=task.priority,
             lane_id=f"{os.getpid()}:{self.task_shard_index}",
-            attempt=attempt,
+            # Merge retries are independent from implementation attempts.  A
+            # late implementation attempt must still receive the queue's full
+            # bounded retry window (including the producer/terminal ordering
+            # hand-off on its first callback).
+            attempt=1,
             metadata=metadata,
             commit_sha=implementation_commit,
             canonical_task_id=identity.canonical_task_cid,
@@ -13594,6 +13608,86 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         return request, result
 
+    @staticmethod
+    def _recovery_seed_noop_command(command: Any) -> bool:
+        """Return whether ``command`` is the exact reviewed-seed no-op."""
+
+        return bool(
+            isinstance(command, Sequence)
+            and not isinstance(command, (str, bytes, bytearray))
+            and list(command) == ["/usr/bin/true"]
+        )
+
+    @staticmethod
+    def _implementation_provider_from_command(command: Any) -> str:
+        """Project a known provider label from one concrete command."""
+
+        if (
+            not isinstance(command, Sequence)
+            or isinstance(command, (str, bytes, bytearray))
+            or not all(isinstance(item, str) for item in command)
+        ):
+            return ""
+        rendered = " ".join(command).casefold()
+        if "grok_cli_runner" in rendered or re.search(
+            r"(^|/)grok(?:\s|$)", rendered
+        ):
+            return "grok_cli"
+        if re.search(r"(^|/)goose(?:\s|$)", rendered):
+            return "goose_meta"
+        if re.search(r"(^|/)copilot(?:\s|$)", rendered):
+            return "copilot"
+        if re.search(r"(^|/)codex(?:\s|$)", rendered):
+            return "codex_cli"
+        return ""
+
+    def _implementation_started_events(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        branch_name: str,
+    ) -> list[dict[str, Any]]:
+        """Return start events matching one exact local execution locator."""
+
+        return [
+            event
+            for event in self._iter_events()
+            if (
+                str(event.get("type") or "") == "implementation_started"
+                and str(event.get("task_id") or "") == task.task_id
+                and int(event.get("attempt") or 0) == int(attempt)
+                and str(event.get("branch") or "") == branch_name
+            )
+        ]
+
+    def _observed_model_invocation_for_implementation(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        branch_name: str,
+    ) -> bool:
+        """Project observation, keeping policy distinct from execution."""
+
+        if self._task_uses_typed_local_execution(task):
+            return False
+        matching = self._implementation_started_events(
+            task=task,
+            attempt=attempt,
+            branch_name=branch_name,
+        )
+        if len(matching) != 1:
+            # An uncertain non-local execution remains model-assisted until a
+            # strict recovery-seed terminal proves the narrower exception.
+            return True
+        event = matching[0]
+        return not (
+            str(event.get("execution_mode") or "")
+            == RECOVERY_SEED_EXECUTION_MODE
+            and self._recovery_seed_noop_command(event.get("command"))
+        )
+
     def _observed_implementation_provider(
         self,
         *,
@@ -13605,32 +13699,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         if self._task_uses_typed_local_execution(task):
             return ExecutionMode.DETERMINISTIC_ONLY.value
-        matching_commands: list[list[str]] = []
-        for event in self._iter_events():
-            if (
-                str(event.get("type") or "") != "implementation_started"
-                or str(event.get("task_id") or "") != task.task_id
-                or int(event.get("attempt") or 0) != int(attempt)
-                or str(event.get("branch") or "") != branch_name
-            ):
-                continue
-            command = event.get("command")
-            if isinstance(command, list) and all(
-                isinstance(item, str) for item in command
-            ):
-                matching_commands.append(command)
-        if len(matching_commands) != 1:
+        matching = self._implementation_started_events(
+            task=task,
+            attempt=attempt,
+            branch_name=branch_name,
+        )
+        if len(matching) != 1:
             return ""
-        rendered = " ".join(matching_commands[0]).casefold()
-        if "grok_cli_runner" in rendered or re.search(r"(^|/)grok(?:\s|$)", rendered):
-            return "grok_cli"
-        if re.search(r"(^|/)goose(?:\s|$)", rendered):
-            return "goose_meta"
-        if re.search(r"(^|/)copilot(?:\s|$)", rendered):
-            return "copilot"
-        if re.search(r"(^|/)codex(?:\s|$)", rendered):
-            return "codex_cli"
-        return ""
+        return self._implementation_provider_from_command(
+            matching[0].get("command")
+        )
 
     def _resolve_implementation_evidence_context(
         self,
@@ -13797,6 +13875,616 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return provenance
         except (PostMergeReviewError, OSError, TypeError, ValueError):
             return None
+
+    def _implementation_terminal_is_pending(
+        self,
+        *,
+        task: PortalTask,
+        branch_name: str,
+        baseline_ref: str,
+        implementation_attempt: int,
+        implementation_events_path: Path,
+        require_legacy_revival: bool,
+    ) -> bool:
+        """Return whether one exact strict start still awaits its terminal."""
+
+        identity = self._identity_for_task(task)
+        try:
+            outstanding = (
+                verified_outstanding_implementation_starts_from_strict_ledger(
+                    implementation_events_path
+                )
+            )
+        except (
+            OSError,
+            PostMergeReviewError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return False
+        matches = [
+            event
+            for event in outstanding
+            if (
+                str(event.get("task_id") or "") == task.task_id
+                and int(event.get("attempt") or 0)
+                == int(implementation_attempt)
+                and str(event.get("branch") or "") == branch_name
+                and str(event.get("baseline_ref") or "") == baseline_ref
+                and str(event.get("canonical_task_key") or "")
+                == identity.canonical_task_key
+                and str(
+                    event.get("canonical_task_cid")
+                    or event.get("canonical_task_id")
+                    or ""
+                )
+                == identity.canonical_task_cid
+                and str(event.get("board_namespace") or "")
+                == identity.board_namespace
+                and str(event.get("task_binding_id") or "")
+                == post_merge_task_binding_id(task)
+                and str(event.get("execution_mode") or "")
+                == (
+                    "model-assisted"
+                    if require_legacy_revival
+                    else RECOVERY_SEED_EXECUTION_MODE
+                )
+                and self._recovery_seed_noop_command(
+                    event.get("command")
+                )
+                and not self._implementation_provider_from_command(
+                    event.get("command")
+                )
+                and isinstance(
+                    event.get("post_merge_correction_authority"),
+                    Mapping,
+                )
+                and str(
+                    event["post_merge_correction_authority"].get(
+                        "target_repository_id"
+                    )
+                    or ""
+                )
+                == self.merge_target_repository_id
+                and str(
+                    event["post_merge_correction_authority"].get(
+                        "target_branch"
+                    )
+                    or ""
+                )
+                == self.resolved_merge_target_branch
+                and str(
+                    event["post_merge_correction_authority"].get(
+                        "origin_stream_id"
+                    )
+                    or ""
+                )
+                == str(event.get("stream_id") or "")
+            )
+        ]
+        return len(matches) == 1
+
+    def _await_verified_recovery_seed_zero_edit_execution(
+        self,
+        *,
+        task: PortalTask,
+        branch_name: str,
+        baseline_ref: str,
+        implementation_commit: str,
+        implementation_attempt: int,
+        implementation_events_path: Path,
+        request: Any,
+        metadata: Mapping[str, Any],
+        require_legacy_revival: bool,
+        initial_error: str,
+    ) -> tuple[dict[str, Any], str]:
+        """Give the producer a bounded window to append its strict terminal."""
+
+        deadline = time.monotonic() + RECOVERY_SEED_TERMINAL_WAIT_SECONDS
+        error = initial_error
+        while error == "recovery_seed_terminal_missing":
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(
+                min(RECOVERY_SEED_TERMINAL_POLL_SECONDS, remaining)
+            )
+            evidence, error = (
+                self._verified_recovery_seed_zero_edit_execution(
+                    task=task,
+                    branch_name=branch_name,
+                    baseline_ref=baseline_ref,
+                    implementation_commit=implementation_commit,
+                    implementation_attempt=implementation_attempt,
+                    implementation_events_path=implementation_events_path,
+                    request=request,
+                    metadata=metadata,
+                    require_legacy_revival=require_legacy_revival,
+                )
+            )
+            if evidence or error != "recovery_seed_terminal_missing":
+                return evidence, error
+            if not self._implementation_terminal_is_pending(
+                task=task,
+                branch_name=branch_name,
+                baseline_ref=baseline_ref,
+                implementation_attempt=implementation_attempt,
+                implementation_events_path=implementation_events_path,
+                require_legacy_revival=require_legacy_revival,
+            ):
+                break
+        return {}, error
+
+    def _verified_recovery_seed_zero_edit_execution(
+        self,
+        *,
+        task: PortalTask,
+        branch_name: str,
+        baseline_ref: str,
+        implementation_commit: str,
+        implementation_attempt: int,
+        implementation_events_path: Path,
+        request: Any,
+        metadata: Mapping[str, Any],
+        require_legacy_revival: bool,
+    ) -> tuple[dict[str, Any], str]:
+        """Verify a no-model promotion of one exact reviewed recovery seed."""
+
+        validated_revival: dict[str, Any] = {}
+        if require_legacy_revival:
+            revivals = metadata.get("revivals")
+            latest_revival = (
+                revivals[-1]
+                if isinstance(revivals, list) and revivals
+                else None
+            )
+            if (
+                not isinstance(latest_revival, Mapping)
+                or str(
+                    latest_revival.get("previous_failure_reason") or ""
+                )
+                != "implementation_provenance_missing"
+                or int(
+                    latest_revival.get("previous_failure_count") or 0
+                )
+                < 1
+                or not str(latest_revival.get("reason") or "").strip()
+            ):
+                return {}, "recovery_seed_legacy_revival_missing"
+            revival_material = {
+                "previous_failure_reason": str(
+                    latest_revival.get("previous_failure_reason") or ""
+                ),
+                "previous_failure_count": int(
+                    latest_revival.get("previous_failure_count") or 0
+                ),
+                "previous_enqueued_at": str(
+                    latest_revival.get("previous_enqueued_at") or ""
+                ),
+                "revived_at": str(latest_revival.get("at") or ""),
+                "reason": str(latest_revival.get("reason") or ""),
+            }
+            validated_revival = {
+                **revival_material,
+                "revival_evidence_id": content_identity(
+                    revival_material
+                ),
+            }
+
+        identity = self._identity_for_task(task)
+        try:
+            finished = (
+                verified_implementation_finished_event_from_strict_ledger(
+                    implementation_events_path,
+                    task_id=task.task_id,
+                    implementation_attempt=implementation_attempt,
+                    branch=branch_name,
+                    implementation_commit=implementation_commit,
+                    baseline_ref=baseline_ref,
+                    canonical_task_key=identity.canonical_task_key,
+                    canonical_task_cid=identity.canonical_task_cid,
+                )
+            )
+            ledger = _post_merge_review_runtime._strict_event_ledger(
+                implementation_events_path
+            )
+        except (
+            OSError,
+            PostMergeReviewError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return {}, "recovery_seed_terminal_missing"
+
+        started_event_id = str(
+            finished.get("implementation_started_event_id") or ""
+        )
+        started_event_sequence = finished.get(
+            "implementation_started_event_sequence"
+        )
+        if (
+            not started_event_id
+            or isinstance(started_event_sequence, bool)
+            or not isinstance(started_event_sequence, int)
+            or started_event_sequence < 1
+        ):
+            return {}, "recovery_seed_start_binding_missing"
+        starts = [
+            event
+            for event in ledger
+            if (
+                event.get("type") == "implementation_started"
+                and str(event.get("event_id") or "") == started_event_id
+                and int(event.get("sequence") or 0)
+                == started_event_sequence
+            )
+        ]
+        if len(starts) != 1:
+            return {}, "recovery_seed_start_binding_missing"
+        started = starts[0]
+        command = started.get("command")
+        started_stream_id = str(started.get("stream_id") or "")
+        expected_execution_mode = (
+            "model-assisted"
+            if require_legacy_revival
+            else RECOVERY_SEED_EXECUTION_MODE
+        )
+        if (
+            str(started.get("task_id") or "") != task.task_id
+            or int(started.get("attempt") or 0)
+            != int(implementation_attempt)
+            or str(started.get("branch") or "") != branch_name
+            or str(started.get("baseline_ref") or "") != baseline_ref
+            or str(started.get("canonical_task_key") or "")
+            != identity.canonical_task_key
+            or str(
+                started.get("canonical_task_cid")
+                or started.get("canonical_task_id")
+                or ""
+            )
+            != identity.canonical_task_cid
+            or str(started.get("board_namespace") or "")
+            != identity.board_namespace
+            or str(started.get("task_binding_id") or "")
+            != post_merge_task_binding_id(task)
+            or not started_stream_id
+            or str(started.get("execution_mode") or "")
+            != expected_execution_mode
+            or not self._recovery_seed_noop_command(command)
+            or self._implementation_provider_from_command(command)
+        ):
+            return {}, "recovery_seed_start_binding_invalid"
+
+        validation = finished.get("validation_result")
+        commit_result = finished.get("commit_result")
+        merge_result = finished.get("merge_result")
+        guard = (
+            commit_result.get("recovery_seed_zero_edit_promotion_guard")
+            if isinstance(commit_result, Mapping)
+            else None
+        )
+        proposal = (
+            validation.get("proposal_gate")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        candidate_binding = (
+            validation.get("candidate_binding")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        raw_finished_returncode = finished.get("returncode")
+        raw_validation_returncode = (
+            validation.get("returncode")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        request_id = str(getattr(request, "request_id", "") or "")
+        if (
+            isinstance(raw_finished_returncode, bool)
+            or not isinstance(raw_finished_returncode, int)
+            or raw_finished_returncode != 0
+            or str(finished.get("task_id") or "") != task.task_id
+            or int(finished.get("attempt") or 0)
+            != int(implementation_attempt)
+            or str(finished.get("canonical_task_key") or "")
+            != identity.canonical_task_key
+            or str(
+                finished.get("canonical_task_cid")
+                or finished.get("canonical_task_id")
+                or ""
+            )
+            != identity.canonical_task_cid
+            or str(finished.get("board_namespace") or "")
+            != identity.board_namespace
+            or str(finished.get("task_binding_id") or "")
+            != post_merge_task_binding_id(task)
+            or str(finished.get("stream_id") or "")
+            != started_stream_id
+            or finished.get("attempt_consumed") is not True
+            or str(finished.get("log_path") or "")
+            != str(started.get("log_path") or "")
+            or int(finished.get("sequence") or 0)
+            <= started_event_sequence
+            or not isinstance(validation, Mapping)
+            or validation.get("attempted") is not True
+            or validation.get("passed") is not True
+            or isinstance(raw_validation_returncode, bool)
+            or not isinstance(raw_validation_returncode, int)
+            or raw_validation_returncode != 0
+            or not isinstance(proposal, Mapping)
+            or proposal.get("attempted") is not True
+            or proposal.get("accepted") is not True
+            or proposal.get("proof_authoritative") is not False
+            or proposal.get("completion_authoritative") is not False
+            or str(proposal.get("repository_tree_id") or "")
+            != baseline_ref
+            or not isinstance(candidate_binding, Mapping)
+            or candidate_binding.get("verified") is not True
+            or not str(candidate_binding.get("expected_fingerprint") or "")
+            or str(candidate_binding.get("expected_fingerprint") or "")
+            != str(candidate_binding.get("current_fingerprint") or "")
+            or not isinstance(commit_result, Mapping)
+            or commit_result.get("committed") is not True
+            or str(commit_result.get("reason") or "")
+            != "existing_commit"
+            or str(commit_result.get("baseline_ref") or "")
+            != baseline_ref
+            or str(commit_result.get("commit") or "")
+            != implementation_commit
+            or not isinstance(merge_result, Mapping)
+            or merge_result.get("attempted") is not False
+            or merge_result.get("merged") is not False
+            or merge_result.get("queued") is not True
+            or str(merge_result.get("reason") or "") != "merge_queued"
+            or str(merge_result.get("request_id") or "") != request_id
+            or str(merge_result.get("implementation_commit") or "")
+            != implementation_commit
+            or str(merge_result.get("branch") or "") != branch_name
+            or str(merge_result.get("canonical_task_key") or "")
+            != identity.canonical_task_key
+            or str(
+                merge_result.get("canonical_task_cid")
+                or merge_result.get("canonical_task_id")
+                or ""
+            )
+            != identity.canonical_task_cid
+            or str(merge_result.get("target_repository_id") or "")
+            != self.merge_target_repository_id
+            or str(merge_result.get("target_branch") or "")
+            != self.resolved_merge_target_branch
+            or not isinstance(guard, Mapping)
+            or guard.get("applicable") is not True
+            or guard.get("allowed") is not True
+            or guard.get("durable_consumption_verified") is not True
+            or guard.get("reasons") != []
+            or str(guard.get("baseline_ref") or "") != baseline_ref
+            or str(guard.get("expected_branch") or "") != branch_name
+            or str(guard.get("current_branch") or "") != branch_name
+            or str(guard.get("implementation_started_event_id") or "")
+            != started_event_id
+            or int(
+                guard.get("implementation_started_event_sequence") or 0
+            )
+            != started_event_sequence
+            or list(guard.get("validation_changed_paths") or ())
+            != list(proposal.get("changed_paths") or ())
+            or not list(proposal.get("changed_paths") or ())
+        ):
+            return {}, "recovery_seed_terminal_binding_invalid"
+
+        authority = started.get("post_merge_correction_authority")
+        if (
+            not isinstance(authority, Mapping)
+            or str(authority.get("target_repository_id") or "")
+            != self.merge_target_repository_id
+            or str(authority.get("target_branch") or "")
+            != self.resolved_merge_target_branch
+            or not str(authority.get("denial_id") or "")
+            or not str(authority.get("repair_task_id") or "")
+            or not str(authority.get("repair_binding_id") or "")
+            or str(authority.get("origin_stream_id") or "")
+            != started_stream_id
+        ):
+            return {}, "recovery_seed_authority_missing"
+        try:
+            verified_seed, seed_error = (
+                self._validated_post_merge_recovery_seed_authority(
+                    task=task,
+                    attempt=implementation_attempt,
+                    authority=authority,
+                    expected_target_commit=baseline_ref,
+                )
+            )
+            grants = self._verified_post_merge_correction_repair_grants()
+        except (
+            MergeQueueIntegrityError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return {}, "recovery_seed_authority_unavailable"
+        if not verified_seed:
+            return {}, seed_error or "recovery_seed_authority_invalid"
+
+        candidate_tree = self._candidate_repository_tree(
+            implementation_commit
+        )
+        candidate_tree_id = (
+            f"git-tree:{candidate_tree}" if candidate_tree else ""
+        )
+        queued_validation = metadata.get("validation_proof")
+        raw_queued_validation_returncode = (
+            queued_validation.get("returncode")
+            if isinstance(queued_validation, Mapping)
+            else None
+        )
+        if (
+            str(metadata.get("implementation_commit") or "")
+            != implementation_commit
+            or str(metadata.get("candidate_tree") or "")
+            != candidate_tree
+            or str(metadata.get("repository_tree_id") or "")
+            != candidate_tree_id
+            or not isinstance(queued_validation, Mapping)
+            or str(queued_validation.get("task_id") or "")
+            != task.task_id
+            or queued_validation.get("attempted") is not True
+            or queued_validation.get("passed") is not True
+            or isinstance(raw_queued_validation_returncode, bool)
+            or not isinstance(raw_queued_validation_returncode, int)
+            or raw_queued_validation_returncode != 0
+            or str(queued_validation.get("target_commit") or "")
+            != implementation_commit
+            or str(queued_validation.get("target_tree") or "")
+            != candidate_tree
+            or str(queued_validation.get("repository_tree_id") or "")
+            != candidate_tree_id
+            or queued_validation.get("proposal_gate") != proposal
+        ):
+            return {}, "recovery_seed_queue_evidence_invalid"
+        seed_fields = (
+            "recovery_seed_ref",
+            "recovery_seed_tree_id",
+            "recovery_seed_submodule_path",
+            "recovery_seed_submodule_commit",
+        )
+        if (
+            str(verified_seed.get("recovery_seed_parent_commit") or "")
+            != baseline_ref
+            or str(verified_seed.get("recovery_seed_ref") or "")
+            != implementation_commit
+            or not candidate_tree_id
+            or str(verified_seed.get("recovery_seed_tree_id") or "")
+            != candidate_tree_id
+            or any(
+                str(verified_seed.get(name) or "")
+                != str(authority.get(name) or "")
+                or str(verified_seed.get(name) or "")
+                != str(guard.get(name) or "")
+                for name in seed_fields
+            )
+        ):
+            return {}, "recovery_seed_authority_binding_invalid"
+        matching_grants = [
+            grant
+            for grant in (grants or ())
+            if (
+                str(grant.get("grant_id") or "")
+                == str(authority.get("authority_id") or "")
+                and int(grant.get("grant_event_sequence") or 0)
+                == int(authority.get("authority_event_sequence") or 0)
+                and int(grant.get("authorized_attempt") or 0)
+                == int(implementation_attempt)
+                and int(grant.get("consuming_attempt") or 0)
+                == int(implementation_attempt)
+                and grant.get("authorized_attempt_consumed") is True
+                and str(grant.get("consuming_event_id") or "")
+                == started_event_id
+                and int(grant.get("consuming_event_sequence") or 0)
+                == started_event_sequence
+                and grant.get("consuming_event_type")
+                == "implementation_started"
+                and str(grant.get("source_task_id") or "")
+                == task.task_id
+                and str(grant.get("source_canonical_task_key") or "")
+                == identity.canonical_task_key
+                and str(grant.get("source_canonical_task_cid") or "")
+                == identity.canonical_task_cid
+                and str(grant.get("source_task_binding_id") or "")
+                == post_merge_task_binding_id(task)
+                and str(grant.get("denial_id") or "")
+                == str(authority.get("denial_id") or "")
+                and str(grant.get("repair_task_id") or "")
+                == str(authority.get("repair_task_id") or "")
+                and str(grant.get("repair_binding_id") or "")
+                == str(authority.get("repair_binding_id") or "")
+                and str(grant.get("origin_stream_id") or "")
+                == started_stream_id
+                and all(
+                    str(grant.get(name) or "")
+                    == str(verified_seed.get(name) or "")
+                    for name in seed_fields
+                )
+            )
+        ]
+        if len(matching_grants) != 1:
+            return {}, "recovery_seed_consumption_missing"
+        matching_grant = matching_grants[0]
+
+        material = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "recovery-seed-zero-edit-execution@1"
+            ),
+            "task_id": task.task_id,
+            "implementation_attempt": int(implementation_attempt),
+            "implementation_commit": implementation_commit,
+            "branch": branch_name,
+            "baseline_ref": baseline_ref,
+            "request_id": request_id,
+            "queue_attempt": int(
+                getattr(request, "attempt", 0) or 0
+            ),
+            "queue_failure_count": int(
+                getattr(request, "failure_count", 0) or 0
+            ),
+            "request_claim_generation": int(
+                getattr(request, "claim_generation", 0) or 0
+            ),
+            "raw_model_invocation_observed": metadata.get(
+                "model_invocation_observed"
+            ),
+            "effective_model_invocation_observed": False,
+            "model_invocation_observed": False,
+            "normalization_reason": (
+                "legacy_recovery_seed_queue_metadata_normalized"
+                if require_legacy_revival
+                else "verified_recovery_seed_no_model_execution"
+            ),
+            "implementation_provider": "",
+            "candidate_tree_id": candidate_tree_id,
+            "queued_validation_proof_id": content_identity(
+                _canonical_receipt_value(queued_validation)
+            ),
+            "terminal_proposal_gate_id": content_identity(proposal),
+            "started_event_id": started_event_id,
+            "started_event_sequence": started_event_sequence,
+            "finished_event_id": str(finished.get("event_id") or ""),
+            "finished_event_sequence": int(
+                finished.get("sequence") or 0
+            ),
+            "authority_binding_id": str(
+                authority.get("authority_binding_id") or ""
+            ),
+            "grant_id": str(authority.get("authority_id") or ""),
+            "grant_event_id": str(
+                matching_grant.get("grant_event_id") or ""
+            ),
+            "grant_event_sequence": int(
+                matching_grant.get("grant_event_sequence") or 0
+            ),
+            "denial_id": str(authority.get("denial_id") or ""),
+            "repair_task_id": str(
+                authority.get("repair_task_id") or ""
+            ),
+            "repair_binding_id": str(
+                authority.get("repair_binding_id") or ""
+            ),
+            "origin_stream_id": started_stream_id,
+            "validated_revival": validated_revival,
+            **{
+                name: str(verified_seed.get(name) or "")
+                for name in seed_fields
+            },
+        }
+        return {
+            **material,
+            "evidence_id": content_identity(material),
+        }, ""
 
     @staticmethod
     def _portal_task_from_merge_request(request: Any) -> PortalTask:
@@ -14999,13 +15687,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         raw_implementation_attempt = int(
             metadata.get("implementation_attempt") or 0
         )
+        baseline_ref = str(metadata.get("baseline_ref") or "")
         expected_model_invocation = (
             not self._task_uses_typed_local_execution(task)
         )
         raw_model_invocation = metadata.get("model_invocation_observed")
-        if raw_model_invocation is not None and (
-            not isinstance(raw_model_invocation, bool)
-            or raw_model_invocation != expected_model_invocation
+        if (
+            raw_model_invocation is not None
+            and not isinstance(raw_model_invocation, bool)
+        ) or (
+            not expected_model_invocation
+            and raw_model_invocation not in (None, False)
         ):
             return {
                 "attempted": False,
@@ -15024,7 +15716,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 source_repo_root=metadata.get("repo_root"),
                 source_state_path=metadata.get("state_path"),
                 source_events_path=metadata.get("events_path"),
-                require_explicit=model_invocation_observed,
+                require_explicit=expected_model_invocation,
             )
         )
         if implementation_evidence_context is None:
@@ -15053,36 +15745,156 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             metadata.get("implementation_provider") or ""
         ).strip()
         verified_implementer_provenance = None
-        if model_invocation_observed:
-            verified_implementer_provenance = (
-                self._recover_verified_implementation_provenance(
-                    task=task,
-                    branch_name=branch_name,
-                    implementation_commit=implementation_commit,
-                    implementation_attempt=raw_implementation_attempt,
-                    implementation_state_path=implementation_state_path,
-                    implementation_events_path=implementation_events_path,
+        verified_recovery_seed_execution: dict[str, Any] = {}
+        if expected_model_invocation:
+            if raw_model_invocation is not False:
+                verified_implementer_provenance = (
+                    self._recover_verified_implementation_provenance(
+                        task=task,
+                        branch_name=branch_name,
+                        implementation_commit=implementation_commit,
+                        implementation_attempt=raw_implementation_attempt,
+                        implementation_state_path=implementation_state_path,
+                        implementation_events_path=implementation_events_path,
+                    )
                 )
-            )
             if verified_implementer_provenance is None:
-                return {
-                    "attempted": False,
-                    "merged": False,
-                    "returncode": 2,
-                    "reason": "implementation_provenance_missing",
-                    "task_id": task.task_id,
-                    "queue_attempt": queue_attempt,
-                    "implementation_attempt": raw_implementation_attempt,
-                    "implementation_provider": implementation_provider,
-                }
+                recovery_error = "recovery_seed_execution_not_requested"
+                recovery_allowed = bool(
+                    not implementation_provider
+                    and raw_model_invocation in (False, True)
+                )
+                require_legacy_revival = raw_model_invocation is True
+                if recovery_allowed:
+                    (
+                        verified_recovery_seed_execution,
+                        recovery_error,
+                    ) = self._verified_recovery_seed_zero_edit_execution(
+                        task=task,
+                        branch_name=branch_name,
+                        baseline_ref=baseline_ref,
+                        implementation_commit=implementation_commit,
+                        implementation_attempt=raw_implementation_attempt,
+                        implementation_events_path=(
+                            implementation_events_path
+                        ),
+                        request=request,
+                        metadata=metadata,
+                        require_legacy_revival=require_legacy_revival,
+                    )
+                terminal_pending = bool(
+                    recovery_allowed
+                    and recovery_error
+                    == "recovery_seed_terminal_missing"
+                    and self._implementation_terminal_is_pending(
+                        task=task,
+                        branch_name=branch_name,
+                        baseline_ref=baseline_ref,
+                        implementation_attempt=(
+                            raw_implementation_attempt
+                        ),
+                        implementation_events_path=(
+                            implementation_events_path
+                        ),
+                        require_legacy_revival=(
+                            require_legacy_revival
+                        ),
+                    )
+                )
+                if terminal_pending:
+                    (
+                        verified_recovery_seed_execution,
+                        recovery_error,
+                    ) = (
+                        self._await_verified_recovery_seed_zero_edit_execution(
+                            task=task,
+                            branch_name=branch_name,
+                            baseline_ref=baseline_ref,
+                            implementation_commit=implementation_commit,
+                            implementation_attempt=(
+                                raw_implementation_attempt
+                            ),
+                            implementation_events_path=(
+                                implementation_events_path
+                            ),
+                            request=request,
+                            metadata=metadata,
+                            require_legacy_revival=(
+                                require_legacy_revival
+                            ),
+                            initial_error=recovery_error,
+                        )
+                    )
+                    terminal_pending = bool(
+                        not verified_recovery_seed_execution
+                        and recovery_error
+                        == "recovery_seed_terminal_missing"
+                        and self._implementation_terminal_is_pending(
+                            task=task,
+                            branch_name=branch_name,
+                            baseline_ref=baseline_ref,
+                            implementation_attempt=(
+                                raw_implementation_attempt
+                            ),
+                            implementation_events_path=(
+                                implementation_events_path
+                            ),
+                            require_legacy_revival=(
+                                require_legacy_revival
+                            ),
+                        )
+                    )
+                if verified_recovery_seed_execution:
+                    model_invocation_observed = False
+                    implementation_provider = ""
+                elif terminal_pending:
+                    return {
+                        "attempted": False,
+                        "merged": False,
+                        "returncode": 2,
+                        "reason": "implementation_provenance_pending",
+                        "task_id": task.task_id,
+                        "queue_attempt": queue_attempt,
+                        "implementation_attempt": raw_implementation_attempt,
+                        "implementation_provider": implementation_provider,
+                    }
+                else:
+                    return {
+                        "attempted": False,
+                        "merged": False,
+                        "returncode": 2,
+                        "reason": "implementation_provenance_missing",
+                        "task_id": task.task_id,
+                        "queue_attempt": queue_attempt,
+                        "implementation_attempt": raw_implementation_attempt,
+                        "implementation_provider": implementation_provider,
+                        "recovery_evidence_reason": recovery_error,
+                    }
+            else:
+                if raw_model_invocation is False:
+                    return {
+                        "attempted": False,
+                        "merged": False,
+                        "returncode": 2,
+                        "reason": "model_invocation_policy_mismatch",
+                        "task_id": task.task_id,
+                        "metadata_model_invocation_observed": False,
+                        "expected_model_invocation_observed": True,
+                    }
             if (
-                raw_implementation_attempt > 0
-                and raw_implementation_attempt
-                != verified_implementer_provenance.implementation_attempt
-            ) or (
-                implementation_provider
-                and implementation_provider
-                != verified_implementer_provenance.provider_id
+                verified_implementer_provenance is not None
+                and (
+                    (
+                        raw_implementation_attempt > 0
+                        and raw_implementation_attempt
+                        != verified_implementer_provenance.implementation_attempt
+                    )
+                    or (
+                        implementation_provider
+                        and implementation_provider
+                        != verified_implementer_provenance.provider_id
+                    )
+                )
             ):
                 return {
                     "attempted": False,
@@ -15104,12 +15916,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         verified_implementer_provenance.provider_id
                     ),
                 }
-            raw_implementation_attempt = (
-                verified_implementer_provenance.implementation_attempt
-            )
-            implementation_provider = (
-                verified_implementer_provenance.provider_id
-            )
+            if verified_implementer_provenance is not None:
+                raw_implementation_attempt = (
+                    verified_implementer_provenance.implementation_attempt
+                )
+                implementation_provider = (
+                    verified_implementer_provenance.provider_id
+                )
         implementation_attempt = (
             raw_implementation_attempt or queue_attempt
         )
@@ -15144,6 +15957,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     board_identity.canonical_task_key
                 ),
             }
+        if verified_recovery_seed_execution:
+            self._record_event(
+                "recovery_seed_zero_edit_execution_verified",
+                verified_recovery_seed_execution,
+            )
         queued_validation = tuple(
             str(command) for command in queued_task.validation
         )
@@ -15304,7 +16122,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         expected_changed_paths_id = content_identity(
             {"changed_paths": expected_changed_paths}
         )
-        baseline_ref = str(metadata.get("baseline_ref") or "")
         finished_event: Mapping[str, Any] | None = None
         scope_event_required = bool(
             validation_proof.get("scope_adjudication") is not None
@@ -16122,26 +16939,39 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         if pool_handoff.get("attempted", False):
             merge_result["worktree_pool_handoff"] = pool_handoff
-        try:
-            train_result = self._consume_one_merge_candidate()
-        except Exception as exc:
-            # Enqueue has already committed the durable handoff; a busy
-            # consumer must not turn the lane into a merge polling loop.
-            train_result = {
-                "status": "deferred",
-                "reason": "merge_train_consumer_unavailable",
-                "exception_type": type(exc).__name__,
-                "error": str(exc)[-4000:],
-            }
-            self._record_event(
-                "merge_train_consumer_deferred",
-                {
-                    "task_id": task.task_id,
-                    "attempt": attempt,
-                    "request_id": str(request.request_id),
-                    **train_result,
-                },
-            )
+        recovery_terminal_pending = bool(
+            isinstance(promotion_guard, Mapping)
+            and promotion_guard.get("applicable") is True
+            and promotion_guard.get("allowed") is True
+        )
+        train_result: dict[str, Any] | None = None
+        if recovery_terminal_pending:
+            # The strict zero-edit recovery proof includes the terminal event
+            # written by the caller after this handoff returns.  Leave the
+            # request pending for the next bounded train pass instead of
+            # manufacturing a provisional provenance failure.
+            merge_result["producer_terminal_pending"] = True
+        else:
+            try:
+                train_result = self._consume_one_merge_candidate()
+            except Exception as exc:
+                # Enqueue has already committed the durable handoff; a busy
+                # consumer must not turn the lane into a merge polling loop.
+                train_result = {
+                    "status": "deferred",
+                    "reason": "merge_train_consumer_unavailable",
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                }
+                self._record_event(
+                    "merge_train_consumer_deferred",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "request_id": str(request.request_id),
+                        **train_result,
+                    },
+                )
         if train_result is not None:
             merge_result["train_result"] = train_result
             consumed_request_id = self._merge_train_result_request_id(train_result)
@@ -16574,6 +17404,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "execution_mode": (
                     ExecutionMode.DETERMINISTIC_ONLY.value
                     if deterministic_only
+                    else RECOVERY_SEED_EXECUTION_MODE
+                    if (
+                        seed_plan.get("recovery_seed_valid")
+                        and self._recovery_seed_noop_command(command)
+                    )
                     else "model-assisted"
                 ),
                 "worktree_lifecycle": (
