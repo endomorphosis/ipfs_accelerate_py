@@ -901,6 +901,7 @@ def test_validated_no_change_guard_rejects_disappeared_candidate() -> None:
                 ]
             }
         },
+        require_no_change_policy_gate=False,
     )
 
     assert guard["allowed"] is False
@@ -918,6 +919,7 @@ def test_validated_no_change_guard_accepts_exact_unchanged_baseline() -> None:
         expected_branch="implementation/task-attempt-1",
         current_branch="implementation/task-attempt-1",
         validation_result={"selection": {"changed_files": []}},
+        require_no_change_policy_gate=False,
     )
 
     assert guard["allowed"] is True

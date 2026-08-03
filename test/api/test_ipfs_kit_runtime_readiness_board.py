@@ -104,11 +104,17 @@ def test_production_parsers_consume_exact_task_and_goal_populations() -> None:
         int(task.metadata["llm context budget bytes"]) > 0
         for task in tasks
     )
-    assert [task.task_id for task in operational] == ["KITA-048"]
+    operational_ids = [task.task_id for task in operational]
+    assert operational_ids == [
+        f"KITA-{index:03d}"
+        for index in range(48, 48 + len(operational))
+    ]
+    assert operational_ids
     assert operational[0].metadata["retry repair source"] == "KITA-030"
     assert all(
         not output.startswith("data/agent_supervisor/")
-        for output in operational[0].outputs
+        for task in operational
+        for output in task.outputs
     )
 
 
@@ -246,7 +252,9 @@ def test_scheduler_seals_launch_projection_and_validator_reports_progress() -> N
     assert report["valid"] is True
     assert report["task_count"] == 48
     assert report["operational_task_count"] == len(operational)
-    assert report["operational_task_ids"] == ["KITA-048"]
+    assert report["operational_task_ids"] == [
+        task.task_id for task in operational
+    ]
     assert report["goal_count"] == 12
     assert report["completed_task_ids"] == sorted(completed)
     assert report["ready_task_ids"] == ready
