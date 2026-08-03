@@ -1016,7 +1016,7 @@ or write authority.
 
 ## KITA-032 Wire canonical datasets Profile D and UCAN into a fail-closed dispatcher
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
