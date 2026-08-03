@@ -164,17 +164,27 @@ def _proc_identity(status_path: Path) -> tuple[int | None, int]:
     return uid, parent_pid
 
 
-def _count_with_proc(*, maximum_processes: int = 8_192) -> dict[str, int]:
+def _count_with_proc(
+    *,
+    maximum_processes: int = 8_192,
+    proc_root: Path = Path("/proc"),
+) -> dict[str, int]:
     counts = {name: 0 for name in _PROVIDER_NAMES}
-    proc_root = Path("/proc")
+    _positive_integer("maximum_processes", maximum_processes)
     effective_uid = os.geteuid() if hasattr(os, "geteuid") else None
     try:
         process_directories = sorted(
             (item for item in proc_root.iterdir() if item.name.isdigit()),
             key=lambda item: int(item.name),
-        )[:maximum_processes]
-    except OSError:
-        return counts
+        )
+    except OSError as exc:
+        raise RuntimeError(
+            "process table is unavailable; capacity is unknown"
+        ) from exc
+    if len(process_directories) > maximum_processes:
+        raise RuntimeError(
+            "process table exceeds bounded fallback scan; capacity is unknown"
+        )
     classified: list[tuple[int, int, str]] = []
     for process_dir in process_directories:
         uid, parent_pid = _proc_identity(process_dir / "status")
@@ -327,9 +337,20 @@ class ProviderCapacityMonitor:
             )
             for name in _PROVIDER_NAMES
         )
+        auth_ready = all(health.values())
+        admission_ready = all(
+            item.healthy
+            and item.available_concurrency > 0
+            and item.quota_remaining > 0
+            and item.token_budget_remaining
+            >= DEFAULT_RESPONSE_TOKENS_PER_REQUEST
+            for item in capacities
+        )
         diagnostics = {
             "observed_at_ms": observed_at_ms,
-            "ready": all(health.values()),
+            "ready": admission_ready,
+            "auth_ready": auth_ready,
+            "admission_ready": admission_ready,
             "health": dict(health),
             "active_processes": dict(counts),
             "process_count_scope": {

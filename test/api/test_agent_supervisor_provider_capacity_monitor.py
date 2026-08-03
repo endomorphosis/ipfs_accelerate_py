@@ -244,6 +244,47 @@ def test_process_counter_matches_only_invocation_roots_and_deduplicates_wrapper(
     }
 
 
+def test_proc_fallback_rejects_partial_bounded_scan(tmp_path: Path) -> None:
+    proc_root = tmp_path / "proc"
+    (proc_root / "1").mkdir(parents=True)
+    (proc_root / "2").mkdir()
+
+    with pytest.raises(RuntimeError, match="exceeds bounded fallback scan"):
+        monitor_module._count_with_proc(  # noqa: SLF001
+            maximum_processes=1,
+            proc_root=proc_root,
+        )
+
+
+def test_auth_ready_is_distinct_from_exhausted_admission(
+    tmp_path: Path,
+) -> None:
+    path = _private_path(tmp_path)
+    monitor = ProviderCapacityMonitor(
+        ProviderCapacityMonitorConfig(
+            snapshot_path=path,
+            max_age_ms=1_000,
+            interval_seconds=0.1,
+        ),
+        readiness_source=_readiness,
+        process_counter=lambda: {"grok_cli": 3, "codex_cli": 3},
+        clock_ms=lambda: 400_000,
+    )
+
+    result = monitor.publish_once()
+    capacities = load_provider_capacity_snapshot(
+        path,
+        max_age_ms=1_000,
+        now_ms=400_000,
+    )
+
+    assert result["auth_ready"] is True
+    assert result["admission_ready"] is False
+    assert result["ready"] is False
+    assert all(item.healthy is False for item in capacities)
+    assert all(item.available_concurrency == 0 for item in capacities)
+
+
 def test_cli_one_shot_uses_conservative_defaults_and_validates_interval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

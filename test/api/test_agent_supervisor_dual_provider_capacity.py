@@ -471,3 +471,60 @@ def test_provider_capacity_max_age_cli_is_explicit() -> None:
         ]
     )
     assert args.provider_capacity_max_age_ms == 12_345
+
+
+def test_generic_scheduler_retains_ordinary_provider_capacity_json(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index_path = repo / "index.json"
+    _write_bundle_index(index_path, [""])
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    task = index["bundles"]["objective/capacity/1"]["tasks"][0]
+    task.update(
+        {
+            "required_context_tokens": 1_000,
+            "token_budget": 100,
+        }
+    )
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+    capacity_path = repo / "ordinary-provider-capacity.json"
+    capacity_path.write_text(
+        json.dumps(
+            {
+                "providers": [
+                    {
+                        "provider_id": "provider-fast",
+                        "healthy": True,
+                        "quota_remaining": 10,
+                        "context_window_tokens": 8_000,
+                        "token_budget_remaining": 8_000,
+                        "max_concurrency": 1,
+                        "active_requests": 0,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    starts: list[object] = []
+
+    scheduler = DynamicBundleScheduler(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "state",
+        coordination_path=repo / "coordination.duckdb",
+        provider_capacity_path=capacity_path,
+        max_lanes=1,
+        launcher=lambda lane, _grant: (
+            starts.append(lane) or _Process(30_000)
+        ),
+        process_alive=lambda process: process.alive,
+        host_resource_source=lambda *_args, **_kwargs: _host(workers=1),
+    )
+
+    manifest = scheduler.reconcile_once()
+
+    assert len(starts) == 1
+    assert starts[0].llm_provider == "provider-fast"  # type: ignore[attr-defined]
+    assert manifest["running_count"] == 1

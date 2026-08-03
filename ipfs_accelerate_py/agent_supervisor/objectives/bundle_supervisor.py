@@ -3888,10 +3888,23 @@ class DynamicBundleScheduler:
                     if env_path:
                         configured_path = Path(env_path)
                 if configured_path is not None:
-                    raw_capacities = load_provider_capacity_snapshot(
-                        configured_path,
-                        max_age_ms=self.provider_capacity_max_age_ms,
-                    )
+                    if self._private_dual_review_capacity_required:
+                        raw_capacities = load_provider_capacity_snapshot(
+                            configured_path,
+                            max_age_ms=self.provider_capacity_max_age_ms,
+                        )
+                    else:
+                        # Retain the pre-production generic llm_router file
+                        # contract. Only dual-review policy elevates this path
+                        # to the private, fresh snapshot authority above.
+                        payload = json.loads(
+                            configured_path.read_text(encoding="utf-8")
+                        )
+                        raw_capacities = (
+                            payload.get("providers", payload)
+                            if isinstance(payload, dict)
+                            else payload
+                        )
                 elif self._private_dual_review_capacity_required:
                     # Production/legacy independent review accepts only an
                     # explicitly named private snapshot (or an injected API
