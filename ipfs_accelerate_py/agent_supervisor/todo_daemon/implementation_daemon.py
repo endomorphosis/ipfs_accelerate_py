@@ -17160,14 +17160,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         expected_changed_paths: Sequence[str] = (),
         scope_authorized_paths: Sequence[str] = (),
         scope_adjudication_id: str = "",
+        approved_descendant_gitlinks: Mapping[str, str] | None = None,
         implementer_provider: str = "",
         merge_request_id: str = "",
         validation_result: Mapping[str, Any] | None = None,
         implementer_provenance: VerifiedImplementerProvenance | None = None,
-    ) -> dict[str, Any]:
+    ) -> Mapping[str, Any]:
         """Run one live, independent review and mint only its durable gate."""
 
         if not validation_result or not validation_result.get("passed"):
+            return {}
+        if (
+            approved_descendant_gitlinks is not None
+            and not isinstance(approved_descendant_gitlinks, Mapping)
+        ):
             return {}
         evidence_context = self._resolve_implementation_evidence_context(
             source_repo_root=self.repo_root,
@@ -17328,6 +17334,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         if capacity_deferral:
             return {}
+        review_kwargs: dict[str, Any] = {}
+        if approved_descendant_gitlinks is not None:
+            review_kwargs["approved_descendant_gitlinks"] = dict(
+                approved_descendant_gitlinks
+            )
         outcome = perform_post_merge_independent_review(
             repo_root=self.repo_root,
             receipt_dir=(
@@ -17347,6 +17358,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             scope_adjudication_id=scope_adjudication_id,
             implementer_provider=provider,
             implementer_provenance=provenance,
+            **review_kwargs,
         )
         if not outcome.event:
             diagnostic_detail = str(outcome.detail or "")
@@ -17809,6 +17821,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         expected_changed_paths: Sequence[str] = (),
         scope_authorized_paths: Sequence[str] = (),
         scope_adjudication_id: str = "",
+        approved_descendant_gitlinks: Mapping[str, str] | None = None,
         implementer_provider: str = "",
         merge_request_id: str = "",
     ) -> dict[str, Any]:
@@ -17858,6 +17871,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             implementer_provider=implementer_provider,
             merge_request_id=merge_request_id,
             validation_result=post_merge_validation,
+            **(
+                {
+                    "approved_descendant_gitlinks": (
+                        approved_descendant_gitlinks
+                    )
+                }
+                if approved_descendant_gitlinks is not None
+                else {}
+            ),
         )
         acceptance = self._apply_post_merge_acceptance_with_target_fence(
             task=task,
@@ -18665,6 +18687,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "binding_error": submodule_recovery_binding_error,
                 "branch": branch_name,
             }
+        post_merge_review_descendant_gitlinks = (
+            self._post_merge_review_descendant_gitlinks(
+                approved_submodule_integration_targets
+            )
+        )
+        if (
+            metadata.get("operator_submodule_integration_recovery")
+            is not None
+            and not post_merge_review_descendant_gitlinks
+        ):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "submodule_review_descendant_projection_invalid",
+                "branch": branch_name,
+            }
         recovery_submodule_path = ""
         recovery_submodule_commit = ""
         if verified_recovery_seed_execution:
@@ -19321,13 +19360,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                     "task_owned_submodule_integration_binding"
                                 )
                             ),
+                            **(
+                                {
+                                    "post_merge_review_descendant_gitlinks": (
+                                        post_merge_review_descendant_gitlinks
+                                    )
+                                }
+                                if post_merge_review_descendant_gitlinks
+                                else {}
+                            ),
                             "reason": "post_merge_target_advanced",
                             "integration_fence": post_validation_fence,
                         },
                     )
                     return result
                 provider_review: dict[str, Any] = {}
-                if not preserved_provider_review_evidence:
+                if (
+                    post_merge_review_descendant_gitlinks
+                    or not preserved_provider_review_evidence
+                ):
                     provider_review = completion_daemon._provider_review_gate_evidence(
                         task=task,
                         attempt=implementation_attempt,
@@ -19353,9 +19404,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         validation_result=post_merge_validation,
                         implementer_provenance=(
                             verified_implementer_provenance
-                        )
+                        ),
+                        **(
+                            {
+                                "approved_descendant_gitlinks": (
+                                    post_merge_review_descendant_gitlinks
+                                )
+                            }
+                            if post_merge_review_descendant_gitlinks
+                            else {}
+                        ),
                     )
-                gate_evidence = dict(preserved_provider_review_evidence)
+                gate_evidence = (
+                    {}
+                    if post_merge_review_descendant_gitlinks
+                    else dict(preserved_provider_review_evidence)
+                )
                 if not gate_evidence and provider_review:
                     gate_evidence = {"provider_review": provider_review}
                 acceptance_result = (
@@ -19547,6 +19611,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 metadata.get(
                                     "task_owned_submodule_integration_binding"
                                 )
+                            ),
+                            **(
+                                {
+                                    "post_merge_review_descendant_gitlinks": (
+                                        post_merge_review_descendant_gitlinks
+                                    )
+                                }
+                                if post_merge_review_descendant_gitlinks
+                                else {}
                             ),
                             "acceptance_result": acceptance_result,
                             "reason": str(
@@ -28675,6 +28748,140 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "operator_approved_integrated_target"
             ] = integrated_target.lower()
         return normalized_targets, ""
+
+    def _post_merge_review_descendant_gitlinks(
+        self,
+        approved_targets: Mapping[str, Mapping[str, str]],
+    ) -> dict[str, str]:
+        """Project exact operator-approved child postimages for review only.
+
+        The projection is not merge, validation, review, or completion
+        authority.  It merely lets the post-merge reviewer inspect the
+        provider candidate through an exact composite child landing; Git
+        ancestry and every implementation-owned leaf are reverified there.
+        """
+
+        projected: dict[str, str] = {}
+        for raw_path, raw_target in approved_targets.items():
+            path = str(raw_path or "").strip("/")
+            landed_child = str(
+                raw_target.get("operator_approved_integrated_target") or ""
+            )
+            if not landed_child:
+                continue
+            if (
+                path != raw_path
+                or not self._repo_relative_path_safe(path)
+                or path in projected
+                or not re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", landed_child)
+            ):
+                return {}
+            projected[path] = landed_child
+        return dict(sorted(projected.items()))
+
+    def _recover_completed_request_review_descendant_gitlinks(
+        self,
+        *,
+        request_id: str,
+        task: PortalTask,
+        queue_attempt: int,
+        implementation_attempt: int,
+        branch: str,
+        implementation_commit: str,
+        baseline_ref: str,
+        changed_submodule_paths: set[str] | None,
+        task_owned_submodule_integration_binding: Any,
+        claim_generation: Any,
+    ) -> tuple[dict[str, str], str]:
+        """Recover a consumed operator postimage as review-scope evidence.
+
+        The completed request is read only to recover its exact path/child
+        landing.  The one-shot recovery capability is never returned or
+        replayed, and the caller must still run new post-merge validation and
+        a new independent provider review.
+        """
+
+        if not request_id or self.merge_queue is None:
+            return {}, ""
+        try:
+            request = self.merge_queue.get(request_id)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return {}, ""
+        if request is None or request.status != "completed":
+            return {}, ""
+        identity = self._identity_for_task(task)
+        metadata = (
+            request.metadata
+            if isinstance(request.metadata, Mapping)
+            else {}
+        )
+        raw_recovery = metadata.get(
+            "operator_submodule_integration_recovery"
+        )
+        # Ordinary exact integrations carry no recovery capability and retain
+        # their existing reconciliation behavior.  Once a completed request
+        # does carry such a capability, every provenance field below becomes
+        # mandatory before its postimage may be projected into review scope.
+        if raw_recovery is None:
+            return {}, ""
+        completed_claim_generation = getattr(
+            request,
+            "claim_generation",
+            None,
+        )
+        if (
+            isinstance(claim_generation, bool)
+            or not isinstance(claim_generation, int)
+            or claim_generation < 0
+            or isinstance(completed_claim_generation, bool)
+            or not isinstance(completed_claim_generation, int)
+            or completed_claim_generation != claim_generation + 1
+        ):
+            return {}, "submodule_review_request_generation_mismatch"
+        if (
+            request.request_id != request_id
+            or request.task_id != task.task_id
+            or request.canonical_task_id != identity.canonical_task_cid
+            or request.canonical_task_key != identity.canonical_task_key
+            or int(request.attempt) != int(queue_attempt)
+            or request.branch_name != branch
+            or request.commit_sha != implementation_commit
+            or request.target_repository_id
+            != self.merge_target_repository_id
+            or request.target_branch != self.resolved_merge_target_branch
+            or str(metadata.get("baseline_ref") or "") != baseline_ref
+            or int(metadata.get("implementation_attempt") or 0)
+            != int(implementation_attempt)
+            or metadata.get("task_owned_submodule_integration_binding")
+            != task_owned_submodule_integration_binding
+        ):
+            return {}, "submodule_review_request_binding_mismatch"
+        base_targets, binding_error = (
+            self._parse_task_owned_submodule_integration_binding(
+                task_owned_submodule_integration_binding,
+                baseline_ref=baseline_ref,
+                changed_submodule_paths=changed_submodule_paths,
+            )
+        )
+        if binding_error:
+            return {}, binding_error
+        recovered, recovery_error = (
+            self._apply_operator_submodule_integration_recovery(
+                base_targets,
+                raw_recovery,
+                request_id=request_id,
+                implementation_commit=implementation_commit,
+                target_repository_id=self.merge_target_repository_id,
+                target_branch=self.resolved_merge_target_branch,
+                claim_generation=claim_generation,
+            )
+        )
+        if recovery_error:
+            return {}, recovery_error
+        projection = self._post_merge_review_descendant_gitlinks(recovered)
+        if not projection:
+            return {}, "submodule_review_descendant_projection_invalid"
+        return projection, ""
 
     @staticmethod
     def _proposal_index_gitlink_ref(
@@ -40609,6 +40816,64 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 results.append(result)
                 continue
+            review_descendant_gitlinks: dict[str, str] = {}
+            review_descendant_binding_error = ""
+            if pending_acceptance_event:
+                (
+                    review_descendant_gitlinks,
+                    review_descendant_binding_error,
+                ) = (
+                    self._recover_completed_request_review_descendant_gitlinks(
+                        request_id=str(
+                            event.get("merge_request_id") or ""
+                        ),
+                        task=task,
+                        queue_attempt=queue_attempt,
+                        implementation_attempt=implementation_attempt,
+                        branch=branch,
+                        implementation_commit=implementation_commit,
+                        baseline_ref=baseline_ref,
+                        changed_submodule_paths=changed_submodule_paths,
+                        task_owned_submodule_integration_binding=event.get(
+                            "task_owned_submodule_integration_binding"
+                        ),
+                        claim_generation=event.get(
+                            "merge_request_claim_generation"
+                        ),
+                    )
+                )
+                projected_review_descendants = event.get(
+                    "post_merge_review_descendant_gitlinks"
+                )
+                if (
+                    not review_descendant_binding_error
+                    and projected_review_descendants is not None
+                    and projected_review_descendants
+                    != review_descendant_gitlinks
+                ):
+                    review_descendant_binding_error = (
+                        "submodule_review_descendant_projection_mismatch"
+                    )
+            if review_descendant_binding_error:
+                result = {
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "queue_attempt": queue_attempt,
+                    "implementation_attempt": implementation_attempt,
+                    "branch": branch,
+                    "implementation_commit": implementation_commit,
+                    "resolved": False,
+                    "reason": (
+                        "reconciliation_submodule_review_binding_invalid"
+                    ),
+                    "binding_error": review_descendant_binding_error,
+                }
+                self._record_event(
+                    "merge_reconciliation_deferred",
+                    result,
+                )
+                results.append(result)
+                continue
             durable_operator_recovery = event.get(
                 "operator_submodule_integration_recovery"
             )
@@ -40710,6 +40975,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ),
                 "task_owned_submodule_integration_binding": event.get(
                     "task_owned_submodule_integration_binding"
+                ),
+                **(
+                    {
+                        "post_merge_review_descendant_gitlinks": (
+                            review_descendant_gitlinks
+                        )
+                    }
+                    if review_descendant_gitlinks
+                    else {}
                 ),
                 "merge_request_id": str(
                     event.get("merge_request_id") or ""
@@ -40828,9 +41102,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     not event_type
                     and not event.get("queued_validation_plan_id")
                 )
-                if merge_integrated and (
-                    preserved_provider_evidence
-                    or legacy_operational_reconciliation
+                if (
+                    merge_integrated
+                    and not review_descendant_gitlinks
+                    and (
+                        preserved_provider_evidence
+                        or legacy_operational_reconciliation
+                    )
                 ):
                     acceptance = (
                         self._apply_reconciled_merge_authoritative_acceptance(
@@ -40865,6 +41143,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         ),
                         merge_request_id=str(
                             event.get("merge_request_id") or ""
+                        ),
+                        **(
+                            {
+                                "approved_descendant_gitlinks": (
+                                    review_descendant_gitlinks
+                                )
+                            }
+                            if review_descendant_gitlinks
+                            else {}
                         ),
                     )
                 else:
@@ -41055,7 +41342,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     target_branch,
                 )
             )
-            if merge_integrated and preserved_provider_evidence:
+            if (
+                merge_integrated
+                and preserved_provider_evidence
+                and not review_descendant_gitlinks
+            ):
                 acceptance = (
                     self._apply_reconciled_merge_authoritative_acceptance(
                         task,
@@ -41089,6 +41380,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     ),
                     merge_request_id=str(
                         event.get("merge_request_id") or ""
+                    ),
+                    **(
+                        {
+                            "approved_descendant_gitlinks": (
+                                review_descendant_gitlinks
+                            )
+                        }
+                        if review_descendant_gitlinks
+                        else {}
                     ),
                 )
             else:
@@ -42158,6 +42458,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "scope_adjudication_id",
             "changed_submodule_paths",
             "task_owned_submodule_integration_binding",
+            "post_merge_review_descendant_gitlinks",
         )
         acceptance_authority: dict[
             tuple[str, str],
