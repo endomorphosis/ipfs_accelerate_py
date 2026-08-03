@@ -18,7 +18,7 @@
   "autohyper": {
     "abc_version": "",
     "aiger_tools_version": "",
-    "artifact_sha256": "063ab22fb67bc961b1d2f872a91136fb68635c3f5c608eff3df233282412c5d5",
+    "artifact_sha256": "0325981bad29fdf9278ddaf1169703110e9d1623694ae05f058e256d099e17e4",
     "authority_ceiling": "bounded",
     "build_dependencies": {
       "dotnet-sdk": "8.0.300",
@@ -28,8 +28,8 @@
     "certified": true,
     "decidable_fragment_ceiling": "",
     "dotnet_runtime": "8.0",
-    "executable": "<managed-tool-path-redacted>/autohyper",
-    "executable_basename": "autohyper",
+    "executable": "<managed-tool-path-redacted>/AutoHyper",
+    "executable_basename": "AutoHyper",
     "git_commit": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
     "is_hermetic_engine": false,
     "is_vendor_build": true,
@@ -62,7 +62,7 @@
     "timeout",
     "violation"
   ],
-  "certificate_digest_sha256": "9ba1c125b5cf00b8915034f5f2d1ecac08883854254f7d25785a2f1228319e20",
+  "certificate_digest_sha256": "0688db45d44e4cb474e7c3be35fb2bc803028299286d21dec7e87a7ed0b09161",
   "certified": true,
   "goal_id": "FVT-G208",
   "handler_id": "hyperproperty_vendor_toolchain_certification@1",
@@ -70,7 +70,7 @@
   "hyperltl": {
     "abc_version": "",
     "aiger_tools_version": "",
-    "artifact_sha256": "30984805d16ec8d9a67bc124bb12800eb81eb6961a2bcdbee7848e70e90b2fc5",
+    "artifact_sha256": "9fd58bd24bcde41d3ca4593a4584d7b3fdb776da10a4f398516e2f3f59c2ee7d",
     "authority_ceiling": "bounded",
     "build_dependencies": {
       "dune": ">=2.0",
@@ -81,8 +81,8 @@
     "certified": true,
     "decidable_fragment_ceiling": "EAHyper decidable HyperLTL fragment (exists*/forall* and forall*/exists* quantifier shapes; not full HyperLTL)",
     "dotnet_runtime": "",
-    "executable": "<managed-tool-path-redacted>/hyperltl",
-    "executable_basename": "hyperltl",
+    "executable": "<managed-tool-path-redacted>/eahyper.native",
+    "executable_basename": "eahyper.native",
     "git_commit": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
     "is_hermetic_engine": false,
     "is_vendor_build": true,
@@ -107,7 +107,7 @@
   "mchyper": {
     "abc_version": "1.01",
     "aiger_tools_version": "1.9.4",
-    "artifact_sha256": "6dff5054f37cba1ef836a7423d996b7c5a8cbbfcbd8e38d04e5a22a75d862d3b",
+    "artifact_sha256": "ab420fe860aad3e47a5ee978b4c3a80a640b79e62d25c565bc63dd8413d469ab",
     "authority_ceiling": "bounded",
     "build_dependencies": {
       "abc": "1.01",
@@ -119,8 +119,8 @@
     "certified": true,
     "decidable_fragment_ceiling": "",
     "dotnet_runtime": "",
-    "executable": "<managed-tool-path-redacted>/mchyper",
-    "executable_basename": "mchyper",
+    "executable": "<managed-tool-path-redacted>/mchyper.py",
+    "executable_basename": "mchyper.py",
     "git_commit": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
     "is_hermetic_engine": false,
     "is_vendor_build": true,
@@ -189,7 +189,7 @@
     "strict_installation_selects_reviewed_pins": true
   },
   "program": "formal-verification-tactician/hyperproperty-vendor-toolchains",
-  "receipt_digest_sha256": "e52394d3acb46c3c988dbfd1fe8f6810ce19869a5c1ce42d487f80ae880a6db8",
+  "receipt_digest_sha256": "5e6a18b2268f7e7105ba2d4fbeef12b723de88f97dec7a7916866f9fb22a2eaa",
   "repair_task_id": "FVT-077",
   "schema_version": "formal-verification-hyperproperty-vendor-install-receipt/v1",
   "summary": {
