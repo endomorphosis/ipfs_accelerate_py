@@ -142,20 +142,73 @@ def _projection_is_quiescent_for_heartbeat_fallback(
         return False
     if status["implementation_in_progress"] is not False:
         return False
-    if status["selection_idle_reason"] != (
-        "no_shard_selectable_ready_tasks"
+    idle_reason = status["selection_idle_reason"]
+    if not isinstance(idle_reason, str):
+        return False
+    exact_idle_reasons = {
+        "no_shard_selectable_ready_tasks",
+        "all_selectable_ready_tasks_deferred_by_resource_claim",
+        "all_selectable_ready_tasks_deprioritized_as_off_mission",
+        "no_eligible_ready_tasks_after_selection_filters",
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+        "provider_capacity_backoff",
+        "no_tasks_found",
+    }
+    resource_claim_prefix = "resource_claim_deferred:"
+    resource_claim_race = idle_reason.startswith(resource_claim_prefix) and bool(
+        idle_reason[len(resource_claim_prefix) :].strip()
+    )
+    implementation_retry_prefix = "implementation_retry_deferred:"
+    implementation_retry_deferred = idle_reason.startswith(
+        implementation_retry_prefix
+    ) and bool(idle_reason[len(implementation_retry_prefix) :].strip())
+    if (
+        idle_reason not in exact_idle_reasons
+        and not resource_claim_race
+        and not implementation_retry_deferred
     ):
         return False
-    for field_name in (
-        "ready_count",
-        "selectable_ready_count",
-        "eligible_ready_count",
-        "blocked_count",
+    counts: dict[str, int] = {}
+    for field_name in required_fields.difference(
+        {"active_task_id", "implementation_in_progress", "selection_idle_reason"}
     ):
         value = status[field_name]
-        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             return False
-    return True
+        counts[field_name] = value
+    if idle_reason == "no_tasks_found":
+        return all(value == 0 for value in counts.values())
+    if idle_reason == "no_shard_selectable_ready_tasks":
+        # Strict sharding can leave this lane with no selectable work even
+        # though the board-wide projection still reports ready or blocked
+        # tasks owned by other lanes.
+        return (
+            counts["selectable_ready_count"] == 0
+            and counts["eligible_ready_count"] == 0
+        )
+    if idle_reason in {
+        "all_selectable_ready_tasks_deferred_by_resource_claim",
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+    } or implementation_retry_deferred:
+        return (
+            counts["ready_count"] > 0
+            and counts["selectable_ready_count"] == 0
+            and counts["eligible_ready_count"] == 0
+        )
+    if idle_reason in {
+        "all_selectable_ready_tasks_deprioritized_as_off_mission",
+        "no_eligible_ready_tasks_after_selection_filters",
+    }:
+        return (
+            counts["ready_count"] > 0
+            and counts["selectable_ready_count"] > 0
+            and counts["eligible_ready_count"] == 0
+        )
+    # A provider-capacity deferral or a resource-claim race happens after a
+    # task was selected, so the prior projection may legitimately retain
+    # selectable and eligible work.  The explicit idle reason and the active
+    # implementation fences above are authoritative in those two states.
+    return counts["ready_count"] > 0
 
 
 class ObjectiveRefillTimeoutError(TimeoutError):
