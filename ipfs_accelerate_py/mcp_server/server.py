@@ -1901,10 +1901,20 @@ class StandaloneMCP:
         **_kwargs: Any,
     ) -> None:
         """Register a callable tool in the local registry."""
+        from ipfs_accelerate_py.mcp.fastmcp_compat import (
+            canonical_function_input_schema,
+        )
+
+        canonical_schema = canonical_function_input_schema(function)
         self.tools[name] = {
             "function": function,
             "description": description,
-            "input_schema": input_schema or {"type": "object", "properties": {}, "required": []},
+            "input_schema": (
+                canonical_schema
+                if canonical_schema is not None
+                else input_schema
+                or {"type": "object", "properties": {}, "required": []}
+            ),
             "execution_context": execution_context,
         }
 
@@ -2238,7 +2248,16 @@ def register_tools(
             name="hardware_get_info",
             function=hardware_get_info,
             description="Get hardware acceleration capabilities.",
-            input_schema={"type": "object", "properties": {}, "required": []},
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "include_detailed": {
+                        "type": "boolean",
+                        "default": False,
+                    }
+                },
+                "required": [],
+            },
             execution_context="server",
         )
         mcp.register_tool(

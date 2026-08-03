@@ -61,7 +61,7 @@ This implementation provides a complete AI-powered Model Manager MCP (Model Cont
 
 ### Required Dependencies
 ```bash
-pip install multiformats fastmcp
+pip install multiformats "fastmcp==2.14.7; python_version >= '3.10'"
 ```
 
 ### Optional Dependencies (for enhanced features)

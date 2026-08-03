@@ -516,6 +516,7 @@ def register_docker_tools(mcp_server):
         _Mock = ()  # type: ignore[assignment]
 
     use_register_tool = callable(register_tool) and not isinstance(register_tool, _Mock)
+    from ..fastmcp_compat import function_input_schema
     
     for tool_name, tool_func in MCP_DOCKER_TOOLS.items():
         try:
@@ -527,7 +528,7 @@ def register_docker_tools(mcp_server):
                     name=str(tool_name),
                     function=tool_func,
                     description=str(getattr(tool_func, "__doc__", "") or "Docker tool"),
-                    input_schema={"type": "object", "properties": {}, "required": []},
+                    input_schema=function_input_schema(tool_func),
                     execution_context="worker",
                 )
             elif hasattr(mcp_server, "tool"):

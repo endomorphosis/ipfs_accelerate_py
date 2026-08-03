@@ -23,13 +23,10 @@ def ensure_register_tool_compat(mcp: Any) -> Any:
     if isinstance(mcp, StandaloneMCP):
         return mcp
 
-    try:
-        from ipfs_accelerate_py.mcp.fastmcp_compat import (  # type: ignore[import]  # noqa: PLC0415
-            ensure_register_tool_compat as _legacy,
-        )
-        return _legacy(mcp)
-    except Exception:
-        return mcp
+    from ipfs_accelerate_py.mcp.fastmcp_compat import (  # type: ignore[import]  # noqa: PLC0415
+        ensure_register_tool_compat as _legacy,
+    )
+    return _legacy(mcp)
 
 
 def ensure_register_resource_compat(mcp: Any) -> Any:
@@ -38,13 +35,10 @@ def ensure_register_resource_compat(mcp: Any) -> Any:
     if isinstance(mcp, StandaloneMCP):
         return mcp
 
-    try:
-        from ipfs_accelerate_py.mcp.fastmcp_compat import (  # type: ignore[import]  # noqa: PLC0415
-            ensure_register_resource_compat as _legacy,
-        )
-        return _legacy(mcp)
-    except Exception:
-        return mcp
+    from ipfs_accelerate_py.mcp.fastmcp_compat import (  # type: ignore[import]  # noqa: PLC0415
+        ensure_register_resource_compat as _legacy,
+    )
+    return _legacy(mcp)
 
 
 def ensure_register_prompt_compat(mcp: Any) -> Any:
@@ -53,13 +47,10 @@ def ensure_register_prompt_compat(mcp: Any) -> Any:
     if isinstance(mcp, StandaloneMCP):
         return mcp
 
-    try:
-        from ipfs_accelerate_py.mcp.fastmcp_compat import (  # type: ignore[import]  # noqa: PLC0415
-            ensure_register_prompt_compat as _legacy,
-        )
-        return _legacy(mcp)
-    except Exception:
-        return mcp
+    from ipfs_accelerate_py.mcp.fastmcp_compat import (  # type: ignore[import]  # noqa: PLC0415
+        ensure_register_prompt_compat as _legacy,
+    )
+    return _legacy(mcp)
 
 
 __all__ = [

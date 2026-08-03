@@ -1,5 +1,8 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = [
+  "setuptools>=61.0",
+  "tomli>=2.0.1,<3; python_version < '3.11'",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -62,8 +65,9 @@ dev = [
   "anyio>=4.0.0",
   "httpx>=0.28.1",
   # MCP/FastAPI integration tests
-  "fastapi>=0.110.0",
-  "uvicorn>=0.27.0",
+  "fastapi>=0.110.0,<1.0.0",
+  "uvicorn>=0.27.0,<0.35.0; python_version < '3.10'",
+  "uvicorn>=0.35.0,<1.0.0; python_version >= '3.10'",
   # local dev tooling (matches VS Code tasks)
   "black>=24.0.0",
   "flake8>=7.0.0",
@@ -80,7 +84,8 @@ minimal = [
   "aiohttp>=3.8.1",
   "duckdb>=0.7.0",
   "ipfshttpclient>=0.8.0a2",
-  "websockets>=10.1",
+  "websockets==10.4; python_version < '3.10'",
+  "websockets>=15.0.1; python_version >= '3.10'",
   "tqdm>=4.64.0",
   "numpy>=1.23.0",
 ]
@@ -88,7 +93,8 @@ minimal = [
 # Feature-scoped extras (optional runtime capabilities)
 distributed = [
   "aiohttp>=3.8.1",
-  "websockets>=10.1",
+  "websockets==10.4; python_version < '3.10'",
+  "websockets>=15.0.1; python_version >= '3.10'",
   "networkx>=2.8",
 ]
 scraping = [
@@ -117,8 +123,9 @@ viz = [
 full = [
   "torch>=2.1",
   "transformers>=4.46",
-  "uvicorn>=0.27.0",
-  "fastapi>=0.110.0",
+  "uvicorn>=0.27.0,<0.35.0; python_version < '3.10'",
+  "uvicorn>=0.35.0,<1.0.0; python_version >= '3.10'",
+  "fastapi>=0.110.0,<1.0.0",
   "sentence-transformers",
   "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
   "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
@@ -131,7 +138,8 @@ testing = [
   "anyio>=4.0.0",
   "trio>=0.25.0",
   "aiohttp>=3.8.1",
-  "websockets>=10.1",
+  "websockets==10.4; python_version < '3.10'",
+  "websockets>=15.0.1; python_version >= '3.10'",
   "networkx>=2.8",
   "PyJWT>=2.0.0",
   "psutil>=5.9.0",
@@ -142,11 +150,16 @@ testing = [
   "scikit-learn>=1.3.0",
   "requests>=2.31.0",
   # Serving contract gates use FastAPI TestClient
-  "fastapi>=0.110.0",
+  "fastapi>=0.110.0,<1.0.0",
   "httpx>=0.27.0",
 ]
 mcp = [
-  "fastmcp>=0.1.0",
+  "fastmcp==2.14.7; python_version >= '3.10'",
+  "fastapi>=0.110.0,<1.0.0",
+  "uvicorn>=0.27.0,<0.35.0; python_version < '3.10'",
+  "uvicorn>=0.35.0,<1.0.0; python_version >= '3.10'",
+  "websockets==10.4; python_version < '3.10'",
+  "websockets>=15.0.1; python_version >= '3.10'",
   "async-timeout>=4.0.0",
   "flask>=3.0.0",
   "flask-cors>=4.0.0",
@@ -154,13 +167,13 @@ mcp = [
   "PyGithub>=2.3.0",
 ]
 mcp-p2p = [
-  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
+  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main ; python_version >= '3.10'",
   "protobuf>=5.27.0",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
 ]
 libp2p = [
-  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
+  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main ; python_version >= '3.10'",
   "protobuf>=5.27.0",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
@@ -168,7 +181,8 @@ libp2p = [
 webnn = [
   "playwright>=1.31.0",
   "aiohttp>=3.8.1",
-  "websockets>=10.1",
+  "websockets==10.4; python_version < '3.10'",
+  "websockets>=15.0.1; python_version >= '3.10'",
 ]
 llama_cpp = [
   "llama-cpp-python[server]>=0.3.10",
@@ -178,8 +192,9 @@ all = [
   # aggregate without native P2P by default
   "torch>=2.1",
   "transformers>=4.46",
-  "uvicorn>=0.27.0",
-  "fastapi>=0.110.0",
+  "uvicorn>=0.27.0,<0.35.0; python_version < '3.10'",
+  "uvicorn>=0.35.0,<1.0.0; python_version >= '3.10'",
+  "fastapi>=0.110.0,<1.0.0",
   "sentence-transformers",
   "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
   "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
@@ -194,11 +209,12 @@ all = [
   "newspaper3k>=0.2.8",
   "readability-lxml>=0.8.1",
   "lxml_html_clean>=0.1.1",
-  "websockets>=10.1",
+  "websockets==10.4; python_version < '3.10'",
+  "websockets>=15.0.1; python_version >= '3.10'",
   "matplotlib>=3.7.0",
   "seaborn>=0.13.0",
   "plotly>=5.22.0",
-  "fastmcp>=0.1.0",
+  "fastmcp==2.14.7; python_version >= '3.10'",
   "async-timeout>=4.0.0",
   "llama-cpp-python[server]>=0.3.10",
   "huggingface_hub>=0.24.0",
