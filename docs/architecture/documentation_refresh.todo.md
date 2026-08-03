@@ -486,7 +486,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-020 Record semantic domain packages and compatibility boundaries
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -511,7 +511,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-021 Refresh installation and first-use guidance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -536,7 +536,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-022 Refresh Python API and CLI reference entrypoints
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
