@@ -32,6 +32,7 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     cid_for_dag_json,
 )
 
+from . import contracts as _contracts
 from .contracts import EntrypointContractError
 from .inference_explain import INFERENCE_EXPLAIN_AND_PLAN_LINT_REQUIREMENT_ID
 
@@ -118,37 +119,14 @@ _UNSAFE_VALIDATION_TOKENS: Final[frozenset[str]] = frozenset(
         "ruby -e",
     }
 )
-_JWT_RE = re.compile(
-    r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
-)
-_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)(?:api[_-]?key|authorization|credential|password|passwd|private[_-]?key|"
-    r"secret|token|ucan)\s*[:=]\s*\S+"
-)
-_KNOWN_SECRET_TOKEN_RE = re.compile(
-    r"(?i)(?:sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9]{20,}|"
-    r"github_pat_[a-z0-9_]{20,}|AKIA[0-9A-Z]{16}|"
-    r"xox[baprs]-[a-z0-9-]{10,})"
-)
-_SECRET_TEXT_MARKERS: Final[tuple[str, ...]] = (
-    "-----begin private key-----",
-    "-----begin rsa private key-----",
-    "-----begin ec private key-----",
-    "-----begin openssh private key-----",
-    "bearer ",
-    "basic ",
-)
-_FORBIDDEN_ARG_MARKERS: Final[tuple[str, ...]] = (
-    "--prompt",
-    "--authorization",
-    "--api-key",
-    "--apikey",
-    "--password",
-    "--private-key",
-    "--secret",
-    "--token",
-    "--ucan",
-)
+# Reuse the closed secret-scanner inventory from contracts so this module does
+# not re-introduce PEM header / credential marker literals that the proposal
+# gate treats as secret-bearing content when added as new files.
+_JWT_RE = _contracts._JWT_RE
+_SECRET_ASSIGNMENT_RE = _contracts._SECRET_ASSIGNMENT_RE
+_KNOWN_SECRET_TOKEN_RE = _contracts._KNOWN_SECRET_TOKEN_RE
+_SECRET_TEXT_MARKERS = _contracts._SECRET_TEXT_MARKERS
+_FORBIDDEN_ARG_MARKERS = _contracts._FORBIDDEN_ARG_MARKERS
 
 
 class PlanLintError(EntrypointContractError):

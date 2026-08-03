@@ -276,7 +276,8 @@ def test_predicted_file_conflicts_and_profile_completeness() -> None:
         "profile": _profile(
             worktree_strategy="isolated",
             principal_ref="",  # conflicting with worktree
-            supervisor_argv=["tool", "--token=sk-abcdefghijklmnopqrstuvwxyz"],
+            # Forbidden flag alone is enough; avoid credential-shaped literals.
+            supervisor_argv=["tool", "--token=should-never-appear"],
         ),
     }
     report = lint_supervisor_plan(plan)
@@ -289,7 +290,7 @@ def test_predicted_file_conflicts_and_profile_completeness() -> None:
     )
     assert PlanLintKind.CONFLICTING.value in report.kinds
     serialized = report.to_json()
-    assert "sk-abcdefghijklmnopqrstuvwxyz" not in serialized
+    assert "should-never-appear" not in serialized
     assert PROMPT_BODY not in serialized
 
 

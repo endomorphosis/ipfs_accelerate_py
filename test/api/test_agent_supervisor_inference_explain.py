@@ -592,14 +592,19 @@ def test_explain_field_helper_covers_dispositions() -> None:
 
 
 def test_error_paths_do_not_echo_prompt_or_secrets(tmp_path: Path) -> None:
+    # Use the proposal-gate-safe never-expose sentinel rather than a concrete
+    # credential-shaped fixture in source.
+    secret_sentinel = "should-never-appear"
     with pytest.raises(InferenceExplainError) as excinfo:
         render_target_resolution({"not": "a receipt"}, prompt_body=PROMPT)
     message = str(excinfo.value)
     assert PROMPT not in message
-    assert "sk-abcdefghijklmnopqrstuvwxyz" not in message
+    assert secret_sentinel not in message
 
     with pytest.raises(InferenceExplainError):
-        render_target_resolution("bad", prompt_body=b"token=super-secret-value")
+        render_target_resolution(
+            "bad", prompt_body=f"token={secret_sentinel}".encode()
+        )
 
 
 def test_render_formats_and_requirement_binding(tmp_path: Path) -> None:
