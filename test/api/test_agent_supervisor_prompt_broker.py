@@ -4,14 +4,163 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+import types
 from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.entrypoints.contracts import (
+
+def _ensure_hermetic_cid_utils() -> None:
+    """Install a multiformats-backed cid_utils when editable deps are missing.
+
+    Hermetic validation sets ``PYTHONNOUSERSITE=1`` and a neutral ``HOME``, so
+    editable installs of ``ipfs_datasets_py`` are invisible.  Empty worktree
+    stubs then resolve as a namespace package without ``utils``, and importing
+    entrypoint contracts (via ``entrypoints/__init__.py``) fails collection.
+    """
+
+    try:
+        from ipfs_datasets_py.utils import cid_utils as _cid_utils  # noqa: F401
+
+        return
+    except ModuleNotFoundError:
+        pass
+
+    def _canonical_json_bytes(obj: object) -> bytes:
+        return json.dumps(
+            obj,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=repr,
+        ).encode("utf-8")
+
+    def _canonical_dag_json_bytes(obj: object) -> bytes:
+        return json.dumps(
+            obj,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+
+    def _cid_for_bytes(
+        data: bytes,
+        *,
+        base: str = "base32",
+        codec: str = "raw",
+        mh_type: str = "sha2-256",
+        version: int = 1,
+    ) -> str:
+        from multiformats import CID, multihash
+
+        digest = multihash.digest(bytes(data), mh_type)
+        return str(CID(base, version, codec, digest))
+
+    def _cid_for_dag_json(
+        obj: object,
+        *,
+        base: str = "base32",
+        mh_type: str = "sha2-256",
+        version: int = 1,
+    ) -> str:
+        return _cid_for_bytes(
+            _canonical_dag_json_bytes(obj),
+            base=base,
+            codec="dag-json",
+            mh_type=mh_type,
+            version=version,
+        )
+
+    def _cid_for_obj(
+        obj: object,
+        *,
+        base: str = "base32",
+        codec: str = "raw",
+        mh_type: str = "sha2-256",
+        version: int = 1,
+    ) -> str:
+        return _cid_for_bytes(
+            _canonical_json_bytes(obj),
+            base=base,
+            codec=codec,
+            mh_type=mh_type,
+            version=version,
+        )
+
+    def _validate_cid(
+        value: object,
+        *,
+        codecs: object = ("raw", "dag-json"),
+        mh_type: str = "sha2-256",
+        version: int = 1,
+        base: str = "base32",
+    ) -> str:
+        if not isinstance(value, str) or not value or value != value.lower():
+            raise ValueError("CID must be a nonempty lowercase string")
+        from multiformats import CID, multihash
+
+        try:
+            parsed = CID.decode(value)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError("CID is not decodable") from exc
+        allowed = frozenset(codecs)  # type: ignore[arg-type]
+        expected_size = multihash.get(mh_type).max_digest_size
+        if (
+            parsed.version != version
+            or parsed.codec.name not in allowed
+            or parsed.hashfun.name != mh_type
+            or (
+                expected_size is not None
+                and len(parsed.raw_digest) != expected_size
+            )
+            or parsed.base.name != base
+            or str(parsed) != value
+        ):
+            raise ValueError(
+                "CID must use the requested canonical version/base/codec/multihash"
+            )
+        return value
+
+    datasets = sys.modules.get("ipfs_datasets_py")
+    if datasets is None:
+        datasets = types.ModuleType("ipfs_datasets_py")
+        datasets.__path__ = []  # type: ignore[attr-defined]
+        sys.modules["ipfs_datasets_py"] = datasets
+
+    utils = sys.modules.get("ipfs_datasets_py.utils")
+    if utils is None:
+        utils = types.ModuleType("ipfs_datasets_py.utils")
+        utils.__path__ = []  # type: ignore[attr-defined]
+        sys.modules["ipfs_datasets_py.utils"] = utils
+        datasets.utils = utils  # type: ignore[attr-defined]
+
+    cid_mod = types.ModuleType("ipfs_datasets_py.utils.cid_utils")
+    cid_mod.canonical_json_bytes = _canonical_json_bytes  # type: ignore[attr-defined]
+    cid_mod.canonical_dag_json_bytes = _canonical_dag_json_bytes  # type: ignore[attr-defined]
+    cid_mod.cid_for_bytes = _cid_for_bytes  # type: ignore[attr-defined]
+    cid_mod.cid_for_dag_json = _cid_for_dag_json  # type: ignore[attr-defined]
+    cid_mod.cid_for_obj = _cid_for_obj  # type: ignore[attr-defined]
+    cid_mod.validate_cid = _validate_cid  # type: ignore[attr-defined]
+    cid_mod.__all__ = [  # type: ignore[attr-defined]
+        "canonical_dag_json_bytes",
+        "canonical_json_bytes",
+        "cid_for_bytes",
+        "cid_for_dag_json",
+        "cid_for_obj",
+        "validate_cid",
+    ]
+    sys.modules["ipfs_datasets_py.utils.cid_utils"] = cid_mod
+    utils.cid_utils = cid_mod  # type: ignore[attr-defined]
+
+
+_ensure_hermetic_cid_utils()
+
+from ipfs_accelerate_py.agent_supervisor.entrypoints.contracts import (  # noqa: E402
     SupervisorInvocationRequest,
 )
-from ipfs_accelerate_py.agent_supervisor.entrypoints.prompt_broker import (
+from ipfs_accelerate_py.agent_supervisor.entrypoints.prompt_broker import (  # noqa: E402
     DEFAULT_TTL_MS,
     PROMPT_BROKER_REQUIREMENT_ID,
     PromptBodyBroker,
@@ -24,8 +173,8 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.prompt_broker import (
     PromptNotFoundError,
     PromptReference,
     PromptStorageKind,
+    cid_for_bytes,
 )
-from ipfs_accelerate_py.agent_supervisor.multiformats_identity import cid_for_bytes
 
 PROMPT_CANARY = "ASE_PROMPT_CANARY_DO_NOT_PERSIST_8d76d6d9"
 CREDENTIAL_CANARY = "ASE_CREDENTIAL_CANARY_DO_NOT_PERSIST_4f8a5c11"

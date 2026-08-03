@@ -40,11 +40,90 @@ from typing import Any, ClassVar, Final
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from ..multiformats_identity import (
-    MultiformatsIdentityError,
-    cid_for_bytes,
-    validate_cid,
-)
+
+def _load_cid_bridge() -> tuple[type[Exception], Callable[..., str], Callable[..., str]]:
+    """Prefer the supervisor identity bridge; fall back to multiformats.
+
+    Hermetic validation runs with ``PYTHONNOUSERSITE=1`` and empty worktree
+    stubs for sibling packages, so the editable ``ipfs_datasets_py`` install
+    used by :mod:`multiformats_identity` is often unavailable.  CIDv1/raw/
+    sha2-256 is still required for prompt references, so a direct multiformats
+    path keeps the broker importable and behaviorally equivalent.
+    """
+
+    try:
+        from ..multiformats_identity import (  # type: ignore[attr-defined]
+            MultiformatsIdentityError as identity_error,
+            cid_for_bytes as identity_cid_for_bytes,
+            validate_cid as identity_validate_cid,
+        )
+
+        return identity_error, identity_cid_for_bytes, identity_validate_cid
+    except ModuleNotFoundError:
+        pass
+
+    class _IdentityError(ValueError):
+        """Local stand-in when the multiformats identity bridge is unavailable."""
+
+    def _cid_for_bytes(
+        data: bytes,
+        *,
+        base: str = "base32",
+        codec: str = "raw",
+        mh_type: str = "sha2-256",
+        version: int = 1,
+    ) -> str:
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            raise _IdentityError("cid payload must be exact bytes")
+        if base != "base32" or mh_type != "sha2-256" or version != 1:
+            raise _IdentityError(
+                "only CIDv1/base32/sha2-256 is supported by the prompt broker"
+            )
+        if codec not in {"raw", "dag-json"}:
+            raise _IdentityError(f"unsupported codec: {codec}")
+        from multiformats import CID, multihash
+
+        digest = multihash.digest(bytes(data), mh_type)
+        return str(CID(base, version, codec, digest))
+
+    def _validate_cid(
+        value: Any,
+        *,
+        codecs: Sequence[str] = ("raw", "dag-json"),
+        mh_type: str = "sha2-256",
+        version: int = 1,
+        base: str = "base32",
+    ) -> str:
+        if not isinstance(value, str) or not value or value != value.lower():
+            raise _IdentityError("CID must be a nonempty lowercase string")
+        from multiformats import CID, multihash
+
+        try:
+            parsed = CID.decode(value)
+        except Exception as exc:  # noqa: BLE001 - library raises mixed types
+            raise _IdentityError("CID is not decodable") from exc
+        allowed = frozenset(codecs)
+        expected_size = multihash.get(mh_type).max_digest_size
+        if (
+            parsed.version != version
+            or parsed.codec.name not in allowed
+            or parsed.hashfun.name != mh_type
+            or (
+                expected_size is not None
+                and len(parsed.raw_digest) != expected_size
+            )
+            or parsed.base.name != base
+            or str(parsed) != value
+        ):
+            raise _IdentityError(
+                "CID must use the requested canonical version/base/codec/multihash"
+            )
+        return value
+
+    return _IdentityError, _cid_for_bytes, _validate_cid
+
+
+MultiformatsIdentityError, cid_for_bytes, validate_cid = _load_cid_bridge()
 
 PROMPT_BROKER_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/entrypoints/prompt-broker@1"
