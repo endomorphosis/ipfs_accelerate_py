@@ -2029,8 +2029,6 @@ def _dual_review_resource_fields(
 _TYPED_LOCAL_PROVIDER_ROLES = frozenset(
     {
         "deterministic-only",
-        "deterministic only",
-        "deterministic",
         "operator-only",
     }
 )
@@ -2049,27 +2047,16 @@ _MODEL_ASSISTED_PROVIDER_ROLES = frozenset(
 
 
 def _task_provider_roles(task: Mapping[str, Any]) -> frozenset[str]:
-    """Read the same reviewed provider-role spellings as the child daemon."""
+    """Read exactly the child daemon's authoritative provider-role field."""
 
-    normalized: dict[str, str] = {}
     nested = task.get("metadata")
-    sources = (
-        nested if isinstance(nested, Mapping) else {},
-        task,
-    )
-    for source in sources:
-        for raw_key, raw_value in source.items():
-            if isinstance(raw_value, Mapping):
-                continue
-            key = str(raw_key).strip().lower().replace("_", " ")
-            if key and str(raw_value or "").strip():
-                normalized[key] = str(raw_value).strip()
-    raw_roles = (
-        normalized.get("provider role")
-        or normalized.get("implementation provider")
-        or normalized.get("execution mode")
-        or ""
-    )
+    if not isinstance(nested, Mapping):
+        return frozenset()
+    normalized = {
+        str(raw_key).strip().lower().replace("_", " "): str(raw_value).strip()
+        for raw_key, raw_value in nested.items()
+    }
+    raw_roles = normalized.get("provider role", "")
     return frozenset(
         item.strip().lower()
         for item in raw_roles.replace(";", ",").split(",")
@@ -2085,7 +2072,7 @@ def _production_lane_requires_dual_review(
 
     role_sets = [_task_provider_roles(task) for task in tasks]
     if role_sets and all(
-        roles and roles.issubset(_TYPED_LOCAL_PROVIDER_ROLES)
+        len(roles) == 1 and next(iter(roles)) in _TYPED_LOCAL_PROVIDER_ROLES
         for roles in role_sets
     ):
         return False

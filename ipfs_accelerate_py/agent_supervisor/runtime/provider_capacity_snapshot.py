@@ -247,10 +247,12 @@ def _parse_snapshot(
         raise ValueError("provider capacity snapshot digest is invalid")
 
     raw_providers = payload.get("providers")
-    if not isinstance(raw_providers, dict) or not set(
+    if not isinstance(raw_providers, dict) or set(raw_providers) != set(
         DUAL_REVIEW_PROVIDER_IDS
-    ).issubset(raw_providers):
-        raise ValueError("provider capacity snapshot requires Grok and Codex")
+    ):
+        raise ValueError(
+            "provider capacity snapshot inventory must be exactly Grok and Codex"
+        )
     capacities: list[ProviderCapacity] = []
     for provider_id, value in raw_providers.items():
         if (
@@ -314,6 +316,29 @@ def load_provider_capacity_snapshot(
     return capacities
 
 
+def provider_capacity_observation_floor(
+    path: Path,
+    *,
+    max_age_ms: int = DEFAULT_PROVIDER_CAPACITY_MAX_AGE_MS,
+) -> int:
+    """Return the newest securely parsed provider observation, even if stale.
+
+    Capacity publishers use this as a strict wall-clock CAS floor across
+    process restarts. The same owner/private-file and digest checks as the
+    production reader still apply; only freshness relative to wall clock is
+    omitted.
+    """
+
+    hard_ttl = _positive_age(max_age_ms)
+    _payload, capacities = _parse_snapshot(
+        _read_private_bytes(path),
+        max_age_ms=hard_ttl,
+        now_ms=0,
+        require_fresh=False,
+    )
+    return max(item.observed_at_ms for item in capacities)
+
+
 def _locked_snapshot_file(target: Path) -> tuple[int, Path]:
     lock_path = target.with_name(f".{target.name}.lock")
     descriptor = os.open(
@@ -352,10 +377,13 @@ def write_provider_capacity_snapshot(
 
     hard_ttl = _positive_age(max_age_ms)
     current = int(time.time() * 1000) if now_ms is None else int(now_ms)
-    normalized = normalize_provider_capacities(providers)
-    by_id = {item.provider_id: item for item in normalized}
-    if not set(DUAL_REVIEW_PROVIDER_IDS).issubset(by_id):
-        raise ValueError("provider capacity snapshot requires Grok and Codex")
+    supplied = normalize_provider_capacities(providers)
+    by_id = {item.provider_id: item for item in supplied}
+    if set(by_id) != set(DUAL_REVIEW_PROVIDER_IDS):
+        raise ValueError(
+            "provider capacity snapshot inventory must be exactly Grok and Codex"
+        )
+    normalized = tuple(by_id[provider_id] for provider_id in DUAL_REVIEW_PROVIDER_IDS)
     if any(item.observed_at_ms <= 0 for item in normalized):
         raise ValueError("provider capacity observations require timestamps")
     if any(item.observed_at_ms > current for item in normalized):
@@ -388,24 +416,35 @@ def write_provider_capacity_snapshot(
         except FileNotFoundError:
             existing_payload = None
         else:
-            existing_payload, _capacities = _parse_snapshot(
+            existing_payload, existing_capacities = _parse_snapshot(
                 existing_raw,
                 max_age_ms=hard_ttl,
                 now_ms=current,
                 require_fresh=False,
             )
         if existing_payload is not None:
-            previous_observed = int(existing_payload["observed_at_ms"])
-            if observed_at_ms < previous_observed:
-                raise ValueError(
-                    "provider capacity publication would move observation time backward"
-                )
-            if observed_at_ms == previous_observed:
-                if payload["snapshot_id"] == existing_payload["snapshot_id"]:
-                    return dict(existing_payload)
-                raise ValueError(
-                    "provider capacity publication conflicts at the same observation time"
-                )
+            previous_by_id = {
+                item.provider_id: item for item in existing_capacities
+            }
+            unchanged = True
+            for provider_id in DUAL_REVIEW_PROVIDER_IDS:
+                candidate = by_id[provider_id]
+                previous = previous_by_id[provider_id]
+                if candidate.observed_at_ms < previous.observed_at_ms:
+                    raise ValueError(
+                        "provider capacity publication would move observation "
+                        f"time backward for {provider_id}"
+                    )
+                if candidate.observed_at_ms == previous.observed_at_ms:
+                    if _record(candidate) != _record(previous):
+                        raise ValueError(
+                            "provider capacity publication conflicts at the "
+                            f"same observation time for {provider_id}"
+                        )
+                else:
+                    unchanged = False
+            if unchanged:
+                return dict(existing_payload)
 
         temporary = directory / (
             f".{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
@@ -558,6 +597,7 @@ __all__ = [
     "PROVIDER_CAPACITY_SNAPSHOT_SCHEMA",
     "PROVIDER_CAPACITY_TRUST",
     "load_provider_capacity_snapshot",
+    "provider_capacity_observation_floor",
     "synthesize_dual_review_provider_capacity",
     "write_provider_capacity_snapshot",
 ]

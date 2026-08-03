@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import time
@@ -14,6 +15,9 @@ from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     build_arg_parser,
     plan_bundle_lanes,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_capacity_snapshot import (
     DUAL_REVIEW_PROVIDER_ID,
     DUAL_REVIEW_PROVIDER_ROLE_CAPABILITIES,
@@ -25,6 +29,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_capacity_snapshot impo
 from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
     HostResourceSnapshot,
     ProviderCapacity,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    legacy_landed_review as legacy_review,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_provider_cli import (
     PRODUCTION_CLI_POLICY_NAME,
@@ -102,6 +109,29 @@ def _write_bundle_index(
         json.dumps({"source_todo": "tasks.todo.md", "bundles": bundles}),
         encoding="utf-8",
     )
+
+
+def _write_legacy_policy(path: Path, *, enabled: bool) -> None:
+    template = copy.deepcopy(
+        legacy_review.EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE
+    )
+    body = {
+        "schema": legacy_review.LEGACY_LANDED_REVIEW_POLICY_SCHEMA,
+        "interface": legacy_review.LEGACY_LANDED_REVIEW_POLICY_INTERFACE,
+        "enabled": enabled,
+        "issuer_key_id": "ed25519:sha256:" + "c" * 64,
+        "current_head": "a" * 40,
+        "current_tree_id": "b" * 40,
+        "max_leaf_tokens": template["max_leaf_tokens"],
+        "providers": template["providers"],
+        "tasks": template["tasks"],
+        "historical_provider": "unverified",
+        "completion_authoritative": False,
+        "proof_authoritative": False,
+    }
+    payload = {**body, "policy_id": content_identity(body)}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    path.chmod(0o600)
 
 
 def _scheduler(
@@ -200,6 +230,94 @@ def test_private_snapshot_round_trip_is_monotonic_and_owner_only(
         )
 
 
+def test_snapshot_cas_is_monotonic_for_each_provider_sample(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "capacity.json"
+    os.chmod(tmp_path, 0o700)
+    initial = (
+        _capacity("grok_cli", observed_at_ms=100),
+        _capacity("codex_cli", observed_at_ms=1_000),
+    )
+    write_provider_capacity_snapshot(
+        path,
+        initial,
+        max_age_ms=2_000,
+        now_ms=1_000,
+    )
+
+    # The envelope minimum advances from 100 to 500, but Codex rolls back.
+    with pytest.raises(ValueError, match="time backward for codex_cli"):
+        write_provider_capacity_snapshot(
+            path,
+            (
+                _capacity("grok_cli", observed_at_ms=900),
+                _capacity("codex_cli", observed_at_ms=500),
+            ),
+            max_age_ms=2_000,
+            now_ms=1_001,
+        )
+
+    # Advancing only Codex is valid even though the envelope minimum is equal.
+    advanced = (
+        initial[0],
+        _capacity("codex_cli", observed_at_ms=1_100),
+    )
+    write_provider_capacity_snapshot(
+        path,
+        advanced,
+        max_age_ms=2_000,
+        now_ms=1_100,
+    )
+    loaded = {
+        item.provider_id: item
+        for item in load_provider_capacity_snapshot(
+            path,
+            max_age_ms=2_000,
+            now_ms=1_100,
+        )
+    }
+    assert loaded["grok_cli"].observed_at_ms == 100
+    assert loaded["codex_cli"].observed_at_ms == 1_100
+
+    with pytest.raises(ValueError, match="observation time for grok_cli"):
+        write_provider_capacity_snapshot(
+            path,
+            (
+                _capacity(
+                    "grok_cli",
+                    observed_at_ms=100,
+                    active_requests=1,
+                ),
+                _capacity("codex_cli", observed_at_ms=1_200),
+            ),
+            max_age_ms=2_000,
+            now_ms=1_200,
+        )
+
+
+def test_private_snapshot_rejects_unreviewed_provider_inventory(
+    tmp_path: Path,
+) -> None:
+    os.chmod(tmp_path, 0o700)
+    grok = _capacity("grok_cli", observed_at_ms=100)
+    extra = ProviderCapacity.from_mapping(
+        {**grok.to_dict(), "provider_id": "other_provider"}
+    )
+
+    with pytest.raises(ValueError, match="inventory must be exactly"):
+        write_provider_capacity_snapshot(
+            tmp_path / "capacity.json",
+            (
+                grok,
+                _capacity("codex_cli", observed_at_ms=100),
+                extra,
+            ),
+            max_age_ms=1_000,
+            now_ms=100,
+        )
+
+
 def test_pair_free_concurrency_is_minimum_and_requires_role_capabilities() -> None:
     now = 200_000
     capacities = (
@@ -280,6 +398,101 @@ def test_production_planning_keeps_typed_local_lane_provider_free(
         item.startswith("llm:")
         for item in by_task["CAP-2"].required_capabilities
     )
+
+
+@pytest.mark.parametrize(
+    "metadata_case",
+    [
+        "deterministic-alias",
+        "deterministic-space-alias",
+        "implementation-provider-fallback",
+        "execution-mode-fallback",
+        "top-level-provider-role",
+        "combined-local-roles",
+    ],
+)
+def test_production_planner_does_not_broaden_child_typed_local_contract(
+    tmp_path: Path,
+    metadata_case: str,
+) -> None:
+    repo = tmp_path / metadata_case
+    index_path = repo / "index.json"
+    _write_bundle_index(index_path, ["deterministic-only"])
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    task = index["bundles"]["objective/capacity/1"]["tasks"][0]
+    metadata = task["metadata"]
+    if metadata_case == "deterministic-alias":
+        metadata["Provider role"] = "deterministic"
+    elif metadata_case == "deterministic-space-alias":
+        metadata["Provider role"] = "deterministic only"
+    elif metadata_case == "implementation-provider-fallback":
+        metadata.clear()
+        metadata["Implementation provider"] = "deterministic-only"
+    elif metadata_case == "execution-mode-fallback":
+        metadata.clear()
+        metadata["Execution mode"] = "deterministic-only"
+    elif metadata_case == "top-level-provider-role":
+        metadata.clear()
+        task["Provider role"] = "deterministic-only"
+    else:
+        metadata["Provider role"] = "deterministic-only, operator-only"
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+
+    lane = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        implement=True,
+        production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
+        production_provider_context_budget_tokens=32_768,
+        optimize_bundles=False,
+    )[0]
+
+    assert lane.llm_provider == DUAL_REVIEW_PROVIDER_ID
+    assert lane.required_context_tokens == 32_768
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_legacy_capacity_overlay_is_exact_and_default_off(
+    tmp_path: Path,
+    enabled: bool,
+) -> None:
+    repo = tmp_path / ("enabled" if enabled else "disabled")
+    index_path = repo / "index.json"
+    _write_bundle_index(index_path, ["deterministic-only"] * 2)
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    tasks = [
+        bundle["tasks"][0]
+        for bundle in index["bundles"].values()
+    ]
+    tasks[0]["task_id"] = "ASE-005"
+    tasks[1]["task_id"] = "OTHER"
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+    policy_path = repo / "legacy-policy.json"
+    key_path = repo / "legacy-policy.key"
+    _write_legacy_policy(policy_path, enabled=enabled)
+    key_path.write_bytes(b"development-test-key")
+    key_path.chmod(0o600)
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        implement=True,
+        legacy_landed_review_policy_path=policy_path,
+        legacy_landed_review_key_path=key_path,
+        optimize_bundles=False,
+    )
+    by_task = {lane.task_ids[0]: lane for lane in lanes}
+
+    assert by_task["ASE-005"].llm_provider == (
+        DUAL_REVIEW_PROVIDER_ID if enabled else ""
+    )
+    assert by_task["OTHER"].llm_provider == ""
 
 
 def test_four_model_lanes_are_capped_by_two_free_pair_slots(

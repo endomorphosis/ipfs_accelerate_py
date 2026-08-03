@@ -141,6 +141,88 @@ def test_fresh_unhealthy_snapshot_recovers_on_next_good_probe(
     assert second_pair.healthy is True
 
 
+def test_same_millisecond_recovery_advances_across_monitor_restart(
+    tmp_path: Path,
+) -> None:
+    path = _private_path(tmp_path)
+    clock = iter((250_000, 250_000, 250_001))
+    sleeps: list[float] = []
+    config = ProviderCapacityMonitorConfig(
+        snapshot_path=path,
+        max_age_ms=1_000,
+        interval_seconds=0.1,
+    )
+    first = ProviderCapacityMonitor(
+        config,
+        readiness_source=lambda: _readiness(ready=False),
+        process_counter=lambda: {"grok_cli": 0, "codex_cli": 0},
+        clock_ms=clock.__next__,
+    ).publish_once()
+    second = ProviderCapacityMonitor(
+        config,
+        readiness_source=_readiness,
+        process_counter=lambda: {"grok_cli": 0, "codex_cli": 0},
+        clock_ms=clock.__next__,
+        sleep=sleeps.append,
+    ).publish_once()
+
+    assert first["observed_at_ms"] == 250_000
+    assert second["observed_at_ms"] == 250_001
+    assert second["clock_advance_waited"] is True
+    assert sleeps == [monitor_module.CLOCK_ADVANCE_POLL_SECONDS]
+    capacities = load_provider_capacity_snapshot(
+        path,
+        max_age_ms=1_000,
+        now_ms=250_001,
+    )
+    assert all(item.healthy for item in capacities)
+
+
+def test_wall_clock_rollback_fails_closed_then_recovers_without_future_sample(
+    tmp_path: Path,
+) -> None:
+    path = _private_path(tmp_path)
+    config = ProviderCapacityMonitorConfig(
+        snapshot_path=path,
+        max_age_ms=1_000,
+        interval_seconds=0.1,
+    )
+    ProviderCapacityMonitor(
+        config,
+        readiness_source=_readiness,
+        process_counter=lambda: {"grok_cli": 0, "codex_cli": 0},
+        clock_ms=lambda: 260_000,
+    ).publish_once()
+    rolled_back = ProviderCapacityMonitor(
+        config,
+        readiness_source=_readiness,
+        process_counter=lambda: {"grok_cli": 0, "codex_cli": 0},
+        clock_ms=lambda: 259_000,
+        monotonic=iter((0.0, 2.0)).__next__,
+        sleep=lambda _seconds: None,
+    )
+
+    with pytest.raises(RuntimeError, match="did not advance"):
+        rolled_back.publish_once()
+    assert {
+        item.observed_at_ms
+        for item in load_provider_capacity_snapshot(
+            path,
+            max_age_ms=1_000,
+            now_ms=260_000,
+        )
+    } == {260_000}
+
+    recovered = ProviderCapacityMonitor(
+        config,
+        readiness_source=_readiness,
+        process_counter=lambda: {"grok_cli": 0, "codex_cli": 0},
+        clock_ms=lambda: 260_001,
+    ).publish_once()
+    assert recovered["observed_at_ms"] == 260_001
+    assert recovered["clock_advance_waited"] is False
+
+
 def test_daemon_mode_refreshes_before_ttl_and_stops_cleanly(
     tmp_path: Path,
 ) -> None:
@@ -241,6 +323,83 @@ def test_process_counter_matches_only_invocation_roots_and_deduplicates_wrapper(
     assert monitor_module.count_active_cli_processes() == {
         "grok_cli": 1,
         "codex_cli": 1,
+    }
+
+
+def test_process_counter_fails_closed_on_inaccessible_live_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class AccessDenied(Exception):
+        pass
+
+    class NoSuchProcess(Exception):
+        pass
+
+    class Process:
+        pid = 10
+
+        @property
+        def info(self) -> object:
+            raise AccessDenied("argv token=SECRET")
+
+    class VanishedProcess:
+        pid = 11
+
+        @property
+        def info(self) -> object:
+            raise NoSuchProcess()
+
+    fake_psutil = SimpleNamespace(
+        AccessDenied=AccessDenied,
+        NoSuchProcess=NoSuchProcess,
+        process_iter=lambda _fields: [Process()],
+    )
+    monkeypatch.setitem(sys.modules, "psutil", fake_psutil)
+
+    with pytest.raises(RuntimeError, match="capacity is unknown"):
+        monitor_module.count_active_cli_processes()
+
+    fake_psutil.process_iter = lambda _fields: [VanishedProcess()]
+    assert monitor_module.count_active_cli_processes() == {
+        "grok_cli": 0,
+        "codex_cli": 0,
+    }
+
+
+def test_monitor_diagnostics_never_emit_probe_payload_or_exception_detail(
+    tmp_path: Path,
+) -> None:
+    path = _private_path(tmp_path)
+
+    def secret_readiness() -> dict[str, object]:
+        return {
+            **_readiness(),
+            "api_key": "SECRET-READINESS-TOKEN",
+            "argv": ["grok", "--token", "SECRET-ARGV"],
+        }
+
+    def secret_process_error() -> dict[str, int]:
+        raise RuntimeError("argv=codex exec token=SECRET-EXCEPTION")
+
+    result = ProviderCapacityMonitor(
+        ProviderCapacityMonitorConfig(
+            snapshot_path=path,
+            max_age_ms=1_000,
+            interval_seconds=0.1,
+        ),
+        readiness_source=secret_readiness,
+        process_counter=secret_process_error,
+        clock_ms=lambda: 350_000,
+    ).publish_once()
+    encoded = json.dumps(result, sort_keys=True)
+
+    assert "SECRET" not in encoded
+    assert "argv" not in encoded
+    assert result["process_error"] == "process_count_failed"
+    assert set(result["readiness"]) == {
+        "reported_ready",
+        "implementation",
+        "review",
     }
 
 

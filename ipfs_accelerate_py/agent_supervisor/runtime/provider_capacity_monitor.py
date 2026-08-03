@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import logging
 import os
@@ -23,6 +24,7 @@ from .provider_capacity_snapshot import (
     DEFAULT_PROVIDER_CAPACITY_MAX_AGE_MS,
     DUAL_REVIEW_PROVIDER_ROLE_CAPABILITIES,
     PROVIDER_CAPACITY_BUDGET_SEMANTICS,
+    provider_capacity_observation_floor,
     write_provider_capacity_snapshot,
 )
 from .resource_scheduler import ProviderCapacity
@@ -32,6 +34,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_MONITOR_INTERVAL_SECONDS: Final = 10.0
 DEFAULT_PROVIDER_CONCURRENCY: Final = 2
 DEFAULT_RESPONSE_TOKENS_PER_REQUEST: Final = 4_096
+MAX_CLOCK_ADVANCE_WAIT_SECONDS: Final = 1.0
+CLOCK_ADVANCE_POLL_SECONDS: Final = 0.001
 _PROVIDER_NAMES: Final = ("grok_cli", "codex_cli")
 
 
@@ -136,8 +140,22 @@ def _count_with_psutil() -> dict[str, int] | None:
             ):
                 continue
             command = info.get("cmdline") or ()
-        except (psutil.AccessDenied, psutil.NoSuchProcess, OSError, ValueError):
+        except psutil.NoSuchProcess:
             continue
+        except psutil.AccessDenied as exc:
+            raise RuntimeError(
+                "process inspection is inaccessible; capacity is unknown"
+            ) from exc
+        except OSError as exc:
+            if exc.errno in {errno.ENOENT, errno.ESRCH}:
+                continue
+            raise RuntimeError(
+                "process inspection failed; capacity is unknown"
+            ) from exc
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "process identity is invalid; capacity is unknown"
+            ) from exc
         provider = _command_provider(tuple(str(item) for item in command))
         if provider:
             classified.append(
@@ -150,17 +168,29 @@ def _count_with_psutil() -> dict[str, int] | None:
     return counts
 
 
-def _proc_identity(status_path: Path) -> tuple[int | None, int]:
+def _proc_identity(status_path: Path) -> tuple[int, int] | None:
     uid: int | None = None
     parent_pid = 0
     try:
-        for line in status_path.read_text(encoding="utf-8").splitlines():
+        lines = status_path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise RuntimeError(
+            "process identity is inaccessible; capacity is unknown"
+        ) from exc
+    try:
+        for line in lines:
             if line.startswith("Uid:"):
                 uid = int(line.split()[2])
             elif line.startswith("PPid:"):
                 parent_pid = int(line.split()[1])
-    except (OSError, UnicodeError, ValueError, IndexError):
-        return None, 0
+    except (UnicodeError, ValueError, IndexError) as exc:
+        raise RuntimeError(
+            "process identity is invalid; capacity is unknown"
+        ) from exc
+    if uid is None:
+        raise RuntimeError("process owner is unknown; capacity is unknown")
     return uid, parent_pid
 
 
@@ -187,13 +217,20 @@ def _count_with_proc(
         )
     classified: list[tuple[int, int, str]] = []
     for process_dir in process_directories:
-        uid, parent_pid = _proc_identity(process_dir / "status")
+        identity = _proc_identity(process_dir / "status")
+        if identity is None:
+            continue
+        uid, parent_pid = identity
         if effective_uid is not None and uid != effective_uid:
             continue
         try:
             raw = (process_dir / "cmdline").read_bytes()
-        except OSError:
+        except FileNotFoundError:
             continue
+        except OSError as exc:
+            raise RuntimeError(
+                "process command is inaccessible; capacity is unknown"
+            ) from exc
         command = tuple(
             token.decode("utf-8", errors="replace")
             for token in raw.split(b"\0")
@@ -231,6 +268,7 @@ class ProviderCapacityMonitor:
         readiness_source: Callable[[], Mapping[str, Any]] | None = None,
         process_counter: Callable[[], Mapping[str, Any]] | None = None,
         clock_ms: Callable[[], int] | None = None,
+        monotonic: Callable[[], float] | None = None,
         sleep: Callable[[float], None] | None = None,
     ) -> None:
         self.config = config
@@ -239,8 +277,11 @@ class ProviderCapacityMonitor:
         )
         self._process_counter = process_counter or count_active_cli_processes
         self._clock_ms = clock_ms or (lambda: int(time.time() * 1_000))
+        self._monotonic = monotonic or time.monotonic
         self._sleep = sleep or time.sleep
         self._stop_event = threading.Event()
+        self._observation_lock = threading.Lock()
+        self._last_observed_at_ms = 0
 
     @staticmethod
     def _readiness_health(
@@ -266,6 +307,66 @@ class ProviderCapacityMonitor:
             ),
         }
 
+    @staticmethod
+    def _readiness_diagnostics(payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Return a fixed, non-secret readiness projection for stdout."""
+
+        result: dict[str, Any] = {
+            "reported_ready": payload.get("ready") is True,
+        }
+        expected = {
+            "implementation": "grok_cli",
+            "review": "codex_cli",
+        }
+        for section_name, expected_provider in expected.items():
+            raw = payload.get(section_name)
+            section = raw if isinstance(raw, Mapping) else {}
+            result[section_name] = {
+                "provider": (
+                    expected_provider
+                    if section.get("provider") == expected_provider
+                    else "unexpected-or-missing"
+                ),
+                "binary_available": section.get("binary_available") is True,
+                "authenticated": section.get("authenticated") is True,
+                "independent": section.get("independent") is True,
+            }
+        return result
+
+    def _next_observation_time(self) -> tuple[int, bool]:
+        """Wait boundedly for a real clock value newer than the CAS floor."""
+
+        with self._observation_lock:
+            floor = self._last_observed_at_ms
+            if self.config.snapshot_path.exists():
+                floor = max(
+                    floor,
+                    provider_capacity_observation_floor(
+                        self.config.snapshot_path,
+                        max_age_ms=self.config.max_age_ms,
+                    ),
+                )
+            deadline = self._monotonic() + min(
+                MAX_CLOCK_ADVANCE_WAIT_SECONDS,
+                self.config.max_age_ms / 1_000,
+            )
+            waited = False
+            while True:
+                source_time = int(self._clock_ms())
+                if source_time <= 0:
+                    raise ValueError(
+                        "monitor clock must return a positive millisecond value"
+                    )
+                if source_time > floor:
+                    self._last_observed_at_ms = source_time
+                    return source_time, waited
+                if self._monotonic() >= deadline:
+                    raise RuntimeError(
+                        "monitor clock did not advance beyond the capacity CAS floor"
+                    )
+                waited = True
+                self._sleep(CLOCK_ADVANCE_POLL_SECONDS)
+
     def sample(self) -> tuple[tuple[ProviderCapacity, ...], dict[str, Any]]:
         """Take one readiness/process sample and derive operator headroom."""
 
@@ -276,8 +377,8 @@ class ProviderCapacityMonitor:
                 raise ValueError("readiness source did not return a mapping")
             readiness = dict(readiness)
             health = self._readiness_health(readiness)
-        except Exception as exc:
-            readiness_error = f"{type(exc).__name__}: {exc}"
+        except Exception:
+            readiness_error = "readiness_probe_failed"
             readiness = {}
             health = {name: False for name in _PROVIDER_NAMES}
 
@@ -293,17 +394,15 @@ class ProviderCapacityMonitor:
                 )
                 for name in _PROVIDER_NAMES
             }
-        except Exception as exc:
-            process_error = f"{type(exc).__name__}: {exc}"
+        except Exception:
+            process_error = "process_count_failed"
             counts = {
                 "grok_cli": self.config.grok_max_concurrency,
                 "codex_cli": self.config.codex_max_concurrency,
             }
             health = {name: False for name in _PROVIDER_NAMES}
 
-        observed_at_ms = int(self._clock_ms())
-        if observed_at_ms <= 0:
-            raise ValueError("monitor clock must return a positive millisecond value")
+        observed_at_ms, clock_waited = self._next_observation_time()
         ceilings = {
             "grok_cli": self.config.grok_max_concurrency,
             "codex_cli": self.config.codex_max_concurrency,
@@ -348,6 +447,7 @@ class ProviderCapacityMonitor:
         )
         diagnostics = {
             "observed_at_ms": observed_at_ms,
+            "clock_advance_waited": clock_waited,
             "ready": admission_ready,
             "auth_ready": auth_ready,
             "admission_ready": admission_ready,
@@ -374,7 +474,7 @@ class ProviderCapacityMonitor:
             },
             "readiness_error": readiness_error,
             "process_error": process_error,
-            "readiness": readiness,
+            "readiness": self._readiness_diagnostics(readiness),
         }
         return capacities, diagnostics
 
