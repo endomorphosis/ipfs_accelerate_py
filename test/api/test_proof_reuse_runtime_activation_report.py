@@ -8,6 +8,7 @@ test-certificate authority; knowledge-of-axioms can never satisfy the latter.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 from pathlib import Path
 from types import SimpleNamespace
@@ -213,15 +214,21 @@ def test_knowledge_of_axioms_never_satisfies_certificate_even_with_keys(
     )
 
 
-def test_test_pass_artifact_provenance_can_mark_certificate_ready(
+def test_hostile_self_pinned_v4_manifest_cannot_mark_certificate_ready(
     tmp_path: Path,
 ) -> None:
     artifacts = tmp_path / "artifacts" / "v4"
     artifacts.mkdir(parents=True)
     (artifacts / "proving_key.bin").write_bytes(b"real-pk-material")
     (artifacts / "verifying_key.bin").write_bytes(b"real-vk-material")
+    manifest = tmp_path / "attacker-manifest.json"
+    manifest.write_text("{}\n", encoding="utf-8")
     env = {
         "GROTH16_BACKEND_ARTIFACTS_ROOT": str(tmp_path / "artifacts"),
+        "IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST": str(manifest),
+        "IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256": (
+            hashlib.sha256(manifest.read_bytes()).hexdigest()
+        ),
         "IPFS_TEST_PROOF_REUSE_AUTO_INSTALL": "0",
         "IPFS_TEST_PROOF_REUSE_GROTH16_BUILD": "0",
         # No knowledge_of_axioms circuit binding.
@@ -230,8 +237,9 @@ def test_test_pass_artifact_provenance_can_mark_certificate_ready(
         environ=env,
         artifacts_root=tmp_path / "artifacts",
     )
-    assert certificate["ready"] is True
-    assert certificate["artifact_bindings"]["provenance_ready"] is True
+    assert certificate["ready"] is False
+    assert certificate["artifact_bindings"]["provenance_ready"] is False
+    assert certificate["reason_code"] == "artifact_manifest_unapproved"
     assert certificate["knowledge_of_axioms_circuit"] is False
 
 

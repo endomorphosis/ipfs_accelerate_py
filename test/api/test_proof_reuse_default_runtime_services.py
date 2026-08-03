@@ -32,11 +32,11 @@ from ipfs_accelerate_py.testing.proof_reuse.services import (
 )
 
 
-PTR144_REVISION = "eb5cc89717d6132d33de912fdf392a31d08ec848"
+PTR151_REVISION = "1894e9dca7dced0690893d468e40751a14f0b15b"
 
 
-def test_reviewed_datasets_revision_advances_to_ptr144_provider_commit() -> None:
-    assert DATASETS_VERIFIER_REVISION == PTR144_REVISION
+def test_reviewed_datasets_revision_advances_to_ptr151_native_release() -> None:
+    assert DATASETS_VERIFIER_REVISION == PTR151_REVISION
     assert (
         "ipfs_datasets_py/logic/zkp/test_pass_groth16_provider.py"
         in DATASETS_VERIFIER_SNAPSHOT_FILES
@@ -223,6 +223,7 @@ def test_generic_native_binary_alone_is_non_authoritative(tmp_path: Path) -> Non
     )
     assert bindings.provenance_ready is False
     assert bindings.reason_code in {
+        "artifact_manifest_pin_missing",
         "artifacts_root_missing",
         "test_pass_keys_missing",
     }
@@ -260,5 +261,5 @@ def test_module_import_is_inert_without_optional_providers() -> None:
     module = importlib.import_module(
         "ipfs_accelerate_py.testing.proof_reuse.services"
     )
-    assert module.DATASETS_VERIFIER_REVISION == PTR144_REVISION
+    assert module.DATASETS_VERIFIER_REVISION == PTR151_REVISION
     assert callable(module.compose_default_proof_reuse_services)

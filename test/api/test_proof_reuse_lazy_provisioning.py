@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import shutil
 import subprocess
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -51,6 +54,63 @@ ACCELERATE_ROOT = Path(__file__).resolve().parents[2]
 DATASETS_ROOT = ACCELERATE_ROOT.parent / "ipfs_datasets"
 
 
+def _reviewed_capability_payload() -> bytes:
+    payload = {
+        "schema_version": 1,
+        "backend": "ipfs-datasets-groth16",
+        "backend_version": "0.1.0",
+        "implementation": "ark-groth16-bn254",
+        "locked_source_identity_schema": "ipfs-datasets-groth16-locked-source-v1",
+        "locked_source_identity": services_module.DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY,
+        "proof_schema_versions": [1],
+        "supported_circuits": [
+            {
+                "version": 1,
+                "profile": "mvp-knowledge-of-axioms",
+                "ruleset_id": "TDFOL_v1",
+                "can_setup": True,
+                "can_prove": True,
+                "can_verify": True,
+            },
+            {
+                "version": 2,
+                "profile": "tdfol-v1-derivation",
+                "ruleset_id": "TDFOL_v1",
+                "can_setup": True,
+                "can_prove": True,
+                "can_verify": True,
+            },
+            {
+                "version": 3,
+                "profile": "mcp-event-dag-compaction",
+                "ruleset_id": "MCP++_EventDAG_Compaction_v1",
+                "can_setup": True,
+                "can_prove": True,
+                "can_verify": True,
+            },
+            {
+                "version": 4,
+                "profile": "test-pass-v2",
+                "ruleset_id": "test_pass_v2",
+                "can_setup": True,
+                "can_prove": True,
+                "can_verify": True,
+            },
+        ],
+        "trusted_setup": {
+            "automatic_during_build": False,
+            "explicit_command_required": True,
+            "deterministic_seed_is_test_only": True,
+            "capabilities_reads_or_writes_artifacts": False,
+        },
+    }
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
+    assert hashlib.sha256(encoded).hexdigest() == (
+        services_module.DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256
+    )
+    return encoded
+
+
 class _FakeNltkData:
     def __init__(self) -> None:
         self.path: list[str] = []
@@ -81,6 +141,8 @@ def test_dependency_plan_keeps_capability_layers_distinct_and_pure() -> None:
         {
             PROOF_REUSE_GROTH16_BUILD_ENV: "1",
             PROOF_REUSE_GROTH16_ENDPOINT_ENV: "https://prover.invalid/v1",
+            PROOF_REUSE_AUTO_INSTALL_ENV: "1",
+            PACKAGE_AUTO_INSTALL_ENV: "0",
         }
     )
 
@@ -90,6 +152,10 @@ def test_dependency_plan_keeps_capability_layers_distinct_and_pure() -> None:
     assert "nltk>=3.8.1,<4" in python_distributions
     assert "jsonschema>=4,<5" in python_distributions
     assert not any("groth16" in item.lower() for item in python_distributions)
+    assert plan["proof_reuse_auto_install_enabled"] is True
+    assert plan["package_auto_install_enabled"] is False
+    assert plan["effective_auto_install_enabled"] is False
+    assert plan["automatic_install_enabled"] is False
     assert plan["nltk_data"]["provisioning_kind"] == "network_data_download"
     assert plan["nltk_data"]["download_on_import"] is False
     assert plan["groth16_native_backend"]["cargo_command"][2:4] == [
@@ -118,7 +184,7 @@ def test_current_reviewed_datasets_revision_is_accepted_exactly() -> None:
         lazy_module.DATASETS_VERIFIER_DEPENDENCY
     )
 
-    assert DATASETS_VERIFIER_REVISION == "ab09d16329f7322b53cfecd4aed65f23044279a0"
+    assert DATASETS_VERIFIER_REVISION == "1894e9dca7dced0690893d468e40751a14f0b15b"
     assert source == DATASETS_ROOT.resolve()
     assert installer._detached_git_head(source) == DATASETS_VERIFIER_REVISION
     assert distribution == services_module.DATASETS_VERIFIER_DISTRIBUTION
@@ -355,6 +421,235 @@ print(json.dumps({
         "activated": True,
         "provenance": False,
     }
+
+
+def test_generic_pip_install_uses_private_target_and_rejects_shadow_or_tamper(
+    tmp_path: Path,
+) -> None:
+    dependency = services_module.MULTIFORMATS_DEPENDENCY
+    calls: list[tuple[tuple[str, ...], dict[str, Any]]] = []
+
+    def runner(command: tuple[str, ...], **kwargs: Any) -> Any:
+        calls.append((command, kwargs))
+        target = Path(command[command.index("--target") + 1])
+        package = target / "multiformats"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text(
+            "# private target fixture\n", encoding="utf-8"
+        )
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    provision_root = tmp_path / "provision"
+    installer = AllowlistedPipInstaller(
+        runner=runner,
+        environ={
+            PROOF_REUSE_PROVISION_DIR_ENV: str(provision_root),
+            "PIP_EXTRA_INDEX_URL": "https://attacker.invalid/simple",
+            "PIP_CONFIG_FILE": str(tmp_path / "hostile-pip.conf"),
+            "PYTHONPATH": "/attacker",
+        },
+    )
+
+    assert installer.install(dependency) is True
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    assert command[-1] == dependency.distribution
+    assert "--isolated" in command
+    assert "--target" in command
+    assert "--no-compile" in command
+    assert "PIP_EXTRA_INDEX_URL" not in kwargs["env"]
+    assert kwargs["env"]["PIP_CONFIG_FILE"] == os.devnull
+    assert "PYTHONPATH" not in kwargs["env"]
+    target = installer._active_dependency_targets[dependency.module_name]
+    loaded = SimpleNamespace(
+        CID=object(),
+        multihash=object(),
+        __file__=str(target / "multiformats" / "__init__.py"),
+    )
+    assert installer.validate_module_provenance(dependency, loaded) is True
+
+    shadow = SimpleNamespace(
+        CID=object(),
+        multihash=object(),
+        __file__=str(tmp_path / "attacker" / "multiformats" / "__init__.py"),
+    )
+    resolver = services_module.LazyProofReuseServiceResolver(
+        importer=lambda _name: shadow,
+        installer=installer,
+    )
+    assert resolver._load_dependency(dependency) == (None, False)
+
+    package_file = target / "multiformats" / "__init__.py"
+    if os.name != "nt":
+        target.chmod(0o700)
+        package_file.parent.chmod(0o700)
+        package_file.chmod(0o600)
+    package_file.write_text("# tampered\n", encoding="utf-8")
+    retry_calls: list[Any] = []
+    retry = AllowlistedPipInstaller(
+        runner=lambda *args, **kwargs: retry_calls.append((args, kwargs)),
+        environ={PROOF_REUSE_PROVISION_DIR_ENV: str(provision_root)},
+    )
+    assert retry.activate_cached_dependency(dependency) is False
+    assert retry.install(dependency) is False
+    assert retry_calls == []
+    while str(target) in sys.path:
+        sys.path.remove(str(target))
+
+
+def test_generic_private_target_rejects_world_writable_nonsticky_ancestor(
+    tmp_path: Path,
+) -> None:
+    if os.name == "nt":
+        pytest.skip("POSIX ownership and mode policy")
+    untrusted_parent = tmp_path / "world-writable-parent"
+    untrusted_parent.mkdir(mode=0o700)
+    untrusted_parent.chmod(0o777)
+    calls: list[Any] = []
+    installer = AllowlistedPipInstaller(
+        runner=lambda *args, **kwargs: calls.append((args, kwargs)),
+        environ={
+            PROOF_REUSE_PROVISION_DIR_ENV: str(untrusted_parent / "provision")
+        },
+    )
+
+    assert installer.install(services_module.MULTIFORMATS_DEPENDENCY) is False
+    assert calls == []
+    assert not (untrusted_parent / "provision").exists()
+
+
+def test_generic_private_target_rejects_preloaded_transitive_shadow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dependency = services_module.MULTIFORMATS_DEPENDENCY
+
+    def runner(command: tuple[str, ...], **_kwargs: Any) -> Any:
+        target = Path(command[command.index("--target") + 1])
+        for package_name in ("multiformats", "transitive_dependency"):
+            package = target / package_name
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("# fixture\n", encoding="utf-8")
+        return SimpleNamespace(returncode=0)
+
+    hostile = ModuleType("transitive_dependency")
+    hostile.__file__ = str(tmp_path / "attacker" / "transitive_dependency.py")
+    monkeypatch.setitem(sys.modules, "transitive_dependency", hostile)
+    installer = AllowlistedPipInstaller(
+        runner=runner,
+        environ={PROOF_REUSE_PROVISION_DIR_ENV: str(tmp_path / "provision")},
+    )
+
+    assert installer.install(dependency) is False
+    assert dependency.module_name not in installer._active_dependency_targets
+
+
+def test_generic_private_target_concurrent_publication_reuses_one_tree(
+    tmp_path: Path,
+) -> None:
+    dependency = services_module.MULTIFORMATS_DEPENDENCY
+    barrier = threading.Barrier(2)
+
+    def runner(command: tuple[str, ...], **_kwargs: Any) -> Any:
+        target = Path(command[command.index("--target") + 1])
+        package = target / "multiformats"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text("# identical fixture\n", encoding="utf-8")
+        barrier.wait(timeout=5)
+        return SimpleNamespace(returncode=0)
+
+    environment = {PROOF_REUSE_PROVISION_DIR_ENV: str(tmp_path / "provision")}
+    installers = (
+        AllowlistedPipInstaller(runner=runner, environ=environment),
+        AllowlistedPipInstaller(runner=runner, environ=environment),
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = tuple(executor.map(lambda item: item.install(dependency), installers))
+
+    assert results == (True, True)
+    targets = installers[0]._dependency_target_candidates(dependency)
+    assert len(targets) == 1
+    assert all(
+        installer._validated_dependency_target(dependency) == targets[0]
+        for installer in installers
+    )
+    while str(targets[0]) in sys.path:
+        sys.path.remove(str(targets[0]))
+
+
+@pytest.mark.parametrize(
+    "invalid_result",
+    (
+        (True, "0", "", None),
+        (True, True, "", None),
+        (True, 0, b"not-text", None),
+        (True, 0, "", "not-an-exception"),
+    ),
+)
+def test_instrumented_private_installer_result_validates_every_field(
+    tmp_path: Path,
+    invalid_result: tuple[Any, ...],
+) -> None:
+    pip_installer = SimpleNamespace(
+        install_with_diagnostics=lambda _dependency: invalid_result
+    )
+    installer = ProofReuseLazyDependencyInstaller(
+        runner=lambda *_args, **_kwargs: None,
+        pip_installer=pip_installer,
+        environ=_enabled_environment(tmp_path),
+    )
+
+    result = installer._run_instrumented_install(
+        services_module.MULTIFORMATS_DEPENDENCY
+    )
+
+    assert result == (
+        False,
+        None,
+        "invalid private target installer result",
+        None,
+    )
+
+
+def test_native_capability_probe_rejects_path_substitution(
+    tmp_path: Path,
+) -> None:
+    if os.name != "nt" and not hasattr(os, "memfd_create"):
+        pytest.skip("sealed FD execution is unavailable")
+    binary = tmp_path / "groth16"
+    reviewed = b"reviewed-native-fixture"
+    binary.write_bytes(reviewed)
+    binary.chmod(0o700)
+    commands: list[tuple[str, ...]] = []
+
+    def runner(command: tuple[str, ...], **_kwargs: Any) -> Any:
+        commands.append(command)
+        binary.write_bytes(b"substituted-after-validation")
+        binary.chmod(0o700)
+        return SimpleNamespace(
+            returncode=0,
+            stdout=_reviewed_capability_payload(),
+            stderr=b"",
+        )
+
+    installer = ProofReuseLazyDependencyInstaller(
+        runner=runner,
+        environ=_enabled_environment(tmp_path),
+    )
+    installer._validated_native_binary_identities[binary.resolve()] = (
+        hashlib.sha256(reviewed).hexdigest(),
+        len(reviewed),
+    )
+
+    ready, reason = installer._probe_groth16_binary_capabilities(
+        binary,
+        required_circuit_version=4,
+    )
+
+    assert ready is False
+    assert reason == "capability_binary_changed_during_probe"
+    if os.name != "nt":
+        assert commands[0][0].startswith("/proc/self/fd/")
 
 
 def test_arbitrary_preloaded_verifier_is_not_replaced_or_installed(
@@ -623,6 +918,12 @@ def test_nltk_first_use_download_is_allowlisted_locked_and_bounded(
     calls: list[tuple[tuple[str, ...], dict[str, Any]]] = []
 
     def runner(command: tuple[str, ...], **kwargs: Any) -> Any:
+        if command[1:] == ("capabilities", "--json"):
+            return SimpleNamespace(
+                returncode=0,
+                stdout=_reviewed_capability_payload(),
+                stderr=b"",
+            )
         calls.append((command, kwargs))
         for package_id in ("punkt", "words"):
             nltk.data.available.update(
@@ -646,12 +947,15 @@ def test_nltk_first_use_download_is_allowlisted_locked_and_bounded(
     assert result.reason_code == REASON_AVAILABLE
     assert len(calls) == 1
     command, kwargs = calls[0]
-    assert command[:4] == (
+    assert command[:5] == (
         os.sys.executable,
+        "-I",
         "-m",
         "nltk.downloader",
         "--quiet",
     )
+    assert "PYTHONPATH" not in kwargs["env"]
+    assert kwargs["env"]["PYTHONNOUSERSITE"] == "1"
     assert "--exit-on-error" in command
     assert "--dir" in command
     assert command[-2:] == ("punkt", "words")
@@ -726,6 +1030,86 @@ def test_native_source_digest_validation_rejects_modified_rust_input(
     assert result.action == "DEFERRED"
 
 
+def test_installed_wheel_backend_source_is_discovered_without_package_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wheel_root = tmp_path / "wheel"
+    backend = (
+        wheel_root
+        / "ipfs_datasets_py"
+        / "processors"
+        / "groth16_backend"
+    )
+    reviewed_backend = (
+        DATASETS_ROOT
+        / "ipfs_datasets_py"
+        / "processors"
+        / "groth16_backend"
+    )
+    for relative in DATASETS_GROTH16_REVIEWED_FILES_SHA256:
+        destination = backend / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(reviewed_backend / relative, destination)
+
+    located: list[str] = []
+
+    class _Distribution:
+        @staticmethod
+        def locate_file(relative: str) -> Path:
+            located.append(relative)
+            return wheel_root / relative
+
+    monkeypatch.setattr(
+        lazy_module.importlib.metadata,
+        "distribution",
+        lambda name: _Distribution(),
+    )
+
+    assert (
+        ProofReuseLazyDependencyInstaller._installed_datasets_groth16_backend()
+        == backend.resolve()
+    )
+    assert located == ["ipfs_datasets_py/processors/groth16_backend"]
+
+
+def test_installed_wheel_backend_source_tamper_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wheel_root = tmp_path / "wheel"
+    backend = (
+        wheel_root
+        / "ipfs_datasets_py"
+        / "processors"
+        / "groth16_backend"
+    )
+    reviewed_backend = (
+        DATASETS_ROOT
+        / "ipfs_datasets_py"
+        / "processors"
+        / "groth16_backend"
+    )
+    for relative in DATASETS_GROTH16_REVIEWED_FILES_SHA256:
+        destination = backend / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(reviewed_backend / relative, destination)
+    (backend / "src" / "main.rs").write_text("// tampered\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        lazy_module.importlib.metadata,
+        "distribution",
+        lambda _name: SimpleNamespace(
+            locate_file=lambda relative: wheel_root / relative
+        ),
+    )
+
+    assert (
+        ProofReuseLazyDependencyInstaller._installed_datasets_groth16_backend()
+        is None
+    )
+
+
 def test_native_build_needs_separate_consent_and_never_runs_setup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -737,6 +1121,12 @@ def test_native_build_needs_separate_consent_and_never_runs_setup(
 
     def runner(command: tuple[str, ...], **kwargs: Any) -> Any:
         calls.append((command, kwargs))
+        if command[1:] == ("capabilities", "--json"):
+            return SimpleNamespace(
+                returncode=0,
+                stdout=_reviewed_capability_payload(),
+                stderr=b"",
+            )
         target_root = Path(command[command.index("--target-dir") + 1])
         binary = target_root / "release" / "groth16"
         binary.parent.mkdir(parents=True)
@@ -775,8 +1165,10 @@ def test_native_build_needs_separate_consent_and_never_runs_setup(
     built = installer.ensure_groth16_native_backend(consent=True)
     assert built.available is True
     assert built.installed is True
-    assert len(calls) == 1
-    command, kwargs = calls[0]
+    assert len(calls) == 2
+    command, kwargs = next(
+        entry for entry in calls if entry[0][1:4] == ("build", "--locked", "--release")
+    )
     assert cargo_link.is_symlink()
     assert command[0] == str(cargo_link.absolute())
     assert command[1:4] == ("build", "--locked", "--release")
@@ -859,6 +1251,12 @@ def test_native_build_receipt_is_reused_and_tamper_detected(
     calls: list[tuple[tuple[str, ...], dict[str, Any]]] = []
 
     def runner(command: tuple[str, ...], **kwargs: Any) -> Any:
+        if command[1:] == ("capabilities", "--json"):
+            return SimpleNamespace(
+                returncode=0,
+                stdout=_reviewed_capability_payload(),
+                stderr=b"",
+            )
         calls.append((command, kwargs))
         target_root = Path(command[command.index("--target-dir") + 1])
         binary = target_root / "release" / "groth16"
@@ -929,8 +1327,14 @@ def test_native_build_receipt_is_reused_and_tamper_detected(
         PROOF_REUSE_PROVISION_DIR_ENV: str(provision_root),
     }
 
-    def unexpected_runner(*args: Any, **kwargs: Any) -> Any:
-        raise AssertionError(f"unexpected rebuild: {args!r} {kwargs!r}")
+    def unexpected_runner(command: tuple[str, ...], **kwargs: Any) -> Any:
+        if command[1:] == ("capabilities", "--json"):
+            return SimpleNamespace(
+                returncode=0,
+                stdout=_reviewed_capability_payload(),
+                stderr=b"",
+            )
+        raise AssertionError(f"unexpected rebuild: {command!r} {kwargs!r}")
 
     second = ProofReuseLazyDependencyInstaller(
         runner=unexpected_runner,
@@ -1001,6 +1405,29 @@ def test_foreign_bundled_binary_is_diagnostic_not_native_fallback(
     assert calls == []
 
 
+def test_ptr151_bundled_release_manifest_and_v4_capability_are_both_required(
+    tmp_path: Path,
+) -> None:
+    if lazy_module._platform_binary_name() != "linux-aarch64":
+        pytest.skip("reviewed PTR-151 bundle is linux-aarch64")
+    installer = ProofReuseLazyDependencyInstaller(
+        environ={
+            PROOF_REUSE_AUTO_INSTALL_ENV: "0",
+            PACKAGE_AUTO_INSTALL_ENV: "0",
+        },
+        lock_root=tmp_path / "locks",
+    )
+
+    resolution = installer.ensure_groth16_native_backend(consent=False)
+
+    assert resolution.available is True
+    assert resolution.diagnostics["binary_source"] == "reviewed_bundled_binary"
+    assert resolution.diagnostics["required_circuit_version"] == 4
+    assert resolution.diagnostics["required_capability_validated"] is True
+    assert resolution.diagnostics["capability_probe_status"] == "available"
+    assert resolution.diagnostics["supported_circuit_versions"] == [1, 2, 3, 4]
+
+
 def test_endpoint_keys_circuit_and_native_are_independent(
     tmp_path: Path,
 ) -> None:
@@ -1069,7 +1496,7 @@ def test_runtime_requires_circuit_key_version_match_and_native_proving_key(
     assert endpoint_status["skip_authority"] is False
     assert (
         endpoint_status["test_certificate_authority_reason"]
-        == "test_pass_circuit_provider_unavailable"
+        == "requires_separate_test_certificate_authority_probe"
     )
 
     mismatch = ProofReuseLazyDependencyInstaller(

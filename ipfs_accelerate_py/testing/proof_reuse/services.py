@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import threading
 from collections.abc import Callable, Mapping
@@ -29,6 +30,10 @@ from types import MappingProxyType, ModuleType
 from typing import Any, Final
 
 PROOF_REUSE_AUTO_INSTALL_ENV: Final = "IPFS_TEST_PROOF_REUSE_AUTO_INSTALL"
+# Package-wide installation consent is a second, independent gate.  It lives
+# here (rather than only in ``lazy_dependencies``) so the pure dependency plan
+# can report the *effective* policy without importing the runtime installer.
+PACKAGE_AUTO_INSTALL_ENV: Final = "IPFS_ACCEL_AUTO_INSTALL"
 PROOF_REUSE_CACHE_DIR_ENV: Final = "IPFS_TEST_PROOF_REUSE_CACHE_DIR"
 PROOF_REUSE_DATASETS_SOURCE_ENV: Final = "IPFS_TEST_PROOF_REUSE_DATASETS_SOURCE"
 PROOF_REUSE_NLTK_DOWNLOAD_ENV: Final = "IPFS_TEST_PROOF_REUSE_NLTK_DOWNLOAD"
@@ -39,9 +44,41 @@ PROOF_REUSE_GROTH16_CIRCUIT_REF_ENV: Final = "IPFS_TEST_PROOF_REUSE_GROTH16_CIRC
 PROOF_REUSE_PROVISION_DIR_ENV: Final = "IPFS_TEST_PROOF_REUSE_PROVISION_DIR"
 DATASETS_GROTH16_BINARY_ENV: Final = "IPFS_DATASETS_GROTH16_BINARY"
 DATASETS_GROTH16_ARTIFACTS_ROOT_ENV: Final = "GROTH16_BACKEND_ARTIFACTS_ROOT"
+PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_ENV: Final = (
+    "IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST"
+)
+PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256_ENV: Final = (
+    "IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256"
+)
+PROOF_REUSE_GROTH16_NATIVE_RECEIPT_ENV: Final = (
+    "IPFS_TEST_PROOF_REUSE_GROTH16_NATIVE_RECEIPT"
+)
 
-# Exact merged PTR-144 provider commit (lazy real Groth16 test-pass issuance).
-DATASETS_VERIFIER_REVISION: Final = "eb5cc89717d6132d33de912fdf392a31d08ec848"
+GROTH16_TEST_PASS_ARTIFACT_MANIFEST_INTERFACE: Final = (
+    "Groth16TestPassArtifactManifest@1"
+)
+GROTH16_NATIVE_BUILD_RECEIPT_INTERFACE: Final = "Groth16NativeBuildReceipt@2"
+TEST_PASS_GROTH16_CIRCUIT_VERSION: Final = 4
+TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS: Final = (1, 2, 3, 4)
+TEST_PASS_GROTH16_PROVIDER_RELATIVE_PATH: Final = (
+    "ipfs_datasets_py/logic/zkp/test_pass_groth16_provider.py"
+)
+TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256: Final = (
+    "4e00956c627a0e2e9a59ec241697a663f64a56a4a346ea05e701cf02c2e3254a"
+)
+TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256: Final = (
+    "c674f630154212abd5e77ebeb4614dace5890b29ea7eddce44d92d5280ca472a"
+)
+TEST_PASS_GROTH16_CIRCUIT_CID: Final = (
+    "baguqeerayz2pmmaviijkxvphp27liyknvtsysczj5j7n3tse3ewvfagki4va"
+)
+TEST_PASS_GROTH16_RULESET_ID: Final = "test_pass_v2"
+TEST_PASS_GROTH16_STATEMENT_INTERFACE: Final = "TestPassStatementV2"
+TEST_PASS_GROTH16_STATEMENT_VERSION: Final = 2
+
+# Exact merged PTR-151 commit: v4-capable native release + lazy real test-pass
+# provider.  Labels never substitute for the byte/object checks below.
+DATASETS_VERIFIER_REVISION: Final = "1894e9dca7dced0690893d468e40751a14f0b15b"
 DATASETS_VERIFIER_SOURCE_SHA256: Final = (
     "da02643318acb108e45cfd918f77e0ea669a9d0480f2550228b7eb0b0653db81"
 )
@@ -119,15 +156,15 @@ DATASETS_VERIFIER_REQUIRES_PYTHON: Final = ">=3.12"
 DATASETS_PYTHON_BUILD_FILES_SHA256: Final[Mapping[str, str]] = MappingProxyType(
     {
         "pyproject.toml": (
-            "75076f609944708ee4e9bdb48d2e2dc48280f50e85fa2a2edb1267cb3d77c8a9"
+            "5c70be1b69fb189d97b2f2b137b19000eaf8f13f7605bb1ec0ea8df6df6eb073"
         ),
         "setup.py": (
-            "3d83ecf794e36982e3074afff7a625c7642c7d6d174f74aa65972ba7550c58fb"
+            "f0640649d73a23654274180e76e35703e38bee210c0780ed3f6841030a091825"
         ),
     }
 )
 DATASETS_VERIFIER_DISTRIBUTION: Final = (
-    "ipfs-accelerate-proof-reuse-verifier==0.2.0+eb5cc897"
+    "ipfs-accelerate-proof-reuse-verifier==0.2.0+1894e9dc"
 )
 DATASETS_VERIFIER_REMOTE_SOURCE_PUBLISHED: Final = False
 DATASETS_VERIFIER_RELEASE_BLOCKER: Final = "datasets_verifier_revision_unpublished"
@@ -139,10 +176,16 @@ DATASETS_VERIFIER_RELEASE_BLOCKER: Final = "datasets_verifier_revision_unpublish
 DATASETS_GROTH16_REVIEWED_FILES_SHA256: Final[Mapping[str, str]] = MappingProxyType(
     {
         "Cargo.toml": (
-            "f0b4b36d08496c9660945ca69e7fab2af6074ad56668830822d93573555f1231"
+            "b82ac5c233f74a758d6d5f9d31edefa41dbee686cfb4d1a60bd2e9df53c2dac0"
         ),
         "Cargo.lock": (
             "592b3736d8e2c25f54aa1c7f5ea8cd1c1649c644762d1973f2687918bf9e470f"
+        ),
+        "build.rs": (
+            "ead50ca34f9fa9cf3c9b31f0c33b1db08b3da5a7ed40b73dd51004166f724a3d"
+        ),
+        "build.sh": (
+            "8f1fce11b3342303af3f3e54354c9b1d127fe9dda69e135716af2b172ff98b47"
         ),
         "src/circuit.rs": (
             "3d0ab0afd0f09711f4834d155d37dec228ce0d4e5608eb4371e4f4d8026cba04"
@@ -154,7 +197,7 @@ DATASETS_GROTH16_REVIEWED_FILES_SHA256: Final[Mapping[str, str]] = MappingProxyT
             "72e4c45e123d9367da3e2a2ef7e51c0616ed4e3d0f2fae5ddfcf17760e3112b1"
         ),
         "src/main.rs": (
-            "cb25765d0be0fc37cf8a4a5ba8881f7f1eb8ddcb97dfddd75dfbd8a676eb5e34"
+            "86f15d779b37b6766101d165945895577df6c0fa71472395863ae4e7e7b8b3fa"
         ),
         "src/prover.rs": (
             "a469844271d89b2fd61c7b5eb97f8957a444662b5822197989e71248da9bcc03"
@@ -170,10 +213,151 @@ DATASETS_GROTH16_REVIEWED_FILES_SHA256: Final[Mapping[str, str]] = MappingProxyT
 DATASETS_GROTH16_BUNDLED_BINARIES_SHA256: Final[Mapping[str, str]] = MappingProxyType(
     {
         "linux-aarch64": (
-            "7cd14c97f321c0b4220cfc881c424800f2da288b3056c49c2a6bf7a030bb02dc"
+            "d883348d24a6dc6c0ab25745b3dab7a759e1566799ddaaf90429f21a0e469055"
         ),
     }
 )
+# Capabilities are accepted only when the binary digest, release manifest, and
+# bounded ``capabilities --json`` output all match their exact reviewed pins.
+DATASETS_GROTH16_BUNDLED_BINARY_CAPABILITIES: Final[
+    Mapping[str, tuple[int, ...]]
+] = MappingProxyType(
+    {
+        "linux-aarch64": (1, 2, 3, 4),
+    }
+)
+DATASETS_GROTH16_RELEASE_MANIFESTS_SHA256: Final[Mapping[str, str]] = (
+    MappingProxyType(
+        {
+            "linux-aarch64": (
+                "033990805b50b7229c394809b3c549eda88f705b9358826313d79da0714fea33"
+            ),
+        }
+    )
+)
+DATASETS_GROTH16_CAPABILITY_PAYLOADS_SHA256: Final[Mapping[str, str]] = (
+    MappingProxyType(
+        {
+            "linux-aarch64": (
+                "7625046099fc44760dd858af3f976bd37341ff1ca327fad30e0654ee8ad6109f"
+            ),
+        }
+    )
+)
+DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY: Final = (
+    "sha256:93dbdcb273114f6ec578f8f80bea185ac57f67f0b86daa6f0ff1d2575903691c"
+)
+DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256: Final = (
+    "7625046099fc44760dd858af3f976bd37341ff1ca327fad30e0654ee8ad6109f"
+)
+# Deliberately empty until an operator-reviewed v4 trusted-setup ceremony
+# publishes exact proving/verifying key digests.  Tests may monkeypatch the
+# imported value with a test-only manifest digest; production code must never
+# invent or learn authority from a self-pinned environment variable.
+DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256: Final[frozenset[str]] = (
+    frozenset()
+)
+
+
+def validate_groth16_capability_payload(
+    payload: bytes,
+    *,
+    required_circuit_version: int = TEST_PASS_GROTH16_CIRCUIT_VERSION,
+) -> bool:
+    """Validate the exact PTR-151 artifact-free native capability document."""
+
+    if (
+        type(payload) is not bytes
+        or not payload
+        or len(payload) >= 16_384
+        or not payload.endswith(b"\n")
+        or payload.count(b"\n") != 1
+        or hashlib.sha256(payload).hexdigest()
+        != DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256
+    ):
+        return False
+    try:
+        document = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(document, dict):
+        return False
+    if (
+        document.get("locked_source_identity")
+        != DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY
+        or document.get("locked_source_identity_schema")
+        != "ipfs-datasets-groth16-locked-source-v1"
+    ):
+        return False
+    circuits = document.get("supported_circuits")
+    if not isinstance(circuits, list):
+        return False
+    by_version = {
+        item.get("version"): item for item in circuits if isinstance(item, dict)
+    }
+    required = by_version.get(required_circuit_version)
+    if required_circuit_version == TEST_PASS_GROTH16_CIRCUIT_VERSION:
+        if required != {
+            "version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
+            "profile": "test-pass-v2",
+            "ruleset_id": TEST_PASS_GROTH16_RULESET_ID,
+            "can_setup": True,
+            "can_prove": True,
+            "can_verify": True,
+        }:
+            return False
+    elif not isinstance(required, dict):
+        return False
+    return document.get("trusted_setup") == {
+        "automatic_during_build": False,
+        "explicit_command_required": True,
+        "deterministic_seed_is_test_only": True,
+        "capabilities_reads_or_writes_artifacts": False,
+    }
+
+
+def validate_groth16_release_manifest_payload(
+    payload: bytes,
+    *,
+    platform_name: str,
+    binary_sha256: str,
+) -> bool:
+    """Validate exact reviewed release-manifest bytes and bound identities."""
+
+    expected_digest = DATASETS_GROTH16_RELEASE_MANIFESTS_SHA256.get(platform_name)
+    if (
+        type(payload) is not bytes
+        or not expected_digest
+        or hashlib.sha256(payload).hexdigest() != expected_digest
+    ):
+        return False
+    try:
+        manifest = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return bool(
+        isinstance(manifest, dict)
+        and manifest.get("schema_version") == 1
+        and manifest.get("platform") == platform_name
+        and manifest.get("binary") == "groth16"
+        and manifest.get("binary_sha256") == binary_sha256
+        and manifest.get("capabilities_sha256")
+        == DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256
+        and manifest.get("locked_source_identity")
+        == DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY
+        and manifest.get("locked_source_identity_schema")
+        == "ipfs-datasets-groth16-locked-source-v1"
+        and manifest.get("supported_circuit_versions")
+        == list(TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS)
+        and manifest.get("test_pass_circuit")
+        == {
+            "version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
+            "profile": "test-pass-v2",
+            "ruleset_id": TEST_PASS_GROTH16_RULESET_ID,
+        }
+        and manifest.get("trusted_setup_included") is False
+        and manifest.get("v4_keys_included") is False
+    )
 DATASETS_GROTH16_REVIEWED_ARTIFACTS_SHA256: Final[Mapping[str, str]] = MappingProxyType(
     {
         "v1/proving_key.bin": (
@@ -189,6 +373,23 @@ DATASETS_GROTH16_REVIEWED_ARTIFACTS_SHA256: Final[Mapping[str, str]] = MappingPr
             "3c5d85cf1ac5d305237704e1b26714ee89140fc46b3f87cbd0a9695a5a65d76d"
         ),
     }
+)
+
+
+def reviewed_groth16_source_fingerprint() -> str:
+    """Return the exact reviewed revision/build-input identity."""
+
+    digest = hashlib.sha256()
+    digest.update(f"revision:{DATASETS_VERIFIER_REVISION}\n".encode())
+    for relative, expected in sorted(
+        DATASETS_GROTH16_REVIEWED_FILES_SHA256.items()
+    ):
+        digest.update(f"{relative}:{expected}\n".encode())
+    return digest.hexdigest()
+
+
+DATASETS_GROTH16_REVIEWED_SOURCE_FINGERPRINT: Final = (
+    reviewed_groth16_source_fingerprint()
 )
 
 MULTIFORMATS_MODULE: Final = "multiformats"
@@ -269,6 +470,7 @@ PROOF_REUSE_DEPENDENCY_ALLOWLIST: Final[Mapping[str, ProofReuseDependency]] = (
 
 _TRUE_VALUES: Final = frozenset({"1", "true", "yes", "on"})
 _FALSE_VALUES: Final = frozenset({"", "0", "false", "no", "off"})
+_PRIVATE_TARGET_PUBLICATION_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -330,6 +532,73 @@ def automatic_install_enabled(
     return False
 
 
+def package_auto_install_policy_permits(
+    environ: Mapping[str, str] | None = None,
+) -> bool:
+    """Return the independent package-wide lazy-install policy.
+
+    An unset package policy follows the package's existing safe default:
+    permission is granted only inside a virtual environment.  Invalid values
+    deny permission.  This function is pure and starts no process.
+    """
+
+    source = os.environ if environ is None else environ
+    if PACKAGE_AUTO_INSTALL_ENV not in source:
+        try:
+            return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+        except Exception:
+            return False
+    value = str(source.get(PACKAGE_AUTO_INSTALL_ENV, "")).strip().lower()
+    if value in _TRUE_VALUES:
+        return True
+    if value in _FALSE_VALUES:
+        return False
+    return False
+
+
+def proof_reuse_install_permitted(
+    environ: Mapping[str, str] | None = None,
+) -> bool:
+    """Require both proof-reuse and package-wide installation consent."""
+
+    return automatic_install_enabled(environ) and package_auto_install_policy_permits(
+        environ
+    )
+
+
+def isolated_pip_environment(
+    environ: Mapping[str, str] | None = None,
+    *,
+    additions: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Return a pip environment that ignores inherited Python/pip config.
+
+    The command still receives ordinary OS variables (notably ``PATH`` and
+    certificate/proxy settings), but inherited ``PIP_*`` configuration and
+    Python import-path injection cannot expand the allowlisted install.
+    Dependency-specific fixed variables are applied only after sanitization.
+    """
+
+    source = os.environ if environ is None else environ
+    cleaned = {
+        str(key): str(value)
+        for key, value in source.items()
+        if not str(key).upper().startswith("PIP_")
+        and str(key).upper() not in {"PYTHONPATH", "PYTHONHOME", "PYTHONUSERBASE"}
+    }
+    cleaned.update(
+        {
+            "PIP_CONFIG_FILE": os.devnull,
+            "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+            "PIP_NO_INPUT": "1",
+            "PYTHONNOUSERSITE": "1",
+        }
+    )
+    if additions:
+        cleaned.update({str(key): str(value) for key, value in additions.items()})
+    return cleaned
+
+
 def _explicit_capability_opt_in(
     environment_variable: str,
     environ: Mapping[str, str] | None = None,
@@ -374,13 +643,28 @@ def proof_reuse_dependency_plan(
     configured_datasets_source = bool(
         str(source.get(PROOF_REUSE_DATASETS_SOURCE_ENV, "")).strip()
     )
+    proof_gate = automatic_install_enabled(environ)
+    package_gate = package_auto_install_policy_permits(environ)
+    effective_install = proof_gate and package_gate
     return {
         "interface": "ProofReuseDependencyPlan@1",
         "lazy": True,
         "cold_import_inert": True,
         "fail_open_to_run": True,
-        "automatic_install_enabled": automatic_install_enabled(environ),
+        # Backward-compatible key now reports the policy that is actually
+        # enforced by the lazy installer: both independent gates must allow.
+        "automatic_install_enabled": effective_install,
+        "proof_reuse_auto_install_enabled": proof_gate,
+        "package_auto_install_enabled": package_gate,
+        "effective_auto_install_enabled": effective_install,
         "disable_environment_variable": PROOF_REUSE_AUTO_INSTALL_ENV,
+        "package_disable_environment_variable": PACKAGE_AUTO_INSTALL_ENV,
+        "installation_policy": {
+            "proof_reuse_gate": proof_gate,
+            "package_gate": package_gate,
+            "effective": effective_install,
+            "operator": "logical_and",
+        },
         "datasets_source_environment_variable": (PROOF_REUSE_DATASETS_SOURCE_ENV),
         "datasets_requested_source": (
             "configured_local_path"
@@ -454,6 +738,33 @@ def proof_reuse_dependency_plan(
             "reviewed_bundled_binary_platforms": sorted(
                 DATASETS_GROTH16_BUNDLED_BINARIES_SHA256
             ),
+            "reviewed_bundled_binary_capabilities": {
+                platform_name: list(versions)
+                for platform_name, versions in sorted(
+                    DATASETS_GROTH16_BUNDLED_BINARY_CAPABILITIES.items()
+                )
+            },
+            "reviewed_release_manifest_sha256": dict(
+                DATASETS_GROTH16_RELEASE_MANIFESTS_SHA256
+            ),
+            "reviewed_capability_payload_sha256": (
+                DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256
+            ),
+            "reviewed_locked_source_identity": (
+                DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY
+            ),
+            "capability_probe_required": True,
+            "installed_distribution_package_data_discovery": True,
+            "installed_distribution_import_required": False,
+            "test_pass_required_circuit_version": (
+                TEST_PASS_GROTH16_CIRCUIT_VERSION
+            ),
+            "reviewed_source_supported_circuit_versions": list(
+                TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS
+            ),
+            "reviewed_source_fingerprint": (
+                DATASETS_GROTH16_REVIEWED_SOURCE_FINGERPRINT
+            ),
             "cargo_command": [
                 "cargo",
                 "build",
@@ -492,6 +803,18 @@ def proof_reuse_dependency_plan(
                     DATASETS_GROTH16_REVIEWED_ARTIFACTS_SHA256
                 ),
                 "auto_generate": False,
+                "authority_manifest_environment_variable": (
+                    PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_ENV
+                ),
+                "authority_manifest_sha256_environment_variable": (
+                    PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256_ENV
+                ),
+                "approved_v4_manifest_digests": len(
+                    DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256
+                ),
+                "authority_ready_before_reviewed_ceremony": bool(
+                    DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256
+                ),
             },
             "circuit": {
                 "provisioning_kind": "versioned_circuit_binding",
@@ -620,6 +943,8 @@ class ProofReuseServiceResolution:
 
 _DATASETS_VERIFIER_RECEIPT_NAME: Final = ".proof-reuse-verifier-snapshot.json"
 _DATASETS_VERIFIER_RECEIPT_INTERFACE: Final = "ProofReuseVerifierSnapshot@1"
+_PYTHON_DEPENDENCY_RECEIPT_NAME: Final = ".proof-reuse-python-dependency.json"
+_PYTHON_DEPENDENCY_RECEIPT_INTERFACE: Final = "ProofReusePythonDependencyTarget@1"
 _DATASETS_AUTHORITY_PREFIX: Final = "ipfs_datasets_py.logic.zkp"
 _DATASETS_AUTHORITY_NAMESPACE_PATHS: Final[Mapping[str, str]] = MappingProxyType(
     {
@@ -838,8 +1163,15 @@ class AllowlistedPipInstaller:
                 / "proof_reuse"
                 / "provisioning"
             )
+        self._provision_root = base_provision_root
         self._python_snapshot_root = base_provision_root / "python-snapshots"
+        self._python_dependency_root = base_provision_root / "python-dependencies"
         self._outcomes: dict[str, bool] = {}
+        self._install_diagnostics: dict[
+            str, tuple[bool, int | None, str, BaseException | None]
+        ] = {}
+        self._active_dependency_targets: dict[str, Path] = {}
+        self._active_dependency_import_roots: dict[str, frozenset[str]] = {}
         self._lock = threading.Lock()
 
     def _selected_distribution(
@@ -984,6 +1316,62 @@ class AllowlistedPipInstaller:
         except OSError:
             return None
 
+    def _private_provision_directory(
+        self, path: Path, *, create: bool
+    ) -> Path | None:
+        """Validate every directory from the provision root to *path*."""
+
+        try:
+            base = self._provision_root.absolute()
+            requested = path.absolute()
+            requested.relative_to(base)
+            # Reject aliases and attacker-controlled ancestors before creating
+            # through them.  Root-owned and current-user-owned ancestors are
+            # accepted when they are not group/other writable.  The one normal
+            # exception is the platform temporary directory itself: it must be
+            # sticky, while the provision root below it remains owner-private.
+            current_uid = getattr(os, "getuid", lambda: None)()
+            try:
+                platform_temp = Path(tempfile.gettempdir()).resolve(strict=True)
+            except (OSError, RuntimeError):
+                platform_temp = None
+            for ancestor in (base, *base.parents):
+                if ancestor.is_symlink():
+                    return None
+                if not ancestor.exists():
+                    continue
+                metadata = os.lstat(ancestor)
+                if not ancestor.is_dir():
+                    return None
+                if os.name != "nt":
+                    if current_uid is not None and metadata.st_uid not in {
+                        0,
+                        current_uid,
+                    }:
+                        return None
+                    if metadata.st_mode & 0o022:
+                        sticky_platform_temp = (
+                            platform_temp is not None
+                            and ancestor.resolve(strict=True) == platform_temp
+                            and bool(metadata.st_mode & 0o1000)
+                        )
+                        if not sticky_platform_temp:
+                            return None
+            if not base.exists() and not create:
+                return None
+            validated_base = self._private_directory(base, create=create)
+            if validated_base != base:
+                return None
+            current = base
+            for component in requested.relative_to(base).parts:
+                current = current / component
+                validated = self._private_directory(current, create=create)
+                if validated != current:
+                    return None
+            return requested
+        except (OSError, RuntimeError, ValueError):
+            return None
+
     @staticmethod
     def _snapshot_receipt() -> dict[str, Any]:
         return {
@@ -1023,7 +1411,7 @@ class AllowlistedPipInstaller:
 
     def _validated_private_snapshot_target(self) -> Path | None:
         root = self._datasets_snapshot_target()
-        if self._private_directory(root, create=False) is None:
+        if self._private_provision_directory(root, create=False) is None:
             return None
         receipt_path = root / _DATASETS_VERIFIER_RECEIPT_NAME
         try:
@@ -1078,6 +1466,348 @@ class AllowlistedPipInstaller:
             return True
         except OSError:
             return False
+
+    @staticmethod
+    def _dependency_descriptor(dependency: ProofReuseDependency) -> dict[str, Any]:
+        return {
+            "module_name": dependency.module_name,
+            "distribution": dependency.distribution,
+            "required_symbols": list(dependency.required_symbols),
+            "pip_options": list(dependency.pip_options),
+            "install_environment": [list(item) for item in dependency.install_environment],
+            "python_cache_tag": str(sys.implementation.cache_tag or ""),
+            "python_version": [sys.version_info.major, sys.version_info.minor],
+            "platform_tag": sysconfig.get_platform(),
+        }
+
+    def _dependency_target_prefix(self, dependency: ProofReuseDependency) -> str:
+        descriptor = json.dumps(
+            self._dependency_descriptor(dependency),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        identity = hashlib.sha256(descriptor).hexdigest()
+        safe_module = dependency.module_name.replace(".", "-")[:80]
+        return f"{safe_module}-{identity}"
+
+    def _dependency_target(
+        self, dependency: ProofReuseDependency, *, tree_sha256: str
+    ) -> Path:
+        return self._python_dependency_root / (
+            f"{self._dependency_target_prefix(dependency)}-{tree_sha256}"
+        )
+
+    def _dependency_target_candidates(
+        self, dependency: ProofReuseDependency
+    ) -> tuple[Path, ...]:
+        try:
+            if not self._python_dependency_root.is_dir():
+                return ()
+            prefix = f"{self._dependency_target_prefix(dependency)}-"
+            candidates: list[Path] = []
+            for child in self._python_dependency_root.iterdir():
+                if child.name.startswith(prefix):
+                    candidates.append(child)
+                    if len(candidates) > 2:
+                        return tuple(candidates)
+            return tuple(sorted(candidates, key=lambda item: item.name))
+        except OSError:
+            return ()
+
+    @staticmethod
+    def _dependency_tree_digest(root: Path) -> tuple[str, int, int] | None:
+        try:
+            resolved_root = root.resolve(strict=True)
+            files: list[Path] = []
+            entries = 0
+            for path in root.rglob("*"):
+                entries += 1
+                if entries > 40_000 or path.is_symlink():
+                    return None
+                if (
+                    path.name != _PYTHON_DEPENDENCY_RECEIPT_NAME
+                    and path.is_file()
+                ):
+                    files.append(path)
+                    if len(files) > 20_000:
+                        return None
+            files.sort(key=lambda path: path.relative_to(root).as_posix())
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if not files:
+            return None
+        digest = hashlib.sha256()
+        total = 0
+        for path in files:
+            try:
+                if path.is_symlink():
+                    return None
+                resolved = path.resolve(strict=True)
+                resolved.relative_to(resolved_root)
+                relative_text = path.relative_to(root).as_posix()
+                if len(relative_text.encode("utf-8")) > 512:
+                    return None
+                metadata = path.stat()
+                if metadata.st_size < 0 or metadata.st_size > 64 * 1024 * 1024:
+                    return None
+                if total + metadata.st_size > 512 * 1024 * 1024:
+                    return None
+                payload = path.read_bytes()
+            except (OSError, RuntimeError, ValueError):
+                return None
+            if len(payload) != metadata.st_size:
+                return None
+            total += len(payload)
+            relative = relative_text.encode("utf-8")
+            digest.update(relative)
+            digest.update(b"\0")
+            digest.update(str(len(payload)).encode("ascii"))
+            digest.update(b"\0")
+            digest.update(hashlib.sha256(payload).digest())
+        return digest.hexdigest(), total, len(files)
+
+    def _validated_dependency_target_at(
+        self, dependency: ProofReuseDependency, root: Path
+    ) -> Path | None:
+        if self._private_provision_directory(root, create=False) is None:
+            return None
+        receipt_path = root / _PYTHON_DEPENDENCY_RECEIPT_NAME
+        try:
+            if receipt_path.is_symlink() or receipt_path.stat().st_size > 16_384:
+                return None
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError, TypeError):
+            return None
+        expected_keys = {
+            "interface",
+            "descriptor",
+            "descriptor_sha256",
+            "tree_sha256",
+            "tree_bytes",
+            "tree_files",
+            "private_target",
+        }
+        if not isinstance(receipt, dict) or set(receipt) != expected_keys:
+            return None
+        descriptor = self._dependency_descriptor(dependency)
+        descriptor_bytes = json.dumps(
+            descriptor, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        if (
+            receipt.get("interface") != _PYTHON_DEPENDENCY_RECEIPT_INTERFACE
+            or receipt.get("descriptor") != descriptor
+            or receipt.get("descriptor_sha256")
+            != hashlib.sha256(descriptor_bytes).hexdigest()
+            or receipt.get("private_target") is not True
+        ):
+            return None
+        tree = self._dependency_tree_digest(root)
+        if tree is None or tree != (
+            receipt.get("tree_sha256"),
+            receipt.get("tree_bytes"),
+            receipt.get("tree_files"),
+        ):
+            return None
+        if root != self._dependency_target(dependency, tree_sha256=tree[0]):
+            return None
+        top_level = dependency.module_name.split(".", 1)[0]
+        if not ((root / top_level).is_dir() or (root / f"{top_level}.py").is_file()):
+            return None
+        if not self._snapshot_tree_is_private(root):
+            return None
+        return root.resolve(strict=True)
+
+    def _validated_dependency_target(
+        self, dependency: ProofReuseDependency
+    ) -> Path | None:
+        candidates = self._dependency_target_candidates(dependency)
+        if len(candidates) != 1:
+            return None
+        return self._validated_dependency_target_at(dependency, candidates[0])
+
+    @staticmethod
+    def _dependency_import_roots(root: Path) -> frozenset[str] | None:
+        roots: set[str] = set()
+        try:
+            children = tuple(root.iterdir())
+            if len(children) > 2_048:
+                return None
+            for child in children:
+                if child.is_symlink() or child.suffix == ".pth":
+                    return None
+                name = child.name
+                if name == _PYTHON_DEPENDENCY_RECEIPT_NAME:
+                    continue
+                if child.is_dir():
+                    if name.endswith((".dist-info", ".egg-info", ".data")) or name in {
+                        "bin",
+                        "__pycache__",
+                    }:
+                        continue
+                    if name.isidentifier():
+                        roots.add(name)
+                elif child.is_file() and child.suffix == ".py":
+                    if child.stem.isidentifier():
+                        roots.add(child.stem)
+            return frozenset(roots) if roots else None
+        except OSError:
+            return None
+
+    @staticmethod
+    def _loaded_import_roots_match_target(
+        root: Path, import_roots: frozenset[str]
+    ) -> bool:
+        try:
+            resolved_root = root.resolve(strict=True)
+            for name, module in tuple(sys.modules.items()):
+                if name.split(".", 1)[0] not in import_roots:
+                    continue
+                module_file = str(getattr(module, "__file__", "") or "")
+                if not module_file:
+                    return False
+                Path(module_file).resolve(strict=True).relative_to(resolved_root)
+            return True
+        except (OSError, RuntimeError, ValueError):
+            return False
+
+    def activate_cached_dependency(self, dependency: ProofReuseDependency) -> bool:
+        """Activate an intact private target without importing its module."""
+
+        if dependency.module_name == DATASETS_VERIFIER_MODULE:
+            return self.activate_cached_datasets_verifier()
+        target = self._validated_dependency_target(dependency)
+        if target is None:
+            return False
+        import_roots = self._dependency_import_roots(target)
+        if import_roots is None or not self._loaded_import_roots_match_target(
+            target, import_roots
+        ):
+            return False
+        target_text = str(target)
+        while target_text in sys.path:
+            sys.path.remove(target_text)
+        # The private target must control every package it resolved.  Existing
+        # loaded modules from those roots were rejected above.
+        sys.path.insert(0, target_text)
+        self._active_dependency_targets[dependency.module_name] = target
+        self._active_dependency_import_roots[dependency.module_name] = import_roots
+        importlib.invalidate_caches()
+        return True
+
+    def _install_dependency_private_target(
+        self,
+        dependency: ProofReuseDependency,
+    ) -> tuple[bool, int | None, str, BaseException | None]:
+        if self.activate_cached_dependency(dependency):
+            return True, 0, "cached private target", None
+        if self._dependency_target_candidates(dependency):
+            return False, None, "corrupt private target", None
+        parent = self._private_provision_directory(
+            self._python_dependency_root, create=True
+        )
+        if parent is None:
+            return False, None, "private target unavailable", None
+        distribution = self._selected_distribution(dependency)
+        if not distribution:
+            return False, None, "no matching distribution found", None
+        try:
+            temporary = tempfile.TemporaryDirectory(
+                prefix=".python-dependency-install-",
+                dir=parent,
+                ignore_cleanup_errors=True,
+            )
+        except OSError as exc:
+            return False, None, "private target unavailable", exc
+        with temporary:
+            staging = Path(temporary.name) / "target"
+            try:
+                staging.mkdir(mode=0o700)
+            except OSError as exc:
+                return False, None, "private target unavailable", exc
+            command = (
+                sys.executable,
+                "-I",
+                "-m",
+                "pip",
+                "--isolated",
+                "install",
+                "--disable-pip-version-check",
+                "--no-input",
+                "--no-compile",
+                "--target",
+                str(staging),
+                *dependency.pip_options,
+                distribution,
+            )
+            run_environment = isolated_pip_environment(
+                self._environ,
+                additions=dict(dependency.install_environment),
+            )
+            try:
+                completed = self._runner(
+                    command,
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=self._timeout_seconds,
+                    env=run_environment,
+                )
+            except Exception as exc:
+                return False, None, "", exc
+            # Pip output is intentionally discarded instead of accumulated in
+            # memory.  Exit status is sufficient for graceful RUN fallback.
+            output = ""
+            code = int(getattr(completed, "returncode", 1))
+            if code != 0:
+                return False, code, output, None
+            tree = self._dependency_tree_digest(staging)
+            if tree is None:
+                return False, code, "installed target is empty or invalid", None
+            target = self._dependency_target(dependency, tree_sha256=tree[0])
+            descriptor = self._dependency_descriptor(dependency)
+            descriptor_bytes = json.dumps(
+                descriptor, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+            receipt = {
+                "interface": _PYTHON_DEPENDENCY_RECEIPT_INTERFACE,
+                "descriptor": descriptor,
+                "descriptor_sha256": hashlib.sha256(descriptor_bytes).hexdigest(),
+                "tree_sha256": tree[0],
+                "tree_bytes": tree[1],
+                "tree_files": tree[2],
+                "private_target": True,
+            }
+            try:
+                (staging / _PYTHON_DEPENDENCY_RECEIPT_NAME).write_text(
+                    json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n",
+                    encoding="utf-8",
+                )
+                with _PRIVATE_TARGET_PUBLICATION_LOCK:
+                    if self.activate_cached_dependency(dependency):
+                        return True, 0, "concurrent private target reused", None
+                    if self._dependency_target_candidates(dependency):
+                        return False, code, "conflicting private target", None
+                    os.replace(staging, target)
+                    if not self._harden_snapshot_tree(target):
+                        return False, code, "private target hardening failed", None
+            except OSError as exc:
+                if self.activate_cached_dependency(dependency):
+                    return True, 0, "concurrent private target reused", None
+                return False, code, output, exc
+        if not self.activate_cached_dependency(dependency):
+            return False, 0, "private target provenance validation failed", None
+        return True, 0, output, None
+
+    def install_with_diagnostics(
+        self, dependency: ProofReuseDependency
+    ) -> tuple[bool, int | None, str, BaseException | None]:
+        """Install to a private target and retain typed process diagnostics."""
+
+        succeeded = self.install(dependency)
+        return self._install_diagnostics.get(
+            dependency.module_name,
+            (succeeded, 0 if succeeded else None, "", None),
+        )
 
     def _activate_private_snapshot(self, root: Path) -> bool:
         """Overlay reviewed ZKP code without executing an unreviewed parent."""
@@ -1267,7 +1997,9 @@ class AllowlistedPipInstaller:
         if target.exists():
             # A corrupt content-addressed target is never replaced in place.
             return False
-        parent = self._private_directory(self._python_snapshot_root, create=True)
+        parent = self._private_provision_directory(
+            self._python_snapshot_root, create=True
+        )
         if parent is None:
             return False
         blobs = self.reviewed_datasets_verifier_snapshot_blobs()
@@ -1325,13 +2057,41 @@ class AllowlistedPipInstaller:
         """Attest every loaded authority module to the CAS or reviewed tree."""
 
         if dependency.module_name != DATASETS_VERIFIER_MODULE:
-            return True
+            active = self._active_dependency_targets.get(dependency.module_name)
+            if active is None:
+                # A dependency already provided by the interpreter remains an
+                # operator/environment responsibility.  Once this installer
+                # activates a private target, provenance is exact and local.
+                return True
+            module_file = str(getattr(module, "__file__", "") or "")
+            if not module_file:
+                return False
+            try:
+                loaded = Path(module_file).resolve(strict=True)
+                loaded.relative_to(active.resolve(strict=True))
+            except (OSError, RuntimeError, ValueError):
+                return False
+            import_roots = self._active_dependency_import_roots.get(
+                dependency.module_name
+            )
+            return bool(
+                import_roots
+                and self._validated_dependency_target(dependency) == active
+                and self._loaded_import_roots_match_target(active, import_roots)
+            )
+        return self.validate_datasets_authority_module(module)
+
+    def validate_datasets_authority_module(self, module: Any) -> bool:
+        """Attest one datasets ZKP module and the loaded authority closure."""
+
+        module_name = str(getattr(module, "__name__", "") or "")
+        expected_text = _datasets_authority_module_relative_path(module_name)
+        if expected_text is None:
+            return False
         module_file = str(getattr(module, "__file__", "") or "")
         if not module_file:
             return False
-        expected_relative = Path(
-            "ipfs_datasets_py/logic/zkp/test_execution_certificate.py"
-        )
+        expected_relative = Path(expected_text)
         try:
             loaded_module_path = Path(module_file).resolve(strict=True)
         except (OSError, RuntimeError):
@@ -1592,36 +2352,17 @@ class AllowlistedPipInstaller:
                 return previous
             if dependency.module_name == DATASETS_VERIFIER_MODULE:
                 succeeded = self._install_datasets_verifier_snapshot(dependency)
+                self._install_diagnostics[dependency.module_name] = (
+                    succeeded,
+                    0 if succeeded else None,
+                    "private reviewed snapshot" if succeeded else "snapshot unavailable",
+                    None,
+                )
                 self._outcomes[dependency.module_name] = succeeded
                 return succeeded
-            distribution = self._selected_distribution(dependency)
-            if distribution is None:
-                self._outcomes[dependency.module_name] = False
-                return False
-            command = (
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--disable-pip-version-check",
-                "--no-input",
-                *dependency.pip_options,
-                distribution,
-            )
-            run_environment = dict(self._environ)
-            run_environment.update(dict(dependency.install_environment))
-            try:
-                completed = self._runner(
-                    command,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    timeout=self._timeout_seconds,
-                    env=run_environment,
-                )
-                succeeded = getattr(completed, "returncode", 1) == 0
-            except Exception:
-                succeeded = False
+            result = self._install_dependency_private_target(dependency)
+            succeeded = result[0]
+            self._install_diagnostics[dependency.module_name] = result
             self._outcomes[dependency.module_name] = succeeded
             return succeeded
 
@@ -1722,10 +2463,12 @@ class LazyProofReuseServiceResolver:
             for symbol in dependency.required_symbols
         ):
             return None, False
-        if dependency.module_name == DATASETS_VERIFIER_MODULE:
-            validate = getattr(provenance_owner, "validate_module_provenance", None)
-            if not callable(validate):
-                return None, False
+        validate = getattr(provenance_owner, "validate_module_provenance", None)
+        if dependency.module_name == DATASETS_VERIFIER_MODULE and not callable(
+            validate
+        ):
+            return None, False
+        if callable(validate):
             try:
                 if validate(dependency, module) is not True:
                     return None, False
@@ -1892,6 +2635,146 @@ class LazyRealTestCertificateIssuer:
     def last_artifact_bindings(self) -> Any:
         return self._last_bindings
 
+    def validate_authority_module_provenance(self, module: Any) -> bool:
+        """Require the resolver's exact datasets authority snapshot."""
+
+        validator = getattr(
+            self._installer, "validate_authority_module_provenance", None
+        )
+        return bool(callable(validator) and validator(module))
+
+    def verify_certificate_locally(
+        self,
+        certificate: Any,
+        bindings: Any,
+        context: Mapping[str, Any],
+    ) -> Any:
+        """Reconstruct controller pins and run the exact local v4 verifier.
+
+        This is deliberately unavailable for generic/injected factories.  The
+        The binding comes only from a controller-reconstructed typed request,
+        never certificate metadata.  Its receipt identity is cross-checked
+        before the reviewed datasets verifier invokes the same pinned native
+        provider used for issuance.
+        """
+
+        if (
+            bindings is None
+            or bindings is not self._last_bindings
+            or not getattr(bindings, "provenance_ready", False)
+            or self._factory is None
+            or not isinstance(certificate, Mapping)
+            or not isinstance(context, Mapping)
+        ):
+            return False
+        request = context.get("deferred_request")
+        receipt = context.get("receipt")
+        if not isinstance(receipt, Mapping):
+            return False
+
+        provider = getattr(self._factory, "provider", None)
+        if provider is None or not callable(getattr(provider, "verify_proof_json", None)):
+            return False
+        try:
+            provider_module = importlib.import_module(type(provider).__module__)
+            verifier_module = importlib.import_module(
+                "ipfs_datasets_py.logic.zkp.test_execution_certificate"
+            )
+            binding_module = importlib.import_module(
+                "ipfs_datasets_py.logic.zkp.provekit.test_pass_circuit"
+            )
+            issuer_module = importlib.import_module(
+                "ipfs_datasets_py.logic.zkp.test_certificate_issuer"
+            )
+        except Exception:
+            return False
+        if not all(
+            self.validate_authority_module_provenance(module)
+            for module in (
+                provider_module,
+                verifier_module,
+                binding_module,
+                issuer_module,
+            )
+        ):
+            return False
+        request_type = getattr(issuer_module, "DeferredTestCertificateRequest", None)
+        if request_type is None or not isinstance(request, request_type):
+            # A flattened xdist mapping cannot reconstruct the admitted-pass
+            # statement.  It remains non-authoritative until the controller
+            # retrieves the retained public CAS bytes and rebuilds this type.
+            return False
+        public_inputs = request.statement.to_public_inputs()
+        receipt_cid = str(
+            receipt.get("receipt_id") or receipt.get("receipt_cid") or ""
+        )
+        if not receipt_cid:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.proof.test_execution_contracts import (
+                    TestPassReceipt,
+                )
+
+                receipt_cid = TestPassReceipt.from_dict(receipt).receipt_id
+            except Exception:
+                return False
+        if not receipt_cid or receipt_cid != request.receipt_cid:
+            return False
+        if (
+            request.circuit_cid != bindings.circuit_cid
+            or request.verifying_key_cid != bindings.verifying_key_cid
+            or request.backend_id != "groth16"
+            or request.proof_system_id != "groth16"
+        ):
+            return False
+        try:
+            provider_root = Path(provider.artifacts_root()).resolve(strict=True)
+            expected_root = Path(bindings.artifacts_root).resolve(strict=True)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return False
+        if provider_root != expected_root:
+            return False
+
+        class PinnedGroth16NativeVerifier:
+            backend_id = "groth16"
+
+            def verify_proof(self, proof: Any) -> bool:
+                try:
+                    proof_json = json.loads(bytes(proof.proof_data).decode("utf-8"))
+                except Exception:
+                    return False
+                return bool(
+                    isinstance(proof_json, Mapping)
+                    and provider.verify_proof_json(proof_json) is True
+                )
+
+        try:
+            binding = binding_module.TestPassCircuitBinding(
+                request.statement,
+                expected_public_inputs=public_inputs,
+                backend_id="groth16",
+                proof_system_id="groth16",
+                circuit_cid=bindings.circuit_cid,
+                verifying_key_cid=bindings.verifying_key_cid,
+                statement_cid=request.statement_cid,
+                issuer_id=request.issuer_id,
+                policy_cid=request.policy_cid,
+                epoch=request.epoch,
+                candidate_context_cid=request.candidate_context_cid,
+                verifier_artifacts={
+                    "verifying_key_path": str(
+                        expected_root / "v4" / "verifying_key.bin"
+                    )
+                },
+            )
+            return verifier_module.verify_test_execution_certificate_v2(
+                certificate,
+                binding,
+                PinnedGroth16NativeVerifier(),
+                expected_candidate_context_cid=request.candidate_context_cid,
+            )
+        except Exception:
+            return False
+
     def _env_view(self) -> Mapping[str, str]:
         return self._environ if self._environ is not None else os.environ
 
@@ -1907,7 +2790,16 @@ class LazyRealTestCertificateIssuer:
         if not callable(ensure):
             return
         try:
-            ensure(consent=True)
+            ensure(
+                consent=True,
+                required_circuit_version=TEST_PASS_GROTH16_CIRCUIT_VERSION,
+            )
+        except TypeError:
+            # Narrow compatibility for injected test/application installers.
+            try:
+                ensure(consent=True)
+            except Exception:
+                return
         except Exception:
             return
         inspect = getattr(installer, "inspect_groth16_runtime", None)
@@ -2226,9 +3118,24 @@ def probe_native_groth16_readiness(
         ensure = getattr(installer, "ensure_groth16_native_backend", None)
         if callable(ensure):
             try:
-                resolution = ensure(consent=False)
+                try:
+                    resolution = ensure(
+                        consent=False,
+                        required_circuit_version=TEST_PASS_GROTH16_CIRCUIT_VERSION,
+                    )
+                except TypeError:
+                    resolution = ensure(consent=False)
                 available = bool(getattr(resolution, "available", False))
+                resolution_diagnostics = getattr(resolution, "diagnostics", {})
+                if isinstance(resolution_diagnostics, Mapping):
+                    process_started = process_started or bool(
+                        resolution_diagnostics.get("process_started")
+                    )
                 installed = available
+                if ready and not available:
+                    runtime_status["generic_runtime_ready"] = True
+                    ready = False
+                    reason = "native_v4_capability_unready"
                 if available and not ready:
                     # Binary present but runtime aggregate may still be unready.
                     reason = str(
@@ -2263,6 +3170,7 @@ def probe_native_groth16_readiness(
             diagnostics["knowledge_of_axioms_circuit"]
         ),
         "skip_authority": False,  # native readiness never grants skip alone
+        "required_circuit_version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
         "network_attempted": network_attempted,
         "process_started": process_started,
         "install_attempted": False,
@@ -2321,6 +3229,9 @@ def probe_test_certificate_authority(
             "verifying_key_cid": str(bindings.verifying_key_cid or "")[:128],
             "backend_circuit_version": int(bindings.backend_circuit_version),
             "artifacts_root": str(bindings.artifacts_root or "")[:256],
+            "process_started": bool(
+                getattr(bindings, "diagnostics", {}).get("process_started", False)
+            ),
         }
     except Exception as exc:
         bindings_payload["reason_code"] = f"binding_probe_failed:{type(exc).__name__}"[
@@ -2355,7 +3266,7 @@ def probe_test_certificate_authority(
         "native_groth16_installed": bool(native.get("installed")),
         "artifact_bindings": bindings_payload,
         "network_attempted": False,
-        "process_started": False,
+        "process_started": bool(bindings_payload.get("process_started", False)),
         "install_attempted": False,
         "import_for_readiness": False,
         "prove_attempted": False,
@@ -2639,6 +3550,9 @@ def compose_default_proof_reuse_services(
     reason_code = ""
     degraded = False
     env = environ if environ is not None else os.environ
+    effective_installer = (
+        installer if proof_reuse_install_permitted(env) else None
+    )
 
     resolved_identity = identity_services
     if resolved_identity is None and mode is not None:
@@ -2681,7 +3595,9 @@ def compose_default_proof_reuse_services(
                 # installer. Policy-aware facades/plugins must inject the
                 # strict lazy installer explicitly when both consent gates
                 # permit mutation.
-                resolved_resolver = LazyProofReuseServiceResolver(installer=installer)
+                resolved_resolver = LazyProofReuseServiceResolver(
+                    installer=effective_installer
+                )
             except Exception:
                 resolved_resolver = None
                 degraded = True
@@ -2771,7 +3687,7 @@ def compose_default_proof_reuse_services(
     if resolved_issuer is None:
         resolved_issuer = LazyRealTestCertificateIssuer(
             store=resolved_store,
-            installer=installer,
+            installer=effective_installer,
             environ=env if isinstance(env, dict) else None,
         )
 

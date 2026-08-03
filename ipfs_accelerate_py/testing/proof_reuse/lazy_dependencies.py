@@ -37,9 +37,14 @@ from urllib.parse import urlsplit
 from .services import (
     DATASETS_GROTH16_ARTIFACTS_ROOT_ENV,
     DATASETS_GROTH16_BINARY_ENV,
+    DATASETS_GROTH16_BUNDLED_BINARY_CAPABILITIES,
     DATASETS_GROTH16_BUNDLED_BINARIES_SHA256,
+    DATASETS_GROTH16_CAPABILITY_PAYLOADS_SHA256,
+    DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY,
+    DATASETS_GROTH16_RELEASE_MANIFESTS_SHA256,
     DATASETS_GROTH16_REVIEWED_ARTIFACTS_SHA256,
     DATASETS_GROTH16_REVIEWED_FILES_SHA256,
+    DATASETS_GROTH16_REVIEWED_SOURCE_FINGERPRINT,
     DATASETS_VERIFIER_DEPENDENCY,
     DATASETS_VERIFIER_REVISION,
     DEFAULT_NLTK_DATA_RESOURCES,
@@ -47,22 +52,35 @@ from .services import (
     MULTIFORMATS_DEPENDENCY,
     NLTK_DATA_RESOURCE_ALLOWLIST,
     NLTK_DEPENDENCY,
+    PACKAGE_AUTO_INSTALL_ENV,
     PROOF_REUSE_CACHE_DIR_ENV,
     PROOF_REUSE_DEPENDENCY_ALLOWLIST,
     PROOF_REUSE_GROTH16_BUILD_ENV,
     PROOF_REUSE_GROTH16_CIRCUIT_REF_ENV,
     PROOF_REUSE_GROTH16_ENDPOINT_ENV,
+    PROOF_REUSE_GROTH16_NATIVE_RECEIPT_ENV,
     PROOF_REUSE_NLTK_DATA_DIR_ENV,
     PROOF_REUSE_NLTK_DOWNLOAD_ENV,
     PROOF_REUSE_PROVISION_DIR_ENV,
     AllowlistedPipInstaller,
     DefaultProofReuseServices,
     ProofReuseDependency,
+    TEST_PASS_GROTH16_CIRCUIT_CID,
+    TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256,
+    TEST_PASS_GROTH16_CIRCUIT_VERSION,
+    TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256,
+    TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS,
     automatic_install_enabled,
     compose_default_proof_reuse_services,
     groth16_build_enabled,
+    isolated_pip_environment,
     nltk_data_download_enabled,
+    package_auto_install_policy_permits,
+    proof_reuse_install_permitted,
     proof_reuse_dependency_plan,
+    GROTH16_NATIVE_BUILD_RECEIPT_INTERFACE,
+    validate_groth16_capability_payload,
+    validate_groth16_release_manifest_payload,
 )
 
 PROOF_REUSE_LAZY_DEPENDENCY_INSTALLER_INTERFACE: Final = (
@@ -72,9 +90,6 @@ ACCELERATOR_PROOF_REUSE_BOOTSTRAP_INTERFACE: Final = "AcceleratorProofReuseBoots
 
 PLUGIN_MODULE: Final = "ipfs_accelerate_py.testing.proof_reuse.plugin"
 PROOF_REUSE_CONFIG_MODULE: Final = "ipfs_accelerate_py.testing.proof_reuse.config"
-
-# Package-level auto-install policy (orthogonal to proof-reuse mode policy).
-PACKAGE_AUTO_INSTALL_ENV: Final = "IPFS_ACCEL_AUTO_INSTALL"
 
 # Internal, non-authoritative provenance continuity for a reviewed artifacts
 # directory published to a child process.  Possessing or forging this value can
@@ -100,6 +115,7 @@ REASON_GROTH16_BUILD_DISABLED: Final = "groth16_build_disabled"
 REASON_GROTH16_SOURCE_INVALID: Final = "groth16_source_invalid"
 REASON_GROTH16_TOOLCHAIN_MISSING: Final = "groth16_toolchain_missing"
 REASON_GROTH16_BINARY_MISSING: Final = "groth16_binary_missing"
+REASON_GROTH16_CAPABILITY_MISMATCH: Final = "groth16_capability_mismatch"
 REASON_GROTH16_ENDPOINT_UNCONFIGURED: Final = "groth16_endpoint_unconfigured"
 REASON_GROTH16_KEYS_MISSING: Final = "groth16_keys_missing"
 REASON_GROTH16_CIRCUIT_UNCONFIGURED: Final = "groth16_circuit_unconfigured"
@@ -149,7 +165,7 @@ _INSTALL_THREAD_LOCK = threading.Lock()
 _NLTK_DATA_THREAD_LOCK = threading.Lock()
 _GROTH16_BUILD_THREAD_LOCK = threading.Lock()
 
-_GROTH16_BUILD_RECEIPT_INTERFACE: Final = "Groth16NativeBuildReceipt@1"
+_GROTH16_BUILD_RECEIPT_INTERFACE: Final = GROTH16_NATIVE_BUILD_RECEIPT_INTERFACE
 _GROTH16_BUILD_RECEIPT_NAME: Final = "groth16-native-build.json"
 _GROTH16_BUILD_RECEIPT_MAX_BYTES: Final = 64 * 1024
 _GROTH16_BUILD_BINARY_MAX_BYTES: Final = 128 * 1024 * 1024
@@ -202,40 +218,6 @@ class ProofReuseCapabilityResolution:
             "action": self.action,
             "diagnostics": dict(self.diagnostics),
         }
-
-
-def package_auto_install_policy_permits(
-    environ: Mapping[str, str] | None = None,
-) -> bool:
-    """Return whether the package-level auto-install policy allows installs.
-
-    Controlled by ``IPFS_ACCEL_AUTO_INSTALL``.  When unset, permission defaults
-    to true inside a virtual environment and false otherwise (matching
-    :mod:`ipfs_accelerate_py.utils.auto_install`).  Invalid values deny.
-    """
-
-    source = os.environ if environ is None else environ
-    if PACKAGE_AUTO_INSTALL_ENV not in source:
-        try:
-            return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
-        except Exception:
-            return False
-    value = str(source.get(PACKAGE_AUTO_INSTALL_ENV, "")).strip().lower()
-    if value in _TRUE_VALUES:
-        return True
-    if value in _FALSE_VALUES:
-        return False
-    return False
-
-
-def proof_reuse_install_permitted(
-    environ: Mapping[str, str] | None = None,
-) -> bool:
-    """Both proof-reuse and package auto-install policies must permit install."""
-
-    return automatic_install_enabled(environ) and package_auto_install_policy_permits(
-        environ
-    )
 
 
 def resolve_capability_module_name(capability: str) -> str:
@@ -596,14 +578,42 @@ def _sha256_regular_file(
     *,
     max_bytes: int,
 ) -> str | None:
+    loaded = _read_regular_file_bytes(path, max_bytes=max_bytes)
+    return hashlib.sha256(loaded[0]).hexdigest() if loaded is not None else None
+
+
+def _read_regular_file_bytes(
+    path: Path,
+    *,
+    max_bytes: int,
+) -> tuple[bytes, os.stat_result] | None:
+    descriptor = -1
     try:
-        if path.is_symlink() or not path.is_file():
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        )
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
             return None
-        if path.stat().st_size > max_bytes:
+        if metadata.st_size <= 0 or metadata.st_size > max_bytes:
             return None
-        return hashlib.sha256(path.read_bytes()).hexdigest()
+        chunks: list[bytes] = []
+        remaining = metadata.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                return None
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            return None
+        return b"".join(chunks), metadata
     except OSError:
         return None
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
 
 
 def _configured_regular_file(value: str) -> Path | None:
@@ -709,6 +719,10 @@ class ProofReuseLazyDependencyInstaller:
         self._outcomes: dict[str, ProofReuseCapabilityResolution] = {}
         self._provision_outcomes: dict[str, ProofReuseCapabilityResolution] = {}
         self._reviewed_groth16_artifacts_root: Path | None = None
+        self._groth16_backend_source_kind = "unavailable"
+        self._validated_native_binary_identities: dict[
+            Path, tuple[str, int]
+        ] = {}
         self._lock = threading.Lock()
 
     def allowlist(self) -> Mapping[str, ProofReuseDependency]:
@@ -749,6 +763,14 @@ class ProofReuseLazyDependencyInstaller:
     ) -> bool:
         validator = getattr(self._pip, "validate_module_provenance", None)
         return bool(callable(validator) and validator(dependency, module))
+
+    def validate_authority_module_provenance(self, module: Any) -> bool:
+        """Validate one datasets ZKP module against the exact snapshot root."""
+
+        validator = getattr(
+            self._pip, "validate_datasets_authority_module", None
+        )
+        return bool(callable(validator) and validator(module))
 
     def _lookup_dependency(
         self,
@@ -795,10 +817,7 @@ class ProofReuseLazyDependencyInstaller:
                 distribution=dependency.distribution,
                 diagnostics={"missing_symbols": missing_symbols},
             )
-        if (
-            dependency.module_name == DATASETS_VERIFIER_DEPENDENCY.module_name
-            and not self.validate_module_provenance(dependency, module)
-        ):
+        if not self.validate_module_provenance(dependency, module):
             return ProofReuseCapabilityResolution(
                 available=False,
                 reason_code=REASON_INCOMPATIBLE_VERSION,
@@ -927,6 +946,12 @@ class ProofReuseLazyDependencyInstaller:
                 else None
             )
         else:
+            activate_cached = getattr(self._pip, "activate_cached_dependency", None)
+            if callable(activate_cached):
+                try:
+                    activate_cached(selected)
+                except Exception:
+                    pass
             present = self._check_present(selected, capability=capability_key)
         if present is not None and present.available and not force_install:
             with self._lock:
@@ -989,6 +1014,14 @@ class ProofReuseLazyDependencyInstaller:
                     else None
                 )
             else:
+                activate_cached = getattr(
+                    self._pip, "activate_cached_dependency", None
+                )
+                if callable(activate_cached):
+                    try:
+                        activate_cached(selected)
+                    except Exception:
+                        pass
                 present = self._check_present(selected, capability=capability_key)
             if present is not None and present.available and not force_install:
                 with self._lock:
@@ -1064,43 +1097,34 @@ class ProofReuseLazyDependencyInstaller:
         allowed = PROOF_REUSE_DEPENDENCY_ALLOWLIST.get(dependency.module_name)
         if allowed != dependency:
             return False, None, "", None
-        # Prefer the allowlisted installer's distribution selection logic.
-        distribution = getattr(self._pip, "_selected_distribution", None)
-        selected: str | None
-        if callable(distribution):
-            selected = distribution(dependency)
-        else:
-            selected = dependency.distribution
-        if not selected:
-            return False, None, "no matching distribution found", None
-        command = (
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--disable-pip-version-check",
-            "--no-input",
-            *dependency.pip_options,
-            selected,
-        )
-        run_environment = dict(self._environ)
-        run_environment.update(dict(dependency.install_environment))
+        private_install = getattr(self._pip, "install_with_diagnostics", None)
+        if not callable(private_install):
+            # A custom installer without an explicit private-target contract
+            # must fail closed rather than mutate the interpreter environment.
+            return False, None, "private target installer unavailable", None
         try:
-            completed = self._runner(  # type: ignore[misc]
-                command,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=self._timeout_seconds,
-                env=run_environment,
-            )
+            result = private_install(dependency)
         except Exception as exc:  # noqa: BLE001
             return False, None, "", exc
-        stdout = getattr(completed, "stdout", "") or ""
-        stderr = getattr(completed, "stderr", "") or ""
-        output = f"{stdout}\n{stderr}".strip()
-        code = getattr(completed, "returncode", 1)
-        return code == 0, int(code) if code is not None else None, output, None
+        if (
+            not isinstance(result, tuple)
+            or len(result) != 4
+            or not isinstance(result[0], bool)
+            or (
+                result[1] is not None
+                and (
+                    isinstance(result[1], bool)
+                    or not isinstance(result[1], int)
+                )
+            )
+            or not isinstance(result[2], str)
+            or (
+                result[3] is not None
+                and not isinstance(result[3], BaseException)
+            )
+        ):
+            return False, None, "invalid private target installer result", None
+        return result
 
     def _remember_provision(
         self,
@@ -1372,6 +1396,7 @@ class ProofReuseLazyDependencyInstaller:
                 )
             command = (
                 sys.executable,
+                "-I",
                 "-m",
                 "nltk.downloader",
                 "--quiet",
@@ -1381,7 +1406,7 @@ class ProofReuseLazyDependencyInstaller:
                 *(("--force",) if force else ()),
                 *missing,
             )
-            run_environment = dict(self._environ)
+            run_environment = isolated_pip_environment(self._environ)
             existing_nltk_data = str(run_environment.get("NLTK_DATA", "")).strip()
             run_environment["NLTK_DATA"] = os.pathsep.join(
                 part for part in (str(download_root), existing_nltk_data) if part
@@ -1468,17 +1493,19 @@ class ProofReuseLazyDependencyInstaller:
             )
             return self._remember_provision_attempt(attempt_key, resolution)
 
-    def _validated_groth16_backend_dir(self) -> Path | None:
-        source_resolver = getattr(self._pip, "validated_local_datasets_source", None)
-        if not callable(source_resolver):
-            return None
+    @staticmethod
+    def _validated_groth16_backend_tree(backend: Path) -> Path | None:
+        """Validate every executable Cargo input by exact reviewed bytes."""
+
         try:
-            source = source_resolver()
-        except Exception:
+            if backend.is_symlink():
+                return None
+            resolved = backend.resolve(strict=True)
+        except (OSError, RuntimeError):
             return None
-        if not isinstance(source, Path):
+        if not resolved.is_dir():
             return None
-        backend = source / "ipfs_datasets_py" / "processors" / "groth16_backend"
+        backend = resolved
         expected_rust = {
             relative
             for relative in DATASETS_GROTH16_REVIEWED_FILES_SHA256
@@ -1488,11 +1515,11 @@ class ProofReuseLazyDependencyInstaller:
             actual_rust = {
                 path.relative_to(backend).as_posix()
                 for path in (backend / "src").rglob("*.rs")
-                if path.is_file()
+                if path.is_file() and not path.is_symlink()
             }
         except (OSError, RuntimeError):
             return None
-        if actual_rust != expected_rust or (backend / "build.rs").exists():
+        if actual_rust != expected_rust:
             return None
         for relative, expected_digest in DATASETS_GROTH16_REVIEWED_FILES_SHA256.items():
             actual = _sha256_regular_file(
@@ -1502,6 +1529,45 @@ class ProofReuseLazyDependencyInstaller:
             if actual != expected_digest:
                 return None
         return backend
+
+    @classmethod
+    def _installed_datasets_groth16_backend(cls) -> Path | None:
+        """Find exact wheel package data without importing ``ipfs_datasets_py``."""
+
+        try:
+            distribution = importlib.metadata.distribution("ipfs-datasets-py")
+            candidate = Path(
+                distribution.locate_file(
+                    "ipfs_datasets_py/processors/groth16_backend"
+                )
+            )
+        except Exception:
+            return None
+        return cls._validated_groth16_backend_tree(candidate)
+
+    def _validated_groth16_backend_dir(self) -> Path | None:
+        source_resolver = getattr(self._pip, "validated_local_datasets_source", None)
+        if callable(source_resolver):
+            try:
+                source = source_resolver()
+            except Exception:
+                source = None
+            if isinstance(source, Path):
+                validated = self._validated_groth16_backend_tree(
+                    source
+                    / "ipfs_datasets_py"
+                    / "processors"
+                    / "groth16_backend"
+                )
+                if validated is not None:
+                    self._groth16_backend_source_kind = "reviewed_local_git"
+                    return validated
+        installed = self._installed_datasets_groth16_backend()
+        if installed is not None:
+            self._groth16_backend_source_kind = "installed_distribution_package_data"
+            return installed
+        self._groth16_backend_source_kind = "unavailable"
+        return None
 
     def _configured_groth16_binary(self) -> Path | None:
         for name in (DATASETS_GROTH16_BINARY_ENV, "GROTH16_BINARY"):
@@ -1532,14 +1598,47 @@ class ProofReuseLazyDependencyInstaller:
         for platform_name, expected in DATASETS_GROTH16_BUNDLED_BINARIES_SHA256.items():
             candidate = backend / "bin" / platform_name / "groth16"
             digest = _sha256_regular_file(candidate, max_bytes=128 * 1024 * 1024)
-            if digest == expected:
+            release_manifest = (
+                backend / "bin" / platform_name / "release-manifest.json"
+            )
+            try:
+                release_payload = (
+                    release_manifest.read_bytes()
+                    if not release_manifest.is_symlink()
+                    and release_manifest.is_file()
+                    and release_manifest.stat().st_size <= 64 * 1024
+                    else b""
+                )
+            except OSError:
+                release_payload = b""
+            if (
+                digest == expected
+                and validate_groth16_release_manifest_payload(
+                    release_payload,
+                    platform_name=platform_name,
+                    binary_sha256=expected,
+                )
+            ):
                 available.append(platform_name)
         return tuple(sorted(available))
 
     @classmethod
-    def _reviewed_bundled_groth16_binary(cls, backend: Path) -> Path | None:
+    def _reviewed_bundled_groth16_binary(
+        cls,
+        backend: Path,
+        *,
+        required_circuit_version: int | None = None,
+    ) -> Path | None:
         platform_name = _platform_binary_name()
         if platform_name not in cls._reviewed_bundled_groth16_platforms(backend):
+            return None
+        capabilities = DATASETS_GROTH16_BUNDLED_BINARY_CAPABILITIES.get(
+            platform_name, ()
+        )
+        if (
+            required_circuit_version is not None
+            and required_circuit_version not in capabilities
+        ):
             return None
         candidate = backend / "bin" / platform_name / "groth16"
         if os.name != "nt" and not os.access(candidate, os.X_OK):
@@ -1559,35 +1658,164 @@ class ProofReuseLazyDependencyInstaller:
             "foreign_bundled_platforms": list(foreign_platforms),
             "foreign_binary_execution_attempted": False,
             "native_build_required": native_platform not in bundled_platforms,
+            "reviewed_bundled_supported_circuit_versions": list(
+                DATASETS_GROTH16_BUNDLED_BINARY_CAPABILITIES.get(
+                    native_platform, ()
+                )
+            ),
         }
+
+    def _probe_groth16_binary_capabilities(
+        self,
+        binary: Path,
+        *,
+        required_circuit_version: int,
+    ) -> tuple[bool, str]:
+        """Run only the bounded artifact-free PTR-151 capability command."""
+
+        environment = {
+            "PATH": os.defpath,
+            DATASETS_GROTH16_ARTIFACTS_ROOT_ENV: str(
+                self._provision_root / ".capability-probe-no-artifacts"
+            ),
+        }
+        for name in ("SYSTEMROOT", "WINDIR"):
+            value = str(self._environ.get(name, "") or "").strip()
+            if value:
+                environment[name] = value
+        try:
+            resolved = binary.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return False, "capability_probe_failed"
+        identity = self._validated_native_binary_identities.get(resolved)
+        if identity is None:
+            return False, "capability_binary_identity_unvalidated"
+        loaded = _read_regular_file_bytes(
+            resolved, max_bytes=_GROTH16_BUILD_BINARY_MAX_BYTES
+        )
+        if loaded is None:
+            return False, "capability_binary_identity_unvalidated"
+        binary_bytes, metadata = loaded
+        if (
+            hashlib.sha256(binary_bytes).hexdigest() != identity[0]
+            or metadata.st_size != identity[1]
+        ):
+            return False, "capability_binary_identity_mismatch"
+        executable_fd = -1
+        try:
+            command_path = str(resolved)
+            runner_kwargs: dict[str, Any] = {}
+            if os.name != "nt":
+                memfd_create = getattr(os, "memfd_create", None)
+                if not callable(memfd_create) or not Path("/proc/self/fd").is_dir():
+                    return False, "capability_fd_execution_unavailable"
+                executable_fd = memfd_create(
+                    "proof-reuse-reviewed-groth16",
+                    getattr(os, "MFD_CLOEXEC", 0),
+                )
+                view = memoryview(binary_bytes)
+                while view:
+                    written = os.write(executable_fd, view)
+                    if written <= 0:
+                        return False, "capability_fd_copy_failed"
+                    view = view[written:]
+                os.fchmod(executable_fd, 0o500)
+                command_path = f"/proc/self/fd/{executable_fd}"
+                runner_kwargs["pass_fds"] = (executable_fd,)
+            with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
+                completed = self._process_runner(
+                    (command_path, "capabilities", "--json"),
+                    cwd=str(Path(binary.anchor)),
+                    check=False,
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    timeout=min(5.0, self._native_timeout_seconds),
+                    env=environment,
+                    **runner_kwargs,
+                )
+                stdout_file.seek(0)
+                stderr_file.seek(0)
+                captured_stdout = stdout_file.read(65_537)
+                captured_stderr = stderr_file.read(65_537)
+        except Exception:
+            return False, "capability_probe_failed"
+        finally:
+            if executable_fd >= 0:
+                os.close(executable_fd)
+        after = _read_regular_file_bytes(
+            resolved, max_bytes=_GROTH16_BUILD_BINARY_MAX_BYTES
+        )
+        if (
+            after is None
+            or hashlib.sha256(after[0]).hexdigest() != identity[0]
+            or after[1].st_size != identity[1]
+        ):
+            return False, "capability_binary_changed_during_probe"
+        stdout_raw = getattr(completed, "stdout", b"") or captured_stdout
+        stderr_raw = getattr(completed, "stderr", b"") or captured_stderr
+        stdout = (
+            stdout_raw.encode("utf-8")
+            if isinstance(stdout_raw, str)
+            else bytes(stdout_raw)
+        )
+        stderr = (
+            stderr_raw.encode("utf-8")
+            if isinstance(stderr_raw, str)
+            else bytes(stderr_raw)
+        )
+        if (
+            getattr(completed, "returncode", 1) != 0
+            or len(stdout) > 65_536
+            or len(stderr) > 65_536
+            or stderr
+            or not validate_groth16_capability_payload(
+                stdout,
+                required_circuit_version=required_circuit_version,
+            )
+        ):
+            return False, "capability_payload_mismatch"
+        return True, "available"
 
     @staticmethod
     def _reviewed_groth16_source_fingerprint() -> str:
-        digest = hashlib.sha256()
-        digest.update(f"revision:{DATASETS_VERIFIER_REVISION}\n".encode())
-        for relative, expected in sorted(
-            DATASETS_GROTH16_REVIEWED_FILES_SHA256.items()
-        ):
-            digest.update(f"{relative}:{expected}\n".encode())
-        return digest.hexdigest()
+        return DATASETS_GROTH16_REVIEWED_SOURCE_FINGERPRINT
 
     @contextmanager
     def _reviewed_groth16_build_snapshot(self) -> Iterator[Path | None]:
         """Materialize only reviewed commit blobs into a private build tree."""
 
         blob_reader = getattr(self._pip, "reviewed_datasets_blobs", None)
-        if not callable(blob_reader):
-            yield None
-            return
         backend_prefix = "ipfs_datasets_py/processors/groth16_backend/"
         requested = {
             f"{backend_prefix}{relative}": digest
             for relative, digest in DATASETS_GROTH16_REVIEWED_FILES_SHA256.items()
         }
-        try:
-            blobs = blob_reader(requested)
-        except Exception:
+        if callable(blob_reader):
+            try:
+                blobs = blob_reader(requested)
+            except Exception:
+                blobs = None
+        else:
             blobs = None
+        if not isinstance(blobs, Mapping) or set(blobs) != set(requested):
+            # Standalone wheels package the exact locked Cargo source.  Read it
+            # only after the complete source closure has passed byte checks;
+            # no import or distribution-version label is trusted.
+            installed_backend = self._installed_datasets_groth16_backend()
+            if installed_backend is not None:
+                installed_blobs: dict[str, bytes] = {}
+                for repository_relative, expected_digest in requested.items():
+                    relative = repository_relative[len(backend_prefix) :]
+                    try:
+                        payload = (installed_backend / relative).read_bytes()
+                    except OSError:
+                        installed_blobs = {}
+                        break
+                    if hashlib.sha256(payload).hexdigest() != expected_digest:
+                        installed_blobs = {}
+                        break
+                    installed_blobs[repository_relative] = payload
+                blobs = installed_blobs
         if not isinstance(blobs, Mapping) or set(blobs) != set(requested):
             yield None
             return
@@ -1779,7 +2007,10 @@ class ProofReuseLazyDependencyInstaller:
         return payload, "loaded"
 
     def _validated_receipted_groth16_binary(
-        self, backend: Path
+        self,
+        backend: Path,
+        *,
+        required_circuit_version: int | None = None,
     ) -> tuple[Path | None, str]:
         receipt_path, root_status = self._groth16_receipt_path(create=False)
         if receipt_path is None:
@@ -1794,8 +2025,16 @@ class ProofReuseLazyDependencyInstaller:
             "native_platform",
             "binary_relative_path",
             "binary_sha256",
+            "binary_size",
             "cargo_locked",
             "trusted_setup",
+            "supported_circuit_versions",
+            "test_pass_circuit_version",
+            "test_pass_circuit_identity_sha256",
+            "test_pass_circuit_cid",
+            "test_pass_provider_source_sha256",
+            "locked_source_identity",
+            "capability_payload_sha256",
         }
         if set(payload) != required_keys:
             return None, "invalid_receipt"
@@ -1817,6 +2056,34 @@ class ProofReuseLazyDependencyInstaller:
             return None, "invalid_receipt"
         if payload.get("trusted_setup") is not False:
             return None, "invalid_receipt"
+        versions = payload.get("supported_circuit_versions")
+        if versions != list(TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS):
+            return None, "capability_mismatch"
+        if (
+            required_circuit_version is not None
+            and required_circuit_version not in versions
+        ):
+            return None, "capability_mismatch"
+        if payload.get("test_pass_circuit_version") != TEST_PASS_GROTH16_CIRCUIT_VERSION:
+            return None, "circuit_identity_mismatch"
+        if (
+            payload.get("test_pass_circuit_identity_sha256")
+            != TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256
+        ):
+            return None, "circuit_identity_mismatch"
+        if payload.get("test_pass_circuit_cid") != TEST_PASS_GROTH16_CIRCUIT_CID:
+            return None, "circuit_identity_mismatch"
+        if (
+            payload.get("test_pass_provider_source_sha256")
+            != TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256
+        ):
+            return None, "source_mismatch"
+        if payload.get("locked_source_identity") != DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY:
+            return None, "source_mismatch"
+        if payload.get("capability_payload_sha256") not in set(
+            DATASETS_GROTH16_CAPABILITY_PAYLOADS_SHA256.values()
+        ):
+            return None, "capability_mismatch"
         expected_digest = payload.get("binary_sha256")
         if (
             not isinstance(expected_digest, str)
@@ -1831,8 +2098,27 @@ class ProofReuseLazyDependencyInstaller:
             return None, "binary_missing"
         if actual_digest != expected_digest:
             return None, "binary_digest_mismatch"
+        expected_size = payload.get("binary_size")
+        try:
+            actual_size = binary.stat().st_size
+        except OSError:
+            return None, "binary_missing"
+        if (
+            isinstance(expected_size, bool)
+            or not isinstance(expected_size, int)
+            or expected_size <= 0
+            or actual_size != expected_size
+        ):
+            return None, "binary_size_mismatch"
         if os.name != "nt" and not os.access(binary, os.X_OK):
             return None, "binary_not_executable"
+        try:
+            self._validated_native_binary_identities[binary.resolve(strict=True)] = (
+                expected_digest,
+                expected_size,
+            )
+        except (OSError, RuntimeError):
+            return None, "binary_missing"
         return binary, "available"
 
     def _write_groth16_build_receipt(
@@ -1894,8 +2180,24 @@ class ProofReuseLazyDependencyInstaller:
             "native_platform": _platform_binary_name(),
             "binary_relative_path": _groth16_cached_binary_relative(),
             "binary_sha256": binary_digest,
+            "binary_size": binary.stat().st_size,
             "cargo_locked": True,
             "trusted_setup": False,
+            "supported_circuit_versions": list(
+                TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS
+            ),
+            "test_pass_circuit_version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
+            "test_pass_circuit_identity_sha256": (
+                TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256
+            ),
+            "test_pass_circuit_cid": TEST_PASS_GROTH16_CIRCUIT_CID,
+            "test_pass_provider_source_sha256": (
+                TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256
+            ),
+            "locked_source_identity": DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY,
+            "capability_payload_sha256": next(
+                iter(DATASETS_GROTH16_CAPABILITY_PAYLOADS_SHA256.values())
+            ),
         }
         temporary_name = ""
         descriptor = -1
@@ -1932,7 +2234,14 @@ class ProofReuseLazyDependencyInstaller:
             return "persisted", cached_binary
         return status, None
 
-    def _publish_groth16_binary(self, binary: Path, *, backend: Path) -> dict[str, Any]:
+    def _publish_groth16_binary(
+        self,
+        binary: Path,
+        *,
+        backend: Path,
+        receipt_path: Path | None = None,
+        supported_circuit_versions: tuple[int, ...] = (),
+    ) -> dict[str, Any]:
         """Activate a validated binary only after an explicit capability call."""
 
         value = str(binary)
@@ -1945,6 +2254,8 @@ class ProofReuseLazyDependencyInstaller:
             self._reviewed_groth16_artifacts_root = None
         self._environ[DATASETS_GROTH16_BINARY_ENV] = value
         self._environ.setdefault(DATASETS_GROTH16_ARTIFACTS_ROOT_ENV, artifacts_value)
+        if receipt_path is not None:
+            self._environ[PROOF_REUSE_GROTH16_NATIVE_RECEIPT_ENV] = str(receipt_path)
         reviewed_marker = _reviewed_groth16_artifacts_marker(backend / "artifacts")
         installer_artifacts_marker_published = False
         configured_artifacts = str(
@@ -1962,6 +2273,7 @@ class ProofReuseLazyDependencyInstaller:
         process_environment_preserved = False
         artifacts_environment_published = False
         process_artifacts_marker_published = False
+        process_receipt_published = False
         if self._uses_process_environment:
             existing = str(os.environ.get(DATASETS_GROTH16_BINARY_ENV, "")).strip()
             if not existing:
@@ -1983,6 +2295,11 @@ class ProofReuseLazyDependencyInstaller:
             ):
                 os.environ[_GROTH16_REVIEWED_ARTIFACTS_MARKER_ENV] = reviewed_marker
                 process_artifacts_marker_published = True
+            if receipt_path is not None and not str(
+                os.environ.get(PROOF_REUSE_GROTH16_NATIVE_RECEIPT_ENV, "")
+            ).strip():
+                os.environ[PROOF_REUSE_GROTH16_NATIVE_RECEIPT_ENV] = str(receipt_path)
+                process_receipt_published = True
         return {
             "activation_environment_variable": DATASETS_GROTH16_BINARY_ENV,
             "installer_environment_activated": True,
@@ -1996,6 +2313,12 @@ class ProofReuseLazyDependencyInstaller:
             "process_reviewed_artifacts_marker_published": (
                 process_artifacts_marker_published
             ),
+            "native_receipt_environment_variable": (
+                PROOF_REUSE_GROTH16_NATIVE_RECEIPT_ENV
+            ),
+            "native_receipt_published": receipt_path is not None,
+            "process_native_receipt_published": process_receipt_published,
+            "supported_circuit_versions": list(supported_circuit_versions),
         }
 
     def ensure_groth16_native_backend(
@@ -2003,6 +2326,7 @@ class ProofReuseLazyDependencyInstaller:
         *,
         consent: bool | None = None,
         force_build: bool = False,
+        required_circuit_version: int | None = TEST_PASS_GROTH16_CIRCUIT_VERSION,
     ) -> ProofReuseCapabilityResolution:
         """Ensure the reviewed datasets Rust binary, never trusted setup.
 
@@ -2011,22 +2335,75 @@ class ProofReuseLazyDependencyInstaller:
         Circuit selection and proving/verifying keys are inspected separately.
         """
 
-        configured_binary = self._configured_groth16_binary()
-        if configured_binary is not None and not force_build:
+        if (
+            required_circuit_version is not None
+            and (
+                isinstance(required_circuit_version, bool)
+                or not isinstance(required_circuit_version, int)
+                or required_circuit_version <= 0
+            )
+        ):
             return ProofReuseCapabilityResolution(
-                available=True,
-                reason_code=REASON_AVAILABLE,
+                available=False,
+                reason_code=REASON_GROTH16_CIRCUIT_UNCONFIGURED,
                 capability="groth16_native",
-                installed=False,
                 capability_kind="native_executable",
                 fallback_action="DEFERRED",
-                diagnostics={
-                    "binary_source": "operator_configured",
-                    "binary_path": str(configured_binary),
-                    "native_platform": _platform_binary_name(),
-                    "keys_and_circuit_checked": False,
-                },
+                diagnostics={"required_circuit_version": None},
             )
+
+        configured_binary = self._configured_groth16_binary()
+        configured_diagnostics: dict[str, Any] = {}
+        if configured_binary is not None and not force_build:
+            capability_ready = required_circuit_version is None
+            capability_reason = (
+                "generic_operator_binary"
+                if capability_ready
+                else "operator_manifest_unavailable"
+            )
+            manifest_diagnostics: Mapping[str, Any] = {}
+            if required_circuit_version is not None:
+                try:
+                    from .publication import validate_groth16_native_manifest_identity
+
+                    (
+                        capability_ready,
+                        capability_reason,
+                        manifest_diagnostics,
+                    ) = validate_groth16_native_manifest_identity(
+                        binary_path=configured_binary,
+                        environ=self._environ,
+                        required_circuit_version=required_circuit_version,
+                    )
+                except Exception:
+                    capability_ready = False
+                    capability_reason = "operator_manifest_validation_failed"
+            if capability_ready:
+                return ProofReuseCapabilityResolution(
+                    available=True,
+                    reason_code=REASON_AVAILABLE,
+                    capability="groth16_native",
+                    installed=False,
+                    capability_kind="native_executable",
+                    fallback_action="DEFERRED",
+                    diagnostics={
+                        "binary_source": "operator_configured",
+                        "binary_path": str(configured_binary),
+                        "native_platform": _platform_binary_name(),
+                        "required_circuit_version": required_circuit_version,
+                        "required_capability_validated": (
+                            required_circuit_version is not None
+                        ),
+                        "keys_and_circuit_checked": False,
+                        **dict(manifest_diagnostics),
+                    },
+                )
+            configured_diagnostics = {
+                "configured_binary_rejected": True,
+                "configured_binary_reason": capability_reason,
+                "required_circuit_version": required_circuit_version,
+                **dict(manifest_diagnostics),
+            }
 
         backend = self._validated_groth16_backend_dir()
         if backend is None:
@@ -2036,11 +2413,76 @@ class ProofReuseLazyDependencyInstaller:
                 capability="groth16_native",
                 capability_kind="cargo_native_build",
                 fallback_action="DEFERRED",
+                diagnostics=configured_diagnostics,
             )
         platform_diagnostics = self._groth16_platform_diagnostics(backend)
-        bundled = self._reviewed_bundled_groth16_binary(backend)
+        platform_diagnostics["backend_source_kind"] = (
+            self._groth16_backend_source_kind
+        )
+        platform_diagnostics.update(configured_diagnostics)
+        platform_diagnostics["required_circuit_version"] = required_circuit_version
+        try:
+            bundled = self._reviewed_bundled_groth16_binary(
+                backend,
+                required_circuit_version=required_circuit_version,
+            )
+        except TypeError:
+            # Preserve narrow test/injected installer compatibility while the
+            # returned bundle still undergoes the explicit capability check.
+            candidate = self._reviewed_bundled_groth16_binary(backend)
+            platform_name = _platform_binary_name()
+            capabilities = DATASETS_GROTH16_BUNDLED_BINARY_CAPABILITIES.get(
+                platform_name, ()
+            )
+            bundled = (
+                candidate
+                if required_circuit_version is None
+                or required_circuit_version in capabilities
+                else None
+            )
         if bundled is not None and not force_build:
-            activation = self._publish_groth16_binary(bundled, backend=backend)
+            bundled_loaded = _read_regular_file_bytes(
+                bundled, max_bytes=_GROTH16_BUILD_BINARY_MAX_BYTES
+            )
+            if bundled_loaded is not None:
+                bundled_digest = DATASETS_GROTH16_BUNDLED_BINARIES_SHA256.get(
+                    _platform_binary_name(), ""
+                )
+                if hashlib.sha256(bundled_loaded[0]).hexdigest() == bundled_digest:
+                    self._validated_native_binary_identities[
+                        bundled.resolve(strict=True)
+                    ] = (bundled_digest, bundled_loaded[1].st_size)
+            bundled_versions = DATASETS_GROTH16_BUNDLED_BINARY_CAPABILITIES.get(
+                _platform_binary_name(), ()
+            )
+            capability_ready, capability_status = (
+                self._probe_groth16_binary_capabilities(
+                    bundled,
+                    required_circuit_version=(
+                        required_circuit_version
+                        or TEST_PASS_GROTH16_CIRCUIT_VERSION
+                    ),
+                )
+            )
+            if not capability_ready:
+                return ProofReuseCapabilityResolution(
+                    available=False,
+                    reason_code=REASON_GROTH16_CAPABILITY_MISMATCH,
+                    capability="groth16_native",
+                    capability_kind="native_executable",
+                    fallback_action="DEFERRED",
+                    diagnostics={
+                        **platform_diagnostics,
+                        "binary_source": "reviewed_bundled_binary",
+                        "capability_probe_status": capability_status,
+                        "process_started": True,
+                    },
+                )
+            activation = self._publish_groth16_binary(
+                bundled,
+                backend=backend,
+                supported_circuit_versions=bundled_versions,
+            )
             return ProofReuseCapabilityResolution(
                 available=True,
                 reason_code=REASON_AVAILABLE,
@@ -2050,6 +2492,13 @@ class ProofReuseLazyDependencyInstaller:
                 diagnostics={
                     "binary_source": "reviewed_bundled_binary",
                     "binary_path": str(bundled),
+                    "required_circuit_version": required_circuit_version,
+                    "required_capability_validated": (
+                        required_circuit_version is None
+                        or required_circuit_version in bundled_versions
+                    ),
+                    "capability_probe_status": capability_status,
+                    "process_started": True,
                     "keys_and_circuit_checked": False,
                     **platform_diagnostics,
                     **activation,
@@ -2057,11 +2506,43 @@ class ProofReuseLazyDependencyInstaller:
             )
 
         receipted_binary, receipt_status = self._validated_receipted_groth16_binary(
-            backend
+            backend,
+            required_circuit_version=required_circuit_version,
         )
         platform_diagnostics["previous_native_build_receipt_status"] = receipt_status
         if receipted_binary is not None and not force_build:
-            activation = self._publish_groth16_binary(receipted_binary, backend=backend)
+            capability_ready, capability_status = (
+                self._probe_groth16_binary_capabilities(
+                    receipted_binary,
+                    required_circuit_version=(
+                        required_circuit_version
+                        or TEST_PASS_GROTH16_CIRCUIT_VERSION
+                    ),
+                )
+            )
+            if not capability_ready:
+                return ProofReuseCapabilityResolution(
+                    available=False,
+                    reason_code=REASON_GROTH16_CAPABILITY_MISMATCH,
+                    capability="groth16_native",
+                    capability_kind="native_executable",
+                    fallback_action="DEFERRED",
+                    diagnostics={
+                        **platform_diagnostics,
+                        "binary_source": "validated_build_receipt",
+                        "capability_probe_status": capability_status,
+                        "process_started": True,
+                    },
+                )
+            receipt_path, _ = self._groth16_receipt_path(create=False)
+            activation = self._publish_groth16_binary(
+                receipted_binary,
+                backend=backend,
+                receipt_path=receipt_path,
+                supported_circuit_versions=(
+                    TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS
+                ),
+            )
             return ProofReuseCapabilityResolution(
                 available=True,
                 reason_code=REASON_AVAILABLE,
@@ -2072,16 +2553,41 @@ class ProofReuseLazyDependencyInstaller:
                 diagnostics={
                     "binary_source": "validated_build_receipt",
                     "binary_path": str(receipted_binary),
+                    "required_circuit_version": required_circuit_version,
+                    "required_capability_validated": True,
+                    "capability_probe_status": capability_status,
+                    "process_started": True,
                     "keys_and_circuit_checked": False,
                     **platform_diagnostics,
                     **activation,
                 },
             )
 
+        if (
+            required_circuit_version is not None
+            and required_circuit_version
+            not in TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS
+        ):
+            return ProofReuseCapabilityResolution(
+                available=False,
+                reason_code=REASON_GROTH16_SOURCE_INVALID,
+                capability="groth16_native",
+                capability_kind="cargo_native_build",
+                fallback_action="DEFERRED",
+                diagnostics={
+                    **platform_diagnostics,
+                    "reviewed_source_supported_circuit_versions": list(
+                        TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS
+                    ),
+                    "required_capability_validated": False,
+                },
+            )
+
         provision_key = (
             "groth16_native:"
             f"{_platform_binary_name()}:"
-            f"{self._reviewed_groth16_source_fingerprint()}"
+            f"{self._reviewed_groth16_source_fingerprint()}:"
+            f"v{required_circuit_version or 'generic'}"
         )
         cached_attempt = self._cached_provision_attempt(provision_key)
         if cached_attempt is not None and not force_build:
@@ -2166,14 +2672,44 @@ class ProofReuseLazyDependencyInstaller:
                     diagnostics=platform_diagnostics,
                 )
             receipted_binary, receipt_status = self._validated_receipted_groth16_binary(
-                backend
+                backend,
+                required_circuit_version=required_circuit_version,
             )
             platform_diagnostics["previous_native_build_receipt_status"] = (
                 receipt_status
             )
             if receipted_binary is not None and not force_build:
+                capability_ready, capability_status = (
+                    self._probe_groth16_binary_capabilities(
+                        receipted_binary,
+                        required_circuit_version=(
+                            required_circuit_version
+                            or TEST_PASS_GROTH16_CIRCUIT_VERSION
+                        ),
+                    )
+                )
+                if not capability_ready:
+                    return ProofReuseCapabilityResolution(
+                        available=False,
+                        reason_code=REASON_GROTH16_CAPABILITY_MISMATCH,
+                        capability="groth16_native",
+                        capability_kind="native_executable",
+                        fallback_action="DEFERRED",
+                        diagnostics={
+                            **platform_diagnostics,
+                            "binary_source": "validated_build_receipt",
+                            "capability_probe_status": capability_status,
+                            "process_started": True,
+                        },
+                    )
+                receipt_path, _ = self._groth16_receipt_path(create=False)
                 activation = self._publish_groth16_binary(
-                    receipted_binary, backend=backend
+                    receipted_binary,
+                    backend=backend,
+                    receipt_path=receipt_path,
+                    supported_circuit_versions=(
+                        TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS
+                    ),
                 )
                 return ProofReuseCapabilityResolution(
                     available=True,
@@ -2185,6 +2721,10 @@ class ProofReuseLazyDependencyInstaller:
                     diagnostics={
                         "binary_source": "validated_build_receipt",
                         "binary_path": str(receipted_binary),
+                        "required_circuit_version": required_circuit_version,
+                        "required_capability_validated": True,
+                        "capability_probe_status": capability_status,
+                        "process_started": True,
                         "keys_and_circuit_checked": False,
                         **platform_diagnostics,
                         **activation,
@@ -2306,10 +2846,36 @@ class ProofReuseLazyDependencyInstaller:
                     )
                 except OSError:
                     binary_ok = False
+                capability_status = "binary_missing"
                 if binary_ok:
-                    receipt_write_status, activated_binary = (
-                        self._write_groth16_build_receipt(backend, binary)
+                    built_loaded = _read_regular_file_bytes(
+                        binary, max_bytes=_GROTH16_BUILD_BINARY_MAX_BYTES
                     )
+                    if built_loaded is not None:
+                        self._validated_native_binary_identities[
+                            binary.resolve(strict=True)
+                        ] = (
+                            hashlib.sha256(built_loaded[0]).hexdigest(),
+                            built_loaded[1].st_size,
+                        )
+                    capability_ready, capability_status = (
+                        self._probe_groth16_binary_capabilities(
+                            binary,
+                            required_circuit_version=(
+                                required_circuit_version
+                                or TEST_PASS_GROTH16_CIRCUIT_VERSION
+                            ),
+                        )
+                    )
+                    if capability_ready:
+                        receipt_write_status, activated_binary = (
+                            self._write_groth16_build_receipt(backend, binary)
+                        )
+                    else:
+                        receipt_write_status, activated_binary = (
+                            "capability_mismatch",
+                            None,
+                        )
                 else:
                     receipt_write_status, activated_binary = (
                         "binary_missing",
@@ -2317,14 +2883,27 @@ class ProofReuseLazyDependencyInstaller:
                     )
             available = activated_binary is not None
             activation = (
-                self._publish_groth16_binary(activated_binary, backend=backend)
+                self._publish_groth16_binary(
+                    activated_binary,
+                    backend=backend,
+                    receipt_path=self._groth16_receipt_path(create=False)[0],
+                    supported_circuit_versions=(
+                        TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS
+                    ),
+                )
                 if activated_binary is not None
                 else {}
             )
             resolution = ProofReuseCapabilityResolution(
                 available=available,
                 reason_code=(
-                    REASON_AVAILABLE if available else REASON_GROTH16_BINARY_MISSING
+                    REASON_AVAILABLE
+                    if available
+                    else (
+                        REASON_GROTH16_CAPABILITY_MISMATCH
+                        if receipt_write_status == "capability_mismatch"
+                        else REASON_GROTH16_BINARY_MISSING
+                    )
                 ),
                 capability="groth16_native",
                 installed=available,
@@ -2333,6 +2912,10 @@ class ProofReuseLazyDependencyInstaller:
                 diagnostics={
                     "binary_path": (str(activated_binary) if available else ""),
                     "binary_source": "cargo_build" if available else "",
+                    "required_circuit_version": required_circuit_version,
+                    "required_capability_validated": available,
+                    "capability_probe_status": capability_status,
+                    "process_started": True,
                     "cargo_locked": True,
                     "build_receipt_status": receipt_write_status,
                     "immutable_source_snapshot": True,
@@ -2425,6 +3008,10 @@ class ProofReuseLazyDependencyInstaller:
         root, reviewed = self._groth16_artifacts_root()
         available_versions: list[int] = []
         proving_versions: list[int] = []
+        manifest_verifying_versions: tuple[int, ...] = ()
+        manifest_proving_versions: tuple[int, ...] = ()
+        manifest_reason = "artifact_manifest_not_inspected"
+        manifest_digest = ""
         if root is not None:
             for version in (1, 2, 3):
                 vk_relative = f"v{version}/verifying_key.bin"
@@ -2457,6 +3044,30 @@ class ProofReuseLazyDependencyInstaller:
                     available_versions.append(version)
                 if pk_ok:
                     proving_versions.append(version)
+            try:
+                from .publication import inspect_pinned_groth16_artifact_versions
+
+                (
+                    manifest_verifying_versions,
+                    manifest_proving_versions,
+                    manifest_reason,
+                    manifest_digest,
+                ) = inspect_pinned_groth16_artifact_versions(
+                    artifacts_root=root,
+                    environ=self._environ,
+                )
+            except Exception:
+                manifest_reason = "artifact_manifest_inspection_failed"
+            available_versions.extend(
+                version
+                for version in manifest_verifying_versions
+                if version not in available_versions
+            )
+            proving_versions.extend(
+                version
+                for version in manifest_proving_versions
+                if version not in proving_versions
+            )
         return ProofReuseCapabilityResolution(
             available=bool(available_versions),
             reason_code=(
@@ -2468,7 +3079,14 @@ class ProofReuseLazyDependencyInstaller:
             diagnostics={
                 "verifying_key_versions": available_versions,
                 "proving_key_versions": proving_versions,
+                "manifest_verifying_key_versions": list(
+                    manifest_verifying_versions
+                ),
+                "manifest_proving_key_versions": list(manifest_proving_versions),
+                "artifact_manifest_reason": manifest_reason,
+                "artifact_manifest_sha256": manifest_digest,
                 "reviewed_bundled_artifacts": reviewed,
+                "v4_arbitrary_key_presence_authoritative": False,
                 "auto_setup_attempted": False,
             },
         )
@@ -2502,13 +3120,21 @@ class ProofReuseLazyDependencyInstaller:
         )
 
     def inspect_groth16_runtime(self) -> dict[str, Any]:
-        """Collect local configuration facts without a process or network call."""
+        """Collect local facts; execute only the bounded capability subcommand."""
 
-        native = self.ensure_groth16_native_backend(consent=False)
         endpoint = self.inspect_groth16_endpoint()
         keys = self.inspect_groth16_keys()
         circuit = self.inspect_groth16_circuit()
         circuit_version = circuit.diagnostics.get("circuit_version")
+        native = self.ensure_groth16_native_backend(
+            consent=False,
+            required_circuit_version=(
+                int(circuit_version)
+                if isinstance(circuit_version, int)
+                and not isinstance(circuit_version, bool)
+                else TEST_PASS_GROTH16_CIRCUIT_VERSION
+            ),
+        )
         verifying_versions = set(keys.diagnostics.get("verifying_key_versions", ()))
         proving_versions = set(keys.diagnostics.get("proving_key_versions", ()))
         version_has_verifying_key = circuit_version in verifying_versions
@@ -2528,12 +3154,11 @@ class ProofReuseLazyDependencyInstaller:
             "ready": ready,
             "readiness_scope": "generic_native_or_endpoint_capability",
             "action": "RUN" if ready else "DEFERRED",
-            # The reviewed ab09d backend proves generic knowledge-of-axioms /
-            # event-DAG circuits.  It is not yet the test-pass circuit with an
-            # exact statement/key identity binding required for SKIP authority.
+            # Generic runtime readiness is deliberately not SKIP authority;
+            # the separate authority probe validates the pinned v4 manifest.
             "test_certificate_authority_ready": False,
             "test_certificate_authority_reason": (
-                "test_pass_circuit_provider_unavailable"
+                "requires_separate_test_certificate_authority_probe"
             ),
             "skip_authority": False,
             "native": native.to_dict(),
@@ -2541,7 +3166,7 @@ class ProofReuseLazyDependencyInstaller:
             "keys": keys.to_dict(),
             "circuit": circuit.to_dict(),
             "network_attempted": False,
-            "process_started": False,
+            "process_started": bool(native.diagnostics.get("process_started")),
             "trusted_setup_attempted": False,
             "version_compatibility": {
                 "circuit_version": circuit_version,
