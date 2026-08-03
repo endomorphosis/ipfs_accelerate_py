@@ -617,6 +617,74 @@ def test_daemon_revalidates_justified_expansion_and_exposes_receipt(
     ]
 
 
+def test_daemon_exact_scope_policy_overrides_dependency_adjudication(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    declared_path = repo / "pkg" / "declared.py"
+    companion_path = repo / "pkg" / "companion.py"
+    declared_path.write_text("VALUE = 1\n", encoding="utf-8")
+    companion_path.write_text(
+        "from pkg.declared import VALUE\nRESULT = VALUE\n",
+        encoding="utf-8",
+    )
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "supervisor@example.invalid")
+    _git(repo, "config", "user.name", "Supervisor Test")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "baseline")
+    baseline = _git(repo, "rev-parse", "HEAD")
+
+    declared_path.write_text("VALUE = 2\n", encoding="utf-8")
+    companion_path.write_text(
+        "from pkg.declared import VALUE\nRESULT = VALUE + 1\n",
+        encoding="utf-8",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ASI-EXACT",
+        title="Keep the reviewed edit envelope exact",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="quality",
+        outputs=["pkg/declared.py"],
+        validation=["python -m pytest"],
+        metadata={"Scope expansion policy": "exact"},
+    )
+    diagnostics: dict[str, object] = {}
+
+    proposal_validation = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+        diagnostics=diagnostics,
+    )
+
+    assert proposal_validation.accepted is False
+    assert proposal_validation.policy.policy_version.endswith(
+        "+exact-task-scope-v1"
+    )
+    assert {
+        finding.code.value
+        for finding in proposal_validation.findings
+    } == {"path_outside_scope"}
+    assert diagnostics["scope_expansion_policy"] == "exact"
+    assert diagnostics["scope_expansion_allowed"] is False
+    assert not (repo / "events.jsonl").read_text(
+        encoding="utf-8"
+    ).count("implementation_scope_adjudicated")
+
+
 def test_daemon_keeps_unrelated_expansion_rejected(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     (repo / "pkg").mkdir(parents=True)

@@ -6545,6 +6545,7 @@ def retry_task_execution_metadata(
         ("predicted files", "Predicted files"),
         ("allow concurrent with", "Allow concurrent with"),
         ("conflict policy", "Conflict policy"),
+        ("scope expansion policy", "Scope expansion policy"),
     )
     for field, label in inherited_fields:
         value = metadata.get(field, "")
