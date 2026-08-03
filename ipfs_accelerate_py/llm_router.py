@@ -1712,7 +1712,7 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
                 "IPFS_ACCELERATE_PY_CODEX_MODEL",
                 "IPFS_DATASETS_PY_CODEX_MODEL",
             )
-            or "chatgpt-5.6-terra"
+            or "gpt-5.6-sol"
         ).strip()
     if pk == "copilot_sdk":
         return _coalesce_env(
@@ -1790,6 +1790,27 @@ def _response_cache_key(*, provider: Optional[str], model_name: Optional[str], p
     prompt_digest = hashlib.sha256((prompt or "").encode("utf-8")).hexdigest()[:16]
     kw_digest = _stable_kwargs_digest(kwargs)
     return f"llm_response::{provider_key}::{model_key}::{prompt_digest}::{kw_digest}"
+
+
+def _response_cache_routing_kwargs(
+    kwargs: Mapping[str, object],
+    *,
+    allow_local_fallback: bool,
+    allow_cross_provider_fallback: bool,
+) -> Dict[str, object]:
+    """Bind fallback authority into response-cache identity.
+
+    An exact-provider request must never consume a response cached after
+    cross-provider failover under the same requested provider and model.
+    These values affect cache identity only and are not provider arguments.
+    """
+
+    cache_kwargs = dict(kwargs)
+    cache_kwargs["__router_allow_local_fallback"] = bool(allow_local_fallback)
+    cache_kwargs["__router_allow_cross_provider_fallback"] = bool(
+        allow_cross_provider_fallback
+    )
+    return cache_kwargs
 
 
 @runtime_checkable
@@ -3748,7 +3769,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
 
     class _CodexCLIProvider:
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
-            model = (model_name or _coalesce_env("ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL") or "chatgpt-5.6-terra").strip()
+            model = (model_name or _coalesce_env("ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL") or "gpt-5.6-sol").strip()
             sandbox = (os.getenv("ipfs_accelerate_py_CODEX_SANDBOX", "auto") or "auto").strip()
             skip_git_repo_check = os.getenv("ipfs_accelerate_py_CODEX_SKIP_GIT_REPO_CHECK", "1") != "0"
             timeout = float(kwargs.get("timeout", 180))
@@ -7102,7 +7123,7 @@ _BUILTIN_LLM_PROVIDER_SPECS: Tuple[_LLMProviderSpec, ...] = (
             "IPFS_ACCELERATE_PY_CODEX_MODEL",
             "IPFS_DATASETS_PY_CODEX_MODEL",
         ),
-        default_model="chatgpt-5.6-terra",
+        default_model="gpt-5.6-sol",
         tools="supported",
     ),
     _LLMProviderSpec(
@@ -8806,6 +8827,7 @@ def _generate_text_with_usage_admission(
     provider_instance: Optional[LLMProvider],
     deps: RouterDeps,
     allow_local_fallback: bool,
+    allow_cross_provider_fallback: bool,
     kwargs: Dict[str, object],
     usage_coordinator: object,
     usage_policy: object,
@@ -8853,12 +8875,20 @@ def _generate_text_with_usage_admission(
         and kwargs.get(_SYMAI_ROUTE_BINDING_KWARG) is None
         and not side_effecting_request
     )
+    response_cache_kwargs = _response_cache_routing_kwargs(
+        kwargs,
+        allow_local_fallback=allow_local_fallback,
+        allow_cross_provider_fallback=allow_cross_provider_fallback,
+    )
 
     # Cache lookup first: full cache hits create no remote charge.
     if response_cache_ok:
         try:
             cache_key = _response_cache_key(
-                provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs)
+                provider=provider,
+                model_name=model_name,
+                prompt=prompt,
+                kwargs=response_cache_kwargs,
             )
             getter = getattr(deps, "get_cached_or_remote", None)
             cached = getter(cache_key) if callable(getter) else deps.get_cached(cache_key)
@@ -8961,8 +8991,9 @@ def _generate_text_with_usage_admission(
             kwargs=kwargs,
         )
     )
-    if side_effecting_request:
-        # Side-effecting work must never fallback across providers.
+    if side_effecting_request or not allow_cross_provider_fallback:
+        # Side-effecting and exact-provider work must never fallback across
+        # providers, including through usage-admission candidate routing.
         candidates = candidates[:1]
     else:
         filtered = _filter_llm_compatible_candidates(
@@ -9028,7 +9059,7 @@ def _generate_text_with_usage_admission(
                 provider=provider,
                 model_name=used_model_name,
                 prompt=prompt,
-                kwargs=dict(kwargs),
+                kwargs=response_cache_kwargs,
             )
             setter = getattr(deps, "set_cached_and_remote", None)
             if callable(setter):
@@ -9390,6 +9421,7 @@ def generate_text(
     provider_instance: Optional[LLMProvider] = None,
     deps: Optional[RouterDeps] = None,
     allow_local_fallback: bool = True,
+    allow_cross_provider_fallback: Optional[bool] = None,
     usage_coordinator: Optional[object] = None,
     usage_policy: Optional[object] = None,
     usage_candidates: Optional[Sequence[object]] = None,
@@ -9417,11 +9449,26 @@ def generate_text(
     Off mode and a missing coordinator preserve legacy selection and errors
     exactly. Enforce/assist reserve before remote dispatch; observe/shadow
     never change the selected provider; cache hits create no remote charge.
+
+    ``allow_cross_provider_fallback`` controls remote-provider failover
+    independently from local Hugging Face fallback. When omitted, the legacy
+    remote-provider behavior remains enabled. Exact provider boundaries must
+    pass ``False`` explicitly.
     """
 
     started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
     effective_provider_name = _effective_llm_provider_name(provider)
+    cross_provider_fallback_allowed = (
+        True
+        if allow_cross_provider_fallback is None
+        else bool(allow_cross_provider_fallback)
+    )
+    if not cross_provider_fallback_allowed:
+        # Exact-provider supervisor boundaries are exact-model boundaries too.
+        # A default-model retry could otherwise be cached under the requested
+        # model even though that exact model was never used successfully.
+        kwargs["disable_model_retry"] = True
     _clear_last_generation_trace()
     _set_last_usage_admission(None)
 
@@ -9442,6 +9489,7 @@ def generate_text(
             provider_instance=provider_instance,
             deps=resolved_deps,
             allow_local_fallback=allow_local_fallback,
+            allow_cross_provider_fallback=cross_provider_fallback_allowed,
             kwargs=dict(kwargs),
             usage_coordinator=usage_coordinator,
             usage_policy=policy,
@@ -9472,10 +9520,20 @@ def generate_text(
         and kwargs.get(_SYMAI_ROUTE_BINDING_KWARG) is None
         and not side_effecting_request
     )
+    response_cache_kwargs = _response_cache_routing_kwargs(
+        kwargs,
+        allow_local_fallback=allow_local_fallback,
+        allow_cross_provider_fallback=cross_provider_fallback_allowed,
+    )
     remote_dispatched = False
     if response_cache_ok:
         try:
-            cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
+            cache_key = _response_cache_key(
+                provider=provider,
+                model_name=model_name,
+                prompt=prompt,
+                kwargs=response_cache_kwargs,
+            )
             getter = getattr(resolved_deps, "get_cached_or_remote", None)
             cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
             if isinstance(cached, str):
@@ -9523,7 +9581,7 @@ def generate_text(
                 provider=provider,
                 model_name=used_model_name,
                 prompt=prompt,
-                kwargs=dict(kwargs),
+                kwargs=response_cache_kwargs,
             )
             setter = getattr(resolved_deps, "set_cached_and_remote", None)
             if callable(setter):
@@ -9617,7 +9675,7 @@ def generate_text(
             provider is not None
             and pinned_provider in _UNPINNED_OPTIONAL_PROVIDER_ORDER
         )
-        if provider is None or pinned_optional:
+        if cross_provider_fallback_allowed and (provider is None or pinned_optional):
             for fallback_name, fallback_provider in _iter_unpinned_optional_providers():
                 if fallback_provider is backend:
                     continue
@@ -9669,7 +9727,7 @@ def generate_text(
                 except Exception:
                     pass
 
-        if pinned_optional:
+        if cross_provider_fallback_allowed and pinned_optional:
             try:
                 accelerate_provider = _get_accelerate_provider(resolved_deps)
                 if accelerate_provider is not None and accelerate_provider is not backend:

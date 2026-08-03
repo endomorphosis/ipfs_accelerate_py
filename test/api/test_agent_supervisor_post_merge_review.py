@@ -251,7 +251,9 @@ def _fake_codex_child(decision: str = "approve"):
     def invoke(prompt: str, invocation: Any):
         request = _request_from_prompt(prompt)
         assert invocation.provider == review.CODEX_REVIEWER_PROVIDER
+        assert invocation.model_name == "gpt-5.6-sol"
         assert invocation.codex_read_only is True
+        assert invocation.allow_cross_provider_fallback is False
         assert invocation.request_id == request["request_id"]
         assert invocation.attempt == request["attempt"]
         response_text = _response(request, decision)

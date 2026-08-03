@@ -4251,6 +4251,7 @@ def _production_codex_reviewer(
         model_name=DEFAULT_CODEX_MODEL,
         provider=CODEX_REVIEWER_PROVIDER,
         allow_local_fallback=False,
+        allow_cross_provider_fallback=False,
         timeout_seconds=600,
         max_new_tokens=4096,
         max_prompt_chars=MAX_REVIEW_PROMPT_BYTES,

@@ -125,6 +125,9 @@ class LlmRouterInvocation:
     deadline_at: str = ""
     side_effect_boundary: str = "idempotent"
     write_result_envelope: bool = True
+    # Appended to preserve positional constructors used by older integrations.
+    allow_cross_provider_fallback: Optional[bool] = None
+    child_file_prefix: str = "todo-daemon-llm-child-"
 
 
 @dataclass(frozen=True)
@@ -157,6 +160,8 @@ class LlmChildRequestEnvelope:
     endpoint_receipt_id: str = ""
     input_digest: str = ""
     result_file: str = ""
+    # Appended for positional compatibility with the version-one envelope.
+    allow_cross_provider_fallback: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
@@ -172,6 +177,9 @@ class LlmChildRequestEnvelope:
             "max_new_tokens": int(self.max_new_tokens),
             "temperature": float(self.temperature),
             "allow_local_fallback": bool(self.allow_local_fallback),
+            "allow_cross_provider_fallback": bool(
+                self.allow_cross_provider_fallback
+            ),
             "catalog_revision": str(self.catalog_revision or ""),
             "usage_revision": str(self.usage_revision or ""),
             "lease_id": str(self.lease_id or ""),
@@ -215,6 +223,9 @@ class LlmChildRequestEnvelope:
             max_new_tokens=int(payload.get("max_new_tokens") or 2048),
             temperature=float(payload.get("temperature") or 0.1),
             allow_local_fallback=bool(payload.get("allow_local_fallback", False)),
+            allow_cross_provider_fallback=bool(
+                payload.get("allow_cross_provider_fallback", False)
+            ),
             catalog_revision=str(payload.get("catalog_revision") or ""),
             usage_revision=str(payload.get("usage_revision") or ""),
             lease_id=str(payload.get("lease_id") or ""),
@@ -378,6 +389,7 @@ def build_child_request_envelope(
         max_new_tokens=int(config.max_new_tokens),
         temperature=float(config.temperature),
         allow_local_fallback=bool(config.allow_local_fallback),
+        allow_cross_provider_fallback=_allow_cross_provider_fallback(config),
         catalog_revision=str(config.catalog_revision or ""),
         usage_revision=str(config.usage_revision or ""),
         lease_id=str(config.lease_id or ""),
@@ -507,6 +519,24 @@ def _env_name(config: LlmRouterInvocation, suffix: str) -> str:
     return f"{config.env_prefix}_{suffix}"
 
 
+def _allow_cross_provider_fallback(config: LlmRouterInvocation) -> bool:
+    """Resolve remote failover while preserving ordinary route compatibility."""
+
+    if config.allow_cross_provider_fallback is None:
+        return True
+    return bool(config.allow_cross_provider_fallback)
+
+
+def _canonical_accelerator_source_root() -> Path:
+    """Return the source root containing this exact accelerator package."""
+
+    source_root = Path(__file__).resolve().parents[3]
+    package_root = source_root / "ipfs_accelerate_py"
+    if not (package_root / "__init__.py").is_file():
+        raise RuntimeError("canonical ipfs_accelerate_py source root is unavailable")
+    return source_root
+
+
 def _prompt_digest(prompt: str) -> str:
     import hashlib
 
@@ -514,10 +544,14 @@ def _prompt_digest(prompt: str) -> str:
 
 
 def _llm_router_child_code(config: LlmRouterInvocation) -> str:
+    canonical_source_root = str(_canonical_accelerator_source_root())
     prompt_file_env = _env_name(config, "PROMPT_FILE")
     model_env = _env_name(config, "MODEL_NAME")
     provider_env = _env_name(config, "PROVIDER")
     fallback_env = _env_name(config, "ALLOW_LOCAL_FALLBACK")
+    cross_provider_fallback_env = _env_name(
+        config, "ALLOW_CROSS_PROVIDER_FALLBACK"
+    )
     timeout_env = _env_name(config, "TIMEOUT")
     max_tokens_env = _env_name(config, "MAX_NEW_TOKENS")
     temperature_env = _env_name(config, "TEMPERATURE")
@@ -534,14 +568,26 @@ def _llm_router_child_code(config: LlmRouterInvocation) -> str:
     supervisor_receipt_env = _env_name(config, "SUPERVISOR_RECEIPT_ID")
     endpoint_receipt_env = _env_name(config, "ENDPOINT_RECEIPT_ID")
     return f"""
+import sys
+
+# Bind this child to the exact accelerator package that authored it. Remove
+# the implicit script directory before importing any non-builtin module.
+_canonical_source_root = {canonical_source_root!r}
+_implicit_script_root = sys.path[0] if sys.path else ""
+sys.path[:] = [_canonical_source_root] + [
+    entry for entry in sys.path
+    if entry
+    and entry != _canonical_source_root
+    and entry != _implicit_script_root
+]
+
 import inspect
 import hashlib
 import json
 import os
 import pathlib
-import sys
 
-from ipfs_datasets_py import llm_router
+from ipfs_accelerate_py import llm_router
 
 prompt = pathlib.Path(os.environ[{prompt_file_env!r}]).read_text(encoding="utf-8")
 provider = os.environ.get({provider_env!r}) or None
@@ -549,6 +595,9 @@ kwargs = dict(
     model_name=os.environ[{model_env!r}],
     provider=provider,
     allow_local_fallback=os.environ.get({fallback_env!r}) == "1",
+    allow_cross_provider_fallback=(
+        os.environ.get({cross_provider_fallback_env!r}) == "1"
+    ),
     timeout=int(os.environ[{timeout_env!r}]),
     max_new_tokens=int(os.environ[{max_tokens_env!r}]),
     temperature=float(os.environ[{temperature_env!r}]),
@@ -641,7 +690,7 @@ sys.stdout.write(text_out)
 
 
 def call_llm_router(prompt: str, config: LlmRouterInvocation) -> str:
-    """Call ``ipfs_datasets_py.llm_router.generate_text`` in an isolated child.
+    """Call canonical ``ipfs_accelerate_py.llm_router`` in an isolated child.
 
     Returns generated text for backward compatibility. When ``usage_mode`` is
     not ``off``, a bounded result envelope with receipt IDs is written beside
@@ -677,6 +726,7 @@ def call_llm_router_with_receipt(
     prompt_file: Optional[Path] = None
     result_file: Optional[Path] = None
     envelope_file: Optional[Path] = None
+    child_file: Optional[Path] = None
     completed: Optional[subprocess.CompletedProcess[str]] = None
     timeout_seconds = int(config.timeout_seconds) + int(config.timeout_grace_seconds)
     result_envelope: Optional[LlmChildResultEnvelope] = None
@@ -720,7 +770,28 @@ def call_llm_router_with_receipt(
                 handle.write(envelope.to_json())
                 envelope_file = Path(handle.name)
 
+        # A real system-temporary script keeps the repository working tree out
+        # of Python's implicit import path. Its source then pins the exact
+        # accelerator tree that authored the child program.
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            delete=False,
+            prefix=config.child_file_prefix,
+            suffix=".py",
+        ) as handle:
+            handle.write(_llm_router_child_code(config))
+            child_file = Path(handle.name)
+
         env = os.environ.copy()
+        env["PYTHONPATH"] = str(_canonical_accelerator_source_root())
+        for unsafe_python_setting in (
+            "PYTHONHOME",
+            "PYTHONINSPECT",
+            "PYTHONSTARTUP",
+            "PYTHONUSERBASE",
+        ):
+            env.pop(unsafe_python_setting, None)
         env.update(
             {
                 _env_name(config, "PROMPT_FILE"): str(prompt_file),
@@ -728,6 +799,9 @@ def call_llm_router_with_receipt(
                 _env_name(config, "PROVIDER"): config.provider or "",
                 _env_name(config, "ALLOW_LOCAL_FALLBACK"): (
                     "1" if config.allow_local_fallback else "0"
+                ),
+                _env_name(config, "ALLOW_CROSS_PROVIDER_FALLBACK"): (
+                    "1" if _allow_cross_provider_fallback(config) else "0"
                 ),
                 _env_name(config, "TIMEOUT"): str(config.timeout_seconds),
                 _env_name(config, "MAX_NEW_TOKENS"): str(config.max_new_tokens),
@@ -756,7 +830,7 @@ def call_llm_router_with_receipt(
         )
         if config.codex_read_only:
             env["ipfs_accelerate_py_CODEX_SANDBOX"] = "read-only"
-        command = [config.python_executable, "-c", _llm_router_child_code(config)]
+        command = [config.python_executable, str(child_file)]
         process = subprocess.Popen(
             command,
             cwd=str(config.repo_root),
@@ -810,7 +884,7 @@ def call_llm_router_with_receipt(
             )
         _set_last_llm_result(result_envelope)
     finally:
-        for path in (prompt_file, result_file, envelope_file):
+        for path in (prompt_file, result_file, envelope_file, child_file):
             if path is not None:
                 try:
                     path.unlink()
