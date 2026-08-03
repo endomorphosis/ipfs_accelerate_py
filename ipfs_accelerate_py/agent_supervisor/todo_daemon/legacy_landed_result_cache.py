@@ -332,19 +332,33 @@ _LEAF_RECEIPT_FIELDS: Final = frozenset(
         "provider_evidence_cache_record",
     }
 )
+_LEAF_RECEIPT_PROVENANCE_FIELDS: Final = frozenset(
+    {
+        "provider_evidence_source",
+        "provider_invoked_in_current_run",
+        "provider_evidence_cache_record",
+    }
+)
+_LEAF_RECEIPT_BASE_FIELDS: Final = (
+    _LEAF_RECEIPT_FIELDS - _LEAF_RECEIPT_PROVENANCE_FIELDS
+)
 
 
 def _verified_origin_leaf_receipt(
     key: LegacyLandedLeafCacheKey,
     value: Mapping[str, Any],
+    *,
+    allow_legacy_base: bool = False,
 ) -> dict[str, Any]:
     receipt = _strict_object(value)
-    required = _LEAF_RECEIPT_FIELDS - {
-        "provider_evidence_source",
-        "provider_invoked_in_current_run",
-        "provider_evidence_cache_record",
-    }
-    if not required.issubset(receipt) or set(receipt) - _LEAF_RECEIPT_FIELDS:
+    fields = set(receipt)
+    legacy_base = fields == _LEAF_RECEIPT_BASE_FIELDS
+    fresh_shape = fields == _LEAF_RECEIPT_FIELDS
+    if legacy_base and not allow_legacy_base:
+        # Historical base receipts are read/import compatibility, never a
+        # shape that a current authority may newly sign.
+        raise ValueError("fresh provider provenance is required")
+    if not fresh_shape and not legacy_base:
         raise ValueError("legacy cached leaf receipt shape is invalid")
     body = dict(receipt)
     receipt_id = _text(body.pop("receipt_id", ""), "receipt_id")
@@ -401,11 +415,9 @@ def _verified_origin_leaf_receipt(
         raise ValueError("legacy cached provider response is not exact approval")
     if receipt.get("response_id") != content_identity(response):
         raise ValueError("legacy cached provider response identity is invalid")
-    source = receipt.get("provider_evidence_source")
-    if source not in (None, "fresh_provider"):
-        raise ValueError("only a fresh provider receipt may seed the cache")
-    if source == "fresh_provider" and (
-        receipt.get("provider_invoked_in_current_run") is not True
+    if fresh_shape and (
+        receipt.get("provider_evidence_source") != "fresh_provider"
+        or receipt.get("provider_invoked_in_current_run") is not True
         or receipt.get("provider_evidence_cache_record") is not None
     ):
         raise ValueError("fresh provider provenance is invalid")
@@ -423,7 +435,11 @@ class LegacyLandedLeafCacheRecord:
     record_id: str
 
     def unsigned_dict(self) -> dict[str, Any]:
-        receipt = _verified_origin_leaf_receipt(self.key, self.receipt)
+        receipt = _verified_origin_leaf_receipt(
+            self.key,
+            self.receipt,
+            allow_legacy_base=True,
+        )
         return {
             "schema": LEGACY_LANDED_LEAF_CACHE_RECORD_SCHEMA,
             "interface": LEGACY_LANDED_LEAF_CACHE_RECORD_INTERFACE,
@@ -492,7 +508,11 @@ class LegacyLandedLeafCacheRecord:
         ):
             raise ValueError("legacy leaf cache record payload is invalid")
         key = LegacyLandedLeafCacheKey.from_dict(payload["key"])
-        receipt = _verified_origin_leaf_receipt(key, payload["receipt"])
+        receipt = _verified_origin_leaf_receipt(
+            key,
+            payload["receipt"],
+            allow_legacy_base=True,
+        )
         if payload.get("key_id") != key.key_id:
             raise ValueError("legacy leaf cache key identity is invalid")
         if payload.get("receipt_id") != receipt["receipt_id"]:
@@ -1122,7 +1142,13 @@ class LegacyLandedLeafResultCache:
     ) -> dict[str, Any]:
         if not isinstance(review_run_id, str) or len(review_run_id) < 16:
             raise ValueError("fresh legacy review_run_id is required")
-        body = dict(record.receipt)
+        body = dict(
+            _verified_origin_leaf_receipt(
+                record.key,
+                record.receipt,
+                allow_legacy_base=True,
+            )
+        )
         body.pop("receipt_id", None)
         body["review_run_id"] = review_run_id
         body["provider_evidence_source"] = "signed_cache"
@@ -1322,10 +1348,13 @@ class LegacyLandedLeafResultCache:
         temporary = root / f".legacy-leaf-{uuid.uuid4().hex}.parquet.tmp"
         connection = self._connect()
         try:
-            count_row = connection.execute(
+            # Materialize the policy-filtered inventory first.  Every bound,
+            # signature decode, manifest identity, and Parquet byte below is
+            # derived from this one immutable connection-local snapshot.
+            connection.execute(
                 """
-                SELECT count(*) AS row_count
-                FROM legacy_landed_leaf_records
+                CREATE TEMPORARY TABLE legacy_landed_leaf_snapshot_export AS
+                SELECT * FROM legacy_landed_leaf_records
                 WHERE policy_id=? AND current_head=? AND current_tree_id=?
                 """,
                 (
@@ -1333,6 +1362,12 @@ class LegacyLandedLeafResultCache:
                     self.policy.current_head,
                     self.policy.current_tree_id,
                 ),
+            )
+            count_row = connection.execute(
+                """
+                SELECT count(*) AS row_count
+                FROM legacy_landed_leaf_snapshot_export
+                """,
             ).fetchone()
             row_count = int(count_row["row_count"]) if count_row is not None else 0
             if row_count > MAX_SNAPSHOT_RECORDS:
@@ -1341,15 +1376,9 @@ class LegacyLandedLeafResultCache:
                 )
             rows = connection.execute(
                 """
-                SELECT * FROM legacy_landed_leaf_records
-                WHERE policy_id=? AND current_head=? AND current_tree_id=?
+                SELECT * FROM legacy_landed_leaf_snapshot_export
                 ORDER BY key_id
-                """,
-                (
-                    self.policy.policy_id,
-                    self.policy.current_head,
-                    self.policy.current_tree_id,
-                ),
+                """
             ).fetchall()
             records: list[LegacyLandedLeafCacheRecord] = []
             for row in rows:
@@ -1363,21 +1392,9 @@ class LegacyLandedLeafResultCache:
                 )
             connection.execute(
                 """
-                CREATE TEMPORARY TABLE legacy_landed_leaf_snapshot_export AS
-                SELECT key_id, key_json, record_id, record_json, stored_at_ms
-                FROM legacy_landed_leaf_records
-                WHERE policy_id=? AND current_head=? AND current_tree_id=?
-                """,
-                (
-                    self.policy.policy_id,
-                    self.policy.current_head,
-                    self.policy.current_tree_id,
-                ),
-            )
-            connection.execute(
-                """
                 COPY (
-                    SELECT * FROM legacy_landed_leaf_snapshot_export
+                    SELECT key_id, key_json, record_id, record_json, stored_at_ms
+                    FROM legacy_landed_leaf_snapshot_export
                     ORDER BY key_id
                 ) TO ? (FORMAT PARQUET, COMPRESSION ZSTD)
                 """,

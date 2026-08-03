@@ -545,6 +545,66 @@ def test_cache_key_binds_every_review_dimension_and_is_closed(
             cache.acquire(foreign)
 
 
+def test_partial_provenance_cannot_be_signed_verified_or_rebound(
+    tmp_path: Path,
+) -> None:
+    cache, policy, task, manifest, key_path = _cache_fixture(tmp_path)
+    key = _key_for_first_leaf(cache, policy, task, manifest)
+    request = legacy._leaf_review_request(  # noqa: SLF001
+        policy=policy,
+        task=task,
+        manifest=manifest,
+        leaf=manifest["leaves"][0],
+        provider=policy.grok,
+    )
+    fresh = legacy._review_one_leaf(  # noqa: SLF001
+        request=request,
+        provider=policy.grok,
+        invoker=_ApprovingProvider(),
+        review_run_id="legacy-review:" + "e" * 48,
+    )
+    partial = dict(fresh)
+    partial.pop("provider_evidence_source")
+    partial.pop("provider_evidence_cache_record")
+    partial["provider_invoked_in_current_run"] = False
+    partial_body = dict(partial)
+    partial_body.pop("receipt_id")
+    partial["receipt_id"] = content_identity(partial_body)
+
+    lease = cache.acquire(key, owner_id="adversarial-partial")
+    with pytest.raises(ValueError, match="shape"):
+        cache.put(key, partial, lease=lease)
+    authority = cache_module.LegacyLandedLeafCacheAuthority.from_private_key_path(
+        key_path
+    )
+    with pytest.raises(ValueError, match="shape"):
+        authority.issue(key, partial)
+    ambiguous_record = cache_module.LegacyLandedLeafCacheRecord(
+        key=key,
+        receipt=partial,
+        issuer_key_id=policy.issuer_key_id,
+        issued_at_ms=1,
+        nonce="adversarial-partial",
+        signature="AAAA",
+        record_id="baguqeera" + "a" * 52,
+    )
+    with pytest.raises(ValueError, match="shape"):
+        cache.rebind_cached_receipt(
+            ambiguous_record,
+            review_run_id="legacy-review:" + "f" * 48,
+        )
+    verification = verify_legacy_landed_leaf_cache_record(
+        ambiguous_record,
+        expected_key=key,
+        trusted_public_keys=cache.trusted_public_keys,
+    )
+    assert verification.verified is False
+    assert verification.reason_codes == (
+        "legacy_leaf_cache_record_malformed",
+    )
+    assert cache.release(lease) is True
+
+
 def test_stale_fencing_token_cannot_publish_after_takeover(tmp_path: Path) -> None:
     now = [1.0]
     key_path = tmp_path / "legacy-review.key"
@@ -668,6 +728,86 @@ class _InsertDuringRawPutBackend(InMemoryConformantBackend):
             self._triggered = True
             self._hook()
         return cid
+
+
+def test_snapshot_materializes_before_inventory_decode_interleaving(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache, policy, task, manifest, key_path = _cache_fixture(tmp_path)
+    cache.review_leaf(
+        task=task,
+        manifest=manifest,
+        leaf=manifest["leaves"][0],
+        provider=policy.grok,
+        invoker=_ApprovingProvider(),
+        review_run_id="legacy-review:" + "7" * 48,
+    )
+    cache.review_leaf(
+        task=task,
+        manifest=manifest,
+        leaf=manifest["leaves"][0],
+        provider=policy.codex,
+        invoker=_ApprovingProvider(),
+        review_run_id="legacy-review:" + "8" * 48,
+    )
+    connection = cache._connect()  # noqa: SLF001
+    try:
+        delayed_row = connection.execute(
+            "SELECT * FROM legacy_landed_leaf_records WHERE role=?",
+            (policy.codex.role,),
+        ).fetchone()
+        assert delayed_row is not None
+        connection.execute(
+            "DELETE FROM legacy_landed_leaf_records WHERE key_id=?",
+            (delayed_row["key_id"],),
+        )
+    finally:
+        connection.close()
+    delayed = dict(delayed_row)
+    original_decode = cache._decode_row  # noqa: SLF001
+    inserted = False
+
+    def decode_with_interleaving(
+        row: Any,
+        *,
+        expected_key: LegacyLandedLeafCacheKey,
+    ) -> Any:
+        nonlocal inserted
+        if not inserted:
+            inserted = True
+            import duckdb
+
+            raw = duckdb.connect(str(cache.path))
+            try:
+                fields = tuple(delayed)
+                raw.execute(
+                    "INSERT INTO legacy_landed_leaf_records VALUES ("
+                    + ",".join("?" for _field in fields)
+                    + ")",
+                    [delayed[field] for field in fields],
+                )
+            finally:
+                raw.close()
+        return original_decode(row, expected_key=expected_key)
+
+    monkeypatch.setattr(cache, "_decode_row", decode_with_interleaving)
+    backend = VerifiedIPLDBackend(backend=InMemoryConformantBackend())
+    snapshot = cache.export_snapshot(
+        tmp_path / "materialized-snapshot",
+        backend=backend,
+    )
+
+    assert inserted is True
+    assert snapshot.row_count == 1
+    assert len(cache.records()) == 2
+    imported = LegacyLandedLeafResultCache(
+        tmp_path / "materialized-import.duckdb",
+        policy=policy,
+        operator_key_path=key_path,
+    )
+    assert imported.import_snapshot(snapshot.manifest_cid, backend=backend) == 1
+    assert len(imported.records()) == snapshot.row_count
 
 
 def test_snapshot_inventory_is_exact_during_concurrent_insert_and_tamper_fails(
