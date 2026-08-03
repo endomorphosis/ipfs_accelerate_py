@@ -161,7 +161,7 @@ class LlmChildRequestEnvelope:
     input_digest: str = ""
     result_file: str = ""
     # Appended for positional compatibility with the version-one envelope.
-    allow_cross_provider_fallback: bool = False
+    allow_cross_provider_fallback: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
@@ -224,7 +224,7 @@ class LlmChildRequestEnvelope:
             temperature=float(payload.get("temperature") or 0.1),
             allow_local_fallback=bool(payload.get("allow_local_fallback", False)),
             allow_cross_provider_fallback=bool(
-                payload.get("allow_cross_provider_fallback", False)
+                payload.get("allow_cross_provider_fallback", True)
             ),
             catalog_revision=str(payload.get("catalog_revision") or ""),
             usage_revision=str(payload.get("usage_revision") or ""),

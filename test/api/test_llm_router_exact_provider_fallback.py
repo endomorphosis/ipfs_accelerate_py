@@ -76,7 +76,7 @@ def test_exact_provider_disables_model_and_cross_provider_fallback(
     assert calls == [("primary", "gpt-5.6-sol")]
 
 
-def test_legacy_remote_fallback_remains_opt_in_compatible(
+def test_legacy_remote_fallback_remains_default_compatible(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, str | None]] = []
@@ -88,7 +88,6 @@ def test_legacy_remote_fallback_remains_opt_in_compatible(
         provider_instance=_FailingProvider(calls),
         model_name="fixture-model",
         allow_local_fallback=False,
-        allow_cross_provider_fallback=True,
     )
 
     assert result == "alternate-result"
@@ -97,6 +96,37 @@ def test_legacy_remote_fallback_remains_opt_in_compatible(
         ("primary", None),
         ("alternate", "fixture-model"),
     ]
+
+
+def test_new_child_fields_preserve_v1_and_positional_compatibility() -> None:
+    invocation = todo_llm.LlmRouterInvocation(
+        Path("."), "model", "provider", False, 17
+    )
+    assert invocation.timeout_seconds == 17
+    assert invocation.allow_cross_provider_fallback is None
+
+    envelope = todo_llm.LlmChildRequestEnvelope(
+        todo_llm.LLM_CHILD_ENVELOPE_SCHEMA,
+        todo_llm.LLM_CHILD_ENVELOPE_VERSION,
+        todo_llm.LLM_USAGE_MODE_OFF,
+        "request",
+        1,
+        "idempotency",
+        "model",
+        "provider",
+        17,
+        18,
+        0.0,
+        False,
+        "catalog-revision",
+    )
+    assert envelope.catalog_revision == "catalog-revision"
+    assert envelope.allow_cross_provider_fallback is True
+
+    legacy_payload = envelope.to_dict()
+    legacy_payload.pop("allow_cross_provider_fallback")
+    restored = todo_llm.LlmChildRequestEnvelope.from_dict(legacy_payload)
+    assert restored.allow_cross_provider_fallback is True
 
 
 def test_exact_provider_cannot_consume_cross_provider_cache(
