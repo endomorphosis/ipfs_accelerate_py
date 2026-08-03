@@ -195,6 +195,7 @@ _POST_MERGE_CORRECTION_TRANSITION_FIELDS = {
         {
             "authority_kind",
             "authority_id",
+            "legacy_denial_consumption_id",
             "first_correction_attempt",
             "attempt_events",
             "terminal_event_id",
@@ -743,9 +744,9 @@ def _validated_legacy_high_water_attempt_events(
             or started_sequence <= previous_sequence
             or terminal_sequence <= started_sequence
             or not isinstance(started_event_id, str)
-            or not started_event_id
+            or _SHA256_EVENT_ID.fullmatch(started_event_id) is None
             or not isinstance(terminal_event_id, str)
-            or not terminal_event_id
+            or _SHA256_EVENT_ID.fullmatch(terminal_event_id) is None
             or started_event_id == terminal_event_id
             or started_event_id in seen_event_ids
             or terminal_event_id in seen_event_ids
@@ -933,6 +934,7 @@ def _validated_post_merge_correction_transition(
         text_fields = (
             "authority_kind",
             "authority_id",
+            "legacy_denial_consumption_id",
             "terminal_event_id",
             "failure_kind",
             "migration_reason",
@@ -967,10 +969,30 @@ def _validated_post_merge_correction_transition(
             raise MergeQueueIntegrityError(
                 "post-merge correction legacy high-water terminal changed"
             )
+        terminal_type = str(last_attempt["terminal_event_type"])
+        failure_kind = str(material["failure_kind"])
+        if (
+            (
+                terminal_type == "implementation_state_recovered"
+                and failure_kind != "implementation"
+            )
+            or (
+                terminal_type
+                == "post_merge_correction_queue_reconciled"
+                and failure_kind != "merge"
+            )
+            or (
+                terminal_type == "implementation_finished"
+                and failure_kind not in {"implementation", "validation"}
+            )
+        ):
+            raise MergeQueueIntegrityError(
+                "post-merge correction legacy high-water terminal "
+                "and failure kind disagree"
+            )
         _validated_post_merge_recovery_seed(
             material,
             required=True,
-            allow_unresolved_root=True,
         )
     else:  # pragma: no cover - guarded by the schema map above.
         raise MergeQueueIntegrityError(
@@ -1238,6 +1260,45 @@ def _decoded_post_merge_review_denial_row(
     return record
 
 
+def _decoded_post_merge_review_denial_consumption_row(
+    row: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify legacy consumption JSON and its indexed bindings."""
+
+    try:
+        decoded = json.loads(str(row["record_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise MergeQueueIntegrityError(
+            "denial consumption registry contains malformed JSON"
+        ) from exc
+    record, canonical = (
+        _validated_post_merge_review_denial_consumption(decoded)
+    )
+    row_bindings = {
+        "terminal_key_id": str(row["terminal_key_id"]),
+        "consumption_id": str(row["consumption_id"]),
+        "denial_id": str(row["denial_id"]),
+        "target_repository_id": str(row["target_repository_id"]),
+        "target_branch": str(row["target_branch"]),
+        "task_id": str(row["task_id"]),
+        "canonical_task_key": str(row["canonical_task_key"]),
+        "canonical_task_cid": str(row["canonical_task_cid"]),
+        "task_binding_id": str(row["task_binding_id"]),
+        "implementation_commit": str(row["implementation_commit"]),
+    }
+    if (
+        canonical != str(row["record_json"])
+        or any(
+            record[name] != item
+            for name, item in row_bindings.items()
+        )
+    ):
+        raise MergeQueueIntegrityError(
+            "denial consumption registry row binding changed"
+        )
+    return record
+
+
 def _decoded_post_merge_correction_chain_row(
     row: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1395,6 +1456,80 @@ def _post_merge_correction_primary_events(
             int(detail["terminal_event_sequence"]),
         ),
     )
+
+
+def _validate_post_merge_correction_legacy_high_water_witness(
+    denial: Mapping[str, Any],
+    record: Mapping[str, Any],
+    legacy_consumptions_by_id: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Bind a high-water root to its permanent legacy consumption."""
+
+    if record.get("record_kind") != "legacy_high_water_anchored":
+        return
+    detail = record["detail"]
+    consumption_id = str(
+        detail.get("legacy_denial_consumption_id") or ""
+    )
+    consumption = legacy_consumptions_by_id.get(consumption_id)
+    if consumption is None:
+        raise MergeQueueIntegrityError(
+            "post-merge correction legacy high-water consumption "
+            "witness is unavailable"
+        )
+    shared_fields = (
+        "denial_id",
+        "target_repository_id",
+        "target_branch",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "task_binding_id",
+        "implementation_commit",
+        "implementation_attempt",
+        "target_implementation_attempt",
+        "correction_origin_stream_id",
+    )
+    attempt_events = _validated_legacy_high_water_attempt_events(
+        detail["attempt_events"],
+        first_attempt=int(detail["first_correction_attempt"]),
+        high_water_attempt=int(record["attempt"]),
+    )
+    first_attempt = attempt_events[0]
+    source_event_sequence = denial.get("source_event_sequence")
+    if (
+        denial.get("schema")
+        != POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA
+        or str(consumption.get("consumption_id") or "")
+        != consumption_id
+        or record["parent_record_id"] != denial["denial_id"]
+        or int(record["ordinal"]) != 1
+        or record["terminal_key_id"] != denial["terminal_key_id"]
+        or consumption["terminal_key_id"] != denial["terminal_key_id"]
+        or any(
+            consumption[name] != denial[name]
+            for name in shared_fields
+        )
+        or int(detail["first_correction_attempt"])
+        != int(denial["target_implementation_attempt"])
+        or int(first_attempt["attempt"])
+        != int(consumption["consuming_implementation_attempt"])
+        or first_attempt["terminal_event_id"]
+        != consumption["consuming_event_id"]
+        or int(first_attempt["terminal_event_sequence"])
+        != int(consumption["consuming_event_sequence"])
+        or first_attempt["terminal_event_type"]
+        != consumption["consuming_event_type"]
+        or isinstance(source_event_sequence, bool)
+        or not isinstance(source_event_sequence, int)
+        or int(first_attempt["started_event_sequence"])
+        <= source_event_sequence
+    ):
+        raise MergeQueueIntegrityError(
+            "post-merge correction legacy high-water consumption "
+            "witness does not match its denial lineage"
+        )
 
 
 def _validate_post_merge_correction_chain(
@@ -2115,6 +2250,20 @@ class MergeQueue:
         ).fetchall()
 
     @staticmethod
+    def _post_merge_review_denial_consumption_rows(
+        connection: DuckDBConnection,
+    ) -> list[DuckDBRow]:
+        return connection.execute(
+            """SELECT terminal_key_id, consumption_id, denial_id,
+                      target_repository_id, target_branch, task_id,
+                      canonical_task_key, canonical_task_cid,
+                      task_binding_id, implementation_commit,
+                      record_json
+               FROM post_merge_review_denial_consumptions
+               ORDER BY created_at, terminal_key_id"""
+        ).fetchall()
+
+    @staticmethod
     def _post_merge_correction_record_rows(
         connection: DuckDBConnection,
     ) -> list[DuckDBRow]:
@@ -2140,9 +2289,37 @@ class MergeQueue:
                ORDER BY terminal_key_id"""
         ).fetchall()
 
+    def _verified_post_merge_review_denial_consumption_registry(
+        self,
+        connection: DuckDBConnection,
+    ) -> dict[str, dict[str, Any]]:
+        consumptions_by_id: dict[str, dict[str, Any]] = {}
+        terminal_keys: set[str] = set()
+        for row in self._post_merge_review_denial_consumption_rows(
+            connection
+        ):
+            consumption = (
+                _decoded_post_merge_review_denial_consumption_row(row)
+            )
+            consumption_id = str(consumption["consumption_id"])
+            terminal_key_id = str(consumption["terminal_key_id"])
+            if (
+                consumption_id in consumptions_by_id
+                or terminal_key_id in terminal_keys
+            ):
+                raise MergeQueueIntegrityError(
+                    "post-merge denial consumption identity is duplicated"
+                )
+            consumptions_by_id[consumption_id] = consumption
+            terminal_keys.add(terminal_key_id)
+        return consumptions_by_id
+
     @staticmethod
     def _validate_post_merge_correction_registry_components(
         denials_by_id: Mapping[str, Mapping[str, Any]],
+        legacy_consumptions_by_id: Mapping[
+            str, Mapping[str, Any]
+        ],
         chains_by_denial_id: Mapping[
             str, Sequence[Mapping[str, Any]]
         ],
@@ -2162,9 +2339,10 @@ class MergeQueue:
         seen_repair_bindings: set[str] = set()
         seen_repair_task_bindings: set[str] = set()
         for denial_id, denial in denials_by_id.items():
+            records = chains_by_denial_id.get(denial_id, ())
             _validate_post_merge_correction_chain(
                 denial,
-                chains_by_denial_id.get(denial_id, ()),
+                records,
                 heads_by_denial_id[denial_id],
                 seen_primary_events=seen_primary_events,
                 seen_primary_positions=seen_primary_positions,
@@ -2174,6 +2352,12 @@ class MergeQueue:
                     seen_repair_task_bindings
                 ),
             )
+            for record in records:
+                _validate_post_merge_correction_legacy_high_water_witness(
+                    denial,
+                    record,
+                    legacy_consumptions_by_id,
+                )
 
     def _verified_post_merge_correction_registry(
         self,
@@ -2198,6 +2382,12 @@ class MergeQueue:
                 )
             denials_by_id[denial_id] = denial
             terminal_keys.add(terminal_key_id)
+
+        legacy_consumptions_by_id = (
+            self._verified_post_merge_review_denial_consumption_registry(
+                connection
+            )
+        )
 
         mutable_chains: dict[str, list[dict[str, Any]]] = {}
         for row in self._post_merge_correction_record_rows(connection):
@@ -2228,6 +2418,7 @@ class MergeQueue:
 
         self._validate_post_merge_correction_registry_components(
             denials_by_id,
+            legacy_consumptions_by_id,
             chains_by_denial_id,
             heads_by_denial_id,
         )
@@ -2606,8 +2797,14 @@ class MergeQueue:
                 prospective_chains[denial_id] = (*chain, candidate)
                 prospective_heads = dict(heads)
                 prospective_heads[denial_id] = next_head
+                legacy_consumptions = (
+                    self._verified_post_merge_review_denial_consumption_registry(
+                        connection
+                    )
+                )
                 self._validate_post_merge_correction_registry_components(
                     denials,
+                    legacy_consumptions,
                     prospective_chains,
                     prospective_heads,
                 )
@@ -2817,8 +3014,14 @@ class MergeQueue:
                         head_ordinal=len(expected_records),
                     )
                 )
+                legacy_consumptions = (
+                    self._verified_post_merge_review_denial_consumption_registry(
+                        connection
+                    )
+                )
                 self._validate_post_merge_correction_registry_components(
                     denials,
+                    legacy_consumptions,
                     prospective_chains,
                     prospective_heads,
                 )

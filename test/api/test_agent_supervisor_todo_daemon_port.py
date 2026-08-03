@@ -76,6 +76,8 @@ from ipfs_accelerate_py.agent_supervisor import merge_resolver
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MERGE_TARGET_BINDING_SCHEMA,
     MergeQueue,
+    MergeQueueFenceError,
+    MergeQueueIntegrityError,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
 from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
@@ -2019,6 +2021,14 @@ def test_post_merge_recovery_seed_materializes_one_verified_gitlink(
 
     assert fields["recovery_seed_submodule_commit"] == child_commit
     seed_commit = fields["recovery_seed_ref"]
+    child_retention_ref = (
+        daemon._post_merge_recovery_seed_child_ref_name(
+            task,
+            "external/child",
+            child_commit,
+        )
+    )
+    assert _git(child, "rev-parse", child_retention_ref) == child_commit
     assert _git(repo, "rev-parse", f"{seed_commit}^") == target_commit
     assert _git(repo, "status", "--porcelain=v1") == status_before
     authority = daemon._post_merge_correction_authority_descriptor(
@@ -2041,6 +2051,337 @@ def test_post_merge_recovery_seed_materializes_one_verified_gitlink(
     assert plan["seed_ref"] == seed_commit
     assert plan["baseline_ref"] == target_commit
     assert plan["reason"] == "post_merge_recovery_seed"
+
+
+def test_explicit_legacy_high_water_migration_is_exact_and_idempotent(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    task_binding_id = (
+        post_merge_review_module.post_merge_task_binding_id(case.task)
+    )
+    common = {
+        "task_id": case.task.task_id,
+        "canonical_task_key": case.identity.canonical_task_key,
+        "canonical_task_cid": case.identity.canonical_task_cid,
+        "board_namespace": case.identity.board_namespace,
+        "task_binding_id": task_binding_id,
+    }
+    attempt_events = []
+
+    def record_failed_attempt(attempt, *, recovered=False):
+        legacy_started_identity = dict(common)
+        # Pre-upgrade starts did not carry the board-blob binding. The
+        # migration may accept that one missing field only after every other
+        # immutable identity coordinate matches the permanent denial.
+        legacy_started_identity.pop("task_binding_id")
+        started = case.daemon._record_event(
+            "implementation_started",
+            {
+                **legacy_started_identity,
+                "attempt": attempt,
+                "branch": f"implementation/rev-001-attempt-{attempt}",
+                "baseline_ref": case.merge_commit,
+                "command": ["test-provider", "run"],
+            },
+            enrich=False,
+        )
+        if recovered:
+            terminal = case.daemon._record_event(
+                "implementation_state_recovered",
+                {
+                    **common,
+                    "attempt": attempt,
+                    "branch": (
+                        f"implementation/rev-001-attempt-{attempt}"
+                    ),
+                    "reason": "inflight_process_missing",
+                    "attempt_recovery": {
+                        "task_id": case.task.task_id,
+                        "canonical_task_key": (
+                            case.identity.canonical_task_key
+                        ),
+                        "canonical_task_cid": (
+                            case.identity.canonical_task_cid
+                        ),
+                        "attempt": attempt,
+                    },
+                },
+                enrich=False,
+            )
+        else:
+            terminal = case.daemon._record_event(
+                "implementation_finished",
+                {
+                    **common,
+                    "attempt": attempt,
+                    "branch": (
+                        f"implementation/rev-001-attempt-{attempt}"
+                    ),
+                    "implementation_commit": "",
+                    "returncode": 78,
+                    "attempt_consumed": True,
+                    "validation_result": {
+                        "attempted": True,
+                        "passed": False,
+                        "returncode": 78,
+                        "reason": "proposal_gate_failed",
+                    },
+                    "merge_result": {
+                        "attempted": False,
+                        "merged": False,
+                        "reason": "not_attempted",
+                    },
+                },
+                enrich=False,
+            )
+        attempt_events.append(
+            {
+                "attempt": attempt,
+                "started_event_id": started["event_id"],
+                "started_event_sequence": started["sequence"],
+                "terminal_event_id": terminal["event_id"],
+                "terminal_event_sequence": terminal["sequence"],
+                "terminal_event_type": terminal["type"],
+            }
+        )
+        return terminal
+
+    first_terminal = record_failed_attempt(2)
+    case.daemon._migrate_post_merge_review_consumptions_from_strict_ledger(
+        case.daemon.events_path
+    )
+    record_failed_attempt(3)
+    record_failed_attempt(4, recovered=True)
+    denials = case.queue.verified_post_merge_review_denials()
+    consumptions = (
+        case.queue.verified_post_merge_review_denial_consumptions()
+    )
+    assert len(denials) == 1
+    assert len(consumptions) == 1
+    assert consumptions[0]["consuming_event_id"] == (
+        first_terminal["event_id"]
+    )
+
+    state = TodoTaskState.load(case.daemon.state_path)
+    state.task_identities[case.task.task_id] = case.identity.to_dict()
+    state.implementation_attempts[case.task.task_id] = 4
+    state.implementation_attempts_by_cid[
+        case.identity.canonical_task_cid
+    ] = 4
+    state.save(case.daemon.state_path)
+    case.daemon.task_queue.set_attempt_count(
+        case.identity.canonical_task_cid,
+        4,
+    )
+    case.daemon.task_queue.save()
+    seed = {
+        "recovery_seed_ref": "a" * 40,
+        "recovery_seed_tree_id": f"git-tree:{'b' * 40}",
+        "recovery_seed_submodule_path": "external/ipfs_datasets",
+        "recovery_seed_submodule_commit": "c" * 40,
+    }
+    materializations = []
+
+    def materialize(**kwargs):
+        materializations.append(kwargs)
+        return dict(seed)
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_materialize_post_merge_recovery_seed",
+        materialize,
+    )
+    migration_kwargs = {
+        "task": case.task,
+        "denial_id": denials[0]["denial_id"],
+        "legacy_denial_consumption_id": consumptions[0][
+            "consumption_id"
+        ],
+        "attempt_events": attempt_events,
+        "recovery_seed_submodule_path": seed[
+            "recovery_seed_submodule_path"
+        ],
+        "recovery_seed_submodule_commit": seed[
+            "recovery_seed_submodule_commit"
+        ],
+    }
+
+    anchor = (
+        case.daemon.migrate_legacy_post_merge_correction_high_water(
+            **migration_kwargs
+        )
+    )
+    repeated = (
+        case.daemon.migrate_legacy_post_merge_correction_high_water(
+            **migration_kwargs
+        )
+    )
+
+    assert repeated == anchor
+    assert len(materializations) == 1
+    assert anchor["record_kind"] == "legacy_high_water_anchored"
+    assert anchor["attempt"] == 4
+    assert anchor["detail"]["legacy_denial_consumption_id"] == (
+        consumptions[0]["consumption_id"]
+    )
+    assert anchor["detail"]["attempt_events"] == attempt_events
+    assert {
+        name: anchor["detail"][name] for name in seed
+    } == seed
+    authority = case.queue.verified_post_merge_correction_authority(
+        denials[0]["denial_id"]
+    )
+    assert authority["state"] == "legacy_high_water_anchored"
+    assert authority["authorized_attempt"] == 4
+    assert authority["authority_available"] is False
+    persisted_state = TodoTaskState.load(case.daemon.state_path)
+    assert persisted_state.implementation_attempts[case.task.task_id] == 4
+    assert (
+        persisted_state.implementation_attempts_by_cid[
+            case.identity.canonical_task_cid
+        ]
+        == 4
+    )
+
+    tampered_events = deepcopy(attempt_events)
+    tampered_events[-1]["terminal_event_id"] = "sha256:" + ("d" * 64)
+    with pytest.raises(
+        (MergeQueueFenceError, MergeQueueIntegrityError),
+    ):
+        case.daemon.migrate_legacy_post_merge_correction_high_water(
+            **{
+                **migration_kwargs,
+                "attempt_events": tampered_events,
+            }
+        )
+
+
+def test_exact_recovery_seed_enqueue_preserves_child_integration_target(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "todo.md").write_text("# Todos\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "baseline")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        merge_target_branch="main",
+    )
+    task = PortalTask(
+        task_id="UIR-002",
+        title="Recover a reviewed UIIR child commit",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="logic",
+        outputs=["external/ipfs_datasets_py/UI_UX_IR.py"],
+    )
+    state = TodoTaskState()
+    recovery_path = "external/ipfs_datasets_py"
+    baseline = "1" * 40
+    implementation_commit = "2" * 40
+    baseline_child = "3" * 40
+    preflight_child = "4" * 40
+    recovery_child = "5" * 40
+    captured: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        daemon,
+        "_reject_protected_merge_candidate",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_pooled_worktree_lease",
+        lambda *_args, **_kwargs: {"attempted": False, "released": False},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_root_tree_gitlink_ref",
+        lambda _repo, ref, _path: (
+            (recovery_child, "")
+            if ref == implementation_commit
+            else (baseline_child, "")
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_git_ref_ancestor_check_in_repo",
+        lambda _repo, ancestor, descendant: (
+            ancestor == preflight_child and descendant == recovery_child
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_root_submodule_changed_in_task",
+        lambda candidate, base, path: (
+            candidate == implementation_commit
+            and base == baseline
+            and path == recovery_path
+        ),
+    )
+
+    def fake_enqueue(**kwargs):
+        captured.append(kwargs)
+        return SimpleNamespace(request_id="request-1"), {
+            "queued": True,
+            "merged": False,
+            "reason": "queued",
+        }
+
+    monkeypatch.setattr(daemon, "_enqueue_merge_candidate", fake_enqueue)
+    monkeypatch.setattr(
+        daemon,
+        "_consume_one_merge_candidate",
+        lambda: None,
+    )
+
+    result = daemon._enqueue_validated_worktree(
+        state=state,
+        task=task,
+        attempt=5,
+        branch_name="implementation/uir-002-attempt-5",
+        baseline_ref=baseline,
+        worktree_path=repo / "worktree",
+        implementation_commit=implementation_commit,
+        commit_result={
+            "submodule_results": [],
+            "recovery_seed_zero_edit_promotion_guard": {
+                "applicable": True,
+                "allowed": True,
+                "recovery_seed_ref": implementation_commit,
+                "recovery_seed_submodule_path": recovery_path,
+                "recovery_seed_submodule_commit": recovery_child,
+            },
+        },
+        validation_result={"attempted": True, "passed": True},
+        approved_submodule_integration_targets={
+            recovery_path: {
+                "gitlink_baseline": baseline_child,
+                "integration_target": preflight_child,
+                "relation": "integration_target_ancestor",
+            },
+        },
+    )
+
+    assert result["queued"] is True
+    assert captured[0]["changed_submodule_paths"] == [recovery_path]
+    approved = captured[0]["approved_submodule_integration_targets"]
+    assert approved[recovery_path]["integration_target"] == preflight_child
+    assert approved[recovery_path]["relation"] == "integration_target_ancestor"
 
 
 def test_validation_prunes_unchanged_start_context_after_daemon_restart(tmp_path):
@@ -10740,6 +11081,7 @@ def test_legacy_unbound_terminal_consumption_requires_immutable_board_baseline(
                 "reason": "proposal_gate_failed",
             },
         },
+        enrich=False,
     )
 
     consumptions = (
@@ -10783,6 +11125,7 @@ def test_legacy_unbound_terminal_does_not_consume_after_board_blob_changes(
                 "reason": "proposal_gate_failed",
             },
         },
+        enrich=False,
     )
 
     assert (
@@ -11503,6 +11846,10 @@ def _record_queued_post_merge_correction_quarantine(case):
             "implementation_commit": implementation_commit,
             "returncode": 0,
             "attempt_consumed": True,
+            "implementation_started_event_id": started["event_id"],
+            "implementation_started_event_sequence": started[
+                "sequence"
+            ],
             "validation_result": {
                 "attempted": True,
                 "passed": True,
@@ -11973,6 +12320,206 @@ def _generate_completed_post_merge_retry_repair(case) -> str:
     return repair_task_id
 
 
+def _append_split_write_post_merge_correction_grant(
+    case,
+    monkeypatch,
+):
+    """Append a complete strict lifecycle without updating its registry."""
+
+    case.daemon._migrate_post_merge_review_denials_from_strict_ledgers(
+        (case.daemon.events_path,)
+    )
+    state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 1},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 1,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    authority = (
+        case.daemon
+        ._projected_post_merge_correction_dispatch_authority(
+            case.task,
+            state,
+            2,
+        )
+    )
+    assert authority["durable_authority_head_record_id"]
+    persist_event = case.daemon._persist_post_merge_correction_event
+    monkeypatch.setattr(
+        case.daemon,
+        "_persist_post_merge_correction_event",
+        lambda _event: None,
+    )
+    started = case.daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": case.identity.canonical_task_key,
+            "canonical_task_cid": case.identity.canonical_task_cid,
+            "board_namespace": case.identity.board_namespace,
+            "task_binding_id": (
+                post_merge_review_module.post_merge_task_binding_id(
+                    case.task
+                )
+            ),
+            "attempt": 2,
+            "command": ["grok", "run"],
+            "post_merge_correction_authority": authority,
+        },
+    )
+    terminal = case.daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": case.task.task_id,
+            "canonical_task_key": case.identity.canonical_task_key,
+            "canonical_task_cid": case.identity.canonical_task_cid,
+            "board_namespace": case.identity.board_namespace,
+            "task_binding_id": (
+                post_merge_review_module.post_merge_task_binding_id(
+                    case.task
+                )
+            ),
+            "attempt": 2,
+            "returncode": 78,
+            "attempt_consumed": True,
+            "implementation_started_event_id": started["event_id"],
+            "implementation_started_event_sequence": started[
+                "sequence"
+            ],
+            "validation_result": {
+                "attempted": False,
+                "passed": False,
+                "returncode": 78,
+                "reason": "proposal_gate_failed",
+                "error": "proposal_validation_failed",
+            },
+        },
+    )
+    durable_denial = (
+        case.queue.verified_post_merge_review_denials()[0]
+    )
+    grant_material = {
+        "schema": "post-merge-correction-repair-grant-v1",
+        "repair_binding_id": "baguqeera-repair-binding",
+        "repair_task_id": "REV-REPAIR",
+        "repair_task_binding_id": "baguqeera-repair-task-binding",
+        "source_task_id": case.task.task_id,
+        "source_canonical_task_key": case.identity.canonical_task_key,
+        "source_canonical_task_cid": case.identity.canonical_task_cid,
+        "source_task_binding_id": (
+            post_merge_review_module.post_merge_task_binding_id(
+                case.task
+            )
+        ),
+        "denial_id": durable_denial["denial_id"],
+        "target_attempt": 2,
+        "failure_event_id": terminal["event_id"],
+        "failure_event_sequence": terminal["sequence"],
+        "failure_kind": "validation",
+        "origin_stream_id": terminal["stream_id"],
+    }
+    reset_event = case.daemon._record_event(
+        "task_retry_budget_reset",
+        {
+            "reset_count": 1,
+            "resets": [
+                {
+                    "source_task_id": case.task.task_id,
+                    "repair_task_id": "REV-REPAIR",
+                    "advanced_retry_budget_baselines": {
+                        case.identity.canonical_task_cid: 2,
+                    },
+                    "post_merge_correction_repair_grant": {
+                        **grant_material,
+                        "grant_id": (
+                            post_merge_review_module.content_identity(
+                                grant_material
+                            )
+                        ),
+                    },
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_persist_post_merge_correction_event",
+        persist_event,
+    )
+    assert case.queue.verified_post_merge_correction_chain() == ()
+    return reset_event
+
+
+def test_correction_registry_reconciliation_counts_only_new_transitions(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    _append_split_write_post_merge_correction_grant(
+        case,
+        monkeypatch,
+    )
+
+    assert (
+        case.daemon
+        ._reconcile_post_merge_correction_registry_from_strict_ledger()
+        == 3
+    )
+    assert [
+        record["record_kind"]
+        for record in case.queue.verified_post_merge_correction_chain()
+    ] == ["denial_consumed", "correction_failed", "repair_granted"]
+    assert (
+        case.daemon
+        ._reconcile_post_merge_correction_registry_from_strict_ledger()
+        == 0
+    )
+
+
+def test_durable_repair_grant_is_idempotent_across_lane_event_ids(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    reset_event = _append_split_write_post_merge_correction_grant(
+        case,
+        monkeypatch,
+    )
+    assert (
+        case.daemon
+        ._reconcile_post_merge_correction_registry_from_strict_ledger()
+        == 3
+    )
+    chain = case.queue.verified_post_merge_correction_chain()
+    stored_grant = chain[-1]
+    duplicate_event = deepcopy(reset_event)
+    duplicate_event["event_id"] = "sha256:" + ("e" * 64)
+    duplicate_event["sequence"] = int(reset_event["sequence"]) + 100
+    duplicate_event["stream_id"] = (
+        "event-log:sha256:" + ("f" * 64)
+    )
+
+    assert case.daemon._persist_post_merge_correction_grants(
+        duplicate_event
+    ) == (stored_grant,)
+    assert case.queue.verified_post_merge_correction_chain() == chain
+
+    tampered_event = deepcopy(duplicate_event)
+    tampered_event["resets"][0][
+        "post_merge_correction_repair_grant"
+    ]["repair_task_id"] = "REV-tampered"
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="content identity changed",
+    ):
+        case.daemon._persist_post_merge_correction_grants(
+            tampered_event
+        )
+
+
 def test_failed_correction_projection_rejects_malformed_and_stale_events(
     post_merge_denial_case_factory,
 ):
@@ -12108,7 +12655,10 @@ def test_completed_retry_repair_reopens_consumed_post_merge_correction(
     result = case.daemon.run_once()
     state = TodoTaskState.load(case.daemon.state_path)
 
-    assert result["shared_completed_task_ids"] == [case.task.task_id]
+    # The permanent denial projection removes the rejected candidate from the
+    # shared-completion set even though its explicit repair grant reopens one
+    # new implementation attempt.
+    assert result["shared_completed_task_ids"] == []
     assert result[
         "retry_budget_reopened_post_merge_task_ids"
     ] == [case.task.task_id]
@@ -12600,6 +13150,274 @@ def test_initial_denial_revalidates_after_stale_selection_before_dispatch(
         )
     ]
     assert len(starts) == 1
+
+
+def test_racing_correction_start_cas_loser_defers_before_provider(
+    post_merge_denial_case_factory,
+    monkeypatch,
+):
+    case = post_merge_denial_case_factory()
+    stale_state = TodoTaskState(
+        implementation_attempts={case.task.task_id: 1},
+        implementation_attempts_by_cid={
+            case.identity.canonical_task_cid: 1,
+        },
+        task_identities={
+            case.task.task_id: case.identity.to_dict(),
+        },
+    )
+    stale_state.save(case.daemon.state_path)
+    authority = (
+        case.daemon
+        ._projected_post_merge_correction_dispatch_authority(
+            case.task,
+            stale_state,
+            2,
+        )
+    )
+    assert authority["authority_kind"] == "review_denial"
+    assert authority["durable_authority_head_record_id"]
+
+    # A second daemon instance represents a peer dispatch lane sharing the
+    # strict event stream and durable merge queue.
+    racing_daemon = TodoImplementationDaemon(
+        todo_path=case.todo_path,
+        state_path=case.daemon.state_path,
+        strategy_path=case.daemon.strategy_path,
+        events_path=case.daemon.events_path,
+        repo_root=case.repo,
+        task_header_prefix="## REV-",
+        merge_queue=case.queue,
+        worktree_submodule_paths=[],
+    )
+    racing_task = racing_daemon._load_tasks()[0]
+    racing_daemon._register_task_identities((racing_task,))
+    racing_daemon.use_ephemeral_worktree = False
+    winner: dict[str, object] = {}
+    provider_boundary = {"ready": False}
+
+    monkeypatch.setattr(
+        racing_daemon,
+        "_active_provider_capacity_backoff",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        racing_daemon,
+        "_find_live_inflight_implementation",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        racing_daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "bounded correction prompt",
+    )
+    context_receipt_path = case.state_dir / "race-context.json"
+    monkeypatch.setattr(
+        racing_daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: context_receipt_path,
+    )
+    monkeypatch.setattr(
+        racing_daemon,
+        "_build_implementation_command",
+        lambda *_args, **_kwargs: ["provider-must-not-launch"],
+    )
+
+    def protected_snapshot(**_kwargs):
+        provider_boundary["ready"] = True
+        return {}
+
+    monkeypatch.setattr(
+        racing_daemon,
+        "_require_implementation_protected_snapshot",
+        protected_snapshot,
+    )
+    monkeypatch.setattr(
+        racing_daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+
+    def stale_revalidation(*_args, **_kwargs):
+        if provider_boundary["ready"] and not winner:
+            winner.update(
+                case.daemon._record_event(
+                    "implementation_started",
+                    {
+                        "task_id": case.task.task_id,
+                        "canonical_task_key": (
+                            case.identity.canonical_task_key
+                        ),
+                        "canonical_task_cid": (
+                            case.identity.canonical_task_cid
+                        ),
+                        "board_namespace": (
+                            case.identity.board_namespace
+                        ),
+                        "task_binding_id": (
+                            post_merge_review_module
+                            .post_merge_task_binding_id(case.task)
+                        ),
+                        "attempt": 2,
+                        "command": ["winning-provider"],
+                        "post_merge_correction_authority": authority,
+                    },
+                )
+            )
+        # Simulate the losing lane's already-computed projection crossing the
+        # final revalidation/strict-start boundary.
+        return deepcopy(stale_state)
+
+    monkeypatch.setattr(
+        racing_daemon,
+        "_revalidate_post_merge_correction_dispatch",
+        stale_revalidation,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail(
+            "CAS-losing correction lane launched the provider"
+        ),
+    )
+
+    result = racing_daemon._run_implementation(
+        racing_task,
+        deepcopy(stale_state),
+        post_merge_correction_authority=authority,
+    )
+
+    assert winner
+    assert result["skipped"] is True
+    assert result["deferred"] is True
+    assert result["reason"] == (
+        implementation_daemon_module
+        .POST_MERGE_CORRECTION_RESERVATION_CONFLICT_REASON
+    )
+    assert result["provider_call_allowed"] is False
+    assert result["attempt_consumed"] is False
+    assert result["reservation_conflict"]["started_event_id"] == (
+        winner["event_id"]
+    )
+
+    events = racing_daemon._iter_events()
+    marker = next(
+        event
+        for event in events
+        if (
+            event.get("type") == "implementation_retry_deferred"
+            and event.get("reason") == result["reason"]
+        )
+    )
+    loser = next(
+        event
+        for event in events
+        if (
+            event.get("type") == "implementation_started"
+            and event.get("event_id")
+            == marker["released_started_event_id"]
+            and event.get("sequence")
+            == marker["released_started_event_sequence"]
+        )
+    )
+    assert loser["event_id"] != winner["event_id"]
+    assert marker["attempt_consumed"] is False
+    assert marker["provider_call_allowed"] is False
+    assert marker["reservation_conflict"]["started_event_id"] == (
+        winner["event_id"]
+    )
+    assert not [
+        event
+        for event in events
+        if (
+            event.get("type") == "implementation_finished"
+            and event.get("attempt") == 2
+        )
+    ]
+    consumed_chain = (
+        case.queue.verified_post_merge_correction_chain()
+    )
+    assert [record["record_kind"] for record in consumed_chain] == [
+        "denial_consumed"
+    ]
+    assert consumed_chain[0]["detail"]["started_event_id"] == (
+        winner["event_id"]
+    )
+
+    # Restart replay must skip only the exact released loser start.
+    restarted_queue = MergeQueue(case.queue.queue_dir)
+    restarted = TodoImplementationDaemon(
+        todo_path=case.todo_path,
+        state_path=case.daemon.state_path,
+        strategy_path=case.daemon.strategy_path,
+        events_path=case.daemon.events_path,
+        repo_root=case.repo,
+        task_header_prefix="## REV-",
+        merge_queue=restarted_queue,
+        worktree_submodule_paths=[],
+    )
+    restarted_task = restarted._load_tasks()[0]
+    restarted._register_task_identities((restarted_task,))
+    assert (
+        restarted
+        ._reconcile_post_merge_correction_registry_from_strict_ledger()
+        == 0
+    )
+    assert restarted_queue.verified_post_merge_correction_chain() == (
+        consumed_chain
+    )
+
+    terminal_base = {
+        "task_id": case.task.task_id,
+        "canonical_task_key": case.identity.canonical_task_key,
+        "canonical_task_cid": case.identity.canonical_task_cid,
+        "board_namespace": case.identity.board_namespace,
+        "task_binding_id": (
+            post_merge_review_module.post_merge_task_binding_id(
+                case.task
+            )
+        ),
+        "attempt": 2,
+        "returncode": 78,
+        "attempt_consumed": True,
+        "validation_result": {
+            "attempted": False,
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+        },
+    }
+    loser_terminal = restarted._record_event(
+        "implementation_finished",
+        {
+            **terminal_base,
+            "implementation_started_event_id": loser["event_id"],
+            "implementation_started_event_sequence": loser["sequence"],
+        },
+    )
+    assert restarted_queue.verified_post_merge_correction_chain() == (
+        consumed_chain
+    )
+
+    winner_terminal = restarted._record_event(
+        "implementation_finished",
+        {
+            **terminal_base,
+            "implementation_started_event_id": winner["event_id"],
+            "implementation_started_event_sequence": winner["sequence"],
+        },
+    )
+    final_chain = restarted_queue.verified_post_merge_correction_chain()
+    assert [record["record_kind"] for record in final_chain] == [
+        "denial_consumed",
+        "correction_failed",
+    ]
+    assert final_chain[-1]["detail"]["terminal_event_id"] == (
+        winner_terminal["event_id"]
+    )
+    assert final_chain[-1]["detail"]["terminal_event_id"] != (
+        loser_terminal["event_id"]
+    )
 
 
 @pytest.mark.parametrize("lineage_kind", ("initial_denial", "repair"))
@@ -13738,19 +14556,11 @@ def test_retry_budget_repair_preserves_consumed_correction_attempt_identity(
         },
     )
     state.save(case.daemon.state_path)
-    repair = PortalTask(
-        task_id="REV-099",
-        title=(
-            "Resolve implementation retry-budget failure for REV-001"
-        ),
-        status="completed",
-        completion="manual",
-        priority="P0",
-        track="ops",
-        acceptance=(
-            "Use the repair evidence, then release REV-001 from strategy "
-            "blocked_tasks."
-        ),
+    repair_task_id = _generate_completed_post_merge_retry_repair(case)
+    repair = next(
+        task
+        for task in case.daemon._load_tasks()
+        if task.task_id == repair_task_id
     )
 
     resets, deferred = (
@@ -14435,6 +15245,10 @@ def test_removed_baseline_test_symbol_reaches_retry_provider_prompt(
         },
     )
     daemon._compile_implementation_context(task, attempt=1)
+    daemon._persist_implementation_context_receipt_unchecked(
+        task,
+        attempt=1,
+    )
     proposal_validation = SimpleNamespace(
         accepted=False,
         findings=(
