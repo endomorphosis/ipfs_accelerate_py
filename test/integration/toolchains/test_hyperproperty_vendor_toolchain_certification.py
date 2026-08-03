@@ -31,6 +31,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -218,6 +219,34 @@ def test_expected_outputs_exist() -> None:
     assert LOCK_PATH.is_file()
     assert RECEIPT_PATH.is_file()
     assert Path(__file__).is_file()
+
+
+def test_vendor_cli_reaches_vendor_certifier(tmp_path: Path) -> None:
+    """The script entry point must resolve vendor APIs defined later in the file."""
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(CERTIFIER_PATH),
+            "--vendor",
+            "--skip-install",
+            "--install-root",
+            str(tmp_path),
+            "--json",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert (
+        "skip_install requested but vendor hyperltl missing under"
+        in completed.stderr
+    )
+    assert "NameError" not in completed.stderr
 
 
 def test_lock_official_upstream_identities() -> None:
