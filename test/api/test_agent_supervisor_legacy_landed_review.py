@@ -308,6 +308,48 @@ def test_near_limit_chunks_bound_the_full_grok_and_codex_adapter_envelopes(
     assert max(bounds) >= 4_080
 
 
+def test_preferred_boundary_label_is_included_in_chunk_budget(
+    tmp_path: Path,
+) -> None:
+    _private, issuer = _private_key_file(tmp_path / "key")
+    policy = legacy.parse_legacy_landed_review_policy(
+        _policy_payload(issuer_key_id=issuer)
+    )
+    task = policy.task("ASE-005")
+    data = b"x" * 25_000
+    chunks = legacy._bounded_source_chunks(  # noqa: SLF001
+        policy=policy,
+        task=task,
+        data=data,
+        source_index=0,
+        source_kind="historical_diff",
+        path="",
+        first_leaf_index=0,
+        # Force the chosen maximum to become a preferred boundary.  The
+        # serialized label is longer than ``hard_limit`` and therefore must
+        # be accounted for during the binary search itself.
+        preferred_boundaries=set(range(1, len(data) + 1)),
+    )
+
+    for leaf_index, (start, end, alignment) in enumerate(chunks):
+        assert alignment == "preferred_boundary"
+        leaf = legacy._leaf_body(  # noqa: SLF001
+            leaf_index=leaf_index,
+            source_index=0,
+            source_kind="historical_diff",
+            path="",
+            data=data,
+            start=start,
+            end=end,
+            alignment=alignment,
+        )
+        assert legacy._leaf_request_fits(  # noqa: SLF001
+            policy=policy,
+            task=task,
+            leaf=leaf,
+        )
+
+
 def test_default_off_never_invokes_providers_or_validations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

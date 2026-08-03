@@ -1054,7 +1054,13 @@ def _bounded_source_chunks(
                 data=data,
                 start=start,
                 end=candidate_end,
-                alignment="hard_limit",
+                # Size every binary-search candidate with the longer of the
+                # two final alignment labels.  A candidate may subsequently
+                # be moved to a preferred boundary; sizing it as
+                # ``hard_limit`` here and then serializing it as
+                # ``preferred_boundary`` can otherwise add enough envelope
+                # bytes to cross the exact 4,096-byte request ceiling.
+                alignment="preferred_boundary",
             )
             if _leaf_request_fits(policy=policy, task=task, leaf=candidate):
                 best = candidate_end
