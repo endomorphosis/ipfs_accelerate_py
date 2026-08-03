@@ -30,7 +30,7 @@ from .validation.validation_commands import (
 FAILURE_REVIEW_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/implementation-failure-review@1"
 )
-FAILURE_REVIEW_POLICY_VERSION = "deterministic-failure-review-v2"
+FAILURE_REVIEW_POLICY_VERSION = "deterministic-failure-review-v3"
 
 # Failures that may never be accepted by the reviewer.
 _HARD_DENY_FINDING_CODES = frozenset(
@@ -364,6 +364,79 @@ def _path_owned_by_expected(path: str, expected: Sequence[str]) -> bool:
     return any(_path_under_or_equal(path, declared) for declared in expected)
 
 
+def _failed_validation_contract_gap_paths(
+    validation_result: Mapping[str, Any],
+    *,
+    expected_outputs: Sequence[str],
+    validation_commands: Sequence[str],
+) -> tuple[str, ...]:
+    """Return actual failed validation paths outside task edit authority.
+
+    A declared command may intentionally read broad or pre-existing tests, so
+    command targets alone are never a contract gap.  Require runner-reported
+    failed paths and bind each one back to the command's persisted impact
+    paths.  When a command runs below a child repository (``cd child``), also
+    consider the repository-rooted spelling.  The matched canonical spelling
+    is retained in the receipt so a child path cannot lose its owning prefix.
+    """
+
+    expected = _normalized_paths(expected_outputs)
+    failed_paths = _normalized_paths(
+        validation_result.get("failed_test_paths") or ()
+    )
+    impact_paths = _normalized_paths(
+        validation_result.get("validation_impact_paths") or ()
+    )
+    if not expected or not failed_paths or not impact_paths:
+        return ()
+
+    repository_roots = tuple(
+        dict.fromkeys(
+            root
+            for command in validation_commands
+            if (
+                root := _normalize_path(
+                    validation_command_repository_root(str(command)) or ""
+                )
+            )
+        )
+    )
+    gaps: set[str] = set()
+    for failed_path in failed_paths:
+        candidates = [failed_path]
+        candidates.extend(
+            rooted
+            for root in repository_roots
+            if (rooted := _normalize_path(f"{root}/{failed_path}"))
+            and rooted not in candidates
+        )
+        matched = [
+            candidate
+            for candidate in candidates
+            if any(
+                _path_under_or_equal(candidate, impact_path)
+                for impact_path in impact_paths
+            )
+        ]
+        if not matched:
+            continue
+        # Prefer an exact impact identity, then retain the runner spelling.
+        # This resolves paths such as
+        # ``cd ipfs_kit_py && pytest ipfs_kit_py/...`` without dropping the
+        # outer repository prefix.
+        canonical = next(
+            (
+                candidate
+                for candidate in reversed(matched)
+                if candidate in impact_paths
+            ),
+            matched[0],
+        )
+        if not _path_owned_by_expected(canonical, expected):
+            gaps.add(canonical)
+    return tuple(sorted(gaps))
+
+
 def _expected_output_satisfied(
     declared: str,
     *,
@@ -497,11 +570,10 @@ def _guidance_lines(
         lines.append("")
         lines.append("### Task-scope contract revision required")
         lines.append(
-            "The proposal remains rejected. For each exact companion below, "
-            "either revert the change or have protected-board authority add "
-            "that exact path to Outputs / Predicted files before retrying. "
-            "A broad validation command is diagnostic evidence, not edit "
-            "authority."
+            "The attempt remains rejected. Do not edit the exact paths below "
+            "unless protected-board authority adds them to Outputs / Predicted "
+            "files or routes the repair to their owning task. A broad "
+            "validation command is diagnostic evidence, not edit authority."
         )
         for path in contract_gap_paths:
             lines.append(f"- `{path}`")
@@ -816,10 +888,19 @@ def review_implementation_failure(
     scope = dict(scope_adjudication or {}) or _scope_projection(validation)
     justified = _normalized_paths(scope.get("justified_paths") or ())
     denied = _normalized_paths(scope.get("denied_paths") or ())
-    contract_gap_paths = _scope_contract_gap_paths(
-        scope,
-        validation_commands=validation_commands,
-        validation_result=validation,
+    contract_gap_paths = _normalized_paths(
+        (
+            *_scope_contract_gap_paths(
+                scope,
+                validation_commands=validation_commands,
+                validation_result=validation,
+            ),
+            *_failed_validation_contract_gap_paths(
+                validation,
+                expected_outputs=expected,
+                validation_commands=validation_commands,
+            ),
+        )
     )
     scope_accepted = scope.get("accepted") is True
     out_of_scope = tuple(
@@ -973,9 +1054,9 @@ def review_implementation_failure(
         addendum_lines.append(
             "Task-scope contract revision required for: "
             + ", ".join(contract_gap_paths)
-            + ". The proposal remains rejected; either revert each companion "
-            "or have protected-board authority add its exact path to "
-            "Outputs/Predicted before retrying."
+            + ". The attempt remains rejected; do not edit these paths unless "
+            "protected-board authority adds exact edit authority or routes the "
+            "repair to an owning task."
         )
     if justified and decision is not FailureReviewDecision.ACCEPT:
         addendum_lines.append(

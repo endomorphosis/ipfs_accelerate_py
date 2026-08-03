@@ -292,6 +292,125 @@ def test_child_repository_validation_target_requests_contract_revision() -> None
     assert wrong_root_duplicate not in review.contract_gap_paths
 
 
+def test_failed_external_validation_target_requests_contract_revision() -> None:
+    owned_test = (
+        "ipfs_kit_py/tests/runtime_readiness/mcplusplus/"
+        "test_transport_security_parity.py"
+    )
+    report = (
+        "ipfs_kit_py/docs/runtime_readiness/"
+        "mcplusplus_conformance.json"
+    )
+    external_test = (
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/tests_e2e_interop.py"
+    )
+    # Pytest reports this path relative to ``cd ipfs_kit_py``. Its first
+    # component happens to equal the child repository name, so the reviewer
+    # must bind it to the declared impact identity rather than drop the outer
+    # repository prefix.
+    runner_reported_test = "ipfs_kit_py/mcp_server/tests_e2e_interop.py"
+    command = (
+        "cd ipfs_kit_py && python -m pytest -q "
+        "tests/runtime_readiness/mcplusplus/"
+        "test_transport_security_parity.py "
+        "ipfs_kit_py/mcp_server/tests_e2e_interop.py"
+    )
+    review = review_implementation_failure(
+        task_id="KITA-033",
+        attempt=1,
+        expected_outputs=(owned_test, report),
+        validation_commands=(command,),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "proposal_gate": {
+                "accepted": True,
+                "changed_paths": [owned_test, report],
+            },
+            "failed_commands": [command],
+            "failed_tests": [
+                runner_reported_test + "::test_python_import_surface"
+            ],
+            "failed_test_paths": [runner_reported_test],
+            "validation_impact_paths": [owned_test, external_test],
+        },
+    )
+
+    assert review.contract_gap_paths == (external_test,)
+    assert review.out_of_scope_paths == ()
+    assert review.justified_paths == ()
+    assert (
+        FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value
+        in review.reason_codes
+    )
+    assert "routes the repair to their owning task" in review.guidance_markdown
+    assert external_test in review.next_attempt_prompt_addendum
+    assert runner_reported_test not in review.contract_gap_paths
+
+
+def test_external_command_target_is_not_gap_without_actual_external_failure() -> None:
+    owned_test = "tests/runtime_readiness/test_joined_contract.py"
+    external_test = "tests/e2e/test_existing_contract.py"
+    command = (
+        "python -m pytest -q "
+        f"{owned_test} {external_test}"
+    )
+    review = review_implementation_failure(
+        task_id="JOINED-001",
+        attempt=1,
+        expected_outputs=(owned_test,),
+        validation_commands=(command,),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "proposal_gate": {
+                "accepted": True,
+                "changed_paths": [owned_test],
+            },
+            "failed_commands": [command],
+            "failed_test_paths": [owned_test],
+            "validation_impact_paths": [owned_test, external_test],
+        },
+    )
+
+    assert review.contract_gap_paths == ()
+    assert (
+        FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value
+        not in review.reason_codes
+    )
+
+
+def test_failed_path_requires_declared_validation_impact_binding() -> None:
+    owned_test = "tests/runtime_readiness/test_joined_contract.py"
+    external_test = "tests/e2e/test_unrelated_contract.py"
+    review = review_implementation_failure(
+        task_id="JOINED-002",
+        attempt=1,
+        expected_outputs=(owned_test,),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "proposal_gate": {
+                "accepted": True,
+                "changed_paths": [owned_test],
+            },
+            "failed_commands": [
+                "python -m pytest -q tests/runtime_readiness"
+            ],
+            "failed_test_paths": [external_test],
+            "validation_impact_paths": [owned_test],
+        },
+    )
+
+    assert review.contract_gap_paths == ()
+
+
 def test_validation_selection_impact_paths_are_not_candidate_changes() -> None:
     expected_outputs = (
         "data/validation/conformance-report.json",
@@ -504,6 +623,7 @@ def test_daemon_normalize_failure_keeps_review_projection() -> None:
                 "decision": "guide_rescue",
                 "reason_codes": ["incomplete_expected_outputs"],
                 "missing_expected_outputs": ["b.py"],
+                "contract_gap_paths": ["tests/e2e/test_external.py"],
                 "next_attempt_prompt_addendum": "Still required outputs: b.py.",
             },
             "next_attempt_prompt_addendum": "Still required outputs: b.py.",
@@ -511,17 +631,158 @@ def test_daemon_normalize_failure_keeps_review_projection() -> None:
                 "passed": False,
                 "returncode": 78,
                 "reason": "proposal_gate_failed",
+                "failed_tests": [
+                    f"tests/test_runtime_{index}.py::test_contract"
+                    for index in range(20)
+                ],
+                "failed_test_paths": [
+                    f"tests/test_runtime_{index}.py"
+                    for index in range(20)
+                ],
+                "exception_types": [
+                    f"Contract{index}Error"
+                    for index in range(12)
+                ],
+                "validation_impact_paths": [
+                    f"tests/test_runtime_{index}.py"
+                    for index in range(24)
+                ],
+                "failure_head": "x" * 3_000,
                 "failure_review": {
                     "decision": "guide_rescue",
-                    "reason_codes": ["incomplete_expected_outputs"],
+                    "reason_codes": [
+                        "task_scope_contract_revision_required"
+                    ],
+                    "contract_gap_paths": [
+                        "tests/e2e/test_external.py"
+                    ],
                 },
             },
         }
     )
     assert normalized["failure_review"]["decision"] == "guide_rescue"
     assert "b.py" in normalized["next_attempt_prompt_addendum"]
+    assert normalized["failure_review"]["contract_gap_paths"] == [
+        "tests/e2e/test_external.py"
+    ]
     assert normalized["validation"]["failure_review"]["decision"] == (
         "guide_rescue"
+    )
+    assert normalized["validation"]["failure_review"][
+        "contract_gap_paths"
+    ] == ["tests/e2e/test_external.py"]
+    assert len(normalized["validation"]["failed_tests"]) == 12
+    assert len(normalized["validation"]["failed_test_paths"]) == 12
+    assert len(normalized["validation"]["exception_types"]) == 8
+    assert len(normalized["validation"]["validation_impact_paths"]) == 16
+    assert len(normalized["validation"]["failure_head"]) == 2_000
+
+
+def test_daemon_retry_context_keeps_contract_gap_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+        PortalTask,
+    )
+
+    daemon = object.__new__(PortalImplementationDaemon)
+    captured: dict[str, object] = {}
+    sentinel = object()
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_parent",
+        lambda _task: (object(), "decision"),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_authoritative_validation_environment_guidance",
+        lambda: "sealed validation",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_checkpoint_manifest",
+        lambda _task: {"file_count": 0},
+    )
+
+    def capture(
+        _task,
+        failure,
+        *,
+        changed_files=(),
+        changed_symbols=(),
+        unresolved_requirements=(),
+    ):
+        captured["failure"] = failure
+        captured["changed_files"] = changed_files
+        captured["changed_symbols"] = changed_symbols
+        captured["unresolved_requirements"] = unresolved_requirements
+        return sentinel
+
+    monkeypatch.setattr(
+        daemon,
+        "record_implementation_failure_context",
+        capture,
+    )
+    task = PortalTask(
+        task_id="KITA-033",
+        title="Joined transport conformance",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="validation",
+        outputs=["tests/runtime_readiness/test_joined.py"],
+        validation=[
+            "python -m pytest -q tests/runtime_readiness/test_joined.py "
+            "tests/e2e/test_external.py"
+        ],
+    )
+    result = daemon._record_failed_attempt_retry_context(
+        task,
+        returncode=1,
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "failed_tests": [
+                "tests/e2e/test_external.py::test_contract"
+            ],
+            "failed_test_paths": ["tests/e2e/test_external.py"],
+            "validation_impact_paths": [
+                "tests/runtime_readiness/test_joined.py",
+                "tests/e2e/test_external.py",
+            ],
+            "failure_head": "E   external contract failed",
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": [
+                    "task_scope_contract_revision_required"
+                ],
+                "contract_gap_paths": [
+                    "tests/e2e/test_external.py"
+                ],
+            },
+        },
+    )
+
+    assert result is sentinel
+    failure = captured["failure"]
+    assert isinstance(failure, dict)
+    assert failure["failure_review"]["contract_gap_paths"] == [
+        "tests/e2e/test_external.py"
+    ]
+    normalized = daemon._normalize_implementation_failure(failure)
+    assert normalized["validation"]["failed_tests"] == [
+        "tests/e2e/test_external.py::test_contract"
+    ]
+    assert normalized["validation"]["failed_test_paths"] == [
+        "tests/e2e/test_external.py"
+    ]
+    assert normalized["validation"]["validation_impact_paths"][-1] == (
+        "tests/e2e/test_external.py"
+    )
+    assert normalized["validation"]["failure_head"] == (
+        "E   external contract failed"
     )
 
 
