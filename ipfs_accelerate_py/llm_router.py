@@ -105,7 +105,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
 from functools import lru_cache
 from html import unescape
 import hashlib
@@ -1400,6 +1400,67 @@ def _extract_resets_in_seconds_from_codex_jsonl(text: str) -> Optional[int]:
             if isinstance(found, int) and found > 0:
                 return found
     return None
+
+
+def _extract_codex_next_eligible_at(
+    *,
+    stdout: str,
+    stderr: str,
+    now: Optional[datetime] = None,
+    local_timezone: Optional[tzinfo] = None,
+) -> Optional[str]:
+    """Return a canonical UTC reset timestamp from bounded Codex diagnostics.
+
+    Recent Codex CLIs report either a numeric retry interval in JSONL or a
+    human reset timestamp such as ``Aug 10th, 2026 5:23 AM``.  The latter is
+    rendered in the CLI process' local timezone, so normalize it through that
+    timezone before exposing it as scheduling metadata.
+    """
+
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    resets_in_seconds = _extract_resets_in_seconds_from_codex_jsonl(
+        stdout or ""
+    )
+    if isinstance(resets_in_seconds, int) and resets_in_seconds > 0:
+        return (
+            current.astimezone(timezone.utc)
+            + timedelta(seconds=resets_in_seconds)
+        ).isoformat().replace("+00:00", "Z")
+
+    combined = "\n".join(
+        part for part in (stdout, stderr) if isinstance(part, str) and part
+    )
+    match = re.search(
+        r"\btry again at\s+"
+        r"([A-Za-z]{3}\s+\d{1,2}(?:st|nd|rd|th)?,\s+"
+        r"\d{4}\s+\d{1,2}:\d{2}\s+[AP]M)\b",
+        combined,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    normalized = re.sub(
+        r"(?<=\d)(?:st|nd|rd|th)\b",
+        "",
+        match.group(1),
+        flags=re.IGNORECASE,
+    )
+    try:
+        parsed = datetime.strptime(normalized, "%b %d, %Y %I:%M %p")
+    except ValueError:
+        return None
+    zone = local_timezone
+    if zone is None:
+        zone = datetime.now().astimezone().tzinfo or timezone.utc
+    try:
+        localized = parsed.replace(tzinfo=zone)
+        return localized.astimezone(timezone.utc).isoformat().replace(
+            "+00:00", "Z"
+        )
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def _extract_first_error_message_from_codex_jsonl(text: str) -> Optional[str]:
@@ -3841,10 +3902,27 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
             kind = _classify_codex_error_kind(stdout=proc.stdout or "", stderr=proc.stderr or "")
             resets = _extract_resets_in_seconds_from_codex_jsonl(proc.stdout or "")
             if kind == "quota_exceeded":
-                raise LLMRouterError("Codex quota exceeded (billing/plan hard limit)")
+                raise UsageCapacityError(
+                    "Codex quota exceeded (billing/plan hard limit)",
+                    reason_codes=("quota_exceeded", "capacity_unavailable"),
+                    pre_dispatch=False,
+                )
             if kind == "usage_limit":
-                suffix = f" (resets in ~{resets}s)" if isinstance(resets, int) else ""
-                raise LLMRouterError(f"Codex usage limit reached{suffix}")
+                next_eligible_at = _extract_codex_next_eligible_at(
+                    stdout=proc.stdout or "",
+                    stderr=proc.stderr or "",
+                )
+                suffix = (
+                    f" (resets in ~{resets}s)"
+                    if isinstance(resets, int)
+                    else ""
+                )
+                raise UsageCapacityError(
+                    f"Codex usage limit reached{suffix}",
+                    reason_codes=("usage_limit", "capacity_unavailable"),
+                    next_eligible_at=next_eligible_at,
+                    pre_dispatch=False,
+                )
             raise LLMRouterError(proc.stderr.strip() or "codex exec failed")
 
     return _CodexCLIProvider()

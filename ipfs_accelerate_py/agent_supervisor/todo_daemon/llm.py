@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Sequence
 
@@ -34,6 +35,16 @@ LLM_CHILD_ENVELOPE_VERSION = 1
 MAX_ENVELOPE_BYTES = 16_384
 MAX_RESULT_BYTES = 32_768
 MAX_TEXT_FIELD_BYTES = 512
+LLM_CHILD_PROVIDER_CAPACITY_REASON = "provider_capacity_unavailable"
+MAX_LLM_CHILD_PROVIDER_BACKOFF_SECONDS = 31 * 24 * 60 * 60
+_LLM_CHILD_PROVIDER_CAPACITY_REASONS = frozenset(
+    {
+        LLM_CHILD_PROVIDER_CAPACITY_REASON,
+        "usage_limit",
+        "quota_exceeded",
+        "capacity_unavailable",
+    }
+)
 
 # Modes mirror the provider execution gateway. ``off`` is the default and must
 # remain behaviorally identical to the pre-ASI-166 child launch path.
@@ -78,6 +89,42 @@ _FORBIDDEN_ENVELOPE_KEYS = frozenset(
         "uri",
     }
 )
+
+
+class LlmChildProviderCapacityError(RuntimeError):
+    """Secret-safe capacity failure returned by the isolated LLM child."""
+
+    reason_code = "reviewer_provider_capacity_unavailable"
+
+    def __init__(
+        self,
+        *,
+        provider_id: str,
+        reason_codes: Sequence[str] = (),
+        next_eligible_at: str = "",
+    ) -> None:
+        safe_reasons = tuple(
+            str(item).strip()
+            for item in reason_codes
+            if str(item).strip() in _LLM_CHILD_PROVIDER_CAPACITY_REASONS
+        )
+        self.provider_id = str(provider_id or "").strip()
+        self.reason_codes = safe_reasons or (
+            LLM_CHILD_PROVIDER_CAPACITY_REASON,
+        )
+        self.next_eligible_at = _normalize_next_eligible_at(
+            next_eligible_at
+        )
+        suffix = (
+            f" until {self.next_eligible_at}"
+            if self.next_eligible_at
+            else ""
+        )
+        super().__init__(
+            "LLM provider capacity unavailable"
+            + (f" for {self.provider_id}" if self.provider_id else "")
+            + suffix
+        )
 
 
 @dataclass(frozen=True)
@@ -270,6 +317,15 @@ class LlmChildResultEnvelope:
     text_bytes: int = 0
     text_sha256: str = ""
     exit_code: int = 0
+    # Appended for version-one positional compatibility.
+    next_eligible_at: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "next_eligible_at",
+            _normalize_next_eligible_at(self.next_eligible_at),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
@@ -289,6 +345,7 @@ class LlmChildResultEnvelope:
             "text_bytes": int(self.text_bytes or 0),
             "text_sha256": str(self.text_sha256 or ""),
             "exit_code": int(self.exit_code or 0),
+            "next_eligible_at": str(self.next_eligible_at or ""),
         }
         _assert_envelope_safe(payload)
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -333,6 +390,7 @@ class LlmChildResultEnvelope:
             text_bytes=int(payload.get("text_bytes") or 0),
             text_sha256=str(payload.get("text_sha256") or ""),
             exit_code=int(payload.get("exit_code") or 0),
+            next_eligible_at=str(payload.get("next_eligible_at") or ""),
         )
 
 
@@ -357,6 +415,28 @@ def _assert_envelope_safe(payload: Mapping[str, Any]) -> None:
             raise RuntimeError(
                 f"LLM envelope must not embed forbidden field {key!r}"
             )
+
+
+def _normalize_next_eligible_at(value: object) -> str:
+    """Validate and canonicalize bounded, timezone-aware retry metadata."""
+
+    text = str(value or "").strip()
+    if not text or len(text.encode("utf-8")) > 64:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if parsed.tzinfo is None:
+        return ""
+    normalized = parsed.astimezone(timezone.utc)
+    if (
+        normalized - datetime.now(timezone.utc)
+    ).total_seconds() > MAX_LLM_CHILD_PROVIDER_BACKOFF_SECONDS:
+        return ""
+    return normalized.isoformat().replace(
+        "+00:00", "Z"
+    )
 
 
 def _normalize_usage_mode(value: str) -> str:
@@ -583,6 +663,7 @@ sys.path[:] = [_canonical_source_root] + [
 
 import inspect
 import hashlib
+import datetime
 import json
 import os
 import pathlib
@@ -611,7 +692,73 @@ if "trace" in parameters:
 if "trace_dir" in parameters:
     trace_dir = os.environ.get({trace_dir_env!r}) or None
     kwargs["trace_dir"] = trace_dir
-text = llm_router.generate_text(prompt, **kwargs)
+usage_mode = (os.environ.get({usage_mode_env!r}) or "off").strip().lower() or "off"
+result_path = os.environ.get({result_file_env!r}) or ""
+envelope_path = os.environ.get({envelope_file_env!r}) or ""
+
+def _write_result_payload(payload):
+    if result_path:
+        pathlib.Path(result_path).write_text(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
+
+try:
+    text = llm_router.generate_text(prompt, **kwargs)
+except Exception as exc:
+    capacity_type = getattr(llm_router, "UsageCapacityError", None)
+    if not isinstance(capacity_type, type) or not isinstance(exc, capacity_type):
+        raise
+    raw_reasons = {{
+        str(item).strip()
+        for item in (getattr(exc, "reason_codes", ()) or ())
+        if str(item).strip()
+    }}
+    reason_codes = [
+        item
+        for item in ("usage_limit", "quota_exceeded", "capacity_unavailable")
+        if item in raw_reasons
+    ] or [{LLM_CHILD_PROVIDER_CAPACITY_REASON!r}]
+    next_eligible_at = str(
+        getattr(exc, "next_eligible_at", "") or ""
+    ).strip()
+    if next_eligible_at:
+        try:
+            datetime.datetime.fromisoformat(
+                next_eligible_at.replace("Z", "+00:00")
+            )
+        except (TypeError, ValueError):
+            next_eligible_at = ""
+    error_material = {{
+        "request_id": os.environ.get({request_id_env!r}) or "",
+        "attempt": int(os.environ.get({attempt_env!r}) or "1"),
+        "idempotency_key": os.environ.get({idempotency_env!r}) or "",
+        "reason_codes": reason_codes,
+        "next_eligible_at": next_eligible_at,
+        "exit_code": 75,
+    }}
+    _write_result_payload({{
+        "schema": {LLM_CHILD_RESULT_SCHEMA!r},
+        "contract_version": {LLM_CHILD_ENVELOPE_VERSION},
+        "usage_mode": usage_mode,
+        **error_material,
+        "status": "error",
+        "supervisor_receipt_id": os.environ.get({supervisor_receipt_env!r}) or "",
+        "endpoint_receipt_id": os.environ.get({endpoint_receipt_env!r}) or "",
+        "execution_result_id": "sha256:" + hashlib.sha256(
+            json.dumps(
+                error_material,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest(),
+        "effective_provider": "",
+        "text_chars": 0,
+        "text_bytes": 0,
+        "text_sha256": hashlib.sha256(b"").hexdigest(),
+    }})
+    sys.stderr.write("llm_router provider capacity unavailable.\\n")
+    raise SystemExit(75)
 reject_provider = os.environ.get({reject_provider_env!r}) or ""
 required_providers = {{
     value.strip()
@@ -638,9 +785,6 @@ if (reject_provider or required_providers):
         raise SystemExit(2)
 text_out = "" if text is None else str(text)
 text_sha256 = hashlib.sha256(text_out.encode("utf-8")).hexdigest()
-usage_mode = (os.environ.get({usage_mode_env!r}) or "off").strip().lower() or "off"
-result_path = os.environ.get({result_file_env!r}) or ""
-envelope_path = os.environ.get({envelope_file_env!r}) or ""
 # Propagate receipt IDs only; never write prompt/provider payload bodies.
 result_payload = {{
     "schema": {LLM_CHILD_RESULT_SCHEMA!r},
@@ -673,18 +817,9 @@ result_payload = {{
     "text_bytes": len(text_out.encode("utf-8")),
     "text_sha256": text_sha256,
     "exit_code": 0,
+    "next_eligible_at": "",
 }}
-if result_path and usage_mode != "off":
-    pathlib.Path(result_path).write_text(
-        json.dumps(result_payload, sort_keys=True, separators=(",", ":")),
-        encoding="utf-8",
-    )
-elif result_path and usage_mode == "off" and os.environ.get({result_file_env!r}):
-    # Off mode remains stdout-compatible; optional result file is still safe metadata.
-    pathlib.Path(result_path).write_text(
-        json.dumps(result_payload, sort_keys=True, separators=(",", ":")),
-        encoding="utf-8",
-    )
+_write_result_payload(result_payload)
 sys.stdout.write(text_out)
 """
 
@@ -893,6 +1028,24 @@ def call_llm_router_with_receipt(
     if completed is None:
         raise RuntimeError("llm_router child did not produce a completed process result")
     if completed.returncode != 0:
+        capacity_reasons = {
+            LLM_CHILD_PROVIDER_CAPACITY_REASON,
+            "usage_limit",
+            "quota_exceeded",
+            "capacity_unavailable",
+        }
+        if (
+            result_envelope is not None
+            and result_envelope.status == "error"
+            and capacity_reasons.intersection(
+                result_envelope.reason_codes
+            )
+        ):
+            raise LlmChildProviderCapacityError(
+                provider_id=str(config.provider or ""),
+                reason_codes=result_envelope.reason_codes,
+                next_eligible_at=result_envelope.next_eligible_at,
+            )
         details = compact_message(
             (completed.stdout or "") + " " + (completed.stderr or ""), limit=1200
         )
@@ -986,6 +1139,8 @@ def install_active_llm_signal_handlers(
 __all__ = [
     "LLM_CHILD_ENVELOPE_SCHEMA",
     "LLM_CHILD_ENVELOPE_VERSION",
+    "LLM_CHILD_PROVIDER_CAPACITY_REASON",
+    "MAX_LLM_CHILD_PROVIDER_BACKOFF_SECONDS",
     "LLM_CHILD_RESULT_SCHEMA",
     "LLM_USAGE_MODE_ASSIST",
     "LLM_USAGE_MODE_ENFORCE",
@@ -994,6 +1149,7 @@ __all__ = [
     "LLM_USAGE_MODE_SHADOW",
     "LlmChildRequestEnvelope",
     "LlmChildResultEnvelope",
+    "LlmChildProviderCapacityError",
     "LlmRouterInvocation",
     "active_llm_process",
     "build_child_request_envelope",

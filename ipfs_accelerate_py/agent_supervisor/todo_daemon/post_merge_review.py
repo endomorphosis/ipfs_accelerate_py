@@ -40,6 +40,7 @@ from .contract_packet_provider_router import ReviewPresence, redact_provider_dat
 from .llm import (
     LLM_CHILD_ENVELOPE_VERSION,
     LLM_CHILD_RESULT_SCHEMA,
+    LlmChildProviderCapacityError,
     LlmRouterInvocation,
     call_llm_router_with_receipt,
 )
@@ -399,6 +400,9 @@ class PostMergeReviewOutcome:
         repr=False,
         compare=False,
     )
+    # Appended to preserve positional compatibility for existing callers.
+    provider_reason_codes: tuple[str, ...] = ()
+    provider_next_eligible_at: str = ""
 
 
 def verified_implementer_provenance_from_events(
@@ -7493,8 +7497,30 @@ def perform_post_merge_independent_review(
             _event_payload_canonical=_canonical_json_bytes(event),
         )
     except (PostMergeReviewError, OSError, ValueError, RuntimeError) as exc:
-        reason_code = str(
-            getattr(exc, "reason_code", "independent_review_failed")
+        typed_capacity_failure = bool(
+            production_review_route
+            and isinstance(exc, LlmChildProviderCapacityError)
+        )
+        reason_code = (
+            str(exc.reason_code)
+            if typed_capacity_failure
+            else str(exc.reason_code)
+            if isinstance(exc, PostMergeReviewError)
+            else "independent_review_failed"
+        )
+        provider_reason_codes = (
+            tuple(
+                str(item).strip()
+                for item in (exc.reason_codes or ())
+                if str(item).strip()
+            )
+            if typed_capacity_failure
+            else ()
+        )
+        provider_next_eligible_at = (
+            str(exc.next_eligible_at or "").strip()
+            if typed_capacity_failure
+            else ""
         )
         return PostMergeReviewOutcome(
             admitted=False,
@@ -7503,6 +7529,7 @@ def perform_post_merge_independent_review(
             retryable=reason_code
             in {
                 "independent_review_failed",
+                "reviewer_provider_capacity_unavailable",
                 "reviewer_execution_receipt_missing",
                 "reviewer_execution_receipt_invalid",
                 "reviewer_result_invalid",
@@ -7510,6 +7537,8 @@ def perform_post_merge_independent_review(
                 "review_response_size_invalid",
             },
             acceptance_pending=True,
+            provider_reason_codes=provider_reason_codes,
+            provider_next_eligible_at=provider_next_eligible_at,
         )
 
 

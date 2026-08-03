@@ -12286,6 +12286,9 @@ def test_cross_lane_model_merge_callback_uses_source_evidence_and_pends_review(
     assert failed_reviews[0]["retryable"] is True
     assert failed_reviews[0]["completion_authoritative"] is False
     assert "detail" not in failed_reviews[0]
+    assert "reviewer_provider" not in failed_reviews[0]
+    assert "provider_reason_codes" not in failed_reviews[0]
+    assert "provider_next_eligible_at" not in failed_reviews[0]
     encoded_failure_detail = private_failure_detail.encode("utf-8")
     assert failed_reviews[0]["detail_sha256"] == hashlib.sha256(
         encoded_failure_detail
@@ -12329,6 +12332,244 @@ def test_cross_lane_model_merge_callback_uses_source_evidence_and_pends_review(
         )
     )
     assert daemon._failed_merge_candidates() == [pending]
+
+
+def test_review_capacity_latch_does_not_consume_bounded_merge_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = object.__new__(TodoImplementationDaemon)
+    daemon.repo_root = Path(".")
+    task_a = PortalTask(
+        task_id="REV-A",
+        title="Cooling review",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="review",
+    )
+    task_b = replace(task_a, task_id="REV-B", title="Eligible review")
+    identities = {
+        task_a.task_id: SimpleNamespace(
+            canonical_task_key="task/a",
+            canonical_task_cid="cid:a",
+            board_namespace="review-board",
+        ),
+        task_b.task_id: SimpleNamespace(
+            canonical_task_key="task/b",
+            canonical_task_cid="cid:b",
+            board_namespace="review-board",
+        ),
+    }
+    target_commit = "a" * 40
+    implementation_a = "b" * 40
+    implementation_b = "c" * 40
+    repository_tree_id = "git-tree:" + "d" * 40
+    retry_at = (
+        datetime.now(timezone.utc) + timedelta(hours=1)
+    ).isoformat()
+    failure_event = {
+        "type": "post_merge_independent_review_failed",
+        "task_id": task_a.task_id,
+        "task_binding_id": (
+            post_merge_review_module.post_merge_task_binding_id(task_a)
+        ),
+        "attempt": 2,
+        "implementation_attempt": 5,
+        "implementation_commit": implementation_a,
+        "merge_commit": target_commit,
+        "repository_tree_id": repository_tree_id,
+        "reason_code": "reviewer_provider_capacity_unavailable",
+        "reviewer_provider": "codex_cli",
+        "provider_reason_codes": [
+            "usage_limit",
+            "capacity_unavailable",
+        ],
+        "provider_next_eligible_at": retry_at,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    monkeypatch.setattr(daemon, "_load_tasks", lambda: [task_a, task_b])
+    monkeypatch.setattr(
+        daemon,
+        "_identity_for_task",
+        lambda task: identities[task.task_id],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_resolve_git_commit_in_repo",
+        lambda *_args, **_kwargs: target_commit,
+    )
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "main")
+    monkeypatch.setattr(
+        daemon,
+        "_candidate_repository_tree",
+        lambda _commit: "d" * 40,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_git_ref_is_ancestor",
+        lambda _ancestor, _descendant: True,
+    )
+    monkeypatch.setattr(daemon, "_iter_events", lambda: [failure_event])
+    monkeypatch.setattr(
+        daemon,
+        "_record_event",
+        lambda *_args, **_kwargs: pytest.fail(
+            "capacity partition must not grow the event ledger"
+        ),
+    )
+    candidates = [
+        {
+            "task_id": task_a.task_id,
+            "attempt": 2,
+            "queue_attempt": 2,
+            "implementation_attempt": 5,
+            "implementation_commit": implementation_a,
+            "merge_integrated": True,
+            "authoritatively_completed": False,
+        },
+        {
+            "task_id": task_b.task_id,
+            "attempt": 2,
+            "queue_attempt": 2,
+            "implementation_attempt": 5,
+            "implementation_commit": implementation_b,
+            "merge_integrated": False,
+            "authoritatively_completed": False,
+        },
+    ]
+
+    for _pass in range(2):
+        eligible, deferred = (
+            daemon._partition_post_merge_review_capacity_deferred_candidates(
+                candidates
+            )
+        )
+        assert [item["task_id"] for item in eligible] == [task_b.task_id]
+        assert [item["task_id"] for item in deferred] == [task_a.task_id]
+        assert deferred[0]["reason"] == "reviewer_provider_capacity_backoff"
+        selected = daemon._select_failed_merge_candidates_for_reconciliation(
+            eligible,
+            1,
+        )
+        assert [item["task_id"] for item in selected] == [task_b.task_id]
+
+    second_review = {
+        **candidates[1],
+        "merge_integrated": True,
+    }
+    eligible, deferred = (
+        daemon._partition_post_merge_review_capacity_deferred_candidates(
+            [second_review]
+        )
+    )
+    assert eligible == []
+    assert [item["task_id"] for item in deferred] == [task_b.task_id]
+
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_selectable_task_retry_schedule",
+        lambda: {},
+    )
+    runtime_result = {"eligible_ready_count": 0}
+    daemon._attach_runtime_retry_schedule(runtime_result)
+    assert runtime_result["post_merge_review_capacity_retry_at"]
+    assert runtime_result["next_wake_after_seconds"] > 0
+    projected = daemon._runtime_result_projection(runtime_result)
+    assert projected["post_merge_review_capacity_retry_at"] == (
+        runtime_result["post_merge_review_capacity_retry_at"]
+    )
+
+    forged_event = dict(failure_event)
+    forged_event.pop("provider_reason_codes")
+    monkeypatch.setattr(daemon, "_iter_events", lambda: [forged_event])
+    assert daemon._post_merge_review_capacity_backoff_schedule() == {}
+
+    unrelated_failure = {
+        "type": "post_merge_independent_review_failed",
+        "task_id": task_b.task_id,
+        "reason_code": "reviewer_execution_receipt_missing",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_iter_events",
+        lambda: [failure_event, unrelated_failure],
+    )
+    assert daemon._post_merge_review_capacity_backoff_schedule()[
+        "active"
+    ] is True
+
+    for terminal_type in (
+        post_merge_review_module.POST_MERGE_INDEPENDENT_REVIEW_EVENT,
+        post_merge_review_module.POST_MERGE_INDEPENDENT_REVIEW_DENIED_EVENT,
+    ):
+        monkeypatch.setattr(
+            daemon,
+            "_iter_events",
+            lambda terminal_type=terminal_type: [
+                failure_event,
+                {"type": terminal_type},
+            ],
+        )
+        assert daemon._post_merge_review_capacity_backoff_schedule() == {}
+
+
+def test_expired_review_capacity_projection_forces_only_one_full_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = object.__new__(TodoImplementationDaemon)
+    daemon._runtime_last_source_digest = "source:stable"
+    daemon._runtime_last_result = {
+        "post_merge_review_capacity_retry_at": (
+            datetime.now(timezone.utc) - timedelta(seconds=1)
+        ).isoformat(),
+    }
+    daemon._last_safety_reconciliation_monotonic = time.monotonic()
+    monkeypatch.setattr(
+        daemon,
+        "_consume_runtime_wake_kinds",
+        lambda: set(),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_runtime_source_head",
+        lambda: ("source:stable", {}),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_provider_capacity_backoff_schedule",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_selectable_task_retry_schedule",
+        lambda: {},
+    )
+
+    class FullPassReached(RuntimeError):
+        pass
+
+    monkeypatch.setattr(
+        daemon,
+        "ensure_event_log_file",
+        lambda: (_ for _ in ()).throw(FullPassReached()),
+    )
+    with pytest.raises(FullPassReached):
+        daemon.run_once()
+
+    daemon._runtime_last_result = {}
+    daemon._last_safety_reconciliation_monotonic = time.monotonic()
+    monkeypatch.setattr(
+        daemon,
+        "_unchanged_runtime_result",
+        lambda **_kwargs: {"unchanged": True},
+    )
+    assert daemon.run_once() == {"unchanged": True}
 
 
 def _complete_post_merge_denial_queue(

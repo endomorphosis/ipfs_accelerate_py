@@ -20,7 +20,7 @@ import tempfile
 import threading
 import time
 from dataclasses import asdict, dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
@@ -183,6 +183,7 @@ from .post_merge_review import (
     POST_MERGE_CORRECTION_QUEUE_RECONCILED_EVENT,
     POST_MERGE_CORRECTION_QUEUE_RECONCILIATION_SCHEMA,
     POST_MERGE_CORRECTION_QUEUE_TERMINAL_SCHEMA,
+    POST_MERGE_INDEPENDENT_REVIEW_EVENT,
     POST_MERGE_INDEPENDENT_REVIEW_DENIED_EVENT,
     POST_MERGE_INDEPENDENT_REVIEW_FAILED_EVENT,
     PostMergeReviewError,
@@ -9150,6 +9151,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "strategy_path",
             "events_path",
             "task_source_identity",
+            "post_merge_review_capacity_retry_at",
             "reason",
         )
         return {key: result[key] for key in keys if key in result}
@@ -9501,11 +9503,30 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 task_retry_schedule
                 and not task_retry_schedule.get("active", False)
             )
+            # The durable provider event remains in the append-only ledger
+            # after its deadline.  Use the deadline projected by the previous
+            # pass as a one-shot wake token instead of treating that immutable
+            # event as due forever.  The full retry pass omits an inactive
+            # deadline from its next projection, allowing later unchanged
+            # passes to return to sleep if no review candidate remains.
+            projected_review_retry_at = parse_timestamp(
+                str(
+                    (self._runtime_last_result or {}).get(
+                        "post_merge_review_capacity_retry_at",
+                        "",
+                    )
+                    or ""
+                )
+            )
+            review_retry_due = bool(
+                projected_review_retry_at
+                and projected_review_retry_at <= datetime.now(timezone.utc)
+            )
             provider_retry_active = bool(
                 provider_retry_schedule
                 and provider_retry_schedule.get("active", False)
             )
-            runtime_retry_due = provider_retry_due or (
+            runtime_retry_due = provider_retry_due or review_retry_due or (
                 not provider_retry_active and task_retry_due
             )
             if not runtime_retry_due:
@@ -10731,6 +10752,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         for key in (
             "provider_capacity_retry_at",
+            "post_merge_review_capacity_retry_at",
             "task_selection_retry_at",
             "task_selection_retry_task_ids",
             "task_selection_retry_task_count",
@@ -10750,6 +10772,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["task_selection_retry_task_ids"] = task_retry["task_ids"]
             result["task_selection_retry_task_count"] = task_retry["task_count"]
             retry_after_seconds.append(task_retry["retry_after_seconds"])
+
+        review_retry = self._post_merge_review_capacity_backoff_schedule()
+        if review_retry.get("active", False):
+            result["post_merge_review_capacity_retry_at"] = review_retry[
+                "retry_at"
+            ]
+            retry_after_seconds.append(
+                float(review_retry["retry_after_seconds"])
+            )
 
         if retry_after_seconds:
             result["next_wake_after_seconds"] = min(retry_after_seconds)
@@ -16112,6 +16143,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 for denial in prior_denials
             ):
                 return {}
+        capacity_deferral = (
+            self._active_post_merge_review_capacity_deferral(
+                task=task,
+                queue_attempt=int(queue_attempt or attempt),
+                implementation_attempt=int(attempt),
+                implementation_commit=implementation_commit,
+                merge_commit=merge_commit,
+                repository_tree_id=repository_tree_id,
+            )
+        )
+        if capacity_deferral:
+            return {}
         outcome = perform_post_merge_independent_review(
             repo_root=self.repo_root,
             receipt_dir=(
@@ -16142,6 +16185,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 POST_MERGE_INDEPENDENT_REVIEW_FAILED_EVENT,
                 {
                     "task_id": task.task_id,
+                    "task_binding_id": post_merge_task_binding_id(task),
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "board_namespace": identity.board_namespace,
                     "attempt": int(queue_attempt or attempt),
                     "implementation_attempt": int(attempt),
                     "implementation_commit": implementation_commit,
@@ -16164,6 +16211,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "provider_result_admitted": False,
                     "proof_authoritative": False,
                     "completion_authoritative": False,
+                    **(
+                        {
+                            "reviewer_provider": "codex_cli",
+                            "provider_reason_codes": list(
+                                outcome.provider_reason_codes
+                            ),
+                            "provider_next_eligible_at": (
+                                outcome.provider_next_eligible_at
+                            ),
+                        }
+                        if outcome.provider_reason_codes
+                        else {}
+                    ),
                 },
             )
             return {}
@@ -16296,6 +16356,183 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             written,
             events_path=self.events_path,
         )
+
+    def _active_post_merge_review_capacity_deferral(
+        self,
+        *,
+        task: PortalTask,
+        queue_attempt: int,
+        implementation_attempt: int,
+        implementation_commit: str,
+        merge_commit: str,
+        repository_tree_id: str,
+    ) -> dict[str, Any]:
+        """Bind the active Codex-review capacity latch to one candidate."""
+
+        schedule = self._post_merge_review_capacity_backoff_schedule()
+        if not schedule.get("active", False):
+            return {}
+        identity = self._identity_for_task(task)
+        binding_id = post_merge_task_binding_id(task)
+        return {
+            "task_id": task.task_id,
+            "task_binding_id": binding_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "attempt": queue_attempt,
+            "queue_attempt": queue_attempt,
+            "implementation_attempt": implementation_attempt,
+            "implementation_commit": implementation_commit,
+            "merge_commit": merge_commit,
+            "repository_tree_id": repository_tree_id,
+            "reviewer_provider": "codex_cli",
+            "reason": "reviewer_provider_capacity_backoff",
+            "retry_at": schedule["retry_at"],
+            "retry_after_seconds": schedule["retry_after_seconds"],
+            "capacity_source_event_id": schedule.get(
+                "source_event_id", ""
+            ),
+            "completion_authoritative": False,
+        }
+
+    def _post_merge_review_capacity_backoff_schedule(
+        self,
+    ) -> dict[str, Any]:
+        """Return the latest authentic Codex-review capacity schedule."""
+
+        capacity_reasons = {
+            "provider_capacity_unavailable",
+            "usage_limit",
+            "quota_exceeded",
+            "capacity_unavailable",
+        }
+        now = datetime.now(timezone.utc)
+        for event in reversed(self._iter_events()):
+            event_type = str(event.get("type") or "")
+            if event_type in {
+                POST_MERGE_INDEPENDENT_REVIEW_EVENT,
+                POST_MERGE_INDEPENDENT_REVIEW_DENIED_EVENT,
+            }:
+                return {}
+            if event_type != POST_MERGE_INDEPENDENT_REVIEW_FAILED_EVENT:
+                continue
+            event_reasons = {
+                str(item).strip()
+                for item in list(
+                    event.get("provider_reason_codes") or []
+                )
+                if str(item).strip()
+            }
+            if (
+                str(event.get("reason_code") or "")
+                != "reviewer_provider_capacity_unavailable"
+                or str(event.get("reviewer_provider") or "")
+                != "codex_cli"
+                or not event_reasons.intersection(capacity_reasons)
+            ):
+                # A failure for another task or before provider dispatch does
+                # not prove that the account-wide Codex capacity window has
+                # recovered.  Only an admitted/denied provider result above
+                # clears the latest authentic capacity latch.
+                continue
+            retry_at = parse_timestamp(
+                str(event.get("provider_next_eligible_at") or "")
+            )
+            if retry_at is None:
+                observed_at = parse_timestamp(
+                    str(event.get("timestamp") or "")
+                )
+                if observed_at is None:
+                    return {}
+                retry_at = observed_at + timedelta(
+                    seconds=self._provider_capacity_backoff_seconds()
+                )
+            return {
+                "active": retry_at > now,
+                "retry_at": retry_at.isoformat(),
+                "retry_after_seconds": max(
+                    0.0, (retry_at - now).total_seconds()
+                ),
+                "provider": "codex_cli",
+                "source_event_id": str(event.get("event_id") or ""),
+            }
+        return {}
+
+    def _partition_post_merge_review_capacity_deferred_candidates(
+        self,
+        candidates: Sequence[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Keep cooling review candidates out of the bounded merge slot."""
+
+        try:
+            tasks_by_id = {
+                task.task_id: task for task in self._load_tasks()
+            }
+        except (OSError, TaskSourceError, ValueError):
+            return list(candidates), []
+        target_commit = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            self._main_branch_name(),
+        )
+        target_tree = self._candidate_repository_tree(target_commit)
+        if not target_commit or not target_tree:
+            return list(candidates), []
+        repository_tree_id = f"git-tree:{target_tree}"
+        eligible: list[dict[str, Any]] = []
+        deferred: list[dict[str, Any]] = []
+        for event in candidates:
+            task_id = str(event.get("task_id") or "")
+            task = tasks_by_id.get(task_id)
+            implementation_commit = str(
+                event.get("implementation_commit") or ""
+            )
+            acceptance_pending = bool(
+                event.get("merge_integrated") is True
+                and event.get("authoritatively_completed") is not True
+            )
+            if (
+                task is None
+                or not acceptance_pending
+                or not implementation_commit
+                or not self._git_ref_is_ancestor(
+                    implementation_commit,
+                    target_commit,
+                )
+            ):
+                eligible.append(event)
+                continue
+            queue_attempt = int(
+                event.get("queue_attempt")
+                or event.get("attempt")
+                or 0
+            )
+            implementation_attempt = int(
+                event.get("implementation_attempt")
+                or event.get("attempt")
+                or 0
+            )
+            deferral = self._active_post_merge_review_capacity_deferral(
+                task=task,
+                queue_attempt=queue_attempt,
+                implementation_attempt=implementation_attempt,
+                implementation_commit=implementation_commit,
+                merge_commit=target_commit,
+                repository_tree_id=repository_tree_id,
+            )
+            if not deferral:
+                eligible.append(event)
+                continue
+            deferred.append(
+                {
+                    **deferral,
+                    "resolved": False,
+                    "merge_integrated": True,
+                    "authoritatively_completed": False,
+                    "provider_review_evidence_present": False,
+                }
+            )
+        return eligible, deferred
 
     def _apply_post_merge_acceptance_with_target_fence(
         self,
@@ -35336,6 +35573,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self._record_event("merge_reconciled", result)
             results.append(result)
         candidates = fresh_candidates
+        (
+            candidates,
+            post_merge_review_capacity_deferrals,
+        ) = self._partition_post_merge_review_capacity_deferred_candidates(
+            candidates
+        )
+        results.extend(post_merge_review_capacity_deferrals)
         if candidates:
             preflight_lock = self._repo_merge_lock_path()
             preflight_metadata = self._build_published_merge_lock_metadata(

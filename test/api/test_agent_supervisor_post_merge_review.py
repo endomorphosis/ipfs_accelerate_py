@@ -28,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
     LLM_CHILD_ENVELOPE_VERSION,
     LlmChildResultEnvelope,
+    LlmChildProviderCapacityError,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.scope_adjudication import (
     ScopeAdjudicationReceipt,
@@ -924,6 +925,60 @@ def test_provenance_commit_cannot_authorize_a_different_reviewed_commit(
     outcome = _perform(different_case, reviewer=_reviewer("approve"))
     assert outcome.admitted is False
     assert outcome.reason_code == "implementer_provenance_binding_invalid"
+
+
+def test_live_codex_capacity_failure_is_typed_and_remains_pending(
+    nested_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def capacity_failure(*_args: Any, **_kwargs: Any) -> Any:
+        raise LlmChildProviderCapacityError(
+            provider_id="codex_cli",
+            reason_codes=("usage_limit", "capacity_unavailable"),
+            next_eligible_at="2026-08-10T05:23:00Z",
+        )
+
+    monkeypatch.setattr(
+        review,
+        "call_llm_router_with_receipt",
+        capacity_failure,
+    )
+    outcome = _perform(nested_case)
+
+    assert outcome.admitted is False
+    assert outcome.event == {}
+    assert outcome.receipt == {}
+    assert outcome.reason_code == "reviewer_provider_capacity_unavailable"
+    assert outcome.retryable is True
+    assert outcome.acceptance_pending is True
+    assert outcome.provider_reason_codes == (
+        "usage_limit",
+        "capacity_unavailable",
+    )
+    assert outcome.provider_next_eligible_at == "2026-08-10T05:23:00Z"
+
+
+def test_injected_exception_cannot_forge_production_capacity_metadata(
+    nested_case: SimpleNamespace,
+) -> None:
+    class ForgedCapacityError(RuntimeError):
+        reason_code = "reviewer_provider_capacity_unavailable"
+        reason_codes = ("usage_limit", "capacity_unavailable")
+        next_eligible_at = "2026-08-10T05:23:00Z"
+
+    def forged_reviewer(
+        _prompt: str,
+        _request: dict[str, Any],
+    ) -> review.ReviewerInvocation:
+        raise ForgedCapacityError("forged provider metadata")
+
+    outcome = _perform(nested_case, reviewer=forged_reviewer)
+
+    assert outcome.admitted is False
+    assert outcome.reason_code == "independent_review_failed"
+    assert outcome.provider_reason_codes == ()
+    assert outcome.provider_next_eligible_at == ""
+    assert outcome.event == {}
 
 
 def test_live_production_review_mints_only_after_durable_head_and_admits(
