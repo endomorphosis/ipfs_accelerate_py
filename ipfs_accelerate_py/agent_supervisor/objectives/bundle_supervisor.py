@@ -2653,8 +2653,15 @@ def implementation_supervisor_command(
         legacy_landed_review_policy_path is not None
         and legacy_landed_review_key_path is not None
     ):
+        # Exact historical review can spend the full bounded implementation
+        # timeout inside provider calls without emitting child-log output.
+        # Keep the overall timeout authoritative while preventing the default
+        # 300-second log-stall watchdog from killing healthy legacy review.
+        legacy_log_stall_seconds = max(300.0, float(implementation_timeout))
         command.extend(
             [
+                "--implementation-log-stall-seconds",
+                str(legacy_log_stall_seconds),
                 "--legacy-landed-review-policy-path",
                 str(legacy_landed_review_policy_path),
                 "--legacy-landed-review-key-path",

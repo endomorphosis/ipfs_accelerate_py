@@ -483,6 +483,7 @@ def test_legacy_capacity_overlay_is_exact_and_default_off(
         worktree_root=repo / "worktrees",
         log_dir=repo / "logs",
         implement=True,
+        implementation_timeout=900.0,
         legacy_landed_review_policy_path=policy_path,
         legacy_landed_review_key_path=key_path,
         optimize_bundles=False,
@@ -493,6 +494,11 @@ def test_legacy_capacity_overlay_is_exact_and_default_off(
         DUAL_REVIEW_PROVIDER_ID if enabled else ""
     )
     assert by_task["OTHER"].llm_provider == ""
+    for lane in lanes:
+        stall_index = lane.command.index("--implementation-log-stall-seconds")
+        assert float(lane.command[stall_index + 1]) == 900.0
+        timeout_index = lane.command.index("--implementation-timeout")
+        assert float(lane.command[timeout_index + 1]) == 900.0
 
 
 def test_four_model_lanes_are_capped_by_two_free_pair_slots(
