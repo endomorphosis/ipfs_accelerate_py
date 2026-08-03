@@ -8053,6 +8053,10 @@ def _set_last_generation_trace(
         "effective_model_name": str(model_name or "").strip(),
     }
     if route_trace:
+        for key in ("effective_provider_name", "effective_model_name"):
+            value = route_trace.get(key)
+            if isinstance(value, str) and value.strip():
+                payload[key] = value.strip()
         for key in _PINNED_SYMAI_TRACE_KEYS:
             value = route_trace.get(key)
             if isinstance(value, str) and value.strip():
@@ -9577,7 +9581,7 @@ def generate_text(
             if isinstance(candidate_trace, dict):
                 route_trace = candidate_trace
         _set_last_generation_trace(
-            provider_name=effective_provider_name,
+            provider_name=provider_used_name,
             model_name=model_name,
             route_trace=route_trace,
         )
