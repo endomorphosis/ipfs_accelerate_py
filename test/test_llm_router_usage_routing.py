@@ -1033,3 +1033,15 @@ def test_generation_trace_still_records_provider() -> None:
     trace = get_last_generation_trace()
     assert trace["effective_provider_name"] == "nested-route-provider"
     assert trace["effective_model_name"] == "route-model"
+
+    class _NamedProvider:
+        name = "named_provider"
+
+        def generate(self, prompt: str, **kwargs: object) -> str:
+            _ = (prompt, kwargs)
+            return "named"
+
+    generate_text("named", provider_instance=_NamedProvider(), model_name="m")
+    trace = get_last_generation_trace()
+    assert trace["effective_provider_name"] == "named_provider"
+    assert trace["effective_model_name"] == "m"

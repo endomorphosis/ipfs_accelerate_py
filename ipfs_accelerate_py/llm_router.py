@@ -8391,9 +8391,10 @@ def _llm_provider_display_name(
     requested: Optional[str] = None,
 ) -> str:
     if backend is not None:
-        name = getattr(backend, "router_provider_name", None)
-        if isinstance(name, str) and name.strip():
-            return _canonicalize_provider(name) or name.strip()
+        for attribute in ("router_provider_name", "provider_name", "name"):
+            name = getattr(backend, attribute, None)
+            if isinstance(name, str) and name.strip():
+                return _canonicalize_provider(name) or name.strip()
     if requested:
         return _canonicalize_provider(requested) or str(requested).strip()
     return ""

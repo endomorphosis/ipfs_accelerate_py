@@ -572,12 +572,9 @@ def test_python_mcp_mcplusplus_schemas_and_reason_codes_agree() -> None:
     catalog_cid = idl_registry.compute_interface_cid(
         idl_registry.build_ai_catalog_v1_descriptor()
     )
-    assert catalog_cid.startswith("cidv1-sha256-")
+    assert catalog_cid.startswith("bafk")
     # Frozen catalog surface unchanged (matches test_mcplusplus_ai_catalog_idl)
-    assert catalog_cid == (
-        "cidv1-sha256-13e0f0a7b9d8cae9b5d0ca0d5d4c1c0e"
-        "ea392e2225b5e5e3f05aa272bbf7315d"
-    )
+    assert catalog_cid == "bafkreiat4dykpooyzlu3lugkbvouyhao5i4s4irfwxs6h4c2ujzlx5zrlu"
 
 
 def test_receipt_recording_is_redacted() -> None:
