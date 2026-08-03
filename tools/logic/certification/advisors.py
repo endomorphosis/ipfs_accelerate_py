@@ -116,6 +116,17 @@ ERGOAI_LIVE_CASE_KINDS: Final = (
     "timeout",
     "resource_bound",
 )
+# FVT-G223 / FVT-091 — managed ErgoAI Java/JDK live certification.
+ERGOAI_JAVA_API_LIVE_INTERFACE: Final = "ErgoAIJavaAPILiveCertification@1"
+ERGOAI_JAVA_API_LIVE_SCHEMA: Final = "ergoai-java-api-live-certification/v1"
+ERGOAI_JAVA_API_LIVE_GOAL_ID: Final = "FVT-G223"
+ERGOAI_JAVA_API_LIVE_TASK_ID: Final = "FVT-091"
+ERGOAI_JAVA_API_LIVE_PROGRAM: Final = (
+    "formal-verification-tactician/ergoai-java-api-live-certification"
+)
+ERGOAI_JAVA_API_LIVE_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_ergoai_java_api_live_receipt.json"
+)
 
 ADVISOR_TOOL_IDS: Final = (
     "symbolicai",
@@ -1985,6 +1996,89 @@ def build_ergoai_live_toolchain_contract(
     return payload
 
 
+def build_ergoai_java_api_live_certification(
+    *,
+    repo_root: Path | None = None,
+    install_root: str | Path | None = None,
+    platform_key: str | None = None,
+    run_live_cases: bool = True,
+    allow_hermetic_ergoai: bool = False,
+    yes: bool = False,
+    force: bool = False,
+    artifact_path: str | Path | None = None,
+    publisher_checksum_text: str | None = None,
+    publisher_signature_bytes: bytes | None = None,
+) -> dict[str, Any]:
+    """Build ``ErgoAIJavaAPILiveCertification@1`` via the advisors installer.
+
+    Certification remains advisor-only: successful live Java/JDK evidence never
+    grants theorem or proof authority and never blocks core ErgoAI.
+    """
+
+    root = repo_root or repo_root_from()
+    if advisors_installer is None:
+        return {
+            "schema_version": ERGOAI_JAVA_API_LIVE_SCHEMA,
+            "interface": ERGOAI_JAVA_API_LIVE_INTERFACE,
+            "goal_id": ERGOAI_JAVA_API_LIVE_GOAL_ID,
+            "task_id": ERGOAI_JAVA_API_LIVE_TASK_ID,
+            "program": ERGOAI_JAVA_API_LIVE_PROGRAM,
+            "certified": False,
+            "block_reasons": ["advisors_installer_unavailable"],
+            "authority_ceiling": AUTHORITY_CEILING,
+            "grants_theorem_authority": False,
+            "grants_proof_authority": False,
+            "core_ergoai_independent": True,
+        }
+    return advisors_installer.build_ergoai_java_api_live_certification(
+        install_root=install_root,
+        repo_root=root,
+        platform_key=platform_key,
+        run_live_cases=run_live_cases,
+        allow_hermetic_ergoai=allow_hermetic_ergoai,
+        yes=yes,
+        force=force,
+        artifact_path=artifact_path,
+        publisher_checksum_text=publisher_checksum_text,
+        publisher_signature_bytes=publisher_signature_bytes,
+    )
+
+
+def write_ergoai_java_api_live_receipt(
+    receipt: Mapping[str, Any] | None = None,
+    *,
+    repo_root: Path | None = None,
+    path: str | Path | None = None,
+    **kwargs: Any,
+) -> Path:
+    """Write the public-safe ErgoAI Java API live receipt JSON."""
+
+    root = repo_root or repo_root_from()
+    payload = receipt
+    if payload is None:
+        payload = build_ergoai_java_api_live_certification(
+            repo_root=root,
+            **kwargs,
+        )
+    target = (
+        Path(path)
+        if path is not None
+        else root / ERGOAI_JAVA_API_LIVE_RECEIPT_RELATIVE
+    )
+    if advisors_installer is not None:
+        return advisors_installer.write_ergoai_java_api_live_receipt(
+            payload,
+            repo_root=root,
+            path=target,
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return target
+
+
 # ---------------------------------------------------------------------------
 # Certification orchestration
 # ---------------------------------------------------------------------------
@@ -2460,6 +2554,12 @@ __all__ = [
     "certify_install_identities",
     "certify_live_ergoai_vendor",
     "build_ergoai_live_toolchain_contract",
+    "ERGOAI_JAVA_API_LIVE_INTERFACE",
+    "ERGOAI_JAVA_API_LIVE_SCHEMA",
+    "ERGOAI_JAVA_API_LIVE_GOAL_ID",
+    "ERGOAI_JAVA_API_LIVE_TASK_ID",
+    "build_ergoai_java_api_live_certification",
+    "write_ergoai_java_api_live_receipt",
     "run_certification_suite",
     "build_certification_receipt",
     "lane_handler",
