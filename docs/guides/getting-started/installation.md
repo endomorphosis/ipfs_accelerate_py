@@ -1,19 +1,26 @@
 # Installation
 
 **Status:** Current
+**Owner:** package maintainers
 **Audience:** Developers and operators installing the package for the first time
 **Scope:** Python range, published and editable installs, optional extras from
 `pyproject.toml`, CUDA/PyTorch selection, MCP and IPFS/P2P prerequisites, and
 offline verification
 **Non-goals:** Resolving packaging-versus-runtime version disagreement in code;
 deep MCP, hardware, or supervisor operations (see the linked guides)
-**Source anchors:** `pyproject.toml` (`[project]`, `[project.optional-dependencies]`,
+**Sources:** `pyproject.toml` (`[project]`, `[project.optional-dependencies]`,
 `[project.scripts]`), `setup.py` (`version=`), `ipfs_accelerate_py/__init__.py`
-(`__version__`), `install/requirements_torch_*.txt`,
-`scripts/install_torch_cuda_cu130_nightly.sh`
+(`__version__`, `get_instance`), `requirements.txt`,
+`install/requirements_torch_cu124.txt`,
+`install/requirements_torch_cu130_nightly.txt`,
+`scripts/install_torch_cuda_cu130_nightly.sh`,
+`docs/architecture/INFERENCE_RUNTIME.md`
+**Last-verified:** 2026-08-03 @ b128cceef
 
-IPFS Accelerate Python has a small base install and feature-scoped optional
-extras. Choose the smallest profile that supports the workload, then verify the
+IPFS Accelerate Python currently has a broad always-installed dependency set,
+loaded dynamically from `requirements.txt`, plus feature-scoped optional
+extras. Extras add requested dependencies and may overlap the base; selecting
+an extra cannot subtract packages from the base installation. Verify the
 capabilities that the host actually exposes. **Import success is not a
 capability signal.**
 
@@ -74,15 +81,18 @@ Extras are defined only in `pyproject.toml` under
 `[project.optional-dependencies]`. There are **no** packaging extras named
 `cuda`, `openvino`, or `rocm`; those backends are environment- and
 wheel-specific (see [CUDA and PyTorch](#cuda-and-pytorch) and
-[Other optional backends](#other-optional-backends)).
+[Other optional backends](#other-optional-backends)). The base dependencies
+come from `requirements.txt` and already include PyArrow, PyTorch,
+Transformers, FastMCP, Flask, and PyGithub. Several extras therefore overlap
+the base rather than introducing every listed library for the first time.
 
-| Extra | Adds (summary) |
+| Extra | Requested dependency set beyond/alongside the base (summary) |
 | --- | --- |
-| `minimal` | Small runtime set (aiohttp, duckdb, IPFS HTTP client, websockets, tqdm, numpy). |
+| `minimal` | Compatibility profile requesting aiohttp, DuckDB, IPFS HTTP client, websockets, tqdm, and NumPy. These already overlap the base, so this extra does **not** produce a minimal overall installation. |
 | `dev` | pytest stack, anyio/httpx, FastAPI/uvicorn for local tests, black/flake8/mypy. |
-| `textgen` | Transformers (text-generation oriented). |
-| `full` | PyTorch, Transformers, FastAPI/uvicorn, sentence-transformers, model-manager and transformers IPFS integrations. |
-| `mcp` | MCP server and GitHub integration dependencies (fastmcp, Flask stack, PyGithub). |
+| `textgen` | Requests Transformers, which is also in the current base dependency set. |
+| `full` | Requests PyTorch, Transformers, FastAPI/uvicorn, sentence-transformers, model-manager, and transformers IPFS integrations; PyTorch and Transformers overlap the base. |
+| `mcp` | Requests MCP server and GitHub integration dependencies; FastMCP, the Flask stack, and PyGithub overlap the base. |
 | `mcp-p2p` | libp2p and related networking deps for TaskQueue/P2P. |
 | `libp2p` | Same libp2p dependency set as `mcp-p2p` under an alternate extra name. |
 | `webnn` | Browser/WebNN/WebGPU support dependencies (Playwright, aiohttp, websockets). |
@@ -95,7 +105,8 @@ wheel-specific (see [CUDA and PyTorch](#cuda-and-pytorch) and
 | `testing` | Broad test-suite dependency set (includes serving TestClient stack). |
 | `all` | Aggregate application dependencies **without** native P2P/libp2p by default. |
 
-Install only what the workload needs:
+Select an extra only for the capability profile the workload needs, while
+remembering that pip still installs the complete base dependency set:
 
 ```bash
 python -m pip install "ipfs-accelerate-py[mcp]"
@@ -205,7 +216,10 @@ environment-specific. Install their upstream runtime and the matching package
 extra when one exists (`webnn` for browser automation paths). The package
 should still import when an optional backend is absent.
 
-Use the capability report after installation:
+The process-level capability report is available after installation, but
+constructing the coordinator is side-effecting: it may initialize storage,
+caches, configuration, daemons, or configured external integrations. It is not
+an offline verification step.
 
 ```bash
 python - <<'PY'
@@ -262,15 +276,18 @@ These checks do not require model weights, CUDA, IPFS, or MCP:
 # 1) Import and report runtime export (may differ from packaging metadata)
 python - <<'PY'
 import ipfs_accelerate_py
-from ipfs_accelerate_py import get_instance
 
 print("runtime __version__:", ipfs_accelerate_py.__version__)
-print("capabilities:", get_instance().get_capabilities())
+print("package import: ok")
 PY
 
 # 2) CLI help surfaces (canonical hyphenated entry point)
 ipfs-accelerate --help
 ```
+
+This recipe intentionally avoids `get_instance()`. Coordinator construction
+is not cold: it can write configuration/cache state, initialize storage or
+daemons, and probe configured external resources.
 
 Optional packaging metadata check (installed distribution):
 

@@ -1,15 +1,18 @@
 # Getting Started
 
 **Status:** Current
+**Owner:** package maintainers
 **Audience:** Developers taking a source checkout or installed package to a
 first verified operation
 **Scope:** Install profile choice, offline import and CLI help, capability
 report, optional model run, MCP start, and optional agent supervisor entry
 **Non-goals:** Full API or CLI reference; deep hardware tuning; packaging
 version reconciliation
-**Source anchors:** `pyproject.toml`, `ipfs_accelerate_py/__init__.py`
+**Sources:** `pyproject.toml`, `requirements.txt`, `ipfs_accelerate_py/__init__.py`
 (`get_instance`, `__version__`), `ipfs_accelerate_py/cli_entry.py`,
-`ipfs_accelerate_py/ipfs_accelerate.py` (`run_model`, `get_capabilities`)
+`ipfs_accelerate_py/ipfs_accelerate.py` (`run_model`, `get_capabilities`),
+`docs/architecture/INFERENCE_RUNTIME.md`
+**Last-verified:** 2026-08-03 @ b128cceef
 
 This guide gets a source checkout or an installed package to a verified Python
 import, a capability report, and an optional MCP server. The framework has
@@ -33,8 +36,11 @@ For a published installation:
 python -m pip install ipfs-accelerate-py
 ```
 
-Install an extra only when you need it. Extras are defined in
-`pyproject.toml` under `[project.optional-dependencies]`. Common profiles
+The always-installed dependency set is loaded from `requirements.txt` and is
+broad: it already includes PyTorch, Transformers, the MCP/Flask stack, and
+other runtime libraries. Extras are additive profiles and sometimes repeat
+base dependencies; they do not make the base install smaller. Extras are
+defined in `pyproject.toml` under `[project.optional-dependencies]`. Common profiles
 include `full`, `mcp`, `mcp-p2p`, `webnn`, `llama_cpp`, `analysis`, and
 `testing`. There is no `cuda` / `openvino` / `rocm` packaging extra; see the
 [installation guide](installation.md) for the complete table and CUDA wheel
@@ -45,12 +51,16 @@ selection.
 ```bash
 python - <<'PY'
 import ipfs_accelerate_py
-from ipfs_accelerate_py import get_instance
 
 print("runtime __version__:", ipfs_accelerate_py.__version__)
-print("task types:", get_instance().get_capabilities()["task_types"])
+print("package import: ok")
 PY
 ```
+
+This is an import/version check only. It deliberately does not call
+`get_instance()`: constructing the process coordinator is side-effecting and
+may initialize storage, caches, configuration, daemons, or external-resource
+integrations.
 
 `ipfs_accelerate_py.__version__` is the runtime export. Packaging metadata in
 `pyproject.toml` / `setup.py` currently declares `0.0.45` while
@@ -68,6 +78,11 @@ ipfs-accelerate models --help
 ```
 
 ## 3. Inspect hardware and providers
+
+The process-level capability report constructs the coordinator. It is a
+runtime initialization step, not an offline or side-effect-free probe; run it
+only when local writes, daemon discovery/startup, and configured external
+integration checks are acceptable.
 
 ```bash
 python - <<'PY'
@@ -103,7 +118,8 @@ nightly wheels for newer NVIDIA systems.
 The main compatibility API is `ipfs_accelerate_py` / `get_instance()`, not a
 legacy `IPFSAccelerator` name. With the Transformers integration installed
 (for example via the `full` or `textgen` extra, plus a suitable PyTorch
-build):
+build), the following performs runtime initialization and may exercise the
+same storage/configuration/integration setup described above:
 
 ```python
 from ipfs_accelerate_py import ipfs_accelerate_py
@@ -115,7 +131,7 @@ accelerator = ipfs_accelerate_py(
 result = accelerator.run_model(
     "bert-base-uncased",
     {"input_ids": [[101, 2023, 2003, 102]]},
-    model_type="text_generation",
+    model_type="text_embedding",
     device="cpu",
 )
 print(result)
@@ -126,7 +142,7 @@ The model, tokenizer, task type, provider, and device must agree. Prefer
 network-backed provider. Model downloads and credentials are separate from the
 base install.
 
-Discovery-first workflow with the process singleton:
+Runtime discovery with the process singleton (side-effecting construction):
 
 ```python
 from ipfs_accelerate_py import get_instance
@@ -134,6 +150,10 @@ from ipfs_accelerate_py import get_instance
 accelerator = get_instance()
 print(accelerator.get_capabilities(detail=True))
 ```
+
+This call may initialize storage/cache/configuration, probe external
+integrations, or start configured daemons. Use package import and CLI `--help`
+for a cold verification instead.
 
 ## 5. Start MCP (optional)
 

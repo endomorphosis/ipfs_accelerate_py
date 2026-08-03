@@ -1,5 +1,16 @@
 # API Overview
 
+**Status:** Current
+**Owner:** package maintainers
+**Audience:** Python integrators, CLI users, and maintainer agents
+**Sources:** `pyproject.toml`; `ipfs_accelerate_py/__init__.py`;
+`ipfs_accelerate_py/ipfs_accelerate.py`;
+`ipfs_accelerate_py/transformers_integration.py`;
+`ipfs_accelerate_py/cli_entry.py`; `ipfs_accelerate_py/cli.py`;
+`ipfs_accelerate_py/agent_supervisor/__init__.py`; CLI/API contract tests under
+`test/`
+**Last-verified:** 2026-08-03 @ b128cceef
+
 This is the current high-level API reference for the Python package. Detailed
 behavior remains defined by the source modules and their tests. Optional
 providers, routers, and integrations may appear in the package export surface
@@ -29,7 +40,7 @@ relying on them.
 | Export | Role | Availability |
 | --- | --- | --- |
 | `ipfs_accelerate_py` | Main compatibility-oriented accelerator class. | Raises `NotImplementedError` when core is disabled or missing. |
-| `get_instance` | Process-wide accelerator instance with optional dependency injection. | Same as core. |
+| `get_instance` | Process-wide accelerator instance with optional dependency injection. Construction may initialize storage, cache/configuration, daemons, and external integrations. | Same as core; not a cold probe. |
 | `ModelManager` | Lazily loaded model-management facade. | Resolved on first use; may raise if model-manager deps are missing. |
 | `get_default_model_manager` | Obtain the default model manager. | Same lazy boundary as `ModelManager`. |
 | `cli_main` | Programmatic entry to the unified CLI (`ipfs-accelerate`). | When core is enabled. |
@@ -69,6 +80,11 @@ print({
 })
 ```
 
+`get_instance()` constructs the process coordinator. It is not side-effect
+free and may initialize storage, caches, configuration, daemons, or configured
+external integrations. Use package import/version output or CLI `--help` for a
+cold verification.
+
 An `*_available` flag of `True` means the package could import that subsystem.
 It does **not** mean a provider, model, GPU, daemon, or credential is ready.
 
@@ -97,7 +113,8 @@ python -m ipfs_accelerate_py.cli --help
 
 The compatibility class is constructed with resource and metadata mappings. It
 also accepts optional injected `deps`, `ipfs_kit`, `ipfs_datasets`, and storage
-objects.
+objects. Construction is runtime initialization and can have the same storage,
+configuration, daemon, and integration effects described for `get_instance()`.
 
 ```python
 from ipfs_accelerate_py import ipfs_accelerate_py
@@ -116,7 +133,7 @@ accelerator.get_mcp_manifest(detail=True)  # MCP tools/resources/prompts
 accelerator.run_model(                         # load and run a model
     model_name="bert-base-uncased",
     inputs={"input_ids": [[101, 2023, 2003, 102]]},
-    model_type="text_generation",
+    model_type="text_embedding",
     device="cpu",
 )
 ```
@@ -128,9 +145,10 @@ endpoint-oriented applications, use `add_endpoint()`, `rm_endpoint()`,
 `get_endpoints()`, `choose_endpoint()`, and `infer()` as defined in
 `ipfs_accelerate_py/ipfs_accelerate.py`.
 
-`get_capabilities(detail=True)` is the preferred health/discovery surface. It
-reports task types, registered models/endpoints, hardware information when the
-detector is available, and the MCP manifest without returning callables.
+After coordinator initialization is acceptable,
+`get_capabilities(detail=True)` reports task types, registered models/endpoints,
+hardware information when the detector is available, and the MCP manifest
+without returning callables. It is not an offline/cold health probe.
 
 ## LLM router
 
@@ -176,16 +194,25 @@ ipfs-accelerate specialized --help
 ipfs-accelerate models --help
 ```
 
-Examples that resolve against the current parser:
+Parser-recognized examples (runtime success still depends on the installed and
+configured capability):
 
 ```bash
 ipfs-accelerate agent capabilities --help
 ipfs-accelerate mcp start --host 127.0.0.1 --port 9000
 ipfs-accelerate mcp status --host 127.0.0.1 --port 9000
-ipfs-accelerate models list
-ipfs-accelerate models search "embedding"
+ipfs-accelerate --output-json models list
+ipfs-accelerate --output-json models search "embedding"
 ipfs-accelerate text --ai-help
 ```
+
+`--output-json` is global and must precede `models`. `models list` and
+`models search` are side-effecting runtime commands: they can initialize
+`SharedCore`/IPFS storage, contact configured endpoints, attempt optional
+provider/package setup or auto-install flows, and write configuration/cache
+state. Use `ipfs-accelerate models --help` for cold parser discovery. Catalog
+output does not prove that a provider, credential, network service, or model
+weight is available.
 
 The parser epilog still mentions historical examples such as
 `ipfs-accelerate inference …`, `queue …`, and `network …`. Those strings are
