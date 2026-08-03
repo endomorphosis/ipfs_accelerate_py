@@ -482,7 +482,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-027 Independently admit plans through formal, IR, security, proof, and authority gates
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
