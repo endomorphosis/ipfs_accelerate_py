@@ -91,7 +91,7 @@ from .supervisor import (
 )
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
 from .supervisor_runtime import RestartPolicy
-from .worktrees import WORKTREE_POOL_SCHEMA, pid_is_alive
+from .worktrees import WORKTREE_POOL_SCHEMA, WorktreePool, pid_is_alive
 
 REPO_ROOT = Path.cwd()
 
@@ -1803,6 +1803,10 @@ class PortalImplementationSupervisor:
             }
         update_maintenance_phase("stale_worktree_detection")
         stale_worktree_detection = self.detect_stale_worktrees()
+        update_maintenance_phase("worktree_pool_orphan_reconciliation")
+        worktree_pool_orphan_reconciliation = (
+            self.reconcile_orphaned_worktree_pool_metadata()
+        )
         update_maintenance_phase("stale_active_state_repair")
         stale_active_state_repair = self.repair_stale_active_execution_state()
         update_maintenance_phase("main_checkout_repair")
@@ -1936,6 +1940,9 @@ class PortalImplementationSupervisor:
                 "state_file_repair": state_file_repair,
                 "stale_active_state_repair": stale_active_state_repair,
                 "stale_worktree_detection": stale_worktree_detection,
+                "worktree_pool_orphan_reconciliation": (
+                    worktree_pool_orphan_reconciliation
+                ),
                 "todo_board_repair": todo_board_repair,
                 "objective_task_janitor": objective_task_janitor,
                 "objective_goal_migration": objective_goal_migration,
@@ -2196,6 +2203,9 @@ class PortalImplementationSupervisor:
             "state_file_repair": state_file_repair,
             "stale_active_state_repair": stale_active_state_repair,
             "stale_worktree_detection": stale_worktree_detection,
+            "worktree_pool_orphan_reconciliation": (
+                worktree_pool_orphan_reconciliation
+            ),
             "todo_board_repair": todo_board_repair,
             "main_checkout_repair": main_checkout_repair,
             "generated_dirty_repair": generated_dirty_repair,
@@ -5685,6 +5695,40 @@ class PortalImplementationSupervisor:
         }
         if processed:
             self._record_event("worktree_reconciliation", result)
+        return result
+
+    def reconcile_orphaned_worktree_pool_metadata(
+        self,
+        *,
+        max_entries: int = 100,
+    ) -> dict[str, Any]:
+        """Reconcile dead pool sidecars that no Git worktree scan can see."""
+
+        worktree_root = self.config.worktree_root
+        if worktree_root is None:
+            return {
+                "attempted": False,
+                "reason": "worktree_root_not_configured",
+            }
+        state_root = worktree_root / ".pool-state"
+        if not state_root.is_dir():
+            return {
+                "attempted": False,
+                "reason": "worktree_pool_state_not_found",
+                "worktree_root": str(worktree_root),
+            }
+        pool = WorktreePool(
+            repo_root=self.config.repo_root,
+            worktree_root=worktree_root,
+        )
+        result = pool.reconcile_orphaned_metadata(
+            max_entries=max_entries,
+        )
+        if result.get("removed_count"):
+            self._record_event(
+                "worktree_pool_orphan_metadata_reconciled",
+                result,
+            )
         return result
 
     def recover_already_merged_reconciliation_candidates(
