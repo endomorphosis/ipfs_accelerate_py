@@ -188,9 +188,12 @@ proof_reuse_requirements = _read_requirements(
     this_directory / "requirements-proof-reuse.txt"
 )
 if proof_reuse_requirements:
-    # Keep legacy setup.py metadata aligned with the PEP 621 extra.  The
-    # ipfs_datasets_py verifier remains a lazy --no-deps install because that
-    # distribution depends back on ipfs_accelerate_py.
+    # Keep legacy setup.py metadata aligned with the PEP 621 extra and
+    # requirements-proof-reuse.txt.  Core install_requires carries strict
+    # content-addressing (multiformats/pymultihash).  Datasets-ZK
+    # (ipfs_datasets_py verifier) remains a first-use lazy --no-deps install
+    # via ProofReuseLazyDependencyInstaller because that distribution depends
+    # back on ipfs_accelerate_py.
     extras_require["proof-reuse"] = proof_reuse_requirements
 
 setup(

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 # ---------------------------------------------------------------------------
-# Optional proof-reuse bootstrap (PTR-061)
+# Optional proof-reuse bootstrap (PTR-061 / PTR-139 zero-config)
 #
 # Normal pytest startup discovers the shared plugin through the ``pytest11``
 # entry point declared in packaging metadata.  Hermetic / supervisor runs often
@@ -20,6 +20,16 @@ import pytest
 # creation, or ZK probe.  Both the packaging entry point and this root loader
 # are idempotent: they resolve to the same module name and never maintain a
 # test-path registry.
+#
+# Zero-config contract (PTR-139):
+# - Off mode and ordinary tests touch only this lightweight loader.
+# - Enabled modes assemble defaults inside the plugin via
+#   ``DefaultProofReuseServices`` / ``ProofReuseLazyDependencyInstaller``;
+#   this conftest never injects lookup/store/provider handles or mutates item
+#   attributes for proof reuse.
+# - First-use dependency installation is bounded, allowlisted, fenced, and
+#   controlled by package + proof-reuse auto-install policy.  Failures emit a
+#   typed capability reason and tests still run.
 # ---------------------------------------------------------------------------
 _PROOF_REUSE_PLUGIN = "ipfs_accelerate_py.testing.proof_reuse.plugin"
 

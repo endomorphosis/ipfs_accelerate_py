@@ -32,6 +32,12 @@ PyGithub>=2.3.0
 tqdm>=4.64.0
 numpy>=1.23.0
 toml>=0.10.2
+
+# Strict content-addressing (core).  Kept aligned with the proof-reuse extra
+# and pyproject/setup metadata.  Datasets-ZK verification is *not* core: the
+# proof-reuse lazy installer loads a reviewed local verifier with --no-deps
+# only when an exact lookup requests that capability (see
+# requirements-proof-reuse.txt and [project.optional-dependencies].proof-reuse).
 multiformats>=0.3,<1
 pymultihash>=0.8.2
 

@@ -63,10 +63,17 @@ dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
 proof-reuse = [
-  # Keep the install-time extra non-circular. The datasets verifier is selected
-  # lazily from a configured local checkout or the reviewed integration sibling
-  # and installed with --no-deps only after an exact lookup needs it. There is
-  # no remote fallback until the reviewed verifier revision is published.
+  # Keep the install-time extra non-circular and aligned with
+  # requirements-proof-reuse.txt + setup.py extras_require["proof-reuse"].
+  #
+  # Content-addressing: multiformats is also a core dependency (requirements.txt)
+  # so ordinary installs can CID without the extra; re-declared here for scoped
+  # proof-reuse environments.
+  #
+  # Datasets-ZK: ipfs_datasets_py is deliberately absent. The
+  # ProofReuseLazyDependencyInstaller loads a reviewed local verifier with
+  # --no-deps only on first requested certificate capability. There is no
+  # remote fallback until the reviewed verifier revision is published.
   "pytest>=8.0.0",
   "multiformats>=0.3,<1",
   "jsonschema>=4,<5",
