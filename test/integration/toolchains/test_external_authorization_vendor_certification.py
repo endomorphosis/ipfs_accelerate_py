@@ -211,15 +211,15 @@ def test_lock_souffle_source_is_checksummed() -> None:
 
     secpal = tools["secpal"]
     secpal_contract = secpal["deployment_contract"]
-    assert LINUX_AARCH64 not in secpal_contract["supported_platforms"]
-    assert "linux-x86_64" in secpal_contract["supported_platforms"]
-    exception = secpal_contract["platform_exceptions"][LINUX_AARCH64]
-    assert exception["classification"] == "unsupported_here"
-    assert exception["narrow_scope"] is True
-    assert exception["installed"] is False
-    assert exception["complete"] is False
-    assert exception["authoritative"] is False
-    assert exception["production_certified"] is False
+    assert secpal_contract["supported_platforms"] == []
+    for platform_id in (LINUX_AARCH64, "linux-x86_64"):
+        exception = secpal_contract["platform_exceptions"][platform_id]
+        assert exception["classification"] == "unsupported_here"
+        assert exception["narrow_scope"] is True
+        assert exception["installed"] is False
+        assert exception["complete"] is False
+        assert exception["authoritative"] is False
+        assert exception["production_certified"] is False
 
 
 def test_installer_vendor_constants(installer) -> None:
