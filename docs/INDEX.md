@@ -24,7 +24,7 @@ sequence work; they are never Current contracts.
 
 ---
 
-## Start here (Current)
+## Start here (Current unless labelled Reference)
 
 - [Getting started](guides/getting-started/README.md): install the package and
   run a first inference or MCP server.
@@ -42,8 +42,8 @@ sequence work; they are never Current contracts.
   stable Python, CLI, and MCP control interfaces.
 - [Agent Supervisor doc hub](architecture/agent_supervisor/README.md):
   audience router (operators, contributors, agents, programs).
-- [Architecture hub](architecture/README.md): concern and audience router for
-  all architecture guides.
+- [Architecture hub](architecture/README.md) (**Reference**): concern and
+  audience router for all architecture guides.
 - [Product glossary](architecture/GLOSSARY.md) (**Reference**): catalog/usage/
   router, MCP/MCP++, objective/task, merge/acceptance, and related terms.
 - [Documentation current state](development/DOCUMENTATION_CURRENT_STATE.md):
@@ -69,13 +69,13 @@ path alone (see the [manifest](development/DOCUMENTATION_MANIFEST.md)).
 - [P2P workflows](guides/p2p/README.md)
 - [Troubleshooting FAQ](guides/troubleshooting/faq.md)
 - [Testing](development/testing.md)
-- [Examples](../examples/README.md) (executable samples; capability-gated)
 
 ---
 
 ## Product architecture (Current)
 
-Start at the [architecture hub](architecture/README.md). Leaf guides:
+Start at the [architecture hub](architecture/README.md) (**Reference** router).
+Current leaf guides:
 
 | Concern | Guide |
 | --- | --- |
@@ -151,11 +151,12 @@ These sequence program work. Prefer Current guides above when they disagree.
 | [Guide conventions](architecture/GUIDE_CONVENTIONS.md) | Current | Architecture writing contract |
 | [Product glossary](architecture/GLOSSARY.md) | Reference | Shared terms |
 | [ADR index](architecture/decisions/README.md) | Reference | Why decisions exist |
-| [LLM router](LLM_ROUTER.md) | Inspect leaf | Includes Goose CLI operator notes |
-| [IPFS backend router](IPFS_BACKEND_ROUTER.md) | Inspect leaf | Prefer [DISTRIBUTED_RUNTIME.md](architecture/DISTRIBUTED_RUNTIME.md) for architecture |
+| [LLM router](LLM_ROUTER.md) | Reference | Includes Goose CLI operator notes; revalidate before Current promotion |
+| [IPFS backend router](IPFS_BACKEND_ROUTER.md) | Reference | Prefer [DISTRIBUTED_RUNTIME.md](architecture/DISTRIBUTED_RUNTIME.md) for Current architecture |
 | [Nested packages inventory](NESTED_PACKAGES.md) | Reference | Gitlink pins; not runtime authority |
-| [Canonical MCP server README](../ipfs_accelerate_py/mcp_server/README.md) | Current (package) | Code-tree MCP entry |
-| [Contributing](../CONTRIBUTING.md) | Project | Contribution process |
+| [Canonical MCP server README](../ipfs_accelerate_py/mcp_server/README.md) | Reference | Code-tree MCP entry; Current operator routes are MCP setup/server/runtime above |
+| [Examples](../examples/README.md) | Reference | Executable samples; capability-gated and not promoted wholesale |
+| [Contributing](../CONTRIBUTING.md) | Reference | Project contribution policy; outside the maintained docs manifest |
 
 Accepted ADRs (Reference for *why*; Current guides and code for *what*):
 [0001](architecture/decisions/0001-objectives-and-task-projections.md),
@@ -173,11 +174,11 @@ Feature write-ups under `docs/features/` are useful but not all revalidated in
 the documentation-refresh wave. Prefer Current architecture guides when they
 disagree. Treat completion-summary titles as **Historical** until revalidated.
 
-- [IPFS integration](features/ipfs/IPFS.md)
-- [WebNN/WebGPU](features/webnn-webgpu/WEBNN_WEBGPU_README.md)
-- [Auto-healing](features/auto-healing/README.md)
-- [HuggingFace model server](features/hf-model-server/README.md)
-- [GitHub cache integration](features/github-cache/overview.md)
+- [IPFS integration](features/ipfs/IPFS.md) (**Reference**)
+- [WebNN/WebGPU](features/webnn-webgpu/WEBNN_WEBGPU_README.md) (**Reference**)
+- [Auto-healing](features/auto-healing/README.md) (**Reference**)
+- [HuggingFace model server](features/hf-model-server/README.md) (**Reference**)
+- [GitHub cache integration](features/github-cache/overview.md) (**Reference**)
 
 ---
 
@@ -204,7 +205,7 @@ planned work. Use the Current guides and source code for present behavior.
 | Install or verify the package | [Installation](guides/getting-started/installation.md) | Current |
 | Run inference | [Quick start](guides/QUICKSTART.md) | Current |
 | Use the product CLI | [CLI guide](guides/cli/README_CLI.md) | Current |
-| Configure Goose CLI | [LLM router — Goose CLI](LLM_ROUTER.md#goose-cli) | Inspect leaf |
+| Configure Goose CLI | [LLM router — Goose CLI](LLM_ROUTER.md#goose-cli) | Reference |
 | Start MCP | [MCP setup](guides/MCP_SETUP_GUIDE.md) | Current |
 | Understand MCP runtime internals | [MCP runtime](architecture/MCP_RUNTIME.md) | Current |
 | Discover or route models/services | [Model/service routing](architecture/MODEL_SERVICE_ROUTING.md) | Current |

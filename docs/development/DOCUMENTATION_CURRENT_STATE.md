@@ -32,11 +32,16 @@ how to audit documentation drift. The source code and executable help remain
 authoritative for behavior. Full classification inventory:
 [DOCUMENTATION_MANIFEST.md](DOCUMENTATION_MANIFEST.md).
 
+The DOC-027 manifest and architecture hub froze this file as a pre-DOC-028
+**Reference** snapshot pending revalidation. This page plus the exact closeout
+receipt complete that revalidation and supersede only those two pending
+markers; their remaining inventory and routing classifications are unchanged.
+
 ---
 
 ## Sources of truth
 
-| Surface | Source of truth | Current documentation |
+| Surface | Source of truth | Documentation route |
 | --- | --- | --- |
 | Package metadata and extras | `pyproject.toml`, `setup.py` | [Installation](../guides/getting-started/installation.md) |
 | Python exports | `ipfs_accelerate_py/__init__.py`, `ipfs_accelerate_py/ipfs_accelerate.py` | [API overview](../api/overview.md) |
@@ -44,7 +49,7 @@ authoritative for behavior. Full classification inventory:
 | Direct AI CLI (`ipfs_accelerate`) | `ipfs_accelerate_py/ai_inference_cli.py` | Inspect `ipfs_accelerate --help` (separate parser) |
 | Canonical MCP runtime | `ipfs_accelerate_py/mcp_server/` | [MCP setup](../guides/MCP_SETUP_GUIDE.md), [MCP runtime](../architecture/MCP_RUNTIME.md) |
 | MCP compatibility facade | `ipfs_accelerate_py/mcp/` | Labelled in MCP guides; not the primary operator entry |
-| HF model server | `ipfs_accelerate_py/hf_model_server/` | [HF model server](../features/hf-model-server/README.md) |
+| HF model server | `ipfs_accelerate_py/hf_model_server/` | [HF model server](../features/hf-model-server/README.md) (**Reference**; revalidation pending) |
 | Model catalog / routing | `model_catalog/`, `endpoint_usage/`, routers | [MODEL_SERVICE_ROUTING.md](../architecture/MODEL_SERVICE_ROUTING.md) |
 | Agent supervisor | `ipfs_accelerate_py/agent_supervisor/` | [Supervisor guide](../guides/AGENT_SUPERVISOR_GUIDE.md), [hub](../architecture/agent_supervisor/README.md) |
 | IPFS / P2P | `ipfs_backend_router.py`, `p2p_tasks/`, workflow modules | [DISTRIBUTED_RUNTIME.md](../architecture/DISTRIBUTED_RUNTIME.md), [P2P guide](../guides/p2p/README.md) |
@@ -63,16 +68,16 @@ entry point.
 
 ---
 
-## Maintained navigation (Current)
+## Maintained navigation and closeout evidence
 
 Canonical entrypoints:
 
-- [Root README](../../README.md)
-- [Documentation index](../INDEX.md) — topic and audience index
-- [Documentation orientation](../README.md) — short choose-a-path page
-- [Architecture hub](../architecture/README.md) — architecture concern router
-- [Documentation manifest](DOCUMENTATION_MANIFEST.md) — status inventory
-- [Validation closeout](DOCUMENTATION_VALIDATION_2026_08.md) — offline receipt
+- [Root README](../../README.md) — project entrypoint
+- [Documentation index](../INDEX.md) — **Current** topic and audience index
+- [Documentation orientation](../README.md) — **Current** choose-a-path page
+- [Architecture hub](../architecture/README.md) — **Reference** concern router
+- [Documentation manifest](DOCUMENTATION_MANIFEST.md) — **Current** status inventory
+- [Validation closeout](DOCUMENTATION_VALIDATION_2026_08.md) — **Reference** offline receipt
 
 These pages should describe the current package boundaries, supported commands,
 optional dependency behavior, and reproducible validation commands. When a
@@ -87,7 +92,7 @@ code win.
 | API / CLI | [api/overview.md](../api/overview.md), [guides/cli/README_CLI.md](../guides/cli/README_CLI.md) |
 | MCP | [MCP_SETUP_GUIDE.md](../guides/MCP_SETUP_GUIDE.md), [MCP_SERVER.md](../MCP_SERVER.md), [MCP_RUNTIME.md](../architecture/MCP_RUNTIME.md) |
 | Architecture | [overview](../architecture/overview.md), [SYSTEM_CONTEXT](../architecture/SYSTEM_CONTEXT.md), [INFERENCE_RUNTIME](../architecture/INFERENCE_RUNTIME.md), [MODEL_SERVICE_ROUTING](../architecture/MODEL_SERVICE_ROUTING.md), [DISTRIBUTED_RUNTIME](../architecture/DISTRIBUTED_RUNTIME.md), [INTEGRATION_BOUNDARIES](../architecture/INTEGRATION_BOUNDARIES.md) |
-| Supervisor | [AGENT_SUPERVISOR_GUIDE.md](../guides/AGENT_SUPERVISOR_GUIDE.md), [agent_supervisor/README.md](../architecture/agent_supervisor/README.md), CONTROL_PLANE, PLANNING_AND_ASSURANCE, EXECUTION_AND_RECOVERY, PROMPT_FIRST_RUNTIME, DEVELOPER_GUIDE, FOR_AGENTS |
+| Supervisor | [AGENT_SUPERVISOR_GUIDE.md](../guides/AGENT_SUPERVISOR_GUIDE.md), [agent_supervisor/README.md](../architecture/agent_supervisor/README.md), [CONTROL_PLANE](../architecture/agent_supervisor/CONTROL_PLANE.md), [PLANNING_AND_ASSURANCE](../architecture/agent_supervisor/PLANNING_AND_ASSURANCE.md), [EXECUTION_AND_RECOVERY](../architecture/agent_supervisor/EXECUTION_AND_RECOVERY.md), [PROMPT_FIRST_RUNTIME](../architecture/agent_supervisor/PROMPT_FIRST_RUNTIME.md), [DEVELOPER_GUIDE](../architecture/agent_supervisor/DEVELOPER_GUIDE.md), [FOR_AGENTS](../architecture/agent_supervisor/FOR_AGENTS.md) |
 | Ops journeys | [deployment](../guides/deployment/README.md), [hardware](../guides/hardware/overview.md), [p2p](../guides/p2p/README.md), [troubleshooting](../guides/troubleshooting/faq.md), [testing](testing.md) |
 | Governance | [DOCUMENTATION_LIFECYCLE.md](DOCUMENTATION_LIFECYCLE.md), [DOCUMENTATION_MAINTENANCE.md](DOCUMENTATION_MAINTENANCE.md), [GUIDE_CONVENTIONS.md](../architecture/GUIDE_CONVENTIONS.md) |
 
@@ -125,13 +130,16 @@ pages must **name both sides** until a code/test task reconciles them.
 | Blocker | Evidence | Owner |
 | --- | --- | --- |
 | Package version string disagreement | `pyproject.toml` / `setup.py` report `0.0.45`; `ipfs_accelerate_py.__version__` is `0.4.0` | packaging / package maintainers |
-| Dual CLI entry points | `ipfs-accelerate` → `cli_entry:main`; `ipfs_accelerate` → `ai_inference_cli:main` — different parsers | CLI maintainers |
+| Stale unified-CLI help examples | The live `ipfs-accelerate` choices exclude `inference`, `queue`, and `network`, but its help epilog still advertises all three; each exits 2 as an invalid choice | CLI maintainers |
 | Optional capability stacks | CUDA, IPFS, P2P, external LLMs, provers may be absent after a successful import | subsystem maintainers; docs use capability language |
 | Nested product gitlinks | Submodule / gitlink trees may be empty offline | integration maintainers; [NESTED_PACKAGES.md](../NESTED_PACKAGES.md) |
 | No full-tree link CI gate | Weekly documentation-maintenance workflow is not a required PR link checker | documentation governance / CI (see [DOCUMENTATION_MAINTENANCE.md](DOCUMENTATION_MAINTENANCE.md)) |
 
-Documentation tasks must not invent a single version string or merged CLI
-surface that hides these facts.
+The second console script, `ipfs_accelerate`, intentionally uses the separate
+`ai_inference_cli:main` parser. That split is a documented interface boundary,
+not evidence that the stale examples in the unified CLI are valid.
+Documentation tasks must not invent a single version string or merge the two
+CLI surfaces in prose.
 
 ---
 
@@ -177,6 +185,12 @@ test ! -e test/api/test_unified_cli_integration.py
 
 # Optional behavioral smoke when CLI/API claims change
 python -m pytest test/test_unified_cli_integration.py -q
+
+# Public agent-supervisor surface when supervisor navigation changes
+python -m pytest \
+  test/api/test_agent_supervisor_v2_public_api.py \
+  test/api/test_agent_supervisor_semantic_layout_exports.py \
+  test/api/test_agent_supervisor_entrypoint_package.py -q
 ```
 
 Full command matrix and measured results for the closeout tree:
