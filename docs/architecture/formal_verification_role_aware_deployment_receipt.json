@@ -8,7 +8,7 @@
   "repair_task_id": "FVT-083",
   "legacy_display_task_id": "FVT-053",
   "program": "formal-verification-tactician/toolchain-release",
-  "observed_at": "2026-08-03T04:13:46Z",
+  "observed_at": "2026-08-03T04:17:46Z",
   "binding_mode": "two_phase_source_then_attestation_publication",
   "status": "role_aware_deployment_blocked",
   "description": "Fail-closed role-aware deployment attestation. Full semantic receipts and check sets live in the bound toolchain certificate; this receipt digest-binds that matrix, distinguishes unsupported platforms from missing supported capabilities, and cannot claim readiness without authoritative supervisor validation/merge evidence.",
@@ -17,15 +17,13 @@
   "objective_validation_command": "python -m pytest test/integration/test_formal_verification_real_tool_matrix.py test/integration/test_formal_verification_role_aware_completion.py test/api/test_formal_verification_tactician_readiness_completion.py -q",
   "source": {
     "model": "two_phase_source_then_attestation_publication/v1",
-    "certified_source_commit": "b56df2fb2c2708a02762790675469a0396d8e908",
-    "certified_source_tree": "34f71f9a6ff8a3271ee2ff0b0fc737e41c37a2de",
+    "certified_source_commit": "fd8be1934f4175343f0b29edd4f8933f8260e1ea",
+    "certified_source_tree": "d7969b9d0ab0757b684a9b377dddc929d62b1030",
     "datasets_gitlink": "7413286d13e4db5e71ea245a623f2b542448201c",
     "datasets_embedded_head": "7413286d13e4db5e71ea245a623f2b542448201c",
     "source_commit_bound": true,
     "source_candidate_clean": false,
     "dirty_paths_at_certification": [
-      "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
-      "docs/architecture/formal_verification_role_aware_release_candidate.json",
       "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
       "docs/architecture/formal_verification_toolchain_certificate.json"
     ],
@@ -52,11 +50,11 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "b56df2fb2c2708a02762790675469a0396d8e908",
-        "tree": "34f71f9a6ff8a3271ee2ff0b0fc737e41c37a2de",
-        "origin_main": "da71d8ca93909942614dd8f479c5f9545690b218",
+        "commit": "fd8be1934f4175343f0b29edd4f8933f8260e1ea",
+        "tree": "d7969b9d0ab0757b684a9b377dddc929d62b1030",
+        "origin_main": "fd8be1934f4175343f0b29edd4f8933f8260e1ea",
         "clean": false,
-        "matches_origin_main": false
+        "matches_origin_main": true
       },
       "gitlink": {
         "path": "ipfs_datasets_py",
@@ -72,15 +70,14 @@
         "matches_origin_main": true
       },
       "publication_gates": {
-        "parent_publication_lag": true,
+        "parent_publication_lag": false,
         "datasets_publication_lag": false,
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
       },
       "aligned_for_implementation": false,
       "diagnostics": [
-        "parent_working_tree_dirty",
-        "parent_publication_lag_vs_origin_main"
+        "parent_working_tree_dirty"
       ]
     }
   },
@@ -97,7 +94,7 @@
     "authority_ceiling_respected": true,
     "disagreement_quarantines_bound": true,
     "public_surfaces_bound": true,
-    "supervisor_evidence_bound": false,
+    "supervisor_evidence_bound": true,
     "semantic_receipts_full_and_bound": true,
     "lean_runtime_mtl_authorization_elevated": true,
     "required_semantic_elevations": [
@@ -173,7 +170,7 @@
         "tools": {
           "symbolicai": {
             "checks_match_canonical_receipt": true,
-            "check_set_digest_sha256": "450bdb04c236e247e28de143a09833025e9080dd6247cf100a2d53c8fd5ecb1f",
+            "check_set_digest_sha256": "8f380873f7e74a474ac60c54f277eb14f7b6ada73c82d88b98333c9a99399263",
             "certified": true,
             "block_reasons": [],
             "artifact_validation_valid": true,
@@ -190,7 +187,7 @@
           },
           "ergoai": {
             "checks_match_canonical_receipt": true,
-            "check_set_digest_sha256": "22683df804062aec90b06c6f6e4ccf66ab5d0270c6e5a4dd0fb6f3b4d0bb4919",
+            "check_set_digest_sha256": "77d9d464e8a7c31c62dc937a4bb818197b23d7f5f751d85f6022881bb8e709e2",
             "certified": true,
             "block_reasons": [],
             "artifact_validation_valid": true,
@@ -2211,7 +2208,7 @@
     "authority_ceiling_respected": true,
     "disagreement_quarantines_bound": true,
     "public_surfaces_bound": true,
-    "supervisor_evidence_bound": false,
+    "supervisor_evidence_bound": true,
     "semantic_receipts_full_and_bound": true,
     "lean_runtime_mtl_authorization_elevated": true,
     "supported_managed_capabilities_ready": true,
@@ -2225,9 +2222,7 @@
   },
   "deployment_blockers": [
     "hard_zero_gates_clear",
-    "hard_zero_gates_derived",
-    "supervisor:merge_commit_not_published_to_origin_main",
-    "supervisor_evidence_bound"
+    "hard_zero_gates_derived"
   ],
   "hard_zero_gates": {
     "false_proof_count": 1,
@@ -2453,7 +2448,7 @@
     "goal_id": "FVT-G060",
     "task_id": "FVT-030",
     "binding_mode": "offline_pinned_live_lanes_role_aware",
-    "certificate_digest_sha256": "e29beb18e50c131d4178853baa938ecd76c957d6b9031b938a12b0f9dc43000d",
+    "certificate_digest_sha256": "8641ccc5a617462b983acb422b4e1817741bf502067aac2bb01f42092c954e8f",
     "role_aware": {
       "enabled": true,
       "goal_id": "FVT-G200",
@@ -3071,18 +3066,18 @@
       {
         "lane_id": "advisors",
         "status": "ran",
-        "digest_sha256": "307804c82eb45634d2f05d0db5d15f724600b248b5e6f929cb271ba90edf1d70",
+        "digest_sha256": "938512cdc309d515aeb512ea0f607f61cfe92caad19e71e22d81917d793131d5",
         "block_reasons": [],
         "receipt_integrity_valid": true,
         "per_tool_bindings": {
           "symbolicai": {
-            "check_set_digest_sha256": "450bdb04c236e247e28de143a09833025e9080dd6247cf100a2d53c8fd5ecb1f",
-            "tool_evidence_digest_sha256": "sha256:4fe89a48ec2a6a065ef2b1957d4a7794944d786b6303ed1a5d6434926a10a4f1",
+            "check_set_digest_sha256": "8f380873f7e74a474ac60c54f277eb14f7b6ada73c82d88b98333c9a99399263",
+            "tool_evidence_digest_sha256": "sha256:039cd55a3832fb6a984e6a1a7e62e1e09f36627b576f1cbbfe46e4a3700cac4d",
             "artifact_validation_valid": true
           },
           "ergoai": {
-            "check_set_digest_sha256": "22683df804062aec90b06c6f6e4ccf66ab5d0270c6e5a4dd0fb6f3b4d0bb4919",
-            "tool_evidence_digest_sha256": "sha256:628880884e777a00864d8e026c529dd06a47ae067c1b5176674b7866b8842e90",
+            "check_set_digest_sha256": "77d9d464e8a7c31c62dc937a4bb818197b23d7f5f751d85f6022881bb8e709e2",
+            "tool_evidence_digest_sha256": "sha256:c2f80060851dba14b23d7f113fa7298716a31e116b6ddaac9d0451071d1f9f1a",
             "artifact_validation_valid": true
           }
         }
@@ -3095,8 +3090,8 @@
       "task_id": "FVT-065",
       "enabled": true,
       "lossless": true,
-      "projection_aggregation_digest_sha256": "c0d81fe4dced23470d91d9c8483f52bbebfaa8a0a4f5f8ecf1fbf2987305557e",
-      "source_aggregation_digest_sha256": "eae9d5d1f76377ae5652c614d1599bf605cf94b3705e4c600b240fb1589043ca",
+      "projection_aggregation_digest_sha256": "f73da4df4ef91f0894d456905ccf14324318025cc832da04f717aaf7acc9ec87",
+      "source_aggregation_digest_sha256": "10ef43eb671ebfb31775a17e1ad51230869168a6370c685257d93ef9e81522fd",
       "projection_handler_digests": {
         "atp::eprover": "0674387357d39c4005ab291959cba38c1c54f8629e166e61b6aff493980b16f9",
         "atp::vampire": "8e03a793c01df905b3ee32d3b71b6ada9606f072070b826c23e2888eb5fa8939",
@@ -3105,8 +3100,8 @@
         "datalog_secpal::secpal": "e589b7051e3b506d36789a617d7c727f34ab345ebd927f94ab4a194024b8b5cc",
         "datalog_secpal::secpal-authorization": "c2c00bf2f018cdf9c5bfb5f21f4b557ec2e90b3f3f93dbfb500f51d1df36b91e",
         "datalog_secpal::souffle": "218b83196822e459ef14c828f489de7334d67f4d6d8837d2b914a4d751f4f8c0",
-        "hammer::ergoai": "7a82fa326134e86170f704bd3fb9db2e78b26fcba067c76fa2e5a1cd87337a34",
-        "hammer::symbolicai": "1b37e8def9e2d95408a2d358586ca096ec65393bd8802b6da566bac8fd9d0e93",
+        "hammer::ergoai": "ffd3fe2c717b6915e4cb76f9201ca3d4309bb197b831f6007ddd5a69dfd16101",
+        "hammer::symbolicai": "a550831f1e3a4e2c043c8efa30b432c26dffb3d5070cf3c91914e8d99e640988",
         "hyperltl::autohyper": "22a0ab38a2ab0265fb45f23b4e5e81281a5470951053f184f369345e97de854e",
         "hyperltl::hyperltl": "c52c94d6cdc96edcb9ef025df1aa6217e846abdef4f7c3b76211f7a783778236",
         "hyperltl::mchyper": "314ecc1163290427d834864386335ef9fb96e182a1ed2bd879164b4eca787aef",
@@ -3128,8 +3123,8 @@
         "datalog_secpal::secpal": "0f86655e447046f69ef66281f59584847ec7cbd96d2785afc9e0277292de695c",
         "datalog_secpal::secpal-authorization": "84be4ea15be64880cd1d5ecc9effed9951c194d78fe9fb09f25b236f75ffab19",
         "datalog_secpal::souffle": "471bb564efdea5241be1bdf88531fc9c75c6719410c2d2674de78be9e298f6e5",
-        "hammer::ergoai": "b96dbadcfa3fd92a72674e6d2bfa4bf443836fd891023f7af47cd73b6fad025d",
-        "hammer::symbolicai": "4a5a9582c2f4a0abed78790cfb9bd783f23080ce5ceedcddb880fcad8af5d973",
+        "hammer::ergoai": "53c871fd9a0e419df95d0f478e565b8837b94979d85bc7d947368ac6b86945ad",
+        "hammer::symbolicai": "3e8175ea9bb83ab0a8da0696d7c1ebd640b61a2a51507e9f1a65cef0098556a5",
         "hyperltl::autohyper": "23cdf2940f47b9f4d8a4806491f31ada71a9ca5f485d3f8b1b8378f38e0f8034",
         "hyperltl::hyperltl": "eccc347d7c6403d53549f6337c045a7f039e172229a9e5b5d0f12feda0af0053",
         "hyperltl::mchyper": "e46784ef71378b2335f08dd67bfaf469106c85f62b9467206c6c00d98991dd69",
@@ -3613,7 +3608,7 @@
         "production_certified": false,
         "executable_artifact_class": "launcher_script",
         "executable_sha256": "sha256:cdd41e1fa4e1d5362c78c88319ade45a4c44ffb527905904c6710caaadf947f8",
-        "checks_digest_sha256": "sha256:32fb02ca9dc5f2eeac9d5e6adad2441425ec46eb84cb439ecd8ed33eae285302",
+        "checks_digest_sha256": "sha256:d30afda99b104faa07c0b2db386b12b6c1a27fff1560cdd85c679ea3e3857db3",
         "artifact_digests": [
           "sha256:cdd41e1fa4e1d5362c78c88319ade45a4c44ffb527905904c6710caaadf947f8",
           "sha256:d4b037432d672aa3f178e3ba3411f8b0f50018b14a3b8bd52bb4c7fc349bcb03",
@@ -3856,7 +3851,7 @@
         "production_certified": false,
         "executable_artifact_class": "none",
         "executable_sha256": null,
-        "checks_digest_sha256": "sha256:b93c21b0dd65574c97d554b623c9eb1ea595f54caea951c5aa25f43b8a30c5c6",
+        "checks_digest_sha256": "sha256:2ab557d2aae9005d06d13aba5ba9e4d9923ba6e480bddda84234494579995cf8",
         "artifact_digests": [
           "sha256:3b7bcf499f2f485071ca8f4ac2120ec61964eaa3418028d980619d20a554c0be"
         ],
@@ -3956,11 +3951,11 @@
   },
   "supervisor_evidence": {
     "present": true,
-    "bound": false,
+    "bound": true,
     "provisional_bound": true,
-    "publication_bound": false,
-    "publication_phase": "provisional_merge",
-    "post_push_finalization_required": true,
+    "publication_bound": true,
+    "publication_phase": "published_final",
+    "post_push_finalization_required": false,
     "configured_integration_branch": "agent/software-verification-prover-matrix",
     "publication_ref": "refs/remotes/origin/main",
     "legacy_display_task_id": "FVT-053",
@@ -4782,7 +4777,7 @@
     ],
     "commit_bindings": [
       {
-        "valid": false,
+        "valid": true,
         "provisional_valid": true,
         "repository_bound": true,
         "implementation_commit_exists": true,
@@ -4794,16 +4789,14 @@
         "integration_proof_bound": true,
         "target_branch_bound": true,
         "target_ref_contains_merge": true,
-        "published_to_origin_main": false,
+        "published_to_origin_main": true,
         "implementation_commit": "cf6f6695eb5b25ed6658b2fd407742e5b311eaf4",
         "merge_commit": "32304d763f7cd8eff2ba8cd6653942d08150c7d8",
         "implementation_tree": "615cbbb1d94359063028d8b290f2ec7ecb52d21b",
         "merge_tree": "615cbbb1d94359063028d8b290f2ec7ecb52d21b",
         "publication_ref": "refs/remotes/origin/main",
         "configured_integration_branch": "agent/software-verification-prover-matrix",
-        "failures": [
-          "merge_commit_not_published_to_origin_main"
-        ],
+        "failures": [],
         "merge_parents": [
           "da71d8ca93909942614dd8f479c5f9545690b218",
           "cf6f6695eb5b25ed6658b2fd407742e5b311eaf4"
@@ -4815,8 +4808,8 @@
           "refs/remotes/origin/main"
         ],
         "target_ref": "refs/heads/agent/software-verification-prover-matrix",
-        "target_ref_commit": "b56df2fb2c2708a02762790675469a0396d8e908",
-        "published_ref_commit": "da71d8ca93909942614dd8f479c5f9545690b218"
+        "target_ref_commit": "fd8be1934f4175343f0b29edd4f8933f8260e1ea",
+        "published_ref_commit": "fd8be1934f4175343f0b29edd4f8933f8260e1ea"
       }
     ],
     "snapshot_digest_sha256": "sha256:09979ed1214f8cda3986d3454e116d831a64b0331a808650fcf4ca527870ff54",
@@ -8985,15 +8978,13 @@
         }
       ]
     },
-    "block_reasons": [
-      "merge_commit_not_published_to_origin_main"
-    ]
+    "block_reasons": []
   },
   "completion": {
     "interface": "FormalVerificationTacticianCompletionReceipt@1",
     "completion_goal_id": "FVT-G090",
     "task_id": "FVT-036",
-    "receipt_identity": "sha256:452f174658cd0c3bdf9da2917fde5260fbb1cf6694bffa8b5653898989b8593f",
+    "receipt_identity": "sha256:6374a3087ff0bece043de0c3aff7790d61b00a105ea918760f7a6a3ec7259954",
     "implementation_status": "complete",
     "deployment_status": "not_deployment_certified",
     "child_goals_bound": 67,
@@ -9237,7 +9228,7 @@
         "elevated": false,
         "reason": "evidence_class_cannot_satisfy_production_authority",
         "evidence_class": "proposal_only_semantics",
-        "semantic_receipt_digest_sha256": "307804c82eb45634d2f05d0db5d15f724600b248b5e6f929cb271ba90edf1d70",
+        "semantic_receipt_digest_sha256": "938512cdc309d515aeb512ea0f607f61cfe92caad19e71e22d81917d793131d5",
         "checks_digest_sha256": null
       },
       {
@@ -9246,7 +9237,7 @@
         "elevated": false,
         "reason": "evidence_class_cannot_satisfy_production_authority",
         "evidence_class": "proposal_only_semantics",
-        "semantic_receipt_digest_sha256": "307804c82eb45634d2f05d0db5d15f724600b248b5e6f929cb271ba90edf1d70",
+        "semantic_receipt_digest_sha256": "938512cdc309d515aeb512ea0f607f61cfe92caad19e71e22d81917d793131d5",
         "checks_digest_sha256": null
       }
     ]
@@ -9285,23 +9276,23 @@
     "toolchain_certificate": {
       "path": "docs/architecture/formal_verification_toolchain_certificate.json",
       "present": true,
-      "content_identity": "sha256:1010fdf3d9531f9aa031039a6c73ec7fd6679e1cbdef9ff74113463b13be10ff",
-      "role_aware_digest": "e29beb18e50c131d4178853baa938ecd76c957d6b9031b938a12b0f9dc43000d",
+      "content_identity": "sha256:f1b7f84d01b7d7a9e2b1214a1d9c8318f29b7394635adda019102a9d329518ff",
+      "role_aware_digest": "8641ccc5a617462b983acb422b4e1817741bf502067aac2bb01f42092c954e8f",
       "identity_valid": true,
       "matches_dynamic_certificate": true
     },
     "completion_receipt": {
       "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
       "present": true,
-      "content_identity": "sha256:452f174658cd0c3bdf9da2917fde5260fbb1cf6694bffa8b5653898989b8593f",
-      "file_sha256": "sha256:a55e0bb1644a26a6e531bcdc8955ee87671d1c28c402d836ba128fa9471484c2",
+      "content_identity": "sha256:6374a3087ff0bece043de0c3aff7790d61b00a105ea918760f7a6a3ec7259954",
+      "file_sha256": "sha256:a001c891dd3ea105ef17a0a20d1e14091a5faa71a74c9624b202d05ef9abf48c",
       "identity_valid": true,
       "matches_dynamic_completion": true
     },
     "role_aware_deployment_receipt": {
       "path": "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
       "present_before_generation": true,
-      "content_identity_before_generation": "sha256:94c569404620f829b598aae13a267c0c43d85f938362ee32a7f95b345b498cc6",
+      "content_identity_before_generation": "sha256:3fb6ef2af853e9dfc689c7eb26844585a7e047dc20734ae8964e63bea124dcb6",
       "publication_identity": "self:receipt_identity"
     },
     "role_aware_completion_test": {
@@ -9338,7 +9329,7 @@
     "supported_managed_capability_blockers": [],
     "supported_managed_dependency_blockers": [],
     "publication_gates": {
-      "parent_publication_lag": true,
+      "parent_publication_lag": false,
       "datasets_publication_lag": false,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
@@ -9377,5 +9368,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:a0a20eb1de3effae18afe64f3da685b822955c2b13c2027d8546a646bbac9d0f"
+  "receipt_identity": "sha256:43949c4b9734d3436985c66bfebb12ce2f46bdcd3267b65e3b4e56866e15b9b8"
 }

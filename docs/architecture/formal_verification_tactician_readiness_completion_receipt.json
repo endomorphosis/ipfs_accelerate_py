@@ -6,15 +6,15 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-03T04:15:06Z",
+  "observed_at": "2026-08-03T04:17:46Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "c342c53d94fcc090ce13cef45130baa6f003b5e0",
-    "parent_tree": "5728ad2fe0c103875ab25d03abc6ee55666de98c",
+    "parent_commit": "fd8be1934f4175343f0b29edd4f8933f8260e1ea",
+    "parent_tree": "d7969b9d0ab0757b684a9b377dddc929d62b1030",
     "datasets_gitlink": "7413286d13e4db5e71ea245a623f2b542448201c",
     "datasets_embedded_head": "7413286d13e4db5e71ea245a623f2b542448201c",
     "datasets_origin_main": "7413286d13e4db5e71ea245a623f2b542448201c",
-    "parent_origin_main": "da71d8ca93909942614dd8f479c5f9545690b218",
+    "parent_origin_main": "fd8be1934f4175343f0b29edd4f8933f8260e1ea",
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
@@ -297,11 +297,11 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "c342c53d94fcc090ce13cef45130baa6f003b5e0",
-        "tree": "5728ad2fe0c103875ab25d03abc6ee55666de98c",
-        "origin_main": "da71d8ca93909942614dd8f479c5f9545690b218",
+        "commit": "fd8be1934f4175343f0b29edd4f8933f8260e1ea",
+        "tree": "d7969b9d0ab0757b684a9b377dddc929d62b1030",
+        "origin_main": "fd8be1934f4175343f0b29edd4f8933f8260e1ea",
         "clean": false,
-        "matches_origin_main": false
+        "matches_origin_main": true
       },
       "gitlink": {
         "path": "ipfs_datasets_py",
@@ -317,15 +317,14 @@
         "matches_origin_main": true
       },
       "publication_gates": {
-        "parent_publication_lag": true,
+        "parent_publication_lag": false,
         "datasets_publication_lag": false,
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
       },
       "aligned_for_implementation": false,
       "diagnostics": [
-        "parent_working_tree_dirty",
-        "parent_publication_lag_vs_origin_main"
+        "parent_working_tree_dirty"
       ]
     },
     "exact_tools": [
@@ -1141,7 +1140,7 @@
     },
     "unsupported_semantics": [],
     "publication_gates": {
-      "parent_publication_lag": true,
+      "parent_publication_lag": false,
       "datasets_publication_lag": false,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
@@ -1156,7 +1155,7 @@
       "production_certified_count": 18,
       "baseline_production_certified_count": 0,
       "machine_certified": false,
-      "publication_aligned": false,
+      "publication_aligned": true,
       "hard_zero_clear": false
     },
     "hardcoded_success_counters": false
@@ -1175,7 +1174,7 @@
     "toolchain_certificate": {
       "path": "docs/architecture/formal_verification_toolchain_certificate.json",
       "present": true,
-      "content_identity": "sha256:1010fdf3d9531f9aa031039a6c73ec7fd6679e1cbdef9ff74113463b13be10ff"
+      "content_identity": "sha256:f1b7f84d01b7d7a9e2b1214a1d9c8318f29b7394635adda019102a9d329518ff"
     },
     "toolchain_lock": {
       "path": "config/formal_verification_toolchains.lock.json",
@@ -3729,7 +3728,7 @@
       "vampire"
     ],
     "publication_gates": {
-      "parent_publication_lag": true,
+      "parent_publication_lag": false,
       "datasets_publication_lag": false,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
@@ -3744,7 +3743,7 @@
       "production_certified_count": 18,
       "baseline_production_certified_count": 0,
       "machine_certified": false,
-      "publication_aligned": false,
+      "publication_aligned": true,
       "hard_zero_clear": false
     },
     "open_baseline_findings": [
@@ -3774,5 +3773,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:39fa50281f73649a4facffcd94512cfa1a4e9a32ba8099b0835f0213afa8377b"
+  "receipt_identity": "sha256:6374a3087ff0bece043de0c3aff7790d61b00a105ea918760f7a6a3ec7259954"
 }
