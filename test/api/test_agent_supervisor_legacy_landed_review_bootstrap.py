@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import stat
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -124,6 +126,60 @@ def test_bootstrap_never_overwrites_a_conflicting_policy(
             authority_directory=authority_dir,
         )
     assert first.policy_path.read_bytes() == original
+
+
+def test_concurrent_bootstrap_reports_each_creation_exactly_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_policy_runtime(monkeypatch)
+    authority_dir = tmp_path / "authorities"
+    barrier = threading.Barrier(2)
+
+    def run() -> bootstrap.LegacyLandedBootstrapResult:
+        barrier.wait(timeout=5)
+        return bootstrap.bootstrap_legacy_landed_review(
+            repo_root=tmp_path,
+            authority_directory=authority_dir,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: run(), range(2)))
+    assert sum(item.production_key_created for item in results) == 1
+    assert sum(item.legacy_key_created for item in results) == 1
+    assert sum(item.policy_created for item in results) == 1
+    assert len({item.production_issuer_key_id for item in results}) == 1
+    assert len({item.legacy_issuer_key_id for item in results}) == 1
+    assert len({item.policy_id for item in results}) == 1
+
+
+def test_head_change_after_publication_rolls_back_and_retry_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head_a = "a" * 40
+    head_b = "c" * 40
+    _stub_policy_runtime(monkeypatch, head=head_a)
+    observed_heads = iter((head_a, head_a, head_b))
+    monkeypatch.setattr(
+        bootstrap, "_git_head", lambda _repo: next(observed_heads)
+    )
+    authority_dir = tmp_path / "authorities"
+    with pytest.raises(ValueError, match="HEAD changed"):
+        bootstrap.bootstrap_legacy_landed_review(
+            repo_root=tmp_path,
+            authority_directory=authority_dir,
+        )
+    policy_path = authority_dir / bootstrap.LEGACY_REVIEW_POLICY_NAME
+    assert not policy_path.exists()
+
+    _stub_policy_runtime(monkeypatch, head=head_b, tree="d" * 40)
+    retried = bootstrap.bootstrap_legacy_landed_review(
+        repo_root=tmp_path,
+        authority_directory=authority_dir,
+    )
+    assert retried.current_head == head_b
+    assert retried.policy_created is True
 
 
 def test_bootstrap_refuses_orphan_policy_before_creating_keys(

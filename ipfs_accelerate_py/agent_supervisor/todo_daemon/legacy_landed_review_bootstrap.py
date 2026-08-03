@@ -15,15 +15,25 @@ from __future__ import annotations
 
 import argparse
 import errno
+import fcntl
 import json
 import os
 import stat
 import subprocess
-from collections.abc import Sequence
+import sys
+import threading
+import time
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from ..merge.checkout_lock import (
+    CheckoutMaintenanceLease,
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
+)
 from ..proof.formal_verification_contracts import canonical_json_bytes
 from .legacy_landed_attestation import LegacyLandedReviewAuthority
 from .legacy_landed_review import (
@@ -40,6 +50,11 @@ PRODUCTION_REVIEW_KEY_NAME: Final = (
 )
 LEGACY_REVIEW_KEY_NAME: Final = "legacy-landed-review-authority.ed25519"
 LEGACY_REVIEW_POLICY_NAME: Final = "legacy-landed-review-policy.json"
+_BOOTSTRAP_LOCK_NAME: Final = ".legacy-landed-review-bootstrap.lock"
+_BOOTSTRAP_LOCK_TIMEOUT_SECONDS: Final = 30.0
+_CHECKOUT_LOCK_MAX_HOLD_SECONDS: Final = 120.0
+_BOOTSTRAP_THREAD_LOCKS: dict[str, threading.RLock] = {}
+_BOOTSTRAP_THREAD_LOCKS_GUARD = threading.Lock()
 
 
 def _private_directory(path: str | Path) -> Path:
@@ -112,6 +127,62 @@ def _git_head(repo_root: Path) -> str:
     ):
         raise ValueError("repository HEAD cannot be resolved exactly")
     return head
+
+
+def _thread_lock(path: Path) -> threading.RLock:
+    key = str(path.resolve())
+    with _BOOTSTRAP_THREAD_LOCKS_GUARD:
+        return _BOOTSTRAP_THREAD_LOCKS.setdefault(key, threading.RLock())
+
+
+@contextmanager
+def _bootstrap_lock(authority_directory: Path) -> Iterator[None]:
+    """Serialize one complete bootstrap across threads and processes."""
+
+    lock_path = authority_directory / _BOOTSTRAP_LOCK_NAME
+    thread_lock = _thread_lock(lock_path)
+    if not thread_lock.acquire(timeout=_BOOTSTRAP_LOCK_TIMEOUT_SECONDS):
+        raise TimeoutError("timed out acquiring legacy bootstrap thread lock")
+    descriptor: int | None = None
+    acquired = False
+    try:
+        descriptor = os.open(
+            lock_path,
+            os.O_RDWR
+            | os.O_CREAT
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_nlink != 1
+            or (hasattr(os, "geteuid") and info.st_uid != os.geteuid())
+            or stat.S_IMODE(info.st_mode) & 0o077
+        ):
+            raise ValueError("legacy bootstrap lock is unsafe")
+        deadline = time.monotonic() + _BOOTSTRAP_LOCK_TIMEOUT_SECONDS
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError as exc:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        "timed out acquiring legacy bootstrap process lock"
+                    ) from exc
+                time.sleep(0.01)
+        yield
+    finally:
+        if descriptor is not None:
+            try:
+                if acquired:
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+        thread_lock.release()
 
 
 def _read_existing_policy_bytes(path: Path) -> bytes | None:
@@ -222,6 +293,25 @@ def _publish_policy_once(path: Path, payload: bytes) -> bool:
         temporary.unlink(missing_ok=True)
 
 
+def _rollback_new_policy(path: Path, payload: bytes) -> None:
+    """Remove only the exact policy published by the current locked call."""
+
+    existing = _read_existing_policy_bytes(path)
+    if existing != payload:
+        raise RuntimeError("new legacy policy changed before rollback")
+    path.unlink()
+    directory_descriptor = os.open(
+        path.parent,
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        os.fsync(directory_descriptor)
+    finally:
+        os.close(directory_descriptor)
+
+
 @dataclass(frozen=True, slots=True)
 class LegacyLandedBootstrapResult:
     authority_directory: Path
@@ -266,6 +356,34 @@ def bootstrap_legacy_landed_review(
     if not repo.is_dir():
         raise ValueError("repository root must be a directory")
     authority_dir = _private_directory(authority_directory)
+    with _bootstrap_lock(authority_dir):
+        lease = CheckoutMaintenanceLease(
+            checkout_mutation_lock_path(repo),
+            checkout_lock_metadata(
+                kind="merge",
+                repo_root=repo,
+                task_id="legacy-landed-review-bootstrap",
+                owner_script=Path(sys.argv[0]).name,
+                extra={"operation": "legacy_landed_review_policy_bootstrap"},
+            ),
+            max_hold_seconds=_CHECKOUT_LOCK_MAX_HOLD_SECONDS,
+        )
+        with lease.exclusive_section():
+            return _bootstrap_legacy_landed_review_locked(
+                repo=repo,
+                authority_dir=authority_dir,
+                enabled=enabled,
+            )
+
+
+def _bootstrap_legacy_landed_review_locked(
+    *,
+    repo: Path,
+    authority_dir: Path,
+    enabled: bool,
+) -> LegacyLandedBootstrapResult:
+    """Perform bootstrap while authority and checkout locks are both held."""
+
     production_key_path = authority_dir / PRODUCTION_REVIEW_KEY_NAME
     legacy_key_path = authority_dir / LEGACY_REVIEW_KEY_NAME
     policy_path = authority_dir / LEGACY_REVIEW_POLICY_NAME
@@ -295,20 +413,29 @@ def bootstrap_legacy_landed_review(
         enabled=enabled,
     )
     policy_bytes = canonical_json_bytes(payload)
-    policy_created = _publish_policy_once(policy_path, policy_bytes)
-    loaded = load_legacy_landed_review_policy(policy_path)
-    if (
-        loaded.policy_id != payload["policy_id"]
-        or loaded.issuer_key_id != legacy_authority.issuer_key_id
-        or loaded.current_head != head
-        or loaded.current_tree_id != payload["current_tree_id"]
-        or loaded.enabled is not bool(enabled)
-    ):
-        raise ValueError("legacy policy round-trip verification failed")
-    # Re-resolve after persistence so a concurrent checkout cannot leave a
-    # freshly written policy that is already stale.
-    if _git_head(repo) != head:
-        raise ValueError("repository HEAD changed during authority bootstrap")
+    policy_created = False
+    try:
+        # Fence once more immediately before the no-overwrite publication.
+        if _git_head(repo) != head:
+            raise ValueError("repository HEAD changed during authority bootstrap")
+        policy_created = _publish_policy_once(policy_path, policy_bytes)
+        loaded = load_legacy_landed_review_policy(policy_path)
+        if (
+            loaded.policy_id != payload["policy_id"]
+            or loaded.issuer_key_id != legacy_authority.issuer_key_id
+            or loaded.current_head != head
+            or loaded.current_tree_id != payload["current_tree_id"]
+            or loaded.enabled is not bool(enabled)
+        ):
+            raise ValueError("legacy policy round-trip verification failed")
+        # Re-resolve after persistence so an uncooperative external checkout
+        # mutation cannot leave a freshly written policy already stale.
+        if _git_head(repo) != head:
+            raise ValueError("repository HEAD changed during authority bootstrap")
+    except BaseException:
+        if policy_created:
+            _rollback_new_policy(policy_path, policy_bytes)
+        raise
 
     return LegacyLandedBootstrapResult(
         authority_directory=authority_dir,
