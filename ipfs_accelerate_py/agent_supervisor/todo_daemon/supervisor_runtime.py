@@ -912,6 +912,7 @@ def run_process_group_stream(
     *,
     cwd: Path | str,
     stdout: Any,
+    stderr: Any = subprocess.STDOUT,
     input_text: Optional[str] = None,
     env: Optional[Mapping[str, object]] = None,
     timeout_seconds: float,
@@ -993,7 +994,7 @@ def run_process_group_stream(
         env=env,
         stdin=subprocess.PIPE if input_text is not None else None,
         stdout=stdout,
-        stderr=subprocess.STDOUT,
+        stderr=stderr,
         start_new_session=True,
         text=text,
     )
@@ -1015,6 +1016,7 @@ def run_process_group_stream(
             )
             progress_marker = _stream_progress_marker(
                 stdout,
+                stderr=stderr,
                 progress_paths=progress_paths,
             )
             progress_events = 0
@@ -1088,6 +1090,7 @@ def run_process_group_stream(
                     pass
                 next_marker = _stream_progress_marker(
                     stdout,
+                    stderr=stderr,
                     progress_paths=progress_paths,
                 )
                 if next_marker != progress_marker:
@@ -1189,6 +1192,7 @@ def run_process_group_stream(
 def _stream_progress_marker(
     stdout: Any,
     *,
+    stderr: Any = None,
     progress_paths: Sequence[Path | str],
     max_entries: int = 512,
 ) -> tuple[tuple[str, int, int], ...]:
@@ -1200,6 +1204,20 @@ def _stream_progress_marker(
         marker.append(("<stdout>", int(stat.st_size), int(stat.st_mtime_ns)))
     except (AttributeError, OSError, ValueError):
         pass
+    if not any(
+        stderr is sentinel
+        for sentinel in (
+            None,
+            subprocess.STDOUT,
+            subprocess.PIPE,
+            subprocess.DEVNULL,
+        )
+    ):
+        try:
+            stat = os.fstat(stderr.fileno())
+            marker.append(("<stderr>", int(stat.st_size), int(stat.st_mtime_ns)))
+        except (AttributeError, OSError, ValueError):
+            pass
 
     remaining = max(0, int(max_entries))
     for raw_path in progress_paths:

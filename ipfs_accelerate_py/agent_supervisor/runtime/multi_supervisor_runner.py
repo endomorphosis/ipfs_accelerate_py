@@ -13,7 +13,8 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Mapping, Protocol, Sequence
+from types import MappingProxyType
+from typing import Callable, Mapping, MutableMapping, Protocol, Sequence
 
 from ..control.lifecycle_orchestrator import (
     LifecycleProfile,
@@ -25,6 +26,30 @@ from ..core.wrapper_utils import AgentSupervisorNamespacePaths, apply_env_defaul
 
 
 OutputFn = Callable[[str], None]
+
+ORDERED_IMPLEMENTATION_PROVIDER_ROUTE: Mapping[str, str] = MappingProxyType(
+    {
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
+            "primary_quota_exhausted"
+        ),
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
+    }
+)
+_COMPATIBLE_GROK_PRIMARY_ALIASES = frozenset(
+    {
+        "grok",
+        "grok_cli",
+        "grok-cli",
+        "grok_build",
+        "grok-build",
+        "xai_cli",
+        "xai-cli",
+    }
+)
 
 
 class _SupportsFileno(Protocol):
@@ -493,30 +518,77 @@ def _env_default_value(value: bool | int | str) -> str:
     return str(value)
 
 
+def seal_ordered_implementation_provider_route(
+    environment: MutableMapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Atomically default or validate the reviewed implementation route.
+
+    Validation precedes every mutation.  An unset route receives all six
+    bindings together.  Compatible legacy Grok primary aliases are
+    canonicalized to ``grok_cli``; any other explicit value fails closed and
+    leaves the environment unchanged.
+    """
+
+    target = os.environ if environment is None else environment
+    observed = {
+        name: str(target.get(name, "") or "").strip()
+        for name in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE
+    }
+    incompatible: dict[str, str] = {}
+    for name, value in observed.items():
+        if not value:
+            continue
+        expected = ORDERED_IMPLEMENTATION_PROVIDER_ROUTE[name]
+        if (
+            name == "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+            and value.lower() in _COMPATIBLE_GROK_PRIMARY_ALIASES
+        ):
+            continue
+        if value != expected:
+            incompatible[name] = value
+    if incompatible:
+        details = ", ".join(
+            f"{name}={value!r}"
+            for name, value in sorted(incompatible.items())
+        )
+        raise ValueError(
+            "implementation supervisors require the exact six-field "
+            "grok_cli/grok-4.5 -> codex/gpt-5.6-terra medium "
+            "primary_quota_exhausted route; incompatible explicit "
+            f"configuration: {details}"
+        )
+    target.update(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
+    return dict(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
+
+
 def implementation_multi_supervisor_env_defaults(
     *,
     python_unbuffered: bool | int | str | None = True,
-    codex_merge_resolver_timeout_seconds: int | str | None = 900,
-    copilot_merge_resolver_timeout_seconds: int | str | None = 600,
+    grok_merge_resolver_timeout_seconds: int | str | None = 900,
+    codex_merge_resolver_timeout_seconds: int | str | None = 600,
+    # Retained as ignored keyword-only compatibility shims. Copilot is not a
+    # member of the reviewed merge-resolver route.
+    copilot_merge_resolver_timeout_seconds: int | str | None = None,
     prefer_copilot_merge_resolver: bool | int | str | None = None,
 ) -> dict[str, str]:
     """Return reusable environment defaults for long-running implementation supervisors."""
 
+    del copilot_merge_resolver_timeout_seconds, prefer_copilot_merge_resolver
     defaults: dict[str, str] = {}
     if python_unbuffered is not None:
         defaults["PYTHONUNBUFFERED"] = _env_default_value(python_unbuffered)
+    if grok_merge_resolver_timeout_seconds is not None:
+        defaults["GROK_MERGE_RESOLVER_TIMEOUT_SECONDS"] = _env_default_value(
+            grok_merge_resolver_timeout_seconds
+        )
     if codex_merge_resolver_timeout_seconds is not None:
         defaults["CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS"] = _env_default_value(
             codex_merge_resolver_timeout_seconds
         )
-    if copilot_merge_resolver_timeout_seconds is not None:
-        defaults["COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS"] = _env_default_value(
-            copilot_merge_resolver_timeout_seconds
-        )
-    if prefer_copilot_merge_resolver is not None:
-        defaults["PREFER_COPILOT_MERGE_RESOLVER"] = _env_default_value(
-            prefer_copilot_merge_resolver
-        )
+    # Emit the complete ordered route as one atomic default.  Supplying only
+    # the Codex model would make legacy ``auto`` selection treat Codex as the
+    # primary and bypass the Grok quota gate.
+    defaults.update(ORDERED_IMPLEMENTATION_PROVIDER_ROUTE)
     return defaults
 
 
@@ -718,6 +790,24 @@ def build_repo_implementation_multi_supervisor_launcher(
             env_var=runtime_env_var,
         )
         effective_prepare_environment = runtime_environment.ensure_pythonpath
+    provided_env_defaults = dict(_env_default_items(env_defaults))
+    caller_route_defaults = {
+        name: provided_env_defaults[name]
+        for name in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE
+        if name in provided_env_defaults
+    }
+    sealed_route_defaults = seal_ordered_implementation_provider_route(
+        caller_route_defaults
+    )
+    effective_env_defaults = implementation_multi_supervisor_env_defaults()
+    effective_env_defaults.update(
+        {
+            name: value
+            for name, value in provided_env_defaults.items()
+            if name not in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE
+        }
+    )
+    effective_env_defaults.update(sealed_route_defaults)
     return build_configured_multi_supervisor_launcher(
         repo_root=repo_root,
         duration_seconds=duration_seconds,
@@ -738,7 +828,7 @@ def build_repo_implementation_multi_supervisor_launcher(
         implementation_track_configs=implementation_track_configs,
         common_args=common_args,
         detach=detach,
-        env_defaults=env_defaults,
+        env_defaults=effective_env_defaults,
         prepare_environment=effective_prepare_environment,
     )
 
@@ -766,7 +856,6 @@ def implementation_supervisor_common_args(
 ) -> list[str]:
     """Return standard common args for long-running implementation supervisors."""
 
-    effective_llm_merge_resolver_command = llm_merge_resolver_command or implementation_command
     args = [
         "--implement",
         "--objective-refill-scan",
@@ -804,8 +893,8 @@ def implementation_supervisor_common_args(
     ]
     if implementation_command:
         args.extend(["--implementation-command", implementation_command])
-    if effective_llm_merge_resolver_command:
-        args.extend(["--llm-merge-resolver-command", effective_llm_merge_resolver_command])
+    if llm_merge_resolver_command:
+        args.extend(["--llm-merge-resolver-command", llm_merge_resolver_command])
     if strict_task_sharding:
         args.append("--strict-task-sharding")
     return args
@@ -1609,11 +1698,12 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
 
     common_args: list[str] = []
     if args.implementation_supervisor_defaults:
-        command = args.implementation_supervisor_command
         common_args.extend(
             implementation_supervisor_common_args(
-                implementation_command=command,
-                llm_merge_resolver_command=args.implementation_supervisor_llm_merge_resolver_command or command,
+                implementation_command=args.implementation_supervisor_command,
+                llm_merge_resolver_command=(
+                    args.implementation_supervisor_llm_merge_resolver_command
+                ),
                 stale_seconds=args.implementation_supervisor_stale_seconds,
                 check_interval=args.implementation_supervisor_check_interval,
                 daemon_interval=args.implementation_supervisor_daemon_interval,
@@ -1674,6 +1764,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(args_list)
     if not args.track and not args.implementation_track:
         parser.error("at least one --track or --implementation-track is required")
+    if args.implementation_track or args.implementation_supervisor_defaults:
+        try:
+            seal_ordered_implementation_provider_route()
+        except ValueError as exc:
+            parser.error(str(exc))
     if args.detach:
         payload = launch_detached(args, args_list)
         for key in ("stamp", "master_pid", "master_log", "master_pid_file"):

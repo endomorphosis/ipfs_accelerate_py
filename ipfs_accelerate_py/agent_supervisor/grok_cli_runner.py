@@ -9,7 +9,10 @@ flags. Command policy lives next to other CLI peers in :mod:`llm_router`.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -25,6 +28,79 @@ if str(_PACKAGE_ROOT) not in sys.path:
 DEFAULT_GROK_MODEL = "grok-4.5"
 # Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
 DEFAULT_GROK_MAX_TURNS = 4_294_967_295
+GROK_QUOTA_EXHAUSTED_EXIT_CODE = 86
+GROK_QUOTA_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/grok-quota-error@1"
+)
+MAX_GROK_ERROR_BYTES = 128 * 1024
+_GROK_USAGE_LIMIT_PATTERN = re.compile(
+    r"\A\s*(?:error:\s*)?you(?:'|\u2019)?ve\s+hit\s+your\s+usage\s+limit\.?"
+    r"(?:\s*\n\s*try\s+again\s+at\s+[^\n]+\.?)?\s*\Z",
+    re.IGNORECASE,
+)
+_GROK_BALANCE_MESSAGE = (
+    "API error (status 402 Payment Required): "
+    "Grok Build usage balance exhausted"
+)
+
+
+def parse_grok_quota_error(text: str) -> dict[str, object]:
+    """Parse only complete, known Grok quota error envelopes."""
+
+    stripped = text.strip()
+    if _GROK_USAGE_LIMIT_PATTERN.fullmatch(stripped):
+        return {"kind": "usage_limit", "http_status": None}
+    lowered = stripped.lower()
+    prefixes = ("internal error:", "error:")
+    prefix = next((item for item in prefixes if lowered.startswith(item)), "")
+    if not prefix:
+        return {}
+    payload_text = stripped[len(prefix) :].strip()
+    try:
+        payload = json.loads(payload_text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return {}
+    if not isinstance(payload, dict) or set(payload) != {"message", "http_status"}:
+        return {}
+    status = payload.get("http_status")
+    message = payload.get("message")
+    if (
+        isinstance(status, bool)
+        or not isinstance(status, int)
+        or status != 402
+        or not isinstance(message, str)
+        or " ".join(message.split()) != _GROK_BALANCE_MESSAGE
+    ):
+        return {}
+    return {"kind": "usage_balance_exhausted", "http_status": 402}
+
+
+def _run_grok_with_bounded_stderr(
+    command: Sequence[str],
+    *,
+    env: dict[str, str],
+) -> tuple[int, bytes, int, bool]:
+    """Drain child stderr without unbounded memory or disk growth."""
+
+    process = subprocess.Popen(
+        list(command),
+        env=env,
+        stderr=subprocess.PIPE,
+    )
+    assert process.stderr is not None
+    retained = bytearray()
+    total = 0
+    while True:
+        chunk = process.stderr.read(64 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        remaining = MAX_GROK_ERROR_BYTES - len(retained)
+        if remaining > 0:
+            retained.extend(chunk[:remaining])
+    process.stderr.close()
+    returncode = int(process.wait())
+    return returncode, bytes(retained), total, total > MAX_GROK_ERROR_BYTES
 
 
 def _resolve_grok_bin(configured: str = "") -> str:
@@ -174,8 +250,50 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
 
         os.chdir(workspace)
-        completed = subprocess.run(cmd, env=env, check=False)
-        return int(completed.returncode)
+        child_returncode, error_bytes, error_size, error_overflow = (
+            _run_grok_with_bounded_stderr(cmd, env=env)
+        )
+        if error_bytes:
+            sys.stderr.buffer.write(error_bytes)
+            if not error_bytes.endswith(b"\n"):
+                sys.stderr.buffer.write(b"\n")
+            sys.stderr.buffer.flush()
+        if error_overflow:
+            print(
+                "grok stderr exceeded the trusted quota-envelope limit "
+                f"({error_size} > {MAX_GROK_ERROR_BYTES} bytes); "
+                "quota fallback forbidden",
+                file=sys.stderr,
+            )
+            return (
+                1
+                if child_returncode == GROK_QUOTA_EXHAUSTED_EXIT_CODE
+                else child_returncode
+            )
+        quota_error = parse_grok_quota_error(
+            error_bytes.decode("utf-8", errors="replace")
+        )
+        if child_returncode != 0 and quota_error:
+            receipt = {
+                "schema": GROK_QUOTA_RECEIPT_SCHEMA,
+                "provider": "grok_cli",
+                "model": model,
+                "failure_kind": "quota_or_balance_exhausted",
+                "message": "Grok Build usage balance exhausted",
+                "raw_error_sha256": hashlib.sha256(error_bytes).hexdigest(),
+                "raw_error_size": len(error_bytes),
+                **quota_error,
+            }
+            print(
+                json.dumps(receipt, sort_keys=True, separators=(",", ":")),
+                file=sys.stderr,
+            )
+            return GROK_QUOTA_EXHAUSTED_EXIT_CODE
+        return (
+            1
+            if child_returncode == GROK_QUOTA_EXHAUSTED_EXIT_CODE
+            else child_returncode
+        )
     finally:
         if prompt_path:
             try:

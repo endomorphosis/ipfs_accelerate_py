@@ -11,10 +11,10 @@ Protected architecture files are always fenced via
 - docs/architecture/agent_supervisor_module_refactor.todo.md
 - docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md
 
-Implementation provider (Grok 4.6 or successor) is selected at launch via
-``IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER`` / ``--implementation-provider``.
-Provider bridges remain in integrations/runtime; package moves must not wait on
-provider choice.
+The launch boundary seals exact Grok 4.5 as primary and permits Codex
+``gpt-5.6-terra`` at medium reasoning only after proven Grok quota exhaustion.
+The legacy provider flag may select a compatible Grok alias; incompatible
+routes fail closed.
 """
 
 from __future__ import annotations
@@ -642,7 +642,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "ASREF multi-lane preflight, objective scan, and implementation "
-            "supervisor launch (Grok 4.6 selectable via provider env/flag)"
+            "supervisor launch (sealed Grok 4.5 with quota-only Terra fallback)"
         )
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -706,8 +706,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--implementation-provider",
         default=os.environ.get(IMPLEMENTATION_PROVIDER_ENV, ""),
         help=(
-            f"Set {IMPLEMENTATION_PROVIDER_ENV} for child daemons "
-            "(e.g. grok, goose, codex, auto). Prefer grok for ASREF-G100."
+            f"Set a compatible Grok alias through {IMPLEMENTATION_PROVIDER_ENV}; "
+            "the child route is sealed to Grok 4.5 with quota-only Terra "
+            "medium fallback. Incompatible providers fail closed."
         ),
     )
     return parser

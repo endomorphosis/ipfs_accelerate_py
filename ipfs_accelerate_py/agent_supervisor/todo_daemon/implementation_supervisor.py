@@ -4254,6 +4254,54 @@ class PortalImplementationSupervisor:
         unmerged_paths: list[str],
     ) -> dict[str, Any]:
         from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import build_merge_prompt, invoke_llm_resolver
+        from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (
+            llm_merge_resolver_fallback_command,
+        )
+
+        ordered_values = {
+            "primary": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", ""
+            ).strip(),
+            "fallback": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER", ""
+            ).strip(),
+            "trigger": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER", ""
+            ).strip(),
+            "grok_model": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_GROK_MODEL", ""
+            ).strip(),
+            "codex_model": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_CODEX_MODEL", ""
+            ).strip(),
+            "codex_effort": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT", ""
+            ).strip(),
+        }
+        ordered_route_requested = bool(
+            ordered_values["fallback"] or ordered_values["trigger"]
+        )
+        sealed_ordered_route = ordered_values == {
+            "primary": "grok_cli",
+            "fallback": "codex",
+            "trigger": "primary_quota_exhausted",
+            "grok_model": "grok-4.5",
+            "codex_model": "gpt-5.6-terra",
+            "codex_effort": "medium",
+        }
+        if ordered_route_requested and not sealed_ordered_route:
+            return {
+                "attempted": False,
+                "deferred": True,
+                "reason": "ordered_merge_resolver_policy_invalid",
+            }
+        command_template = (
+            llm_merge_resolver_fallback_command(
+                python_executable=sys.executable,
+            )
+            if sealed_ordered_route
+            else self.config.llm_merge_resolver_command
+        )
 
         target_branch = self._git_current_branch(repo_root) or "HEAD"
         active_task_id = ""
@@ -4296,7 +4344,7 @@ class PortalImplementationSupervisor:
         }
         return invoke_llm_resolver(
             payload,
-            command_template=self.config.llm_merge_resolver_command,
+            command_template=command_template,
             timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
         )
 

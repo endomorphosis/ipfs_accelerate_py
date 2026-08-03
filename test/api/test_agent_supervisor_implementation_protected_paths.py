@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import threading
@@ -162,6 +163,29 @@ def _task(
         track="quality",
         outputs=list(outputs or []),
         metadata=dict(metadata or {}),
+    )
+
+
+def _task_claim_owner_command_line(
+    daemon: PortalImplementationDaemon,
+) -> str:
+    state_suffix = "_task_state.json"
+    assert daemon.state_path.name.endswith(state_suffix)
+    state_prefix = daemon.state_path.name[: -len(state_suffix)]
+    return shlex.join(
+        [
+            "python",
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+            "--state-dir",
+            str(daemon.state_path.parent.resolve()),
+            "--state-prefix",
+            state_prefix,
+            "--task-shard-count",
+            str(daemon.task_shard_count),
+            "--task-shard-index",
+            str(daemon.task_shard_index),
+        ]
     )
 
 
@@ -2907,13 +2931,22 @@ def test_auto_clears_content_preserving_identity_thrash(tmp_path: Path) -> None:
 
 def test_identity_thrash_auto_clear_reaps_stale_task_claim_for_next_selection(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A live lane PID must not preserve a claim for its finished attempt."""
 
     protected = tmp_path / POLICY_PATH
     protected.parent.mkdir(parents=True)
     protected.write_text("authoritative\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
+    daemon = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "test_task_state.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: _task_claim_owner_command_line(daemon),
+    )
     task = _task(outputs=["src/example.py"])
     identity = daemon._identity_for_task(task)
     claim_path = daemon._implementation_task_claim_path(
@@ -2989,10 +3022,19 @@ def test_identity_thrash_auto_clear_reaps_stale_task_claim_for_next_selection(
 
 def test_active_claim_scan_reaps_preexisting_fenceless_stale_claim(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An upgrade can recover a claim whose old fence is already absent."""
 
-    daemon = _daemon(tmp_path)
+    daemon = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "test_task_state.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: _task_claim_owner_command_line(daemon),
+    )
     task = _task(outputs=["src/example.py"])
     PortalTaskState().save(daemon.state_path)
     claim_path = daemon._implementation_task_claim_path(
@@ -3023,6 +3065,439 @@ def test_active_claim_scan_reaps_preexisting_fenceless_stale_claim(
         {},
     )
     assert selected is task
+
+
+@pytest.mark.parametrize(
+    "binding_case",
+    (
+        "missing_state_dir",
+        "relative_paths",
+        "state_path_outside_state_dir",
+        "coherent_foreign_state_root",
+        "incomplete_shard_tuple",
+        "invalid_shard_range",
+        "missing_owner_lane_binding",
+        "invalid_owner_lane_binding_cid",
+    ),
+)
+def test_active_claim_scan_retains_malformed_owner_state_binding(
+    tmp_path: Path,
+    binding_case: str,
+) -> None:
+    """Malformed lane bindings cannot turn unrelated state into deletion proof."""
+
+    daemon = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "test_task_state.json",
+    )
+    PortalTaskState().save(daemon.state_path)
+    task = _task(outputs=["src/example.py"])
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    if binding_case == "missing_state_dir":
+        claim_metadata.pop("state_dir")
+    elif binding_case == "relative_paths":
+        claim_metadata["state_dir"] = "relative-state"
+        claim_metadata["state_path"] = "relative-state/task-state.json"
+    elif binding_case == "state_path_outside_state_dir":
+        unrelated_state_path = tmp_path / "unrelated" / "task-state.json"
+        PortalTaskState().save(unrelated_state_path)
+        claim_metadata["state_path"] = str(unrelated_state_path.resolve())
+    elif binding_case == "coherent_foreign_state_root":
+        unrelated_state_dir = tmp_path / "untrusted-state" / "lane-0"
+        unrelated_state_path = unrelated_state_dir / "task-state.json"
+        PortalTaskState().save(unrelated_state_path)
+        claim_metadata["state_dir"] = str(unrelated_state_dir.resolve())
+        claim_metadata["state_path"] = str(unrelated_state_path.resolve())
+    elif binding_case == "incomplete_shard_tuple":
+        claim_metadata.pop("task_shard_index")
+    elif binding_case == "invalid_shard_range":
+        claim_metadata["task_shard_index"] = claim_metadata["task_shard_count"]
+    elif binding_case == "missing_owner_lane_binding":
+        claim_metadata.pop("owner_lane_binding")
+    elif binding_case == "invalid_owner_lane_binding_cid":
+        claim_metadata["owner_lane_binding_cid"] = "cid:corrupt"
+    else:  # pragma: no cover - the parameter list is exhaustive.
+        raise AssertionError(binding_case)
+    acquired, _reason, _existing = (
+        daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert acquired is True
+
+    active = daemon._active_implementation_task_claims([task])
+
+    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
+    assert claim_path.exists()
+
+
+def test_active_claim_scan_reaps_valid_stale_claim_owned_by_peer_lane(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A coherent owner projection remains usable by a sibling lane."""
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_is_running",
+        lambda pid: pid == os.getpid(),
+    )
+    owner = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "owner" / "owner_task_state.json",
+    )
+    peer = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "peer" / "peer_task_state.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: _task_claim_owner_command_line(owner),
+    )
+    task = _task(outputs=["src/example.py"])
+    PortalTaskState().save(owner.state_path)
+    claim_path = owner._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=owner._canonical_ref(task),
+    )
+    claim_metadata = owner._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = owner._try_acquire_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+    assert acquired is True
+
+    assert peer._active_implementation_task_claims([task]) == {}
+    assert not claim_path.exists()
+
+
+def test_active_claim_scan_retains_valid_live_claim_owned_by_peer_lane(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A peer must read the owner lane, not require its own state path."""
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_is_running",
+        lambda pid: pid == os.getpid(),
+    )
+    owner = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "owner" / "owner_task_state.json",
+    )
+    peer = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "peer" / "peer_task_state.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: _task_claim_owner_command_line(owner),
+    )
+    task = _task(outputs=["src/example.py"])
+    task_cid = owner._canonical_ref(task)
+    PortalTaskState(
+        active_task_id=task.task_id,
+        active_task_cid=task_cid,
+        active_attempt=1,
+        implementation_in_progress=True,
+    ).save(owner.state_path)
+    claim_path = owner._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=task_cid,
+    )
+    claim_metadata = owner._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = owner._try_acquire_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+    assert acquired is True
+
+    active = peer._active_implementation_task_claims([task])
+
+    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
+    assert claim_path.exists()
+    assert owner._release_implementation_task_claim(claim_path, claim_metadata)
+
+
+def test_active_claim_scan_retains_live_claim_redirected_within_owner_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A decoy state file in the right directory cannot stale a live claim."""
+
+    owner = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "owner" / "owner_task_state.json",
+    )
+    peer = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "peer" / "peer_task_state.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_is_running",
+        lambda pid: pid == os.getpid(),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: _task_claim_owner_command_line(owner),
+    )
+    task = _task(outputs=["src/example.py"])
+    task_cid = owner._canonical_ref(task)
+    PortalTaskState(
+        active_task_id=task.task_id,
+        active_task_cid=task_cid,
+        active_attempt=1,
+        implementation_in_progress=True,
+    ).save(owner.state_path)
+    decoy_path = owner.state_path.with_name("decoy_task_state.json")
+    PortalTaskState().save(decoy_path)
+    claim_path = owner._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=task_cid,
+    )
+    claim_metadata = owner._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = owner._try_acquire_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+    assert acquired is True
+
+    # Model a coherent metadata rewrite, not merely a forgotten duplicated
+    # field. The live process argv remains independent authority for "owner".
+    claim_metadata["state_path"] = str(decoy_path.resolve())
+    owner_binding = dict(claim_metadata["owner_lane_binding"])
+    owner_binding.update(
+        {
+            "state_path": str(decoy_path.resolve()),
+            "state_filename": decoy_path.name,
+            "state_prefix": "decoy",
+        }
+    )
+    claim_metadata["owner_lane_binding"] = owner_binding
+    claim_metadata["owner_lane_binding_cid"] = (
+        implementation_daemon_module.content_identity(owner_binding)
+    )
+    claim_path.write_text(
+        json.dumps(claim_metadata, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    active = peer._active_implementation_task_claims([task])
+
+    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
+    assert claim_path.exists()
+    assert owner._release_implementation_task_claim(claim_path, claim_metadata)
+
+
+def test_active_claim_scan_retains_live_claim_redirected_to_sibling_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A claimant PID cannot borrow a sibling lane's stale projection."""
+
+    owner = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "owner" / "owner_task_state.json",
+    )
+    peer = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "peer" / "peer_task_state.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_is_running",
+        lambda pid: pid == os.getpid(),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: _task_claim_owner_command_line(owner),
+    )
+    task = _task(outputs=["src/example.py"])
+    task_cid = owner._canonical_ref(task)
+    PortalTaskState(
+        active_task_id=task.task_id,
+        active_task_cid=task_cid,
+        active_attempt=1,
+        implementation_in_progress=True,
+    ).save(owner.state_path)
+    decoy_dir = tmp_path / "state" / "other"
+    decoy_path = decoy_dir / "other_task_state.json"
+    PortalTaskState().save(decoy_path)
+    claim_path = owner._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=task_cid,
+    )
+    claim_metadata = owner._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = owner._try_acquire_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+    assert acquired is True
+
+    claim_metadata["state_dir"] = str(decoy_dir.resolve())
+    claim_metadata["state_path"] = str(decoy_path.resolve())
+    owner_binding = dict(claim_metadata["owner_lane_binding"])
+    owner_binding.update(
+        {
+            "state_dir": str(decoy_dir.resolve()),
+            "state_path": str(decoy_path.resolve()),
+            "state_filename": decoy_path.name,
+            "state_prefix": "other",
+        }
+    )
+    claim_metadata["owner_lane_binding"] = owner_binding
+    claim_metadata["owner_lane_binding_cid"] = (
+        implementation_daemon_module.content_identity(owner_binding)
+    )
+    claim_path.write_text(
+        json.dumps(claim_metadata, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    active = peer._active_implementation_task_claims([task])
+
+    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
+    assert claim_path.exists()
+    assert owner._release_implementation_task_claim(claim_path, claim_metadata)
+
+
+def test_active_claim_scan_retains_repository_unproven_owner_projection(
+    tmp_path: Path,
+) -> None:
+    """An unbound state projection cannot authorize shared-claim deletion."""
+
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    PortalTaskState().save(daemon.state_path)
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    claim_metadata["repo_root"] = ""
+    claim_metadata["worktree_root"] = ""
+    claim_metadata["repository_id"] = ""
+    acquired, _reason, _existing = daemon._try_acquire_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+    assert acquired is True
+
+    active = daemon._active_implementation_task_claims([task])
+
+    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
+    assert claim_path.exists()
+
+
+def test_task_claim_repository_drift_cannot_bypass_protected_fence(
+    tmp_path: Path,
+) -> None:
+    """A corrupt repository binding must not turn a live fence into stale proof."""
+
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    fence_path = (
+        daemon.state_path.parent
+        / implementation_daemon_module.IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
+    )
+    fence_path.parent.mkdir(parents=True, exist_ok=True)
+    fence_path.write_text('{"schema":"test-fence"}\n', encoding="utf-8")
+    claim_metadata["repository_id"] = "repository:corrupt"
+
+    assert daemon._implementation_task_claim_owner_is_active(claim_metadata)
+    assert fence_path.exists()
+
+
+def test_live_task_claim_repository_drift_is_not_deletion_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A corrupt repo field cannot stale a live, exactly bound lane claim."""
+
+    _git(tmp_path, "init")
+    daemon = _daemon(
+        tmp_path,
+        state_path=tmp_path / "state" / "owner_task_state.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_is_running",
+        lambda pid: pid == os.getpid(),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: _task_claim_owner_command_line(daemon),
+    )
+    task = _task(outputs=["src/example.py"])
+    task_cid = daemon._canonical_ref(task)
+    PortalTaskState(
+        active_task_id=task.task_id,
+        active_task_cid=task_cid,
+        active_attempt=1,
+        implementation_in_progress=True,
+    ).save(daemon.state_path)
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=task_cid,
+    )
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-08-03T00:00:00+00:00",
+    )
+    claim_metadata["repository_id"] = "repository:corrupt"
+    acquired, _reason, _existing = daemon._try_acquire_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+    assert acquired is True
+
+    active = daemon._active_implementation_task_claims([task])
+
+    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
+    assert claim_path.exists()
+    assert daemon._release_implementation_task_claim(claim_path, claim_metadata)
 
 
 def test_fence_clear_reaper_retains_selected_predispatch_claim(

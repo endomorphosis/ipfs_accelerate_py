@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 
 import pytest
 from ipfs_datasets_py.logic.profile_g import validate_profile_g_artifact
@@ -62,6 +63,37 @@ def _idle_heartbeat_projection(**overrides):
     }
     projection.update(overrides)
     return projection
+
+
+def _framed_grok_quota_stderr(
+    raw_error: str,
+    *,
+    kind: str,
+    http_status: int | None,
+) -> str:
+    from ipfs_accelerate_py.agent_supervisor.grok_cli_runner import (
+        GROK_QUOTA_RECEIPT_SCHEMA,
+    )
+
+    raw_bytes = raw_error.encode("utf-8")
+    receipt = {
+        "schema": GROK_QUOTA_RECEIPT_SCHEMA,
+        "provider": "grok_cli",
+        "model": "grok-4.5",
+        "failure_kind": "quota_or_balance_exhausted",
+        "message": "Grok Build usage balance exhausted",
+        "raw_error_sha256": hashlib.sha256(raw_bytes).hexdigest(),
+        "raw_error_size": len(raw_bytes),
+        "kind": kind,
+        "http_status": http_status,
+    }
+    separator = "" if raw_error.endswith("\n") else "\n"
+    return (
+        raw_error
+        + separator
+        + json.dumps(receipt, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    )
 
 
 def test_heartbeat_fallback_accepts_strict_shard_with_global_ready_work() -> None:
@@ -808,8 +840,13 @@ def test_classify_provider_capacity_detects_grok_402_balance_exhausted() -> None
         "}\n"
     )
     classified = classify_provider_capacity_failure(
-        text,
+        _framed_grok_quota_stderr(
+            text,
+            kind="usage_balance_exhausted",
+            http_status=402,
+        ),
         provider_labels=("grok",),
+        provider_returncode=86,
     )
     assert classified["exhausted"] is True
     assert classified["providers"] == ["grok"]
@@ -826,14 +863,81 @@ def test_classify_generic_usage_limit_uses_dispatched_grok_attribution() -> None
     )
 
     classified = classify_provider_capacity_failure(
-        "You've hit your usage limit.",
+        _framed_grok_quota_stderr(
+            "You've hit your usage limit.",
+            kind="usage_limit",
+            http_status=None,
+        ),
         provider_labels=("grok",),
+        provider_returncode=86,
     )
 
     assert classified["providers"] == ["grok"]
     assert classified["capacity_failure_kind"] == "quota_or_balance_exhausted"
     assert classified["provider_attribution"] == "implementation_command"
     assert classified["fallback_eligible"] is True
+
+
+def test_framed_quota_receipt_requires_trusted_runner_exit_code() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    framed = _framed_grok_quota_stderr(
+        "You've hit your usage limit.",
+        kind="usage_limit",
+        http_status=None,
+    )
+    classified = classify_provider_capacity_failure(
+        framed,
+        provider_labels=("grok",),
+        provider_returncode=1,
+    )
+
+    assert classified["fallback_eligible"] is False
+    assert classified["fallback_trigger"] == ""
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "GitHub API quota exceeded while fetching PR",
+        "Hugging Face usage balance exhausted",
+        "Test fixture: quota exhausted",
+        "nested test says xAI usage balance exhausted",
+    ),
+)
+def test_nested_service_quota_text_does_not_impersonate_grok(
+    text: str,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    classified = classify_provider_capacity_failure(
+        text,
+        provider_labels=("grok",),
+    )
+
+    assert classified["exhausted"] is False
+    assert classified["providers"] == []
+    assert classified["fallback_eligible"] is False
+    assert classified["fallback_trigger"] == ""
+
+
+def test_unstructured_grok_quota_prose_cannot_authorize_fallback() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    classified = classify_provider_capacity_failure(
+        "unit fixture status 402 then Grok Build usage balance exhausted",
+        provider_labels=("grok",),
+        provider_returncode=86,
+    )
+
+    assert classified["fallback_eligible"] is False
+    assert classified["fallback_trigger"] == ""
 
 
 @pytest.mark.parametrize(

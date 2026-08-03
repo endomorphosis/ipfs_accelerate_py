@@ -65,6 +65,12 @@ ORDERED_PROVIDER_FIELDS = (
     "fallback_trigger",
     "fallback_reasoning_effort",
 )
+ORDERED_PRIMARY_PROVIDER_ID = "grok_cli"
+ORDERED_PRIMARY_MODEL_ID = "grok-4.5"
+ORDERED_FALLBACK_PROVIDER_ID = "codex"
+ORDERED_FALLBACK_MODEL_ID = "gpt-5.6-terra"
+ORDERED_FALLBACK_TRIGGER = "primary_quota_exhausted"
+ORDERED_FALLBACK_REASONING_EFFORT = "medium"
 
 
 class ConfiguredBoardError(ValueError):
@@ -380,37 +386,50 @@ def load_configured_board(
         primary_provider_id = _provider_string(
             provider,
             "primary_provider_id",
-        ).lower()
-        _provider_string(provider, "primary_model_id")
+        )
+        primary_model_id = _provider_string(provider, "primary_model_id")
         fallback_provider_id = _provider_string(
             provider,
             "fallback_provider_id",
-        ).lower()
-        _provider_string(provider, "fallback_model_id")
+        )
+        fallback_model_id = _provider_string(provider, "fallback_model_id")
         fallback_trigger = _provider_string(
             provider,
             "fallback_trigger",
-        ).lower()
+        )
         fallback_reasoning_effort = _provider_string(
             provider,
             "fallback_reasoning_effort",
-        ).lower()
-        if primary_provider_id != "grok_cli":
+        )
+        if primary_provider_id != ORDERED_PRIMARY_PROVIDER_ID:
             raise ConfiguredBoardError(
                 "provider.primary_provider_id must be 'grok_cli' for "
                 "the ordered provider contract"
             )
-        if fallback_provider_id != "codex":
+        if primary_model_id != ORDERED_PRIMARY_MODEL_ID:
+            raise ConfiguredBoardError(
+                "provider.primary_model_id must be 'grok-4.5' for "
+                "the ordered provider contract"
+            )
+        if fallback_provider_id != ORDERED_FALLBACK_PROVIDER_ID:
             raise ConfiguredBoardError(
                 "provider.fallback_provider_id must be 'codex' for "
                 "the ordered provider contract"
             )
-        if fallback_trigger != "primary_quota_exhausted":
+        if fallback_model_id != ORDERED_FALLBACK_MODEL_ID:
+            raise ConfiguredBoardError(
+                "provider.fallback_model_id must be 'gpt-5.6-terra' for "
+                "the ordered provider contract"
+            )
+        if fallback_trigger != ORDERED_FALLBACK_TRIGGER:
             raise ConfiguredBoardError(
                 "provider.fallback_trigger must be "
                 "'primary_quota_exhausted' for the ordered provider contract"
             )
-        if fallback_reasoning_effort != "medium":
+        if (
+            fallback_reasoning_effort
+            != ORDERED_FALLBACK_REASONING_EFFORT
+        ):
             raise ConfiguredBoardError(
                 "provider.fallback_reasoning_effort must be 'medium' for "
                 "the ordered provider contract"

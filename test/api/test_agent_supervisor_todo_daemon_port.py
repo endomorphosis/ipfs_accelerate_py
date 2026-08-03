@@ -81,8 +81,11 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     build_namespace_merge_resolver_runner_from_spec,
 )
 from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (
+    CODEX_MERGE_RESOLVER_MODEL,
+    CODEX_MERGE_RESOLVER_REASONING_EFFORT,
+    GROK_MERGE_RESOLVER_MODEL,
     _DEFAULT_CODEX_TIMEOUT_SECONDS,
-    _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+    _DEFAULT_GROK_TIMEOUT_SECONDS,
     _timeout_seconds,
     llm_merge_resolver_fallback_command,
 )
@@ -144,6 +147,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     checkout_lock_metadata,
+    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
@@ -1006,13 +1010,12 @@ def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):
     assert default_llm_merge_resolver_command(primary_env_var="PRIMARY_RESOLVER_COMMAND") == "fallback-command"
 
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND")
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/codex" if name == "codex" else None)
-    assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == "/usr/bin/codex exec -"
-    assert (
-        default_llm_merge_resolver_command()
-        == "/usr/bin/codex exec --ignore-user-config --dangerously-bypass-approvals-and-sandbox "
-        "-c 'model_reasoning_effort=\"high\"' -C . -"
+    packaged = (
+        f"{shlex.quote(sys.executable)} -m "
+        "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
     )
+    assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == packaged
+    assert default_llm_merge_resolver_command() == packaged
 
 
 def test_wrapper_utils_android_validation_environment_contract(tmp_path):
@@ -1230,15 +1233,17 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
 
     command = daemon._build_implementation_command(repo)
 
-    assert command[:5] == [
+    assert command[:6] == [
         "/usr/local/bin/codex",
         "exec",
+        "--ignore-user-config",
         "--dangerously-bypass-approvals-and-sandbox",
         "-C",
         str(repo),
     ]
     assert command[-1] == "-"
-    assert ["-c", "model_context_window=200000"] == command[5:7]
+    context_config_index = command.index("model_context_window=200000")
+    assert command[context_config_index - 1] == "-c"
     assert "-c" in command
     assert 'model_reasoning_effort="high"' in command
     assert "agents.max_threads=10" in command
@@ -4454,7 +4459,7 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
 
     assert args[:3] == ["--implement", "--objective-refill-scan", "--codebase-refill-scan"]
     assert args[args.index("--implementation-command") + 1] == "bash resolve.sh"
-    assert args[args.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
+    assert "--llm-merge-resolver-command" not in args
     assert args[args.index("--objective-scan-min-open-tasks") + 1] == "21"
     assert args[args.index("--objective-scan-max-findings") + 1] == "13"
     assert args[args.index("--objective-refill-timeout-seconds") + 1] == "602"
@@ -4467,18 +4472,35 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
 def test_implementation_multi_supervisor_env_defaults_are_reusable():
     assert implementation_multi_supervisor_env_defaults() == {
         "PYTHONUNBUFFERED": "1",
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "900",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
+        "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS": "900",
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
+            "primary_quota_exhausted"
+        ),
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
     assert implementation_multi_supervisor_env_defaults(
         python_unbuffered=False,
+        grok_merge_resolver_timeout_seconds=0,
         codex_merge_resolver_timeout_seconds=0,
+        copilot_merge_resolver_timeout_seconds=123,
         prefer_copilot_merge_resolver=True,
     ) == {
         "PYTHONUNBUFFERED": "0",
+        "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS": "0",
         "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
-        "PREFER_COPILOT_MERGE_RESOLVER": "1",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
+            "primary_quota_exhausted"
+        ),
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
 
 
@@ -4502,7 +4524,7 @@ def test_multi_supervisor_common_args_from_parsed_defaults(monkeypatch):
     assert "--objective-refill-scan" in args
     assert "--codebase-refill-scan" in args
     assert args[args.index("--implementation-command") + 1] == "bash resolve.sh"
-    assert args[args.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
+    assert "--llm-merge-resolver-command" not in args
     assert args[args.index("--objective-scan-min-open-tasks") + 1] == "22"
     assert args[-2:] == ["--objective-scan-min-open-tasks", "99"]
     assert supervisor_track_payload(tracks[0])["log_path"].endswith("/agent_8h_run_" + parsed.stamp + ".log")
@@ -4649,6 +4671,9 @@ def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_pa
 
     monkeypatch.setattr(multi_supervisor_runner, "main", fake_main)
     monkeypatch.delenv("MULTI_SUPERVISOR_REPO_DEFAULT", raising=False)
+    ordered_defaults = implementation_multi_supervisor_env_defaults()
+    for name in ordered_defaults:
+        monkeypatch.delenv(name, raising=False)
 
     launcher = build_repo_implementation_multi_supervisor_launcher(
         repo_root=tmp_path,
@@ -4683,6 +4708,10 @@ def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_pa
 
     assert launcher.run(["--duration-seconds", "0.01"]) == 0
     assert os.environ["MULTI_SUPERVISOR_REPO_DEFAULT"] == "1"
+    assert {
+        name: os.environ[name]
+        for name in ordered_defaults
+    } == ordered_defaults
     assert prepared == ["called"]
     assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
 
@@ -4721,28 +4750,8 @@ def test_repo_implementation_multi_supervisor_launcher_uses_packaged_resolver_de
     )
 
 
-def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
-    codex_log = tmp_path / "codex.prompt"
-    codex_bin = tmp_path / "codex"
-    codex_bin.write_text(
-        "#!/usr/bin/env bash\n"
-        "while (($#)); do\n"
-        "  if [[ \"$1\" == \"-C\" ]]; then shift; workspace=\"$1\"; fi\n"
-        "  shift || true\n"
-        "done\n"
-        "cat > \"$workspace/codex.prompt\"\n",
-        encoding="utf-8",
-    )
-    codex_bin.chmod(0o755)
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
-        "CODEX_BIN": str(codex_bin),
-        "COPILOT_BIN": "",
-        "AGENT_RESOLVER_LOCK_BYPASS": "1",
-    }
-
-    completed = subprocess.run(
+def _run_packaged_merge_resolver(tmp_path: Path, env: dict[str, str]):
+    return subprocess.run(
         [
             sys.executable,
             "-m",
@@ -4752,118 +4761,237 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
         input="resolve this conflict",
         text=True,
         capture_output=True,
-        env=env,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+            "AGENT_RESOLVER_LOCK_BYPASS": "1",
+            "_AGENT_RESOLVER_INVOCATION_DEPTH": "0",
+            **env,
+        },
         check=False,
     )
 
+
+def test_llm_merge_resolver_fallback_module_uses_exact_grok_first(tmp_path):
+    grok_prompt = tmp_path / "grok.prompt"
+    grok_args = tmp_path / "grok.args"
+    codex_marker = tmp_path / "codex.invoked"
+    grok_bin = tmp_path / "grok"
+    codex_bin = tmp_path / "codex"
+    grok_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "while (($#)); do\n"
+        f"  printf '%s\\n' \"$1\" >> {shlex.quote(str(grok_args))}\n"
+        "  if [[ \"$1\" == \"--prompt-file\" ]]; then shift; prompt_file=\"$1\"; fi\n"
+        "  shift || true\n"
+        "done\n"
+        f"cat \"$prompt_file\" > {shlex.quote(str(grok_prompt))}\n",
+        encoding="utf-8",
+    )
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
+    codex_bin.chmod(0o755)
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "IPFS_ACCELERATE_AGENT_GROK_MODEL": "wrong-grok-model",
+        },
+    )
+
     assert completed.returncode == 0, completed.stderr
-    assert codex_log.read_text(encoding="utf-8") == "resolve this conflict"
+    assert grok_prompt.read_text(encoding="utf-8") == "resolve this conflict"
+    grok_argv = grok_args.read_text(encoding="utf-8").splitlines()
+    assert grok_argv[grok_argv.index("--model") + 1] == GROK_MERGE_RESOLVER_MODEL
+    assert not codex_marker.exists()
 
 
 def test_llm_merge_resolver_provider_defaults_fit_outer_budget(monkeypatch):
+    monkeypatch.delenv("GROK_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
-    monkeypatch.delenv("COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
 
+    grok_timeout = _timeout_seconds(
+        "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS",
+        _DEFAULT_GROK_TIMEOUT_SECONDS,
+    )
     codex_timeout = _timeout_seconds(
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS",
-        _DEFAULT_CODEX_TIMEOUT_SECONDS,
-    )
-    copilot_timeout = _timeout_seconds(
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS",
-        _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS", _DEFAULT_CODEX_TIMEOUT_SECONDS
     )
 
-    assert codex_timeout == 900
-    assert copilot_timeout == 600
+    assert grok_timeout == 900
+    assert codex_timeout == 600
     assert (
-        codex_timeout + copilot_timeout
+        grok_timeout + codex_timeout
         < merge_resolver.DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS
     )
 
 
-def test_llm_merge_resolver_fallback_uses_copilot_after_codex_timeout(tmp_path):
+def test_llm_merge_resolver_uses_exact_codex_only_after_grok_quota(tmp_path):
+    grok_bin = tmp_path / "grok"
     codex_bin = tmp_path / "codex"
     copilot_bin = tmp_path / "copilot"
-    copilot_log = tmp_path / "copilot.prompt"
-    codex_bin.write_text("#!/usr/bin/env bash\nsleep 5\n", encoding="utf-8")
-    copilot_bin.write_text(
+    codex_prompt = tmp_path / "codex.prompt"
+    codex_args = tmp_path / "codex.args"
+    copilot_marker = tmp_path / "copilot.invoked"
+    grok_bin.write_text(
         "#!/usr/bin/env bash\n"
-        "while (($#)); do\n"
-        "  if [[ \"$1\" == \"--prompt\" ]]; then shift; printf '%s' \"$1\" > "
-        f"{shlex.quote(str(copilot_log))}; fi\n"
-        "  shift || true\n"
-        "done\n",
+        "printf '%s\\n' 'Internal error: {\"message\":\"API error (status 402 Payment Required): Grok Build usage balance exhausted\",\"http_status\":402}' >&2\n"
+        "exit 42\n",
         encoding="utf-8",
     )
+    codex_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "while (($#)); do\n"
+        f"  printf '%s\\n' \"$1\" >> {shlex.quote(str(codex_args))}\n"
+        "  shift || true\n"
+        "done\n"
+        f"cat > {shlex.quote(str(codex_prompt))}\n",
+        encoding="utf-8",
+    )
+    copilot_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(copilot_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
     codex_bin.chmod(0o755)
     copilot_bin.chmod(0o755)
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
-        "CODEX_BIN": str(codex_bin),
-        "COPILOT_BIN": str(copilot_bin),
-        "COPILOT_GITHUB_TOKEN": "test-token",
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0.05",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "2",
-        "AGENT_RESOLVER_LOCK_BYPASS": "1",
-    }
-
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
-            str(tmp_path),
-        ],
-        input="resolve this conflict",
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "COPILOT_BIN": str(copilot_bin),
+            "COPILOT_GITHUB_TOKEN": "test-token",
+            "IPFS_ACCELERATE_AGENT_GROK_MODEL": "wrong-grok-model",
+            "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "wrong-codex-model",
+            "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "ultra",
+        },
     )
 
     assert completed.returncode == 0, completed.stderr
-    assert "codex merge resolver timed out" in completed.stderr
-    assert copilot_log.read_text(encoding="utf-8") == "resolve this conflict"
+    assert "authorizing Codex fallback" in completed.stderr
+    assert codex_prompt.read_text(encoding="utf-8") == "resolve this conflict"
+    codex_argv = codex_args.read_text(encoding="utf-8").splitlines()
+    assert codex_argv[codex_argv.index("-m") + 1] == CODEX_MERGE_RESOLVER_MODEL
+    assert (
+        codex_argv[codex_argv.index("-c") + 1]
+        == f'model_reasoning_effort="{CODEX_MERGE_RESOLVER_REASONING_EFFORT}"'
+    )
+    assert not copilot_marker.exists()
 
 
-def test_llm_merge_resolver_fallback_skips_unauthenticated_copilot(tmp_path):
+def test_llm_merge_resolver_stdout_quota_text_is_not_authority(tmp_path):
+    grok_bin = tmp_path / "grok"
     codex_bin = tmp_path / "codex"
-    copilot_bin = tmp_path / "copilot"
-    copilot_log = tmp_path / "copilot.log"
-    codex_bin.write_text("#!/bin/bash\nexit 42\n", encoding="utf-8")
-    copilot_bin.write_text(f"#!/bin/bash\nprintf invoked > {shlex.quote(str(copilot_log))}\n", encoding="utf-8")
+    codex_marker = tmp_path / "codex.invoked"
+    grok_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf 'Grok usage balance exhausted'\n"
+        "printf 'ordinary implementation failure' >&2\n"
+        "exit 42\n",
+        encoding="utf-8",
+    )
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
     codex_bin.chmod(0o755)
-    copilot_bin.chmod(0o755)
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
-        "CODEX_BIN": str(codex_bin),
-        "COPILOT_BIN": str(copilot_bin),
-        "COPILOT_GITHUB_TOKEN": "",
-        "GH_TOKEN": "",
-        "GITHUB_TOKEN": "",
-        "PATH": str(tmp_path),
-        "AGENT_RESOLVER_LOCK_BYPASS": "1",
-    }
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
-            str(tmp_path),
-        ],
-        input="resolve this conflict",
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+        },
     )
 
     assert completed.returncode == 42
-    assert "copilot fallback is not authenticated" in completed.stderr
-    assert not copilot_log.exists()
+    assert "Codex fallback is forbidden" in completed.stderr
+    assert not codex_marker.exists()
+
+
+@pytest.mark.parametrize(
+    "failure_text",
+    (
+        "xAI HTTP 429 rate limited",
+        "Grok authentication failed",
+        "Grok timed out",
+        "Grok service unavailable",
+        "Grok quota exhausted after HTTP 429 rate limit",
+        "generic Grok failure",
+    ),
+)
+def test_llm_merge_resolver_nonquota_grok_failures_never_fallback(
+    tmp_path,
+    failure_text,
+):
+    grok_bin = tmp_path / "grok"
+    codex_bin = tmp_path / "codex"
+    copilot_bin = tmp_path / "copilot"
+    codex_marker = tmp_path / "codex.invoked"
+    copilot_marker = tmp_path / "copilot.invoked"
+    grok_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s' {shlex.quote(failure_text)} >&2\n"
+        "exit 42\n",
+        encoding="utf-8",
+    )
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    copilot_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(copilot_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
+    codex_bin.chmod(0o755)
+    copilot_bin.chmod(0o755)
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "COPILOT_BIN": str(copilot_bin),
+            "COPILOT_GITHUB_TOKEN": "test-token",
+        },
+    )
+
+    assert completed.returncode == 42
+    assert "Codex fallback is forbidden" in completed.stderr
+    assert not codex_marker.exists()
+    assert not copilot_marker.exists()
+
+
+def test_llm_merge_resolver_grok_timeout_fails_closed(tmp_path):
+    grok_bin = tmp_path / "grok"
+    codex_bin = tmp_path / "codex"
+    codex_marker = tmp_path / "codex.invoked"
+    grok_bin.write_text("#!/usr/bin/env bash\nsleep 5\n", encoding="utf-8")
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
+    codex_bin.chmod(0o755)
+
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS": "0.05",
+        },
+    )
+
+    assert completed.returncode == 124
+    assert "Codex fallback is forbidden" in completed.stderr
+    assert not codex_marker.exists()
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
@@ -13263,18 +13391,174 @@ def test_auto_provider_with_codex_model_ignores_grok_capacity_latch(
     assert daemon._active_provider_capacity_backoff() == {}
     command = daemon._build_implementation_command(repo)
     assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert "--ignore-user-config" in command
     assert command[command.index("-m") + 1] == "gpt-5.6-terra"
 
 
 def _seal_ordered_grok_codex_route(monkeypatch) -> None:
     monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    monkeypatch.setenv(
         implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
         "primary_quota_exhausted",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_MODEL_ENV,
+        "grok-4.5",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
     )
     monkeypatch.setenv(
         implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
         "medium",
     )
+
+
+def _clear_ordered_grok_codex_route(monkeypatch) -> None:
+    """Give legacy custom-resolver tests an explicit unsealed environment."""
+
+    for name in (
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        implementation_daemon_module._GROK_MODEL_ENV,
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_ordered_grok_codex_route_environment(monkeypatch) -> None:
+    """Keep production route defaults from changing legacy unit-test semantics."""
+
+    _clear_ordered_grok_codex_route(monkeypatch)
+
+
+def _issue_ordered_grok_quota_authority(
+    daemon,
+    *,
+    task,
+    workspace,
+    attempt=1,
+    command=None,
+):
+    state = TodoTaskState()
+    started_at = "2026-08-03T02:00:00+00:00"
+    log_path = workspace / "grok-quota.log"
+    command = (
+        list(command)
+        if command is not None
+        else implementation_daemon_module._grok_cli_command(
+            workspace_path=workspace,
+        )
+    )
+    daemon._mark_implementation_started(
+        state,
+        task=task,
+        attempt=attempt,
+        started_at=started_at,
+        log_path=log_path,
+    )
+    identity = daemon._identity_for_task(task)
+    started_event = daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "attempt": attempt,
+            "command": command,
+            "log_path": str(log_path),
+        },
+    )
+    raw_error = (
+        'Internal error: {"message":"API error (status 402 Payment '
+        'Required): Grok Build usage balance exhausted","http_status":402}'
+        "\n"
+    ).encode("utf-8")
+    runner_receipt = {
+        "schema": implementation_daemon_module.GROK_QUOTA_RECEIPT_SCHEMA,
+        "provider": "grok_cli",
+        "model": "grok-4.5",
+        "failure_kind": "quota_or_balance_exhausted",
+        "message": "Grok Build usage balance exhausted",
+        "raw_error_sha256": hashlib.sha256(raw_error).hexdigest(),
+        "raw_error_size": len(raw_error),
+        "kind": "usage_balance_exhausted",
+        "http_status": 402,
+    }
+    log_path.write_bytes(
+        raw_error
+        + json.dumps(
+            runner_receipt,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        + b"\n"
+    )
+    failure = daemon._provider_capacity_failure_from_text(
+        log_path.read_text(encoding="utf-8"),
+        command=command,
+        provider_output_only=True,
+        provider_output_start_offset=0,
+        provider_error_channel_identity={
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "anonymous-provider-error-channel@1"
+            ),
+            "device": 1,
+            "inode": 1,
+            "size": log_path.stat().st_size,
+            "sha256": hashlib.sha256(log_path.read_bytes()).hexdigest(),
+            "tail_start_offset": 0,
+        },
+        provider_returncode=(
+            implementation_daemon_module.GROK_QUOTA_EXHAUSTED_EXIT_CODE
+        ),
+    )
+    result = daemon._record_provider_capacity_deferral(
+        task=task,
+        state=state,
+        attempt=attempt,
+        started_at=started_at,
+        returncode=(
+            implementation_daemon_module.GROK_QUOTA_EXHAUSTED_EXIT_CODE
+        ),
+        log_path=log_path,
+        failure=failure,
+        command=command,
+        implementation_started_event=started_event,
+    )
+    return result, command
+
+
+def _prime_ordered_fallback_runtime_state(daemon, tasks):
+    state = TodoTaskState.load(daemon.state_path)
+    state.task_count = len(tasks)
+    state.ready_count = len(tasks)
+    state.selectable_ready_task_ids = [task.task_id for task in tasks]
+    state.selectable_ready_count = len(tasks)
+    state.eligible_ready_task_ids = [task.task_id for task in tasks]
+    state.eligible_ready_count = len(tasks)
+    state.task_statuses = {task.task_id: "ready" for task in tasks}
+    state.task_identities = {
+        task.task_id: daemon._identity_for_task(task).to_dict()
+        for task in tasks
+    }
+    state.save(daemon.state_path)
+    source_digest, _sources = daemon._runtime_source_head()
+    daemon._runtime_last_source_digest = source_digest
+    daemon._runtime_last_result = {"active_task_id": ""}
+    return state
 
 
 def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
@@ -13344,6 +13628,53 @@ def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
         "xai",
         "provider",
     }
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "invalid_value"),
+    (
+        (implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV, "grok"),
+        (
+            implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+            "openai",
+        ),
+        (implementation_daemon_module._GROK_MODEL_ENV, "grok-4"),
+        (implementation_daemon_module._CODEX_MODEL_ENV, "gpt-5.6"),
+        (
+            implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+            "primary_unavailable",
+        ),
+        (
+            implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+            "high",
+        ),
+    ),
+)
+def test_ordered_grok_route_rejects_inexact_policy_fields(
+    tmp_path,
+    monkeypatch,
+    environment_name,
+    invalid_value,
+):
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setenv(environment_name, invalid_value)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+
+    assert daemon._ordered_grok_codex_route_configured() is False
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="requires exact grok_cli/grok-4.5",
+    ):
+        daemon._build_implementation_command(repo)
 
 
 def test_ordered_grok_route_fails_closed_when_primary_is_unavailable(
@@ -13418,6 +13749,7 @@ def test_ordered_grok_route_fails_closed_when_primary_is_unavailable(
         priority="P0",
         track="provider",
         outputs=["src/provider.py"],
+        metadata={"Provider role": "grok-implement, codex-review"},
     )
 
     with pytest.raises(
@@ -13599,15 +13931,9 @@ def test_ordered_codex_fallback_rejects_non_proof_grok_latches(
         daemon._build_implementation_command(repo)
 
 
-@pytest.mark.parametrize(
-    ("exhausted_provider", "expected_provider"),
-    (("grok", "codex"), ("codex", "grok")),
-)
-def test_ordered_capacity_latch_selects_healthy_provider_on_next_dispatch(
+def test_ordered_codex_fallback_requires_live_exact_daemon_authority(
     tmp_path,
     monkeypatch,
-    exhausted_provider,
-    expected_provider,
 ):
     fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(
@@ -13615,17 +13941,9 @@ def test_ordered_capacity_latch_selects_healthy_provider_on_next_dispatch(
         "_provider_capacity_now",
         lambda: fixed_now,
     )
-    repo = tmp_path / exhausted_provider
+    repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_cli",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
-        "codex",
-    )
     _seal_ordered_grok_codex_route(monkeypatch)
     monkeypatch.setattr(
         implementation_daemon_module,
@@ -13655,42 +13973,411 @@ def test_ordered_capacity_latch_selects_healthy_provider_on_next_dispatch(
         repo_root=repo,
         implement=True,
     )
-    daemon._record_event(
-        "implementation_provider_exhausted",
-        {
-            "providers": [exhausted_provider],
-            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
-            **(
-                {
-                    "capacity_failure_kind": "quota_or_balance_exhausted",
-                    "provider_attribution": "implementation_command",
-                    "fallback_eligible": True,
-                    "fallback_trigger": "primary_quota_exhausted",
-                    "evidence": ["Grok usage balance exhausted"],
-                }
-                if exhausted_provider == "grok"
-                else {}
-            ),
-        },
+    task = PortalTask(
+        task_id="ACCEL-ORDERED-AUTHORITY",
+        title="Use exact quota authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "grok-implement, codex-review"},
+    )
+    result, failed_grok_command = _issue_ordered_grok_quota_authority(
+        daemon,
+        task=task,
+        workspace=repo,
     )
 
-    command = daemon._build_implementation_command(repo)
+    authority = result["grok_quota_fallback_authority"]
+    assert authority["model_id"] == "grok-4.5"
+    assert authority["command"] == failed_grok_command
+    assert authority["command_cid"]
+    assert authority["implementation_started_event_id"]
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    )["receipt_id"] == authority["receipt_id"]
+    assert daemon._active_provider_capacity_backoff(
+        task,
+        attempt=1,
+    ) == {}
+    assert daemon._active_provider_capacity_backoff()["active"] is True
 
-    assert daemon._active_provider_capacity_backoff() == {}
-    if expected_provider == "grok":
-        assert command[1].endswith("grok_cli_runner.py")
-        assert daemon._current_implementation_provider_labels() == {
-            "grok",
-            "xai",
-            "provider",
+    command = daemon._build_implementation_command(
+        repo,
+        task=task,
+        attempt=1,
+    )
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in command
+
+    changed_task = replace(task, title="Changed canonical task revision")
+    assert daemon._active_grok_quota_fallback_proof(
+        changed_task,
+        attempt=1,
+    ) == {}
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=2,
+    ) == {}
+
+    daemon._grok_quota_fallback_authority._issued[
+        authority["receipt_id"]
+    ]["attempt"] = 2
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    ) == {}
+
+    restarted = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    assert restarted._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    ) == {}
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
+        restarted._build_implementation_command(
+            repo,
+            task=task,
+            attempt=1,
+        )
+
+
+def test_ordered_fallback_is_due_through_unchanged_runtime_fast_path(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-FALLBACK-A Repair with the authorized fallback
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: provider
+- Depends on:
+- Outputs: src/provider.py
+- Validation:
+- Acceptance: The exact fallback implementation is selected.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    [task] = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )
+    _issue_ordered_grok_quota_authority(
+        daemon,
+        task=task,
+        workspace=repo,
+    )
+    _prime_ordered_fallback_runtime_state(daemon, [task])
+    observed = {}
+
+    def capture_implementation(selected, state):
+        attempt = daemon._task_attempt(state, selected)
+        observed["task_id"] = selected.task_id
+        observed["command"] = daemon._build_implementation_command(
+            repo,
+            task=selected,
+            attempt=attempt,
+        )
+        return {
+            "task_id": selected.task_id,
+            "attempt": attempt,
+            "returncode": 0,
         }
-    else:
-        assert command[:2] == ["/usr/local/bin/codex", "exec"]
-        assert 'model_reasoning_effort="medium"' in command
-        assert daemon._current_implementation_provider_labels() == {
-            "codex",
-            "provider",
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation",
+        capture_implementation,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_unchanged_runtime_result",
+        lambda **_kwargs: pytest.fail(
+            "matching quota authority must bypass the unchanged fast path"
+        ),
+    )
+
+    result = daemon.run_once()
+
+    assert result["implementation_result"]["task_id"] == task.task_id
+    assert observed["task_id"] == task.task_id
+    command = observed["command"]
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in command
+
+
+def test_ordered_fallback_prioritizes_receipt_owner_over_earlier_task(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-FALLBACK-B Higher-ranked unrelated task
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: provider
+- Depends on:
+- Outputs: src/unrelated.py
+- Validation:
+- Acceptance: This task has no fallback authority.
+
+## ACCEL-FALLBACK-A Receipt-owning task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: provider
+- Depends on:
+- Outputs: src/provider.py
+- Validation:
+- Acceptance: This task owns the exact fallback authority.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    tasks = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )
+    task_by_id = {task.task_id: task for task in tasks}
+    receipt_owner = task_by_id["ACCEL-FALLBACK-A"]
+    _issue_ordered_grok_quota_authority(
+        daemon,
+        task=receipt_owner,
+        workspace=repo,
+    )
+    _prime_ordered_fallback_runtime_state(daemon, tasks)
+    observed = {}
+
+    def capture_implementation(selected, state):
+        observed["task_id"] = selected.task_id
+        attempt = daemon._task_attempt(state, selected)
+        try:
+            observed["command"] = daemon._build_implementation_command(
+                repo,
+                task=selected,
+                attempt=attempt,
+            )
+        except implementation_daemon_module.ImplementationRetryDeferred:
+            observed["command"] = []
+        return {
+            "task_id": selected.task_id,
+            "attempt": attempt,
+            "returncode": 0,
         }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation",
+        capture_implementation,
+    )
+
+    result = daemon.run_once()
+
+    assert result["implementation_result"]["task_id"] == receipt_owner.task_id
+    assert observed["task_id"] == receipt_owner.task_id
+    command = observed["command"]
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in command
+
+
+def test_ordered_quota_classifier_excludes_supervisor_log_headers(
+    tmp_path,
+    monkeypatch,
+):
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    command = implementation_daemon_module._grok_cli_command(
+        workspace_path=repo,
+    )
+    supervisor_header = "Task: Grok usage balance exhausted\n"
+    log_path = repo / "provider.log"
+    log_path.write_text(
+        supervisor_header + "ordinary child failure\n",
+        encoding="utf-8",
+    )
+
+    unbounded = daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+    )
+    child_only = daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+        provider_output_start_offset=len(
+            supervisor_header.encode("utf-8")
+        ),
+    )
+
+    assert unbounded["fallback_eligible"] is False
+    assert child_only["exhausted"] is False
+    assert child_only["provider_output_only"] is True
+
+
+def test_ordered_quota_authority_rejects_inexact_grok_command(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-INEXACT-GROK",
+        title="Reject inexact Grok dispatch",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+    )
+    command = implementation_daemon_module._grok_cli_command(
+        workspace_path=repo,
+    )
+    command[command.index("--model") + 1] = "grok-4"
+
+    result, _ = _issue_ordered_grok_quota_authority(
+        daemon,
+        task=task,
+        workspace=repo,
+        command=command,
+    )
+
+    assert "grok_quota_fallback_authority" not in result
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    ) == {}
 
 
 def test_ordered_grok_route_uses_grok_when_codex_is_missing(
@@ -13844,7 +14531,7 @@ def test_legacy_auto_labels_codex_when_grok_is_unavailable(
     ]
 
 
-def test_task_declared_grok_never_uses_configured_codex_fallback(
+def test_task_declared_grok_partial_ordered_route_fails_closed(
     tmp_path,
     monkeypatch,
 ):
@@ -13859,6 +14546,13 @@ def test_task_declared_grok_never_uses_configured_codex_fallback(
         implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
         "codex",
     )
+    for name in (
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        implementation_daemon_module._GROK_MODEL_ENV,
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(
         implementation_daemon_module,
         "_grok_cli_available",
@@ -13893,7 +14587,10 @@ def test_task_declared_grok_never_uses_configured_codex_fallback(
         metadata={"Provider role": "grok-implement"},
     )
 
-    with pytest.raises(RuntimeError, match="requires the Grok Build CLI"):
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="requires exact grok_cli/grok-4.5",
+    ):
         daemon._build_implementation_command(repo, task=task)
 
     assert daemon._current_implementation_provider_labels(task) == {
@@ -16275,7 +16972,12 @@ def test_shared_claim_and_supervisor_liveness_use_common_git_identity(
     assert sibling_daemon._implementation_task_claim_owner_is_active(
         claim_metadata
     )
-    assert not foreign_daemon._implementation_task_claim_owner_is_active(
+    assert checkout_lock_repository_matches(claim_metadata, foreign) is False
+    # Task-claim liveness is also the reclamation guard.  A record supplied
+    # from outside the foreign repository's own shared claim namespace must
+    # therefore remain incumbent ("active") rather than letting a repository
+    # mismatch become deletion authority.
+    assert foreign_daemon._implementation_task_claim_owner_is_active(
         claim_metadata
     )
 
@@ -16302,7 +17004,8 @@ def test_shared_claim_and_supervisor_liveness_use_common_git_identity(
     assert sibling_daemon._implementation_task_claim_owner_is_active(
         legacy_metadata
     )
-    assert not foreign_daemon._implementation_task_claim_owner_is_active(
+    assert checkout_lock_repository_matches(legacy_metadata, foreign) is False
+    assert foreign_daemon._implementation_task_claim_owner_is_active(
         legacy_metadata
     )
     assert primary_daemon._release_implementation_task_claim(
@@ -23209,7 +23912,9 @@ def test_task_llm_context_budget_caps_codex_window_without_widening_operator_lim
     assert resolution.provider_context_window == 6_000
     assert resolution.effective_input_limit == 4_500
     assert result.capsule.budget.max_input_tokens == 4_500
-    assert ["-c", "model_context_window=6000"] == command[5:7]
+    assert "--ignore-user-config" in command
+    context_config_index = command.index("model_context_window=6000")
+    assert command[context_config_index - 1] == "-c"
     assert "model_context_window=200000" not in command
 
 
@@ -26307,7 +27012,19 @@ def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
     assert "--no-implement" in manifest["lanes"][0]["command"]
 
 
-def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path):
+def test_implementation_daemon_invokes_configured_llm_merge_resolver(
+    tmp_path,
+    monkeypatch,
+):
+    for name in (
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        implementation_daemon_module._GROK_MODEL_ENV,
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -26363,6 +27080,63 @@ def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path):
     events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "llm_merge_resolver_invoked"
     assert events[-1]["prompt_chars"] == len(prompt)
+
+
+def test_sealed_route_ignores_custom_merge_resolver_command(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _seal_ordered_grok_codex_route(monkeypatch)
+    captured: dict[str, object] = {}
+
+    def fake_invoke(payload, *, command_template, timeout_seconds):
+        captured.update(
+            {
+                "payload": payload,
+                "command_template": command_template,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return {"applied": False, "llm_returncode": 1}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.merge.merge_resolver.invoke_llm_resolver",
+        fake_invoke,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        llm_merge_resolver_command="codex exec -",
+    )
+
+    daemon._invoke_llm_merge_resolver_for_failed_merge(
+        workspace=repo,
+        task=PortalTask(
+            task_id="ACCEL-SEALED-MERGE",
+            title="Resolve through reviewed route",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        attempt=1,
+        branch_name="implementation/accel-sealed-merge",
+        target_branch="main",
+        merge_command=["git", "merge", "implementation/accel-sealed-merge"],
+        merge_stdout="",
+        merge_stderr="CONFLICT (content): Merge conflict",
+    )
+
+    assert captured["command_template"] == llm_merge_resolver_fallback_command(
+        python_executable=sys.executable,
+    )
+    assert captured["command_template"] != "codex exec -"
 
 
 def test_llm_merge_resolver_times_out_hung_command(tmp_path):
@@ -26601,7 +27375,11 @@ def test_implementation_supervisor_aborts_interrupted_main_checkout_merge_with_r
     assert target.read_text(encoding="utf-8") == "main\n"
 
 
-def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_merge(tmp_path):
+def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_merge(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -31530,7 +32308,11 @@ def test_readiness_doc_and_heap_name_the_same_launch_validation_gate():
     assert _git(repo, "merge-base", "--is-ancestor", "implementation/mgw-launch", "HEAD") == ""
 
 
-def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(tmp_path):
+def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -31720,7 +32502,11 @@ def test_implementation_daemon_reconciles_generated_dirty_submodule_overlap_with
     assert _git(submodule, "status", "--porcelain") == ""
 
 
-def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_path):
+def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -31783,7 +32569,11 @@ def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_pat
     assert any(event["type"] == "main_merge_workspace_blocker_resolved" for event in events)
 
 
-def test_implementation_daemon_invokes_llm_resolver_for_dirty_submodule_checkout(tmp_path):
+def test_implementation_daemon_invokes_llm_resolver_for_dirty_submodule_checkout(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     _git(submodule, "checkout", "-b", "implementation/auto-001-submodule-libs-child")
     (submodule / "child.txt").write_text("branch\n", encoding="utf-8")
@@ -32843,7 +33633,11 @@ def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
     assert no_merge_head.returncode != 0
 
 
-def test_implementation_daemon_accepts_resolver_committed_merge(tmp_path):
+def test_implementation_daemon_accepts_resolver_committed_merge(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -32898,7 +33692,11 @@ def test_implementation_daemon_accepts_resolver_committed_merge(tmp_path):
     assert _git(repo, "merge-base", "--is-ancestor", "implementation/auto-merge", "HEAD") == ""
 
 
-def test_implementation_daemon_invokes_llm_resolver_for_submodule_merge_conflict(tmp_path):
+def test_implementation_daemon_invokes_llm_resolver_for_submodule_merge_conflict(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     _git(submodule, "checkout", "-b", "implementation/auto-003-submodule-libs-child")
     (submodule / "child.txt").write_text("branch\n", encoding="utf-8")

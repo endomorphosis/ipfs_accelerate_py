@@ -256,6 +256,10 @@ def test_ordered_provider_contract_requires_complete_unambiguous_fields(
 @pytest.mark.parametrize(
     ("field", "value"),
     (
+        ("primary_provider_id", "grok"),
+        ("primary_model_id", "grok-4"),
+        ("fallback_provider_id", "openai"),
+        ("fallback_model_id", "gpt-5.6"),
         ("fallback_trigger", "primary_unavailable"),
         ("fallback_reasoning_effort", "high"),
     ),
@@ -310,9 +314,9 @@ def test_launch_config_overrides_ambient_provider_environment(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-test",
+        "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
-        "fallback_model_id": "codex-test",
+        "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
         "fallback_reasoning_effort": "medium",
         "max_concurrency": 2,
@@ -360,8 +364,8 @@ def test_launch_config_overrides_ambient_provider_environment(
         scheduler_module.PROVIDER_ENV: "grok_cli",
         scheduler_module.FALLBACK_PROVIDER_ENV: "codex",
         scheduler_module.FALLBACK_TRIGGER_ENV: "primary_quota_exhausted",
-        scheduler_module.GROK_MODEL_ENV: "grok-test",
-        scheduler_module.CODEX_MODEL_ENV: "codex-test",
+        scheduler_module.GROK_MODEL_ENV: "grok-4.5",
+        scheduler_module.CODEX_MODEL_ENV: "gpt-5.6-terra",
         scheduler_module.CODEX_REASONING_EFFORT_ENV: "medium",
     }
 

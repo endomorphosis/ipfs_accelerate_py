@@ -30,6 +30,30 @@ def test_lpr_launcher_exports_derived_state_root_to_child_validators():
     assert launcher.index(derive) < launcher.index(propagate) < launcher.index(launch)
 
 
+def test_lpr_launcher_rejects_runner_override_outside_test_mode(tmp_path):
+    env = os.environ.copy()
+    env.update(
+        {
+            "LPR_RUNNER_MODULE": "unreviewed_runner",
+            "LPR_STATE_ROOT": str(tmp_path / "isolated" / "lpr-state"),
+            "LPR_TEST_MODE": "0",
+        }
+    )
+
+    result = subprocess.run(
+        [str(LAUNCHER), "doctor"],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "allowed only in isolated test mode" in result.stderr
+
+
 def _write_fake_runner(module_root: Path) -> None:
     module_root.joinpath("fake_lpr_runner.py").write_text(
         """\
