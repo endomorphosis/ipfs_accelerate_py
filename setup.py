@@ -227,9 +227,22 @@ def _read_optional_deps(pyproject_path: Path) -> dict[str, list[str]]:
         return {}
     try:
         import tomllib  # py3.11+
-    except Exception:  # pragma: no cover
-        import tomli as tomllib  # type: ignore
-    data = tomllib.loads(pyproject_path.read_text())
+    except Exception:  # pragma: no cover - exercised with an import blocker.
+        try:
+            import tomli as tomllib  # type: ignore
+        except Exception:
+            # ``tomli`` is a PEP 517 build requirement on Python <3.11, but an
+            # operator may invoke ``python setup.py proof_reuse_provision`` in
+            # a source checkout without first constructing an isolated build
+            # environment.  Keep that explicit command available and inert;
+            # requirements-proof-reuse.txt below restores its scoped extra.
+            return {}
+    try:
+        data = tomllib.loads(pyproject_path.read_text())
+    except (OSError, TypeError, UnicodeError, ValueError):
+        # Metadata parsing must never turn the explicit fail-graceful
+        # provision command into an installer or network recovery path.
+        return {}
     return (data.get("project", {}) or {}).get("optional-dependencies", {}) or {}
 
 

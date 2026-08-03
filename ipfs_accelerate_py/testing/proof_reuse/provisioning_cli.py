@@ -16,16 +16,61 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
-from .lazy_dependencies import get_default_lazy_dependency_installer
-from .services import DEFAULT_NLTK_DATA_RESOURCES, NLTK_DATA_RESOURCE_ALLOWLIST
-
 PROOF_REUSE_PROVISION_COMMAND_INTERFACE: Final = "ProofReuseProvisionCommand@1"
+PROOF_REUSE_RUNTIME_MIN_PYTHON: Final = (3, 12)
+REASON_UNSUPPORTED_PYTHON_RUNTIME: Final = "unsupported_python_runtime"
 
 
-def _parser() -> argparse.ArgumentParser:
+def _normalized_runtime_version(
+    runtime_version: Sequence[int] | None = None,
+) -> tuple[int, int, int]:
+    """Return a bounded numeric runtime version without importing providers."""
+
+    raw: Any = sys.version_info if runtime_version is None else runtime_version
+    try:
+        values = tuple(int(value) for value in tuple(raw)[:3])
+    except (TypeError, ValueError, OverflowError):
+        return (0, 0, 0)
+    return (values + (0, 0, 0))[:3]
+
+
+def _runtime_supported(runtime_version: Sequence[int] | None = None) -> bool:
+    detected = _normalized_runtime_version(runtime_version)
+    return detected[:2] >= PROOF_REUSE_RUNTIME_MIN_PYTHON
+
+
+def _runtime_nltk_policy() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Load the NLTK policy only after the reviewed Python floor is met."""
+
+    from .services import (
+        DEFAULT_NLTK_DATA_RESOURCES,
+        NLTK_DATA_RESOURCE_ALLOWLIST,
+    )
+
+    return (
+        tuple(DEFAULT_NLTK_DATA_RESOURCES),
+        tuple(sorted(NLTK_DATA_RESOURCE_ALLOWLIST)),
+    )
+
+
+def get_default_lazy_dependency_installer() -> Any:
+    """Resolve the runtime installer lazily after the version boundary."""
+
+    from .lazy_dependencies import (
+        get_default_lazy_dependency_installer as _get_default_installer,
+    )
+
+    return _get_default_installer()
+
+
+def _parser(
+    *,
+    nltk_resource_choices: Sequence[str] | None = None,
+) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ipfs-accelerate-proof-reuse-provision",
         description=(
@@ -40,12 +85,15 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="request the allowlisted NLTK data resources",
     )
+    resource_options: dict[str, Any] = {}
+    if nltk_resource_choices is not None:
+        resource_options["choices"] = tuple(nltk_resource_choices)
     parser.add_argument(
         "--nltk-resource",
         action="append",
-        choices=tuple(sorted(NLTK_DATA_RESOURCE_ALLOWLIST)),
         default=[],
         help="request one allowlisted NLTK resource (repeatable)",
+        **resource_options,
     )
     parser.add_argument(
         "--groth16-native",
@@ -58,6 +106,68 @@ def _parser() -> argparse.ArgumentParser:
         help="return a nonzero status when a requested capability is unavailable",
     )
     return parser
+
+
+def _unsupported_runtime_report(
+    *,
+    runtime_version: Sequence[int] | None,
+    nltk_data: bool,
+    groth16_native: bool,
+    nltk_resources: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Return the typed fallback without importing proof-runtime modules."""
+
+    detected = _normalized_runtime_version(runtime_version)
+    required = ">=" + ".".join(
+        str(value) for value in PROOF_REUSE_RUNTIME_MIN_PYTHON
+    )
+    detected_text = ".".join(str(value) for value in detected)
+    bounded_resources = [str(value)[:64] for value in tuple(nltk_resources)[:16]]
+    runtime_failure = {
+        "available": False,
+        "reason_code": REASON_UNSUPPORTED_PYTHON_RUNTIME,
+        "capability": "proof_reuse_runtime",
+        "installed": False,
+        "action": "RUN_OR_DEFERRED",
+        "diagnostics": {
+            "required_python": required,
+            "detected_python": detected_text,
+            "runtime_dependency_import_attempted": False,
+        },
+    }
+    results: dict[str, Any] = {"runtime": runtime_failure}
+    if nltk_data:
+        results["nltk_data"] = {
+            **runtime_failure,
+            "capability": "nltk_data",
+            "action": "RUN",
+        }
+    if groth16_native:
+        results["groth16_native"] = {
+            **runtime_failure,
+            "capability": "groth16_native",
+            "action": "DEFERRED",
+        }
+    return {
+        "interface": PROOF_REUSE_PROVISION_COMMAND_INTERFACE,
+        "requested": {
+            "nltk_data": bool(nltk_data),
+            "groth16_native": bool(groth16_native),
+            "nltk_resources": bounded_resources if nltk_data else [],
+        },
+        "ready": False,
+        "action": "RUN_OR_DEFERRED",
+        "results": results,
+        "dependency_plan": {
+            "available": False,
+            "reason_code": REASON_UNSUPPORTED_PYTHON_RUNTIME,
+            "required_python": required,
+            "detected_python": detected_text,
+        },
+        "network_attempted": False,
+        "process_started": False,
+        "trusted_setup_attempted": False,
+    }
 
 
 def _typed_failure(capability: str, exc: BaseException) -> dict[str, Any]:
@@ -112,10 +222,40 @@ def provision(
     *,
     nltk_data: bool,
     groth16_native: bool,
-    nltk_resources: Sequence[str] = DEFAULT_NLTK_DATA_RESOURCES,
+    nltk_resources: Sequence[str] | None = None,
     installer: Any = None,
+    runtime_version: Sequence[int] | None = None,
 ) -> dict[str, Any]:
     """Provision requested capabilities and return one bounded typed report."""
+
+    if not _runtime_supported(runtime_version):
+        return _unsupported_runtime_report(
+            runtime_version=runtime_version,
+            nltk_data=nltk_data,
+            groth16_native=groth16_native,
+            nltk_resources=nltk_resources or (),
+        )
+
+    if nltk_resources is None:
+        try:
+            nltk_resources, _choices = _runtime_nltk_policy()
+        except Exception as exc:  # noqa: BLE001 - optional runtime boundary.
+            return {
+                "interface": PROOF_REUSE_PROVISION_COMMAND_INTERFACE,
+                "requested": {
+                    "nltk_data": bool(nltk_data),
+                    "groth16_native": bool(groth16_native),
+                    "nltk_resources": [],
+                },
+                "ready": False,
+                "action": "RUN_OR_DEFERRED",
+                "results": {"runtime": _typed_failure("runtime", exc)},
+                "dependency_plan": {
+                    "available": False,
+                    "reason_code": "runtime_policy_unavailable",
+                },
+                "trusted_setup_attempted": False,
+            }
 
     try:
         selected_installer = installer or get_default_lazy_dependency_installer()
@@ -190,18 +330,43 @@ def provision(
     }
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    runtime_version: Sequence[int] | None = None,
+) -> int:
+    if not _runtime_supported(runtime_version):
+        # Parse only the stable command shape.  Resource choices live in the
+        # Python-3.12+ services module and must not be imported on an older
+        # interpreter merely to format an unavailable result.
+        args = _parser(nltk_resource_choices=None).parse_args(argv)
+        request_nltk = bool(args.nltk_data or args.nltk_resource)
+        request_groth16 = bool(args.groth16_native)
+        if not request_nltk and not request_groth16:
+            request_nltk = True
+            request_groth16 = True
+        report = _unsupported_runtime_report(
+            runtime_version=runtime_version,
+            nltk_data=request_nltk,
+            groth16_native=request_groth16,
+            nltk_resources=tuple(args.nltk_resource),
+        )
+        print(json.dumps(report, sort_keys=True, separators=(",", ":")))
+        return 2 if args.require_ready else 0
+
+    default_resources, resource_choices = _runtime_nltk_policy()
+    args = _parser(nltk_resource_choices=resource_choices).parse_args(argv)
     request_nltk = bool(args.nltk_data or args.nltk_resource)
     request_groth16 = bool(args.groth16_native)
     if not request_nltk and not request_groth16:
         request_nltk = True
         request_groth16 = True
-    resources = tuple(args.nltk_resource) or DEFAULT_NLTK_DATA_RESOURCES
+    resources = tuple(args.nltk_resource) or default_resources
     report = provision(
         nltk_data=request_nltk,
         groth16_native=request_groth16,
         nltk_resources=resources,
+        runtime_version=runtime_version,
     )
     print(json.dumps(report, sort_keys=True, separators=(",", ":")))
     if args.require_ready and report.get("ready") is not True:
@@ -215,6 +380,8 @@ if __name__ == "__main__":  # pragma: no cover - console entry point.
 
 __all__ = [
     "PROOF_REUSE_PROVISION_COMMAND_INTERFACE",
+    "PROOF_REUSE_RUNTIME_MIN_PYTHON",
+    "REASON_UNSUPPORTED_PYTHON_RUNTIME",
     "main",
     "provision",
 ]

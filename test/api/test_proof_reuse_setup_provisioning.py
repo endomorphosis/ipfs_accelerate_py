@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import runpy
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -101,6 +104,30 @@ def test_setup_and_project_publish_explicit_commands_and_nltk_metadata() -> None
     ) in project
 
 
+def test_setup_optional_metadata_is_safe_without_toml_parser() -> None:
+    real_import = __import__
+
+    def import_without_toml(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name in {"tomllib", "tomli"}:
+            raise ImportError(f"blocked {name}")
+        return real_import(name, *args, **kwargs)
+
+    with (
+        patch("builtins.__import__", side_effect=import_without_toml),
+        patch(
+            "subprocess.run",
+            side_effect=AssertionError("setup metadata must remain process-free"),
+        ),
+    ):
+        namespace, metadata = _setup_namespace()
+        assert namespace["_read_optional_deps"](PYPROJECT) == {}
+
+    assert namespace["_read_optional_deps"](Path("missing.toml")) == {}
+    assert "proof_reuse_provision" in metadata["cmdclass"]
+    assert metadata["extras_require"]["proof-reuse"]
+    assert "nltk>=3.8.1,<4" in metadata["extras_require"]["proof-reuse"]
+
+
 @pytest.mark.parametrize("configured", (None, "", "0", "false", "invalid"))
 def test_legacy_setup_torch_install_is_inert_unless_explicitly_enabled(
     monkeypatch: pytest.MonkeyPatch,
@@ -176,6 +203,101 @@ def test_cli_default_requests_both_capabilities_without_bypassing_consent(
         ("groth16_native", None),
         ("inspect_groth16_runtime", None),
     ]
+
+
+@pytest.mark.parametrize(
+    "runtime_version",
+    ((3, 8, 20), (3, 9, 20), (3, 11, 9)),
+)
+def test_cli_pre_reviewed_python_floor_is_typed_without_runtime_import(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    runtime_version: tuple[int, int, int],
+) -> None:
+    def forbidden_runtime_load() -> Any:
+        raise AssertionError("unsupported Python must not import the proof runtime")
+
+    monkeypatch.setattr(
+        provisioning_cli,
+        "get_default_lazy_dependency_installer",
+        forbidden_runtime_load,
+    )
+    monkeypatch.setattr(
+        provisioning_cli,
+        "_runtime_nltk_policy",
+        forbidden_runtime_load,
+    )
+
+    returncode = provisioning_cli.main(
+        ["--groth16-native", "--require-ready"],
+        runtime_version=runtime_version,
+    )
+
+    report = json.loads(capsys.readouterr().out)
+    assert returncode == 2
+    assert report["ready"] is False
+    assert report["action"] == "RUN_OR_DEFERRED"
+    assert report["trusted_setup_attempted"] is False
+    assert report["network_attempted"] is False
+    assert report["process_started"] is False
+    failure = report["results"]["runtime"]
+    assert failure["reason_code"] == "unsupported_python_runtime"
+    assert failure["action"] == "RUN_OR_DEFERRED"
+    assert failure["diagnostics"] == {
+        "required_python": ">=3.12",
+        "detected_python": ".".join(str(value) for value in runtime_version),
+        "runtime_dependency_import_attempted": False,
+    }
+    assert report["results"]["groth16_native"]["action"] == "DEFERRED"
+
+
+def test_cli_pre_reviewed_python_floor_isolated_import_stays_cold() -> None:
+    script = textwrap.dedent(
+        """
+        import builtins
+        import sys
+
+        source_root = sys.argv[1]
+        sys.path.insert(0, source_root)
+        real_import = builtins.__import__
+
+        def guarded_import(name, *args, **kwargs):
+            blocked = (
+                "ipfs_accelerate_py.testing.proof_reuse.lazy_dependencies",
+                "ipfs_accelerate_py.testing.proof_reuse.services",
+            )
+            if name in blocked or any(name.startswith(item + ".") for item in blocked):
+                raise AssertionError("proof runtime import attempted")
+            return real_import(name, *args, **kwargs)
+
+        builtins.__import__ = guarded_import
+        from ipfs_accelerate_py.testing.proof_reuse import provisioning_cli
+
+        raise SystemExit(
+            provisioning_cli.main(
+                ["--nltk-data", "--require-ready"],
+                runtime_version=(3, 9, 19),
+            )
+        )
+        """
+    )
+    completed = subprocess.run(
+        [sys.executable, "-I", "-c", script, str(ACCELERATE_ROOT)],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=10,
+    )
+
+    assert completed.returncode == 2, completed.stderr
+    assert completed.stderr == ""
+    report = json.loads(completed.stdout)
+    assert report["results"]["runtime"]["reason_code"] == (
+        "unsupported_python_runtime"
+    )
+    assert report["requested"]["nltk_data"] is True
+    assert report["requested"]["groth16_native"] is False
 
 
 def test_cli_selection_and_require_ready_are_typed_and_bounded(
