@@ -1,10 +1,9 @@
 """Controller-owned atomic issuance and certificate publication (PTR-147).
 
-Cold publication writes and rehashes candidate components and the pass receipt
-before issuance.  The controller consumes both immediate and deferred issuer
-results, locally verifies every success, and atomically publishes the complete
-candidate context, certificate bytes, and index exactly once via
-``put_candidate``.
+Cold publication writes and rehashes candidate components and the pass receipt.
+Positive v4 issuance and verification remain closed until PTR-155 supplies an
+unforgeable exact authority path; no asserted binding or injected verifier can
+reach a native provider or ``put_candidate`` in the interim.
 
 Workers serialize no witness/private material.  A crash or failure may leave an
 immutable non-authoritative candidate/receipt for retry but never a partial
@@ -75,6 +74,7 @@ _GROTH16_RECEIPT_MAX_BYTES: Final = 64 * 1024
 _GROTH16_KEY_MAX_BYTES: Final = 64 * 1024 * 1024
 _GROTH16_BINARY_MAX_BYTES: Final = 128 * 1024 * 1024
 _SHA256_RE: Final = re.compile(r"[0-9a-f]{64}")
+_POSITIVE_V4_AUTHORITY_ENABLED: Final = False
 
 
 def _sha256_hex(data: bytes) -> str:
@@ -1226,7 +1226,7 @@ class ProofReuseControllerPublicationTransaction:
 
     Implements ``ProofReuseControllerPublicationTransaction@1``.
 
-    Order:
+    Authority-enabled order (currently fenced after step 1):
 
     1. Cold-write non-authoritative candidate components + receipt (rehash).
     2. Reconstruct public deferred request (no worker private material).
@@ -1352,27 +1352,30 @@ class ProofReuseControllerPublicationTransaction:
         method = getattr(store, "put_candidate", None)
         if not callable(method):
             return False, False, "put_candidate_unavailable"
+        kwargs: dict[str, Any] = {}
+        if locator_cid:
+            kwargs["locator_cid"] = locator_cid
+        if self.owner_id:
+            kwargs["owner_id"] = self.owner_id
         try:
-            kwargs: dict[str, Any] = {}
-            if locator_cid:
-                kwargs["locator_cid"] = locator_cid
-            if self.owner_id:
-                kwargs["owner_id"] = self.owner_id
-            result = method(receipt, certificate, **kwargs)
-        except TypeError:
+            signature = inspect.signature(method)
             try:
-                result = method(receipt, certificate)
-            except Exception:
-                return False, False, "put_candidate_failed"
+                signature.bind(receipt, certificate, **kwargs)
+                selected_kwargs = kwargs
+            except TypeError:
+                signature.bind(receipt, certificate)
+                selected_kwargs = {}
+        except (TypeError, ValueError):
+            return False, False, "put_candidate_signature_incompatible"
+        try:
+            # Exactly one invocation.  A TypeError raised inside the store is
+            # a failed write, not permission to retry and possibly double-index.
+            result = method(receipt, certificate, **selected_kwargs)
         except Exception:
             return False, False, "put_candidate_failed"
 
         stored = getattr(result, "stored", None)
         indexed = getattr(result, "indexed", None)
-        if stored is None and indexed is None:
-            # Some stores return truthy on full success.
-            ok = result is True or bool(result)
-            return ok, ok, "put_candidate" if ok else "put_candidate_rejected"
         stored_ok = stored is True
         indexed_ok = indexed is True
         if not (stored_ok and indexed_ok):
@@ -1442,6 +1445,68 @@ class ProofReuseControllerPublicationTransaction:
             if isinstance(existing_certificate, Mapping)
             else _mapping_of(existing_certificate)
         )
+
+        # PTR-152 is a denial boundary.  The current datasets provider proves
+        # and verifies through mutable executable/key paths and inherits an
+        # ambient child environment.  Do not invoke the issuer or local
+        # verifier until PTR-155 supplies FD-bound inputs, a strict child
+        # environment, and exact authority-module provenance.  An attached
+        # public certificate may be retained in the candidate CAS, but it is
+        # never indexed or treated as authority.
+        if not _POSITIVE_V4_AUTHORITY_ENABLED:
+            certificate_cid = ""
+            if certificate_payload is not None:
+                certificate_cid = _bounded_text(
+                    certificate_payload.get("certificate_id")
+                    or certificate_payload.get("certificate_cid")
+                    or getattr(intent, "certificate_cid", "")
+                )
+                try:
+                    certificate_bytes = json.dumps(
+                        dict(certificate_payload),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        ensure_ascii=False,
+                        allow_nan=False,
+                    ).encode("utf-8")
+                except (TypeError, ValueError, UnicodeError):
+                    certificate_bytes = b""
+                if (
+                    certificate_bytes
+                    and len(certificate_bytes) <= 4 * 1024 * 1024
+                ):
+                    cert_retained, cert_candidate_cid = (
+                        self._retain_non_authoritative(
+                            receipt=None,
+                            locator_cid=locator_cid,
+                            candidate_components={
+                                "certificate": certificate_bytes,
+                            },
+                        )
+                    )
+                    retained = retained or cert_retained
+                    candidate_cid = candidate_cid or cert_candidate_cid
+            reason = "positive_v4_publication_pending_ptr155"
+            if self.metrics is not None:
+                try:
+                    self.metrics.deferred(reason_code=reason)
+                except Exception:
+                    pass
+            return IssuedCertificatePublicationResult(
+                published=False,
+                status="certificate_deferred",
+                reason_code=reason,
+                receipt_cid=receipt_cid,
+                certificate_cid=certificate_cid,
+                candidate_context_cid=candidate_cid,
+                indexed=False,
+                put_candidate_called=False,
+                non_authoritative_retained=retained,
+                action="DEFERRED",
+                diagnostics=MappingProxyType(
+                    {"stage": "positive_publication_gate"}
+                ),
+            )
 
         # 2–3. Issue when no certificate is already attached.
         issue_result = None

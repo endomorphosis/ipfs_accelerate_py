@@ -596,17 +596,34 @@ def test_not_allowlisted_capability_never_reaches_pip() -> None:
 
 def test_successful_first_use_install_is_allowlisted_and_fenced(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     process_calls: list[tuple[tuple[str, ...], dict[str, Any]]] = []
     state = {"installed": False}
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    for module_name in tuple(sys.modules):
+        if module_name == "multiformats" or module_name.startswith("multiformats."):
+            monkeypatch.delitem(sys.modules, module_name)
 
     def importer(name: str) -> Any:
         if name == MULTIFORMATS_MODULE and state["installed"]:
-            return SimpleNamespace(CID=object(), multihash=object())
+            module_file = Path(sys.path[0]) / "multiformats" / "__init__.py"
+            return SimpleNamespace(
+                CID=object(),
+                multihash=object(),
+                __file__=str(module_file),
+            )
         raise ModuleNotFoundError(name=name)
 
     def runner(command: tuple[str, ...], **kwargs: Any) -> Any:
         process_calls.append((command, kwargs))
+        target = Path(command[command.index("--target") + 1])
+        package = target / "multiformats"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text(
+            "CID = object()\nmultihash = object()\n",
+            encoding="utf-8",
+        )
         state["installed"] = True
         return SimpleNamespace(returncode=0, stdout="ok", stderr="")
 

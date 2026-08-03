@@ -277,7 +277,7 @@ def test_test_only_reviewed_manifest_binds_keys_provider_and_ptr151_native(
     assert bindings.diagnostics["native_v4_capability_validated"] is True
 
 
-def test_controller_transaction_retains_then_issues_and_put_candidate(
+def test_controller_transaction_retains_then_defers_positive_v4_publication(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     receipt = _admitted_receipt()
@@ -319,18 +319,76 @@ def test_controller_transaction_retains_then_issues_and_put_candidate(
     result = tx.publish_intent(public_intent)
     assert isinstance(result, IssuedCertificatePublicationResult)
     assert result.interface == ISSUED_CERTIFICATE_PUBLICATION_RESULT_INTERFACE
-    assert result.published is True
-    assert result.put_candidate_called is True
-    assert result.indexed is True
-    assert issued
-    assert len(verification_calls) == 1
-    assert "witness" not in json.dumps(issued[0])
-    assert [name for name, _ in store.calls] == ["put_candidate"]
+    assert result.published is False
+    assert result.put_candidate_called is False
+    assert result.indexed is False
+    assert result.reason_code == "positive_v4_publication_pending_ptr155"
+    assert result.action == "DEFERRED"
+    assert result.non_authoritative_retained is True
+    assert issued == []
+    assert verification_calls == []
+    assert store.calls == []
     # Cold retention wrote at least the receipt bytes to the candidate store.
     assert candidate_store.blobs or candidate_store.publishes
 
 
-def test_flush_never_discards_returned_certificate(
+def test_self_asserted_bindings_and_fake_verifier_never_reach_candidate_store() -> None:
+    calls: list[Any] = []
+
+    class _Store:
+        def put_candidate(self, *args: Any, **kwargs: Any) -> Any:
+            calls.append((args, kwargs))
+            return SimpleNamespace(stored=True, indexed=True)
+
+    class _Issuer:
+        def verify_certificate_locally(self, *_args: Any) -> Any:
+            return SimpleNamespace(
+                verified=True,
+                authoritative=True,
+                can_authorize_skip=True,
+                status="verified",
+                authority="authoritative",
+            )
+
+    bindings = Groth16ArtifactIdentityBindings(
+        circuit_cid="cid:circuit",
+        verifying_key_cid="cid:verifying-key",
+        artifacts_root="/unreviewed",
+        verifying_key_sha256="a" * 64,
+        proving_key_sha256="b" * 64,
+        backend_circuit_version=4,
+        reviewed_revision=DATASETS_VERIFIER_REVISION,
+        provenance_ready=True,
+        reason_code="forged",
+    )
+    receipt = _admitted_receipt()
+    certificate = _certificate(receipt)
+    intent = ProofReusePublicationIntent.from_receipt(
+        receipt,
+        certificate=certificate.to_dict(),
+        certificate_cid=certificate.certificate_id,
+    )
+    candidate_store = _CandidateStore()
+    result = ProofReuseControllerPublicationTransaction(
+        store=_Store(),
+        candidate_store=candidate_store,
+        issuer=_Issuer(),
+        artifact_bindings=bindings,
+    ).publish_intent(intent)
+
+    assert result.published is False
+    assert result.indexed is False
+    assert result.put_candidate_called is False
+    assert result.reason_code == "positive_v4_publication_pending_ptr155"
+    assert result.certificate_cid == certificate.certificate_id
+    assert calls == []
+    assert any(
+        json.loads(payload).get("interface") == "TestProofCertificate@1"
+        for payload in candidate_store.blobs
+    )
+
+
+def test_flush_retains_receipt_without_positive_v4_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     receipt = _admitted_receipt()
@@ -362,9 +420,8 @@ def test_flush_never_discards_returned_certificate(
     published = controller.flush_publications(store, _Issuer())
     assert published == (ProofReusePublicationIntent.from_receipt(receipt).intent_id,)
     names = [name for name, _ in store.calls]
-    assert "put_candidate" in names
-    # Certificate path must not end as receipt-only authority.
-    assert names.count("put_candidate") == 1
+    assert names == ["put_receipt"]
+    assert controller.healthy is True
 
 
 def test_flush_deferred_retains_receipt_without_skip_authority() -> None:
@@ -400,12 +457,12 @@ def test_structural_certificate_without_artifact_provenance_never_indexes() -> N
     result = tx.publish_intent(intent)
 
     assert result.published is False
-    assert result.reason_code == "artifact_provenance_unready"
+    assert result.reason_code == "positive_v4_publication_pending_ptr155"
     assert result.action == "DEFERRED"
     assert [name for name, _payload in store.calls] == []
 
 
-def test_put_candidate_failure_fences_and_leaves_no_partial_skip(
+def test_pending_positive_v4_never_probes_candidate_store_or_fences_controller(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     receipt = _admitted_receipt()
@@ -428,11 +485,51 @@ def test_put_candidate_failure_fences_and_leaves_no_partial_skip(
     assert controller.queue_publication(receipt)
     store = _AtomicStore(fail_candidate=True)
     published = controller.flush_publications(store, _Issuer())
-    assert published == ()
-    assert controller.healthy is False
-    assert controller.can_write is False
-    # Second flush remains fenced.
-    assert controller.flush_publications(store, _Issuer()) == ()
+    assert published == (ProofReusePublicationIntent.from_receipt(receipt).intent_id,)
+    assert [name for name, _payload in store.calls] == ["put_receipt"]
+    assert controller.healthy is True
+    assert controller.can_write is True
+
+
+def test_put_candidate_once_does_not_retry_internal_type_error() -> None:
+    calls: list[int] = []
+
+    class _TypeErrorStore:
+        def put_candidate(self, *_args: Any, **_kwargs: Any) -> Any:
+            calls.append(1)
+            raise TypeError("internal store failure after write began")
+
+    transaction = ProofReuseControllerPublicationTransaction(
+        store=_TypeErrorStore(),
+        owner_id="controller:test",
+    )
+    result = transaction._put_candidate_once(
+        receipt={"receipt_id": "cid:r"},
+        certificate={"certificate_id": "cid:c"},
+        locator_cid="cid:l",
+    )
+
+    assert result == (False, False, "put_candidate_failed")
+    assert calls == [1]
+
+
+def test_put_candidate_once_rejects_untyped_truthy_result() -> None:
+    calls: list[int] = []
+
+    class _TruthyStore:
+        def put_candidate(self, _receipt: Any, _certificate: Any) -> Any:
+            calls.append(1)
+            return object()
+
+    transaction = ProofReuseControllerPublicationTransaction(store=_TruthyStore())
+    result = transaction._put_candidate_once(
+        receipt={"receipt_id": "cid:r"},
+        certificate={"certificate_id": "cid:c"},
+        locator_cid="cid:l",
+    )
+
+    assert result == (False, False, "put_candidate_rejected")
+    assert calls == [1]
 
 
 def test_mismatched_artifact_provenance_returns_deferred(tmp_path: Path) -> None:
@@ -470,18 +567,10 @@ def test_mismatched_artifact_provenance_returns_deferred(tmp_path: Path) -> None
     )
     intent = ProofReusePublicationIntent.from_receipt(receipt)
     result = tx.publish_intent(intent)
-    # Certificate circuit_cid "cid:circuit" mismatches derived pin → DEFERRED.
+    # The PTR-155 authority gate runs before any mutable provider verification.
     assert result.published is False
     assert result.action == "DEFERRED"
-    assert result.reason_code in {
-        "circuit_cid_mismatch",
-        "verifying_key_cid_mismatch",
-        "local_verification_failed",
-        "local_verification_unavailable",
-        "structural_accept_verifier_unavailable",
-    }
-    # If verification could not load datasets verifier, structural accept may
-    # publish; in hermetic env without datasets verify, check no false skip.
+    assert result.reason_code == "positive_v4_publication_pending_ptr155"
     assert result.authorizes_skip is False
 
 

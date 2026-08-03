@@ -361,6 +361,40 @@ def test_private_snapshot_rejects_every_closed_set_mutation(
     assert process_calls == []
 
 
+def test_private_snapshot_rejects_oversize_file_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    installer = AllowlistedPipInstaller(
+        runner=lambda *_args, **_kwargs: None,
+        environ={PROOF_REUSE_PROVISION_DIR_ENV: str(tmp_path / "provision")},
+    )
+    monkeypatch.setattr(installer, "_activate_private_snapshot", lambda _root: True)
+    assert installer.install(lazy_module.DATASETS_VERIFIER_DEPENDENCY) is True
+    target = installer._validated_private_snapshot_target()
+    assert target is not None
+    victim = target / DATASETS_VERIFIER_SNAPSHOT_FILES[0]
+    target.chmod(0o700)
+    victim.parent.chmod(0o700)
+    victim.chmod(0o600)
+    with victim.open("r+b") as stream:
+        stream.truncate(DATASETS_VERIFIER_SNAPSHOT_BYTES + 1)
+
+    real_open = services_module.os.open
+    victim_opened: list[Path] = []
+
+    def guarded_open(path: Any, *args: Any, **kwargs: Any) -> int:
+        if Path(path) == victim:
+            victim_opened.append(victim)
+            raise AssertionError("oversize snapshot file must not be opened")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(services_module.os, "open", guarded_open)
+
+    assert services_module._datasets_snapshot_payloads(target) is None
+    assert victim_opened == []
+
+
 def test_private_snapshot_rejects_preloaded_in_memory_authority_module(
     tmp_path: Path,
 ) -> None:
@@ -425,9 +459,14 @@ print(json.dumps({
 
 def test_generic_pip_install_uses_private_target_and_rejects_shadow_or_tamper(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dependency = services_module.MULTIFORMATS_DEPENDENCY
     calls: list[tuple[tuple[str, ...], dict[str, Any]]] = []
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    for module_name in tuple(sys.modules):
+        if module_name == "multiformats" or module_name.startswith("multiformats."):
+            monkeypatch.delitem(sys.modules, module_name)
 
     def runner(command: tuple[str, ...], **kwargs: Any) -> Any:
         calls.append((command, kwargs))
@@ -546,9 +585,14 @@ def test_generic_private_target_rejects_preloaded_transitive_shadow(
 
 def test_generic_private_target_concurrent_publication_reuses_one_tree(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dependency = services_module.MULTIFORMATS_DEPENDENCY
     barrier = threading.Barrier(2)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    for module_name in tuple(sys.modules):
+        if module_name == "multiformats" or module_name.startswith("multiformats."):
+            monkeypatch.delitem(sys.modules, module_name)
 
     def runner(command: tuple[str, ...], **_kwargs: Any) -> Any:
         target = Path(command[command.index("--target") + 1])
@@ -575,6 +619,58 @@ def test_generic_private_target_concurrent_publication_reuses_one_tree(
     )
     while str(targets[0]) in sys.path:
         sys.path.remove(str(targets[0]))
+
+
+def test_generic_tree_digest_rejects_leaf_replaced_between_lstat_and_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "target"
+    package = root / "multiformats"
+    package.mkdir(parents=True)
+    victim = package / "__init__.py"
+    victim.write_bytes(b"reviewed-tree-byte")
+    replacement = tmp_path / "attacker.py"
+    replacement.write_bytes(b"attacker-tree-byte")
+    real_open = services_module.os.open
+    replaced = False
+
+    def replacing_open(path: Any, *args: Any, **kwargs: Any) -> int:
+        nonlocal replaced
+        if Path(path) == victim and not replaced:
+            replaced = True
+            os.replace(replacement, victim)
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(services_module.os, "open", replacing_open)
+
+    assert AllowlistedPipInstaller._dependency_tree_digest(root) is None
+    assert replaced is True
+
+
+def test_generic_tree_digest_rejects_oversize_file_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "target"
+    package = root / "multiformats"
+    package.mkdir(parents=True)
+    victim = package / "__init__.py"
+    with victim.open("wb") as stream:
+        stream.truncate(64 * 1024 * 1024 + 1)
+    real_open = services_module.os.open
+    victim_opened: list[Path] = []
+
+    def guarded_open(path: Any, *args: Any, **kwargs: Any) -> int:
+        if Path(path) == victim:
+            victim_opened.append(victim)
+            raise AssertionError("oversize dependency file must not be opened")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(services_module.os, "open", guarded_open)
+
+    assert AllowlistedPipInstaller._dependency_tree_digest(root) is None
+    assert victim_opened == []
 
 
 @pytest.mark.parametrize(
@@ -609,6 +705,37 @@ def test_instrumented_private_installer_result_validates_every_field(
         "invalid private target installer result",
         None,
     )
+
+
+def test_private_pip_diagnostics_keep_only_bounded_head_and_tail(
+    tmp_path: Path,
+) -> None:
+    prefix = "Network is unreachable"
+    suffix = "ResolutionImpossible"
+
+    def runner(*_args: Any, **_kwargs: Any) -> Any:
+        return SimpleNamespace(
+            returncode=1,
+            stdout=prefix + "x" * 100_000,
+            stderr="y" * 100_000 + suffix,
+        )
+
+    installer = AllowlistedPipInstaller(
+        runner=runner,
+        environ={PROOF_REUSE_PROVISION_DIR_ENV: str(tmp_path / "provision")},
+    )
+
+    succeeded, returncode, output, error = installer.install_with_diagnostics(
+        services_module.MULTIFORMATS_DEPENDENCY
+    )
+
+    assert succeeded is False
+    assert returncode == 1
+    assert error is None
+    assert len(output) <= 64 * 1024 + 1
+    assert prefix in output
+    assert suffix in output
+    assert output.count("...[truncated]...") == 2
 
 
 def test_native_capability_probe_rejects_path_substitution(

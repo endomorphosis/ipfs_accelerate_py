@@ -18,6 +18,7 @@ import importlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import sysconfig
@@ -977,6 +978,60 @@ def _datasets_snapshot_digest(
     return aggregate.hexdigest(), total_bytes
 
 
+def _read_bounded_regular_file(path: Path, *, max_bytes: int) -> bytes | None:
+    """Read a stable regular-file descriptor without following a leaf link."""
+
+    if (
+        isinstance(max_bytes, bool)
+        or not isinstance(max_bytes, int)
+        or max_bytes < 0
+    ):
+        return None
+    descriptor = -1
+    try:
+        before = os.lstat(path)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > max_bytes:
+            return None
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        )
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino)
+            or opened.st_size < 0
+            or opened.st_size > max_bytes
+        ):
+            return None
+        payload = bytearray()
+        remaining = opened.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                return None
+            payload.extend(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            return None
+        after = os.fstat(descriptor)
+        if (
+            (opened.st_dev, opened.st_ino, opened.st_size)
+            != (after.st_dev, after.st_ino, after.st_size)
+            or getattr(opened, "st_mtime_ns", None)
+            != getattr(after, "st_mtime_ns", None)
+            or getattr(opened, "st_ctime_ns", None)
+            != getattr(after, "st_ctime_ns", None)
+        ):
+            return None
+        return bytes(payload)
+    except (OSError, TypeError, ValueError):
+        return None
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
 def _datasets_snapshot_payloads(root: Path) -> Mapping[str, bytes] | None:
     """Read only regular, non-symlink manifest files contained by *root*."""
 
@@ -985,6 +1040,7 @@ def _datasets_snapshot_payloads(root: Path) -> Mapping[str, bytes] | None:
     except (OSError, RuntimeError):
         return None
     payloads: dict[str, bytes] = {}
+    total_bytes = 0
     for relative in DATASETS_VERIFIER_SNAPSHOT_FILES:
         path = root / relative
         try:
@@ -994,10 +1050,14 @@ def _datasets_snapshot_payloads(root: Path) -> Mapping[str, bytes] | None:
             resolved.relative_to(resolved_root)
             if resolved != path.absolute():
                 return None
-            payload = path.read_bytes()
+            remaining = DATASETS_VERIFIER_SNAPSHOT_BYTES - total_bytes
+            payload = _read_bounded_regular_file(path, max_bytes=remaining)
+            if payload is None:
+                return None
         except (OSError, RuntimeError, ValueError):
             return None
         payloads[relative] = payload
+        total_bytes += len(payload)
     return MappingProxyType(payloads)
 
 
@@ -1173,6 +1233,45 @@ class AllowlistedPipInstaller:
         self._active_dependency_targets: dict[str, Path] = {}
         self._active_dependency_import_roots: dict[str, frozenset[str]] = {}
         self._lock = threading.Lock()
+
+    @staticmethod
+    def _bounded_completed_output(completed: Any) -> str:
+        """Retain bounded diagnostics supplied by an injected process runner.
+
+        The production subprocess continues to write to ``DEVNULL`` so an
+        installer cannot accumulate unbounded pip output.  Test and embedding
+        runners may nevertheless return ``stdout``/``stderr`` fields; keeping
+        a bounded head and tail lets the lazy policy classify expected pip
+        failures without trusting or retaining an arbitrary-sized payload.
+        """
+
+        per_stream_limit = 32 * 1024
+        truncation_marker = "\n...[truncated]...\n"
+
+        def fragment(name: str) -> str:
+            try:
+                value = getattr(completed, name, "")
+            except Exception:
+                return ""
+            if isinstance(value, bytes):
+                if len(value) > per_stream_limit:
+                    half = (per_stream_limit - len(truncation_marker)) // 2
+                    value = (
+                        value[:half]
+                        + truncation_marker.encode()
+                        + value[-half:]
+                    )
+                return value.decode("utf-8", errors="replace")
+            if not isinstance(value, str):
+                return ""
+            if len(value) <= per_stream_limit:
+                return value
+            half = (per_stream_limit - len(truncation_marker)) // 2
+            return value[:half] + truncation_marker + value[-half:]
+
+        return "\n".join(
+            part for part in (fragment("stdout"), fragment("stderr")) if part
+        )
 
     def _selected_distribution(
         self,
@@ -1540,22 +1639,28 @@ class AllowlistedPipInstaller:
         total = 0
         for path in files:
             try:
-                if path.is_symlink():
+                metadata = os.lstat(path)
+                if not stat.S_ISREG(metadata.st_mode):
                     return None
                 resolved = path.resolve(strict=True)
                 resolved.relative_to(resolved_root)
                 relative_text = path.relative_to(root).as_posix()
                 if len(relative_text.encode("utf-8")) > 512:
                     return None
-                metadata = path.stat()
                 if metadata.st_size < 0 or metadata.st_size > 64 * 1024 * 1024:
                     return None
                 if total + metadata.st_size > 512 * 1024 * 1024:
                     return None
-                payload = path.read_bytes()
+                payload = _read_bounded_regular_file(
+                    path,
+                    max_bytes=min(
+                        64 * 1024 * 1024,
+                        512 * 1024 * 1024 - total,
+                    ),
+                )
             except (OSError, RuntimeError, ValueError):
                 return None
-            if len(payload) != metadata.st_size:
+            if payload is None or len(payload) != metadata.st_size:
                 return None
             total += len(payload)
             relative = relative_text.encode("utf-8")
@@ -1754,10 +1859,14 @@ class AllowlistedPipInstaller:
                 )
             except Exception as exc:
                 return False, None, "", exc
-            # Pip output is intentionally discarded instead of accumulated in
-            # memory.  Exit status is sufficient for graceful RUN fallback.
-            output = ""
-            code = int(getattr(completed, "returncode", 1))
+            output = self._bounded_completed_output(completed)
+            try:
+                raw_code = getattr(completed, "returncode", 1)
+                if isinstance(raw_code, bool) or not isinstance(raw_code, int):
+                    raise TypeError("invalid process return code")
+                code = raw_code
+            except Exception as exc:
+                return False, None, output, exc
             if code != 0:
                 return False, code, output, None
             tree = self._dependency_tree_digest(staging)
@@ -2590,9 +2699,10 @@ class LazyRealTestCertificateIssuer:
     """Non-None lazy real datasets issuer (PTR-147).
 
     Construction and attribute access never import optional datasets modules,
-    never start a native build, and never prove.  The first controller
-    :meth:`issue` call may invoke the bounded Groth16 provisioner and runtime
-    readiness inspection only when the explicit native-build policy permits it.
+    never start a native build, and never prove.  PTR-152 keeps :meth:`issue`
+    fail-closed before provisioning or provider construction because the
+    current prove/verify path does not yet execute immutable inputs under a
+    strict child environment.  PTR-155 owns enabling that authority path.
     The generic pre-PTR-144 knowledge-of-axioms backend alone is never treated
     as certificate authority.  ``IPFS_DATASETS_ENABLE_GROTH16=1`` is published
     into the process environment only after the test-pass-specific circuit/key
@@ -2911,22 +3021,14 @@ class LazyRealTestCertificateIssuer:
                     "indexed": False,
                 }
 
-        try:
-            factory = self._ensure_factory()
-            if factory is None:
-                deferred = _Deferred()
-                deferred.reason = self._last_reason or "issuer_unavailable"
-                return deferred
-            issue = getattr(factory, "issue", None)
-            if not callable(issue):
-                deferred = _Deferred()
-                deferred.reason = "issuer_method_unavailable"
-                return deferred
-            return issue(request)
-        except Exception:
-            deferred = _Deferred()
-            deferred.reason = "issuer_exception"
-            return deferred
+        # Do not even provision or construct the datasets provider here.  Its
+        # current native prove/verify calls execute a mutable path, consume
+        # mutable key paths, and inherit ambient process variables.  Returning
+        # a typed deferral prevents both unsafe authority and wasted work.
+        self._last_reason = "positive_v4_issuance_pending_ptr155"
+        deferred = _Deferred()
+        deferred.reason = self._last_reason
+        return deferred
 
     issue_deferred = issue
     __call__ = issue

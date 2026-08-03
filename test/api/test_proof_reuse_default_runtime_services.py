@@ -181,6 +181,52 @@ def test_lazy_issuer_does_not_import_datasets_until_issue(
     assert issuer.enable_env_published is False
 
 
+def test_lazy_issuer_ptr155_gate_starts_no_provider_or_native_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    class _Installer:
+        def ensure_groth16_native_backend(self, **_kwargs: Any) -> Any:
+            calls.append("provision")
+            raise AssertionError("pending authority must not provision")
+
+        def inspect_groth16_runtime(self) -> Any:
+            calls.append("inspect")
+            raise AssertionError("pending authority must not inspect")
+
+    binary = tmp_path / "mutable-groth16"
+    binary.write_bytes(b"unreviewed executable")
+    artifacts = tmp_path / "mutable-keys"
+    artifacts.mkdir()
+    issuer = LazyRealTestCertificateIssuer(
+        installer=_Installer(),
+        binary_path=binary,
+        artifacts_root=artifacts,
+        environ={
+            "IPFS_TEST_PROOF_REUSE_GROTH16_BUILD": "1",
+            "LD_PRELOAD": str(tmp_path / "attacker.so"),
+            "GROTH16_BACKEND_ARTIFACTS_ROOT": str(tmp_path / "attacker-keys"),
+        },
+    )
+    monkeypatch.setattr(
+        issuer,
+        "_ensure_factory",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("pending authority must not construct a provider")
+        ),
+    )
+
+    result = issuer.issue({"receipt_cid": "cid:r", "locator_cid": "cid:l"})
+
+    assert result.status == "certificate_deferred"
+    assert result.reason == "positive_v4_issuance_pending_ptr155"
+    assert calls == []
+    assert issuer.factory is None
+    assert issuer.enable_env_published is False
+
+
 def test_lazy_issuer_skips_native_build_without_explicit_policy(
     tmp_path: Path,
 ) -> None:
