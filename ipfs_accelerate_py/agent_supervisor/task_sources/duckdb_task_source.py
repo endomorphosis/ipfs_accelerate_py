@@ -68,6 +68,28 @@ TASK_SOURCE_MIGRATION_RECEIPT_SCHEMA: Final = (
 MATERIALIZATION_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/duckdb-materialization-receipt@1"
 )
+DERIVED_RUNTIME_SOURCE_ROLE: Final = "derived_runtime"
+DERIVED_RUNTIME_MATERIALIZATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/duckdb-derived-runtime-materialization@1"
+)
+
+# Operator-protected seed anchors. Derived runtime materialization refuses to
+# install a population whose task outputs target these paths.
+DEFAULT_DERIVED_PROTECTED_ANCHORS: Final[tuple[str, ...]] = (
+    "docs/architecture/AGENT_SUPERVISOR_PROOF_DIRECTED_PLANNER_DOCTOR_PLAN.md",
+    "docs/architecture/agent_supervisor_proof_directed_planner_doctor.objectives.md",
+    "docs/architecture/agent_supervisor_proof_directed_planner_doctor.todo.md",
+    "config/agent_supervisor_proof_directed_planner_doctor_scheduler.json",
+    "docs/architecture/agent_supervisor_planner_doctor_threat_model.md",
+    "config/agent_supervisor_planner_doctor_authority_policy.json",
+    "config/agent_supervisor_planner_doctor_authority_policy.seal.json",
+    "test/api/test_agent_supervisor_planner_doctor_authority_policy.py",
+    "config/agent_supervisor_planner_doctor_benchmark.json",
+    "config/agent_supervisor_planner_doctor_benchmark.seal.json",
+    "docs/architecture/agent_supervisor_planner_doctor_benchmark.md",
+    "test/fixtures/agent_supervisor/planner_doctor_holdout/manifest.json",
+    "test/api/test_agent_supervisor_planner_doctor_benchmark_contract.py",
+)
 
 DEFAULT_QUERY_LIMIT: Final = 100
 MAX_QUERY_LIMIT: Final = 1_000
@@ -1961,6 +1983,208 @@ class DuckDBTaskSource:
 
     install = materialize
 
+    def materialize_derived_runtime(
+        self,
+        source: Any,
+        *,
+        formal_plan_id: str,
+        source_identity: str,
+        parallel_plan_digest: str,
+        admission_receipt_cid: str,
+        repository_tree_id: str = "",
+        plan_root_cid: str = "",
+        receipt: Mapping[str, Any] | None = None,
+        protected_anchors: Sequence[str] = DEFAULT_DERIVED_PROTECTED_ANCHORS,
+        writer_id: str | None = None,
+        fencing_token: int | None = None,
+        fault_injector: Any | None = None,
+    ) -> Mapping[str, Any]:
+        """Admit compiled derived work into this separate DuckDB source.
+
+        Generated work may enter only after independent formal-plan
+        compilation, structural admission, and parallel-plan compilation.
+        The four gate identities are re-checked against a fresh formal
+        recompile before install.  Identical population replay is a no-op.
+        Seed-board anchors cannot appear as task outputs, and the projection
+        is labeled ``source_role=derived_runtime`` so it cannot be confused
+        with the operator-owned seed board.
+        """
+
+        if not (
+            str(formal_plan_id or "").strip()
+            and str(source_identity or "").strip()
+            and str(parallel_plan_digest or "").strip()
+            and str(admission_receipt_cid or "").strip()
+        ):
+            raise TaskSourceIntegrityError(
+                "derived runtime materialization requires independent "
+                "plan/admission/parallel compilation identities"
+            )
+        formal_plan_id = _identifier(formal_plan_id, noun="formal_plan_id")
+        source_identity = _identifier(source_identity, noun="source_identity")
+        parallel_plan_digest = _identifier(
+            parallel_plan_digest, noun="parallel_plan_digest"
+        )
+        admission_receipt_cid = _identifier(
+            admission_receipt_cid, noun="admission_receipt_cid"
+        )
+
+        # Reject candidate self-authorization / completion claims on the source.
+        if isinstance(source, Mapping):
+            for forbidden in (
+                "completion_authority",
+                "mutation_authority",
+                "seed_board_edit",
+                "mutate_seed_board",
+                "threshold_lower_authority",
+                "self_authorization",
+                "mark_complete",
+            ):
+                if source.get(forbidden) not in (None, False, "", 0):
+                    raise TaskSourceIntegrityError(
+                        f"derived source cannot claim {forbidden}"
+                    )
+            if source.get("source_role") not in (
+                None,
+                "",
+                DERIVED_RUNTIME_SOURCE_ROLE,
+            ):
+                raise TaskSourceIntegrityError(
+                    "derived source_role must be derived_runtime"
+                )
+
+        formal_source, graph = _source_and_projection(
+            source, repository_tree_id=repository_tree_id
+        )
+        # Refuse populations that edit protected anchors.
+        bundle = _section_bundle(formal_source)
+        _task_rows(bundle, graph)
+        for record in bundle.get("tasks") or ():
+            if not isinstance(record, Mapping):
+                continue
+            for effect in record.get("effects") or ():
+                if not isinstance(effect, Mapping):
+                    continue
+                path = str(effect.get("path") or "").replace("\\", "/").strip("/")
+                for anchor in protected_anchors:
+                    target = str(anchor).replace("\\", "/").strip("/")
+                    if path and (
+                        path == target or path.startswith(target + "/")
+                    ):
+                        raise TaskSourceIntegrityError(
+                            "derived runtime population targets a protected "
+                            f"anchor path: {path}"
+                        )
+
+        compile_result = FormalPlanCompiler().compile(formal_source)
+        if (
+            compile_result.status is not CompilationStatus.COMPILED
+            or compile_result.plan is None
+        ):
+            diagnostics = "; ".join(
+                item.message for item in compile_result.issues[:5]
+            )
+            raise TaskSourceIntegrityError(
+                "derived runtime formal plan input did not compile successfully"
+                + (f": {diagnostics}" if diagnostics else "")
+            )
+        if (
+            compile_result.plan_id != formal_plan_id
+            or compile_result.source_identity != source_identity
+        ):
+            raise TaskSourceIntegrityError(
+                "derived runtime formal plan identity does not match the "
+                "independent compilation gates"
+            )
+
+        derived_receipt = {
+            **dict(receipt or {}),
+            "schema": DERIVED_RUNTIME_MATERIALIZATION_SCHEMA,
+            "source_role": DERIVED_RUNTIME_SOURCE_ROLE,
+            "mutates_seed_board": False,
+            "completion_authority": False,
+            "mutation_authority": False,
+            "seed_board_edit": False,
+            "threshold_lower_authority": False,
+            "self_authorization": False,
+            "formal_plan_id": formal_plan_id,
+            "source_identity": source_identity,
+            "parallel_plan_digest": parallel_plan_digest,
+            "admission_receipt_cid": admission_receipt_cid,
+        }
+        result = self.materialize(
+            source,
+            repository_tree_id=repository_tree_id,
+            plan_root_cid=plan_root_cid,
+            receipt=derived_receipt,
+            writer_id=writer_id,
+            fencing_token=fencing_token,
+            fault_injector=fault_injector,
+        )
+        # Stamp durable role metadata when the database was installed or
+        # already held the identical population (replay no-op).
+        if self.database_path.exists():
+            with exclusive_file_lock(
+                self._lock_path, timeout_seconds=self.lock_timeout_seconds
+            ):
+                connection = _connect(self.database_path, read_only=False)
+                try:
+                    connection.execute("BEGIN TRANSACTION")
+                    metadata = _metadata(connection)
+                    live_writer = _meta_value(metadata, "writer_id")
+                    live_fence_raw = _meta_value(metadata, "writer_fence")
+                    try:
+                        live_fence = int(live_fence_raw)
+                    except (TypeError, ValueError):
+                        live_fence = 0
+                    selected_writer = _identifier(
+                        writer_id or self.writer_id, noun="writer_id"
+                    )
+                    selected_fence = (
+                        self.fencing_token
+                        if fencing_token is None
+                        else fencing_token
+                    )
+                    if live_writer and live_writer != selected_writer:
+                        raise TaskSourceConflictError(
+                            "stale writer cannot stamp derived runtime metadata"
+                        )
+                    if (
+                        live_fence
+                        and isinstance(selected_fence, int)
+                        and selected_fence < live_fence
+                    ):
+                        raise TaskSourceConflictError(
+                            "stale fencing token cannot stamp derived runtime metadata"
+                        )
+                    for key, value in (
+                        ("source_role", DERIVED_RUNTIME_SOURCE_ROLE),
+                        ("mutates_seed_board", "false"),
+                        ("parallel_plan_digest", parallel_plan_digest),
+                        ("admission_receipt_cid", admission_receipt_cid),
+                        ("derived_runtime", "true"),
+                    ):
+                        _set_metadata(connection, key, value)
+                    connection.execute("COMMIT")
+                except BaseException:
+                    try:
+                        connection.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    raise
+                finally:
+                    connection.close()
+        return {
+            **dict(result),
+            "source_role": DERIVED_RUNTIME_SOURCE_ROLE,
+            "mutates_seed_board": False,
+            "formal_plan_id": formal_plan_id,
+            "source_identity": source_identity,
+            "parallel_plan_digest": parallel_plan_digest,
+            "admission_receipt_cid": admission_receipt_cid,
+            "derived_runtime": True,
+        }
+
     @classmethod
     def from_formal_plan_input(
         cls,
@@ -3174,7 +3398,10 @@ def materialize_duckdb_task_source(
 
 __all__ = [
     "CASResult",
+    "DEFAULT_DERIVED_PROTECTED_ANCHORS",
     "DEFAULT_QUERY_LIMIT",
+    "DERIVED_RUNTIME_MATERIALIZATION_SCHEMA",
+    "DERIVED_RUNTIME_SOURCE_ROLE",
     "DUCKDB_TASK_SOURCE_SCHEMA",
     "DUCKDB_TASK_SOURCE_SCHEMA_VERSION",
     "DuckDBTaskSource",
