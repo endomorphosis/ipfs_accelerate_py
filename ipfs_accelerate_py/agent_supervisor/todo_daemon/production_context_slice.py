@@ -19,6 +19,7 @@ import ast
 import base64
 import hashlib
 import json
+import os
 import re
 import stat
 import subprocess
@@ -221,7 +222,7 @@ def _canonical_paths(
 def _canonical_symbol_hints(
     symbol_hints: Mapping[str, Sequence[str]] | None,
     *,
-    read_paths: Sequence[str],
+    read_paths: Sequence[str] | None,
 ) -> dict[str, list[str]]:
     if symbol_hints is None:
         return {}
@@ -302,6 +303,30 @@ def _assert_safe_worktree_path(root: Path, relative: str) -> Path:
     if root not in resolved.parents:
         _fail("path_escape", "declared source path escapes the repository")
     return current
+
+
+def _read_regular_nofollow(path: Path) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise ProductionContextSliceError(
+            "declared source changed before its safe read",
+            reason_code="source_unavailable",
+        ) from exc
+    chunks: list[bytes] = []
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode):
+            _fail("path_invalid", "declared source must remain a regular file")
+        while True:
+            chunk = os.read(descriptor, 64 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    finally:
+        os.close(descriptor)
+    return b"".join(chunks)
 
 
 def _assert_safe_effect_path(root: Path, relative: str) -> tuple[Path, bool]:
@@ -819,6 +844,37 @@ def _repository_binding(root: Path, baseline_ref: str) -> dict[str, str]:
     }
 
 
+def derive_production_context_read_paths(
+    *,
+    repo_root: str | Path,
+    baseline_ref: str,
+    effect_paths: Sequence[str],
+) -> tuple[str, ...]:
+    """Derive the only implicit read scope: existing tracked effect blobs."""
+
+    root = _repository_root(repo_root)
+    repository = _repository_binding(root, baseline_ref)
+    effects = _canonical_paths(
+        effect_paths,
+        field_name="effect_paths",
+        maximum=DEFAULT_MAX_SCOPE_PATHS,
+    )
+    reads: list[str] = []
+    for path in effects:
+        _target, exists = _assert_safe_effect_path(root, path)
+        entry = _tree_entry_optional(root, repository["baseline_commit"], path)
+        if entry is not None:
+            if not exists:
+                _fail("blob_stale", "tracked effect path is missing")
+            reads.append(path)
+        elif exists:
+            _fail(
+                "effect_path_occupied",
+                "new effect path is already occupied in the worktree",
+            )
+    return tuple(reads)
+
+
 def build_production_context_slice(
     *,
     repo_root: str | Path,
@@ -876,17 +932,24 @@ def build_production_context_slice(
     root = _repository_root(repo_root)
     task_binding = _task_binding(task_id, task_payload)
     repository_binding = _repository_binding(root, baseline_ref)
-    reads = _canonical_paths(
-        read_paths,
-        field_name="read_paths",
-        maximum=max_scope_paths,
-        allow_empty=True,
-    )
     effects = _canonical_paths(
         effect_paths,
         field_name="effect_paths",
         maximum=max_scope_paths,
     )
+    if read_paths is None:
+        reads = derive_production_context_read_paths(
+            repo_root=root,
+            baseline_ref=repository_binding["baseline_commit"],
+            effect_paths=effects,
+        )
+    else:
+        reads = _canonical_paths(
+            read_paths,
+            field_name="read_paths",
+            maximum=max_scope_paths,
+            allow_empty=True,
+        )
     hints = _canonical_symbol_hints(symbol_hints, read_paths=reads)
 
     absence_proofs: list[dict[str, str]] = []
@@ -927,7 +990,7 @@ def build_production_context_slice(
             path,
         )
         try:
-            current_bytes = target.read_bytes()
+            current_bytes = _read_regular_nofollow(target)
         except OSError as exc:
             raise ProductionContextSliceError(
                 "declared source cannot be read",
@@ -1065,22 +1128,50 @@ def _verify_partition(source: bytes, record: Mapping[str, Any]) -> None:
         for item in items:
             if not isinstance(item, Mapping):
                 _fail("manifest_malformed", "source segment is malformed")
-            try:
-                start = int(item["byte_start"])
-                end = int(item["byte_end"])
-                length = int(item["byte_length"])
-                cid = str(item["content_cid"])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ProductionContextSliceError(
-                    "source segment identity is malformed",
-                    reason_code="manifest_malformed",
-                ) from exc
+            expected_keys = (
+                frozenset(
+                    {
+                        "byte_end",
+                        "byte_length",
+                        "byte_start",
+                        "content_cid",
+                        "end_line",
+                        "kind",
+                        "qualified_name",
+                        "start_line",
+                        "utf8_text",
+                    }
+                )
+                if visibility == "visible"
+                else frozenset(
+                    {"byte_end", "byte_length", "byte_start", "content_cid"}
+                )
+            )
+            _exact_keys(item, expected_keys, location=f"{visibility} segment")
+            start = item.get("byte_start")
+            end = item.get("byte_end")
+            length = item.get("byte_length")
+            cid = item.get("content_cid")
+            if any(
+                isinstance(value, bool) or not isinstance(value, int)
+                for value in (start, end, length)
+            ) or not isinstance(cid, str):
+                _fail("manifest_malformed", "source segment identity is malformed")
             if start < 0 or end < start or length != end - start or end > len(source):
                 _fail("manifest_malformed", "source segment bounds are malformed")
             raw = source[start:end]
             if _raw_cid(raw) != cid:
                 _fail("blob_stale", "source segment CID is stale")
             if visibility == "visible":
+                if any(
+                    isinstance(item.get(key), bool)
+                    or not isinstance(item.get(key), int)
+                    for key in ("start_line", "end_line")
+                ) or not all(
+                    isinstance(item.get(key), str)
+                    for key in ("kind", "qualified_name", "utf8_text")
+                ):
+                    _fail("manifest_malformed", "visible segment shape is malformed")
                 try:
                     text = raw.decode("utf-8", errors="strict")
                 except UnicodeDecodeError as exc:
@@ -1120,7 +1211,9 @@ def _verify_partition(source: bytes, record: Mapping[str, Any]) -> None:
     )
     if str(record.get("partition_root_cid")) != expected_partition:
         _fail("manifest_cid_mismatch", "source partition root is invalid")
-    if bool(record.get("full_visible_coverage")) != (not residuals):
+    if not isinstance(record.get("full_visible_coverage"), bool) or record.get(
+        "full_visible_coverage"
+    ) != (not residuals):
         _fail("manifest_malformed", "full-coverage declaration is invalid")
 
 
@@ -1361,7 +1454,7 @@ def verify_production_context_slice(
             path,
         )
         try:
-            current_bytes = target.read_bytes()
+            current_bytes = _read_regular_nofollow(target)
         except OSError as exc:
             raise ProductionContextSliceError(
                 "declared source cannot be read",
@@ -1372,6 +1465,24 @@ def verify_production_context_slice(
         total_source_bytes += len(baseline_bytes)
         if total_source_bytes > DEFAULT_MAX_SOURCE_BYTES:
             _fail("scope_too_broad", "source scope exceeds the protocol byte bound")
+        if (
+            isinstance(record.get("byte_length"), bool)
+            or not isinstance(record.get("byte_length"), int)
+            or not isinstance(record.get("effect"), bool)
+            or not isinstance(record.get("full_visible_coverage"), bool)
+            or not all(
+                isinstance(record.get(key), str)
+                for key in (
+                    "file_cid",
+                    "git_blob_oid",
+                    "git_mode",
+                    "language",
+                    "partition_root_cid",
+                    "path",
+                )
+            )
+        ):
+            _fail("manifest_malformed", "source record field types are invalid")
         if (
             record.get("git_mode") != mode
             or record.get("git_blob_oid") != oid
@@ -1697,5 +1808,6 @@ __all__ = [
     "ProductionContextSliceManifest",
     "assert_proposal_covered_by_context",
     "build_production_context_slice",
+    "derive_production_context_read_paths",
     "verify_production_context_slice",
 ]

@@ -31,6 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     ProductionReceiptDisposition,
     ProviderReason,
     ProviderRole,
+    ProviderRoutingError,
     ReviewPresence,
     RouteStatus,
     bind_applied_patch_to_review_chain,
@@ -79,6 +80,17 @@ def _git(repo: Path, *arguments: str) -> None:
         text=True,
         capture_output=True,
     )
+
+
+def _snapshot(daemon: TodoImplementationDaemon) -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+        cwd=daemon.repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return f"git-commit:{result.stdout.strip()}"
 
 
 def _daemon(tmp_path, monkeypatch: pytest.MonkeyPatch) -> TodoImplementationDaemon:
@@ -219,7 +231,7 @@ def test_production_model_assisted_invokes_only_typed_packet_route(
         task,
         attempt=1,
         workspace_path=workspace,
-        snapshot_id=SNAPSHOT,
+        snapshot_id=_snapshot(daemon),
         apply=True,
         grok_provider=_grok,
         codex_provider=_codex,
@@ -434,7 +446,7 @@ def test_grok_cannot_self_review_on_production_route(
         _task(),
         attempt=1,
         workspace_path=daemon.repo_root,
-        snapshot_id=SNAPSHOT,
+        snapshot_id=_snapshot(daemon),
         apply=True,
         grok_provider=same,
         codex_provider=same,
@@ -470,6 +482,9 @@ def test_codex_receives_only_bounded_proposal_evidence_slice(
         assert "scope" in slice_
         assert "acceptance" in slice_
         assert "goal_ids" in slice_
+        assert "context_slice" in slice_
+        assert slice_["context_slice"]["manifest_cid"].startswith("b")
+        assert request.prompt_tokens <= 4096
         # Full goal corpus / counterexample bodies must not appear.
         encoded = json.dumps(request["provider_input"], sort_keys=True)
         assert "counterexample" not in encoded
@@ -480,7 +495,7 @@ def test_codex_receives_only_bounded_proposal_evidence_slice(
         _task(),
         attempt=1,
         workspace_path=daemon.repo_root,
-        snapshot_id=SNAPSHOT,
+        snapshot_id=_snapshot(daemon),
         apply=True,
         grok_provider=_grok,
         codex_provider=codex,
@@ -488,6 +503,39 @@ def test_codex_receives_only_bounded_proposal_evidence_slice(
     )
     assert result["route_result"].status is RouteStatus.SUCCEEDED
     assert "admitted_implementation_proposal" in seen["input"]
+    assert all(attempt.prompt_tokens <= 4096 for attempt in result["route_result"].attempts)
+
+
+def test_caller_packet_without_context_fails_before_any_provider(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    snapshot = _snapshot(daemon)
+    packet = build_production_contract_packet(
+        task_id=task.task_id,
+        snapshot_id=snapshot,
+        write_paths=task.outputs,
+        read_paths=task.outputs,
+    )
+    calls: list[str] = []
+
+    with pytest.raises(ProviderRoutingError) as captured:
+        daemon.run_production_model_assisted_route(
+            task,
+            attempt=1,
+            workspace_path=daemon.repo_root,
+            snapshot_id=snapshot,
+            packet=packet,
+            apply=False,
+            grok_provider=lambda _request: calls.append("grok"),
+            codex_provider=lambda _request: calls.append("codex"),
+            admission_gate=_accept,
+        )
+
+    assert captured.value.reason_code == "context_manifest_missing"
+    assert calls == []
 
 
 def test_applied_patch_and_merge_bind_to_admitted_review_chain(
@@ -500,7 +548,7 @@ def test_applied_patch_and_merge_bind_to_admitted_review_chain(
         task,
         attempt=1,
         workspace_path=daemon.repo_root,
-        snapshot_id=SNAPSHOT,
+        snapshot_id=_snapshot(daemon),
         apply=True,
         writer_lease_id="lease:sca-615:1",
         grok_provider=_grok,
@@ -551,7 +599,7 @@ def test_absent_degraded_stale_cross_task_receipts_remain_pending(
             task,
             attempt=1,
             workspace_path=daemon.repo_root,
-            snapshot_id=SNAPSHOT,
+            snapshot_id=_snapshot(daemon),
             apply=False,
             grok_provider=_grok,
             admission_gate=_accept,
@@ -565,7 +613,7 @@ def test_absent_degraded_stale_cross_task_receipts_remain_pending(
             task,
             attempt=1,
             workspace_path=daemon.repo_root,
-            snapshot_id=SNAPSHOT,
+            snapshot_id=_snapshot(daemon),
             apply=False,
             grok_provider=_grok,
             codex_provider=lambda _request: (_ for _ in ()).throw(
@@ -582,7 +630,7 @@ def test_absent_degraded_stale_cross_task_receipts_remain_pending(
             task,
             attempt=1,
             workspace_path=daemon.repo_root,
-            snapshot_id=SNAPSHOT,
+            snapshot_id=_snapshot(daemon),
             apply=True,
             grok_provider=_grok,
             codex_provider=_codex,
@@ -607,7 +655,7 @@ def test_absent_degraded_stale_cross_task_receipts_remain_pending(
             task,
             attempt=1,
             workspace_path=daemon.repo_root,
-            snapshot_id=SNAPSHOT,
+            snapshot_id=_snapshot(daemon),
             apply=True,
             grok_provider=_grok,
             codex_provider=_codex,
@@ -616,14 +664,14 @@ def test_absent_degraded_stale_cross_task_receipts_remain_pending(
         disposition, reason = evaluate_production_provider_receipt(
             result["receipt"],
             expected_task_id="SCA-OTHER",
-            expected_snapshot_id=SNAPSHOT,
+            expected_snapshot_id=result["snapshot_id"],
         )
         assert disposition is ProductionReceiptDisposition.PENDING_CROSS_TASK
         assert reason == ProviderReason.RECEIPT_CROSS_TASK.value
         assert daemon.production_provider_receipt_allows_merge(
             result["receipt"],
             expected_task_id="SCA-OTHER",
-            expected_snapshot_id=SNAPSHOT,
+            expected_snapshot_id=result["snapshot_id"],
         ) is False
         return
 
@@ -656,7 +704,7 @@ def test_deterministic_only_tasks_invoke_no_model(
             task,
             attempt=1,
             workspace_path=daemon.repo_root,
-            snapshot_id=SNAPSHOT,
+            snapshot_id=_snapshot(daemon),
             apply=True,
             grok_provider=_grok,
             codex_provider=_codex,
@@ -868,17 +916,22 @@ def test_daemon_builds_bounded_production_packet(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     daemon = _daemon(tmp_path, monkeypatch)
+    snapshot = _snapshot(daemon)
     packet = daemon.build_production_contract_packet_for_task(
         _task(),
-        snapshot_id=SNAPSHOT,
+        snapshot_id=snapshot,
         attempt=2,
     )
     assert isinstance(packet, ProductionContractPacket)
     assert packet.task_id == "SCA-615"
-    assert packet.snapshot_id == SNAPSHOT
+    assert packet.snapshot_id == snapshot
     payload = dict(packet.provider_input_payload)
     assert payload["authority"]["completion_authoritative"] is False
     assert PATH in payload["scope"]["write_paths"]
+    assert payload["scope"]["read_paths"] == [PATH]
+    assert payload["context_slice"]["repository_binding"]["snapshot_id"] == snapshot
+    assert payload["context_slice"]["scope"]["effect_paths"] == [PATH]
+    assert payload["context_slice"]["scope"]["read_paths"] == [PATH]
     assert "repository_corpus" not in json.dumps(payload)
 
 

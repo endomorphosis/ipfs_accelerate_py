@@ -133,6 +133,11 @@ def test_existing_small_file_edit_receives_exact_context_and_applies(tmp_path) -
 
     def codex(request):
         assert request["role"] == "codex-independent-review"
+        reviewer_context = request["provider_input"]["evidence_slice"][
+            "context_slice"
+        ]
+        assert reviewer_context == manifest.to_dict()
+        assert request.prompt_tokens <= 4096
         return {"decision": "approve", "findings": []}
 
     def admit(_proposal):

@@ -819,6 +819,7 @@ def _bounded_evidence_slice(
             expansion = provider_input[key]
             break
     goal = provider_input.get("goal")
+    context_slice = provider_input.get("context_slice")
     goal_ids: dict[str, Any] = {}
     if isinstance(goal, Mapping):
         for key in (
@@ -830,7 +831,7 @@ def _bounded_evidence_slice(
         ):
             if key in goal:
                 goal_ids[key] = goal[key]
-    return {
+    evidence = {
         "packet_id": packet_id,
         "snapshot_id": snapshot_id,
         "task_id": task_id,
@@ -847,6 +848,14 @@ def _bounded_evidence_slice(
             "completion_authoritative": False,
         },
     }
+    # A reviewer cannot independently assess a patch against source it never
+    # saw.  Production packets may attach the supervisor-built, CID-addressed
+    # bounded context manifest; Codex receives that same exact manifest.  The
+    # completed Codex envelope is still measured against the hard 4096-token
+    # provider bound in ``_request``.
+    if isinstance(context_slice, Mapping):
+        evidence["context_slice"] = dict(context_slice)
+    return evidence
 
 
 def _provider_response_contract(role: ProviderRole) -> dict[str, Any]:

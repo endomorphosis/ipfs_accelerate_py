@@ -20,6 +20,7 @@ import time
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
 
@@ -170,6 +171,13 @@ from .production_provider_cli import (
     ProductionCLIProviderPolicy,
     build_production_cli_provider_pair,
     production_landed_task_guard,
+)
+from .production_context_slice import (
+    ProductionContextSliceError,
+    assert_proposal_covered_by_context,
+    build_production_context_slice,
+    derive_production_context_read_paths,
+    verify_production_context_slice,
 )
 from .task_execution_policy import (
     MAX_TASK_CONTEXT_BYTES,
@@ -18119,18 +18127,80 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return f"git-commit:{head}"
         return f"workspace:{cwd.resolve()}"
 
+    def _production_context_symbol_hints(
+        self,
+        task: PortalTask,
+    ) -> Mapping[str, Sequence[str]] | None:
+        """Read optional symbol hints only from the bound operator task."""
+
+        raw: Any = None
+        for key, value in dict(task.metadata or {}).items():
+            normalized_key = str(key).strip().casefold().replace("_", " ").replace(
+                "-", " "
+            )
+            if normalized_key in {
+                "context symbol hints",
+                "production context symbol hints",
+            }:
+                raw = value
+                break
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ProviderRoutingError(
+                    "production context symbol hints must be canonical JSON",
+                    reason_code=ProviderReason.PACKET_MALFORMED,
+                ) from exc
+        if raw is not None and not isinstance(raw, Mapping):
+            raise ProviderRoutingError(
+                "production context symbol hints must be a path mapping",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        return dict(raw) if isinstance(raw, Mapping) else None
+
+    def _production_context_task_contract(
+        self,
+        task: PortalTask,
+        *,
+        write_paths: Sequence[str],
+    ) -> dict[str, Any]:
+        """Exact task facts shared by context and reviewed-effect bindings."""
+
+        identity = self._identity_for_task(task)
+        return {
+            "task_id": str(task.task_id or "").strip(),
+            "title": str(task.title or ""),
+            "priority": str(task.priority or ""),
+            "track": str(task.track or ""),
+            "depends_on": [str(value) for value in (task.depends_on or ())],
+            "outputs": list(write_paths),
+            "validation": [str(value) for value in (task.validation or ())],
+            "acceptance": str(task.acceptance or ""),
+            "metadata": json.loads(
+                json.dumps(
+                    dict(task.metadata or {}),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                )
+            ),
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace or "default",
+        }
+
     def build_production_contract_packet_for_task(
         self,
         task: PortalTask,
         *,
         snapshot_id: str,
         attempt: int = 0,
+        workspace_path: Path | None = None,
+        baseline_ref: str = "",
     ) -> ProductionContractPacket:
-        """Compile a bounded production packet for one model-assisted task.
-
-        The packet carries task/scope/acceptance identity and expansion handles
-        only.  It never embeds repository corpus, full source, or AST bodies.
-        """
+        """Compile one task-bound packet with exact bounded source context."""
 
         write_paths = [
             str(path).strip()
@@ -18138,24 +18208,67 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if str(path).strip()
         ]
         if not write_paths:
-            scope = completion_gap_edit_scope(task, repo_root=self.repo_root)
-            write_paths = [str(path).strip() for path in scope if str(path).strip()]
-        if not write_paths:
             raise ProviderRoutingError(
                 "production model-assisted route requires declared outputs",
                 reason_code=ProviderReason.PACKET_MALFORMED,
             )
+        current_snapshot = str(snapshot_id or "").strip()
+        if not current_snapshot.startswith("git-commit:"):
+            raise ProviderRoutingError(
+                "production source context requires an exact Git baseline",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        snapshot_commit = current_snapshot.removeprefix("git-commit:").strip()
+        context_baseline = str(baseline_ref or snapshot_commit).strip()
+        workspace = Path(workspace_path or self.repo_root)
+
+        raw_symbol_hints = self._production_context_symbol_hints(task)
+        task_contract = self._production_context_task_contract(
+            task,
+            write_paths=write_paths,
+        )
+        try:
+            context_read_paths = derive_production_context_read_paths(
+                repo_root=workspace,
+                baseline_ref=context_baseline,
+                effect_paths=write_paths,
+            )
+            context_manifest = build_production_context_slice(
+                repo_root=workspace,
+                task_id=task.task_id,
+                task_payload=task_contract,
+                read_paths=context_read_paths,
+                effect_paths=write_paths,
+                baseline_ref=context_baseline,
+                symbol_hints=raw_symbol_hints,
+                max_provider_prompt_tokens=min(
+                    4096,
+                    int(
+                        getattr(
+                            self,
+                            "production_provider_context_budget_tokens",
+                            0,
+                        )
+                        or 4096
+                    ),
+                ),
+            )
+        except ProductionContextSliceError as exc:
+            raise ProviderRoutingError(
+                "production source context is unavailable or insufficient",
+                reason_code=exc.reason_code,
+            ) from exc
         extra_goal: dict[str, Any] = {
             "title": str(task.title or ""),
             "priority": str(task.priority or ""),
             "track": str(task.track or ""),
             "attempt": int(attempt),
         }
-        return build_production_contract_packet(
+        packet = build_production_contract_packet(
             task_id=task.task_id,
-            snapshot_id=snapshot_id,
+            snapshot_id=current_snapshot,
             write_paths=write_paths,
-            read_paths=write_paths,
+            read_paths=context_read_paths,
             validation_commands=tuple(task.validation or ()),
             acceptance_criteria=str(task.acceptance or ""),
             contract_ids=(),
@@ -18163,6 +18276,114 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             expansion_handles=(),
             packet_id=f"packet:production:{task.task_id}:attempt-{int(attempt)}",
             extra_goal=extra_goal,
+        )
+        payload = dict(packet.payload)
+        payload["context_slice"] = context_manifest.to_dict()
+        return ProductionContractPacket(
+            packet_id=packet.packet_id,
+            snapshot_id=packet.snapshot_id,
+            task_id=packet.task_id,
+            implementable=packet.implementable,
+            payload=MappingProxyType(payload),
+        )
+
+    def _verify_production_packet_context(
+        self,
+        task: PortalTask,
+        packet: ProductionContractPacket,
+        *,
+        workspace_path: Path,
+        baseline_ref: str = "",
+    ) -> tuple[Any, dict[str, Any], tuple[str, ...], tuple[str, ...], Any, str]:
+        """Reconstruct operator scope and reject stale/caller-widened packets."""
+
+        snapshot_id = str(getattr(packet, "snapshot_id", "") or "").strip()
+        if not snapshot_id.startswith("git-commit:"):
+            raise ProviderRoutingError(
+                "production packet lacks an exact Git snapshot",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        snapshot_commit = snapshot_id.removeprefix("git-commit:").strip()
+        context_baseline = str(baseline_ref or snapshot_commit).strip()
+        effect_paths = tuple(
+            str(path).strip()
+            for path in (task.outputs or ())
+            if str(path).strip()
+        )
+        if not effect_paths:
+            raise ProviderRoutingError(
+                "production context requires explicit task outputs",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        task_contract = self._production_context_task_contract(
+            task,
+            write_paths=effect_paths,
+        )
+        symbol_hints = self._production_context_symbol_hints(task)
+        try:
+            read_paths = derive_production_context_read_paths(
+                repo_root=workspace_path,
+                baseline_ref=context_baseline,
+                effect_paths=effect_paths,
+            )
+        except ProductionContextSliceError as exc:
+            raise ProviderRoutingError(
+                "production context scope is stale or unsafe",
+                reason_code=exc.reason_code,
+            ) from exc
+        payload = getattr(packet, "payload", None)
+        if not isinstance(payload, Mapping):
+            raise ProviderRoutingError(
+                "production packet payload is malformed",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        packet_scope = payload.get("scope")
+        if not isinstance(packet_scope, Mapping) or (
+            list(packet_scope.get("read_paths") or ()) != list(read_paths)
+            or list(packet_scope.get("write_paths") or ()) != list(effect_paths)
+        ):
+            raise ProviderRoutingError(
+                "production packet scope differs from operator task scope",
+                reason_code="scope_authority_mismatch",
+            )
+        context = payload.get("context_slice")
+        if not isinstance(context, Mapping):
+            raise ProviderRoutingError(
+                "production packet requires a bounded context manifest",
+                reason_code="context_manifest_missing",
+            )
+        try:
+            manifest = verify_production_context_slice(
+                context,
+                repo_root=workspace_path,
+                current_task_id=task.task_id,
+                current_task_payload=task_contract,
+                expected_read_paths=read_paths,
+                expected_effect_paths=effect_paths,
+                expected_symbol_hints=symbol_hints,
+                baseline_ref=context_baseline,
+            )
+        except ProductionContextSliceError as exc:
+            raise ProviderRoutingError(
+                "production packet context is stale, widened, or insufficient",
+                reason_code=exc.reason_code,
+            ) from exc
+        context_payload = manifest.to_dict()
+        if (
+            context_payload["repository_binding"]["snapshot_id"] != snapshot_id
+            or context_payload["task_binding"]["task_id"] != task.task_id
+        ):
+            raise ProviderRoutingError(
+                "production packet context binding is inconsistent",
+                reason_code=ProviderReason.PACKET_STALE,
+            )
+        return (
+            manifest,
+            task_contract,
+            read_paths,
+            effect_paths,
+            symbol_hints,
+            context_baseline,
         )
 
     def _production_admission_gate(self, proposal: Any) -> dict[str, Any]:
@@ -18812,7 +19033,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 task,
                 snapshot_id=current_snapshot,
                 attempt=attempt,
+                workspace_path=workspace_path,
+                baseline_ref=baseline_ref,
             )
+        context_workspace = Path(workspace_path or self.repo_root)
+        self._verify_production_packet_context(
+            task,
+            route_packet,
+            workspace_path=context_workspace,
+            baseline_ref=baseline_ref,
+        )
 
         lease = str(writer_lease_id or "").strip()
         if apply and not lease:
@@ -18828,6 +19058,48 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 task=task,
                 expected_lease_id=lease,
             )
+        if apply and effective_writer is not None:
+            delegate_writer = effective_writer
+
+            def context_guarded_writer(proposal: Any, lease_id: str) -> None:
+                # Re-verify immediately before mutation.  Provider output may
+                # choose bytes, never task scope, symbols, or unseen preimages.
+                current_context = self._verify_production_packet_context(
+                    task,
+                    route_packet,
+                    workspace_path=context_workspace,
+                    baseline_ref=baseline_ref,
+                )
+                (
+                    context_manifest,
+                    task_contract,
+                    read_paths,
+                    effect_paths,
+                    symbol_hints,
+                    context_baseline,
+                ) = current_context
+                proposal_payload = getattr(proposal, "payload", None)
+                if not isinstance(proposal_payload, Mapping):
+                    raise RuntimeError("provider proposal payload is malformed")
+                try:
+                    assert_proposal_covered_by_context(
+                        context_manifest,
+                        proposal_payload,
+                        repo_root=context_workspace,
+                        current_task_id=task.task_id,
+                        current_task_payload=task_contract,
+                        expected_read_paths=read_paths,
+                        expected_effect_paths=effect_paths,
+                        expected_symbol_hints=symbol_hints,
+                        baseline_ref=context_baseline,
+                    )
+                except ProductionContextSliceError as exc:
+                    raise RuntimeError(
+                        f"production proposal context rejected: {exc.reason_code}"
+                    ) from exc
+                delegate_writer(proposal, lease_id)
+
+            effective_writer = context_guarded_writer
         effective_admission = admission_gate or self._production_admission_gate
 
         # Independence: never pass the same callable as both providers.
