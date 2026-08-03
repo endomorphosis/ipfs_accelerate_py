@@ -739,9 +739,9 @@ paths; dependency fan-in, not a shared file, controls ordering.
 
 - Target branch: `docs/architecture-refresh-20260803`
 - Repository root: `/home/barberb/lift_coding/.worktrees/ipfs-accelerate-docs-refresh`
-- Runtime root: `/home/barberb/.local/state/ipfs_accelerate_py/documentation-refresh-v1`
+- Runtime root: `/home/barberb/.local/state/ipfs_accelerate_py/documentation-refresh-v5`
 - Lanes: 4 strict deterministic task shards
-- Provider: automatic authenticated Grok with Codex fallback
+- Provider: exact `grok-4.5` in the forced-Docker quota route; exact `gpt-5.6-terra` at `medium` only after the exact durable Grok 402 balance-exhausted record is independently reproduced
 - Attempts: 3 per canonical task identity
 - Retry budgets: implementation 3, validation 3, merge 3
 - Timeouts: 7200 seconds ordinary, 10800 seconds hard, 1200 seconds log stall

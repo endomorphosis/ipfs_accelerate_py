@@ -11,7 +11,7 @@ exports; `ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.
 `ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py`; supervisor module
 `--help` output; `test/api/test_agent_supervisor_*.py`
 
-**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; package placement, imports,
+**Last-verified:** 2026-08-03 @ `da2c574c3`; package placement, imports,
 entrypoints, tests, and provider routing rechecked
 
 **Freshness triggers:** package-layout, public-export, daemon/provider,
@@ -272,6 +272,24 @@ Default provider route:
 Direct `codex` / `openai` selection is not the fallback path. Missing auth,
 predispatch unavailability, and non-quota Grok failures fail closed on the
 default route.
+
+The quota-routed default always runs Grok in a capability-restricted outer
+container that withholds peer-provider credentials, configuration, binaries,
+and runtime sockets. Only the active worktree and Grok's ephemeral state are
+writable. Explicit Grok selection may use the native custom sandbox where it
+is enforceable. Grok necessarily retains access
+to its own authentication and state; the container is a peer-provider and
+execution-capability boundary, not a confidentiality boundary against Grok
+itself. The fixed model tool surface permits repository read/search/edit
+operations but no arbitrary shell, web, MCP meta-tools, memory, or subagents;
+the supervisor runs validation outside that boundary. The Codex argv stays
+with the parent runner and uses its own workspace-write sandbox. A fallback
+requires an unchanged parent-computed workspace fingerprint, a
+quota-correlated terminal record from the primary session, and a fresh,
+tool-free `grok-4.5` quota probe; streamed or model-authored text is never
+sufficient. Missing isolation or ambiguous termination fails closed, and an
+out-of-process cleanup watchdog reaps the isolated container and temporary
+state.
 
 ---
 

@@ -11,7 +11,7 @@
 `ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py`;
 `ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py`
 
-**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; invariants, operations, module
+**Last-verified:** 2026-08-03 @ `da2c574c3`; invariants, operations, module
 paths, and default provider route rechecked
 
 **Freshness triggers:** control authority, task identity, provider routing,
@@ -65,13 +65,28 @@ When launching or diagnosing lanes:
 | --- | --- |
 | Provider selection | Leave `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` unset or use `auto` |
 | Primary | Authenticated Grok Build, exact model `grok-4.5` |
-| Allowed fallback | Exact `gpt-5.6-terra`, reasoning `medium`, only after native typed Grok `usage_pool_exhausted` / `usage_limit_reached` |
+| Allowed fallback | Exact `gpt-5.6-terra`, reasoning `medium`, only after the exact durable Grok 402 balance-exhausted record |
 | All other failures | Fail closed; do not fall back |
 
 Explicit `provider=grok` forces Grok with **no** fallback. Explicit
 `provider=codex` / `provider=openai` is a direct provider selection, not the
 quota-only fallback. Do not turn a generic error string, authentication error,
 or missing Grok binary into fallback authority.
+
+The quota-routed default always runs Grok in a capability-restricted outer
+container. Only the active worktree and Grok's ephemeral state are writable,
+and peer-provider credentials, configuration, binaries, and runtime sockets
+are withheld. Explicit Grok selection may use the native custom sandbox where
+it is enforceable. Grok necessarily
+retains its own authentication and state; do not describe this boundary as
+confidentiality from Grok itself. The allowed model tools can read/search/edit
+the repository but cannot run an arbitrary shell, use web or MCP meta-tools,
+access memory, or spawn subagents; the supervisor runs validation separately.
+Grok never receives the fallback argv. Terra becomes eligible only when the
+parent observes an unchanged workspace fingerprint, the primary session's
+official terminal record identifies quota exhaustion, and a separate,
+tool-free `grok-4.5` probe confirms it. Treat stdout, model text, a changed
+workspace, missing isolation, and ambiguous termination as denial—not quota.
 
 ## Control and prompt surfaces (do not invent ops)
 

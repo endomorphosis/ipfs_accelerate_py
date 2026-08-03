@@ -12,7 +12,7 @@
 `ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py`;
 `ipfs_accelerate_py/cli.py`; supervisor module `--help` output
 
-**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; operation catalog, module paths,
+**Last-verified:** 2026-08-03 @ `da2c574c3`; operation catalog, module paths,
 prompt workflows, and default provider routing rechecked
 
 **Freshness triggers:** operation-catalog, daemon/provider routing, prompt
@@ -122,11 +122,27 @@ Notes:
 - `auto` requires an installed, authenticated Grok CLI before dispatch and
   requires the primary model to be exactly `grok-4.5` when the fallback is
   attached. Predispatch unavailability fails closed.
-- The runner may invoke Codex only after a native typed Grok event reports
-  `usage_pool_exhausted` or `usage_limit_reached`, with no simultaneous
-  non-quota failure type. The fallback command is pinned to
-  `gpt-5.6-terra` with `medium` reasoning; general Codex model/reasoning
-  environment overrides do not redefine this fallback.
+- The runner may invoke Codex only after Grok's durable terminal record has
+  the exact observed 402 balance-exhausted failure, mapped internally to
+  `usage_pool_exhausted`. Other typed labels remain diagnostic and do not grant
+  fallback authority without a validated durable format. The primary claim
+  must agree with a fresh, tool-free `grok-4.5` quota probe. Model output and
+  streamed stdout do not grant fallback authority. The fallback command is
+  pinned to `gpt-5.6-terra` with `medium` reasoning; general Codex
+  model/reasoning environment overrides do not redefine this fallback.
+- The quota-routed default always runs Grok in a capability-restricted outer
+  container; explicit Grok selection may use the native custom sandbox where
+  it is enforceable. Only the active worktree and Grok's ephemeral state are
+  writable. Its fixed tool surface permits repository read/search/edit
+  operations but no arbitrary shell, web, MCP meta-tools, memory, or
+  subagents. Peer-provider credentials, configuration, binaries, and runtime
+  sockets are withheld. Grok still requires its own authentication and state,
+  so this is not a confidentiality boundary against Grok itself. Before any
+  quota fallback, the parent also requires the workspace's complete
+  content/mode/symlink fingerprint to remain unchanged. If the capability
+  boundary or cleanup watchdog cannot be established, dispatch fails closed
+  before provider work starts. Validation commands run later in the
+  supervisor, outside the model capability boundary.
 - Explicit `provider=grok` forces Grok and deliberately omits fallback.
   Explicit `provider=codex` or `provider=openai` selects Codex directly and is
   not the quota-exhaustion fallback route.

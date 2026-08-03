@@ -223,10 +223,12 @@ accepted branches merge only into the dedicated documentation branch.
 
 Runtime safeguards:
 
-- provider route is automatic: authenticated Grok first, Codex fallback;
+- provider route is exact `grok-4.5` first in the forced-Docker quota route;
+  exact `gpt-5.6-terra` at `medium` is eligible only after the exact durable
+  Grok 402 balance-exhausted record is independently reproduced;
 - `max-task-attempts=3` and separate implementation/validation/merge retry
   budgets prevent infinite failure loops;
-- heartbeats are checked every 30 seconds with a 300-second startup grace;
+- heartbeats are checked every 30 seconds with a 600-second startup grace;
 - a two-hour ordinary task timeout and three-hour hard ceiling cover long doc
   audits without allowing silent hangs;
 - log-stall detection recycles an implementation attempt after 20 minutes of
