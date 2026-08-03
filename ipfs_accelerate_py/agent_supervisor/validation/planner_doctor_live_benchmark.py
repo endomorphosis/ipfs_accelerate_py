@@ -1697,6 +1697,46 @@ def _stable_cid(label: str, *parts: Any) -> str:
     return content_identity({"label": label, "parts": list(parts)})
 
 
+def _observe_live_repository_roots(
+    repository_root: Path,
+    *,
+    case_id: str,
+) -> tuple[str, str, str]:
+    """Return repository label, committed root CID, and exact overlay CID.
+
+    Identities deliberately exclude the temporary absolute worktree path so
+    equivalent paired arms bind the same repository inputs.  The dirty root
+    includes the Git status ledger and therefore changes when an arm mutates
+    its checkout.
+    """
+
+    head_commit = _git(repository_root, "rev-parse", "HEAD").stdout.strip()
+    head_tree = _git(repository_root, "rev-parse", "HEAD^{tree}").stdout.strip()
+    status_rows = tuple(
+        row
+        for row in _git(
+            repository_root,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        ).stdout.splitlines()
+        if row
+    )
+    repository_id = f"repository:live:{case_id}:{head_commit[:16]}"
+    repository_root_cid = _stable_cid(
+        "live-repository-root",
+        case_id,
+        head_commit,
+        head_tree,
+    )
+    dirty_worktree_root = _stable_cid(
+        "live-dirty-worktree-root",
+        repository_root_cid,
+        status_rows,
+    )
+    return repository_id, repository_root_cid, dirty_worktree_root
+
+
 def _cache_namespace(
     *,
     policy_cid: str,
@@ -1751,14 +1791,16 @@ def invoke_plan_create_service(
             {
                 "live_benchmark": label,
                 "case_cid": case.case_cid,
-                "arm_id": arm_id,
             }
         )
 
+    repository_id, repository_root_cid, dirty_worktree_root = (
+        _observe_live_repository_roots(repository_root, case_id=case.case_id)
+    )
     roots = PlanAuthorityRoots(
-        repository_id=f"repository:live:{case.case_id}",
-        repository_root_cid=_cid("repository-root"),
-        dirty_worktree_root=_cid("dirty-tree"),
+        repository_id=repository_id,
+        repository_root_cid=repository_root_cid,
+        dirty_worktree_root=dirty_worktree_root,
         task_source_id=f"task-source:live:{case.task_source_seed_id}",
         task_source_revision=_cid("task-source-revision"),
         policy_root=_cid("policy"),
@@ -1791,7 +1833,7 @@ def invoke_plan_create_service(
     )
     request = PlanCreateRequest(
         prompt_source_cid=_cid("prompt"),
-        repository_id=f"repository:live:{case.case_id}",
+        repository_id=repository_id,
         repository_root=str(repository_root),
         scope_paths=("pkg",),
         dirty_tree_policy=DirtyTreePolicy.OBSERVE_AND_BIND,
@@ -1811,11 +1853,14 @@ def invoke_plan_create_service(
             "symbols": ["live_benchmark_seed"],
         },
         caller="principal:planner-doctor-live-benchmark",
-        idempotency_key=f"live:create:{case.case_id}:{arm_id}",
+        idempotency_key=f"live:create:{case.case_id}",
     )
     service = create_default_plan_create_service(
         repository_allowlist=(repository_root,),
-        build_analysis_factory=False,
+        # A benchmark claiming live Planner evidence must execute the
+        # production repository scanner/index composition root.  Disabling it
+        # silently substituted the service's synthetic scope-scan fallback.
+        build_analysis_factory=True,
     )
     started = time.monotonic()
     try:
@@ -1868,41 +1913,161 @@ def invoke_plan_steer_service(
     arm_id: str,
     provider_call_permission: str,
 ) -> dict[str, Any]:
-    """Invoke the real PlanSteerService surface when available."""
+    """Invoke a real revision-bound PlanSteerService preview."""
 
+    from ..planning.plan_revision_contracts import (
+        FallbackPolicy,
+        PlanAuthorityRoots,
+        PlanDeltaOperation,
+        PlanPopulationDigest,
+        PlanRequestBudget,
+        PlanSteerRequest,
+        PopulationKind,
+        plan_revision_cid,
+    )
     from ..prompt.plan_steer_service import (
         PLAN_STEER_SERVICE_INTERFACE,
+        PlanSteerLiveState,
         PlanSteerService,
     )
 
+    def _cid(label: str) -> str:
+        return plan_revision_cid(
+            {"live_benchmark": label, "case_cid": case.case_cid}
+        )
+
     started = time.monotonic()
     try:
-        # Construction of the real service class is itself a live interface check.
-        # Full steer preview needs a claimed plan revision; when materials are
-        # absent we record a typed capability path rather than inventing success.
+        repository_id, repository_root_cid, dirty_worktree_root = (
+            _observe_live_repository_roots(repository_root, case_id=case.case_id)
+        )
+        roots = PlanAuthorityRoots(
+            repository_id=repository_id,
+            repository_root_cid=repository_root_cid,
+            dirty_worktree_root=dirty_worktree_root,
+            task_source_id=f"task-source:live:{case.task_source_seed_id}",
+            task_source_revision=_cid("task-source-revision"),
+            policy_root=_cid("policy"),
+            intent_ir_root=_cid("intent"),
+            legal_ir_root=_cid("legal"),
+            security_ir_root=_cid("security"),
+            program_root=_cid("program"),
+            capability_catalog_root=_cid("capability-catalog"),
+            provider_catalog_root=_cid("provider-catalog"),
+            usage_policy_root=_cid("usage"),
+            configuration_root=_cid("configuration"),
+        )
+        status_population = PlanPopulationDigest(
+            kind=PopulationKind.UNSTARTED,
+            member_cids=(),
+        )
+        claimed_population = PlanPopulationDigest(
+            kind=PopulationKind.CLAIMED,
+            member_cids=(),
+        )
+        accepted_population = PlanPopulationDigest(
+            kind=PopulationKind.ACCEPTED,
+            member_cids=(),
+        )
+        base_admitted_plan_root = _cid("base-admitted-plan")
+        base_materialized_plan_root = _cid("base-materialized-plan")
+        event_cursor = _cid("event-cursor")
+        accepted_evidence_root = _cid("accepted-evidence")
+        completion_revision = _cid("completion-revision")
+        request = PlanSteerRequest(
+            directive_cid=_cid("steer-directive"),
+            base_admitted_plan_root=base_admitted_plan_root,
+            base_materialized_plan_root=base_materialized_plan_root,
+            plan_revision=1,
+            parent_revision=0,
+            roots=roots,
+            event_cursor=event_cursor,
+            status_population=status_population,
+            claimed_population=claimed_population,
+            accepted_population=accepted_population,
+            accepted_evidence_root=accepted_evidence_root,
+            completion_revision=completion_revision,
+            allowed_delta_operations=(PlanDeltaOperation.ADD_TASK.value,),
+            budget=PlanRequestBudget(
+                max_goals=8,
+                max_tasks=32,
+                max_graph_depth=6,
+                max_output_paths=64,
+                max_ready_width=1,
+                max_repair_rounds=1,
+                max_scan_bytes=2 * 1024 * 1024,
+                max_analysis_operations=8,
+                max_evidence_items=64,
+                max_logic_families=2,
+                max_model_calls=0
+                if provider_call_permission == ProviderCallPermission.FORBIDDEN.value
+                else 2,
+                max_latency_ms=60_000,
+                max_provider_tokens=4_096,
+                max_cost_micros=400,
+            ),
+            fallback_policy=FallbackPolicy.FAIL_CLOSED,
+            redacted_directive_metadata={
+                "affected_paths": [item.path for item in case.files[:8]],
+                "concepts": [case.pair_family, case.prompt_template_id],
+            },
+            caller="principal:planner-doctor-live-benchmark",
+            idempotency_key=f"live:steer:{case.case_id}",
+        )
+        live_state = PlanSteerLiveState(
+            current_roots=roots,
+            plan_revision=request.plan_revision,
+            event_cursor=event_cursor,
+            accepted_evidence_root=accepted_evidence_root,
+            base_plan_root=base_materialized_plan_root,
+            base_admitted_plan_root=base_admitted_plan_root,
+            completion_revision=completion_revision,
+            tasks=(),
+            goals=(),
+            scan={
+                "scan_cid": _cid("current-repository-scan"),
+                "repository_root_cid": repository_root_cid,
+                "dirty_worktree_root": dirty_worktree_root,
+                "changed_paths": [item.path for item in case.files[:8]],
+            },
+            impact={
+                "impacted_paths": [item.path for item in case.files[:8]],
+            },
+        )
         service = PlanSteerService()
+        receipt = service.preview_steer(request, live_state)
         elapsed = max(0, int(time.monotonic() - started))
-        # Probe interface identity without fabricating a plan revision body.
         interface = getattr(service, "INTERFACE", PLAN_STEER_SERVICE_INTERFACE)
-        has_preview = callable(getattr(service, "preview_steer", None))
+        payload = receipt.to_dict() if hasattr(receipt, "to_dict") else receipt.to_record()
+        assert_no_fixture_decision_fields(payload, field_name="plan_steer_receipt")
+        verdict = str(payload.get("verdict") or "rejected")
+        rejections = payload.get("rejection_reasons") or ()
+        reason_codes = [
+            str(item.get("code") or "plan_steer_rejected")
+            if isinstance(item, Mapping)
+            else str(item)
+            for item in rejections
+        ]
+        if not reason_codes:
+            reason_codes = ["plan_steer_preview_invoked"]
         return {
             "interface": interface,
             "ok": True,
-            "disposition": "capability_probe"
-            if not has_preview
-            else "steer_service_ready",
-            "reason_codes": [
-                "plan_steer_service_invoked",
-                "claimed_revision_materials_required_for_full_preview",
-            ],
-            "first_valid_plan": False,
-            "typed_abstention": True,
-            "goal_ids_covered": [],
+            "disposition": verdict,
+            "reason_codes": reason_codes,
+            "first_valid_plan": verdict == "admitted",
+            "typed_abstention": False,
+            "goal_ids_covered": list(
+                (payload.get("population_partition") or {})
+                .get("accepted", {})
+                .get("member_cids", ())
+            ),
             "wall_seconds": elapsed,
             "provider_call_permission": provider_call_permission,
             "repository_root_digest": _sha256_hex(str(repository_root).encode("utf-8")),
             "arm_id": arm_id,
             "case_id": case.case_id,
+            "receipt": payload,
         }
     except Exception as exc:  # noqa: BLE001
         elapsed = max(0, int(time.monotonic() - started))
@@ -1931,7 +2096,10 @@ def invoke_doctor_service(
 
     from ..control.deterministic_doctor_service import (
         DETERMINISTIC_DOCTOR_SERVICE_INTERFACE,
-        create_deterministic_doctor_service,
+    )
+    from ..runtime.deterministic_doctor_runtime import (
+        DETERMINISTIC_DOCTOR_RUNTIME_INTERFACE,
+        create_deterministic_doctor_runtime,
     )
 
     if provider_call_permission != ProviderCallPermission.FORBIDDEN.value and arm_id == (
@@ -1940,96 +2108,102 @@ def invoke_doctor_service(
         # Deterministic symbolic arm forbids provider calls regardless of input.
         provider_call_permission = ProviderCallPermission.FORBIDDEN.value
 
-    service = create_deterministic_doctor_service()
     started = time.monotonic()
     try:
-        status_result = service.status()
-        status_payload = (
-            status_result.to_dict()
-            if hasattr(status_result, "to_dict")
-            else dict(status_result)
+        # Bind the service to the exact arm checkout through the production
+        # runtime.  Calling a bare service ``status()`` only proves that the
+        # Python object exists; it does not scan the repository or diagnose
+        # anything.  The runtime constructs the planning-analysis snapshot and
+        # inert AST diagnostics before invoking the same control service.
+        runtime = create_deterministic_doctor_runtime(
+            repository_root,
+            repository_allowlist=(repository_root,),
+            deterministic=True,
         )
-        assert_no_fixture_decision_fields(status_payload, field_name="doctor_status")
-
-        # Live inspect path: body-free operation when available.
-        inspect_payload: dict[str, Any] = {}
-        inspect_ok = False
-        if hasattr(service, "inspect"):
-            try:
-                inspect_result = service.inspect()
-                inspect_payload = (
-                    inspect_result.to_dict()
-                    if hasattr(inspect_result, "to_dict")
-                    else dict(inspect_result or {})
-                )
-                inspect_ok = True
-            except TypeError:
-                # inspect may require an operation request; fall back to status.
-                inspect_payload = {"reason": "inspect_requires_request"}
-            except Exception as inspect_exc:  # noqa: BLE001
-                inspect_payload = {
-                    "reason": "inspect_exception",
-                    "error": type(inspect_exc).__name__,
-                }
-
+        report = runtime.inspect()
+        inspect_payload = report.to_dict()
+        status_payload = report.result.to_dict()
+        assert_no_fixture_decision_fields(
+            inspect_payload, field_name="doctor_runtime_report"
+        )
         elapsed = max(0, int(time.monotonic() - started))
-        disposition = str(
-            status_payload.get("disposition")
-            or status_payload.get("status", {}).get("last_disposition")
-            or "supported"
+        disposition = str(status_payload.get("disposition") or "abstain")
+        reason_codes = list(status_payload.get("reason_codes") or ())
+        reason_codes.extend(
+            ("doctor_runtime_evidence_compiled", "doctor_inspect_invoked")
         )
-        reason_codes = list(status_payload.get("reason_codes") or ("doctor_status",))
-        if inspect_ok:
-            reason_codes.append("doctor_inspect_invoked")
 
-        # Detect seeded markers in the repository independently of fixture expected.
+        # Project only findings emitted by the independently executed
+        # diagnostic compiler.  Seed recipes and security markers define the
+        # benchmark population; they are not an oracle and must never be copied
+        # into candidate predictions or satisfaction claims.
         predicted_defects: list[str] = []
         localization: list[str] = []
-        for marker in case.seed_defect_markers:
-            # Presence of seed markers in the tree is observed, not gold diagnosis.
-            for recipe in case.files:
-                if marker in recipe.content or marker in recipe.path:
-                    predicted_defects.append(f"defect:{marker}")
-                    localization.append(f"loc:{recipe.path}")
-                    break
-        for marker in case.security_markers:
-            for recipe in case.files:
-                if marker in recipe.content:
-                    localization.append(f"loc:security:{recipe.path}")
+        evidence = report.evidence
+        if evidence is not None:
+            for finding in evidence.findings:
+                kind = str(getattr(getattr(finding, "kind", ""), "value", "") or "")
+                finding_disposition = str(
+                    getattr(getattr(finding, "disposition", ""), "value", "") or ""
+                )
+                # Completeness/frontier records are useful evidence but are not
+                # diagnosed defects.  Unknown/abstained findings likewise must
+                # not be promoted into a positive prediction.
+                if kind in {"completeness", "unsupported"} or finding_disposition in {
+                    "abstain",
+                    "unknown",
+                }:
+                    continue
+                finding_id = str(
+                    getattr(finding, "finding_id", "")
+                    or getattr(finding, "content_id", "")
+                    or getattr(finding, "finding_cid", "")
+                )
+                if finding_id:
+                    predicted_defects.append(finding_id)
+                path = str(getattr(finding, "path", "") or "")
+                if path:
+                    localization.append(f"loc:{path}")
 
-        backends = status_payload.get("status", {}).get("backends_available") or []
-        typed_abstention = not backends or disposition in {
-            "abstain",
-            "abstained",
-            "capability_unavailable",
-            "supported",
-        }
-        # Doctor without stage backends must not invent repair success.
+        typed_abstention = bool(getattr(report.result, "abstained", False)) or (
+            disposition.casefold()
+            in {"abstain", "abstained", "capability_unavailable"}
+        )
+        if evidence is None:
+            typed_abstention = True
+            reason_codes.append("doctor_runtime_evidence_unavailable")
+        # INSPECT is read-only.  It cannot claim a repair, Security-IR proof,
+        # or rollback that no transaction/evaluator executed.
         repaired: list[str] = []
-        exact_rollback = case.execution_kind is ExecutionKind.DOCTOR_TRANSACTION
+        reason_codes.extend(
+            (
+                "security_ir_evaluator_not_bound",
+                "transaction_rollback_not_executed",
+            )
+        )
 
         return {
             "interface": DETERMINISTIC_DOCTOR_SERVICE_INTERFACE,
+            "runtime_interface": DETERMINISTIC_DOCTOR_RUNTIME_INTERFACE,
             "ok": True,
             "disposition": disposition,
-            "reason_codes": reason_codes,
+            "reason_codes": list(dict.fromkeys(reason_codes)),
             "first_valid_plan": False,
             "typed_abstention": typed_abstention,
-            "exact_rollback": exact_rollback and typed_abstention,
+            "exact_rollback": False,
             "predicted_defect_ids": predicted_defects,
             "predicted_localization_targets": localization,
             "repaired_defect_ids": repaired,
-            "satisfied_security_ir_ids": [
-                f"security:{m}" for m in case.security_markers
-            ]
-            if case.execution_kind is ExecutionKind.PLANNER_DOCTOR_SECURITY
-            and typed_abstention
-            else [],
+            "satisfied_security_ir_ids": [],
             "satisfied_intent_ir_ids": [],
             "goal_ids_covered": [],
             "wall_seconds": elapsed,
             "status": status_payload,
             "inspect": inspect_payload,
+            "runtime_stage_receipts": {
+                str(key): dict(value)
+                for key, value in report.stage_receipts.items()
+            },
             "repository_root_digest": _sha256_hex(str(repository_root).encode("utf-8")),
             "arm_id": arm_id,
         }

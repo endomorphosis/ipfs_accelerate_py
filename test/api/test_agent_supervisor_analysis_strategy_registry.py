@@ -334,6 +334,72 @@ def test_discovery_is_cold_lazy_and_does_not_infer_imports() -> None:
     assert isinstance(polluted, list)
 
 
+def test_capability_declarations_do_not_inherit_method_max_assurance() -> None:
+    registry = create_default_analysis_strategy_registry()
+
+    # Cold LAZY declarations select a possible route, not a kernel replay.
+    cold = registry.select(PropertyQuestionClass.FORMAL_KERNELS)
+    assert cold.outcome in {
+        SelectionOutcome.PARTIAL,
+        SelectionOutcome.DEBT_ONLY,
+    }
+    assert cold.achieved_assurance is StrategyAssurance.UNVERIFIED
+    assert not cold.achieved_assurance.satisfies(
+        StrategyAssurance.KERNEL_VERIFIED
+    )
+    assert any(
+        item.reason_code == "execution_receipt_required" for item in cold.debt
+    )
+
+    # Boolean availability placeholders likewise cannot manufacture solver
+    # evidence from the method declaration's theoretical upper bound.
+    boolean = registry.select(
+        PropertyQuestionClass.CONSTRAINT_SOLVING,
+        available_capabilities={
+            "smt": True,
+            "logic_family_routing": True,
+            "sat": False,
+            "z3": False,
+            "cvc5": False,
+            "maxsat": False,
+            "tactician_hammer": False,
+            "cegis": False,
+        },
+    )
+    assert boolean.outcome is SelectionOutcome.PARTIAL
+    assert boolean.achieved_assurance is StrategyAssurance.UNVERIFIED
+    assert any(
+        receipt.details.get("explicit_bool") is True
+        for receipt in boolean.receipts
+    )
+    assert any(
+        item.reason_code == "execution_receipt_required"
+        for item in boolean.debt
+    )
+
+
+def test_selection_rejects_unmet_assurance_claim() -> None:
+    with pytest.raises(
+        AnalysisStrategyRegistryError,
+        match="unmet assurance obligation",
+    ):
+        StrategySelection(
+            property_class=PropertyQuestionClass.CONSTRAINT_SOLVING,
+            strategy_id="strategy:adversarial",
+            outcome=SelectionOutcome.SELECTED,
+            selected_methods=(
+                StrategyMethodBinding(
+                    method=StrategyMethod.SMT,
+                    role=MethodRole.REQUIRED,
+                    cost_rank=1,
+                    max_assurance=StrategyAssurance.SOLVER_CHECKED,
+                ),
+            ),
+            required_assurance=StrategyAssurance.SOLVER_CHECKED,
+            achieved_assurance=StrategyAssurance.UNVERIFIED,
+        )
+
+
 def test_formal_kernels_and_crypto_lineage_assurance_contracts() -> None:
     registry = create_default_analysis_strategy_registry()
     kernels = registry.strategy(PropertyQuestionClass.FORMAL_KERNELS)

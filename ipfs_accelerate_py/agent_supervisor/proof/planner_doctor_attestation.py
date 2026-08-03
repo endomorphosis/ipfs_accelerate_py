@@ -35,6 +35,12 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, ClassVar, Dict, Final, TypeVar
 
+from ..program_analysis_zkp import (
+    ProgramZkpBackendMode as ProgramAnalysisZkpBackendMode,
+)
+from ..program_analysis_zkp import (
+    ProgramZkpVerificationReceipt,
+)
 from .formal_verification_contracts import (
     AssuranceLevel,
     CanonicalContract,
@@ -74,6 +80,9 @@ PLANNER_DOCTOR_PUBLIC_INPUTS_SCHEMA: Final[str] = (
 )
 PLANNER_DOCTOR_VERIFICATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/planner-doctor-attestation-verification@1"
+)
+PLANNER_DOCTOR_PROGRAM_ZKP_BRIDGE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/planner-doctor-program-zkp-bridge@1"
 )
 PLANNER_DOCTOR_LINEAGE_SLOT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/planner-doctor-lineage-slot@1"
@@ -1296,6 +1305,119 @@ def prepare_planner_doctor_attestation(
     )
 
 
+def planner_doctor_program_zkp_result_commitment(
+    public_inputs: PlannerDoctorPublicInputs,
+    *,
+    proof_artifact_id: str,
+    proof_digest: str,
+    prover_id: str,
+) -> str:
+    """Commit the exact Planner/Doctor proof claim verified by program ZKP.
+
+    ``ProgramZkpVerificationReceipt`` uses a different, generic public-input
+    codec.  Its ``result_commitment`` therefore binds this closed bridge record
+    instead of being compared with the unrelated codec digest directly.  The
+    bridge covers both the complete Planner/Doctor public-input vector and the
+    proof artifact identity, preventing a valid receipt from being replayed
+    over a different run, root, proof, circuit, or key.
+    """
+
+    if not isinstance(public_inputs, PlannerDoctorPublicInputs):
+        raise PlannerDoctorAttestationError(
+            "public_inputs must be PlannerDoctorPublicInputs"
+        )
+    return content_identity(
+        {
+            "schema": PLANNER_DOCTOR_PROGRAM_ZKP_BRIDGE_SCHEMA,
+            "public_input_digest": public_inputs.public_input_digest,
+            "proof_artifact_id": _text(
+                proof_artifact_id, field_name="proof_artifact_id"
+            ),
+            "proof_digest": _text(proof_digest, field_name="proof_digest"),
+            "prover_id": _text(prover_id, field_name="prover_id"),
+            "predicate": public_inputs.predicate.value,
+        }
+    )
+
+
+def _require_authoritative_program_zkp_receipt(
+    *,
+    public_inputs: PlannerDoctorPublicInputs,
+    proof_artifact_id: str,
+    proof_digest: str,
+    prover_id: str,
+    receipt: ProgramZkpVerificationReceipt | None,
+) -> ProgramZkpVerificationReceipt:
+    """Fail closed unless an independent cryptographic receipt binds the claim."""
+
+    if not isinstance(receipt, ProgramZkpVerificationReceipt):
+        raise AttestationBackendError(
+            "ATTESTED requires an independently verified "
+            "ProgramZkpVerificationReceipt"
+        )
+    if not receipt.authoritative:
+        raise AttestationBackendError(
+            "ProgramZkpVerificationReceipt is not authoritative; simulated, "
+            "shadow, rejected, stale, or self-verified receipts cannot attest"
+        )
+    if (
+        receipt.backend_mode is not ProgramAnalysisZkpBackendMode.CRYPTOGRAPHIC
+        or receipt.statement.backend_mode
+        is not ProgramAnalysisZkpBackendMode.CRYPTOGRAPHIC
+    ):
+        raise AttestationBackendError(
+            "ProgramZkpVerificationReceipt must come from a cryptographic "
+            "statement and backend"
+        )
+
+    pins = receipt.statement.public_inputs
+    expected_bindings = {
+        "forest_commitment": public_inputs.repository_tree_id,
+        "inventory_commitment": public_inputs.manifest_id,
+        "contract_commitment": public_inputs.policy_id,
+        "call_slice_commitment": public_inputs.lineage_merkle_root,
+        "assumptions_commitment": public_inputs.public_input_digest,
+        "result_commitment": planner_doctor_program_zkp_result_commitment(
+            public_inputs,
+            proof_artifact_id=proof_artifact_id,
+            proof_digest=proof_digest,
+            prover_id=prover_id,
+        ),
+        "circuit_id": public_inputs.circuit_id,
+        "proving_key_id": public_inputs.proving_key_id,
+        "verifying_key_id": public_inputs.verifying_key_id,
+        "ceremony_id": public_inputs.ceremony_id,
+        "public_input_codec_version": public_inputs.public_input_codec_version,
+    }
+    mismatches = tuple(
+        name
+        for name, expected in expected_bindings.items()
+        if getattr(pins, name) != expected
+    )
+    if mismatches:
+        raise AttestationBackendError(
+            "ProgramZkpVerificationReceipt does not bind the Planner/Doctor "
+            f"claim: {', '.join(mismatches)}"
+        )
+
+    # Reparse the public receipt and replay its exact pins.  Authority flags are
+    # deliberately re-derived by ProgramZkpVerificationReceipt.from_dict.
+    replayed = ProgramZkpVerificationReceipt.from_dict(receipt.to_public_artifact())
+    if replayed.receipt_id != receipt.receipt_id or not replayed.authoritative:
+        raise AttestationBackendError(
+            "ProgramZkpVerificationReceipt identity or authority failed replay"
+        )
+    replayed.require_replay(
+        public_inputs=pins,
+        verifying_key_id=public_inputs.verifying_key_id,
+        circuit_id=public_inputs.circuit_id,
+        ceremony_id=public_inputs.ceremony_id,
+        public_input_codec_version=pins.public_input_codec_version,
+        capability_epoch=receipt.capability_epoch,
+    )
+    return replayed
+
+
 @dataclass(frozen=True)
 class PlannerDoctorAttestation(CanonicalContract):
     """``PlannerDoctorAttestation@1`` — optional public ZKP envelope.
@@ -1314,6 +1436,7 @@ class PlannerDoctorAttestation(CanonicalContract):
     backend_mode: PlannerDoctorBackendMode = PlannerDoctorBackendMode.SHADOW
     production_eligible: bool = False
     status: PlannerDoctorAttestationStatus = PlannerDoctorAttestationStatus.GENERATED
+    program_zkp_verification_receipt: ProgramZkpVerificationReceipt | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.public_inputs, Mapping):
@@ -1354,6 +1477,17 @@ class PlannerDoctorAttestation(CanonicalContract):
             "status",
             _enum(self.status, PlannerDoctorAttestationStatus, field_name="status"),
         )
+        receipt = self.program_zkp_verification_receipt
+        if isinstance(receipt, Mapping):
+            receipt = ProgramZkpVerificationReceipt.from_dict(receipt)
+            object.__setattr__(self, "program_zkp_verification_receipt", receipt)
+        elif receipt is not None and not isinstance(
+            receipt, ProgramZkpVerificationReceipt
+        ):
+            raise AttestationBackendError(
+                "program_zkp_verification_receipt must be a "
+                "ProgramZkpVerificationReceipt"
+            )
         if self.backend_mode is not PlannerDoctorBackendMode.CRYPTOGRAPHIC:
             object.__setattr__(self, "production_eligible", False)
             if self.status is PlannerDoctorAttestationStatus.ATTESTED:
@@ -1373,6 +1507,19 @@ class PlannerDoctorAttestation(CanonicalContract):
         ):
             raise AttestationBackendError(
                 "status=attested requires a production-eligible cryptographic backend"
+            )
+        if self.status is PlannerDoctorAttestationStatus.ATTESTED:
+            _require_authoritative_program_zkp_receipt(
+                public_inputs=self.public_inputs,
+                proof_artifact_id=self.proof_artifact_id,
+                proof_digest=self.proof_digest,
+                prover_id=self.prover_id,
+                receipt=receipt,
+            )
+        elif receipt is not None:
+            raise AttestationBackendError(
+                "ProgramZkpVerificationReceipt may only be attached to an "
+                "ATTESTED envelope"
             )
 
     @property
@@ -1402,7 +1549,7 @@ class PlannerDoctorAttestation(CanonicalContract):
         )
 
     def _payload(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "contract_version": PLANNER_DOCTOR_ATTESTATION_CONTRACT_VERSION,
             "interface": PLANNER_DOCTOR_ATTESTATION_INTERFACE,
             "public_inputs": self.public_inputs.to_dict(),
@@ -1419,6 +1566,13 @@ class PlannerDoctorAttestation(CanonicalContract):
             "threat_model_id": PLANNER_DOCTOR_ZKP_THREAT_MODEL_ID,
             "use_case_id": PLANNER_DOCTOR_ZKP_USE_CASE_ID,
         }
+        # Preserve content identities of existing non-attested @1 envelopes;
+        # the additive receipt is present only on the newly admitted seal path.
+        if self.program_zkp_verification_receipt is not None:
+            payload["program_zkp_verification_receipt"] = (
+                self.program_zkp_verification_receipt.to_public_artifact()
+            )
+        return payload
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PlannerDoctorAttestation":
@@ -1447,6 +1601,9 @@ class PlannerDoctorAttestation(CanonicalContract):
             backend_mode=data.get("backend_mode", PlannerDoctorBackendMode.SHADOW),
             production_eligible=bool(data.get("production_eligible", False)),
             status=data.get("status", PlannerDoctorAttestationStatus.GENERATED),
+            program_zkp_verification_receipt=data.get(
+                "program_zkp_verification_receipt"
+            ),
         )
         if claimed_digest not in (None, "", result.public_inputs.public_input_digest):
             raise LineageRootError(
@@ -1657,6 +1814,7 @@ class PlannerDoctorVerification(CanonicalContract):
 
     @property
     def authoritative(self) -> bool:
+        receipt = self.envelope.program_zkp_verification_receipt
         return (
             self.verified
             and self.independent
@@ -1665,6 +1823,8 @@ class PlannerDoctorVerification(CanonicalContract):
             is PlannerDoctorBackendMode.CRYPTOGRAPHIC
             and self.envelope.status
             is PlannerDoctorAttestationStatus.ATTESTED
+            and receipt is not None
+            and receipt.authoritative
         )
 
     @property
@@ -1964,11 +2124,15 @@ def verify_planner_doctor_attestation(
 
 def seal_cryptographic_attested(
     envelope: PlannerDoctorAttestation,
+    *,
+    verification_receipt: ProgramZkpVerificationReceipt | None = None,
 ) -> PlannerDoctorAttestation:
     """Promote a production-eligible cryptographic envelope to status=attested.
 
-    Callers must already have an independent cryptographic verification path.
-    Simulated / unavailable / failed envelopes are rejected.
+    Promotion consumes and embeds an independently replayable, authoritative
+    ``ProgramZkpVerificationReceipt`` bound to the exact public inputs and
+    proof artifact.  Caller-supplied mode/status/eligibility flags are never
+    sufficient.  Simulated / unavailable / failed envelopes are rejected.
     """
 
     if not isinstance(envelope, PlannerDoctorAttestation):
@@ -1987,6 +2151,13 @@ def seal_cryptographic_attested(
         raise AttestationBackendError(
             "failed/unavailable/simulated envelopes cannot be sealed as ATTESTED"
         )
+    checked_receipt = _require_authoritative_program_zkp_receipt(
+        public_inputs=envelope.public_inputs,
+        proof_artifact_id=envelope.proof_artifact_id,
+        proof_digest=envelope.proof_digest,
+        prover_id=envelope.prover_id,
+        receipt=verification_receipt,
+    )
     return PlannerDoctorAttestation(
         public_inputs=envelope.public_inputs,
         proof_artifact_id=envelope.proof_artifact_id,
@@ -1995,6 +2166,7 @@ def seal_cryptographic_attested(
         backend_mode=PlannerDoctorBackendMode.CRYPTOGRAPHIC,
         production_eligible=True,
         status=PlannerDoctorAttestationStatus.ATTESTED,
+        program_zkp_verification_receipt=checked_receipt,
     )
 
 
@@ -2069,6 +2241,7 @@ __all__ = [
     "PLANNER_DOCTOR_ATTESTATION_INTERFACE",
     "PLANNER_DOCTOR_ATTESTATION_SCHEMA",
     "PLANNER_DOCTOR_PUBLIC_INPUTS_SCHEMA",
+    "PLANNER_DOCTOR_PROGRAM_ZKP_BRIDGE_SCHEMA",
     "PLANNER_DOCTOR_VERIFICATION_SCHEMA",
     "PLANNER_DOCTOR_ZKP_THREAT_MODEL_ID",
     "PLANNER_DOCTOR_ZKP_USE_CASE_ID",
@@ -2111,6 +2284,7 @@ __all__ = [
     "leaf_digest_for_slot",
     "merkle_root_from_leaves",
     "prepare_planner_doctor_attestation",
+    "planner_doctor_program_zkp_result_commitment",
     "public_input_vector_digest",
     "public_planner_doctor_artifact",
     "reject_collapsed_evidence_types",

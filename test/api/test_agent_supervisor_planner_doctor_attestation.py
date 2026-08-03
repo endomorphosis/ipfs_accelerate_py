@@ -7,7 +7,21 @@ import pickle
 from pathlib import Path
 
 import pytest
-
+from ipfs_accelerate_py.agent_supervisor.program_analysis_zkp import (
+    PROGRAM_CONTRACT_TRACE_CIRCUIT_ID,
+    PrivateProgramAnalysisWitness,
+    ProgramZkpBackendMode,
+    ProgramZkpVerdict,
+    build_production_ready_capability_fixture,
+    build_program_zkp_public_inputs,
+    create_program_zkp_shadow_envelope,
+    prepare_program_analysis_zkp,
+    record_program_zkp_verification,
+    verify_program_zkp_independently,
+)
+from ipfs_accelerate_py.agent_supervisor.program_analysis_zkp import (
+    PUBLIC_INPUT_CODEC_ID as PROGRAM_ZKP_PUBLIC_INPUT_CODEC_ID,
+)
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
@@ -48,6 +62,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.planner_doctor_attestation import
     encode_public_input_vector,
     leaf_digest_for_slot,
     merkle_root_from_leaves,
+    planner_doctor_program_zkp_result_commitment,
     prepare_planner_doctor_attestation,
     public_input_vector_digest,
     public_planner_doctor_artifact,
@@ -66,7 +81,6 @@ from ipfs_accelerate_py.agent_supervisor.proof.proof_attestation import (
     AttestationGate,
     AttestationVerificationVerdict,
 )
-
 
 RUN_ID = "run:planner-doctor-demo-001"
 TREE_ID = "tree:repo-forest@deadbeef"
@@ -146,6 +160,85 @@ def _witness(secret: str = "opening-secret-never-publish") -> PrivatePlannerDoct
             "membership_path": ["leaf-a", "leaf-b"],
             "private_premise": {"holdout": True},
         }
+    )
+
+
+def _production_public_inputs() -> PlannerDoctorPublicInputs:
+    """Use the currently capability-qualified fixed-computation circuit."""
+
+    return build_public_inputs_from_manifest(
+        _manifest(),
+        circuit_id=PROGRAM_CONTRACT_TRACE_CIRCUIT_ID,
+        circuit_version="1",
+        proving_key_id="pk:program-contract-trace@1:sha256-pk-fixture",
+        verifying_key_id="vk:program-contract-trace@1:sha256-vk-fixture",
+        ceremony_id="ceremony:program-contract-trace@1",
+        predicate=PlannerDoctorZkpPredicate.FIXED_BOUNDED_COMPUTATION,
+    )
+
+
+def _program_zkp_inputs_for(envelope: PlannerDoctorAttestation):
+    inputs = envelope.public_inputs
+    return build_program_zkp_public_inputs(
+        forest_commitment=inputs.repository_tree_id,
+        inventory_commitment=inputs.manifest_id,
+        contract_commitment=inputs.policy_id,
+        call_slice_commitment=inputs.lineage_merkle_root,
+        assumptions_commitment=inputs.public_input_digest,
+        analyzer_version="analyzer:planner-doctor-lineage@1",
+        resolver_version="resolver:planner-doctor-lineage@1",
+        translator_version="translator:planner-doctor-zkp-bridge@1",
+        prover_version="prover:program-contract-trace@1",
+        result_commitment=planner_doctor_program_zkp_result_commitment(
+            inputs,
+            proof_artifact_id=envelope.proof_artifact_id,
+            proof_digest=envelope.proof_digest,
+            prover_id=envelope.prover_id,
+        ),
+        circuit_id=inputs.circuit_id,
+        proving_key_id=inputs.proving_key_id,
+        verifying_key_id=inputs.verifying_key_id,
+        ceremony_id=inputs.ceremony_id,
+        public_input_codec_id=PROGRAM_ZKP_PUBLIC_INPUT_CODEC_ID,
+        public_input_codec_version=inputs.public_input_codec_version,
+    )
+
+
+def _program_receipt_for(
+    envelope: PlannerDoctorAttestation,
+    *,
+    backend_mode: ProgramZkpBackendMode = ProgramZkpBackendMode.CRYPTOGRAPHIC,
+):
+    request = prepare_program_analysis_zkp(
+        _program_zkp_inputs_for(envelope),
+        witness=PrivateProgramAnalysisWitness(
+            {"commitment_opening": "program-zkp-test-opening"}
+        ),
+        backend_mode=backend_mode,
+    )
+    program_envelope = create_program_zkp_shadow_envelope(
+        request,
+        proof_artifact_id=envelope.proof_artifact_id,
+        proof_digest=envelope.proof_digest,
+        prover_id="prover:program-zkp-bridge@1",
+        backend_mode=backend_mode,
+    )
+    if backend_mode is not ProgramZkpBackendMode.CRYPTOGRAPHIC:
+        return record_program_zkp_verification(
+            program_envelope,
+            verdict=ProgramZkpVerdict.VERIFIED,
+            verifier_id="verifier:program-zkp-shadow@1",
+            independent_verifier=True,
+        )
+    return verify_program_zkp_independently(
+        program_envelope,
+        capability=build_production_ready_capability_fixture(),
+        verifier_id="verifier:program-zkp-independent@1",
+        proof_bytes=b"production-proof-bytes-v1",
+        verifying_key_material=b"vk-fixture-material-v1",
+        cryptographic_verify=lambda proof, key, fields: bool(
+            proof and key and fields
+        ),
     )
 
 
@@ -458,7 +551,7 @@ def test_shadow_create_stays_candidate() -> None:
 
 
 def test_cryptographic_attested_requires_production_seal_and_independent_verify() -> None:
-    inputs = _public_inputs()
+    inputs = _production_public_inputs()
     request = prepare_planner_doctor_attestation(
         inputs,
         witness=_witness(),
@@ -482,8 +575,20 @@ def test_cryptographic_attested_requires_production_seal_and_independent_verify(
     assert candidate.authoritative is False
     assert candidate.authoritative_assurance is AssuranceLevel.CANDIDATE
 
-    sealed = seal_cryptographic_attested(generated)
+    # Prover-controlled flags alone cannot promote the envelope.
+    with pytest.raises(
+        AttestationBackendError, match="ProgramZkpVerificationReceipt"
+    ):
+        seal_cryptographic_attested(generated)
+
+    program_receipt = _program_receipt_for(generated)
+    assert program_receipt.authoritative is True
+    sealed = seal_cryptographic_attested(
+        generated, verification_receipt=program_receipt
+    )
     assert sealed.status is PlannerDoctorAttestationStatus.ATTESTED
+    assert sealed.program_zkp_verification_receipt == program_receipt
+    assert PlannerDoctorAttestation.from_dict(sealed.to_dict()) == sealed
     verified = verify_planner_doctor_attestation(
         sealed,
         verifier_id="verifier:planner-doctor@1",
@@ -505,20 +610,22 @@ def test_cryptographic_attested_requires_production_seal_and_independent_verify(
 
 
 def test_verification_replay_rejects_wrong_run_root_or_digest() -> None:
-    inputs = _public_inputs()
+    inputs = _production_public_inputs()
+    generated = create_planner_doctor_attestation(
+        prepare_planner_doctor_attestation(
+            inputs,
+            witness=_witness(),
+            backend_mode=PlannerDoctorBackendMode.CRYPTOGRAPHIC,
+            production_eligible=True,
+        ),
+        proof_artifact_id="artifact:zk-crypto",
+        proof_digest="sha256:" + ("33" * 32),
+        prover_id="prover:crypto",
+        status=PlannerDoctorAttestationStatus.GENERATED,
+    )
     sealed = seal_cryptographic_attested(
-        create_planner_doctor_attestation(
-            prepare_planner_doctor_attestation(
-                inputs,
-                witness=_witness(),
-                backend_mode=PlannerDoctorBackendMode.CRYPTOGRAPHIC,
-                production_eligible=True,
-            ),
-            proof_artifact_id="artifact:zk-crypto",
-            proof_digest="sha256:" + ("33" * 32),
-            prover_id="prover:crypto",
-            status=PlannerDoctorAttestationStatus.GENERATED,
-        )
+        generated,
+        verification_receipt=_program_receipt_for(generated),
     )
     verified = verify_planner_doctor_attestation(
         sealed,
@@ -567,6 +674,75 @@ def test_cannot_construct_attested_status_on_simulated_backend() -> None:
             backend_mode=PlannerDoctorBackendMode.SIMULATED,
             production_eligible=False,
             status=PlannerDoctorAttestationStatus.ATTESTED,
+        )
+
+
+def test_cannot_construct_flag_only_cryptographic_attested_envelope() -> None:
+    with pytest.raises(
+        AttestationBackendError, match="ProgramZkpVerificationReceipt"
+    ):
+        PlannerDoctorAttestation(
+            public_inputs=_production_public_inputs(),
+            proof_artifact_id="artifact:flag-only",
+            proof_digest="sha256:" + ("45" * 32),
+            prover_id="prover:self-asserted",
+            backend_mode=PlannerDoctorBackendMode.CRYPTOGRAPHIC,
+            production_eligible=True,
+            status=PlannerDoctorAttestationStatus.ATTESTED,
+        )
+
+
+def test_simulated_program_receipt_cannot_seal_crypto_envelope() -> None:
+    inputs = _production_public_inputs()
+    generated = create_planner_doctor_attestation(
+        prepare_planner_doctor_attestation(
+            inputs,
+            witness=_witness(),
+            backend_mode=PlannerDoctorBackendMode.CRYPTOGRAPHIC,
+            production_eligible=True,
+        ),
+        proof_artifact_id="artifact:outer-crypto",
+        proof_digest="sha256:" + ("46" * 32),
+        prover_id="prover:outer-crypto",
+    )
+    simulated_receipt = _program_receipt_for(
+        generated, backend_mode=ProgramZkpBackendMode.SIMULATED
+    )
+    assert simulated_receipt.authoritative is False
+    with pytest.raises(AttestationBackendError, match="not authoritative"):
+        seal_cryptographic_attested(
+            generated, verification_receipt=simulated_receipt
+        )
+
+
+def test_program_receipt_cannot_replay_over_different_proof_artifact() -> None:
+    inputs = _production_public_inputs()
+    original = create_planner_doctor_attestation(
+        prepare_planner_doctor_attestation(
+            inputs,
+            witness=_witness(),
+            backend_mode=PlannerDoctorBackendMode.CRYPTOGRAPHIC,
+            production_eligible=True,
+        ),
+        proof_artifact_id="artifact:original-proof",
+        proof_digest="sha256:" + ("47" * 32),
+        prover_id="prover:original",
+    )
+    receipt = _program_receipt_for(original)
+    substituted = create_planner_doctor_attestation(
+        prepare_planner_doctor_attestation(
+            inputs,
+            witness=_witness(),
+            backend_mode=PlannerDoctorBackendMode.CRYPTOGRAPHIC,
+            production_eligible=True,
+        ),
+        proof_artifact_id="artifact:substituted-proof",
+        proof_digest=original.proof_digest,
+        prover_id=original.prover_id,
+    )
+    with pytest.raises(AttestationBackendError, match="result_commitment"):
+        seal_cryptographic_attested(
+            substituted, verification_receipt=receipt
         )
 
 

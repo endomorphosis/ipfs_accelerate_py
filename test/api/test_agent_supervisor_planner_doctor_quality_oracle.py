@@ -472,6 +472,105 @@ def test_candidate_authored_tests_and_proofs_cannot_define_truth(
     assert receipt.candidate_proofs_used_as_truth is False
 
 
+def test_candidate_supplied_gold_ids_cannot_define_planner_truth(
+    oracle: PlannerDoctorQualityOracle,
+) -> None:
+    slot = oracle.manifest.slots[0]
+    observation = CandidateArmObservation(
+        case_id=slot.case_id,
+        arm_id="adversarial-self-scoring-arm",
+        output_root_cid="baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        disposition=ObservationDisposition.SUCCEED,
+        predicted_dependency_ids=("dep:candidate-chosen",),
+        gold_dependency_ids=("dep:candidate-chosen",),
+        goal_ids_covered=("goal:candidate-chosen",),
+        gold_goal_ids=("goal:candidate-chosen",),
+    )
+
+    receipt = oracle.evaluate(observation)
+    metrics = receipt.metric_map()
+
+    assert metrics["dependency_precision_millionths"] == 0
+    assert metrics["dependency_recall_millionths"] == 0
+    assert metrics["goal_coverage_millionths"] == 0
+    assert "candidate_gold_dependency_ids_ignored_as_truth" in receipt.reason_codes
+    assert "candidate_gold_goal_ids_ignored_as_truth" in receipt.reason_codes
+    assert "independent_dependency_gold_unavailable" in receipt.reason_codes
+    assert "independent_goal_gold_unavailable" in receipt.reason_codes
+
+
+def test_absent_gold_never_falls_back_to_candidate_predictions(
+    oracle: PlannerDoctorQualityOracle,
+) -> None:
+    slot = oracle.manifest.slots[0]
+    observation = CandidateArmObservation(
+        case_id=slot.case_id,
+        arm_id="adversarial-missing-gold-arm",
+        output_root_cid="baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        disposition=ObservationDisposition.SUCCEED,
+        predicted_dependency_ids=("dep:prediction",),
+        goal_ids_covered=("goal:prediction",),
+    )
+
+    receipt = oracle.evaluate(observation)
+    metrics = receipt.metric_map()
+
+    assert metrics["dependency_precision_millionths"] == 0
+    assert metrics["dependency_recall_millionths"] == 0
+    assert metrics["goal_coverage_millionths"] == 0
+    assert "independent_dependency_gold_unavailable" in receipt.reason_codes
+    assert "independent_goal_gold_unavailable" in receipt.reason_codes
+
+
+def test_candidate_prediction_error_claims_cannot_score_as_measurements(
+    oracle: PlannerDoctorQualityOracle,
+) -> None:
+    slot = oracle.manifest.slots[0]
+    observation = CandidateArmObservation(
+        case_id=slot.case_id,
+        arm_id="adversarial-zero-error-arm",
+        output_root_cid="baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        disposition=ObservationDisposition.SUCCEED,
+        prediction_error_millionths={
+            "critical_path": 0,
+            "path": 0,
+            "symbol": 0,
+            "resource": 0,
+            "ready_width": 0,
+        },
+    )
+
+    receipt = oracle.evaluate(observation)
+    metrics = receipt.metric_map()
+
+    for metric_name in (
+        "critical_path_prediction_error_millionths",
+        "path_prediction_error_millionths",
+        "symbol_prediction_error_millionths",
+        "resource_prediction_error_millionths",
+        "ready_width_error_millionths",
+    ):
+        assert metrics[metric_name] == 1_000_000
+    assert "candidate_prediction_errors_ignored_as_truth" in receipt.reason_codes
+    assert "independent_prediction_measurements_unavailable" in receipt.reason_codes
+
+    absent = CandidateArmObservation(
+        case_id=slot.case_id,
+        arm_id="adversarial-absent-error-arm",
+        output_root_cid="baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        disposition=ObservationDisposition.SUCCEED,
+    )
+    absent_metrics = oracle.evaluate(absent).metric_map()
+    for metric_name in (
+        "critical_path_prediction_error_millionths",
+        "path_prediction_error_millionths",
+        "symbol_prediction_error_millionths",
+        "resource_prediction_error_millionths",
+        "ready_width_error_millionths",
+    ):
+        assert absent_metrics[metric_name] == 1_000_000
+
+
 def test_receipt_rejects_candidate_truth_flags() -> None:
     with pytest.raises(QualityOracleError, match="cannot define truth"):
         QualityOracleReceipt(

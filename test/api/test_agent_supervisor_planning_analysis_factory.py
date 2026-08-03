@@ -319,6 +319,42 @@ def test_wrong_tree_and_allowlist_fail_closed(tmp_path: Path) -> None:
         PlanningAnalysisFactory(repository_allowlist=())
 
 
+def test_expected_identities_are_compared_to_independent_live_roots(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    factory = PlanningAnalysisFactory(
+        repository_allowlist=(repository,),
+        index_root=tmp_path / "index-identity",
+        build_index=False,
+    )
+    live = factory.analyze(repository).reasoning_snapshot.roots
+
+    # Exact live bindings remain admissible.
+    rebound = factory.analyze(
+        repository,
+        expected_tree_id=live.tree_id,
+        expected_repository_id=live.repository_id,
+    )
+    assert rebound.reasoning_snapshot.roots.tree_id == live.tree_id
+    assert rebound.reasoning_snapshot.roots.repository_id == live.repository_id
+
+    # Adversarial caller labels must not become the value under comparison.
+    with pytest.raises(PlanningAnalysisAllowlistError, match="tree identity"):
+        factory.analyze(repository, expected_tree_id="tree:attacker-controlled")
+    with pytest.raises(PlanningAnalysisAllowlistError, match="repository identity"):
+        factory.analyze(
+            repository,
+            expected_repository_id="repository:attacker-controlled",
+        )
+    # An allowlist identity proves membership in a set, not repository identity.
+    with pytest.raises(PlanningAnalysisAllowlistError, match="repository identity"):
+        factory.analyze(
+            repository,
+            expected_repository_id=factory.allowlist_cid,
+        )
+
+
 def test_secret_material_fails_closed(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     secret_value = "sk-" + "z" * 30

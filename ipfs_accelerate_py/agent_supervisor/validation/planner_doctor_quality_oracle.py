@@ -1023,6 +1023,8 @@ class CandidateArmObservation(_OracleContract):
     satisfied_intent_ir_ids: tuple[str, ...] = ()
     compatible_api_schema_ids: tuple[str, ...] = ()
     predicted_dependency_ids: tuple[str, ...] = ()
+    # Legacy compatibility fields.  They are candidate-owned and are never
+    # consumed as oracle truth by ``PlannerDoctorQualityOracle``.
     gold_dependency_ids: tuple[str, ...] = ()
     first_valid_plan: bool = False
     goal_ids_covered: tuple[str, ...] = ()
@@ -2469,17 +2471,27 @@ def _compute_metrics(
         else 0
     )
 
-    dep_p, dep_r = set_precision_recall_millionths(
-        observation.predicted_dependency_ids,
-        observation.gold_dependency_ids or observation.predicted_dependency_ids,
-    )
-    goal_cov = coverage_millionths(
-        observation.goal_ids_covered,
-        observation.gold_goal_ids or observation.goal_ids_covered,
-    )
+    # ``CandidateArmObservation`` is candidate-owned evidence.  Its legacy
+    # ``gold_*`` fields therefore cannot be used as hidden truth, and an empty
+    # gold set must not fall back to the candidate's prediction.  Version 1 of
+    # the sealed oracle recipe has no independently bound planner dependency or
+    # goal population, so these metrics remain fail-closed until such evidence
+    # is added to an operator-owned contract.
+    dep_p = 0
+    dep_r = 0
+    goal_cov = 0
     first_valid = MILLIONTHS if observation.first_valid_plan else 0
 
-    errors = observation.prediction_error_millionths
+    # Prediction errors are measurements, not candidate claims.  A missing
+    # independent measurement is worst-case for a lower-is-better metric; a
+    # candidate-provided value (including zero) cannot substitute for it.
+    errors = {
+        "critical_path": MILLIONTHS,
+        "path": MILLIONTHS,
+        "symbol": MILLIONTHS,
+        "resource": MILLIONTHS,
+        "ready_width": MILLIONTHS,
+    }
     samples = [
         QualityMetricSample("first_valid_plan_rate_millionths", first_valid),
         QualityMetricSample("goal_coverage_millionths", goal_cov),
@@ -2658,6 +2670,24 @@ class PlannerDoctorQualityOracle:
             reasons.append("candidate_authored_tests_ignored_as_truth")
         if observation.candidate_authored_proof_ids:
             reasons.append("candidate_authored_proofs_ignored_as_truth")
+        if observation.gold_dependency_ids:
+            reasons.append("candidate_gold_dependency_ids_ignored_as_truth")
+        if observation.gold_goal_ids:
+            reasons.append("candidate_gold_goal_ids_ignored_as_truth")
+        if observation.prediction_error_millionths:
+            reasons.append("candidate_prediction_errors_ignored_as_truth")
+
+        # Planner gold/evaluation measurements are not part of the sealed v1
+        # truth recipe.  Record the missing independent evidence explicitly so
+        # downstream qualification cannot mistake fail-closed metric values for
+        # an independently measured result.
+        reasons.extend(
+            (
+                "independent_dependency_gold_unavailable",
+                "independent_goal_gold_unavailable",
+                "independent_prediction_measurements_unavailable",
+            )
+        )
 
         if not observation.judge_mount_ready():
             if not allow_unready_mount:
@@ -2861,7 +2891,11 @@ def perfect_observation_for_slot(
     arm_id: str = "deterministic-symbolic",
     output_root_cid: str = "baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 ) -> CandidateArmObservation:
-    """Build a judge-ready observation that fully satisfies gold truth."""
+    """Build an observation satisfying gold fields exposed by the v1 recipe.
+
+    Planner dependency/goal gold and prediction-error measurements are not in
+    that recipe, so their metrics intentionally remain fail-closed.
+    """
 
     truth = slot.truth
     if truth.expected_disposition is ExpectedDisposition.SUCCEED:
@@ -2898,11 +2932,9 @@ def perfect_observation_for_slot(
         satisfied_intent_ir_ids=truth.intent_ir_constraint_ids,
         compatible_api_schema_ids=truth.api_schema_ids,
         predicted_dependency_ids=("dep:a", "dep:b"),
-        gold_dependency_ids=("dep:a", "dep:b"),
         first_valid_plan=truth.expected_disposition is ExpectedDisposition.SUCCEED
         or slot.pair_family.startswith("plan"),
         goal_ids_covered=("goal:primary",),
-        gold_goal_ids=("goal:primary",),
         blast_radius_changed_lines=(
             min(truth.max_blast_radius_lines, 4)
             if truth.allow_repair

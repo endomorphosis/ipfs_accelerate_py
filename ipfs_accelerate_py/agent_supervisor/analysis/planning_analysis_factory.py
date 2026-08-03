@@ -1245,14 +1245,18 @@ class PlanningAnalysisFactory:
             for item in frontier_payloads
         )
 
-        repository_id = expected_repository_id or _identity(
+        # Compute live identities independently before consulting caller claims.
+        # Selecting ``expected_*`` as the value under comparison makes the
+        # validation tautological and lets an unrelated repository/tree label
+        # rebind the resulting reasoning snapshot.
+        live_repository_id = _identity(
             "repository",
             {
                 "root": str(root),
                 "head_commit_id": snapshot.head_commit_id,
             },
         )
-        tree_id = expected_tree_id or _identity(
+        live_tree_id = _identity(
             "tree",
             {
                 "head_tree_id": snapshot.head_tree_id,
@@ -1260,28 +1264,16 @@ class PlanningAnalysisFactory:
                 "snapshot_id": snapshot.snapshot_id,
             },
         )
-        if expected_tree_id and expected_tree_id != tree_id:
-            # Caller-supplied wrong-tree binding fails closed.
+        if expected_tree_id and expected_tree_id != live_tree_id:
             raise PlanningAnalysisAllowlistError(
                 "expected tree identity does not match the live checkout"
             )
-        if expected_repository_id:
-            # Recompute against the declared repository id for wrong-tree.
-            live = _identity(
-                "repository",
-                {
-                    "root": str(root),
-                    "head_commit_id": snapshot.head_commit_id,
-                },
+        if expected_repository_id and expected_repository_id != live_repository_id:
+            raise PlanningAnalysisAllowlistError(
+                "expected repository identity does not match the live checkout"
             )
-            # When the caller supplies an explicit repository id, accept it as
-            # the authority label only when it matches the live binding or is
-            # the allowlist identity for this root.
-            if expected_repository_id not in {live, repository_id, self.allowlist_cid}:
-                # Still bind the caller id when it was intentional for the root;
-                # reject only when a different allowlisted root was expected.
-                pass
-            repository_id = expected_repository_id
+        repository_id = live_repository_id
+        tree_id = live_tree_id
 
         forest_id = _identity(
             "forest",

@@ -1383,7 +1383,12 @@ class UncertaintyDebt:
 
 @dataclass(frozen=True)
 class StrategySelection:
-    """Least-cost sufficient routing decision for one property class."""
+    """Least-cost routing decision for one property class.
+
+    A selection identifies methods that *can* be executed.  It is not an
+    execution, solver replay, kernel check, or attestation receipt and
+    therefore cannot itself claim achieved assurance.
+    """
 
     property_class: PropertyQuestionClass
     strategy_id: str
@@ -1440,6 +1445,13 @@ class StrategySelection:
         if self.outcome is SelectionOutcome.SELECTED and not self.selected_methods:
             raise AnalysisStrategyRegistryError(
                 "selected outcome requires at least one method"
+            )
+        if self.outcome is SelectionOutcome.SELECTED and not (
+            self.nomination_only
+            or self.achieved_assurance.satisfies(self.required_assurance)
+        ):
+            raise AnalysisStrategyRegistryError(
+                "selected outcome cannot claim an unmet assurance obligation"
             )
 
     @property
@@ -3024,18 +3036,31 @@ class AnalysisStrategyRegistry:
             ):
                 chosen.append(item)
 
+        # ``max_assurance`` is the upper bound a method may reach after an
+        # independently rooted execution and validation.  Routing a declared,
+        # lazy, boolean, or even healthy capability is not that execution.  The
+        # previous implementation copied the upper bound into
+        # ``achieved_assurance``, allowing a declaration alone to appear
+        # solver-checked, kernel-verified, or attested.
         achieved = StrategyAssurance.UNVERIFIED
         for item in chosen:
-            if item.nomination_only:
-                if achieved.rank < StrategyAssurance.CANDIDATE.rank:
-                    achieved = StrategyAssurance.CANDIDATE
-                continue
-            if item.max_assurance.rank > achieved.rank:
-                achieved = item.max_assurance
+            debt.append(
+                UncertaintyDebt(
+                    kind=UncertaintyDebtKind.OPEN_FRONTIER,
+                    method=item.method,
+                    property_class=prop,
+                    message=(
+                        f"method {item.method.value} is routed but has no "
+                        "independently validated execution receipt"
+                    ),
+                    reason_code="execution_receipt_required",
+                )
+            )
 
-        outcome = SelectionOutcome.SELECTED
-        if debt:
-            outcome = SelectionOutcome.PARTIAL
+        # A route with an execution frontier is necessarily partial.  An
+        # execution service may later discharge that frontier with a typed
+        # result receipt; this declaration registry has no such authority.
+        outcome = SelectionOutcome.PARTIAL
 
         return StrategySelection(
             property_class=prop,

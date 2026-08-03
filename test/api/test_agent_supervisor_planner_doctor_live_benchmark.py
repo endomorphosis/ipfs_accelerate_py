@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.validation.planner_doctor_live_benchmark import (
     CACHE_STRATA,
     CONFIGURED_MAXIMUM_WORKERS,
@@ -60,6 +59,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.planner_doctor_live_benchmar
     create_planner_doctor_live_benchmark,
     effective_workers,
     evidence_authority_for_source,
+    invoke_doctor_service,
+    invoke_plan_create_service,
+    invoke_plan_steer_service,
     materialize_hermetic_repository,
     scored_cell_count,
     skip_qualifies_for_promotion,
@@ -436,8 +438,121 @@ def test_doctor_and_security_and_steer_and_degradation_cases(
     assert degrade.inputs_match_across_primary_arms
     for arm in degrade.arm_receipts:
         assert "DeterministicDoctorService@1" in arm.service_interfaces_invoked
-        # Degradation without backends is typed abstention, not invented success.
-        assert arm.typed_abstention or arm.status is ArmExecutionStatus.FAILED
+        # Repository inspection may remain supported under provider loss, but
+        # the read-only path must not invent a plan, repair, or IR proof.
+        assert arm.first_valid_plan is False
+        assert arm.repaired_defect_ids == ()
+        assert arm.satisfied_security_ir_ids == ()
+        assert arm.exact_rollback is False
+        assert "runtime_exact_evidence" in arm.service_reason_codes
+
+
+def test_planner_helpers_execute_live_scan_and_revision_preview(
+    live_manifest: LiveBenchmarkManifest,
+    tmp_path: Path,
+) -> None:
+    create_case = live_manifest.case_by_id("live-hermetic-plan-create")
+    create_repository = materialize_hermetic_repository(
+        create_case,
+        parent=tmp_path / "create-repos",
+        arm_id=ArmId.DETERMINISTIC_SYMBOLIC.value,
+        stratum_id="cold",
+    )
+    try:
+        create_result = invoke_plan_create_service(
+            repository_root=create_repository.root,
+            case=create_case,
+            arm_id=ArmId.DETERMINISTIC_SYMBOLIC.value,
+            provider_call_permission="forbidden",
+        )
+    finally:
+        create_repository.cleanup()
+
+    assert create_result["ok"] is True
+    scan_stage = next(
+        item
+        for item in create_result["receipt"]["stage_results"]
+        if item["stage"] == "scan"
+    )
+    assert scan_stage["passed"] is True
+    assert scan_stage["message"] == "production analysis factory scanned current scope"
+    assert "synthetic_scope_scan" not in scan_stage["blockers"]
+
+    steer_case = live_manifest.case_by_id("live-hermetic-plan-steer")
+    steer_repository = materialize_hermetic_repository(
+        steer_case,
+        parent=tmp_path / "steer-repos",
+        arm_id=ArmId.DETERMINISTIC_SYMBOLIC.value,
+        stratum_id="cold",
+    )
+    try:
+        steer_result = invoke_plan_steer_service(
+            repository_root=steer_repository.root,
+            case=steer_case,
+            arm_id=ArmId.DETERMINISTIC_SYMBOLIC.value,
+            provider_call_permission="forbidden",
+        )
+    finally:
+        steer_repository.cleanup()
+
+    assert steer_result["ok"] is True
+    assert steer_result["disposition"] == "admitted"
+    assert steer_result["first_valid_plan"] is True
+    assert steer_result["receipt"]["read_only"] is True
+    assert steer_result["receipt"]["wrote_task_source"] is False
+    assert steer_result["receipt"]["candidate_plan_root"]
+
+
+def test_doctor_observations_come_from_runtime_not_seed_markers(
+    tmp_path: Path,
+) -> None:
+    case = LiveBenchmarkCase(
+        case_id="live-runtime-authority-regression",
+        pair_family="doctor-diagnosis",
+        execution_kind=ExecutionKind.DOCTOR_DIAGNOSE_REPAIR,
+        partition="hermetic-live",
+        deterministic_seed=17,
+        prompt_template_id="prompt:runtime-authority@1",
+        mutation_recipe_id="none",
+        task_source_seed_id="task:runtime-authority@1",
+        oracle_slot_id="oracle:runtime-authority@1",
+        holdout_case_id="holdout:runtime-authority@1",
+        files=(
+            HermeticFileRecipe(
+                path="pkg/authority.py",
+                content=(
+                    "# renamed_symbol authorization_bypass are population labels\n"
+                    "VALUE = 1\n"
+                ),
+            ),
+        ),
+        seed_defect_markers=("renamed_symbol",),
+        security_markers=("authorization_bypass",),
+    )
+    repository = materialize_hermetic_repository(
+        case,
+        parent=tmp_path / "repos",
+        arm_id=ArmId.DETERMINISTIC_SYMBOLIC.value,
+        stratum_id="cold",
+    )
+    try:
+        result = invoke_doctor_service(
+            repository_root=repository.root,
+            case=case,
+            arm_id=ArmId.DETERMINISTIC_SYMBOLIC.value,
+            provider_call_permission="forbidden",
+        )
+    finally:
+        repository.cleanup()
+
+    assert result["ok"] is True
+    assert result["runtime_interface"] == "DeterministicDoctorRuntime@1"
+    assert result["runtime_stage_receipts"]["evidence"]["status"] == "completed"
+    assert result["runtime_stage_receipts"]["diagnose"]["status"] == "completed"
+    assert "defect:renamed_symbol" not in result["predicted_defect_ids"]
+    assert "security:authorization_bypass" not in result["satisfied_security_ir_ids"]
+    assert result["exact_rollback"] is False
+    assert "security_ir_evaluator_not_bound" in result["reason_codes"]
 
 
 def test_skips_cannot_qualify_promotion(
