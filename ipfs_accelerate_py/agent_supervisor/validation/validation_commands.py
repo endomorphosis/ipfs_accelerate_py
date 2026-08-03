@@ -93,6 +93,19 @@ class ValidationRequirementKind(str, Enum):
     MANUAL_REVIEW = "manual_review"
 
 
+class ValidationDependencyScope(str, Enum):
+    """Whether a validation command needs the Python project environment.
+
+    ``PROJECT_REQUIRED`` is deliberately the default for commands that are
+    unknown, compound, or otherwise not proven independent of project code.
+    The narrower ``DEPENDENCY_NEUTRAL`` value is reserved for reviewed shell
+    predicates whose execution cannot import the project or a Python package.
+    """
+
+    PROJECT_REQUIRED = "project_required"
+    DEPENDENCY_NEUTRAL = "dependency_neutral"
+
+
 @dataclass(frozen=True)
 class ValidationCommand:
     """One atomic shell validation command and its scheduling metadata."""
@@ -511,6 +524,26 @@ _NESTED_SHELL_EXECUTABLES = frozenset(
         "zsh",
     }
 )
+_DEPENDENCY_NEUTRAL_TEST_FILE_OPERATORS = frozenset(
+    {
+        "-L",
+        "-S",
+        "-b",
+        "-c",
+        "-d",
+        "-e",
+        "-f",
+        "-g",
+        "-h",
+        "-p",
+        "-r",
+        "-s",
+        "-u",
+        "-w",
+        "-x",
+    }
+)
+_SHELL_EXPANSION_CHARACTERS = frozenset("*?[]{}$`;&|<>()\n\r")
 
 
 def _has_unquoted_shell_grouping(command: str) -> bool:
@@ -757,6 +790,84 @@ def validation_command_repository_root(command: str) -> str | None:
         structure_tokens[1],
         allow_current_directory=True,
     )
+
+
+def _is_literal_shell_file_operand(value: str) -> bool:
+    """Return whether one predicate operand is free of shell expansion."""
+
+    operand = str(value or "")
+    return (
+        bool(operand)
+        and "\0" not in operand
+        and not operand.startswith("~")
+        and not any(
+            character in _SHELL_EXPANSION_CHARACTERS
+            for character in operand
+        )
+    )
+
+
+def _is_dependency_neutral_file_predicate(
+    segment: Sequence[str],
+) -> bool:
+    """Recognize one exact, literal POSIX ``test`` file predicate."""
+
+    if not segment:
+        return False
+    # Accept only the shell builtin spellings themselves.  A path named
+    # ``test`` or a wrapper such as ``env``/``command`` could execute arbitrary
+    # code and therefore remains project-required.
+    executable = str(segment[0])
+    if executable == "test":
+        arguments = tuple(str(item) for item in segment[1:])
+    elif executable == "[":
+        if len(segment) < 2 or str(segment[-1]) != "]":
+            return False
+        arguments = tuple(str(item) for item in segment[1:-1])
+    else:
+        return False
+    return (
+        len(arguments) == 2
+        and arguments[0] in _DEPENDENCY_NEUTRAL_TEST_FILE_OPERATORS
+        and _is_literal_shell_file_operand(arguments[1])
+    )
+
+
+def validation_command_dependency_scope(
+    command: str,
+) -> ValidationDependencyScope:
+    """Classify a validation command's Python project dependency scope.
+
+    This classifier is intentionally an allowlist.  Only a single literal
+    file predicate, optionally following the already-reviewed leading
+    ``cd <safe-relative> &&`` form, is dependency-neutral.  Every malformed,
+    dynamic, mixed, nested, or unknown command remains project-required.
+    """
+
+    text = normalize_validation_command_text(command)
+    if validation_command_repository_root(text) is None:
+        return ValidationDependencyScope.PROJECT_REQUIRED
+    structure_tokens = _shell_structure_tokens(text)
+    if not structure_tokens:
+        return ValidationDependencyScope.PROJECT_REQUIRED
+    segments = _shell_command_segments(structure_tokens)
+    predicate_segment: Sequence[str]
+    if len(segments) == 1:
+        if tuple(structure_tokens) != segments[0]:
+            return ValidationDependencyScope.PROJECT_REQUIRED
+        predicate_segment = segments[0]
+    elif (
+        len(segments) == 2
+        and len(segments[0]) == 2
+        and segments[0][0] == "cd"
+        and tuple(structure_tokens) == (*segments[0], "&&", *segments[1])
+    ):
+        predicate_segment = segments[1]
+    else:
+        return ValidationDependencyScope.PROJECT_REQUIRED
+    if _is_dependency_neutral_file_predicate(predicate_segment):
+        return ValidationDependencyScope.DEPENDENCY_NEUTRAL
+    return ValidationDependencyScope.PROJECT_REQUIRED
 
 
 def _normalize_path(value: str) -> str:
