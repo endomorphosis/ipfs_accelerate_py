@@ -148,6 +148,10 @@ from ..merge.git_gc import GitGarbageCollector
 from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge.merge_checkpoint import MergeCheckpoint
 from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
+from ..validation.project_dependency_preflight import (
+    PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS,
+    preflight_validation_project_dependencies,
+)
 from ..validation.validation_commands import (
     build_validation_commands,
     infer_validation_impact_paths,
@@ -2442,6 +2446,19 @@ class WorktreeSubmoduleInitializationDeferred(ImplementationRetryDeferred):
             backoff_seconds=30,
         )
         self.failures = normalized_failures
+
+
+class ValidationProjectDependencyPreflightDeferred(
+    ImplementationRetryDeferred
+):
+    """Fail closed when validation dependencies drift before dispatch."""
+
+    def __init__(self, receipt: Mapping[str, Any]) -> None:
+        super().__init__(
+            "approved validation environment dependency drift",
+            backoff_seconds=PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS,
+        )
+        self.receipt = dict(receipt)
 
 
 class ValidationGeneratedArtifactRestoreError(RuntimeError):
@@ -17209,6 +17226,7 @@ class PortalImplementationDaemon:
         implementation_started = False
         lifecycle_race_exception = False
         submodule_setup_deferral = False
+        dependency_setup_deferral = False
 
         try:
             # Publish a preparing lifecycle claim *before* the cleanup-visible
@@ -17303,6 +17321,29 @@ class PortalImplementationDaemon:
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
             workspace_setup["prior_attempt_seed"] = dict(seed_apply)
+            dependency_preflight = (
+                preflight_validation_project_dependencies(
+                    worktree_path,
+                    task.validation,
+                )
+            )
+            workspace_setup["validation_project_dependency_preflight"] = (
+                dependency_preflight
+            )
+            if dependency_preflight.get("passed") is not True:
+                self._record_event(
+                    "validation_project_dependency_preflight_failed",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "worktree_path": str(worktree_path),
+                        "branch": branch_name,
+                        "dependency_preflight": dependency_preflight,
+                    },
+                )
+                raise ValidationProjectDependencyPreflightDeferred(
+                    dependency_preflight
+                )
             command = (
                 []
                 if deterministic_only
@@ -18218,6 +18259,14 @@ class PortalImplementationDaemon:
                 and not implementation_started
                 and not provider_dispatched
             )
+            dependency_setup_deferral = (
+                isinstance(
+                    exc,
+                    ValidationProjectDependencyPreflightDeferred,
+                )
+                and not implementation_started
+                and not provider_dispatched
+            )
             if protected_path_snapshot is not None and not protected_path_violation:
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -18249,6 +18298,22 @@ class PortalImplementationDaemon:
                         "failures": [
                             dict(failure) for failure in exc.failures
                         ],
+                    }
+                )
+            if dependency_setup_deferral:
+                exception_result.update(
+                    {
+                        "reason": (
+                            "validation_project_dependency_preflight_failed"
+                        ),
+                        "infrastructure_failure": True,
+                        "failure_kind": (
+                            LifecycleFailureKind.LIFECYCLE_SETUP.value
+                        ),
+                        "provider_call_allowed": False,
+                        "attempt_consumed": False,
+                        "backoff_seconds": int(exc.backoff_seconds),
+                        "dependency_preflight": dict(exc.receipt),
                     }
                 )
             if protected_path_violation:
@@ -18288,7 +18353,10 @@ class PortalImplementationDaemon:
                         attempt=attempt,
                         exception_result=exception_result,
                     )
-                    if submodule_setup_deferral:
+                    if (
+                        submodule_setup_deferral
+                        or dependency_setup_deferral
+                    ):
                         cleanup_result.update(
                             {
                                 "failure_kind": (
@@ -18387,6 +18455,7 @@ class PortalImplementationDaemon:
             or lifecycle_setup_deferral
             or lifecycle_race_exception
             or submodule_setup_deferral
+            or dependency_setup_deferral
         )
         if attempt_consumed:
             self._record_task_attempt(state, task, attempt)
@@ -18700,6 +18769,12 @@ class PortalImplementationDaemon:
             prior_seed = locals().get("seed_apply")
             if isinstance(prior_seed, Mapping):
                 workspace_setup["prior_attempt_seed"] = dict(prior_seed)
+        if "validation_project_dependency_preflight" not in workspace_setup:
+            dependency_preflight = locals().get("dependency_preflight")
+            if isinstance(dependency_preflight, Mapping):
+                workspace_setup[
+                    "validation_project_dependency_preflight"
+                ] = dict(dependency_preflight)
         result = {
             "task_id": task.task_id,
             "task_cid": self._canonical_ref(task),
@@ -18767,6 +18842,27 @@ class PortalImplementationDaemon:
                         dict(failure)
                         for failure in exception_result.get("failures", ())
                     ],
+                }
+            )
+        if dependency_setup_deferral:
+            result.update(
+                {
+                    "reason": (
+                        "validation_project_dependency_preflight_failed"
+                    ),
+                    "deferred": True,
+                    "infrastructure_failure": True,
+                    "failure_kind": (
+                        LifecycleFailureKind.LIFECYCLE_SETUP.value
+                    ),
+                    "provider_call_allowed": False,
+                    "backoff_seconds": int(
+                        exception_result.get("backoff_seconds")
+                        or PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS
+                    ),
+                    "dependency_preflight": dict(
+                        exception_result.get("dependency_preflight") or {}
+                    ),
                 }
             )
         result["cache_hit"] = result["workspace_setup"]["cache_hit"]
