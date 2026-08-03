@@ -768,7 +768,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-051 Add bounded deterministic synthesis/CEGIS and residual-only hybrid repair
 
-- Status: pending
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
