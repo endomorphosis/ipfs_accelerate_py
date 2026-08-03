@@ -185,7 +185,7 @@ from ..validation.validation_scheduler import (
 )
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
-from .supervisor_runtime import run_process_group_stream
+from .supervisor_runtime import ProcessGroupCancelled, run_process_group_stream
 from .contract_packet_provider_router import (
     IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
     PROVIDER_EXECUTION_RECEIPT_INTERFACE,
@@ -6769,6 +6769,154 @@ class PortalImplementationDaemon:
                 )
         return violation
 
+    def _finalize_canonical_task_cancellation_fence(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        workspace_path: Path,
+        before: Mapping[str, Mapping[str, Any]],
+        cancellation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Clear a fence when its only delta is a re-proved board supersession."""
+
+        if not self.implementation_protected_paths:
+            return {}
+        missing_ephemeral_before = (
+            self._missing_ephemeral_workspace_shared_snapshot(
+                workspace_path,
+                before,
+            )
+        )
+        comparison_before = missing_ephemeral_before or before
+        comparison_workspace = (
+            self.repo_root
+            if missing_ephemeral_before is not None
+            else workspace_path
+        )
+        lock_result = self._acquire_implementation_protected_verification_lock(
+            task_id=task.task_id,
+            attempt=attempt,
+            workspace_path=workspace_path,
+        )
+        if not lock_result.get("acquired", False):
+            return self._implementation_protected_verification_deferred(
+                task_id=task.task_id,
+                attempt=attempt,
+                workspace_path=workspace_path,
+                before=comparison_before,
+                lock_result=lock_result,
+                reason=(
+                    "implementation_protected_path_verification_lock_timeout"
+                    if lock_result.get("reason") == "lock_exists"
+                    else (
+                        "implementation_protected_path_verification_lock_"
+                        f"{lock_result.get('reason') or 'unavailable'}"
+                    )
+                ),
+            )
+
+        result: dict[str, Any] = {}
+        cleared = False
+        try:
+            # The checkout-mutation lease remains held through both identity
+            # reads, canonical-board reproof, mutation classification, and
+            # durable-fence clearance. A peer therefore cannot invalidate the
+            # proof in the former read/classify/unlink window.
+            after = self._implementation_protected_path_snapshot(
+                comparison_workspace
+            )
+            confirmed_after = self._implementation_protected_path_snapshot(
+                comparison_workspace
+            )
+            if after != confirmed_after:
+                result = self._implementation_protected_verification_deferred(
+                    task_id=task.task_id,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    before=comparison_before,
+                    lock_result=lock_result,
+                    reason=(
+                        "implementation_protected_path_verification_"
+                        "snapshot_changed"
+                    ),
+                )
+            else:
+                mutations = self._implementation_protected_path_mutations(
+                    comparison_before,
+                    confirmed_after,
+                )
+                concurrent_update = (
+                    self._authorized_concurrent_protected_path_update(
+                        workspace_path=workspace_path,
+                        before=comparison_before,
+                        after=confirmed_after,
+                        mutations=mutations,
+                    )
+                    if mutations
+                    else {}
+                )
+                if not mutations or concurrent_update:
+                    clear_reason = (
+                        "canonical_task_concurrent_update_accepted"
+                        if concurrent_update
+                        else "canonical_task_completion_cancelled"
+                    )
+                    self._clear_implementation_protected_snapshot(
+                        task_id=task.task_id,
+                        attempt=attempt,
+                        reason=clear_reason,
+                    )
+                    cleared = True
+                    if concurrent_update:
+                        self._record_event(
+                            "implementation_protected_path_"
+                            "concurrent_update_accepted",
+                            {
+                                "task_id": task.task_id,
+                                "attempt": attempt,
+                                "workspace_path": str(workspace_path),
+                                **concurrent_update,
+                            },
+                        )
+                else:
+                    # The board status/CID is not independent authority for a
+                    # protected-path delta: the provider being cancelled can
+                    # write that same board and manufacture its own apparent
+                    # supersession.  Only the committed-history proof above
+                    # may classify an in-flight mutation as a peer update.
+                    # Every unattributed delta remains latched fail-closed.
+                    result = self._implementation_protected_mutation_payload(
+                        task_id=task.task_id,
+                        attempt=attempt,
+                        workspace_path=workspace_path,
+                        before=comparison_before,
+                        after=confirmed_after,
+                        latch=True,
+                    )
+        finally:
+            released = self._release_implementation_protected_verification_lock(
+                lock_result
+            )
+        if not released:
+            lost_lock = self._implementation_protected_verification_deferred(
+                task_id=task.task_id,
+                attempt=attempt,
+                workspace_path=workspace_path,
+                before=comparison_before,
+                lock_result=lock_result,
+                reason="implementation_protected_path_verification_lock_lost",
+            )
+            if cleared:
+                # Clearance cannot remain authoritative if the exact lease was
+                # not released as expected. Persist a global fail-closed latch
+                # even though the per-attempt snapshot was already unlinked.
+                lost_lock = self._latch_implementation_protected_incident(
+                    lost_lock
+                )
+            return lost_lock
+        return result
+
     @staticmethod
     def _protected_mutation_content_preserved(
         before: Mapping[str, Any] | None,
@@ -10764,6 +10912,29 @@ class PortalImplementationDaemon:
             self._record_event("implementation_skipped", result)
             return result
 
+        canonical_cancellation = self._canonical_implementation_cancellation(
+            task
+        )
+        if canonical_cancellation:
+            result = {
+                "skipped": True,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "attempt": self._task_attempt(state, task),
+                **canonical_cancellation,
+            }
+            if (
+                state.active_task_id == task.task_id
+                and state.active_task_cid == self._canonical_ref(task)
+                and not state.implementation_in_progress
+            ):
+                self._clear_active_execution_state(state, clear_task=True)
+                state.selection_idle_reason = str(result["reason"])
+                state.save(self.state_path)
+                result["active_task_cleared"] = True
+            self._record_event("implementation_cancelled", result)
+            return result
+
         started_at = utc_now()
         # No-change gates authorize only this implementation attempt.  Any
         # unconsumed gate from a prior protected-path interruption or failed
@@ -11074,6 +11245,7 @@ class PortalImplementationDaemon:
         task_execution_receipt: dict[str, Any] = {}
         operator_prepared_outputs: tuple[dict[str, Any], ...] = ()
         provider_dispatched = False
+        canonical_task_cancellation: dict[str, Any] = {}
         provider_output_start_offset: int | None = None
         provider_error_text = ""
         provider_error_channel_identity: dict[str, Any] = {}
@@ -11427,8 +11599,21 @@ class PortalImplementationDaemon:
                     if use_provider_error_channel:
                         provider_error_fh = tempfile.TemporaryFile(mode="w+b")
 
+                    def canonical_cancellation_reason() -> str:
+                        observation = (
+                            self._canonical_implementation_cancellation(task)
+                        )
+                        if not observation:
+                            return ""
+                        canonical_task_cancellation.clear()
+                        canonical_task_cancellation.update(observation)
+                        return str(observation.get("reason") or "")
+
                     def invoke_provider() -> subprocess.CompletedProcess[str]:
                         nonlocal provider_dispatched
+                        cancellation_reason = canonical_cancellation_reason()
+                        if cancellation_reason:
+                            raise ProcessGroupCancelled(cancellation_reason)
                         provider_dispatched = True
                         return run_process_group_stream(
                             command,
@@ -11458,6 +11643,8 @@ class PortalImplementationDaemon:
                                 task,
                                 attempt=attempt,
                             ),
+                            cancel_requested=canonical_cancellation_reason,
+                            cancellation_reason="canonical_task_completed",
                         )
 
                     try:
@@ -11880,6 +12067,51 @@ class PortalImplementationDaemon:
                 result["todo_update_result"] = todo_update_result
             self._record_event("implementation_finished", result)
             return result
+        except ProcessGroupCancelled as cancelled_exc:
+            if protected_path_snapshot is not None:
+                protected_path_violation = (
+                    self._finalize_canonical_task_cancellation_fence(
+                        task=task,
+                        attempt=attempt,
+                        workspace_path=workspace_path,
+                        before=protected_path_snapshot,
+                        cancellation=canonical_task_cancellation,
+                    )
+                )
+            finished_at = utc_now()
+            terminal_returncode = 1 if protected_path_violation else 0
+            self._restore_task_attempt(state, task, max(0, attempt - 1))
+            state.last_implementation_started_at = started_at
+            state.last_implementation_finished_at = finished_at
+            state.last_implementation_returncode = terminal_returncode
+            state.last_implementation_log_path = str(log_path)
+            self._mark_implementation_finished(state, finished_at=finished_at)
+            state.save(self.state_path)
+            cancellation = {
+                **canonical_task_cancellation,
+                "cancelled": True,
+                "reason": str(
+                    canonical_task_cancellation.get("reason")
+                    or cancelled_exc.reason
+                ),
+                "task_id": task.task_id,
+                "canonical_task_cid": self._canonical_ref(task),
+                "attempt": attempt,
+                "returncode": terminal_returncode,
+                "attempt_consumed": False,
+                "provider_dispatched": provider_dispatched,
+                "log_path": str(log_path),
+                "context_receipt_path": (
+                    str(context_receipt_path) if context_receipt_path else ""
+                ),
+            }
+            if protected_path_violation:
+                cancellation["protected_path_violation"] = (
+                    protected_path_violation
+                )
+            self._record_event("implementation_cancelled", cancellation)
+            self._record_event("implementation_finished", cancellation)
+            return cancellation
         except subprocess.TimeoutExpired as timeout_exc:
             if protected_path_snapshot is not None:
                 protected_path_violation = (
@@ -15425,6 +15657,12 @@ class PortalImplementationDaemon:
             return {}, {
                 "reason": "completion_task_already_completed",
                 "completed_task_ids": completed,
+                "completed_task_cids": {
+                    task_id: self._identity_for_task(
+                        matches_by_id[task_id][0]
+                    ).canonical_task_cid
+                    for task_id in completed
+                },
             }
         return (
             {
@@ -15433,6 +15671,58 @@ class PortalImplementationDaemon:
             },
             {},
         )
+
+    def _canonical_implementation_cancellation(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Return a cancellation proof when the current board supersedes work.
+
+        Status-only completion preserves a task's canonical CID, so the guard
+        binds both the display ID and CID before treating ``completed`` as an
+        authoritative cancellation.  A visible revision mismatch is also
+        stale work.  Board read/missing-task errors do not manufacture a
+        completion proof; normal source reconciliation remains authoritative
+        for those cases.
+        """
+
+        expected_cid = self._canonical_ref(task)
+        current, error = self._current_completion_task_cids(
+            (task.task_id,),
+            require_pending=True,
+        )
+        current_cid = str(current.get(task.task_id) or "")
+        if str(error.get("reason") or "") == (
+            "completion_task_already_completed"
+        ):
+            completed_cids = error.get("completed_task_cids")
+            current_cid = (
+                str(completed_cids.get(task.task_id) or "")
+                if isinstance(completed_cids, Mapping)
+                else ""
+            )
+        if current_cid and current_cid != expected_cid:
+            return {
+                "cancelled": True,
+                "reason": "canonical_task_revision_changed",
+                "task_id": task.task_id,
+                "canonical_task_cid": expected_cid,
+                "current_canonical_task_cid": current_cid,
+            }
+        if (
+            current_cid == expected_cid
+            and str(error.get("reason") or "")
+            == "completion_task_already_completed"
+        ):
+            return {
+                "cancelled": True,
+                "reason": "canonical_task_completed",
+                "task_id": task.task_id,
+                "canonical_task_cid": expected_cid,
+                "board_status": "completed",
+                "board_observation": dict(error),
+            }
+        return {}
 
     def _completion_task_revision_binding_error(
         self,
@@ -18712,6 +19002,8 @@ class PortalImplementationDaemon:
         task_execution_receipt_path: Path | None = None
         task_execution_receipt: dict[str, Any] = {}
         provider_dispatched = False
+        canonical_task_cancellation: dict[str, Any] = {}
+        canonical_task_cancelled = False
         provider_output_start_offset: int | None = None
         provider_error_text = ""
         provider_error_channel_identity: dict[str, Any] = {}
@@ -18989,8 +19281,21 @@ class PortalImplementationDaemon:
                     if use_provider_error_channel:
                         provider_error_fh = tempfile.TemporaryFile(mode="w+b")
 
+                    def canonical_cancellation_reason() -> str:
+                        observation = (
+                            self._canonical_implementation_cancellation(task)
+                        )
+                        if not observation:
+                            return ""
+                        canonical_task_cancellation.clear()
+                        canonical_task_cancellation.update(observation)
+                        return str(observation.get("reason") or "")
+
                     def invoke_provider() -> subprocess.CompletedProcess[str]:
                         nonlocal provider_dispatched
+                        cancellation_reason = canonical_cancellation_reason()
+                        if cancellation_reason:
+                            raise ProcessGroupCancelled(cancellation_reason)
                         provider_environment = (
                             self._implementation_process_environment(
                                 task,
@@ -19026,6 +19331,8 @@ class PortalImplementationDaemon:
                             max_timeout_seconds=timeout_policy.max_timeout_seconds,
                             progress_paths=(checkpoint_dir,),
                             on_progress=progress_observer,
+                            cancel_requested=canonical_cancellation_reason,
+                            cancellation_reason="canonical_task_completed",
                         )
 
                     try:
@@ -19711,6 +20018,54 @@ class PortalImplementationDaemon:
                             reason="failed_implementation_provider_exited",
                         ),
                     }
+        except ProcessGroupCancelled as cancelled_exc:
+            canonical_task_cancelled = True
+            returncode = 0
+            if protected_path_snapshot is not None:
+                protected_path_violation = (
+                    self._finalize_canonical_task_cancellation_fence(
+                        task=task,
+                        attempt=attempt,
+                        workspace_path=worktree_path,
+                        before=protected_path_snapshot,
+                        cancellation=canonical_task_cancellation,
+                    )
+                )
+            if protected_path_violation:
+                returncode = 1
+            cleanup_result = self._cleanup_failed_setup_worktree(
+                worktree_path,
+                branch_name,
+                task=task,
+                attempt=attempt,
+                exception_result={
+                    "reason": str(
+                        canonical_task_cancellation.get("reason")
+                        or cancelled_exc.reason
+                    ),
+                    "cancelled": True,
+                    "attempt_consumed": False,
+                },
+            )
+            self._record_event(
+                "implementation_cancelled",
+                {
+                    **canonical_task_cancellation,
+                    "cancelled": True,
+                    "reason": str(
+                        canonical_task_cancellation.get("reason")
+                        or cancelled_exc.reason
+                    ),
+                    "task_id": task.task_id,
+                    "canonical_task_cid": self._canonical_ref(task),
+                    "attempt": attempt,
+                    "provider_dispatched": provider_dispatched,
+                    "attempt_consumed": False,
+                    "worktree_path": str(worktree_path),
+                    "branch": branch_name,
+                    "cleanup_result": cleanup_result,
+                },
+            )
         except subprocess.TimeoutExpired as timeout_exc:
             returncode = 124
             if protected_path_snapshot is not None:
@@ -20334,6 +20689,7 @@ class PortalImplementationDaemon:
             or lifecycle_race_exception
             or submodule_setup_deferral
             or dependency_setup_deferral
+            or canonical_task_cancelled
         )
         if attempt_consumed:
             self._record_task_attempt(state, task, attempt)
@@ -20688,6 +21044,11 @@ class PortalImplementationDaemon:
             )
             result["protected_path_violation"] = protected_path_violation
             result["deferred"] = protected_path_external_deferral
+        if canonical_task_cancelled:
+            result.update(canonical_task_cancellation)
+            result["cancelled"] = True
+            result["attempt_consumed"] = False
+            result.setdefault("reason", "canonical_task_completed")
         if lifecycle_race_exception:
             result.update(
                 lifecycle_race_result(

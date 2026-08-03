@@ -218,6 +218,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     ChildSummaryHealthSpec,
     ConfiguredSupervisorEntrypoint,
+    ProcessGroupCancelled,
     RestartPolicy,
     SupervisedChild,
     SupervisedChildSpec,
@@ -17706,6 +17707,432 @@ def test_implementation_daemon_records_unreadable_todo_text(tmp_path):
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "daemon_no_tasks"
     assert events[-1]["reason"] == "todo_read_failed"
+
+
+def test_implementation_dispatch_cancels_fresh_canonical_completion_before_provider(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-050 Retire stale implementation
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/retired.py
+- Validation: python -m pytest -q
+- Acceptance: The canonical board retires this exact task revision.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        worktree_submodule_paths=("src",),
+    )
+    [completed_task] = daemon._load_tasks()
+    stale_selected_task = replace(completed_task, status="todo")
+    canonical_cid = daemon._canonical_ref(stale_selected_task)
+    state = TodoTaskState(
+        active_task_id=stale_selected_task.task_id,
+        active_task_cid=canonical_cid,
+        active_task_title=stale_selected_task.title,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail("completed task reached prompt build"),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("completed task launched provider"),
+    )
+
+    result = daemon._run_implementation(stale_selected_task, state)
+
+    assert result["cancelled"] is True
+    assert result["reason"] == "canonical_task_completed"
+    assert result["canonical_task_cid"] == canonical_cid
+    assert result["board_observation"]["completed_task_cids"] == {
+        stale_selected_task.task_id: canonical_cid
+    }
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["active_task_cleared"] is True
+    persisted = TodoTaskState.load(daemon.state_path)
+    assert persisted.active_task_id == ""
+    assert persisted.implementation_in_progress is False
+    assert persisted.implementation_attempts == {}
+    assert not daemon._implementation_task_claim_path(
+        stale_selected_task.task_id,
+        canonical_task_cid=canonical_cid,
+    ).exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [event["type"] for event in events] == [
+        "implementation_cancelled"
+    ]
+
+    revised = replace(
+        stale_selected_task,
+        title="A different task revision",
+        canonical_task_key="",
+        canonical_task_cid="",
+    )
+    revision_cancel = daemon._canonical_implementation_cancellation(revised)
+    assert revision_cancel["reason"] == "canonical_task_revision_changed"
+
+
+def test_running_implementation_cancels_when_exact_board_task_completes(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_text = """# Agent Todos
+
+## ACCEL-050 Retire running implementation
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/retired.py
+- Validation: python -m pytest -q
+- Acceptance: A peer may retire this exact task while its provider runs.
+"""
+    todo_path.write_text(todo_text, encoding="utf-8")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-provider",
+        use_ephemeral_worktree=False,
+        worktree_submodule_paths=("src",),
+    )
+    [task] = daemon._load_tasks()
+    queue_outcomes: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "implement",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_validation_project_dependency_preflight",
+        lambda **_kwargs: {"passed": True, "receipt_id": "dependency-ok"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **_kwargs: queue_outcomes.append(args),
+    )
+
+    def complete_board_and_cancel(_command, **kwargs):
+        todo_path.write_text(
+            todo_text.replace("- Status: todo", "- Status: completed"),
+            encoding="utf-8",
+        )
+        reason = kwargs["cancel_requested"]()
+        assert reason == "canonical_task_completed"
+        raise ProcessGroupCancelled(reason)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        complete_board_and_cancel,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["cancelled"] is True
+    assert result["reason"] == "canonical_task_completed"
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is False
+    assert result["returncode"] == 0
+    assert queue_outcomes == []
+    persisted = TodoTaskState.load(daemon.state_path)
+    assert persisted.active_task_id == ""
+    assert persisted.implementation_in_progress is False
+    assert persisted.implementation_attempts == {}
+    task_claim = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    resource_claim = daemon._implementation_resource_claim_path("src")
+    assert not task_claim.exists()
+    assert not resource_claim.exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "implementation_started" for event in events)
+    assert any(event["type"] == "implementation_cancelled" for event in events)
+    assert not any(event["type"] == "merge_candidate_enqueued" for event in events)
+
+
+def test_canonical_cancellation_raw_board_delta_latches_under_checkout_lock(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_text = """# Agent Todos
+
+## ACCEL-050 Fence cancellation reproof
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/retired.py
+- Validation:
+- Acceptance: A provider cannot authorize its own protected-board mutation.
+"""
+    todo_path.write_text(todo_text, encoding="utf-8")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_protected_paths=("todo.md",),
+    )
+    [task] = daemon._load_tasks()
+    before = daemon._implementation_protected_path_snapshot(repo)
+    todo_path.write_text(
+        todo_text.replace("- Status: todo", "- Status: completed"),
+        encoding="utf-8",
+    )
+    cancellation = daemon._canonical_implementation_cancellation(task)
+    assert cancellation["reason"] == "canonical_task_completed"
+
+    lock_path = checkout_mutation_lock_path(repo)
+    observations: list[str] = []
+    real_snapshot = daemon._implementation_protected_path_snapshot
+    real_clear = daemon._clear_implementation_protected_snapshot
+    real_latch = daemon._latch_implementation_protected_incident
+    real_release = daemon._release_implementation_protected_verification_lock
+
+    def locked_snapshot(path):
+        assert lock_path.exists()
+        observations.append("snapshot")
+        return real_snapshot(path)
+
+    def locked_clear(**kwargs):
+        assert lock_path.exists()
+        observations.append("clear")
+        return real_clear(**kwargs)
+
+    def locked_latch(payload):
+        assert lock_path.exists()
+        observations.append("latch")
+        return real_latch(payload)
+
+    def locked_release(lock_result):
+        assert lock_path.exists()
+        observations.append("release")
+        return real_release(lock_result)
+
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_snapshot",
+        locked_snapshot,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_clear_implementation_protected_snapshot",
+        locked_clear,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_latch_implementation_protected_incident",
+        locked_latch,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_implementation_protected_verification_lock",
+        locked_release,
+    )
+
+    result = daemon._finalize_canonical_task_cancellation_fence(
+        task=task,
+        attempt=1,
+        workspace_path=repo,
+        before=before,
+        cancellation=cancellation,
+    )
+
+    assert result["reason"] == "implementation_protected_path_mutated"
+    assert result["protected_paths"] == ["todo.md"]
+    assert observations == [
+        "snapshot",
+        "snapshot",
+        "latch",
+        "release",
+    ]
+    incident = json.loads(
+        daemon._implementation_protected_incident_path().read_text(
+            encoding="utf-8"
+        )
+    )
+    assert incident["requires_operator_clearance"] is True
+    assert not lock_path.exists()
+
+
+def test_ephemeral_implementation_cancels_when_exact_board_task_completes(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_text = """# Agent Todos
+
+## ACCEL-050 Retire ephemeral implementation
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation:
+- Acceptance: A peer may retire this exact task while its provider runs.
+"""
+    todo_path.write_text(todo_text, encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", "README.md", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-provider",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=(),
+        merge_target_branch="main",
+    )
+    [task] = daemon._load_tasks()
+    queue_outcomes: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "implement",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_validation_project_dependency_preflight",
+        lambda **_kwargs: {"passed": True, "receipt_id": "dependency-ok"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **_kwargs: queue_outcomes.append(args),
+    )
+
+    def complete_board_and_cancel(_command, **kwargs):
+        todo_path.write_text(
+            todo_text.replace("- Status: todo", "- Status: completed"),
+            encoding="utf-8",
+        )
+        reason = kwargs["cancel_requested"]()
+        assert reason == "canonical_task_completed"
+        raise ProcessGroupCancelled(reason)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        complete_board_and_cancel,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["cancelled"] is True
+    assert result["reason"] == "canonical_task_completed"
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is False
+    assert result["returncode"] == 0
+    assert result["merge_result"]["reason"] == "not_attempted"
+    assert queue_outcomes == []
+    assert result["cleanup_result"]["cleaned"] is True
+    assert not Path(result["worktree_path"]).exists()
+    persisted = TodoTaskState.load(daemon.state_path)
+    assert persisted.active_task_id == ""
+    assert persisted.implementation_in_progress is False
+    assert persisted.implementation_attempts == {}
+    task_claim = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    assert not task_claim.exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "implementation_started" for event in events)
+    assert any(event["type"] == "implementation_cancelled" for event in events)
+    assert not any(event["type"] == "merge_candidate_enqueued" for event in events)
 
 
 def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
