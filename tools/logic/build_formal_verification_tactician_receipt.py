@@ -329,6 +329,85 @@ P0_FINDING_GATE_MAP: Final[dict[str, tuple[str, ...]]] = {
     ),
 }
 
+P0_RESOLUTION_EVIDENCE_SCHEMA: Final = (
+    "formal-verification-p0-resolution-evidence/v1"
+)
+
+# A resolved baseline row cannot clear a hard-zero gate merely by changing its
+# status string.  Each known P0 has a minimum implementation/test closure whose
+# current bytes must be content-bound and whose introducing commit must be a
+# reachable ancestor that actually touched the named path.
+P0_RESOLUTION_EVIDENCE_REQUIREMENTS: Final[
+    dict[str, dict[str, frozenset[tuple[str, str]]]]
+] = {
+    "receipt_verification_fail_open": {
+        "implementation_artifacts": frozenset(
+            {
+                (
+                    "ipfs_datasets_py",
+                    "ipfs_datasets_py/logic/verification_api.py",
+                ),
+            }
+        ),
+        "validation_tests": frozenset(
+            {
+                (
+                    "ipfs_datasets_py",
+                    "tests/unit/logic/test_verification_receipt_adversarial.py",
+                ),
+                ("root", "test/api/test_logic_receipt_authority_boundary.py"),
+            }
+        ),
+    },
+    "public_counterexample_raw_leak": {
+        "implementation_artifacts": frozenset(
+            {
+                (
+                    "ipfs_datasets_py",
+                    "ipfs_datasets_py/logic/verification_api.py",
+                ),
+                (
+                    "ipfs_datasets_py",
+                    "ipfs_datasets_py/logic/software_verification/"
+                    "counterexamples/contracts.py",
+                ),
+            }
+        ),
+        "validation_tests": frozenset(
+            {
+                (
+                    "ipfs_datasets_py",
+                    "tests/unit/logic/test_counterexample_public_boundary.py",
+                ),
+                (
+                    "root",
+                    "test/api/test_counterexample_cross_repository_contract.py",
+                ),
+            }
+        ),
+    },
+    "structural_repair_as_closure": {
+        "implementation_artifacts": frozenset(
+            {
+                (
+                    "root",
+                    "ipfs_accelerate_py/agent_supervisor/planning/"
+                    "formal_replanner.py",
+                ),
+            }
+        ),
+        "validation_tests": frozenset(
+            {
+                (
+                    "root",
+                    "test/api/"
+                    "test_agent_supervisor_formal_replanner_verifier_closure.py",
+                ),
+            }
+        ),
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # Repo / git helpers
@@ -385,6 +464,34 @@ def _git_stdout(
     if allow_empty:
         return value
     return value or None
+
+
+def _git_blob_sha256(
+    repository: Path,
+    *,
+    commit: str,
+    path: str,
+) -> str | None:
+    """Read one committed blob without checkout and return its SHA-256."""
+
+    environment = os.environ.copy()
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repository), "show", f"{commit}:{path}"],
+            check=False,
+            capture_output=True,
+            text=False,
+            timeout=GIT_TIMEOUT_SECONDS,
+            env=environment,
+            shell=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    return sha256_bytes(completed.stdout)
 
 
 def sha256_bytes(payload: bytes) -> str:
@@ -945,10 +1052,256 @@ def _benchmark_hard_gate_evidence(
     }
 
 
+def _resolution_repository(
+    repo_root: Path,
+    repository_name: str,
+) -> Path | None:
+    """Resolve the closed repository vocabulary used by P0 evidence."""
+
+    if repository_name == "root":
+        return repo_root
+    if repository_name == "ipfs_datasets_py":
+        return repo_root / "ipfs_datasets_py"
+    return None
+
+
+def _normalized_evidence_path(value: Any) -> str | None:
+    """Return a safe repository-relative POSIX path, or ``None``."""
+
+    text = str(value or "").strip()
+    candidate = Path(text)
+    if (
+        not text
+        or "\\" in text
+        or candidate.is_absolute()
+        or "." in candidate.parts
+        or ".." in candidate.parts
+        or candidate.as_posix() != text
+    ):
+        return None
+    return text
+
+
+def _verify_p0_resolution_evidence(
+    *,
+    finding_id: str,
+    resolution: Any,
+    repo_root: Path | None,
+) -> dict[str, Any]:
+    """Verify content-, commit-, and test-bound evidence for one P0 closure."""
+
+    failures: list[str] = []
+    normalized_commits: list[dict[str, str]] = []
+    normalized_evidence: dict[str, list[dict[str, str]]] = {
+        "implementation_artifacts": [],
+        "validation_tests": [],
+    }
+    referenced_commits: set[tuple[str, str]] = set()
+    requirements = P0_RESOLUTION_EVIDENCE_REQUIREMENTS.get(finding_id)
+    if requirements is None:
+        failures.append("finding_resolution_policy_missing")
+    if not isinstance(resolution, Mapping):
+        return {
+            "valid": False,
+            "failures": ["resolution_evidence_missing_or_invalid"],
+            "schema_version": None,
+            "implementation_commits": [],
+            **normalized_evidence,
+        }
+    schema_version = str(resolution.get("schema_version") or "").strip()
+    if schema_version != P0_RESOLUTION_EVIDENCE_SCHEMA:
+        failures.append("resolution_schema_invalid")
+    if repo_root is None:
+        failures.append("resolution_repository_root_missing")
+        normalized_root = None
+    else:
+        normalized_root = repo_root.resolve()
+
+    raw_commits = resolution.get("implementation_commits")
+    commit_paths: dict[tuple[str, str], set[str]] = {}
+    seen_commits: set[tuple[str, str]] = set()
+    if not isinstance(raw_commits, list) or not raw_commits:
+        failures.append("resolution_implementation_commits_missing_or_invalid")
+    else:
+        for index, raw_commit in enumerate(raw_commits):
+            label = f"resolution_commit_{index}"
+            if not isinstance(raw_commit, Mapping):
+                failures.append(f"{label}_not_mapping")
+                continue
+            repository_name = str(raw_commit.get("repository") or "").strip()
+            commit = str(raw_commit.get("commit") or "").strip().lower()
+            binding = (repository_name, commit)
+            if binding in seen_commits:
+                failures.append(f"{label}_duplicate")
+                continue
+            seen_commits.add(binding)
+            repository = (
+                _resolution_repository(normalized_root, repository_name)
+                if normalized_root is not None
+                else None
+            )
+            if repository is None:
+                failures.append(f"{label}_repository_invalid")
+                continue
+            if not COMMIT_RE.fullmatch(commit):
+                failures.append(f"{label}_identity_invalid")
+                continue
+            resolved_commit = _git_stdout(
+                repository,
+                "rev-parse",
+                "--verify",
+                f"{commit}^{{commit}}",
+            )
+            if resolved_commit != commit:
+                failures.append(f"{label}_object_missing")
+                continue
+            ancestry = _git(repository, "merge-base", "--is-ancestor", commit, "HEAD")
+            if ancestry is None or ancestry.returncode != 0:
+                failures.append(f"{label}_not_current_ancestor")
+                continue
+            changed = _git_stdout(
+                repository,
+                "diff-tree",
+                "--no-commit-id",
+                "--name-only",
+                "-r",
+                commit,
+                allow_empty=True,
+            )
+            if changed is None:
+                failures.append(f"{label}_changed_paths_unavailable")
+                continue
+            commit_paths[binding] = {
+                line.strip() for line in changed.splitlines() if line.strip()
+            }
+            normalized_commits.append(
+                {"repository": repository_name, "commit": commit}
+            )
+
+    for evidence_kind in ("implementation_artifacts", "validation_tests"):
+        raw_entries = resolution.get(evidence_kind)
+        observed_pairs: set[tuple[str, str]] = set()
+        if not isinstance(raw_entries, list) or not raw_entries:
+            failures.append(f"resolution_{evidence_kind}_missing_or_invalid")
+            continue
+        for index, raw_entry in enumerate(raw_entries):
+            label = f"resolution_{evidence_kind}_{index}"
+            if not isinstance(raw_entry, Mapping):
+                failures.append(f"{label}_not_mapping")
+                continue
+            repository_name = str(raw_entry.get("repository") or "").strip()
+            path = _normalized_evidence_path(raw_entry.get("path"))
+            bound_commit = str(raw_entry.get("commit") or "").strip().lower()
+            declared_identity = str(
+                raw_entry.get("content_identity") or ""
+            ).strip()
+            repository = (
+                _resolution_repository(normalized_root, repository_name)
+                if normalized_root is not None
+                else None
+            )
+            if repository is None:
+                failures.append(f"{label}_repository_invalid")
+                continue
+            if path is None:
+                failures.append(f"{label}_path_invalid")
+                continue
+            pair = (repository_name, path)
+            if pair in observed_pairs:
+                failures.append(f"{label}_duplicate")
+                continue
+            observed_pairs.add(pair)
+            binding = (repository_name, bound_commit)
+            if not COMMIT_RE.fullmatch(bound_commit) or binding not in commit_paths:
+                failures.append(f"{label}_bound_commit_missing_or_invalid")
+                continue
+            referenced_commits.add(binding)
+            if path not in commit_paths[binding]:
+                failures.append(f"{label}_not_touched_by_bound_commit")
+                continue
+            candidate = repository / path
+            try:
+                within_repository = candidate.resolve().is_relative_to(
+                    repository.resolve()
+                )
+            except OSError:
+                within_repository = False
+            if (
+                not within_repository
+                or candidate.is_symlink()
+                or not candidate.is_file()
+            ):
+                failures.append(f"{label}_current_file_missing_or_unsafe")
+                continue
+            tracked = _git(
+                repository,
+                "ls-files",
+                "--error-unmatch",
+                "--",
+                path,
+            )
+            if tracked is None or tracked.returncode != 0:
+                failures.append(f"{label}_current_file_untracked")
+                continue
+            current_identity = sha256_file(candidate)
+            if (
+                not SHA256_RE.fullmatch(
+                    declared_identity.removeprefix("sha256:")
+                )
+                or current_identity != declared_identity
+            ):
+                failures.append(f"{label}_content_identity_mismatch")
+                continue
+            committed_identity = _git_blob_sha256(
+                repository,
+                commit=bound_commit,
+                path=path,
+            )
+            if committed_identity != declared_identity:
+                failures.append(f"{label}_commit_blob_identity_mismatch")
+                continue
+            normalized_evidence[evidence_kind].append(
+                {
+                    "repository": repository_name,
+                    "path": path,
+                    "content_identity": declared_identity,
+                    "implementation_commit": bound_commit,
+                }
+            )
+
+        required_pairs = (
+            requirements.get(evidence_kind, frozenset())
+            if requirements is not None
+            else frozenset()
+        )
+        missing_pairs = sorted(required_pairs - observed_pairs)
+        for repository_name, path in missing_pairs:
+            failures.append(
+                f"resolution_{evidence_kind}_required_evidence_missing:"
+                f"{repository_name}:{path}"
+            )
+
+    for repository_name, commit in sorted(set(commit_paths) - referenced_commits):
+        failures.append(
+            "resolution_unreferenced_implementation_commit:"
+            f"{repository_name}:{commit}"
+        )
+
+    return {
+        "valid": not failures,
+        "failures": sorted(set(failures)),
+        "schema_version": schema_version or None,
+        "implementation_commits": normalized_commits,
+        **normalized_evidence,
+    }
+
+
 def _baseline_p0_gate_pressure(
     baseline: Mapping[str, Any] | None,
+    *,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Map unresolved P0 findings to the hard-zero dimensions they invalidate."""
+    """Map unresolved or unverified P0 findings to invalidated hard-zero gates."""
 
     gate_pressure = {
         gate: 0
@@ -957,6 +1310,8 @@ def _baseline_p0_gate_pressure(
     }
     open_findings: list[dict[str, Any]] = []
     open_p0_findings: list[dict[str, Any]] = []
+    resolved_p0_findings: list[dict[str, Any]] = []
+    invalid_p0_resolutions: list[dict[str, Any]] = []
     failures: list[str] = []
 
     if baseline is None:
@@ -967,6 +1322,8 @@ def _baseline_p0_gate_pressure(
             "gate_pressure": gate_pressure,
             "open_findings": open_findings,
             "open_p0_findings": open_p0_findings,
+            "resolved_p0_findings": resolved_p0_findings,
+            "invalid_p0_resolutions": invalid_p0_resolutions,
             "failures": failures,
         }
 
@@ -979,6 +1336,8 @@ def _baseline_p0_gate_pressure(
             "gate_pressure": gate_pressure,
             "open_findings": open_findings,
             "open_p0_findings": open_p0_findings,
+            "resolved_p0_findings": resolved_p0_findings,
+            "invalid_p0_resolutions": invalid_p0_resolutions,
             "failures": failures,
         }
 
@@ -989,21 +1348,57 @@ def _baseline_p0_gate_pressure(
             for gate in gate_pressure:
                 gate_pressure[gate] = max(gate_pressure[gate], 1)
             continue
-        if str(finding.get("status") or "").strip().lower() != "open":
-            continue
         finding_id = str(finding.get("id") or "").strip()
         severity = str(finding.get("severity") or "").strip().lower()
+        status = str(finding.get("status") or "").strip().lower()
         projected = {
             "id": finding_id or None,
             "severity": severity or None,
+            "status": status or None,
             "summary": finding.get("summary"),
         }
-        open_findings.append(projected)
         if severity != "p0":
+            if status == "open":
+                open_findings.append(projected)
             continue
+        if status == "resolved":
+            resolution = _verify_p0_resolution_evidence(
+                finding_id=finding_id,
+                resolution=finding.get("resolution_evidence"),
+                repo_root=repo_root,
+            )
+            resolved_projection = {
+                **projected,
+                "resolution_evidence": resolution,
+            }
+            if resolution["valid"]:
+                resolved_p0_findings.append(resolved_projection)
+                continue
+            invalid_p0_resolutions.append(resolved_projection)
+            failures.append("invalid_p0_resolution_evidence")
+        else:
+            if status == "open":
+                open_findings.append(projected)
+                open_p0_findings.append(
+                    {
+                        **projected,
+                        "mapped_hard_zero_gates": list(
+                            P0_FINDING_GATE_MAP.get(finding_id, all_local_gates)
+                        ),
+                    }
+                )
+            else:
+                invalid_p0_resolutions.append(
+                    {
+                        **projected,
+                        "resolution_evidence": {
+                            "valid": False,
+                            "failures": ["p0_finding_status_invalid"],
+                        },
+                    }
+                )
+                failures.append("invalid_p0_resolution_evidence")
         gates = P0_FINDING_GATE_MAP.get(finding_id, all_local_gates)
-        mapped = {**projected, "mapped_hard_zero_gates": list(gates)}
-        open_p0_findings.append(mapped)
         for gate in gates:
             gate_pressure[gate] = gate_pressure.get(gate, 0) + 1
 
@@ -1011,6 +1406,8 @@ def _baseline_p0_gate_pressure(
         "gate_pressure": gate_pressure,
         "open_findings": open_findings,
         "open_p0_findings": open_p0_findings,
+        "resolved_p0_findings": resolved_p0_findings,
+        "invalid_p0_resolutions": invalid_p0_resolutions,
         "failures": sorted(set(failures)),
     }
 
@@ -1026,8 +1423,9 @@ def derive_hard_zero_gates(
 
     Content-addressed certificate disagreement evidence and a live benchmark
     cohort are required. Fixture/synthetic cohorts never clear deployment
-    gates. Open P0 baseline findings apply nonzero pressure until explicitly
-    resolved; an unknown P0 conservatively affects every local hard-zero gate.
+    gates. Open P0 findings and resolved rows without reachable, content-bound
+    implementation/test evidence apply nonzero pressure; an unknown P0
+    conservatively affects every local hard-zero gate.
     """
 
     missing_measurements: list[str] = []
@@ -1098,7 +1496,10 @@ def derive_hard_zero_gates(
             for failure in benchmark_evidence.get("failures") or []
         )
 
-    baseline_pressure = _baseline_p0_gate_pressure(baseline)
+    baseline_pressure = _baseline_p0_gate_pressure(
+        baseline,
+        repo_root=repo_root,
+    )
     missing_measurements.extend(
         f"baseline.{failure}"
         for failure in baseline_pressure.get("failures") or []
@@ -1120,6 +1521,11 @@ def derive_hard_zero_gates(
     open_p0_findings = _safe_list(baseline_pressure.get("open_p0_findings"))
     if open_p0_findings:
         missing_measurements.append("baseline.unresolved_open_p0_findings")
+    invalid_p0_resolutions = _safe_list(
+        baseline_pressure.get("invalid_p0_resolutions")
+    )
+    if invalid_p0_resolutions:
+        missing_measurements.append("baseline.invalid_p0_resolution_evidence")
 
     return {
         "false_proof_count": int(false_proof),
@@ -1142,6 +1548,10 @@ def derive_hard_zero_gates(
             ),
             "open_baseline_findings": baseline_pressure.get("open_findings") or [],
             "open_p0_findings": open_p0_findings,
+            "resolved_p0_findings": (
+                baseline_pressure.get("resolved_p0_findings") or []
+            ),
+            "invalid_p0_resolutions": invalid_p0_resolutions,
             "p0_gate_pressure": pressure,
         },
     }
