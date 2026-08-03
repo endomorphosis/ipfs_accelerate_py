@@ -11620,7 +11620,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--implementation-command",
         default="",
-        help="Command used by the daemon for implementation. Defaults to codex exec --full-auto.",
+        help=(
+            "Command used by the daemon for implementation. When omitted, "
+            "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER selects the "
+            "provider policy; auto prefers ready Grok and otherwise starts "
+            "with Codex."
+        ),
     )
     parser.add_argument(
         "--implementation-protected-path",

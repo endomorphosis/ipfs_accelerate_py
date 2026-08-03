@@ -332,6 +332,16 @@ PROVIDER_RETRY_MONTHS = {
     "dec": 12,
 }
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+GROK_CODEX_PROVIDER_ALIASES = frozenset(
+    {
+        "grok-codex",
+        "grok_codex",
+        "grok->codex",
+        "grok→codex",
+        "grok-then-codex",
+        "grok_then_codex",
+    }
+)
 _GOOSE_BIN_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_BIN"
 _GOOSE_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_MODEL"
 _GOOSE_MAX_TURNS_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_MAX_TURNS"
@@ -896,22 +906,21 @@ def _grok_binary() -> str | None:
 
 
 def _grok_cli_available() -> bool:
-    """True when llm_router's grok_cli provider can be constructed."""
+    """True only when the Grok CLI binary and headless auth are available."""
 
+    if not _grok_binary():
+        return False
     try:
-        from ...llm_router import get_llm_provider
+        from ...llm_router import _grok_cli_auth_available
 
-        return get_llm_provider("grok_cli") is not None
+        return bool(_grok_cli_auth_available())
     except Exception:
-        if not _grok_binary():
-            return False
+        auth = Path.home() / ".grok" / "auth.json"
         try:
-            from ...llm_router import _grok_cli_auth_available
-
-            return bool(_grok_cli_auth_available())
-        except Exception:
-            auth = Path.home() / ".grok" / "auth.json"
-            return auth.is_file() or bool(os.environ.get("XAI_API_KEY", "").strip())
+            auth_available = auth.is_file() and auth.stat().st_size > 0
+        except OSError:
+            auth_available = False
+        return auth_available or bool(os.environ.get("XAI_API_KEY", "").strip())
 
 
 def _grok_cli_command(*, workspace_path: Path) -> list[str]:
@@ -981,6 +990,74 @@ _COPILOT_MODEL_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MODEL"
 _COPILOT_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_EFFORT"
 _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
 _COPILOT_MAX_CONTINUES_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MAX_CONTINUES"
+
+
+def _codex_implementation_command(
+    *,
+    codex: str,
+    workspace_path: Path,
+    codex_context_window: int | None = None,
+) -> list[str]:
+    """Build the direct stdin-driven Codex implementation command."""
+
+    codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
+    codex_context = (
+        str(codex_context_window)
+        if codex_context_window is not None
+        else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+    )
+    codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
+    codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
+    codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
+
+    command = [
+        codex,
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        str(workspace_path),
+    ]
+    if codex_model:
+        command.extend(["-m", codex_model])
+    if codex_context:
+        command.extend(["-c", f"model_context_window={codex_context}"])
+    if codex_reasoning:
+        command.extend(["-c", f'model_reasoning_effort="{codex_reasoning}"'])
+    if codex_max_threads:
+        command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
+    if codex_max_depth:
+        command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
+    command.append("-")
+    return command
+
+
+def _ordered_provider_fallback_command(
+    *,
+    workspace_path: Path,
+    primary_provider: str,
+    primary_command: Sequence[str],
+    fallback_provider: str,
+    fallback_command: Sequence[str],
+) -> list[str]:
+    """Build the no-shell ordered provider runner command."""
+
+    runner_path = Path(__file__).resolve().parents[1] / "provider_fallback_runner.py"
+    if not runner_path.is_file():
+        raise RuntimeError(f"provider_fallback_runner missing at {runner_path}")
+    return [
+        sys.executable,
+        str(runner_path),
+        "--workspace",
+        str(workspace_path.resolve()),
+        "--primary-provider",
+        primary_provider,
+        "--fallback-provider",
+        fallback_provider,
+        "--primary-command-json",
+        json.dumps(list(primary_command), separators=(",", ":")),
+        "--fallback-command-json",
+        json.dumps(list(fallback_command), separators=(",", ":")),
+    ]
 
 
 def _copilot_fallback_command(
@@ -8316,6 +8393,8 @@ class PortalImplementationDaemon:
             "spark",
         }:
             return {"goose", "meta_spark", "meta", "provider"}
+        if provider in GROK_CODEX_PROVIDER_ALIASES:
+            return {"grok", "xai", "codex", "provider"}
         if provider in {
             "grok",
             "grok_cli",
@@ -36687,6 +36766,43 @@ class PortalImplementationDaemon:
             "spark",
         }
         force_codex = provider in {"codex", "copilot", "openai"}
+        ordered_grok_codex = provider in GROK_CODEX_PROVIDER_ALIASES
+
+        if ordered_grok_codex:
+            codex = shutil.which("codex")
+            if not codex:
+                raise RuntimeError(
+                    "Implementation provider "
+                    f"{provider!r} requires the Codex CLI as its fallback"
+                )
+            codex_context_window = (
+                self._implementation_provider_context_window_for_task(task)[0]
+                if task is not None
+                else None
+            )
+            codex_command = _codex_implementation_command(
+                codex=codex,
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
+            )
+            if not grok_ready:
+                return codex_command
+            try:
+                grok_command = _grok_cli_command(
+                    workspace_path=workspace_path,
+                )
+            except (OSError, RuntimeError):
+                # Readiness can change between the probe and command
+                # construction. The explicit policy still has a required,
+                # already-resolved Codex fallback.
+                return codex_command
+            return _ordered_provider_fallback_command(
+                workspace_path=workspace_path,
+                primary_provider="grok",
+                primary_command=grok_command,
+                fallback_provider="codex",
+                fallback_command=codex_command,
+            )
 
         # Prefer only when the binary is actually resolvable so an auth-only
         # readiness signal does not block auto-fallback to codex/copilot.
@@ -36733,39 +36849,11 @@ class PortalImplementationDaemon:
                 codex_context_window=codex_context_window,
             )
         if codex:
-            # Build codex command with full capability flags
-            codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
-            codex_context = (
-                str(codex_context_window)
-                if codex_context_window is not None
-                else os.environ.get(
-                    _CODEX_CONTEXT_WINDOW_ENV,
-                    "200000",
-                ).strip()
+            return _codex_implementation_command(
+                codex=codex,
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
             )
-            codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
-            codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
-            codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
-
-            cmd = [
-                codex,
-                "exec",
-                "--dangerously-bypass-approvals-and-sandbox",
-                "-C",
-                str(workspace_path),
-            ]
-            if codex_model:
-                cmd.extend(["-m", codex_model])
-            if codex_context:
-                cmd.extend(["-c", f"model_context_window={codex_context}"])
-            if codex_reasoning:
-                cmd.extend(["-c", f'model_reasoning_effort="{codex_reasoning}"'])
-            if codex_max_threads:
-                cmd.extend(["-c", f"agents.max_threads={codex_max_threads}"])
-            if codex_max_depth:
-                cmd.extend(["-c", f"agents.max_depth={codex_max_depth}"])
-            cmd.append("-")
-            return cmd
         if grok_ready:
             return _grok_cli_command(workspace_path=workspace_path)
         if goose_meta_ready:
@@ -39247,7 +39335,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--implementation-command",
         default="",
-        help="Command used for implementation. Defaults to codex exec with local Copilot CLI fallback when available.",
+        help=(
+            "Command used for implementation. When omitted, "
+            f"{IMPLEMENTATION_PROVIDER_ENV} selects the provider policy; "
+            "auto prefers ready Grok and otherwise starts with Codex."
+        ),
     )
     parser.add_argument(
         "--implementation-protected-path",
