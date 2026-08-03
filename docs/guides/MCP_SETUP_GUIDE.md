@@ -1,69 +1,191 @@
-# MCP Setup
+# MCP Setup Guide
 
-The canonical MCP runtime is `ipfs_accelerate_py.mcp_server`. The
-`ipfs_accelerate_py.mcp` package remains a compatibility facade. This guide
-covers local development startup and basic health checks; production
-authentication, policy, and transport choices belong in the MCP++ records.
+**Status:** Current
 
-## Install
+**Audience:** Operators and developers starting a local or embedded MCP server
+
+**Scope:** Install extras, choose a canonical entrypoint, configure host/bootstrap
+flags, run health checks, and recognize compatibility/auto-install pitfalls
+
+**Non-goals:** Full tool catalog contracts (see [MCP server reference](../MCP_SERVER.md));
+MCP++ chapter evidence (`mcpplusplus/`); production auth product design
+
+**Last verified:** `49c76b69f` (2026-08-03); commands and flags checked against
+`pyproject.toml`, `ipfs_accelerate_py/mcp_server/`, `ipfs_accelerate_py/cli.py`,
+and `docs/architecture/MCP_RUNTIME.md`
+
+The canonical MCP runtime is `ipfs_accelerate_py.mcp_server`. Start there.
+The `ipfs_accelerate_py.mcp` package is a **compatibility facade** for older
+imports and the TaskQueue/libp2p worker CLI. It is not the preferred ownership
+path for new setups.
+
+## 1. Choose an entrypoint (canonical first)
+
+| Goal | Command / API | Notes |
+| --- | --- | --- |
+| Functional HTTP MCP host | `python -m ipfs_accelerate_py.mcp_server.fastapi_service` | **Preferred** transport host; `IPFS_MCP_*` env |
+| Embed in Python | `from ipfs_accelerate_py.mcp_server import create_server` | Canonical builder; mount a transport yourself |
+| Operator CLI + dashboard | `python -m ipfs_accelerate_py.cli mcp start` | Product surface; default port **9000** |
+| TaskQueue / libp2p worker host | `python -m ipfs_accelerate_py.mcp.cli …` | **Compatibility** path; may auto-install deps on import |
+
+Avoid routing new work through the compatibility package unless you need its
+worker flags. Bare `python -m ipfs_accelerate_py.mcp_server` without
+`--fastapi` is a lifecycle shell, not a full MCP client host—use
+`fastapi_service` instead.
+
+## 2. Install
+
+Published package:
 
 ```bash
 python -m pip install "ipfs-accelerate-py[mcp]"
 ```
 
-For P2P TaskQueue support, install the `mcp-p2p` extra and configure the
-external queue/service separately.
-
-## Start the server
-
-The product CLI is the normal entry point:
+Editable checkout:
 
 ```bash
-ipfs-accelerate mcp start --host 127.0.0.1 --port 9000
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -e ".[mcp]"
 ```
 
-Useful options include `--dashboard`, `--open-browser`,
-`--disable-autoscaler`, and `--no-p2p`. Keep development servers on localhost
-unless authentication and network policy are configured.
-
-Check health from another terminal:
+Optional networking extra (separate from basic MCP HTTP):
 
 ```bash
-ipfs-accelerate mcp status --host 127.0.0.1 --port 9000
+python -m pip install "ipfs-accelerate-py[mcp-p2p]"
 ```
 
-The exact server process and configured paths can be inspected with:
+| Extra | Installs | Does not prove |
+| --- | --- | --- |
+| `mcp` | FastMCP, Flask stack, related helpers | Live providers, GPUs, or auth |
+| `mcp-p2p` / `libp2p` | libp2p and related wire deps | Reachable mesh or durable queue |
+| `all` | Broad app deps (no native P2P by default) | Production readiness |
+
+Install extras **before** first import in locked-down or production
+environments. See [Auto-install caveats](#6-auto-install-caveats).
+
+## 3. Start the canonical FastAPI host
 
 ```bash
-ipfs-accelerate mcp --help
-ipfs-accelerate mcp start --help
-```
-
-## Direct module entry points
-
-Use these when embedding or testing a specific transport:
-
-```bash
-python -m ipfs_accelerate_py.mcp.cli --host 127.0.0.1 --port 9000
+export IPFS_MCP_HOST=127.0.0.1
+export IPFS_MCP_PORT=8000
+export IPFS_MCP_MOUNT_PATH=/mcp
+export IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP=1
 python -m ipfs_accelerate_py.mcp_server.fastapi_service
 ```
 
-Programmatic construction uses the canonical package:
+| Variable | Default | Role |
+| --- | --- | --- |
+| `IPFS_MCP_HOST` | `0.0.0.0` | Bind host — use `127.0.0.1` for local-only |
+| `IPFS_MCP_PORT` | `8000` | Bind port |
+| `IPFS_MCP_MOUNT_PATH` | `/mcp` | MCP mount path |
+| `IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP` | off | Attach hierarchical meta-tools and MCP++ services |
+
+Without the bootstrap flag, `create_server` still builds a base server, but the
+unified meta-tool control plane is not attached.
+
+Health checks:
+
+```bash
+curl -sS "http://127.0.0.1:8000/healthz"
+curl -sS "http://127.0.0.1:8000/mcp/health"
+```
+
+Expect JSON with `"status": "ok"`. `/mcp/health` also reports a tool count for
+the running server.
+
+Programmatic equivalent:
 
 ```python
 from ipfs_accelerate_py.mcp_server import create_server
 
-server = create_server()
+server = create_server(name="ipfs-accelerate", host="127.0.0.1", port=8000)
 ```
 
-The concrete server object and optional dependency behavior are versioned with
-the package; inspect its module README and tests before embedding private
-attributes.
+Inspect the versioned module and tests before embedding private attributes.
+Prefer mounting through `fastapi_service` when you need HTTP MCP routes.
 
-## Capability and tool inspection
+## 4. Product CLI (dashboard-oriented)
 
-The accelerator capability report includes an MCP manifest when a server is
-available:
+```bash
+python -m ipfs_accelerate_py.cli mcp start --host 127.0.0.1 --port 9000
+python -m ipfs_accelerate_py.cli mcp status --host 127.0.0.1 --port 9000
+```
+
+If the `ipfs-accelerate` console script is on `PATH`, the same verbs work as
+`ipfs-accelerate mcp start|status|dashboard`.
+
+Useful start options (see live help for the authoritative list):
+
+| Flag | Effect |
+| --- | --- |
+| `--dashboard` | Request dashboard integration (start path enables dashboard integration) |
+| `--open-browser` | Open the dashboard URL after startup |
+| `--disable-autoscaler` | Disable GitHub Actions autoscaler |
+| `--no-p2p` | Disable P2P workflow monitoring in the autoscaler |
+
+```bash
+python -m ipfs_accelerate_py.cli mcp --help
+python -m ipfs_accelerate_py.cli mcp start --help
+```
+
+Default product CLI port is **9000**, not the FastAPI service default of
+**8000**. Match host/port when running status checks.
+
+## 5. Compatibility paths (legacy — labeled)
+
+Use these only when migrating existing automation or when you need TaskQueue
+worker/libp2p host flags that the product CLI does not expose the same way.
+
+```bash
+# Compatibility CLI — imports ipfs_accelerate_py.mcp (auto-install side effects)
+python -m ipfs_accelerate_py.mcp.cli \
+  --host 127.0.0.1 \
+  --port 9000 \
+  --no-p2p-task-worker \
+  --no-p2p-service
+```
+
+That CLI calls `create_mcp_server` from the compatibility facade. By default the
+factory **bridges to** `ipfs_accelerate_py.mcp_server.create_server` (unified
+runtime). Explicit rollback stays available for cutover:
+
+| Variable | Effect |
+| --- | --- |
+| `IPFS_MCP_FORCE_LEGACY_ROLLBACK` | Stay on the legacy wrapper |
+| `IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN` | Probe unified, then continue legacy |
+| `IPFS_MCP_ENABLE_UNIFIED_BRIDGE` | Explicit bridge request / telemetry |
+
+For pure HTTP hosting of the canonical runtime, prefer section 3 over this
+section. Full flag lists for P2P workers belong in live `--help` output and the
+[server reference](../MCP_SERVER.md).
+
+## 6. Auto-install caveats
+
+Importing `ipfs_accelerate_py.mcp` (and some paths that reach it through tool
+registrars) may run best-effort `ensure_packages` for `fastapi`, `uvicorn`, and
+`fastmcp`. Policy is controlled by `IPFS_ACCEL_AUTO_INSTALL`:
+
+| Setting | Behavior |
+| --- | --- |
+| unset in a virtualenv | auto-install **enabled** |
+| unset outside a virtualenv | auto-install **skipped** |
+| `0` / `false` / `no` | never auto-install |
+| other truthy values | allow best-effort `pip install` |
+
+Resolving `mcp_server.create_server` is not a pure discovery import: native
+registrars load, and the inference registrar currently reaches the
+compatibility package. Production images should:
+
+1. install `mcp` / `mcp-p2p` extras explicitly;
+2. set `IPFS_ACCEL_AUTO_INSTALL=0`;
+3. verify capabilities after deploy.
+
+Optional dependency presence is not proof that a peer, GPU, IPFS node, or
+provider credential exists.
+
+## 7. Capability and tool inspection
 
 ```python
 from ipfs_accelerate_py import get_instance
@@ -72,45 +194,79 @@ report = get_instance().get_capabilities(detail=True)
 print(report.get("mcp", {}))
 ```
 
-The MCP server exposes tool/schema/runtime inspection through its registered
-meta-tools. Do not assume a tool exists merely because an older guide listed
-it; query the manifest or use the server's schema endpoint.
+With unified bootstrap enabled, meta-tools
+(`tools_list_categories`, `tools_list_tools`, `tools_get_schema`,
+`tools_dispatch`, `tools_runtime_metrics`) are the control-plane discovery
+surface. Do not assume a historical tool name is still registered.
 
-## P2P and remote task workers
+## 8. P2P and remote task workers
 
-P2P operation is optional and should be enabled explicitly. The direct MCP CLI
-may host TaskQueue/libp2p services when the P2P extras and the corresponding
-configuration are present. Use:
+P2P is optional and must be enabled deliberately:
+
+1. install `mcp-p2p` (or `libp2p`);
+2. configure queue path, listen ports, and identity;
+3. open only the ports you intend;
+4. treat remote `call_tool` as a security-sensitive capability.
+
+The product CLI may start TaskQueue p2p services from environment toggles used
+by systemd units. The compatibility `mcp.cli` exposes fine-grained
+`--p2p-*` / `--no-p2p-*` flags. Always read live help before copying flags
+across environments:
 
 ```bash
 python -m ipfs_accelerate_py.mcp.cli --help
 ```
 
-before copying deployment flags from another environment. Remote networking
-also requires firewall, identity, queue, and authentication configuration.
+External queue durability, firewall rules, and peer authentication are out of
+band of the Python extra install.
 
-## VS Code and other clients
+## 9. VS Code and other clients
 
-Configure a client with the command that is known to work in the target
-environment. For a local checkout, the command is typically `ipfs-accelerate`
-or the direct Python module path above. Use an absolute working directory and
-do not expose credentials in a checked-in client configuration.
+Configure the client with a command that uses a **canonical** module when
+possible:
 
-## Troubleshooting
+```json
+{
+  "command": "python",
+  "args": ["-m", "ipfs_accelerate_py.mcp_server.fastapi_service"],
+  "env": {
+    "IPFS_MCP_HOST": "127.0.0.1",
+    "IPFS_MCP_PORT": "8000",
+    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+    "IPFS_ACCEL_AUTO_INSTALL": "0"
+  }
+}
+```
+
+Use an absolute working directory. Do not commit credentials. If a client only
+supports the product CLI, point it at `python -m ipfs_accelerate_py.cli mcp start`
+with localhost binding and document the port mismatch with the FastAPI defaults.
+
+Note: a full MCP **stdio** transport is not currently implemented under
+`mcp_server`. HTTP hosts and product CLI paths are the supported local
+startup surfaces today.
+
+## 10. Troubleshooting
 
 | Symptom | Check |
 | --- | --- |
-| `ipfs-accelerate` is missing | Activate the environment and install the package in editable or published mode. |
-| `mcp` extra import fails | Install `ipfs-accelerate-py[mcp]` and inspect the first traceback. |
-| Status cannot connect | Confirm host/port and that the start command is still running. |
-| Tools are missing | Query the runtime manifest; optional categories may be unavailable. |
-| P2P startup fails | Install `mcp-p2p`/`libp2p`, configure the queue, and verify ports/identity. |
-| Browser dashboard fails | Start the server without `--dashboard` first, then inspect the dashboard-specific logs. |
+| `ipfs-accelerate` missing on PATH | Use `python -m ipfs_accelerate_py.cli …` or install the package so console scripts are available |
+| `mcp` extra import fails | `pip install "ipfs-accelerate-py[mcp]"` and inspect the first traceback |
+| Unexpected package install on import | Compatibility auto-install; set `IPFS_ACCEL_AUTO_INSTALL=0` |
+| Status cannot connect | Confirm the process is up and you used the same host/port (CLI **9000** vs FastAPI **8000**) |
+| Tools missing | Enable `IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP=1`; query the capability report / meta-tools |
+| Only `/healthz` works | Switch to `fastapi_service` or `--fastapi`; bare module entry is incomplete for MCP clients |
+| P2P startup fails | Install `mcp-p2p`, configure queue/ports/identity, verify firewall |
+| Browser dashboard fails | Start without browser open first; confirm Flask/dashboard deps from the `mcp` extra |
+| Forced onto legacy runtime | Unset `IPFS_MCP_FORCE_LEGACY_ROLLBACK` / dry-run flags, or import `mcp_server` directly |
 
 ## Related documentation
 
-- [Canonical MCP server README](../../ipfs_accelerate_py/mcp_server/README.md)
+- [MCP server reference](../MCP_SERVER.md)
+- [MCP quick start](QUICK_START_MCP.md)
+- [MCP runtime architecture](../architecture/MCP_RUNTIME.md)
+- [Canonical server README](../../ipfs_accelerate_py/mcp_server/README.md)
 - [MCP++ records](../../mcpplusplus/README.md)
-- [Architecture overview](../architecture/overview.md)
 - [Installation](getting-started/installation.md)
+- [MCP dashboard](../MCP_DASHBOARD_GUIDE.md)
 - [Testing](../development/testing.md)
