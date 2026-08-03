@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -179,6 +180,84 @@ def test_apply_prior_attempt_seed_fast_forward(
     assert result["applied"] is True
     assert result["reason"] == "fast_forward_reset"
     assert any(cmd[:3] == ["git", "reset", "--hard"] for cmd in calls)
+
+
+def test_prior_seed_guidance_names_removed_baseline_test_symbol(
+    tmp_path: Path,
+) -> None:
+    secret_symbol = (
+        "test_ghp_51H8xYzAbCdEfGhIjKlMnOpQrStUvWxY"
+    )
+    aws_secret_symbol = "test_AKIAIOSFODNN7EXAMPLE"
+    google_secret_symbol = (
+        "test_AIzasyDUMMYEXAMPLEKEYMATERIAL1234"
+    )
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    test_path = repo / "tests" / "test_identity.py"
+    test_path.parent.mkdir(parents=True)
+    test_path.write_text(
+        "def test_stable_identity() -> None:\n"
+        "    assert stable_identity()\n"
+        f"def {secret_symbol}() -> None:\n"
+        "    assert False\n"
+        f"def {aws_secret_symbol}() -> None:\n"
+        "    assert False\n"
+        f"def {google_secret_symbol}() -> None:\n"
+        "    assert False\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "tests/test_identity.py")
+    _git(repo, "commit", "-m", "baseline test identity")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    test_path.write_text(
+        "def test_replacement_identity() -> None:\n"
+        "    assert replacement_identity()\n",
+        encoding="utf-8",
+    )
+
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "tasks.todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="UIR-002",
+        title="Freeze identity semantics",
+        status="pending",
+        completion="manual",
+        priority="P0",
+        track="identity",
+        outputs=["tests/test_identity.py"],
+    )
+
+    guidance = daemon._prior_attempt_seed_test_symbol_guidance(
+        repo,
+        task=task,
+        baseline_ref=baseline,
+    )
+
+    assert guidance is not None
+    assert guidance["proposal_authoritative"] is False
+    assert guidance["completion_authoritative"] is False
+    assert guidance["evidence_only"] is True
+    assert guidance["repository_write_authorized"] is False
+    assert guidance["edit_scope_expansion_authorized"] is False
+    assert guidance["repairs"] == [
+        {
+            "path": "tests/test_identity.py",
+            "missing_baseline_test_symbols": ["test_stable_identity"],
+            "missing_baseline_test_symbol_count": 4,
+            "missing_baseline_test_symbols_truncated": True,
+        }
+    ]
+    assert guidance["repair_path_count"] == 1
+    assert guidance["repair_paths_truncated"] is False
+    assert secret_symbol not in json.dumps(guidance, sort_keys=True)
+    assert aws_secret_symbol not in json.dumps(guidance, sort_keys=True)
+    assert google_secret_symbol not in json.dumps(guidance, sort_keys=True)
 
 
 def test_prior_root_seed_fast_forwards_clean_task_owned_child_before_proposal(
