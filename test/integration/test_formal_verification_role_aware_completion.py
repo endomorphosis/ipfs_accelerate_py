@@ -391,6 +391,7 @@ def test_generated_public_json_artifacts_are_portable_and_redacted(
 
 def test_usable_pending_capabilities_keep_every_check_without_premature_promotion(
     certificate: dict[str, Any],
+    certifier,
 ) -> None:
     tools = _tools(certificate)
     expected_minimums = {
@@ -416,17 +417,46 @@ def test_usable_pending_capabilities_keep_every_check_without_premature_promotio
     assert prebuilt_bind.get("reason") in {
         "in_tree_prebuilt_present",
         "managed_vendor_prebuilt_bound",
+        "sealed_vendor_prebuilt_authenticated",
     }
 
     for tool_id, minimum in expected_minimums.items():
         tool = tools[tool_id]
+        lane_id = (
+            "runtime_mtl"
+            if tool_id == "runtime-mtl"
+            else "datalog_secpal"
+        )
+        lane = next(
+            row
+            for row in certificate["semantic_lane_results"]
+            if row["lane_id"] == lane_id
+        )
+        fanin = lane.get("checked_vendor_fanin") or {}
+        vendor_elevated = tool_id in set(
+            fanin.get("eligible_tool_ids") or ()
+        )
         assert tool["usable"] is True, tool_id
-        assert tool["production_certified"] is False, tool_id
-        assert tool["promotion_blocked"] is True, tool_id
-        assert "evidence_class_cannot_satisfy_production_authority" in tool[
-            "block_reasons"
-        ], (tool_id, tool.get("block_reasons"), tool.get("evidence_class"))
-        assert tool["evidence_class"] == expected_evidence_classes[tool_id], tool_id
+        if vendor_elevated:
+            assert tool["production_certified"] is True, tool_id
+            assert tool["promotion_blocked"] is False, tool_id
+            assert tool["block_reasons"] == [], tool_id
+            assert tool["evidence_class"] == (
+                certifier.CHECKED_VENDOR_FANIN_SPECS[lane_id][
+                    "evidence_class"
+                ]
+            )
+            assert tool_id in certificate["role_aware"]["elevated_tool_ids"]
+        else:
+            assert tool["production_certified"] is False, tool_id
+            assert tool["promotion_blocked"] is True, tool_id
+            assert "evidence_class_cannot_satisfy_production_authority" in tool[
+                "block_reasons"
+            ], (tool_id, tool.get("block_reasons"), tool.get("evidence_class"))
+            assert (
+                tool["evidence_class"]
+                == expected_evidence_classes[tool_id]
+            ), tool_id
         assert len(tool["checks"]) >= minimum
         assert REQUIRED_CHECK_KINDS <= {
             check["kind"] for check in tool["checks"]
