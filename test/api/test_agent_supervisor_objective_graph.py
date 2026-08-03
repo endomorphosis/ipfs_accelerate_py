@@ -4011,6 +4011,84 @@ def test_generate_objective_todos_projects_goal_dependencies_to_task_ids(tmp_pat
     assert indexed_task["dependency_task_ids"] == ["ACCEL-001"]
 
 
+def test_generate_objective_todos_omits_unmaterialized_known_goal_dependency(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    finding = ObjectiveFinding(
+        fingerprint="abstract-goal-dependency",
+        goal_id="VAIOS-G001",
+        title="Dependent objective",
+        summary="Implement dependent objective",
+        priority="P1",
+        track="runtime",
+        missing_evidence=["dependent proof"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src"],
+        validation="true",
+        dependencies=["VAIOS-G000"],
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=repo / "discovery",
+        bundle_dir=repo / "bundles",
+        task_prefix="ACCEL-",
+        precomputed_findings=[finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert len(records) == 1
+    assert records[0].depends_on == ()
+    assert records[0].finding.dependencies == []
+    assert "- Depends on: VAIOS-G000" not in records[0].task_block
+
+
+@pytest.mark.parametrize("dependency", ["ACCEL-999", "UNKNOWN-ALIAS"])
+def test_generate_objective_todos_preserves_unresolved_task_dependency(
+    tmp_path,
+    dependency,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    finding = ObjectiveFinding(
+        fingerprint=f"unresolved-dependency-{dependency}",
+        goal_id="VAIOS-G001",
+        title="Dependent objective",
+        summary="Implement dependent objective",
+        priority="P1",
+        track="runtime",
+        missing_evidence=["dependent proof"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src"],
+        validation="true",
+        dependencies=[dependency],
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=repo / "discovery",
+        bundle_dir=repo / "bundles",
+        task_prefix="ACCEL-",
+        precomputed_findings=[finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert len(records) == 1
+    assert records[0].depends_on == (dependency,)
+    assert records[0].finding.dependencies == [dependency]
+    assert f"- Depends on: {dependency}" in records[0].task_block
+
+
 def test_generate_objective_todos_projects_same_cycle_dependencies_after_scan_order(
     tmp_path,
 ):

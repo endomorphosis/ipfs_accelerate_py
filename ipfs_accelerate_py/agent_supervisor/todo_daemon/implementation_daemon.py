@@ -427,6 +427,17 @@ _GROK_BIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_BIN"
 _GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
 _GROK_MAX_TURNS_ENV = "IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS"
 _GROK_CONTEXT_WINDOW_ENV = "IPFS_ACCELERATE_AGENT_GROK_CONTEXT_WINDOW"
+DEFAULT_GROK_IMPLEMENTATION_MODEL = "grok-4.5"
+GROK_QUOTA_FALLBACK_CODEX_MODEL = "gpt-5.6-terra"
+GROK_QUOTA_FALLBACK_CODEX_REASONING_EFFORT = "medium"
+GROK_QUOTA_CODEX_PROVIDER_ALIASES = frozenset(
+    {
+        "grok_quota_codex",
+        "grok-quota-codex",
+        "grok_quota_codex_fallback",
+        "grok-quota-codex-fallback",
+    }
+)
 IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE"
 )
@@ -1469,14 +1480,6 @@ def _goose_meta_spark_command(*, workspace_path: Path) -> list[str]:
 
 
 def _grok_binary() -> str | None:
-    try:
-        from ...llm_router import find_grok_cli
-
-        found = find_grok_cli()
-        if found:
-            return found
-    except Exception:
-        pass
     configured = os.environ.get(_GROK_BIN_ENV, "").strip()
     if configured:
         path = Path(configured).expanduser()
@@ -1485,6 +1488,15 @@ def _grok_binary() -> str | None:
         found = shutil.which(configured)
         if found:
             return found
+        return None
+    try:
+        from ...llm_router import find_grok_cli
+
+        found = find_grok_cli()
+        if found:
+            return found
+    except Exception:
+        pass
     return shutil.which("grok")
 
 
@@ -1507,7 +1519,11 @@ def _grok_cli_available() -> bool:
             return auth.is_file() or bool(os.environ.get("XAI_API_KEY", "").strip())
 
 
-def _grok_cli_command(*, workspace_path: Path) -> list[str]:
+def _grok_cli_command(
+    *,
+    workspace_path: Path,
+    model_override: str = "",
+) -> list[str]:
     """Build a Grok CLI agent command through llm_router.grok_cli.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
@@ -1522,11 +1538,12 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         )
 
     model = (
-        os.environ.get(_GROK_MODEL_ENV, "").strip()
+        str(model_override).strip()
+        or os.environ.get(_GROK_MODEL_ENV, "").strip()
         or os.environ.get("GROK_CLI_MODEL", "").strip()
         or os.environ.get("GROK_MODEL", "").strip()
         or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-        or "grok-4.5"
+        or DEFAULT_GROK_IMPLEMENTATION_MODEL
     )
     # Prefer an effectively uncapped turn budget; the implementation daemon
     # still enforces implementation_timeout as the hard wall-clock limit.
@@ -1672,6 +1689,60 @@ exec "$copilot_bin" "${copilot_args[@]}"
         copilot_context,
         copilot_max_continues,
     ]
+
+
+def _direct_codex_command(
+    *,
+    codex: str,
+    workspace_path: Path,
+    codex_context_window: int | None = None,
+    model: str = "",
+    reasoning_effort: str = "",
+) -> list[str]:
+    """Build one direct Codex command without any secondary provider.
+
+    ``model`` and ``reasoning_effort`` are explicit policy inputs.  Callers
+    implementing quota-only failover pass immutable values so ambient Codex
+    configuration cannot silently widen the fallback route.
+    """
+
+    codex_model = str(model).strip() or os.environ.get(
+        _CODEX_MODEL_ENV,
+        "",
+    ).strip()
+    codex_context = (
+        str(codex_context_window)
+        if codex_context_window is not None
+        else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+    )
+    codex_reasoning = str(reasoning_effort).strip() or os.environ.get(
+        _CODEX_REASONING_EFFORT_ENV,
+        "high",
+    ).strip()
+    codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
+    codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
+
+    command = [
+        codex,
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        str(workspace_path),
+    ]
+    if codex_model:
+        command.extend(["-m", codex_model])
+    if codex_context:
+        command.extend(["-c", f"model_context_window={codex_context}"])
+    if codex_reasoning:
+        command.extend(
+            ["-c", f'model_reasoning_effort="{codex_reasoning}"']
+        )
+    if codex_max_threads:
+        command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
+    if codex_max_depth:
+        command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
+    command.append("-")
+    return command
 
 
 def split_csv(value: str) -> list[str]:
@@ -9722,21 +9793,225 @@ class PortalImplementationDaemon:
         classified["evidence"] = evidence[-4:]
         return classified
 
-    def _current_implementation_provider_labels(self) -> set[str]:
+    def _provider_exhaustion_event(
+        self,
+        provider: str,
+        *,
+        require_active: bool,
+    ) -> dict[str, Any]:
+        """Return this lane's latest strongly validated quota event.
+
+        Provider latches are independent.  In particular, a later Codex
+        attempt must not erase the Grok quota evidence that authorized that
+        attempt, and an unrelated implementation failure must not manufacture
+        fallback authority.
+        """
+
+        normalized_provider = str(provider).strip().lower()
+        if not normalized_provider:
+            return {}
+        now = _provider_capacity_now()
+        for event in reversed(list(self._iter_events())):
+            if str(event.get("type") or "") != "implementation_provider_exhausted":
+                continue
+            providers = {
+                str(item).strip().lower()
+                for item in list(event.get("providers") or [])
+                if str(item).strip()
+            }
+            if normalized_provider not in providers:
+                continue
+            if str(event.get("reason") or "") != "provider_capacity_exhausted":
+                continue
+            retry_at_source = str(event.get("retry_at_source") or "")
+            if retry_at_source not in {"configured_backoff", "provider_declared"}:
+                continue
+            evidence = [
+                str(item)[:1000]
+                for item in list(event.get("evidence") or [])[-4:]
+                if str(item).strip()
+            ]
+            classified = classify_provider_capacity_failure(
+                "\n".join(evidence),
+                provider_labels=(normalized_provider,),
+            )
+            if (
+                not evidence
+                or classified.get("exhausted") is not True
+                or normalized_provider
+                not in set(classified.get("providers") or [])
+            ):
+                continue
+            retry_at = parse_timestamp(str(event.get("retry_at") or ""))
+            if retry_at is None:
+                continue
+            is_active = retry_at > now
+            if require_active and not is_active:
+                return {}
+            try:
+                source_attempt = int(event.get("attempt") or 0)
+                source_sequence = int(event.get("sequence") or 0)
+            except (TypeError, ValueError):
+                continue
+            return {
+                "active": is_active,
+                "provider": normalized_provider,
+                "retry_at": retry_at.isoformat(),
+                "retry_after_seconds": max(
+                    0.0,
+                    (retry_at - now).total_seconds(),
+                ),
+                "source_task_id": str(event.get("task_id") or ""),
+                "source_attempt": source_attempt,
+                "source_event_at": str(event.get("timestamp") or ""),
+                "source_event_id": str(event.get("event_id") or ""),
+                "source_sequence": source_sequence,
+                "source_evidence": evidence,
+                "retry_at_source": retry_at_source,
+            }
+        return {}
+
+    def _active_provider_exhaustion(self, provider: str) -> dict[str, Any]:
+        """Return the latest still-active, validated quota latch."""
+
+        return self._provider_exhaustion_event(
+            provider,
+            require_active=True,
+        )
+
+    def _quota_routed_implementation_provider_route(self) -> str:
+        """Select Grok first and Codex only under a live Grok quota latch."""
+
+        if self._active_provider_exhaustion("grok"):
+            return "codex_quota_fallback"
+        return "grok_primary"
+
+    def _implementation_provider_route_receipt(
+        self,
+        command: Sequence[str],
+        *,
+        task: PortalTask | None = None,
+    ) -> dict[str, Any]:
+        """Describe the selected autonomous-daemon provider route."""
+
+        configured_provider = (
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+            or "auto"
+        )
+        labels = _provider_labels_from_implementation_command(command)
+        declared_provider = self._task_declared_implementation_provider(task)
+        quota_policy_applies = (
+            configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+            and declared_provider in {"", "grok"}
+        )
+        receipt: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "implementation-provider-route@1"
+            ),
+            "configured_policy": configured_provider,
+            "task_declared_provider": declared_provider,
+            "selected_providers": labels,
+        }
+        if not quota_policy_applies:
+            receipt.update(
+                {
+                    "route": (
+                        "task_declared"
+                        if declared_provider
+                        else "configured_provider"
+                    ),
+                    "selected_provider": (
+                        labels[0] if len(labels) == 1 else ""
+                    ),
+                    "selection_reason": (
+                        "task_declared_provider"
+                        if declared_provider
+                        else "configured_provider"
+                    ),
+                }
+            )
+            return receipt
+        selected_provider = labels[0] if len(labels) == 1 else ""
+        if selected_provider == "codex":
+            quota_authority = self._provider_exhaustion_event(
+                "grok",
+                require_active=False,
+            )
+            if not quota_authority:
+                receipt.update(
+                    {
+                        "route": "invalid",
+                        "selected_provider": "codex",
+                        "selection_reason": "missing_grok_quota_authority",
+                        "secondary_fallback_allowed": False,
+                    }
+                )
+                return receipt
+            receipt["route"] = "codex_quota_fallback"
+            receipt.update(
+                {
+                    "selected_provider": "codex",
+                    "model": GROK_QUOTA_FALLBACK_CODEX_MODEL,
+                    "reasoning_effort": (
+                        GROK_QUOTA_FALLBACK_CODEX_REASONING_EFFORT
+                    ),
+                    "selection_reason": "grok_quota_exhausted",
+                    "grok_quota_authority": quota_authority,
+                    "secondary_fallback_allowed": False,
+                }
+            )
+        elif selected_provider == "grok":
+            receipt["route"] = "grok_primary"
+            receipt.update(
+                {
+                    "selected_provider": "grok",
+                    "model": DEFAULT_GROK_IMPLEMENTATION_MODEL,
+                    "selection_reason": "primary",
+                    "secondary_fallback_allowed": False,
+                }
+            )
+        else:
+            receipt.update(
+                {
+                    "route": "invalid",
+                    "selection_reason": "provider_identity_ambiguous",
+                    "secondary_fallback_allowed": False,
+                }
+            )
+        return receipt
+
+    def _current_implementation_provider_labels(
+        self,
+        task: PortalTask | None = None,
+    ) -> set[str]:
         """Return coarse provider labels for the active implementation runner."""
 
-        explicit_command = self.implementation_command or os.environ.get(
-            "IMPLEMENTATION_DAEMON_COMMAND",
-            "",
-        ).strip()
-        explicit_labels = _provider_labels_from_implementation_command(
-            explicit_command
-        )
-        if explicit_labels:
-            return {*explicit_labels, "provider"}
-        provider = (
+        configured_provider = (
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower() or "auto"
         )
+        declared_provider = self._task_declared_implementation_provider(task)
+        provider = (
+            configured_provider
+            if (
+                configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+                and declared_provider in {"", "grok"}
+            )
+            else declared_provider or configured_provider
+        )
+        if (
+            not declared_provider
+            and configured_provider not in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+        ):
+            explicit_command = self.implementation_command or os.environ.get(
+                "IMPLEMENTATION_DAEMON_COMMAND",
+                "",
+            ).strip()
+            explicit_labels = _provider_labels_from_implementation_command(
+                explicit_command
+            )
+            if explicit_labels:
+                return {*explicit_labels, "provider"}
         if provider in {
             "goose",
             "goose_meta",
@@ -9761,16 +10036,33 @@ class PortalImplementationDaemon:
             return {"grok", "xai", "provider"}
         if provider in {"codex", "copilot", "openai"}:
             return {"codex", "copilot", "provider"}
+        if provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES:
+            if (
+                self._quota_routed_implementation_provider_route()
+                == "codex_quota_fallback"
+            ):
+                if shutil.which("codex"):
+                    return {"codex", "provider"}
+                # No fallback executable is available, so the live Grok latch
+                # remains the scheduling backoff rather than permitting a
+                # second Grok dispatch during known exhaustion.
+                return {"grok", "xai", "provider"}
+            return {"grok", "xai", "provider"}
         labels: set[str] = set()
         if _goose_meta_spark_available():
             labels.update({"goose", "meta_spark", "meta", "provider"})
         if _grok_cli_available():
             labels.update({"grok", "xai", "provider"})
-        if shutil.which("codex") or (shutil.which("copilot") and _copilot_has_auth()):
+        if shutil.which("codex") or (
+            shutil.which("copilot") and _copilot_has_auth()
+        ):
             labels.update({"codex", "copilot", "provider"})
         return labels or {"provider"}
 
-    def _provider_capacity_backoff_schedule(self) -> dict[str, Any]:
+    def _provider_capacity_backoff_schedule(
+        self,
+        task: PortalTask | None = None,
+    ) -> dict[str, Any]:
         """Return the latest invocation-bound provider retry schedule, if any.
 
         Includes expired schedules (``active`` false) so ``run_once`` can wake
@@ -9779,7 +10071,7 @@ class PortalImplementationDaemon:
         """
 
         now = _provider_capacity_now()
-        current_labels = self._current_implementation_provider_labels()
+        current_labels = self._current_implementation_provider_labels(task)
         for event in reversed(self._iter_events()):
             event_type = str(event.get("type") or "")
             if event_type == "implementation_provider_exhausted":
@@ -9806,8 +10098,11 @@ class PortalImplementationDaemon:
                 return {}
         return {}
 
-    def _active_provider_capacity_backoff(self) -> dict[str, Any]:
-        schedule = self._provider_capacity_backoff_schedule()
+    def _active_provider_capacity_backoff(
+        self,
+        task: PortalTask | None = None,
+    ) -> dict[str, Any]:
+        schedule = self._provider_capacity_backoff_schedule(task)
         return schedule if schedule.get("active", False) else {}
 
     def _selectable_task_retry_schedule(self) -> dict[str, Any]:
@@ -10000,7 +10295,7 @@ class PortalImplementationDaemon:
         provider_backoff = (
             {}
             if deterministic_only
-            else self._active_provider_capacity_backoff()
+            else self._active_provider_capacity_backoff(task)
         )
         if provider_backoff:
             result = {
@@ -10422,6 +10717,23 @@ class PortalImplementationDaemon:
                     task=task,
                 )
             )
+            provider_route_receipt = (
+                None
+                if deterministic_only
+                else self._implementation_provider_route_receipt(
+                    command,
+                    task=task,
+                )
+            )
+            if (
+                isinstance(provider_route_receipt, Mapping)
+                and provider_route_receipt.get("route") == "invalid"
+            ):
+                raise RuntimeError(
+                    "implementation provider route has no valid dispatch "
+                    "authority: "
+                    + str(provider_route_receipt.get("selection_reason") or "")
+                )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -10442,6 +10754,7 @@ class PortalImplementationDaemon:
                     "attempt": attempt,
                     "outputs": list(task_declared_output_paths(task)),
                     "command": command,
+                    "provider_route_receipt": provider_route_receipt,
                     "log_path": str(log_path),
                     "execution_mode": (
                         ExecutionMode.DETERMINISTIC_ONLY.value
@@ -17656,6 +17969,23 @@ class PortalImplementationDaemon:
                     task=task,
                 )
             )
+            provider_route_receipt = (
+                None
+                if deterministic_only
+                else self._implementation_provider_route_receipt(
+                    command,
+                    task=task,
+                )
+            )
+            if (
+                isinstance(provider_route_receipt, Mapping)
+                and provider_route_receipt.get("route") == "invalid"
+            ):
+                raise RuntimeError(
+                    "implementation provider route has no valid dispatch "
+                    "authority: "
+                    + str(provider_route_receipt.get("selection_reason") or "")
+                )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -17702,6 +18032,7 @@ class PortalImplementationDaemon:
                     "attempt": attempt,
                     "outputs": list(task_declared_output_paths(task)),
                     "command": command,
+                    "provider_route_receipt": provider_route_receipt,
                     "log_path": str(log_path),
                     "worktree_path": str(worktree_path),
                     "branch": branch_name,
@@ -39512,19 +39843,32 @@ class PortalImplementationDaemon:
                 f"{declared_provider} task requires a supervisor-owned typed "
                 "local operation; model dispatch is forbidden"
             )
-        if self.implementation_command and not declared_provider:
-            return shlex.split(self.implementation_command)
-        env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
-        if env_command and not declared_provider:
-            return shlex.split(env_command)
-
         configured_provider = (
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
             or "auto"
         )
+        quota_policy_applies = (
+            configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+            and declared_provider in {"", "grok"}
+        )
+        if (
+            self.implementation_command
+            and not declared_provider
+            and not quota_policy_applies
+        ):
+            return shlex.split(self.implementation_command)
+        env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
+        if env_command and not declared_provider and not quota_policy_applies:
+            return shlex.split(env_command)
+
+        # The quota-routed policy refines an autonomous task's Grok
+        # implementation role; it does not replace the independent Codex
+        # review role enforced by TaskExecutionPolicy.  Other configured
+        # providers remain subordinate to an exact task declaration.
         provider = (
-            declared_provider
-            or configured_provider
+            configured_provider
+            if quota_policy_applies
+            else declared_provider or configured_provider
         )
         grok_ready = _grok_cli_available()
         goose_meta_ready = _goose_meta_spark_available()
@@ -39571,8 +39915,40 @@ class PortalImplementationDaemon:
         }
         force_codex = provider in {"codex", "copilot", "openai"}
 
-        # Prefer only when the binary is actually resolvable so an auth-only
-        # readiness signal does not block auto-fallback to codex/copilot.
+        if provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES:
+            quota_route = self._quota_routed_implementation_provider_route()
+            if quota_route == "codex_quota_fallback":
+                codex = shutil.which("codex")
+                if not codex:
+                    raise RuntimeError(
+                        "Grok quota is exhausted, but the exact Codex fallback "
+                        "executable is unavailable"
+                    )
+                codex_context_window = (
+                    self._implementation_provider_context_window_for_task(task)[0]
+                    if task is not None
+                    else None
+                )
+                return _direct_codex_command(
+                    codex=codex,
+                    workspace_path=workspace_path,
+                    codex_context_window=codex_context_window,
+                    model=GROK_QUOTA_FALLBACK_CODEX_MODEL,
+                    reasoning_effort=(
+                        GROK_QUOTA_FALLBACK_CODEX_REASONING_EFFORT
+                    ),
+                )
+            if not grok_ready or not _grok_binary():
+                raise RuntimeError(
+                    f"Implementation provider {provider!r} requires the Grok "
+                    "Build CLI (`grok`) with login/auth. Codex is authorized "
+                    "only after a classified Grok quota-exhaustion event."
+                )
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                model_override=DEFAULT_GROK_IMPLEMENTATION_MODEL,
+            )
+
         if force_grok:
             if not grok_ready:
                 raise RuntimeError(
@@ -39608,6 +39984,21 @@ class PortalImplementationDaemon:
             if task is not None
             else None
         )
+        if (
+            force_codex
+            and configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+        ):
+            if not codex:
+                raise RuntimeError(
+                    "Task-declared Codex implementation requires the exact "
+                    "Codex executable; Copilot substitution is forbidden by "
+                    f"provider policy {configured_provider!r}"
+                )
+            return _direct_codex_command(
+                codex=codex,
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
+            )
         if copilot and _copilot_has_auth():
             return _copilot_fallback_command(
                 codex=codex,
@@ -39616,39 +40007,11 @@ class PortalImplementationDaemon:
                 codex_context_window=codex_context_window,
             )
         if codex:
-            # Build codex command with full capability flags
-            codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
-            codex_context = (
-                str(codex_context_window)
-                if codex_context_window is not None
-                else os.environ.get(
-                    _CODEX_CONTEXT_WINDOW_ENV,
-                    "200000",
-                ).strip()
+            return _direct_codex_command(
+                codex=codex,
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
             )
-            codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
-            codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
-            codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
-
-            cmd = [
-                codex,
-                "exec",
-                "--dangerously-bypass-approvals-and-sandbox",
-                "-C",
-                str(workspace_path),
-            ]
-            if codex_model:
-                cmd.extend(["-m", codex_model])
-            if codex_context:
-                cmd.extend(["-c", f"model_context_window={codex_context}"])
-            if codex_reasoning:
-                cmd.extend(["-c", f'model_reasoning_effort="{codex_reasoning}"'])
-            if codex_max_threads:
-                cmd.extend(["-c", f"agents.max_threads={codex_max_threads}"])
-            if codex_max_depth:
-                cmd.extend(["-c", f"agents.max_depth={codex_max_depth}"])
-            cmd.append("-")
-            return cmd
         if grok_ready:
             return _grok_cli_command(workspace_path=workspace_path)
         if goose_meta_ready:
@@ -39756,10 +40119,24 @@ class PortalImplementationDaemon:
                     "invalid implementation provider context window"
                 )
             return configured
-        provider = self._task_declared_implementation_provider(task)
-        if not provider:
+        declared_provider = self._task_declared_implementation_provider(task)
+        configured_provider = (
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+        )
+        provider = (
+            configured_provider
+            if (
+                configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+                and declared_provider in {"", "grok"}
+            )
+            else declared_provider or configured_provider
+        )
+        if provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES:
             provider = (
-                os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+                "codex"
+                if self._quota_routed_implementation_provider_route()
+                == "codex_quota_fallback"
+                else "grok"
             )
         environment_name = (
             _GROK_CONTEXT_WINDOW_ENV

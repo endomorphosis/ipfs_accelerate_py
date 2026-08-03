@@ -75,32 +75,42 @@ Defaults used by multi-lane programs in this repo:
 
 | Role | Variable | Recommended value |
 | --- | --- | --- |
-| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `auto` (prefer Grok, fall back to Codex) |
+| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `grok_quota_codex` (Grok first; Codex only while Grok quota is exhausted) |
 | Grok model | `IPFS_ACCELERATE_AGENT_GROK_MODEL` | `grok-4.5` |
 | Grok binary | `IPFS_ACCELERATE_AGENT_GROK_BIN` | path to `grok` (e.g. `~/.local/bin/grok`) |
 | Grok permissions | `IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE` | `bypassPermissions` for unattended lanes |
 | Codex model (when Codex path is used) | `IPFS_ACCELERATE_AGENT_CODEX_MODEL` | `gpt-5.6-terra` |
+| Codex reasoning (when Codex path is used) | `IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT` | `medium` |
 
 Example `implementation.env` for a runtime directory:
 
 ```bash
-export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto
+export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok_quota_codex
 export IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.5
 export IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE=bypassPermissions
 export IPFS_ACCELERATE_AGENT_GROK_BIN=/home/barberb/.local/bin/grok
 export IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra
+export IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT=medium
 ```
 
 Notes:
 
-- `provider=auto` selects an authenticated Grok Build CLI first and uses Codex
-  when Grok is unavailable before dispatch. Generated tasks use the soft
-  `grok, codex-review` role so they preserve this selector policy.
+- `provider=grok_quota_codex` requires authenticated Grok before the first
+  dispatch and pins the implementation model to `grok-4.5`. It selects direct
+  Codex only on a fresh retry after the daemon has durably classified a Grok
+  quota/capacity response; that route pins `gpt-5.6-terra` with `medium`
+  reasoning and never cascades to Copilot. Missing Grok auth/binary, generic
+  errors, timeouts, malformed output, policy rejection, and validation failure
+  do not authorize fallback. Once the Grok quota latch expires, Grok becomes
+  primary again.
+- `provider=auto` retains the legacy availability-based pre-dispatch fallback.
+  Use `grok_quota_codex` when only quota exhaustion may authorize Codex.
 - `provider=grok` forces the Grok Build path and intentionally disables that
   pre-dispatch fallback; `provider=codex` / `openai` forces Codex.
 - A Grok attempt that has already started is never handed to Codex in the same
-  mutable worktree. Quota, runtime, validation, or policy failure is deferred
-  or rejected through the normal retry gates.
+  mutable worktree. Quota fallback occurs only after the Grok attempt is
+  deferred and its worktree is released; the retry receives a fresh fenced
+  worktree.
 - Always set
   `IPFS_ACCELERATE_AGENT_CODEX_MODEL` so fallback does not inherit an unrelated
   interactive Codex default.  

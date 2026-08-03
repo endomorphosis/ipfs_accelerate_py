@@ -9381,6 +9381,40 @@ def _objective_goal_task_ids_from_todo(
     return task_ids_by_goal
 
 
+def _project_objective_dependencies_to_task_ids(
+    dependencies: Iterable[str],
+    *,
+    known_goal_ids: Iterable[str],
+    task_ids_by_goal: Mapping[str, Sequence[str]],
+    materialized_task_ids: Iterable[str],
+) -> list[str]:
+    """Project objective-goal references onto executable task identities.
+
+    A known goal without a materialized task is an abstract planning node, not
+    an executable prerequisite, so it contributes no task-level edge.  Goal
+    references with materialized tasks expand to those task IDs.  Every other
+    reference is retained so concrete task IDs and unknown aliases continue to
+    fail closed in the task dependency graph instead of being silently lost.
+    """
+
+    known_goals = set(_unique_strings(known_goal_ids))
+    materialized_tasks = set(_unique_strings(materialized_task_ids))
+    projected: list[str] = []
+    for dependency in _unique_strings(dependencies):
+        if dependency in materialized_tasks:
+            projected.append(dependency)
+            continue
+        mapped_task_ids = _unique_strings(
+            task_ids_by_goal.get(dependency, ())
+        )
+        if mapped_task_ids:
+            projected.extend(mapped_task_ids)
+            continue
+        if dependency not in known_goals:
+            projected.append(dependency)
+    return _unique_strings(projected)
+
+
 def canonical_task_cids_from_todo(todo_text: str) -> set[str]:
     """Return canonical task identities already materialized on a board."""
 
@@ -11664,25 +11698,27 @@ def generate_objective_todos(
                     if goal_id in packet_goal_ids
                     and any(str(requirement).strip() for requirement in requirements)
                 }
-            projected_dependencies: list[str] = []
-            for dependency in _unique_strings(
-                [*depends_on, *finding.dependencies]
-            ):
-                # A packet aggregate is the execution unit which satisfies
-                # every explicitly bound packet goal.  Retaining one of those
-                # goals as its own prerequisite creates an impossible
-                # ``task -> goal -> task`` cycle.  Only bindings with concrete
-                # evidence requirements qualify; malformed or merely
-                # descriptive packet metadata remains fail-closed.
-                if dependency in packet_internal_goal_dependencies:
-                    continue
-                if dependency in materialized_task_ids:
-                    projected_dependencies.append(dependency)
-                else:
-                    projected_dependencies.extend(
-                        task_ids_by_goal.get(dependency) or [dependency]
-                    )
-            projected_dependencies = _unique_strings(projected_dependencies)
+            # A packet aggregate is the execution unit which satisfies every
+            # explicitly bound packet goal.  Retaining one of those goals as
+            # its own prerequisite creates an impossible ``task -> goal ->
+            # task`` cycle.  Only bindings with concrete evidence requirements
+            # qualify; malformed or merely descriptive packet metadata remains
+            # fail-closed.
+            dependency_references = [
+                dependency
+                for dependency in _unique_strings(
+                    [*depends_on, *finding.dependencies]
+                )
+                if dependency not in packet_internal_goal_dependencies
+            ]
+            projected_dependencies = (
+                _project_objective_dependencies_to_task_ids(
+                    dependency_references,
+                    known_goal_ids=objective_goals_by_id,
+                    task_ids_by_goal=task_ids_by_goal,
+                    materialized_task_ids=materialized_task_ids,
+                )
+            )
             dependency_refs_by_task_id[task_id] = tuple(
                 dependency
                 for dependency in _unique_strings(
@@ -11737,19 +11773,13 @@ def generate_objective_todos(
             rerendered_records: list[ObjectiveTaskRecord] = []
             rerendered_blocks: list[str] = []
             for record in records:
-                projected_dependencies: list[str] = []
-                for dependency in dependency_refs_by_task_id.get(
-                    record.task_id,
-                    (),
-                ):
-                    if dependency in materialized_task_ids:
-                        projected_dependencies.append(dependency)
-                    else:
-                        projected_dependencies.extend(
-                            task_ids_by_goal.get(dependency) or [dependency]
-                        )
-                projected_dependencies = _unique_strings(
-                    projected_dependencies
+                projected_dependencies = (
+                    _project_objective_dependencies_to_task_ids(
+                        dependency_refs_by_task_id.get(record.task_id, ()),
+                        known_goal_ids=objective_goals_by_id,
+                        task_ids_by_goal=task_ids_by_goal,
+                        materialized_task_ids=materialized_task_ids,
+                    )
                 )
                 projected_finding = replace(
                     record.finding,

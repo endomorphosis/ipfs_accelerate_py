@@ -226,8 +226,15 @@ Default provider env (ops may override):
 
 | Path | Typical setting |
 | --- | --- |
-| Grok-first with Codex fallback | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto` |
+| Grok-first; Codex only during a durable Grok quota latch | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok_quota_codex` |
+| Legacy availability-based Grok/Codex selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto` |
 | Codex | `IPFS_ACCELERATE_AGENT_CODEX_MODEL=…` |
+
+The quota-routed policy binds Grok to `grok-4.5` and its only implementation
+fallback to direct `gpt-5.6-terra` with `medium` reasoning. It does not use
+Codex for missing Grok auth, a missing binary, generic provider failures,
+timeouts, malformed responses, or validation failures, and it never promotes
+Copilot into that route.
 
 ---
 

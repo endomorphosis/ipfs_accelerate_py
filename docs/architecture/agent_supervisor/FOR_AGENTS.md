@@ -41,7 +41,7 @@ When launching or diagnosing lanes (ops may override):
 
 | Path | Default |
 | --- | --- |
-| Grok-first implementation | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto`, Grok model `grok-4.5`; Codex is the pre-dispatch fallback |
+| Grok-first implementation | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok_quota_codex`; Grok is pinned to `grok-4.5`, and only a durable Grok quota latch authorizes direct `gpt-5.6-terra` at `medium` reasoning on a fresh retry |
 | Codex | `IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra` |
 
 ## Codebase-proof loop (semantic)

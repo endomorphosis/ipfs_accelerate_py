@@ -30021,6 +30021,447 @@ def test_soft_grok_role_prefers_grok_and_falls_back_to_codex_when_unavailable(
     ]
 
 
+@pytest.mark.parametrize(
+    "provider_role",
+    ("grok, codex-review", "grok-implement, codex-review"),
+)
+def test_grok_quota_codex_policy_uses_exact_models_and_quota_only_fallback(
+    tmp_path,
+    monkeypatch,
+    provider_role,
+):
+    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
+    clock = {"now": fixed_now}
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: clock["now"],
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    events_path = repo / "state" / "events.jsonl"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+        implementation_command="copilot --allow-all",
+    )
+    task = PortalTask(
+        task_id="SCA-169Q",
+        title="Use quota-only implementation fallback",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider-routing",
+        outputs=["src/provider_routing.py"],
+        metadata={"Provider role": provider_role},
+    )
+    grok_readiness = {"ready": True}
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_quota_codex",
+    )
+    monkeypatch.setenv(
+        "IMPLEMENTATION_DAEMON_COMMAND",
+        "copilot --allow-all",
+    )
+    # Ambient model choices cannot weaken this policy's exact bindings.
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_MODEL_ENV,
+        "ambient-grok-model",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "ambient-codex-model",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+        "high",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: grok_readiness["ready"],
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok" if grok_readiness["ready"] else None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: (
+            f"/usr/local/bin/{name}"
+            if name in {"codex", "copilot"}
+            else None
+        ),
+    )
+
+    primary_command = daemon._build_implementation_command(repo, task=task)
+
+    assert primary_command[0] == sys.executable
+    assert primary_command[1].endswith("grok_cli_runner.py")
+    assert primary_command[primary_command.index("--model") + 1] == "grok-4.5"
+
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "task_id": task.task_id,
+            "attempt": 1,
+            "providers": ["grok"],
+            "reason": "provider_capacity_exhausted",
+            "evidence": ["Grok quota exceeded"],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            "retry_at_source": "configured_backoff",
+        },
+    )
+    # Fallback authority is durable; Grok need not remain available after its
+    # positively classified quota event.
+    grok_readiness["ready"] = False
+
+    fallback_command = daemon._build_implementation_command(repo, task=task)
+
+    assert fallback_command[:5] == [
+        "/usr/local/bin/codex",
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        str(repo),
+    ]
+    assert fallback_command[fallback_command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in fallback_command
+    assert not any("copilot" in item for item in fallback_command)
+    assert daemon._active_provider_capacity_backoff() == {}
+    # The receipt describes the command actually selected, even if the latch
+    # expires between command construction and event publication.
+    clock["now"] = fixed_now + timedelta(minutes=10)
+    route_receipt = daemon._implementation_provider_route_receipt(
+        fallback_command
+    )
+    assert route_receipt["route"] == "codex_quota_fallback"
+    assert route_receipt["selected_provider"] == "codex"
+    assert route_receipt["model"] == "gpt-5.6-terra"
+    assert route_receipt["reasoning_effort"] == "medium"
+    assert route_receipt["selection_reason"] == "grok_quota_exhausted"
+    assert route_receipt["secondary_fallback_allowed"] is False
+    assert route_receipt["grok_quota_authority"]["source_task_id"] == task.task_id
+    assert route_receipt["grok_quota_authority"]["source_attempt"] == 1
+    assert route_receipt["grok_quota_authority"]["active"] is False
+    grok_readiness["ready"] = True
+    renewed_primary_command = daemon._build_implementation_command(
+        repo,
+        task=task,
+    )
+    assert renewed_primary_command[1].endswith("grok_cli_runner.py")
+
+
+def test_grok_quota_codex_policy_fails_closed_without_grok_quota_evidence(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="SCA-169Q",
+        title="Reject pre-dispatch fallback",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider-routing",
+        outputs=["src/provider_routing.py"],
+        metadata={"Provider role": "grok, codex-review"},
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_quota_codex",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Codex is authorized only after a classified Grok quota",
+    ):
+        daemon._build_implementation_command(repo, task=task)
+
+
+@pytest.mark.parametrize(
+    "invalid_event_fields",
+    (
+        {"reason": "generic_failure"},
+        {"attempt": "not-an-integer"},
+        {"evidence": []},
+        {"retry_at_source": "untrusted"},
+    ),
+)
+def test_grok_quota_codex_policy_rejects_untrusted_quota_events(
+    tmp_path,
+    monkeypatch,
+    invalid_event_fields,
+):
+    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="SCA-169U",
+        title="Reject untrusted quota evidence",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider-routing",
+        outputs=["src/provider_routing.py"],
+        metadata={"Provider role": "grok, codex-review"},
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_quota_codex",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    event = {
+        "task_id": task.task_id,
+        "attempt": 1,
+        "providers": ["grok"],
+        "reason": "provider_capacity_exhausted",
+        "evidence": ["Grok quota exceeded"],
+        "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+        "retry_at_source": "configured_backoff",
+    }
+    event.update(invalid_event_fields)
+    daemon._record_event("implementation_provider_exhausted", event)
+
+    assert daemon._active_provider_exhaustion("grok") == {}
+    with pytest.raises(RuntimeError, match="requires the Grok Build CLI"):
+        daemon._build_implementation_command(repo, task=task)
+
+
+def test_grok_quota_codex_policy_waits_when_exact_codex_is_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implementation_command="copilot --allow-all",
+    )
+    task = PortalTask(
+        task_id="SCA-169W",
+        title="Wait for the exact fallback",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider-routing",
+        outputs=["src/provider_routing.py"],
+        metadata={"Provider role": "grok, codex-review"},
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_quota_codex",
+    )
+    monkeypatch.setenv(
+        "IMPLEMENTATION_DAEMON_COMMAND",
+        "copilot --allow-all",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda _name: None,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "task_id": task.task_id,
+            "attempt": 1,
+            "providers": ["grok"],
+            "reason": "provider_capacity_exhausted",
+            "evidence": ["Grok quota exceeded"],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            "retry_at_source": "configured_backoff",
+        },
+    )
+
+    assert daemon._active_provider_capacity_backoff()["providers"] == ["grok"]
+    with pytest.raises(RuntimeError, match="exact Codex fallback executable"):
+        daemon._build_implementation_command(repo, task=task)
+
+
+def test_grok_quota_codex_policy_keeps_task_declared_codex_direct(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="SCA-169C",
+        title="Honor an exact task Codex declaration",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider-routing",
+        outputs=["src/provider_routing.py"],
+        metadata={"Provider role": "codex-implement, codex-review"},
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_quota_codex",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "task-codex-model",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_copilot_has_auth",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: (
+            f"/usr/local/bin/{name}"
+            if name in {"codex", "copilot"}
+            else None
+        ),
+    )
+
+    command = daemon._build_implementation_command(repo, task=task)
+    receipt = daemon._implementation_provider_route_receipt(
+        command,
+        task=task,
+    )
+
+    assert command[0] == "/usr/local/bin/codex"
+    assert command[command.index("-m") + 1] == "task-codex-model"
+    assert not any("copilot" in item for item in command)
+    assert receipt["route"] == "task_declared"
+    assert receipt["selected_provider"] == "codex"
+    assert receipt["selection_reason"] == "task_declared_provider"
+    assert "grok_quota_authority" not in receipt
+
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "task_id": task.task_id,
+            "attempt": 1,
+            "providers": ["codex"],
+            "reason": "provider_capacity_exhausted",
+            "evidence": ["You've hit your usage limit"],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            "retry_at_source": "configured_backoff",
+        },
+    )
+    assert daemon._active_provider_capacity_backoff(task)["providers"] == [
+        "codex"
+    ]
+
+
 def test_deterministic_only_task_cannot_dispatch_a_model(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

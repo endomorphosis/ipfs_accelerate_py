@@ -1662,24 +1662,24 @@ Program invariants:
 - Submodules: ipfs_datasets_py
 - Resource class: cpu-proof-solver
 
-## FVT-G219 Acquire authoritative SecPAL and ErgoAI live evidence
+## FVT-G219 Acquire authoritative SecPAL live evidence
 
 - Status: active
 - Parent: FVT-G000
-- Depends on: FVT-G217, FVT-G218
+- Depends on: FVT-G217
 - Fib priority: 196418
 - Priority: P0
 - Track: external-authority
-- Bundle: formal-verification-tactician/vendor-live-authority
-- Goal: Execute SecPAL and ErgoAI on genuinely supported hosts with legally acquired official artifacts and publish replayable, content-addressed live evidence.
-- Evidence: docs/architecture/formal_verification_secpal_ergoai_live_receipt.json, test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py
-- Outputs: docs/architecture/formal_verification_secpal_ergoai_live_receipt.json, test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py
-- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py -q
-- Acceptance: Independent positive, negative, mutation, replay, malformed, timeout, bound, and cross-engine disagreement cases run against exact official SecPAL and ErgoAI executables on hosts covered by their reviewed platform locks; receipts bind acquisition authority, license disposition without publishing restricted bytes, host OS and architecture, every runtime dependency, executable and artifact digests, sources, queries, bounds, raw-output digests, parser decisions, witnesses, timestamps, freshness, and deterministic replay; fixture, shim, parser-only, wrapper-only, proposed, identity-only, or unsupported-host results cannot satisfy this goal.
+- Bundle: formal-verification-tactician/secpal-live-authority
+- Goal: Execute SecPAL on a genuinely supported host with a legally acquired official artifact and publish replayable, content-addressed live evidence; the already acquired ErgoAI evidence is upstream evidence and is not an external blocker for this goal.
+- Evidence: docs/architecture/formal_verification_secpal_live_receipt.json, test/integration/toolchains/test_secpal_authoritative_live_evidence.py
+- Outputs: docs/architecture/formal_verification_secpal_live_receipt.json, test/integration/toolchains/test_secpal_authoritative_live_evidence.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_authoritative_live_evidence.py -q
+- Acceptance: Independent allow, deny, unknown, delegation, conflict, rule/scope mutation, replay, malformed, timeout, resource-bound, and cross-engine disagreement cases run against the exact official SecPAL executable on a host covered by its reviewed platform lock; the receipt binds acquisition authority, license disposition without publishing restricted bytes, host OS and architecture, every runtime dependency, executable and artifact digests, policies, queries, bounds, raw-output digests, parser decisions, witnesses, timestamps, freshness, and deterministic replay; fixture, in-process Datalog/SecPAL, shim, parser-only, wrapper-only, proposed, identity-only, previously completed ErgoAI evidence, or unsupported-host results cannot satisfy this SecPAL authority goal.
 - Conflict policy: Own only the externally executed evidence and its public-safe envelope; never commit restricted artifacts, credentials, private paths, or raw secrets and never convert missing external authority into local completion.
-- Interfaces: SecPALErgoAIAuthoritativeLiveEvidence@1
+- Interfaces: SecPALAuthoritativeLiveEvidence@1
 - Completion authority: external
-- External authority blockers: legally acquired official SecPAL and ErgoAI artifacts, accepted license terms where required, and suitable supported execution hosts
+- External authority blockers: a legally acquired official SecPAL artifact, accepted SecPAL license terms where required, and a suitable supported SecPAL execution host
 - Resource class: cpu-proof-solver
 
 ## FVT-G220 Audit every deployment axis end to end
@@ -1735,5 +1735,24 @@ Program invariants:
 - Acceptance: The lock selects reviewed Eclipse Temurin or another authoritative OpenJDK JDK artifact by exact version, publisher, immutable URL, SHA-256, signature or equivalent publisher evidence, license, OS, architecture, archive size, and required `java`, `javac`, and `jar` identities; only an explicit allow flag may perform a bounded acquisition and symlink-safe extraction into the validated user-local transaction root; interruption, checksum mismatch, archive traversal, unsupported hosts, stale dependency identities, or failed post-install probes roll back and remain unavailable; the managed ErgoAI wrapper binds the exact JDK identity used by its Java consumers and executes positive, negative, malformed, timeout, replay, relocation, and dependency-mutation cases; capability, dependency, semantic, platform, packaging, and authority axes remain independently visible; setup.py, pyproject, and requirements inventories classify the JDK as a reviewed external lazy dependency rather than an invalid mandatory Python package; import, probe, wheel installation, dry-run, and offline certification never download or install; core ErgoAI remains independently usable when the Java API capability is absent.
 - Conflict policy: Own the optional JDK lock, lazy lifecycle, ErgoAI Java binding, and its focused evidence; never download a moving `latest` target without resolving and pinning its immutable identity, trust ambient `JAVA_HOME`, make a JDK a mandatory pip dependency, elevate advisor output to proof authority, or couple core ErgoAI availability to this optional capability.
 - Interfaces: ErgoAIJavaAPIToolchainContract@1, LogicVerificationLazyInstaller@1
+- Submodules: ipfs_datasets_py
+- Resource class: io-artifact
+
+## FVT-G223 Live-certify/harden managed ErgoAI Java/JDK path
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G222, FVT-G218
+- Fib priority: 317811
+- Priority: P0
+- Track: certification-integrity
+- Bundle: formal-verification-tactician/ergoai-java-api-live-certification
+- Goal: Convert the managed ErgoAI Java/JDK capability from contract and fixture coverage into a live, adversarially hardened, replayable deployment path using the exact official ErgoAI 3.0 and Eclipse Temurin 17.0.20+8 identities, without coupling core ErgoAI availability to Java or raising advisor output above its authority ceiling.
+- Evidence: docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, tools/logic/certification/advisors.py, docs/architecture/formal_verification_ergoai_java_api_live_receipt.json, test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py, test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py, ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py
+- Validation: IPFS_DATASETS_PY_TEST_LIVE_ERGOAI_JAVA=1 IPFS_DATASETS_PY_ALLOW_LAZY_INSTALL=1 PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py test/integration/toolchains/test_ergoai_live_toolchain_contract.py ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py -q
+- Acceptance: On each reviewed host, an explicit opt-in installs the immutable official Eclipse Temurin 17.0.20+8 artifact, verifies its pinned archive digest, size, release checksum, detached signature or equivalently strong publisher evidence, vendor, license, OS, and architecture, and records exact `java`, `javac`, and `jar` versions, paths, and byte digests; the pinned official ErgoAI 3.0 tree then compiles and executes at least one real vendor Java consumer against real ErgoAI/XSB, and a synthetic HelloWorld or JDK-only probe cannot satisfy the semantic case; a real timeout terminates the complete child process tree within a bounded grace period and removes transient consumer workspaces, locks, and partial outputs; relocating the validated JDK and ErgoAI pair beneath a fresh HOME preserves identity binding and produces deterministic replay evidence without ambient `JAVA_HOME`, PATH, caches, or source-tree leakage; byte mutations of each selected Java tool and every identity-bound ErgoAI Java launcher, archive, or classpath artifact are rejected before execution and cannot be repaired into success by stale evidence; concurrent processes use a bounded cross-process single-flight lock so only one acquisition/publication occurs, all waiters observe the same validated identity, abandoned locks are recovered safely, and no partial tree is visible; a failed `force=True` replacement, including download, publisher-evidence, extraction, probe, or publication failure, rolls back to the exact previous-good tree and receipt while quarantining or deleting only bounded staged state; every mutable install, cache, staging, lock, backup, quarantine, and temporary path is a strict canonical descendant of the selected HOME, while HOME itself, sibling or prefix-collision paths, lexical traversal, and symlinked ancestors or targets fail closed; manifests and receipts bind the official publisher evidence, artifact and executable digests, platform tuple, canonical paths, ErgoAI release identity, test inputs, raw-output digests, cleanup result, and source/merged trees; the Java capability remains advisor-only, cannot discharge a proof obligation without an independent kernel or solver, and its absence or failure never makes the already certified core ErgoAI advisor unavailable.
+- Conflict policy: Own live Java/JDK lifecycle hardening, the ErgoAI Java consumer binding, and focused public-safe evidence; never depend on SecPAL or FVT-G219, trust ambient Java state, substitute fixtures for live vendor execution, publish an unverified or partially installed tree, delete outside the bounded HOME descendant, weaken rollback or identity checks to pass, elevate advisor evidence to proof authority, or make core ErgoAI depend on this optional lane.
+- Interfaces: ErgoAIJavaAPILiveCertification@1, ErgoAIJavaAPIToolchainContract@1, ErgoAILiveToolchainContract@1
 - Submodules: ipfs_datasets_py
 - Resource class: io-artifact

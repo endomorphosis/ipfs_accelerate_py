@@ -12,7 +12,7 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Review only: false
 - Priority: P0
 - Track: completion
-- Depends on: FVT-067, FVT-082, FVT-G219, FVT-088
+- Depends on: FVT-067, FVT-082, FVT-088
 - Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_authoritative_vendor_release.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_authoritative_vendor_release.py
 - Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/test_formal_verification_authoritative_vendor_release.py test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
