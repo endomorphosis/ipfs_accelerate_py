@@ -21,6 +21,7 @@ METRICS_ATTRIBUTE = "_ipfs_proof_reuse_metrics"
 COORDINATOR_ATTRIBUTE = "_ipfs_proof_reuse_xdist_coordinator"
 LOOKUP_SERVICE_ATTRIBUTE = "_ipfs_proof_reuse_lookup_service"
 STORE_SERVICE_ATTRIBUTE = "_ipfs_proof_reuse_store_service"
+CANDIDATE_STORE_SERVICE_ATTRIBUTE = "_ipfs_proof_reuse_candidate_store_service"
 PROVIDER_SERVICE_ATTRIBUTE = "_ipfs_proof_reuse_provider_service"
 ISSUER_SERVICE_ATTRIBUTE = "_ipfs_proof_reuse_issuer_service"
 DEPENDENCY_INSTALLER_ATTRIBUTE = "_ipfs_proof_reuse_dependency_installer"
@@ -184,6 +185,7 @@ def set_proof_reuse_services(
     *,
     lookup: Any = None,
     store: Any = None,
+    candidate_store: Any = None,
     provider: Any = None,
     issuer: Any = None,
 ) -> None:
@@ -191,6 +193,8 @@ def set_proof_reuse_services(
 
     setattr(config, LOOKUP_SERVICE_ATTRIBUTE, lookup)
     setattr(config, STORE_SERVICE_ATTRIBUTE, store)
+    if candidate_store is not None:
+        setattr(config, CANDIDATE_STORE_SERVICE_ATTRIBUTE, candidate_store)
     setattr(config, PROVIDER_SERVICE_ATTRIBUTE, provider)
     setattr(config, ISSUER_SERVICE_ATTRIBUTE, issuer)
 
@@ -309,6 +313,7 @@ def _inject_default_services(config: Any) -> None:
             identity_services=getattr(config, IDENTITY_SERVICES_ATTRIBUTE, None),
             lookup=getattr(config, LOOKUP_SERVICE_ATTRIBUTE, None),
             store=getattr(config, STORE_SERVICE_ATTRIBUTE, None),
+            candidate_store=getattr(config, CANDIDATE_STORE_SERVICE_ATTRIBUTE, None),
             provider=getattr(config, PROVIDER_SERVICE_ATTRIBUTE, None),
             issuer=getattr(config, ISSUER_SERVICE_ATTRIBUTE, None),
         )
@@ -341,12 +346,22 @@ def _inject_default_services(config: Any) -> None:
         metrics = getattr(config, METRICS_ATTRIBUTE, None)
         if metrics is not None:
             metrics.degraded(reason_code=resolution.reason_code)
+        # Fail closed for lookup/store/provider: never inject a partial
+        # authority path when the optional provider resolution failed.
+        # Non-authoritative helpers (lazy issuer, candidate store) may still
+        # be retained on DEFAULT_SERVICES_ATTRIBUTE only.
         return
 
     for attribute, service in (
-        (LOOKUP_SERVICE_ATTRIBUTE, defaults.lookup or resolution.lookup),
-        (STORE_SERVICE_ATTRIBUTE, defaults.store or resolution.store),
-        (PROVIDER_SERVICE_ATTRIBUTE, defaults.provider or resolution.provider),
+        # Prefer resolution handles for object-identity stability with the
+        # memoized LazyProofReuseServiceResolver result (tests and production).
+        (LOOKUP_SERVICE_ATTRIBUTE, resolution.lookup or defaults.lookup),
+        (STORE_SERVICE_ATTRIBUTE, resolution.store or defaults.store),
+        (
+            CANDIDATE_STORE_SERVICE_ATTRIBUTE,
+            getattr(defaults, "candidate_store", None),
+        ),
+        (PROVIDER_SERVICE_ATTRIBUTE, resolution.provider or defaults.provider),
         (ISSUER_SERVICE_ATTRIBUTE, defaults.issuer),
     ):
         if service is not None and getattr(config, attribute, None) is None:
@@ -1184,6 +1199,7 @@ def pytest_sessionfinish(session: Any, exitstatus: Any) -> None:
         coordinator.flush_publications(
             getattr(config, STORE_SERVICE_ATTRIBUTE, None),
             getattr(config, ISSUER_SERVICE_ATTRIBUTE, None),
+            candidate_store=getattr(config, CANDIDATE_STORE_SERVICE_ATTRIBUTE, None),
         )
     clear_collectors()
 
@@ -1210,6 +1226,7 @@ __all__ = [
     "COMPOSITION_ATTRIBUTE",
     "CONFIG_ATTRIBUTE",
     "COORDINATOR_ATTRIBUTE",
+    "CANDIDATE_STORE_SERVICE_ATTRIBUTE",
     "DEFAULT_SERVICES_ATTRIBUTE",
     "DEPENDENCY_INSTALLER_ATTRIBUTE",
     "DEFERRED_REQUEST_ATTRIBUTE",

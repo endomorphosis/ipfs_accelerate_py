@@ -40,7 +40,8 @@ PROOF_REUSE_PROVISION_DIR_ENV: Final = "IPFS_TEST_PROOF_REUSE_PROVISION_DIR"
 DATASETS_GROTH16_BINARY_ENV: Final = "IPFS_DATASETS_GROTH16_BINARY"
 DATASETS_GROTH16_ARTIFACTS_ROOT_ENV: Final = "GROTH16_BACKEND_ARTIFACTS_ROOT"
 
-DATASETS_VERIFIER_REVISION: Final = "ab09d16329f7322b53cfecd4aed65f23044279a0"
+# Exact merged PTR-144 provider commit (lazy real Groth16 test-pass issuance).
+DATASETS_VERIFIER_REVISION: Final = "eb5cc89717d6132d33de912fdf392a31d08ec848"
 DATASETS_VERIFIER_SOURCE_SHA256: Final = (
     "da02643318acb108e45cfd918f77e0ea669a9d0480f2550228b7eb0b0653db81"
 )
@@ -96,6 +97,7 @@ DATASETS_VERIFIER_SNAPSHOT_FILES: Final = (
     "ipfs_datasets_py/logic/zkp/test_certificate_assurance.py",
     "ipfs_datasets_py/logic/zkp/test_certificate_issuer.py",
     "ipfs_datasets_py/logic/zkp/test_execution_certificate.py",
+    "ipfs_datasets_py/logic/zkp/test_pass_groth16_provider.py",
     "ipfs_datasets_py/logic/zkp/tests/test_eth_integration.py",
     "ipfs_datasets_py/logic/zkp/ucan_zkp_bridge.py",
     "ipfs_datasets_py/logic/zkp/vk_registry.py",
@@ -108,10 +110,10 @@ DATASETS_VERIFIER_SNAPSHOT_FILES: Final = (
     "ipfs_datasets_py/router_deps.py",
 )
 DATASETS_VERIFIER_SNAPSHOT_SHA256: Final = (
-    "4d40eb5a37e703563fb0a243a8969fbbc37b83b4a1268dfb6078c10f2e92f8fe"
+    "789339696dc10fb37dc0fd4fddd21b24af50b669479c194095f37dc904eab343"
 )
-DATASETS_VERIFIER_SNAPSHOT_BYTES: Final = 837_070
-DATASETS_VERIFIER_ZKP_TREE_OBJECT: Final = "0b3ece6f4cef59e0b5185bc3501d3c411f405f22"
+DATASETS_VERIFIER_SNAPSHOT_BYTES: Final = 873_708
+DATASETS_VERIFIER_ZKP_TREE_OBJECT: Final = "33fca9e5756798b7b77e417a6747b996e55d38c1"
 DATASETS_VERIFIER_SCHEMA_TREE_OBJECT: Final = "343f2381e601ff4a81dab95c8b32ae0aacec65ac"
 DATASETS_VERIFIER_REQUIRES_PYTHON: Final = ">=3.12"
 DATASETS_PYTHON_BUILD_FILES_SHA256: Final[Mapping[str, str]] = MappingProxyType(
@@ -125,7 +127,7 @@ DATASETS_PYTHON_BUILD_FILES_SHA256: Final[Mapping[str, str]] = MappingProxyType(
     }
 )
 DATASETS_VERIFIER_DISTRIBUTION: Final = (
-    "ipfs-accelerate-proof-reuse-verifier==0.2.0+ab09d163"
+    "ipfs-accelerate-proof-reuse-verifier==0.2.0+eb5cc897"
 )
 DATASETS_VERIFIER_REMOTE_SOURCE_PUBLISHED: Final = False
 DATASETS_VERIFIER_RELEASE_BLOCKER: Final = "datasets_verifier_revision_unpublished"
@@ -143,25 +145,25 @@ DATASETS_GROTH16_REVIEWED_FILES_SHA256: Final[Mapping[str, str]] = MappingProxyT
             "592b3736d8e2c25f54aa1c7f5ea8cd1c1649c644762d1973f2687918bf9e470f"
         ),
         "src/circuit.rs": (
-            "a871bbc7da5339cbe8605ba3db2a6715739641be354113399318a6fbb02ae214"
+            "3d0ab0afd0f09711f4834d155d37dec228ce0d4e5608eb4371e4f4d8026cba04"
         ),
         "src/domain.rs": (
             "fb39f6b0992b2e77053bb9ca64f8d8005cd43af18b07e766816ddfe27e6aeeb2"
         ),
         "src/lib.rs": (
-            "c139b64c275aeb49ad7af96fd1a126c1a6abe30e1cb80cdba11b759b7fdeb2df"
+            "72e4c45e123d9367da3e2a2ef7e51c0616ed4e3d0f2fae5ddfcf17760e3112b1"
         ),
         "src/main.rs": (
             "cb25765d0be0fc37cf8a4a5ba8881f7f1eb8ddcb97dfddd75dfbd8a676eb5e34"
         ),
         "src/prover.rs": (
-            "e176ce7caf306d8f7d5e30ab53ac43ba30b1dc344cc22dc250dc6751628f3c9a"
+            "a469844271d89b2fd61c7b5eb97f8957a444662b5822197989e71248da9bcc03"
         ),
         "src/setup.rs": (
-            "46f52090d9a8138edd184e93e2f4e8b32dc8a4456024d4937c26fa8dbe880c06"
+            "6ddf5412dcafbaaba86f385ed8ceffad3bfcae3e08d3f41ba181a8c22134a31a"
         ),
         "src/verifier.rs": (
-            "57160386d3869cd00b73b12deaeecb6e72a2c55e9225f1d4cea6ad405c48bb46"
+            "5c5e4783897ed1f65d4884b4db4dc9f5890f60c97a99a59524fe3691008653b4"
         ),
     }
 )
@@ -1774,9 +1776,32 @@ class LazyProofReuseServiceResolver:
             return ProofReuseServiceResolution.unavailable("cache_unavailable")
 
         try:
-            lookup = lookup_type(store=store, provider=provider)
+            # Prefer production two-stage lookup when the module exports it;
+            # fall back to the legacy single-stage constructor for hermetic
+            # doubles that only expose ProofReuseLookup.
+            two_stage_type = getattr(lookup_module, "ProofReuseTwoStageLookup", None)
+            build_two_stage = getattr(
+                lookup_module, "build_proof_reuse_two_stage_lookup", None
+            )
+            if callable(build_two_stage):
+                lookup = build_two_stage(
+                    proof_cache_store=store,
+                    certificate_provider=provider,
+                    require_runtime_frontier=True,
+                )
+            elif two_stage_type is not None:
+                lookup = two_stage_type(
+                    proof_cache_store=store,
+                    certificate_provider=provider,
+                    provider=provider,
+                )
+            else:
+                lookup = lookup_type(store=store, provider=provider)
         except Exception:
-            return ProofReuseServiceResolution.unavailable("plugin_unavailable")
+            try:
+                lookup = lookup_type(store=store, provider=provider)
+            except Exception:
+                return ProofReuseServiceResolution.unavailable("plugin_unavailable")
         return ProofReuseServiceResolution(
             available=True,
             reason_code="",
@@ -1802,6 +1827,209 @@ class LazyProofReuseServiceResolver:
 
 
 DEFAULT_PROOF_REUSE_SERVICES_INTERFACE: Final = "ProofReuseServices@1"
+LAZY_REAL_TEST_CERTIFICATE_ISSUER_INTERFACE: Final = (
+    "LazyRealTestCertificateIssuer@1"
+)
+DATASETS_GROTH16_ENABLE_ENV: Final = "IPFS_DATASETS_ENABLE_GROTH16"
+CANDIDATE_CONTEXT_CACHE_SUBDIR: Final = "candidate-context"
+CERTIFICATE_CACHE_SUBDIR: Final = "certificates"
+
+
+class LazyRealTestCertificateIssuer:
+    """Non-None lazy real datasets issuer (PTR-147).
+
+    Construction and attribute access never import optional datasets modules,
+    never start a native build, and never prove.  The first controller
+    :meth:`issue` call may invoke the bounded Groth16 provisioner and runtime
+    readiness inspection only when the explicit native-build policy permits it.
+    The generic pre-PTR-144 knowledge-of-axioms backend alone is never treated
+    as certificate authority.  ``IPFS_DATASETS_ENABLE_GROTH16=1`` is published
+    into the process environment only after the test-pass-specific circuit/key
+    capability and exact provenance are ready.
+    """
+
+    interface: str = LAZY_REAL_TEST_CERTIFICATE_ISSUER_INTERFACE
+
+    def __init__(
+        self,
+        *,
+        store: Any = None,
+        installer: Any = None,
+        environ: Mapping[str, str] | None = None,
+        artifacts_root: str | os.PathLike[str] | None = None,
+        binary_path: str | os.PathLike[str] | None = None,
+    ) -> None:
+        self._store = store
+        self._installer = installer
+        self._environ = environ
+        self._artifacts_root = (
+            Path(artifacts_root) if artifacts_root is not None else None
+        )
+        self._binary_path = Path(binary_path) if binary_path is not None else None
+        self._lock = threading.RLock()
+        self._factory: Any = None
+        self._enable_published = False
+        self._last_bindings: Any = None
+        self._last_reason: str = ""
+
+    @property
+    def factory(self) -> Any:
+        return self._factory
+
+    @property
+    def enable_env_published(self) -> bool:
+        return self._enable_published
+
+    @property
+    def last_artifact_bindings(self) -> Any:
+        return self._last_bindings
+
+    def _env_view(self) -> Mapping[str, str]:
+        return self._environ if self._environ is not None else os.environ
+
+    def _maybe_provision_native(self) -> None:
+        """Call the bounded provisioner only under explicit native-build policy."""
+
+        if not groth16_build_enabled(self._env_view()):
+            return
+        installer = self._installer
+        if installer is None:
+            return
+        ensure = getattr(installer, "ensure_groth16_native_backend", None)
+        if not callable(ensure):
+            return
+        try:
+            ensure(consent=True)
+        except Exception:
+            return
+        inspect = getattr(installer, "inspect_groth16_runtime", None)
+        if callable(inspect):
+            try:
+                inspect()
+            except Exception:
+                return
+
+    def _derive_bindings(self) -> Any:
+        """Derive circuit/VK CIDs from exact activated artifact bytes."""
+
+        try:
+            from .publication import Groth16ArtifactIdentityBindings
+
+            return Groth16ArtifactIdentityBindings.from_activated_artifacts(
+                artifacts_root=self._artifacts_root,
+                environ=self._env_view(),
+                binary_path=self._binary_path,
+            )
+        except Exception:
+            return None
+
+    def _publish_enable_env_if_ready(self, bindings: Any) -> bool:
+        if bindings is None or not getattr(bindings, "provenance_ready", False):
+            return False
+        if self._enable_published:
+            return True
+        # Publish only after test-pass-specific circuit/key provenance is ready.
+        target = self._environ
+        if target is None:
+            os.environ[DATASETS_GROTH16_ENABLE_ENV] = "1"
+        elif isinstance(target, dict):
+            target[DATASETS_GROTH16_ENABLE_ENV] = "1"
+        self._enable_published = True
+        return True
+
+    def _ensure_factory(self) -> Any | None:
+        if self._factory is not None:
+            return self._factory
+        with self._lock:
+            if self._factory is not None:
+                return self._factory
+            self._maybe_provision_native()
+            bindings = self._derive_bindings()
+            self._last_bindings = bindings
+            if bindings is not None and not getattr(
+                bindings, "provenance_ready", False
+            ):
+                # Missing/synthetic/stale/mismatched provenance: keep factory
+                # unbuilt so issue() returns typed DEFERRED without proving.
+                self._last_reason = str(
+                    getattr(bindings, "reason_code", "") or "artifact_provenance_unready"
+                )
+                return None
+            self._publish_enable_env_if_ready(bindings)
+            try:
+                from ipfs_datasets_py.logic.zkp.test_certificate_issuer import (
+                    build_default_test_certificate_issuer,
+                )
+            except Exception:
+                self._last_reason = "issuer_import_unavailable"
+                return None
+            try:
+                kwargs: dict[str, Any] = {
+                    "store": self._store,
+                    "environ": self._env_view(),
+                }
+                # Prefer the real Groth16 provider factory path (PTR-144).
+                try:
+                    from ipfs_datasets_py.logic.zkp.test_pass_groth16_provider import (
+                        LazyGroth16TestCertificateProvider,
+                        build_default_test_certificate_issuer as build_groth16,
+                    )
+
+                    provider = LazyGroth16TestCertificateProvider(
+                        binary_path=self._binary_path,
+                        artifacts_root=self._artifacts_root,
+                        environ=self._env_view(),
+                        require_enable_env=True,
+                    )
+                    self._factory = build_groth16(
+                        store=self._store,
+                        provider=provider,
+                        environ=self._env_view(),
+                    )
+                except Exception:
+                    self._factory = build_default_test_certificate_issuer(**kwargs)
+            except Exception:
+                self._last_reason = "issuer_construction_failed"
+                self._factory = None
+            return self._factory
+
+    def issue(self, request: Any) -> Any:
+        """Issue or defer; never raises into the pytest outcome path."""
+
+        class _Deferred:
+            status = "certificate_deferred"
+            reason = "issuer_unavailable"
+            certificate = None
+            certificate_cid = ""
+            indexed = False
+
+            def to_dict(self) -> dict[str, Any]:
+                return {
+                    "status": self.status,
+                    "reason": self.reason,
+                    "certificate_cid": self.certificate_cid,
+                    "indexed": False,
+                }
+
+        try:
+            factory = self._ensure_factory()
+            if factory is None:
+                deferred = _Deferred()
+                deferred.reason = self._last_reason or "issuer_unavailable"
+                return deferred
+            issue = getattr(factory, "issue", None)
+            if not callable(issue):
+                deferred = _Deferred()
+                deferred.reason = "issuer_method_unavailable"
+                return deferred
+            return issue(request)
+        except Exception:
+            deferred = _Deferred()
+            deferred.reason = "issuer_exception"
+            return deferred
+
+    issue_deferred = issue
+    __call__ = issue
 
 
 @dataclass(frozen=True, slots=True)
@@ -1811,15 +2039,21 @@ class DefaultProofReuseServices:
     Explicit injected handles always override lazy defaults.  Construction and
     attribute access never open a network socket or install a package; callers
     resolve optional lookup/store/provider services through the lazy resolver.
+
+    Defaults use separate persistent candidate-context and certificate stores,
+    a current-context provider, revalidator, two-stage lookup, and a non-None
+    lazy real issuer without eager optional imports.
     """
 
     interface: str = DEFAULT_PROOF_REUSE_SERVICES_INTERFACE
     identity_services: Any = None
     lookup: Any = None
     store: Any = None
+    candidate_store: Any = None
     provider: Any = None
     issuer: Any = None
     revalidator: Any = None
+    current_context_provider: Any = None
     resolver: Any = None
     resolution: Any = None
     source: str = "defaults"
@@ -1836,9 +2070,11 @@ class DefaultProofReuseServices:
         identity_services: Any = None,
         lookup: Any = None,
         store: Any = None,
+        candidate_store: Any = None,
         provider: Any = None,
         issuer: Any = None,
         revalidator: Any = None,
+        current_context_provider: Any = None,
     ) -> DefaultProofReuseServices:
         """Return a copy with only the provided non-None fields replaced."""
 
@@ -1851,15 +2087,59 @@ class DefaultProofReuseServices:
             ),
             lookup=lookup if lookup is not None else self.lookup,
             store=store if store is not None else self.store,
+            candidate_store=(
+                candidate_store
+                if candidate_store is not None
+                else self.candidate_store
+            ),
             provider=provider if provider is not None else self.provider,
             issuer=issuer if issuer is not None else self.issuer,
             revalidator=(revalidator if revalidator is not None else self.revalidator),
+            current_context_provider=(
+                current_context_provider
+                if current_context_provider is not None
+                else self.current_context_provider
+            ),
             resolver=self.resolver,
             resolution=self.resolution,
             source=self.source if identity_services is None else "explicit",
             degraded=self.degraded,
             reason_code=self.reason_code,
         )
+
+
+def _try_build_candidate_context_store(
+    cache_root: str | os.PathLike[str] | None,
+) -> Any | None:
+    if cache_root is None:
+        return None
+    try:
+        from ...agent_supervisor.proof.test_candidate_context_store import (
+            TestCandidateContextStore,
+        )
+
+        root = Path(cache_root) / CANDIDATE_CONTEXT_CACHE_SUBDIR
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        return TestCandidateContextStore(root)
+    except Exception:
+        return None
+
+
+def _try_build_certificate_store(
+    cache_root: str | os.PathLike[str] | None,
+) -> Any | None:
+    if cache_root is None:
+        return None
+    try:
+        from ...agent_supervisor.proof.test_certificate_store import (
+            TestCertificateStore,
+        )
+
+        root = Path(cache_root) / CERTIFICATE_CACHE_SUBDIR
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        return TestCertificateStore(root)
+    except Exception:
+        return None
 
 
 def compose_default_proof_reuse_services(
@@ -1873,19 +2153,31 @@ def compose_default_proof_reuse_services(
     identity_services: Any = None,
     lookup: Any = None,
     store: Any = None,
+    candidate_store: Any = None,
     provider: Any = None,
     issuer: Any = None,
     revalidator: Any = None,
+    current_context_provider: Any = None,
     environ: Mapping[str, str] | None = None,
 ) -> DefaultProofReuseServices:
     """Assemble scoped defaults without item monkeypatches or path registries.
 
-    Every optional-boundary failure returns a degraded-but-usable bundle so
-    collection and execution continue.  Explicit service arguments always win.
+    Production defaults (PTR-147):
+
+    * advance reviewed datasets revision/manifest pins (module constants);
+    * persistent dedicated candidate-context + certificate stores;
+    * current-context provider, revalidator, two-stage lookup;
+    * non-None lazy real issuer without eager optional imports.
+
+    Collection and lookup never build or prove.  Every optional-boundary
+    failure returns a degraded-but-usable bundle so execution continues.
+    Explicit service arguments always win.
     """
 
     reason_code = ""
     degraded = False
+    env = environ if environ is not None else os.environ
+
     resolved_identity = identity_services
     if resolved_identity is None and mode is not None:
         try:
@@ -1901,8 +2193,25 @@ def compose_default_proof_reuse_services(
             degraded = True
             reason_code = "identity_services_unavailable"
 
-    resolved_resolver = resolver
+    resolved_candidate_store = candidate_store
+    if resolved_candidate_store is None and cache_root is not None:
+        resolved_candidate_store = _try_build_candidate_context_store(cache_root)
+        if resolved_candidate_store is None:
+            degraded = True
+            reason_code = reason_code or "candidate_store_unavailable"
+
+    resolved_store = store
+    resolved_provider = provider
+    resolved_lookup = lookup
     resolution: ProofReuseServiceResolution | None = None
+    resolved_resolver = resolver
+
+    # Prefer dedicated certificate-store layout under cache_root when the
+    # caller did not inject an explicit store.  Optional provider resolution
+    # remains fail-open.
+    if resolved_store is None and cache_root is not None:
+        resolved_store = _try_build_certificate_store(cache_root)
+
     if lookup is None or store is None or provider is None:
         if resolved_resolver is None:
             try:
@@ -1917,6 +2226,8 @@ def compose_default_proof_reuse_services(
                 reason_code = reason_code or "service_resolver_unavailable"
         if resolved_resolver is not None and cache_root is not None:
             try:
+                # Legacy all-or-nothing optional provider path; used only to
+                # fill gaps. Never proves. May fail open.
                 resolution = resolved_resolver.resolve(cache_root=cache_root)
             except Exception:
                 resolution = ProofReuseServiceResolution.unavailable(
@@ -1925,29 +2236,47 @@ def compose_default_proof_reuse_services(
                 degraded = True
                 reason_code = reason_code or "plugin_unavailable"
 
-    resolved_lookup = lookup
-    resolved_store = store
-    resolved_provider = provider
     if isinstance(resolution, ProofReuseServiceResolution) and resolution.available:
-        if resolved_lookup is None:
-            resolved_lookup = resolution.lookup
         if resolved_store is None:
             resolved_store = resolution.store
         if resolved_provider is None:
             resolved_provider = resolution.provider
+        if resolved_lookup is None:
+            # Preserve the resolver's lookup object identity for hermetic
+            # injection tests and production memoized resolution handles.
+            resolved_lookup = resolution.lookup
     elif (
         isinstance(resolution, ProofReuseServiceResolution) and not resolution.available
     ):
         degraded = True
         reason_code = reason_code or resolution.reason_code or "plugin_unavailable"
 
+    resolved_current_context = current_context_provider
+    if resolved_current_context is None and resolved_identity is not None:
+        try:
+            from .current_context_provider import (
+                build_default_current_context_provider,
+            )
+
+            resolved_current_context = build_default_current_context_provider(
+                identity_services=resolved_identity,
+                environ=env,
+            )
+        except Exception:
+            resolved_current_context = None
+            degraded = True
+            reason_code = reason_code or "current_context_provider_unavailable"
+
     resolved_revalidator = revalidator
-    if resolved_revalidator is None and resolved_store is not None:
+    if resolved_revalidator is None and (
+        resolved_candidate_store is not None or resolved_store is not None
+    ):
         try:
             from .runtime_revalidation import build_runtime_context_revalidator
 
             resolved_revalidator = build_runtime_context_revalidator(
-                candidate_store=resolved_store,
+                candidate_store=resolved_candidate_store,
+                current_context_provider=resolved_current_context,
                 require_runtime_frontier=True,
             )
         except Exception:
@@ -1955,13 +2284,44 @@ def compose_default_proof_reuse_services(
             degraded = True
             reason_code = reason_code or "revalidator_unavailable"
 
+    if resolved_lookup is None:
+        try:
+            from .lookup import build_proof_reuse_two_stage_lookup
+
+            resolved_lookup = build_proof_reuse_two_stage_lookup(
+                candidate_context_store=resolved_candidate_store,
+                certificate_provider=resolved_provider,
+                proof_cache_store=resolved_store,
+                revalidator=resolved_revalidator,
+                current_context_provider=resolved_current_context,
+                identity_services=resolved_identity,
+                environ=env,
+                require_runtime_frontier=True,
+            )
+        except Exception:
+            resolved_lookup = None
+            degraded = True
+            reason_code = reason_code or "two_stage_lookup_unavailable"
+
+    # Non-None lazy real issuer without eager optional imports.  Explicit
+    # injections always win; construction never imports datasets.
+    resolved_issuer = issuer
+    if resolved_issuer is None:
+        resolved_issuer = LazyRealTestCertificateIssuer(
+            store=resolved_store,
+            installer=installer,
+            environ=env if isinstance(env, dict) else None,
+        )
+
     return DefaultProofReuseServices(
         identity_services=resolved_identity,
         lookup=resolved_lookup,
         store=resolved_store,
+        candidate_store=resolved_candidate_store,
         provider=resolved_provider,
-        issuer=issuer,
+        issuer=resolved_issuer,
         revalidator=resolved_revalidator,
+        current_context_provider=resolved_current_context,
         resolver=resolved_resolver,
         resolution=resolution,
         source="defaults" if identity_services is None else "explicit",
@@ -1972,9 +2332,12 @@ def compose_default_proof_reuse_services(
 
 __all__ = [
     "AllowlistedPipInstaller",
+    "CANDIDATE_CONTEXT_CACHE_SUBDIR",
+    "CERTIFICATE_CACHE_SUBDIR",
     "DATASETS_GROTH16_ARTIFACTS_ROOT_ENV",
     "DATASETS_GROTH16_BINARY_ENV",
     "DATASETS_GROTH16_BUNDLED_BINARIES_SHA256",
+    "DATASETS_GROTH16_ENABLE_ENV",
     "DATASETS_GROTH16_REVIEWED_ARTIFACTS_SHA256",
     "DATASETS_GROTH16_REVIEWED_FILES_SHA256",
     "DATASETS_PYTHON_BUILD_FILES_SHA256",
@@ -1985,13 +2348,19 @@ __all__ = [
     "DATASETS_VERIFIER_RELEASE_BLOCKER",
     "DATASETS_VERIFIER_REMOTE_SOURCE_PUBLISHED",
     "DATASETS_VERIFIER_SOURCE_SHA256",
+    "DATASETS_VERIFIER_SNAPSHOT_BYTES",
+    "DATASETS_VERIFIER_SNAPSHOT_FILES",
+    "DATASETS_VERIFIER_SNAPSHOT_SHA256",
+    "DATASETS_VERIFIER_ZKP_TREE_OBJECT",
     "DEFAULT_PROOF_REUSE_SERVICES_INTERFACE",
     "DefaultProofReuseServices",
     "DEFAULT_NLTK_DATA_RESOURCES",
+    "LAZY_REAL_TEST_CERTIFICATE_ISSUER_INTERFACE",
     "LOOKUP_MODULE",
     "JSONSCHEMA_DEPENDENCY",
     "JSONSCHEMA_MODULE",
     "LazyProofReuseServiceResolver",
+    "LazyRealTestCertificateIssuer",
     "MULTIFORMATS_DEPENDENCY",
     "MULTIFORMATS_MODULE",
     "NLTK_DATA_RESOURCE_ALLOWLIST",
