@@ -188,9 +188,17 @@ def _projection_is_quiescent_for_heartbeat_fallback(
     }
     resource_claim_prefix = "resource_claim_deferred:"
     resource_claim_race = idle_reason.startswith(resource_claim_prefix) and bool(
-        idle_reason[len(resource_claim_prefix) :]
+        idle_reason[len(resource_claim_prefix) :].strip()
     )
-    if idle_reason not in exact_idle_reasons and not resource_claim_race:
+    implementation_retry_prefix = "implementation_retry_deferred:"
+    implementation_retry_deferred = idle_reason.startswith(
+        implementation_retry_prefix
+    ) and bool(idle_reason[len(implementation_retry_prefix) :].strip())
+    if (
+        idle_reason not in exact_idle_reasons
+        and not resource_claim_race
+        and not implementation_retry_deferred
+    ):
         return False
     counts: dict[str, int] = {}
     for field_name in required_fields.difference(
@@ -211,7 +219,7 @@ def _projection_is_quiescent_for_heartbeat_fallback(
     if idle_reason in {
         "all_selectable_ready_tasks_deferred_by_resource_claim",
         "all_selectable_ready_tasks_reached_max_task_attempts",
-    }:
+    } or implementation_retry_deferred:
         return (
             counts["ready_count"] > 0
             and counts["selectable_ready_count"] == 0

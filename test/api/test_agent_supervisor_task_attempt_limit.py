@@ -93,6 +93,23 @@ def test_heartbeat_fallback_accepts_attempt_limit_backpressure() -> None:
     )
 
 
+def test_heartbeat_fallback_accepts_implementation_retry_deferral() -> None:
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=1,
+            selection_idle_reason=(
+                "implementation_retry_deferred:provider_capacity_backoff"
+            ),
+        )
+    )
+    assert not _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=1,
+            selection_idle_reason="implementation_retry_deferred:",
+        )
+    )
+
+
 @pytest.mark.parametrize(
     ("idle_reason", "selectable_ready_count", "eligible_ready_count"),
     (
@@ -134,6 +151,9 @@ def test_heartbeat_fallback_rejects_active_or_implementing_projection(
             active_task_id=active_task_id,
             implementation_in_progress=implementation_in_progress,
             ready_count=1,
+            selection_idle_reason=(
+                "implementation_retry_deferred:provider_capacity_backoff"
+            ),
         )
     )
 
