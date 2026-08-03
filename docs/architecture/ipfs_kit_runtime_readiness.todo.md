@@ -303,7 +303,7 @@ or write authority.
 
 ## KITA-009 Join VFS backend, WAL, crash, and interface conformance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
