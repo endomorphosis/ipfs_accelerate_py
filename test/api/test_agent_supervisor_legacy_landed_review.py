@@ -24,6 +24,12 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
     content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import legacy_landed_review as legacy
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalImplementationDaemon,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    parse_args as parse_daemon_args,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
@@ -607,6 +613,57 @@ def test_bundle_and_child_supervisor_forward_only_two_explicit_legacy_paths(
     incomplete = replace(config, legacy_landed_review_key_path=None)
     with pytest.raises(ValueError):
         PortalImplementationSupervisor(incomplete)._build_daemon_command()
+
+
+def test_daemon_loads_only_a_strict_paired_legacy_policy_and_key(
+    tmp_path: Path,
+) -> None:
+    todo_path = tmp_path / "runtime.todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    key_path = tmp_path / "operator.key"
+    _private, issuer = _private_key_file(key_path)
+    policy_path = tmp_path / "operator-policy.json"
+    _write_policy(policy_path, _policy_payload(issuer_key_id=issuer, enabled=False))
+
+    args = parse_daemon_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--legacy-landed-review-policy-path",
+            str(policy_path),
+            "--legacy-landed-review-key-path",
+            str(key_path),
+        ]
+    )
+    assert args.legacy_landed_review_policy_path == policy_path
+    assert args.legacy_landed_review_key_path == key_path
+
+    common = {
+        "todo_path": todo_path,
+        "state_path": tmp_path / "state" / "task-state.json",
+        "strategy_path": tmp_path / "state" / "strategy.json",
+        "events_path": tmp_path / "state" / "events.jsonl",
+        "repo_root": tmp_path,
+    }
+    with pytest.raises(ValueError, match="must be supplied together"):
+        PortalImplementationDaemon(
+            **common,
+            legacy_landed_review_policy_path=policy_path,
+        )
+
+    daemon = PortalImplementationDaemon(
+        **common,
+        legacy_landed_review_policy_path=policy_path,
+        legacy_landed_review_key_path=key_path,
+    )
+    assert daemon.legacy_landed_review_policy is not None
+    assert daemon.legacy_landed_review_policy.policy_id == (
+        legacy.load_legacy_landed_review_policy(policy_path).policy_id
+    )
+    assert daemon._legacy_landed_review_service is not None  # noqa: SLF001
+    assert set(daemon.legacy_landed_review_trusted_public_keys) == {issuer}
 
 
 def test_cli_adapters_send_exact_envelope_and_observe_no_fallback_effective_child(

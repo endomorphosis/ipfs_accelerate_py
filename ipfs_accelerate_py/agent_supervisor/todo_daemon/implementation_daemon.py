@@ -164,6 +164,13 @@ from .production_provider_attestation import (
     ProductionProviderReviewAuthority,
     production_provider_review_key_path,
 )
+from .legacy_landed_attestation import LegacyLandedReviewAuthority
+from .legacy_landed_provider_cli import build_legacy_landed_cli_provider_pair
+from .legacy_landed_review import (
+    LegacyLandedReviewPolicy,
+    LegacyLandedReviewService,
+    load_legacy_landed_review_policy,
+)
 from .production_provider_cli import (
     DEFAULT_CONTEXT_BUDGET_TOKENS as DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS,
     DEFAULT_PROVIDER_TIMEOUT_SECONDS as DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS,
@@ -2772,6 +2779,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         production_provider_context_budget_tokens: int = 0,
         production_provider_timeout_seconds: float = 0.0,
         production_provider_review_authority_key_path: Path | str | None = None,
+        legacy_landed_review_policy_path: Path | str | None = None,
+        legacy_landed_review_key_path: Path | str | None = None,
         max_task_attempts: int = 0,
         implementation_log_dir: Path | None = None,
         use_ephemeral_worktree: bool = False,
@@ -2949,6 +2958,46 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 self.production_provider_review_trusted_public_keys = {
                     authority.issuer_key_id: authority.public_key_bytes
                 }
+        if (legacy_landed_review_policy_path is None) != (
+            legacy_landed_review_key_path is None
+        ):
+            raise ValueError(
+                "legacy landed review policy and key paths must be supplied together"
+            )
+        self.legacy_landed_review_policy_path: Path | None = None
+        self.legacy_landed_review_key_path: Path | None = None
+        self.legacy_landed_review_policy: LegacyLandedReviewPolicy | None = None
+        self.legacy_landed_review_trusted_public_keys: dict[str, bytes] = {}
+        self._legacy_landed_review_service: LegacyLandedReviewService | None = None
+        if (
+            legacy_landed_review_policy_path is not None
+            and legacy_landed_review_key_path is not None
+        ):
+            legacy_policy_path = Path(legacy_landed_review_policy_path)
+            legacy_key_path = Path(legacy_landed_review_key_path)
+            legacy_policy = load_legacy_landed_review_policy(legacy_policy_path)
+            legacy_authority = LegacyLandedReviewAuthority.from_private_key_path(
+                legacy_key_path
+            )
+            if legacy_authority.issuer_key_id != legacy_policy.issuer_key_id:
+                raise ValueError("legacy operator policy/key binding is invalid")
+            legacy_grok, legacy_codex = build_legacy_landed_cli_provider_pair(
+                legacy_policy
+            )
+            legacy_service = LegacyLandedReviewService(
+                repo_root=self.repo_root,
+                operator_policy_path=legacy_policy_path,
+                operator_key_path=legacy_key_path,
+                grok_invoker=legacy_grok,
+                codex_invoker=legacy_codex,
+            )
+            self.legacy_landed_review_policy_path = legacy_policy_path
+            self.legacy_landed_review_key_path = legacy_key_path
+            self.legacy_landed_review_policy = legacy_service.policy
+            self.legacy_landed_review_trusted_public_keys = {
+                legacy_service.policy.issuer_key_id: legacy_service.trusted_public_key
+            }
+            self._legacy_landed_review_service = legacy_service
         self.max_task_attempts = max(0, int(max_task_attempts))
         self.implementation_log_dir = implementation_log_dir or self.state_path.parent / "implementation_logs"
         self.implementation_context_budget = implementation_context_budget
@@ -29720,6 +29769,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--legacy-landed-review-policy-path",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit operator-owned policy for the audited, default-off "
+            "already-landed review migration path. Requires the paired key."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-landed-review-key-path",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit operator-owned Ed25519 key pinned by the legacy landed "
+            "review policy. Requires the paired policy."
+        ),
+    )
+    parser.add_argument(
         "--implementation-protected-path",
         action="append",
         default=[],
@@ -30048,6 +30115,10 @@ def main(argv: list[str] | None = None) -> None:
         production_provider_review_authority_key_path=(
             args.production_provider_review_authority_key_path
         ),
+        legacy_landed_review_policy_path=(
+            args.legacy_landed_review_policy_path
+        ),
+        legacy_landed_review_key_path=args.legacy_landed_review_key_path,
         max_task_attempts=args.max_task_attempts,
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
