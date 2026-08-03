@@ -667,15 +667,23 @@
         "bounded_acquisition": true,
         "symlink_safe_extraction": true,
         "never_trust_ambient_java_home": true,
-        "never_download_moving_latest": true
+        "never_download_moving_latest": true,
+        "single_flight_lock": true,
+        "force_replacement_rolls_back_to_previous_good": true,
+        "home_bounded_mutable_paths": true,
+        "publisher_evidence_required": true,
+        "hello_world_cannot_satisfy_vendor_consumer": true
       },
       "optional_for": [
         "ergoai"
       ],
       "capability": "ergoai-java-api",
       "java_api_toolchain_contract_interface": "ErgoAIJavaAPIToolchainContract@1",
+      "java_api_live_certification_interface": "ErgoAIJavaAPILiveCertification@1",
       "goal_id": "FVT-G222",
-      "task_id": "FVT-090"
+      "task_id": "FVT-090",
+      "live_goal_id": "FVT-G223",
+      "live_task_id": "FVT-091"
     }
   },
   "tools": [
@@ -2430,8 +2438,17 @@
         "optional_java_api_for_ergoai": true,
         "missing_capability_does_not_block_core_ergoai": true,
         "live_toolchain_contract_interface": "ErgoAIJavaAPIToolchainContract@1",
+        "live_certification_interface": "ErgoAIJavaAPILiveCertification@1",
         "goal_id": "FVT-G222",
         "task_id": "FVT-090",
+        "live_goal_id": "FVT-G223",
+        "live_task_id": "FVT-091",
+        "single_flight_lock": true,
+        "force_replacement_rolls_back_to_previous_good": true,
+        "home_bounded_mutable_paths": true,
+        "publisher_evidence_required": true,
+        "hello_world_cannot_satisfy_vendor_consumer": true,
+        "timeout_terminates_process_tree": true,
         "lazy_install": {
           "staged": true,
           "checksum_verified": true,

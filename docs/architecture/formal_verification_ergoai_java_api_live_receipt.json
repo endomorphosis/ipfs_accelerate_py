@@ -1,0 +1,196 @@
+{
+  "acceptance": {
+    "core_ergoai_independent": true,
+    "goal_id": "FVT-G223",
+    "live_execution_required_for_production": true,
+    "never_grants_theorem_authority": true,
+    "task_id": "FVT-091"
+  },
+  "ambient_java_home_trusted": false,
+  "authority_ceiling": "advisory",
+  "authority_scope": "advisor_candidate_only",
+  "block_reasons": [],
+  "case_kinds": [
+    "live_install",
+    "publisher_evidence",
+    "vendor_java_consumer",
+    "hello_world_rejected",
+    "timeout_process_tree",
+    "workspace_cleanup",
+    "home_relocation_replay",
+    "dependency_mutation_reject",
+    "single_flight",
+    "force_rollback",
+    "home_path_boundary",
+    "core_ergoai_independent",
+    "authority_ceiling"
+  ],
+  "cases": [
+    {
+      "kind": "live_install",
+      "satisfied": true,
+      "skipped_reason": null,
+      "status": "passed"
+    },
+    {
+      "kind": "publisher_evidence",
+      "satisfied": true,
+      "status": "passed"
+    },
+    {
+      "cleanup": {
+        "existed": true,
+        "removed": true,
+        "workspace": "<runtime-workspace-redacted>"
+      },
+      "is_hermetic_advisor_shim": true,
+      "is_live_vendor": false,
+      "kind": "vendor_java_consumer",
+      "live_vendor_execution": false,
+      "raw_output_digest_sha256": "fc3b826aaf77b49198854329c80ecce2fc133b97da2c3f0177cdbf54547a6888",
+      "reason_codes": [
+        "hermetic_allowed_for_fixture_hardening"
+      ],
+      "status": "passed"
+    },
+    {
+      "kind": "hello_world_rejected",
+      "reason": "synthetic_hello_world_cannot_satisfy_live_vendor_semantics",
+      "status": "passed"
+    },
+    {
+      "cleanup": {
+        "existed": true,
+        "removed": true,
+        "workspace": "<runtime-workspace-redacted>"
+      },
+      "kind": "timeout_process_tree",
+      "process_tree_terminated": true,
+      "status": "passed"
+    },
+    {
+      "kind": "workspace_cleanup",
+      "status": "passed",
+      "timeout_cleanup": {
+        "existed": true,
+        "removed": true,
+        "workspace": "<runtime-workspace-redacted>"
+      },
+      "vendor_cleanup": {
+        "existed": true,
+        "removed": true,
+        "workspace": "<runtime-workspace-redacted>"
+      }
+    },
+    {
+      "ambient_java_home_trusted": false,
+      "deterministic_replay": true,
+      "kind": "home_relocation_replay",
+      "status": "passed"
+    },
+    {
+      "drift": null,
+      "kind": "dependency_mutation_reject",
+      "reason_codes": [
+        "tool_identity_mismatch",
+        "managed_jdk_unsatisfied"
+      ],
+      "status": "passed"
+    },
+    {
+      "already_present": true,
+      "kind": "single_flight",
+      "status": "passed",
+      "status_value": "available"
+    },
+    {
+      "failing_status": "failed",
+      "kind": "force_rollback",
+      "reason_codes": [
+        "download_or_checksum_failed"
+      ],
+      "restored_previous_good": true,
+      "status": "passed"
+    },
+    {
+      "kind": "home_path_boundary",
+      "sibling_blocked": true,
+      "status": "passed"
+    },
+    {
+      "core_ergoai_independent": true,
+      "kind": "core_ergoai_independent",
+      "missing_java_does_not_block_core": true,
+      "status": "passed"
+    },
+    {
+      "advisor_output_is_not_proof": true,
+      "authority_ceiling": "advisory",
+      "grants_proof_authority": false,
+      "grants_theorem_authority": false,
+      "kind": "authority_ceiling",
+      "status": "passed"
+    }
+  ],
+  "certified": true,
+  "core_ergoai_independent": true,
+  "goal_id": "FVT-G223",
+  "grants_proof_authority": false,
+  "grants_theorem_authority": false,
+  "interface": "ErgoAIJavaAPILiveCertification@1",
+  "jdk_receipt": null,
+  "license": "GPL-2.0-with-classpath-exception",
+  "locked_version": "17.0.20+8",
+  "platform": "linux-x86_64",
+  "policy": {
+    "advisor_output_is_not_proof": true,
+    "checksum_and_publisher_evidence_required": true,
+    "fixture_cannot_substitute_live_vendor_execution": true,
+    "force_replacement_rolls_back_to_previous_good": true,
+    "hello_world_cannot_satisfy_vendor_consumer": true,
+    "home_bounded_mutable_paths": true,
+    "missing_capability_does_not_block_core_ergoai": true,
+    "never_download_moving_latest": true,
+    "never_trust_ambient_java_home": true,
+    "requires_explicit_opt_in": true,
+    "single_flight_lock": true,
+    "timeout_terminates_process_tree": true
+  },
+  "probe": {
+    "java_home": "<managed-java-home-redacted>",
+    "managed": true,
+    "satisfied": true,
+    "tools": {
+      "jar": {
+        "banner_digest_sha256": "01e1f0a051175860da1e511b15a2888787d114f679bb8a736bba5d48c3681747",
+        "executable_sha256": "7c4fd03a247bba8e9008f72e3e61428dc3a9f649a0cba6a8b5b1fd7e0f43f51b",
+        "path": "<managed-jar-path-redacted>"
+      },
+      "java": {
+        "banner_digest_sha256": "4b3a30ea4772676cad1ea5be0f369cbdc07ae6d0fe1ac7b2068ee382ce1bf76c",
+        "executable_sha256": "c547b366fccb51a0370c4f3047ef6e4be2d5f0b6a040d1af523e1d6a07241182",
+        "path": "<managed-java-path-redacted>"
+      },
+      "javac": {
+        "banner_digest_sha256": "72d0dd22cae7d8322d11ddc6616ef41085b81cea643fd49fb31ec205b92d4010",
+        "executable_sha256": "8db52580c5573670ea2b3e0443f44810514eda4e6302276adf24eee1df0a94d5",
+        "path": "<managed-javac-path-redacted>"
+      }
+    }
+  },
+  "program": "formal-verification-tactician/ergoai-java-api-live-certification",
+  "publisher": "Eclipse Adoptium",
+  "receipt_digest_sha256": "5e66e5152d7d9b60c194e51cc71209be8727063d61ffa822abb039cdb712df59",
+  "schema_version": "ergoai-java-api-live-certification/v1",
+  "task_id": "FVT-091",
+  "tool_id": "temurin-jdk",
+  "toolchain_contract": {
+    "interface": "ErgoAIJavaAPIToolchainContract@1",
+    "ok": true,
+    "policy": {
+      "missing_capability_does_not_block_core_ergoai": true,
+      "never_trust_ambient_java_home": true,
+      "requires_explicit_opt_in": true
+    }
+  }
+}
