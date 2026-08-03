@@ -948,3 +948,142 @@ def test_provider_interface_constants_are_stable() -> None:
     provider = IpfsDatasetsTestCertificateProvider()
     assert provider.interface == TEST_CERTIFICATE_PROVIDER_INTERFACE
     assert provider.provider_id == IPFS_DATASETS_TEST_CERTIFICATE_PROVIDER_ID
+
+
+# ---------------------------------------------------------------------------
+# PTR-153: issued material admission + native child env hardening
+# ---------------------------------------------------------------------------
+
+
+def test_sanitize_native_child_env_excludes_injection_and_overwrites_root() -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_test_certificate_provider import (  # noqa: E501
+        sanitize_native_child_environment,
+    )
+
+    pinned = "/tmp/pinned-artifacts-root"
+    env = sanitize_native_child_environment(
+        {
+            "PATH": "/usr/bin",
+            "HOME": "/home/user",
+            "LD_PRELOAD": "/evil.so",
+            "DYLD_INSERT_LIBRARIES": "/evil.dylib",
+            "PYTHONPATH": "/evil/py",
+            "GROTH16_BACKEND_ARTIFACTS_ROOT": "/attacker-keys",
+            "SECRET_TOKEN": "must-not-leak",
+        },
+        artifacts_root=pinned,
+        binary_path="/snap/groth16",
+    )
+    assert "LD_PRELOAD" not in env
+    assert "DYLD_INSERT_LIBRARIES" not in env
+    assert "PYTHONPATH" not in env
+    assert "SECRET_TOKEN" not in env
+    assert env["GROTH16_BACKEND_ARTIFACTS_ROOT"] == pinned
+    assert env["IPFS_DATASETS_GROTH16_BINARY"] == "/snap/groth16"
+    assert env["IPFS_DATASETS_ENABLE_GROTH16"] == "1"
+
+
+def test_admit_issued_certificate_material_rejects_private_and_incomplete() -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_test_certificate_provider import (  # noqa: E501
+        admit_issued_certificate_material,
+    )
+
+    good = {
+        "certificate": {
+            "receipt_cid": "cid:r",
+            "circuit_cid": "cid:c",
+            "verifying_key_cid": "cid:v",
+            "proof_digest": "sha256:" + "ab" * 32,
+            "proof_artifact_cid": "cid:p",
+        },
+        "proof_digest": "sha256:" + "ab" * 32,
+        "proof_artifact_cid": "cid:p",
+        "circuit_cid": "cid:c",
+        "verifying_key_cid": "cid:v",
+        "proof_json": {"proof_a": "0x1"},
+        "artifact_bindings": {"provenance_ready": True},
+        "verified_locally": True,
+    }
+    admitted, reason = admit_issued_certificate_material(good)
+    assert admitted is not None
+    assert reason == ""
+    assert admitted["can_authorize_skip"] is False
+    assert admitted["authority"] != "authoritative"
+
+    leaked = dict(good)
+    leaked["certificate"] = dict(good["certificate"])
+    leaked["certificate"]["receipt_opening_hex"] = "deadbeef"
+    admitted, reason = admit_issued_certificate_material(leaked)
+    assert admitted is None
+    assert reason == "private_material_present"
+
+    incomplete = {"certificate": {"receipt_cid": "r"}, "proof_digest": ""}
+    admitted, reason = admit_issued_certificate_material(incomplete)
+    assert admitted is None
+    assert reason in {
+        "proof_identity_missing",
+        "certificate_missing",
+        "provenance_pins_missing",
+    }
+
+
+def test_provider_admit_issued_material_never_grants_skip_authority() -> None:
+    provider = IpfsDatasetsTestCertificateProvider()
+    material = {
+        "certificate": {
+            "receipt_cid": "cid:r",
+            "circuit_cid": "cid:c",
+            "verifying_key_cid": "cid:v",
+            "proof_digest": "sha256:" + "cd" * 32,
+            "proof_artifact_cid": "cid:p",
+            "certificate_id": "cid:cert",
+        },
+        "proof_digest": "sha256:" + "cd" * 32,
+        "proof_artifact_cid": "cid:p",
+        "circuit_cid": "cid:c",
+        "verifying_key_cid": "cid:v",
+        "verified_locally": True,
+    }
+    result = provider.admit_issued_material(material)
+    assert result.can_authorize_skip is False
+    assert result.authority is CertificateAuthority.NON_ATTESTED
+    assert result.verified is False
+    assert result.diagnostics.get("admission") == "public_material_ok"
+
+    rejected = provider.admit_issued_material(
+        {
+            "certificate": {"receipt_cid": "r", "local_witness": "SECRET"},
+            "proof_digest": "sha256:x",
+            "proof_artifact_cid": "cid:p",
+            "circuit_cid": "cid:c",
+            "verifying_key_cid": "cid:v",
+        }
+    )
+    assert rejected.can_authorize_skip is False
+    assert rejected.verified is False
+    assert "SECRET" not in rejected.detail
+    assert rejected.diagnostics.get("admission") == "rejected"
+
+
+def test_provider_admit_rejects_provenance_mismatch() -> None:
+    provider = IpfsDatasetsTestCertificateProvider()
+    result = provider.admit_issued_material(
+        {
+            "certificate": {
+                "receipt_cid": "cid:r",
+                "circuit_cid": "cid:c",
+                "verifying_key_cid": "cid:v",
+                "proof_digest": "sha256:" + "ee" * 32,
+            },
+            "proof_digest": "sha256:" + "ee" * 32,
+            "proof_artifact_cid": "cid:p",
+            "circuit_cid": "cid:c",
+            "verifying_key_cid": "cid:v",
+        },
+        expected_circuit_cid="cid:other",
+    )
+    assert result.can_authorize_skip is False
+    assert result.verified is False
+    assert "mismatch" in str(result.diagnostics.get("reason", "")).lower() or (
+        "mismatch" in result.detail.lower()
+    )

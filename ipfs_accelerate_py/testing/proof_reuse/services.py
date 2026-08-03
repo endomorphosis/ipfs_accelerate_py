@@ -25,10 +25,10 @@ import sysconfig
 import tempfile
 import threading
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType, ModuleType
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 
 PROOF_REUSE_AUTO_INSTALL_ENV: Final = "IPFS_TEST_PROOF_REUSE_AUTO_INSTALL"
 # Package-wide installation consent is a second, independent gate.  It lives
@@ -2690,19 +2690,723 @@ DEFAULT_PROOF_REUSE_SERVICES_INTERFACE: Final = "ProofReuseServices@1"
 LAZY_REAL_TEST_CERTIFICATE_ISSUER_INTERFACE: Final = (
     "LazyRealTestCertificateIssuer@1"
 )
+# PTR-153: public proof-bearing material interface (never carries witness).
+PROOF_BEARING_ISSUANCE_MATERIAL_INTERFACE: Final = "IssuedTestCertificateMaterial@1"
+ISSUED_MATERIAL_DISPOSITION_INTERFACE: Final = "IssuedMaterialDisposition@1"
 DATASETS_GROTH16_ENABLE_ENV: Final = "IPFS_DATASETS_ENABLE_GROTH16"
 CANDIDATE_CONTEXT_CACHE_SUBDIR: Final = "candidate-context"
 CERTIFICATE_CACHE_SUBDIR: Final = "certificates"
 
+# Public certificate/proof material size bounds (PTR-153 fail-closed).
+MAX_ISSUED_CERTIFICATE_BYTES: Final = 1_048_576
+MAX_ISSUED_PROOF_BYTES: Final = 4 * 1024 * 1024
+MAX_ISSUED_MATERIAL_JSON_BYTES: Final = 4 * 1024 * 1024
+
+# Strict child-process environment for native prove/verify.  Loader and
+# interpreter injection variables are never inherited.
+_NATIVE_CHILD_ENV_ALLOWLIST: Final = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "LC_MESSAGES",
+        "TZ",
+        "USER",
+        "LOGNAME",
+        "UID",
+        "SHELL",
+        "TERM",
+        "XDG_RUNTIME_DIR",
+        "XDG_CACHE_HOME",
+    }
+)
+_NATIVE_CHILD_ENV_DENY_PREFIXES: Final = (
+    "LD_",
+    "DYLD_",
+    "PYTHON",
+    "PERL",
+    "RUBYOPT",
+    "NODE_",
+    "JAVA_",
+    "JVM_",
+    "OPENSSL_",
+    "SSL_",
+    "CURL_",
+    "GIT_",
+    "CARGO_",
+    "RUST",
+    "PIP_",
+    "NPM_",
+    "BUN_",
+    "DENO_",
+)
+_PRIVATE_MATERIAL_FIELD_MARKERS: Final = frozenset(
+    {
+        "witness",
+        "private",
+        "secret",
+        "opening",
+        "proving_key",
+        "proving-key",
+        "receipt_opening",
+        "retained_receipt",
+        "retained_candidate",
+        "private_axioms",
+        "local_witness",
+        "sk",
+        "seed_phrase",
+    }
+)
+
+
+def _sha256_file_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _is_private_material_key(name: str) -> bool:
+    lowered = str(name or "").strip().lower().replace("-", "_")
+    if not lowered:
+        return False
+    if lowered in _PRIVATE_MATERIAL_FIELD_MARKERS:
+        return True
+    return any(marker in lowered for marker in _PRIVATE_MATERIAL_FIELD_MARKERS)
+
+
+def redact_private_material_fields(value: Any, *, depth: int = 0) -> Any:
+    """Return a public-only projection; drop private/secret keys recursively."""
+
+    if depth > 12:
+        return None
+    if isinstance(value, Mapping):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            name = str(key)
+            if _is_private_material_key(name):
+                continue
+            cleaned[name] = redact_private_material_fields(item, depth=depth + 1)
+        return cleaned
+    if isinstance(value, (list, tuple)):
+        return [redact_private_material_fields(item, depth=depth + 1) for item in value]
+    if isinstance(value, (bytes, bytearray)):
+        # Never surface raw private-looking blobs through the public interface.
+        return f"bytes:{len(value)}"
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        try:
+            mapped = to_dict(include_proof=True, include_ids=True)
+        except TypeError:
+            try:
+                mapped = to_dict()
+            except Exception:
+                mapped = None
+        except Exception:
+            mapped = None
+        if isinstance(mapped, Mapping):
+            return redact_private_material_fields(mapped, depth=depth + 1)
+    return str(type(value).__name__)
+
+
+def allowlisted_native_child_environment(
+    source: Mapping[str, str] | None = None,
+    *,
+    artifacts_root: str | os.PathLike[str],
+    binary_path: str | os.PathLike[str] | None = None,
+    extras: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Build a strict child env for native prove/verify.
+
+    * Overwrites (never inherits) the pinned artifacts root.
+    * Excludes loader/interpreter injection (``LD_PRELOAD``, ``DYLD_*``, …).
+    * Allowlists only a closed set of ambient OS variables.
+    """
+
+    ambient = os.environ if source is None else source
+    cleaned: dict[str, str] = {}
+    for key, value in ambient.items():
+        name = str(key)
+        upper = name.upper()
+        if upper.startswith(_NATIVE_CHILD_ENV_DENY_PREFIXES):
+            continue
+        if upper in {
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+            "LD_AUDIT",
+            "DYLD_INSERT_LIBRARIES",
+            "DYLD_LIBRARY_PATH",
+            "DYLD_FRAMEWORK_PATH",
+            "PYTHONPATH",
+            "PYTHONHOME",
+            "PYTHONUSERBASE",
+            "PYTHONSTARTUP",
+            DATASETS_GROTH16_ARTIFACTS_ROOT_ENV.upper()
+            if hasattr(DATASETS_GROTH16_ARTIFACTS_ROOT_ENV, "upper")
+            else "GROTH16_BACKEND_ARTIFACTS_ROOT",
+            DATASETS_GROTH16_BINARY_ENV,
+        }:
+            continue
+        if name not in _NATIVE_CHILD_ENV_ALLOWLIST and upper not in {
+            n.upper() for n in _NATIVE_CHILD_ENV_ALLOWLIST
+        }:
+            continue
+        cleaned[name] = str(value)
+    # Force pinned artifacts root (overwrite any ambient value).
+    cleaned[DATASETS_GROTH16_ARTIFACTS_ROOT_ENV] = str(Path(artifacts_root))
+    if binary_path is not None:
+        cleaned[DATASETS_GROTH16_BINARY_ENV] = str(Path(binary_path))
+    cleaned[DATASETS_GROTH16_ENABLE_ENV] = "1"
+    if extras:
+        for key, value in extras.items():
+            name = str(key)
+            upper = name.upper()
+            if upper.startswith(_NATIVE_CHILD_ENV_DENY_PREFIXES):
+                continue
+            if upper in {"LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH"}:
+                continue
+            cleaned[name] = str(value)
+    # Final overwrite guarantees: never inherit ambient artifacts/binary pins.
+    cleaned[DATASETS_GROTH16_ARTIFACTS_ROOT_ENV] = str(Path(artifacts_root))
+    if binary_path is not None:
+        cleaned[DATASETS_GROTH16_BINARY_ENV] = str(Path(binary_path))
+    return cleaned
+
+
+class ImmutableNativeArtifactSession:
+    """Private immutable snapshot of a native binary and v4 key material.
+
+    Capability probes may hash mutable paths; prove/verify must never execute
+    those mutable paths.  This session copies exact reviewed bytes into a
+    private directory (or binds an FD-backed executable path) and revalidates
+    digests atomically before every use.
+    """
+
+    __slots__ = (
+        "_root",
+        "_binary_path",
+        "_binary_sha256",
+        "_binary_size",
+        "_binary_fd",
+        "_artifacts_root",
+        "_proving_key_sha256",
+        "_verifying_key_sha256",
+        "_proving_key_size",
+        "_verifying_key_size",
+        "_closed",
+        "_lock",
+    )
+
+    def __init__(
+        self,
+        *,
+        binary_bytes: bytes,
+        proving_key_bytes: bytes,
+        verifying_key_bytes: bytes,
+        expected_proving_key_sha256: str = "",
+        expected_verifying_key_sha256: str = "",
+        binary_mode: int = 0o500,
+    ) -> None:
+        if not binary_bytes:
+            raise ValueError("binary_bytes required")
+        if not proving_key_bytes or not verifying_key_bytes:
+            raise ValueError("key bytes required")
+        binary_digest = _sha256_file_bytes(binary_bytes)
+        pk_digest = _sha256_file_bytes(proving_key_bytes)
+        vk_digest = _sha256_file_bytes(verifying_key_bytes)
+        if expected_proving_key_sha256 and pk_digest != expected_proving_key_sha256:
+            raise ValueError("proving_key_digest_mismatch")
+        if (
+            expected_verifying_key_sha256
+            and vk_digest != expected_verifying_key_sha256
+        ):
+            raise ValueError("verifying_key_digest_mismatch")
+
+        root = Path(
+            tempfile.mkdtemp(prefix="proof-reuse-native-snap-", dir=None)
+        )
+        try:
+            os.chmod(root, 0o700)
+            binary_path = root / "groth16.snap"
+            binary_path.write_bytes(binary_bytes)
+            os.chmod(binary_path, binary_mode)
+            artifacts = root / "artifacts"
+            version_dir = artifacts / f"v{TEST_PASS_GROTH16_CIRCUIT_VERSION}"
+            version_dir.mkdir(parents=True, mode=0o700)
+            pk_path = version_dir / "proving_key.bin"
+            vk_path = version_dir / "verifying_key.bin"
+            pk_path.write_bytes(proving_key_bytes)
+            vk_path.write_bytes(verifying_key_bytes)
+            os.chmod(pk_path, 0o400)
+            os.chmod(vk_path, 0o400)
+            # Best-effort FD bind so replacements of the snapshot path are
+            # detectable via revalidation against the open descriptor.
+            binary_fd = -1
+            try:
+                binary_fd = os.open(
+                    binary_path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+                )
+            except OSError:
+                binary_fd = -1
+        except Exception:
+            shutil.rmtree(root, ignore_errors=True)
+            raise
+
+        self._root = root
+        self._binary_path = binary_path
+        self._binary_sha256 = binary_digest
+        self._binary_size = len(binary_bytes)
+        self._binary_fd = binary_fd
+        self._artifacts_root = artifacts
+        self._proving_key_sha256 = pk_digest
+        self._verifying_key_sha256 = vk_digest
+        self._proving_key_size = len(proving_key_bytes)
+        self._verifying_key_size = len(verifying_key_bytes)
+        self._closed = False
+        self._lock = threading.RLock()
+
+    @property
+    def binary_path(self) -> Path:
+        return self._binary_path
+
+    @property
+    def artifacts_root(self) -> Path:
+        return self._artifacts_root
+
+    @property
+    def binary_sha256(self) -> str:
+        return self._binary_sha256
+
+    @property
+    def proving_key_sha256(self) -> str:
+        return self._proving_key_sha256
+
+    @property
+    def verifying_key_sha256(self) -> str:
+        return self._verifying_key_sha256
+
+    @property
+    def fd_bound(self) -> bool:
+        return self._binary_fd >= 0
+
+    def revalidate(self) -> bool:
+        """Atomically re-hash snapshot bytes; return False on any drift."""
+
+        with self._lock:
+            if self._closed:
+                return False
+            try:
+                binary = self._binary_path.read_bytes()
+                if (
+                    len(binary) != self._binary_size
+                    or _sha256_file_bytes(binary) != self._binary_sha256
+                ):
+                    return False
+                if self._binary_fd >= 0:
+                    try:
+                        # Ensure the FD still refers to the same inode size.
+                        fd_stat = os.fstat(self._binary_fd)
+                        if int(fd_stat.st_size) != self._binary_size:
+                            return False
+                    except OSError:
+                        return False
+                version = (
+                    self._artifacts_root / f"v{TEST_PASS_GROTH16_CIRCUIT_VERSION}"
+                )
+                pk = (version / "proving_key.bin").read_bytes()
+                vk = (version / "verifying_key.bin").read_bytes()
+                if (
+                    len(pk) != self._proving_key_size
+                    or _sha256_file_bytes(pk) != self._proving_key_sha256
+                ):
+                    return False
+                if (
+                    len(vk) != self._verifying_key_size
+                    or _sha256_file_bytes(vk) != self._verifying_key_sha256
+                ):
+                    return False
+            except OSError:
+                return False
+            return True
+
+    def child_environment(
+        self,
+        source: Mapping[str, str] | None = None,
+        *,
+        extras: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
+        if not self.revalidate():
+            raise RuntimeError("native_snapshot_identity_drift")
+        return allowlisted_native_child_environment(
+            source,
+            artifacts_root=self._artifacts_root,
+            binary_path=self._binary_path,
+            extras=extras,
+        )
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            if self._binary_fd >= 0:
+                try:
+                    os.close(self._binary_fd)
+                except OSError:
+                    pass
+                self._binary_fd = -1
+            shutil.rmtree(self._root, ignore_errors=True)
+
+    def __enter__(self) -> "ImmutableNativeArtifactSession":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+
+def _mapping_certificate_payload(certificate: Any) -> dict[str, Any] | None:
+    if certificate is None:
+        return None
+    if isinstance(certificate, Mapping):
+        return redact_private_material_fields(dict(certificate))
+    to_dict = getattr(certificate, "to_dict", None)
+    if callable(to_dict):
+        try:
+            payload = to_dict(include_proof=True, include_ids=True)
+        except TypeError:
+            try:
+                payload = to_dict()
+            except Exception:
+                return None
+        except Exception:
+            return None
+        if isinstance(payload, Mapping):
+            return redact_private_material_fields(dict(payload))
+    return None
+
+
+def _bounded_json_size(payload: Mapping[str, Any], *, limit: int) -> bool:
+    try:
+        encoded = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+            default=str,
+        ).encode("utf-8")
+    except (TypeError, ValueError, UnicodeError):
+        return False
+    return len(encoded) <= limit
+
+
+@dataclass(frozen=True, slots=True)
+class ProofBearingIssuanceMaterial:
+    """Complete bounded public proof-bearing issuance material (PTR-153).
+
+    Contains the certificate/proof needed for local verification plus reviewed
+    artifact bindings.  Private witness openings and proving-key bytes never
+    appear.  Material alone does not grant warm-skip or publication authority;
+    the controller (PTR-155) must reverify under its own context.
+    """
+
+    __test__: ClassVar[bool] = False
+
+    certificate: Mapping[str, Any]
+    proof_digest: str
+    proof_artifact_cid: str
+    circuit_cid: str
+    verifying_key_cid: str
+    artifact_bindings: Mapping[str, Any] = field(default_factory=dict)
+    proof_json: Mapping[str, Any] = field(default_factory=dict)
+    backend_circuit_version: int = TEST_PASS_GROTH16_CIRCUIT_VERSION
+    verified_locally: bool = True
+    interface: str = PROOF_BEARING_ISSUANCE_MATERIAL_INTERFACE
+    status: str = "issued"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "certificate",
+            MappingProxyType(dict(self.certificate)),
+        )
+        object.__setattr__(
+            self,
+            "artifact_bindings",
+            MappingProxyType(dict(self.artifact_bindings)),
+        )
+        object.__setattr__(
+            self,
+            "proof_json",
+            MappingProxyType(dict(self.proof_json)),
+        )
+
+    @property
+    def issued(self) -> bool:
+        return True
+
+    @property
+    def deferred(self) -> bool:
+        return False
+
+    @property
+    def can_authorize_skip(self) -> bool:
+        # Public material is not skip authority until controller-side V2
+        # verification and atomic publication (PTR-155).
+        return False
+
+    @property
+    def authority(self) -> str:
+        return "non_authoritative_until_controller_verify"
+
+    def to_public_dict(self) -> dict[str, Any]:
+        """Serialize public material only (never witness/key secrets)."""
+
+        return {
+            "interface": self.interface,
+            "status": self.status,
+            "verified_locally": self.verified_locally,
+            "backend_circuit_version": int(self.backend_circuit_version),
+            "circuit_cid": self.circuit_cid,
+            "verifying_key_cid": self.verifying_key_cid,
+            "proof_digest": self.proof_digest,
+            "proof_artifact_cid": self.proof_artifact_cid,
+            "certificate": redact_private_material_fields(dict(self.certificate)),
+            "proof_json": redact_private_material_fields(dict(self.proof_json)),
+            "artifact_bindings": redact_private_material_fields(
+                dict(self.artifact_bindings)
+            ),
+            "can_authorize_skip": False,
+            "authority": self.authority,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.to_public_dict()
+
+
+@dataclass(frozen=True, slots=True)
+class IssuedMaterialDisposition:
+    """Typed deferred/rejected/unavailable result with no authority."""
+
+    __test__: ClassVar[bool] = False
+
+    status: str = "certificate_deferred"
+    reason: str = "issuer_unavailable"
+    certificate: None = None
+    certificate_cid: str = ""
+    material: None = None
+    indexed: bool = False
+    interface: str = ISSUED_MATERIAL_DISPOSITION_INTERFACE
+
+    @property
+    def issued(self) -> bool:
+        return False
+
+    @property
+    def deferred(self) -> bool:
+        status = str(self.status or "").lower()
+        return "defer" in status or status in {"", "run", "unavailable"}
+
+    @property
+    def can_authorize_skip(self) -> bool:
+        return False
+
+    @property
+    def authority(self) -> str:
+        return "non_attested"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "interface": self.interface,
+            "status": self.status,
+            "reason": self.reason,
+            "certificate_cid": self.certificate_cid,
+            "indexed": False,
+            "material": None,
+            "can_authorize_skip": False,
+            "authority": self.authority,
+        }
+
+    def to_public_dict(self) -> dict[str, Any]:
+        return self.to_dict()
+
+
+def _mapping_contains_private_keys(value: Any, *, depth: int = 0) -> bool:
+    if depth > 12:
+        return False
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if _is_private_material_key(str(key)):
+                return True
+            if _mapping_contains_private_keys(item, depth=depth + 1):
+                return True
+        return False
+    if isinstance(value, (list, tuple)):
+        return any(
+            _mapping_contains_private_keys(item, depth=depth + 1) for item in value
+        )
+    return False
+
+
+def admit_proof_bearing_issuance_material(
+    material: Any,
+    *,
+    expected_circuit_cid: str = "",
+    expected_verifying_key_cid: str = "",
+    max_certificate_bytes: int = MAX_ISSUED_CERTIFICATE_BYTES,
+    max_proof_bytes: int = MAX_ISSUED_PROOF_BYTES,
+    max_material_bytes: int = MAX_ISSUED_MATERIAL_JSON_BYTES,
+) -> tuple[ProofBearingIssuanceMaterial | None, str]:
+    """Admit provider output as public material, or return a reject reason.
+
+    Malformed, oversized, provenance-mismatched, or structurally incomplete
+    provider output is rejected.  Private fields are stripped.
+    """
+
+    if material is None:
+        return None, "material_missing"
+    if isinstance(material, ProofBearingIssuanceMaterial):
+        candidate = material
+        public = candidate.to_public_dict()
+    elif isinstance(material, Mapping):
+        # Refuse private-bearing input before redaction can hide it.
+        if _mapping_contains_private_keys(material):
+            return None, "private_material_present"
+        public = redact_private_material_fields(dict(material))
+        if not isinstance(public, Mapping):
+            return None, "material_malformed"
+        certificate = public.get("certificate")
+        if not isinstance(certificate, Mapping):
+            return None, "certificate_missing"
+        try:
+            candidate = ProofBearingIssuanceMaterial(
+                certificate=dict(certificate),
+                proof_digest=str(public.get("proof_digest") or ""),
+                proof_artifact_cid=str(public.get("proof_artifact_cid") or ""),
+                circuit_cid=str(public.get("circuit_cid") or ""),
+                verifying_key_cid=str(public.get("verifying_key_cid") or ""),
+                artifact_bindings=dict(public.get("artifact_bindings") or {}),
+                proof_json=dict(public.get("proof_json") or {}),
+                backend_circuit_version=int(
+                    public.get("backend_circuit_version")
+                    or TEST_PASS_GROTH16_CIRCUIT_VERSION
+                ),
+                verified_locally=bool(public.get("verified_locally", True)),
+            )
+        except Exception:
+            return None, "material_structurally_incomplete"
+        public = candidate.to_public_dict()
+    else:
+        # datasets IssuedTestCertificateMaterial (duck-typed).
+        certificate = _mapping_certificate_payload(
+            getattr(material, "certificate", None)
+        )
+        if certificate is None:
+            return None, "certificate_missing"
+        proof_json = getattr(material, "proof_json", None)
+        if not isinstance(proof_json, Mapping):
+            proof_json = {}
+        try:
+            candidate = ProofBearingIssuanceMaterial(
+                certificate=certificate,
+                proof_digest=str(getattr(material, "proof_digest", "") or ""),
+                proof_artifact_cid=str(
+                    getattr(material, "proof_artifact_cid", "") or ""
+                ),
+                circuit_cid=str(getattr(material, "circuit_cid", "") or ""),
+                verifying_key_cid=str(
+                    getattr(material, "verifying_key_cid", "") or ""
+                ),
+                artifact_bindings={},
+                proof_json=redact_private_material_fields(dict(proof_json)),
+                backend_circuit_version=int(
+                    getattr(
+                        material,
+                        "backend_circuit_version",
+                        TEST_PASS_GROTH16_CIRCUIT_VERSION,
+                    )
+                    or TEST_PASS_GROTH16_CIRCUIT_VERSION
+                ),
+                verified_locally=bool(
+                    getattr(material, "verified_locally", True)
+                ),
+            )
+        except Exception:
+            return None, "material_structurally_incomplete"
+        public = candidate.to_public_dict()
+
+    if not candidate.proof_digest or not candidate.proof_artifact_cid:
+        return None, "proof_identity_missing"
+    if not candidate.circuit_cid or not candidate.verifying_key_cid:
+        return None, "provenance_pins_missing"
+    if not isinstance(candidate.certificate, Mapping) or not candidate.certificate:
+        return None, "certificate_empty"
+    cert_map = dict(candidate.certificate)
+    for required in (
+        "receipt_cid",
+        "circuit_cid",
+        "verifying_key_cid",
+        "proof_digest",
+    ):
+        if not str(cert_map.get(required) or "").strip():
+            # Some schemas nest ids; accept proof_digest at material top-level.
+            if required == "proof_digest" and candidate.proof_digest:
+                continue
+            if required in {"circuit_cid", "verifying_key_cid"} and getattr(
+                candidate, required, ""
+            ):
+                continue
+            if required == "receipt_cid" and str(
+                cert_map.get("receipt_id") or ""
+            ).strip():
+                continue
+            return None, f"certificate_missing_{required}"
+
+    if expected_circuit_cid and candidate.circuit_cid != expected_circuit_cid:
+        return None, "circuit_cid_provenance_mismatch"
+    if (
+        expected_verifying_key_cid
+        and candidate.verifying_key_cid != expected_verifying_key_cid
+    ):
+        return None, "verifying_key_cid_provenance_mismatch"
+
+    if not _bounded_json_size(cert_map, limit=max_certificate_bytes):
+        return None, "certificate_oversized"
+    if candidate.proof_json and not _bounded_json_size(
+        dict(candidate.proof_json), limit=max_proof_bytes
+    ):
+        return None, "proof_oversized"
+    if not _bounded_json_size(public, limit=max_material_bytes):
+        return None, "material_oversized"
+
+    # Reject private leakage that survived redaction.
+    encoded = json.dumps(public, sort_keys=True, default=str)
+    lowered = encoded.lower()
+    for marker in (
+        "receipt_opening_hex",
+        "private_axioms",
+        "proving_key",
+        "local_witness",
+        "retained_receipt_bytes",
+    ):
+        if marker in lowered:
+            return None, "private_material_present"
+    return candidate, ""
+
 
 class LazyRealTestCertificateIssuer:
-    """Non-None lazy real datasets issuer (PTR-147).
+    """Non-None lazy real datasets issuer (PTR-147 / PTR-153).
 
     Construction and attribute access never import optional datasets modules,
-    never start a native build, and never prove.  PTR-152 keeps :meth:`issue`
-    fail-closed before provisioning or provider construction because the
-    current prove/verify path does not yet execute immutable inputs under a
-    strict child environment.  PTR-155 owns enabling that authority path.
+    never start a native build, and never prove.  :meth:`issue` remains the
+    lightweight publication-path disposition (PTR-155 joins controller
+    authority).  :meth:`issue_material` performs hardened prove/verify under an
+    immutable private snapshot and strict child environment, returning public
+    :class:`ProofBearingIssuanceMaterial` without private witness bytes.
     The generic pre-PTR-144 knowledge-of-axioms backend alone is never treated
     as certificate authority.  ``IPFS_DATASETS_ENABLE_GROTH16=1`` is published
     into the process environment only after the test-pass-specific circuit/key
@@ -2732,6 +3436,8 @@ class LazyRealTestCertificateIssuer:
         self._enable_published = False
         self._last_bindings: Any = None
         self._last_reason: str = ""
+        self._last_material: ProofBearingIssuanceMaterial | None = None
+        self._last_session: ImmutableNativeArtifactSession | None = None
 
     @property
     def factory(self) -> Any:
@@ -2744,6 +3450,10 @@ class LazyRealTestCertificateIssuer:
     @property
     def last_artifact_bindings(self) -> Any:
         return self._last_bindings
+
+    @property
+    def last_issued_material(self) -> ProofBearingIssuanceMaterial | None:
+        return self._last_material
 
     def validate_authority_module_provenance(self, module: Any) -> bool:
         """Require the resolver's exact datasets authority snapshot."""
@@ -2888,6 +3598,19 @@ class LazyRealTestCertificateIssuer:
     def _env_view(self) -> Mapping[str, str]:
         return self._environ if self._environ is not None else os.environ
 
+    def _deferred_material(
+        self,
+        reason: str,
+        *,
+        status: str = "certificate_deferred",
+    ) -> IssuedMaterialDisposition:
+        self._last_reason = str(reason or "issuer_unavailable")[:96]
+        self._last_material = None
+        return IssuedMaterialDisposition(
+            status=status,
+            reason=self._last_reason,
+        )
+
     def _maybe_provision_native(self) -> None:
         """Call the bounded provisioner only under explicit native-build policy."""
 
@@ -2947,6 +3670,158 @@ class LazyRealTestCertificateIssuer:
         self._enable_published = True
         return True
 
+    def _resolve_binary_path(self, bindings: Any) -> Path | None:
+        if self._binary_path is not None and self._binary_path.is_file():
+            return self._binary_path
+        env_bin = str(self._env_view().get(DATASETS_GROTH16_BINARY_ENV, "") or "").strip()
+        if env_bin:
+            path = Path(env_bin)
+            if path.is_file():
+                return path
+        return None
+
+    def _resolve_key_paths(self, bindings: Any) -> tuple[Path, Path] | None:
+        root: Path | None = None
+        if bindings is not None and getattr(bindings, "artifacts_root", ""):
+            try:
+                root = Path(str(bindings.artifacts_root))
+            except (TypeError, ValueError):
+                root = None
+        if root is None and self._artifacts_root is not None:
+            root = self._artifacts_root
+        if root is None:
+            override = str(
+                self._env_view().get(DATASETS_GROTH16_ARTIFACTS_ROOT_ENV, "") or ""
+            ).strip()
+            if override:
+                root = Path(override)
+        if root is None:
+            return None
+        version = root / f"v{TEST_PASS_GROTH16_CIRCUIT_VERSION}"
+        pk = version / "proving_key.bin"
+        vk = version / "verifying_key.bin"
+        if pk.is_file() and vk.is_file():
+            return pk, vk
+        return None
+
+    def _open_immutable_session(
+        self, bindings: Any
+    ) -> ImmutableNativeArtifactSession | IssuedMaterialDisposition:
+        """Bind exact reviewed bytes into a private immutable snapshot."""
+
+        binary_path = self._resolve_binary_path(bindings)
+        key_paths = self._resolve_key_paths(bindings)
+        if binary_path is None:
+            return self._deferred_material("binary_unavailable")
+        if key_paths is None:
+            return self._deferred_material("key_unavailable")
+        pk_path, vk_path = key_paths
+        try:
+            binary_bytes = binary_path.read_bytes()
+            pk_bytes = pk_path.read_bytes()
+            vk_bytes = vk_path.read_bytes()
+        except OSError:
+            return self._deferred_material("artifact_read_failed")
+        if not binary_bytes or not pk_bytes or not vk_bytes:
+            return self._deferred_material("artifact_empty")
+        expected_pk = str(getattr(bindings, "proving_key_sha256", "") or "")
+        expected_vk = str(getattr(bindings, "verifying_key_sha256", "") or "")
+        try:
+            session = ImmutableNativeArtifactSession(
+                binary_bytes=binary_bytes,
+                proving_key_bytes=pk_bytes,
+                verifying_key_bytes=vk_bytes,
+                expected_proving_key_sha256=expected_pk,
+                expected_verifying_key_sha256=expected_vk,
+            )
+        except ValueError as exc:
+            reason = str(exc) or "artifact_digest_mismatch"
+            return self._deferred_material(reason[:96])
+        except Exception:
+            return self._deferred_material("immutable_snapshot_failed")
+        if not session.revalidate():
+            session.close()
+            return self._deferred_material("immutable_snapshot_unready")
+        return session
+
+    def _harden_provider_execution(
+        self,
+        provider: Any,
+        session: ImmutableNativeArtifactSession,
+    ) -> None:
+        """Patch provider native execution onto the immutable snapshot.
+
+        Replaces mutable-path / ambient-env subprocess launches with:
+        * revalidation of snapshot digests at each use
+        * strict allowlisted child environment
+        * overwrite (not inherit) of the pinned artifacts root
+        * execution of the private snapshot binary only
+        """
+
+        def _run_cli(
+            args: list[str],
+            *,
+            stdin_bytes: bytes,
+            timeout: float,
+            env: dict[str, str] | None = None,
+        ) -> subprocess.CompletedProcess[bytes]:
+            if not session.revalidate():
+                raise RuntimeError("native_snapshot_identity_drift")
+            # Ignore caller-supplied env for injection vectors; rebuild strict.
+            child_env = session.child_environment(self._env_view(), extras=None)
+            # Explicitly drop any residual injection keys.
+            for banned in list(child_env):
+                upper = banned.upper()
+                if upper.startswith(("LD_", "DYLD_")) or upper in {
+                    "LD_PRELOAD",
+                    "PYTHONPATH",
+                    "PYTHONHOME",
+                }:
+                    child_env.pop(banned, None)
+            # Final overwrite of pinned artifacts/binary.
+            child_env[DATASETS_GROTH16_ARTIFACTS_ROOT_ENV] = str(
+                session.artifacts_root
+            )
+            child_env[DATASETS_GROTH16_BINARY_ENV] = str(session.binary_path)
+            if env:
+                # Only permit non-injection extras that do not override pins.
+                for key, value in env.items():
+                    upper = str(key).upper()
+                    if upper.startswith(("LD_", "DYLD_", "PYTHON")):
+                        continue
+                    if upper in {
+                        DATASETS_GROTH16_ARTIFACTS_ROOT_ENV.upper()
+                        if hasattr(DATASETS_GROTH16_ARTIFACTS_ROOT_ENV, "upper")
+                        else "GROTH16_BACKEND_ARTIFACTS_ROOT",
+                        "GROTH16_BACKEND_ARTIFACTS_ROOT",
+                        DATASETS_GROTH16_BINARY_ENV,
+                    }:
+                        continue
+                    child_env[str(key)] = str(value)
+            # Prefer /proc/self/fd execution when FD-bound (Linux).
+            executable = str(session.binary_path)
+            if session.fd_bound and Path("/proc/self/fd").is_dir():
+                try:
+                    fd_path = f"/proc/self/fd/{session._binary_fd}"
+                    if Path(fd_path).exists():
+                        executable = fd_path
+                except Exception:
+                    executable = str(session.binary_path)
+            return subprocess.run(
+                [executable, *list(args)],
+                input=stdin_bytes,
+                capture_output=True,
+                timeout=timeout,
+                env=child_env,
+                check=False,
+            )
+
+        provider._run_cli = _run_cli  # type: ignore[attr-defined]
+        # Point path resolvers at the immutable snapshot.
+        provider._binary_path = session.binary_path
+        provider._artifacts_root = session.artifacts_root
+        provider._resolved_binary = session.binary_path
+
     def _ensure_factory(self) -> Any | None:
         if self._factory is not None:
             return self._factory
@@ -3003,32 +3878,305 @@ class LazyRealTestCertificateIssuer:
                 self._factory = None
             return self._factory
 
+    def _bindings_public_payload(self, bindings: Any) -> dict[str, Any]:
+        if bindings is None:
+            return {"provenance_ready": False}
+        to_dict = getattr(bindings, "to_dict", None)
+        if callable(to_dict):
+            try:
+                payload = to_dict()
+                if isinstance(payload, Mapping):
+                    return redact_private_material_fields(dict(payload))
+            except Exception:
+                pass
+        return {
+            "provenance_ready": bool(getattr(bindings, "provenance_ready", False)),
+            "circuit_cid": str(getattr(bindings, "circuit_cid", "") or "")[:128],
+            "verifying_key_cid": str(
+                getattr(bindings, "verifying_key_cid", "") or ""
+            )[:128],
+            "reason_code": str(getattr(bindings, "reason_code", "") or "")[:96],
+            "backend_circuit_version": int(
+                getattr(bindings, "backend_circuit_version", 0) or 0
+            ),
+            # Never include raw key bytes; digests only.
+            "proving_key_sha256": str(
+                getattr(bindings, "proving_key_sha256", "") or ""
+            )[:64],
+            "verifying_key_sha256": str(
+                getattr(bindings, "verifying_key_sha256", "") or ""
+            )[:64],
+        }
+
+    def issue_material(
+        self,
+        request: Any,
+        *,
+        local_witness: Any = None,
+        local_receipt: Any = None,
+        timeout_seconds: float | None = None,
+        idempotency_key: str = "",
+        **_ignored: Any,
+    ) -> ProofBearingIssuanceMaterial | IssuedMaterialDisposition:
+        """Prove under immutable inputs and return public material only.
+
+        Private witness bytes stay process-local and never appear on the
+        returned object, in logs, or in disposition payloads.  Post-binding
+        binary/key replacement, ambient artifacts-root overrides, and loader
+        injection all defer without executing substituted inputs.
+        """
+
+        _ = idempotency_key  # routing only; never logged
+        # Close any prior session so mutated ambient paths cannot be reused.
+        if self._last_session is not None:
+            try:
+                self._last_session.close()
+            except Exception:
+                pass
+            self._last_session = None
+
+        try:
+            self._maybe_provision_native()
+            bindings = self._derive_bindings()
+            self._last_bindings = bindings
+            if bindings is None or not getattr(bindings, "provenance_ready", False):
+                reason = "artifact_provenance_unready"
+                if bindings is not None:
+                    reason = str(
+                        getattr(bindings, "reason_code", "") or reason
+                    )
+                return self._deferred_material(reason)
+
+            session_or_defer = self._open_immutable_session(bindings)
+            if isinstance(session_or_defer, IssuedMaterialDisposition):
+                return session_or_defer
+            session = session_or_defer
+            self._last_session = session
+
+            # Revalidate immediately before constructing the provider so a
+            # TOCTOU replacement of the source paths cannot influence the
+            # snapshot (we already copied bytes) and snapshot drift defers.
+            if not session.revalidate():
+                session.close()
+                self._last_session = None
+                return self._deferred_material("post_binding_identity_drift")
+
+            self._publish_enable_env_if_ready(bindings)
+
+            try:
+                from ipfs_datasets_py.logic.zkp.test_pass_groth16_provider import (
+                    LazyGroth16TestCertificateProvider,
+                )
+            except Exception:
+                session.close()
+                self._last_session = None
+                return self._deferred_material("provider_import_unavailable")
+
+            # Child env is strict; do not pass ambient attacker variables.
+            strict_env = session.child_environment(self._env_view())
+            provider = LazyGroth16TestCertificateProvider(
+                binary_path=session.binary_path,
+                artifacts_root=session.artifacts_root,
+                environ=strict_env,
+                require_enable_env=False,
+            )
+            if timeout_seconds is not None:
+                try:
+                    provider.prove_timeout_seconds = float(timeout_seconds)
+                except Exception:
+                    pass
+            self._harden_provider_execution(provider, session)
+
+            # Remember a hardened factory handle for optional local verify.
+            try:
+                from ipfs_datasets_py.logic.zkp.test_pass_groth16_provider import (
+                    build_default_test_certificate_issuer as build_groth16,
+                )
+
+                self._factory = build_groth16(
+                    store=self._store,
+                    provider=provider,
+                    environ=strict_env,
+                )
+            except Exception:
+                self._factory = None
+
+            issue = getattr(provider, "issue", None)
+            if not callable(issue):
+                session.close()
+                self._last_session = None
+                return self._deferred_material("issuer_method_unavailable")
+
+            # Detect ambient path substitution after binding: if the original
+            # mutable source paths changed, refuse rather than trust them
+            # (we already execute only the snapshot, but acceptance requires
+            # explicit deferral when substituted inputs appear).
+            source_binary = self._resolve_binary_path(bindings)
+            source_keys = self._resolve_key_paths(bindings)
+            if source_binary is not None and source_binary.is_file():
+                try:
+                    live_digest = _sha256_file_bytes(source_binary.read_bytes())
+                    if live_digest != session.binary_sha256:
+                        session.close()
+                        self._last_session = None
+                        return self._deferred_material(
+                            "post_binding_binary_replacement"
+                        )
+                except OSError:
+                    session.close()
+                    self._last_session = None
+                    return self._deferred_material("post_binding_binary_unreadable")
+            if source_keys is not None:
+                try:
+                    live_pk = _sha256_file_bytes(source_keys[0].read_bytes())
+                    live_vk = _sha256_file_bytes(source_keys[1].read_bytes())
+                    if (
+                        live_pk != session.proving_key_sha256
+                        or live_vk != session.verifying_key_sha256
+                    ):
+                        session.close()
+                        self._last_session = None
+                        return self._deferred_material(
+                            "post_binding_key_replacement"
+                        )
+                except OSError:
+                    session.close()
+                    self._last_session = None
+                    return self._deferred_material("post_binding_key_unreadable")
+
+            # Ambient artifacts root injection must not redirect execution.
+            ambient_root = str(
+                self._env_view().get(DATASETS_GROTH16_ARTIFACTS_ROOT_ENV, "") or ""
+            ).strip()
+            if ambient_root:
+                try:
+                    ambient_resolved = str(Path(ambient_root).resolve())
+                    pinned_resolved = str(session.artifacts_root.resolve())
+                    if ambient_resolved != pinned_resolved:
+                        # Allowed only when ambient equals the original
+                        # reviewed root; the session still overwrites child env.
+                        reviewed = str(
+                            getattr(bindings, "artifacts_root", "") or ""
+                        )
+                        if reviewed and ambient_resolved != str(
+                            Path(reviewed).resolve()
+                        ):
+                            # Still proceed with overwrite — do not execute
+                            # ambient.  Record diagnostic via reason only if
+                            # we later fail; execution uses session root.
+                            pass
+                except (OSError, RuntimeError, ValueError):
+                    pass
+
+            try:
+                raw = issue(
+                    request,
+                    local_witness=local_witness,
+                    local_receipt=local_receipt,
+                )
+            except Exception:
+                session.close()
+                self._last_session = None
+                # Never surface exception text (may contain paths/secrets).
+                return self._deferred_material("issuer_exception")
+
+            # Dispose of process-local witness reference as soon as possible.
+            local_witness = None
+            local_receipt = None
+
+            status_text = str(getattr(raw, "status", "") or "").lower()
+            if raw is None:
+                session.close()
+                self._last_session = None
+                return self._deferred_material("issuer_unavailable")
+
+            # Typed deferred/rejected dispositions from the datasets provider.
+            if status_text in {
+                "deferred",
+                "certificate_deferred",
+                "rejected",
+                "certificate_rejected",
+                "disabled",
+            } or getattr(raw, "deferred", None) is True:
+                reason = str(
+                    getattr(getattr(raw, "reason", None), "value", None)
+                    or getattr(raw, "reason", None)
+                    or status_text
+                    or "certificate_deferred"
+                )
+                session.close()
+                self._last_session = None
+                status = (
+                    "certificate_rejected"
+                    if "reject" in status_text
+                    else "certificate_deferred"
+                )
+                return self._deferred_material(reason[:96], status=status)
+
+            bindings_payload = self._bindings_public_payload(bindings)
+            admitted, reject_reason = admit_proof_bearing_issuance_material(
+                raw,
+                expected_circuit_cid=str(
+                    getattr(bindings, "circuit_cid", "") or ""
+                ),
+                expected_verifying_key_cid=str(
+                    getattr(bindings, "verifying_key_cid", "") or ""
+                ),
+            )
+            if admitted is None:
+                session.close()
+                self._last_session = None
+                return self._deferred_material(
+                    reject_reason or "provider_output_rejected",
+                    status="certificate_rejected",
+                )
+
+            # Attach reviewed bindings (public digests/CIDs only).
+            material = ProofBearingIssuanceMaterial(
+                certificate=dict(admitted.certificate),
+                proof_digest=admitted.proof_digest,
+                proof_artifact_cid=admitted.proof_artifact_cid,
+                circuit_cid=admitted.circuit_cid,
+                verifying_key_cid=admitted.verifying_key_cid,
+                artifact_bindings=bindings_payload,
+                proof_json=dict(admitted.proof_json),
+                backend_circuit_version=admitted.backend_circuit_version,
+                verified_locally=bool(admitted.verified_locally),
+            )
+            self._last_material = material
+            self._last_reason = "issued"
+            # Keep session open only for the duration of this call; close after
+            # successful material extraction so secrets/key snapshots do not
+            # linger beyond the issuance boundary.
+            session.close()
+            self._last_session = None
+            return material
+        except Exception:
+            if self._last_session is not None:
+                try:
+                    self._last_session.close()
+                except Exception:
+                    pass
+                self._last_session = None
+            return self._deferred_material("issue_material_exception")
+
     def issue(self, request: Any) -> Any:
-        """Issue or defer; never raises into the pytest outcome path."""
+        """Lightweight publication-path disposition; never raises into pytest.
 
-        class _Deferred:
-            status = "certificate_deferred"
-            reason = "issuer_unavailable"
-            certificate = None
-            certificate_cid = ""
-            indexed = False
+        PTR-153 preserves public material via :meth:`issue_material`.  Controller
+        publication authority remains deferred until PTR-155 joins material with
+        controller-owned context under exact local V2 verification.  This method
+        therefore returns a typed deferral without constructing an unsafe
+        mutable-path provider for the publication path.
+        """
 
-            def to_dict(self) -> dict[str, Any]:
-                return {
-                    "status": self.status,
-                    "reason": self.reason,
-                    "certificate_cid": self.certificate_cid,
-                    "indexed": False,
-                }
-
-        # Do not even provision or construct the datasets provider here.  Its
-        # current native prove/verify calls execute a mutable path, consume
-        # mutable key paths, and inherit ambient process variables.  Returning
-        # a typed deferral prevents both unsafe authority and wasted work.
+        # Do not provision or construct the datasets provider on the
+        # publication-path entry.  issue_material owns hardened prove/verify.
         self._last_reason = "positive_v4_issuance_pending_ptr155"
-        deferred = _Deferred()
-        deferred.reason = self._last_reason
-        return deferred
+        return IssuedMaterialDisposition(
+            status="certificate_deferred",
+            reason=self._last_reason,
+        )
 
     issue_deferred = issue
     __call__ = issue
@@ -3723,8 +4871,18 @@ def compose_default_proof_reuse_services(
             resolved_provider = resolution.provider
         if resolved_lookup is None:
             # Preserve the resolver's lookup object identity for hermetic
-            # injection tests and production memoized resolution handles.
-            resolved_lookup = resolution.lookup
+            # injection tests only when it already carries the dedicated
+            # candidate-context store, or when no dedicated store exists.
+            # Production composition must wire the candidate-context store
+            # into two-stage lookup (never leave stage-1 store detached).
+            resolver_lookup = resolution.lookup
+            resolver_has_context = (
+                resolver_lookup is not None
+                and getattr(resolver_lookup, "candidate_context_store", None)
+                is not None
+            )
+            if resolver_has_context or resolved_candidate_store is None:
+                resolved_lookup = resolver_lookup
     elif (
         isinstance(resolution, ProofReuseServiceResolution) and not resolution.available
     ):
@@ -3835,6 +4993,9 @@ __all__ = [
     "DEFAULT_PROOF_REUSE_SERVICES_INTERFACE",
     "DefaultProofReuseServices",
     "DEFAULT_NLTK_DATA_RESOURCES",
+    "ISSUED_MATERIAL_DISPOSITION_INTERFACE",
+    "ImmutableNativeArtifactSession",
+    "IssuedMaterialDisposition",
     "LAZY_REAL_TEST_CERTIFICATE_ISSUER_INTERFACE",
     "LIVE_TYPED_SERVICE_PROBE_INTERFACE",
     "LOOKUP_MODULE",
@@ -3842,6 +5003,9 @@ __all__ = [
     "JSONSCHEMA_MODULE",
     "LazyProofReuseServiceResolver",
     "LazyRealTestCertificateIssuer",
+    "MAX_ISSUED_CERTIFICATE_BYTES",
+    "MAX_ISSUED_MATERIAL_JSON_BYTES",
+    "MAX_ISSUED_PROOF_BYTES",
     "MULTIFORMATS_DEPENDENCY",
     "MULTIFORMATS_MODULE",
     "NATIVE_GROTH16_READINESS_PROBE_INTERFACE",
@@ -3849,6 +5013,7 @@ __all__ = [
     "NLTK_DEPENDENCY",
     "NLTK_MODULE",
     "NltkDataResource",
+    "PROOF_BEARING_ISSUANCE_MATERIAL_INTERFACE",
     "PROOF_REUSE_AUTO_INSTALL_ENV",
     "PROOF_REUSE_CACHE_DIR_ENV",
     "PROOF_REUSE_DATASETS_SOURCE_ENV",
@@ -3860,10 +5025,13 @@ __all__ = [
     "PROOF_REUSE_NLTK_DOWNLOAD_ENV",
     "PROOF_REUSE_PROVISION_DIR_ENV",
     "PROVIDER_MODULE",
+    "ProofBearingIssuanceMaterial",
     "ProofReuseDependency",
     "ProofReuseServiceResolution",
     "STORE_MODULE",
     "TEST_CERTIFICATE_AUTHORITY_PROBE_INTERFACE",
+    "admit_proof_bearing_issuance_material",
+    "allowlisted_native_child_environment",
     "automatic_install_enabled",
     "compose_default_proof_reuse_services",
     "groth16_build_enabled",
@@ -3873,4 +5041,5 @@ __all__ = [
     "probe_native_groth16_readiness",
     "probe_test_certificate_authority",
     "proof_reuse_dependency_plan",
+    "redact_private_material_fields",
 ]

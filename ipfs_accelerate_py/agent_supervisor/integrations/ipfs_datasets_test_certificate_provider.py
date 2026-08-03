@@ -74,6 +74,38 @@ DEFAULT_ZKP_MODULE: Final = "ipfs_datasets_py.logic.zkp"
 DEFAULT_TIMEOUT_SECONDS: Final = 5.0
 DEFAULT_MAX_BLOB_BYTES: Final = 1_048_576
 DEFAULT_MAX_PROOF_BYTES: Final = 4 * 1024 * 1024
+# PTR-153: public issued-material surface (certificate + proof + bindings).
+ISSUED_TEST_CERTIFICATE_MATERIAL_INTERFACE: Final = "IssuedTestCertificateMaterial@1"
+DEFAULT_MAX_ISSUED_MATERIAL_BYTES: Final = 4 * 1024 * 1024
+DEFAULT_MAX_ISSUED_CERTIFICATE_BYTES: Final = 1_048_576
+
+# Loader / interpreter injection must never reach a native child.
+_NATIVE_INJECTION_ENV_PREFIXES: Final = ("LD_", "DYLD_", "PYTHON")
+_NATIVE_INJECTION_ENV_KEYS: Final = frozenset(
+    {
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "LD_AUDIT",
+        "DYLD_INSERT_LIBRARIES",
+        "DYLD_LIBRARY_PATH",
+        "DYLD_FRAMEWORK_PATH",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "PYTHONUSERBASE",
+        "PYTHONSTARTUP",
+    }
+)
+_PRIVATE_MATERIAL_MARKERS: Final = (
+    "witness",
+    "private",
+    "secret",
+    "opening",
+    "proving_key",
+    "receipt_opening",
+    "retained_receipt",
+    "local_witness",
+    "private_axioms",
+)
 
 IPFS_DATASETS_TEST_CERTIFICATE_PROVIDER_ID: Final = (
     "ipfs_datasets_py.test_certificate"
@@ -334,6 +366,301 @@ class TestCertificateProviderCapability:
 def _contains_simulation_marker(value: Any) -> bool:
     text = str(value or "").strip().lower()
     return any(marker in text for marker in _SIMULATION_MARKERS)
+
+
+def _contains_private_material_marker(value: Any) -> bool:
+    text = str(value or "").strip().lower().replace("-", "_")
+    return any(marker in text for marker in _PRIVATE_MATERIAL_MARKERS)
+
+
+def redact_provider_diagnostics(detail: str, *, limit: int = 256) -> str:
+    """Bound and scrub exception/detail text so secrets never enter receipts."""
+
+    text = str(detail or "")
+    if _contains_private_material_marker(text):
+        return "redacted_private_or_sensitive_detail"
+    return text[:limit]
+
+
+def sanitize_native_child_environment(
+    source: Mapping[str, str] | None,
+    *,
+    artifacts_root: str,
+    binary_path: str = "",
+    allowlist: Sequence[str] | None = None,
+) -> dict[str, str]:
+    """Return a strict child env that overwrites the pinned artifacts root.
+
+    Excludes ``LD_PRELOAD`` / ``DYLD_*`` / interpreter injection variables.
+    """
+
+    ambient = dict(source or {})
+    allowed = {
+        "PATH",
+        "HOME",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TZ",
+        "USER",
+        "LOGNAME",
+        "TERM",
+    }
+    if allowlist is not None:
+        allowed = {str(item) for item in allowlist}
+    cleaned: dict[str, str] = {}
+    for key, value in ambient.items():
+        name = str(key)
+        upper = name.upper()
+        if upper in _NATIVE_INJECTION_ENV_KEYS:
+            continue
+        if any(upper.startswith(prefix) for prefix in _NATIVE_INJECTION_ENV_PREFIXES):
+            continue
+        if name not in allowed and upper not in {a.upper() for a in allowed}:
+            continue
+        cleaned[name] = str(value)
+    # Overwrite rather than inherit ambient artifact/binary pins.
+    cleaned["GROTH16_BACKEND_ARTIFACTS_ROOT"] = str(artifacts_root)
+    if binary_path:
+        cleaned["IPFS_DATASETS_GROTH16_BINARY"] = str(binary_path)
+    cleaned["IPFS_DATASETS_ENABLE_GROTH16"] = "1"
+    # Final guarantee against ambient re-injection.
+    cleaned["GROTH16_BACKEND_ARTIFACTS_ROOT"] = str(artifacts_root)
+    for banned in list(cleaned):
+        upper = banned.upper()
+        if upper in _NATIVE_INJECTION_ENV_KEYS or any(
+            upper.startswith(prefix) for prefix in _NATIVE_INJECTION_ENV_PREFIXES
+        ):
+            cleaned.pop(banned, None)
+    return cleaned
+
+
+def admit_issued_certificate_material(
+    material: Any,
+    *,
+    expected_circuit_cid: str = "",
+    expected_verifying_key_cid: str = "",
+    max_certificate_bytes: int = DEFAULT_MAX_ISSUED_CERTIFICATE_BYTES,
+    max_proof_bytes: int = DEFAULT_MAX_PROOF_BYTES,
+    max_material_bytes: int = DEFAULT_MAX_ISSUED_MATERIAL_BYTES,
+) -> tuple[Mapping[str, Any] | None, str]:
+    """Admit public issued material or return a reject reason (no authority).
+
+    Malformed, oversized, provenance-mismatched, or structurally incomplete
+    provider output is rejected.  Private witness / secret fields are refused.
+    """
+
+    if material is None:
+        return None, "material_missing"
+
+    def _has_private_keys(value: Any, *, depth: int = 0) -> bool:
+        if depth > 12:
+            return False
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                if _contains_private_material_marker(key):
+                    return True
+                if _has_private_keys(item, depth=depth + 1):
+                    return True
+            return False
+        if isinstance(value, list):
+            return any(_has_private_keys(item, depth=depth + 1) for item in value)
+        return False
+
+    public: dict[str, Any]
+    if isinstance(material, Mapping):
+        if _has_private_keys(material):
+            return None, "private_material_present"
+        public = dict(material)
+    else:
+        to_public = getattr(material, "to_public_dict", None)
+        to_dict = getattr(material, "to_dict", None)
+        payload: Any = None
+        if callable(to_public):
+            try:
+                payload = to_public()
+            except Exception:
+                payload = None
+        if payload is None and callable(to_dict):
+            try:
+                payload = to_dict(include_proof=True, include_ids=True)
+            except TypeError:
+                try:
+                    payload = to_dict()
+                except Exception:
+                    payload = None
+            except Exception:
+                payload = None
+        if isinstance(payload, Mapping):
+            public = dict(payload)
+        else:
+            certificate = getattr(material, "certificate", None)
+            cert_map: Mapping[str, Any] | None = None
+            if isinstance(certificate, Mapping):
+                cert_map = dict(certificate)
+            elif certificate is not None and callable(getattr(certificate, "to_dict", None)):
+                try:
+                    cert_payload = certificate.to_dict(
+                        include_proof=True, include_ids=True
+                    )
+                except TypeError:
+                    try:
+                        cert_payload = certificate.to_dict()
+                    except Exception:
+                        cert_payload = None
+                except Exception:
+                    cert_payload = None
+                if isinstance(cert_payload, Mapping):
+                    cert_map = dict(cert_payload)
+            if cert_map is None:
+                return None, "certificate_missing"
+            public = {
+                "interface": str(
+                    getattr(material, "interface", "")
+                    or ISSUED_TEST_CERTIFICATE_MATERIAL_INTERFACE
+                ),
+                "certificate": dict(cert_map),
+                "proof_digest": str(getattr(material, "proof_digest", "") or ""),
+                "proof_artifact_cid": str(
+                    getattr(material, "proof_artifact_cid", "") or ""
+                ),
+                "circuit_cid": str(getattr(material, "circuit_cid", "") or ""),
+                "verifying_key_cid": str(
+                    getattr(material, "verifying_key_cid", "") or ""
+                ),
+                "proof_json": dict(getattr(material, "proof_json", {}) or {})
+                if isinstance(getattr(material, "proof_json", None), Mapping)
+                else {},
+                "artifact_bindings": dict(
+                    getattr(material, "artifact_bindings", {}) or {}
+                )
+                if isinstance(getattr(material, "artifact_bindings", None), Mapping)
+                else {},
+                "verified_locally": bool(
+                    getattr(material, "verified_locally", True)
+                ),
+            }
+
+    # Strip private keys from the public projection.
+    def _strip_private(value: Any, *, depth: int = 0) -> Any:
+        if depth > 12:
+            return None
+        if isinstance(value, Mapping):
+            out: dict[str, Any] = {}
+            for key, item in value.items():
+                if _contains_private_material_marker(key):
+                    continue
+                out[str(key)] = _strip_private(item, depth=depth + 1)
+            return out
+        if isinstance(value, list):
+            return [_strip_private(item, depth=depth + 1) for item in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        if isinstance(value, (bytes, bytearray)):
+            return f"bytes:{len(value)}"
+        return str(type(value).__name__)
+
+    public = _strip_private(public)
+    if not isinstance(public, Mapping):
+        return None, "material_malformed"
+
+    certificate = public.get("certificate")
+    if not isinstance(certificate, Mapping) or not certificate:
+        return None, "certificate_missing"
+    proof_digest = str(public.get("proof_digest") or certificate.get("proof_digest") or "")
+    proof_artifact_cid = str(
+        public.get("proof_artifact_cid")
+        or certificate.get("proof_artifact_cid")
+        or ""
+    )
+    circuit_cid = str(
+        public.get("circuit_cid") or certificate.get("circuit_cid") or ""
+    )
+    verifying_key_cid = str(
+        public.get("verifying_key_cid")
+        or certificate.get("verifying_key_cid")
+        or ""
+    )
+    if not proof_digest or not proof_artifact_cid:
+        return None, "proof_identity_missing"
+    if not circuit_cid or not verifying_key_cid:
+        return None, "provenance_pins_missing"
+    if expected_circuit_cid and circuit_cid != expected_circuit_cid:
+        return None, "circuit_cid_provenance_mismatch"
+    if expected_verifying_key_cid and verifying_key_cid != expected_verifying_key_cid:
+        return None, "verifying_key_cid_provenance_mismatch"
+
+    try:
+        cert_bytes = json.dumps(
+            dict(certificate),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+            default=str,
+        ).encode("utf-8")
+        material_bytes = json.dumps(
+            dict(public),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+            default=str,
+        ).encode("utf-8")
+    except (TypeError, ValueError, UnicodeError):
+        return None, "material_not_serializable"
+    if len(cert_bytes) > max_certificate_bytes:
+        return None, "certificate_oversized"
+    if len(material_bytes) > max_material_bytes:
+        return None, "material_oversized"
+    proof_json = public.get("proof_json")
+    if isinstance(proof_json, Mapping) and proof_json:
+        try:
+            proof_bytes = json.dumps(
+                dict(proof_json),
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+                default=str,
+            ).encode("utf-8")
+        except (TypeError, ValueError, UnicodeError):
+            return None, "proof_malformed"
+        if len(proof_bytes) > max_proof_bytes:
+            return None, "proof_oversized"
+
+    encoded_lower = material_bytes.decode("utf-8", errors="replace").lower()
+    for marker in (
+        "receipt_opening_hex",
+        "private_axioms",
+        "proving_key",
+        "local_witness",
+        "retained_receipt_bytes",
+    ):
+        if marker in encoded_lower:
+            return None, "private_material_present"
+
+    admitted = {
+        "interface": str(
+            public.get("interface") or ISSUED_TEST_CERTIFICATE_MATERIAL_INTERFACE
+        ),
+        "certificate": dict(certificate),
+        "proof_digest": proof_digest,
+        "proof_artifact_cid": proof_artifact_cid,
+        "circuit_cid": circuit_cid,
+        "verifying_key_cid": verifying_key_cid,
+        "proof_json": dict(proof_json) if isinstance(proof_json, Mapping) else {},
+        "artifact_bindings": dict(public.get("artifact_bindings") or {})
+        if isinstance(public.get("artifact_bindings"), Mapping)
+        else {},
+        "verified_locally": bool(public.get("verified_locally", True)),
+        "can_authorize_skip": False,
+        "authority": "non_authoritative_until_controller_verify",
+    }
+    return MappingProxyType(admitted), ""
 
 
 def _result(
@@ -1600,6 +1927,87 @@ class IpfsDatasetsTestCertificateProvider:
             "use the deferred issuer handle for explicit maintenance proving"
         )
 
+    def admit_issued_material(
+        self,
+        material: Any,
+        *,
+        expected_circuit_cid: str = "",
+        expected_verifying_key_cid: str = "",
+    ) -> TestCertificateVerificationResult:
+        """Admit public issued material for local inspection (PTR-153).
+
+        Successful structural admission does **not** grant skip authority —
+        the controller must still reverify under pinned context.  Malformed,
+        oversized, provenance-mismatched, incomplete, or private-bearing
+        material is rejected without authority.
+        """
+
+        admitted, reason = admit_issued_certificate_material(
+            material,
+            expected_circuit_cid=expected_circuit_cid,
+            expected_verifying_key_cid=expected_verifying_key_cid,
+            max_certificate_bytes=min(
+                self._max_blob_bytes, DEFAULT_MAX_ISSUED_CERTIFICATE_BYTES
+            ),
+            max_proof_bytes=self._max_proof_bytes,
+            max_material_bytes=DEFAULT_MAX_ISSUED_MATERIAL_BYTES,
+        )
+        if admitted is None:
+            code = ReuseReasonCode.MALFORMED_ARTIFACT
+            if reason in {
+                "certificate_oversized",
+                "proof_oversized",
+                "material_oversized",
+            }:
+                code = ReuseReasonCode.MALFORMED_ARTIFACT
+            elif "provenance" in reason or "mismatch" in reason:
+                code = ReuseReasonCode.TRUST_POLICY_REJECTED
+            elif reason in {"material_missing", "certificate_missing"}:
+                code = ReuseReasonCode.MALFORMED_ARTIFACT
+            if reason == "private_material_present":
+                code = ReuseReasonCode.CERTIFICATE_NON_ATTESTED
+            return _rejected(
+                code,
+                redact_provider_diagnostics(reason or "material_rejected"),
+                diagnostics={
+                    "admission": "rejected",
+                    "reason": str(reason or "")[:96],
+                    "can_authorize_skip": False,
+                },
+            )
+        # Structural admission only — never skip authority from self-claims.
+        return _result(
+            TestCertificateVerificationStatus.REJECTED
+            if not admitted.get("verified_locally")
+            else TestCertificateVerificationStatus.UNAVAILABLE,
+            ReuseReasonCode.CERTIFICATE_PROVIDER_UNAVAILABLE
+            if admitted.get("verified_locally")
+            else ReuseReasonCode.TRUST_POLICY_REJECTED,
+            authority=CertificateAuthority.NON_ATTESTED,
+            detail="issued_material_admitted_pending_controller_verify",
+            certificate_cid=str(
+                (admitted.get("certificate") or {}).get("certificate_id")
+                or (admitted.get("certificate") or {}).get("certificate_cid")
+                or ""
+            )[:128],
+            receipt_cid=str(
+                (admitted.get("certificate") or {}).get("receipt_cid")
+                or (admitted.get("certificate") or {}).get("receipt_id")
+                or ""
+            )[:128],
+            backend_id="groth16",
+            diagnostics={
+                "admission": "public_material_ok",
+                "can_authorize_skip": False,
+                "circuit_cid": str(admitted.get("circuit_cid") or "")[:128],
+                "verifying_key_cid": str(
+                    admitted.get("verifying_key_cid") or ""
+                )[:128],
+                "proof_digest": str(admitted.get("proof_digest") or "")[:96],
+                "interface": str(admitted.get("interface") or "")[:96],
+            },
+        )
+
 
 def inspect_test_certificate_provider_capability(
     *, enabled: bool = True, issuance: bool = False
@@ -1612,10 +2020,14 @@ def inspect_test_certificate_provider_capability(
 __all__ = [
     "DEFAULT_BINDING_MODULE",
     "DEFAULT_MAX_BLOB_BYTES",
+    "DEFAULT_MAX_ISSUED_CERTIFICATE_BYTES",
+    "DEFAULT_MAX_ISSUED_MATERIAL_BYTES",
+    "DEFAULT_MAX_PROOF_BYTES",
     "DEFAULT_STATEMENT_MODULE",
     "DEFAULT_TIMEOUT_SECONDS",
     "DEFAULT_VERIFIER_MODULE",
     "IPFS_DATASETS_TEST_CERTIFICATE_PROVIDER_ID",
+    "ISSUED_TEST_CERTIFICATE_MATERIAL_INTERFACE",
     "IpfsDatasetsTestCertificateProvider",
     "TEST_CERTIFICATE_PROVIDER_INTERFACE",
     "TEST_CERTIFICATE_PROVIDER_SCHEMA",
@@ -1625,7 +2037,10 @@ __all__ = [
     "TestCertificateProviderError",
     "TestCertificateVerificationResult",
     "TestCertificateVerificationStatus",
+    "admit_issued_certificate_material",
     "decision_from_absence",
     "decision_from_exception",
     "inspect_test_certificate_provider_capability",
+    "redact_provider_diagnostics",
+    "sanitize_native_child_environment",
 ]
