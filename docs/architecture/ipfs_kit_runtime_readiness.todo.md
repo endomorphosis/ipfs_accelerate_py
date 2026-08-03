@@ -427,7 +427,7 @@ or write authority.
 
 ## KITA-013 Join bucket WAL, replica, authorization, backend, and interface conformance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
