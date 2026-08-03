@@ -16945,6 +16945,64 @@ def test_unbound_completed_retry_repair_cannot_reopen_post_merge_correction(
     )
 
 
+def test_foreign_lane_ignores_origin_bound_completed_correction_repair(
+    post_merge_denial_case_factory,
+):
+    case = post_merge_denial_case_factory()
+    _record_consumed_post_merge_correction_failure(case)
+    repair_task_id = _generate_completed_post_merge_retry_repair(case)
+    repair = next(
+        task
+        for task in case.daemon._load_tasks()
+        if task.task_id == repair_task_id
+    )
+    repair_binding = (
+        implementation_daemon_module.post_merge_correction_repair_binding(
+            repair
+        )
+    )
+    assert repair_binding["origin_stream_id"] == (
+        implementation_daemon_module._event_stream_binding(
+            case.daemon.events_path
+        )[0]
+    )
+
+    foreign_state_dir = case.state_dir / "foreign-lane"
+    foreign_daemon = TodoImplementationDaemon(
+        todo_path=case.todo_path,
+        state_path=foreign_state_dir / "task_state.json",
+        strategy_path=foreign_state_dir / "strategy.json",
+        events_path=foreign_state_dir / "events.jsonl",
+        repo_root=case.repo,
+        task_header_prefix="## REV-",
+        merge_queue=case.queue,
+        worktree_submodule_paths=[],
+    )
+    initial = foreign_daemon._record_event(
+        "foreign_lane_initialized",
+        {"lane": "foreign"},
+    )
+    assert repair_binding["origin_stream_id"] != initial["stream_id"]
+    state = TodoTaskState()
+
+    resets, deferred = (
+        foreign_daemon._reset_attempt_budgets_for_completed_retry_repairs(
+            state,
+            foreign_daemon._load_tasks(),
+        )
+    )
+
+    assert resets == []
+    assert deferred == []
+    assert state.retry_budget_repair_receipts == {}
+    assert [
+        event["type"]
+        for event in event_log_module.read_jsonl_events(
+            foreign_daemon.events_path
+        )
+    ] == ["foreign_lane_initialized"]
+
+
 def test_completed_correction_repair_cannot_be_replayed_after_crashed_attempt(
     post_merge_denial_case_factory,
     monkeypatch,

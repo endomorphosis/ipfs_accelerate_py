@@ -8688,6 +8688,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         verified_repair_grants = (
             self._verified_post_merge_correction_repair_grants()
         )
+        local_stream_id = str(_event_stream_binding(self.events_path)[0])
         queue_changed = False
         for source_task_id in sorted(latest_repairs):
             repair_task, failure_kind = latest_repairs[source_task_id]
@@ -8746,6 +8747,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if repair_claims_correction
                 else {}
             )
+            if (
+                repair_binding
+                and str(repair_binding.get("origin_stream_id") or "")
+                != local_stream_id
+            ):
+                # A correction grant is an origin-lane capability even though
+                # its repair task is shared by every lane.  Foreign lanes must
+                # not repeatedly emit local deferrals for authority that they
+                # can never consume.
+                continue
             existing_grant = next(
                 (
                     grant

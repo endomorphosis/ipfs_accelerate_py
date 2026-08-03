@@ -16,10 +16,12 @@ The policy is an operator/runtime overlay.  It is intentionally separate from
 task metadata so enabling it does not rewrite a reviewed board, change a
 canonical task CID, or invalidate an immutable task-source binding.
 
-This completion-capable route intentionally has no Codex *implementation*
-fallback: Codex cannot implement and independently review the same proposal.
-A legacy/best-effort Grok-to-Codex implementation fallback must remain
-provider-review-pending unless a third independent reviewer is introduced.
+The completion-capable primary route never substitutes Codex for Grok.  Only
+the exact native Grok balance-exhaustion signal may open the pinned Terra
+implementation route, and that route emits a proposal without write or
+completion authority.  Because Codex cannot implement and independently
+review the same proposal, the result remains provider-review-pending until a
+separate non-Codex reviewer admits it.
 """
 
 from __future__ import annotations
